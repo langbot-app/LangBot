@@ -38,7 +38,7 @@ steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Navigate to Pipelines and open the target local-agent pipeline."
   - "Open Configuration > AI."
-  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
   - "Select a model that is known to answer Debug Chat in the current environment."
   - "Clear Knowledge Bases unless this run intentionally combines RAG with the smoke path."
   - "Save the pipeline."

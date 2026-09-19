@@ -1,4 +1,244 @@
+import pipelineMigration from './pipeline-migration/ja-JP';
+
 const jaJP = {
+  sidebarGuide: {
+    steps: {
+      monitoring: {
+        title: '稼働状況を確認する',
+        description:
+          'ボットの稼働状況、モデルの使用量、メッセージ数、システムの状態をまとめて確認できます。',
+      },
+      bots: {
+        title: 'チャットに接続する',
+        description:
+          'チャットプラットフォームに接続し、各ボットを作成・管理します。',
+      },
+      pipelines: {
+        title: '処理を設定する',
+        description:
+          '再利用できるパイプライン、Agent、プラグイン処理の設定を作成し、ボットに接続します。',
+      },
+      knowledge: {
+        title: 'ナレッジベースを管理する',
+        description:
+          'ドキュメントや外部ナレッジを管理し、モデルの回答精度を高めます。',
+      },
+      plugins: {
+        title: 'インストール済み拡張機能を管理する',
+        description:
+          'プラグイン、MCP サーバー、スキルと、それぞれの実行状態を管理します。',
+      },
+      'add-extension': {
+        title: '拡張機能を追加する',
+        description:
+          'マーケット、GitHub、ローカルパッケージから新しい機能を追加します。',
+      },
+      models: {
+        title: 'モデルを設定する',
+        description:
+          'モデルプロバイダーと、LangBot が使用する言語・埋め込みモデルなどを設定します。',
+      },
+      'api-integration': {
+        title: 'API アクセスを設定する',
+        description:
+          'API キーを作成し、LangBot サービスや MCP への外部アクセスを設定します。',
+      },
+    },
+  },
+  guidedTour: {
+    eventDebugDescription:
+      '対応するイベントを選び、テストデータを入力して出力とツールの結果を確認します。プラットフォーム操作は模擬実行され、モデルや他のツールは設定に従って実行されます。',
+
+    skip: 'スキップ',
+
+    pipeline: {
+      trigger: {
+        title: '返信するメッセージを選ぶ',
+        description:
+          'パイプラインはメッセージイベントを処理し、AI が自動返信します。グループでの起動条件、個別チャットのルール、メッセージフィルターを設定します。',
+      },
+      ai: {
+        title: 'AI 機能を設定する',
+        description:
+          'ローカルまたは外部プラットフォームのランナーを選び、モデル、プロンプト、ナレッジベースなどを設定します。',
+      },
+      output: {
+        title: '返信方法を調整する',
+        description:
+          '長文の処理などの出力ルールを設定し、AI の回答をどのように届けるかを決めます。',
+      },
+      safety: {
+        title: '安全対策を設定する',
+        description:
+          '必要に応じてコンテンツフィルターやレート制限を有効にし、内容と処理頻度を制御します。',
+      },
+      extensions: {
+        title: '利用する拡張機能を選ぶ',
+        description:
+          'このパイプラインで利用するプラグイン、MCP サーバー、スキルを選び、メッセージ処理やツールを拡張します。',
+      },
+      basic: {
+        title: 'パイプラインを管理する',
+        description:
+          '現在のパイプラインを複製して別の設定を作成したり、不要なパイプラインを削除したりできます。',
+      },
+      debug: {
+        title: '会話をテストする',
+        description:
+          'テストメッセージで起動条件、AI の返信、出力処理を確認します。設定の変更はテスト前に保存されます。',
+      },
+      monitoring: {
+        title: '実行履歴を確認する',
+        description:
+          'タイトル横のタブで過去の会話、処理過程、エラーを確認し、返信がない場合や想定外の回答を調べます。',
+      },
+      save: {
+        title: '保存してボットに接続する',
+        description:
+          '設定を保存し、ボットページのイベントルーティングでメッセージ受信イベントをこのパイプラインに割り当てます。',
+      },
+    },
+    pluginProcessor: {
+      select: {
+        title: 'プラグインのランナーを選ぶ',
+        description:
+          'イベント処理に対応するランナーを選びます。対応するイベントと処理ロジックはプラグイン作者が定義します。',
+      },
+      parameters: {
+        title: 'プラグインのパラメーターを設定する',
+        description:
+          'プラグインの設定項目を入力します。同じプラグインでも、ボットや用途ごとに複数の設定を保存できます。',
+      },
+      debug: {
+        title: 'イベント処理をテストする',
+      },
+      logs: {
+        title: '処理結果を確認する',
+        description:
+          '各実行の状態、入力イベント、プラグインログ、呼び出し結果から失敗の原因を調べます。',
+      },
+      save: {
+        title: '保存してボットに紐付ける',
+        description:
+          '保存後、ボットページのプラグイン処理セクションにこの設定を追加します。宣言されたイベントを自動受信するため、イベントごとのルーティングは不要です。',
+      },
+    },
+    previous: '前へ',
+    label: '使い方ガイド',
+    progress: 'ステップ {{current}} / {{total}}',
+    next: '次へ',
+    finish: 'ガイドを完了',
+    bot: {
+      save: {
+        title: 'ボット設定を保存する',
+        description:
+          '接続パラメーターとイベントルーティングを確認して保存します。準備ができたらボットを有効にできます。',
+      },
+
+      connection: {
+        title: '接続方式を選択',
+        description:
+          'このアダプターが対応する接続方式から選択すると、関連パラメーターが自動的に更新されます。',
+      },
+      basic: {
+        title: 'ボット情報を入力',
+        description: 'ルーティングやログで見つけやすい名前を設定します。',
+      },
+      adapter: {
+        title: 'プラットフォームアダプターを選択',
+        description:
+          '先にプラットフォームを選択すると、Webhook、常時接続、または両方への対応状況が表示されます。',
+      },
+      parameters: {
+        title: 'プラットフォームを設定',
+        description:
+          '認証情報とプラットフォームのパラメーターを入力します。外部側の設定はドキュメントを参照してください。',
+        action: 'アダプターのドキュメントを開く',
+      },
+      routing: {
+        title: 'イベントルートを設定',
+        description:
+          '各イベントを処理するプロセッサーを選びます。作成後にもルートを追加できます。',
+      },
+      submit: {
+        title: 'ボットを作成',
+        description:
+          '作成すると接続設定が適用されます。Webhook URL は保存後のボット設定に表示されます。',
+      },
+    },
+    processorCreate: {
+      type: {
+        title: 'プロセッサーの種類を選択',
+        description:
+          'Pipeline は固定フロー、Agent はモデルとツールによる判断、プラグインプロセッサーは宣言済みイベントを処理します。',
+      },
+      basic: {
+        title: 'プロセッサー情報を入力',
+        description:
+          '識別しやすい名前を設定し、作成後にランナー、イベント、ツールを設定します。',
+      },
+      submit: {
+        title: '作成して設定を続行',
+        description:
+          '作成後、必要なランナー、パラメーター、イベント、ツールを設定します。',
+      },
+    },
+    runner: {
+      debug: {
+        title: 'イベント処理をテスト',
+      },
+      select: {
+        title: 'ランナーを選択またはインストール',
+        description:
+          'インストール済みランナーを選択するか、この選択欄のマーケット一覧から直接インストールします。',
+        action: 'ランナーマーケットを見る',
+      },
+      parameters: {
+        title: 'ランナーのパラメーターを設定',
+        description:
+          '選択したランナーが要求するモデル、認証情報、サービス URL などを入力します。',
+      },
+      events: {
+        title: 'イベントとツールを設定',
+        description:
+          '「イベントとツール」を開き、Agent が受け取るイベントと使用可能なツールを選びます。',
+      },
+    },
+    knowledge: {
+      save: {
+        title: 'ナレッジベースの設定を保存する',
+        description: 'エンジンのパラメーターと検索設定を確認して保存します。',
+      },
+
+      basic: {
+        title: 'ナレッジベース情報を入力',
+        description:
+          '名前と任意の説明を設定してから、保存・検索エンジンを選択します。',
+      },
+      engine: {
+        title: 'エンジンを選択またはインストール',
+        description:
+          'インストール済みエンジンを選択するか、この選択欄のマーケットから直接インストールします。',
+        action: 'ナレッジエンジンのマーケットを見る',
+      },
+      parameters: {
+        title: 'エンジンのパラメーターを設定',
+        description:
+          'エンジンが要求するストレージ、モデル、認証情報、外部サービス設定を入力します。',
+      },
+      retrieval: {
+        title: '検索方法を設定',
+        description:
+          '関連コンテンツの検索方法とプロセッサーへの返却方法を設定します。',
+      },
+      submit: {
+        title: 'ナレッジベースを作成',
+        description:
+          '作成後、ドキュメントの追加や対応する外部ナレッジソースへの接続ができます。',
+      },
+    },
+  },
+  pipelineMigration,
   sidebar: {
     home: 'ホーム',
     extensions: '拡張機能',
@@ -14,6 +254,8 @@ const jaJP = {
     editionCloud: 'Cloud',
   },
   common: {
+    customValue: 'カスタム',
+    loadFailed: '読み込みに失敗しました。再試行してください。',
     login: 'ログイン',
     logout: 'ログアウト',
     accountOptions: 'システム設定',
@@ -30,6 +272,8 @@ const jaJP = {
     loginLoadErrorDesc:
       'LangBot バックエンドに接続できません。サービスが起動していることを確認してから再試行してください。',
     retry: '再試行',
+    showSecret: 'シークレットを表示',
+    hideSecret: 'シークレットを隠す',
     enterEmail: 'メールアドレスを入力',
     enterPassword: 'パスワードを入力',
     invalidEmail: '有効なメールアドレスを入力してください',
@@ -41,6 +285,10 @@ const jaJP = {
     joinDiscord: 'Discord に参加',
     create: '作成',
     edit: '編集',
+    editBasicInfo: '基本情報を編集',
+    editBasicInfoDescription: '名前、説明、アイコンを変更します。',
+    editBasicInfoDescriptionNoIcon: '名前と説明を変更します。',
+    management: '管理',
     delete: '削除',
     add: '追加',
     select: '選択してください',
@@ -258,7 +506,7 @@ const jaJP = {
     reasoningAbility: '推論',
     reasoningLevel: '推論レベル',
     reasoningLevels: {
-      providerDefault: 'Provider デフォルト',
+      providerDefault: 'プロバイダーの既定値を使用',
       disabled: 'オフ',
       enabled: 'オン',
       minimal: '最小',
@@ -341,6 +589,20 @@ const jaJP = {
     usesOwnerSpaceBilling:
       'ワークスペース所有者の LangBot アカウント課金とクレジットを使用します。',
     noModels: 'モデルがありません',
+    availability: {
+      available: '前回のチェックで利用可能',
+      unavailable: '前回のチェックで利用不可',
+      notChecked: 'チェック結果なし',
+      lastChecked: '{{time}} にチェック',
+    },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '入力 {{input}} · 出力 {{output}}',
+      title: '100万トークンあたりのクレジット',
+      input: '入力：{{credits}} クレジット',
+      output: '出力：{{credits}} クレジット',
+      unavailable: '価格が見つかりません。モデルが削除された可能性があります。',
+    },
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:
       '無料トライアルクレジットが利用可能！LangBot アカウントでログインして、設定不要でクラウドモデルを使用できます。',
@@ -380,6 +642,30 @@ const jaJP = {
     },
   },
   bots: {
+    pluginSubscriptions: {
+      incompleteEvents:
+        'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
+      description:
+        'プラグインが宣言したイベントを自動で受信し、上のルートとは独立して実行します。',
+      empty: 'プラグインプロセッサーは未登録です。',
+      add: 'プラグインプロセッサーを追加',
+      existing: '既存の設定を選択',
+      new: '設定を新規作成',
+      noExisting: '追加できる設定がありません。新しく作成してください。',
+      shared: '同じ設定を使用するボットは設定内容と実行状態を共有します。',
+      saveHint: '追加後にボットを保存すると有効になります。',
+      createAndBind: '作成して紐付け',
+      created: '設定を作成しました。ボットを保存すると紐付けが有効になります。',
+      enable: '{{name}} を有効化',
+      remove: '{{name}} の紐付けを解除',
+      configure: '設定',
+      logs: 'ログを表示',
+    },
+    applyFailed: '設定を保存しましたが、適用に失敗しました',
+    internalErrorHint:
+      '内部エラーが発生しました。エラー番号でバックエンドのログを確認してください。',
+    errorReference: 'エラー番号: {{id}}',
+
     title: 'ボット',
     description:
       'ボットの作成と管理を行います。LangBotと各プラットフォームを接続するためのエントリーポイントです',
@@ -392,18 +678,32 @@ const jaJP = {
     botNameRequired: 'ボット名は必須です',
     botDescriptionRequired: 'ボットの説明は必須です',
     adapterRequired: 'アダプターは必須です',
+    connectionMode: '接続方式',
+    connectionModeDescription:
+      'このアダプターが対応する接続方式から選択します。',
+    connectionWebhook: 'Webhook',
+    connectionWebhookDescription:
+      'プラットフォームから LangBot が生成した URL へイベントを送信します。',
+    connectionPersistent: '常時接続',
+    connectionPersistentDescription:
+      'LangBot が Socket またはストリーミング接続を維持します。',
+    noAdaptersForConnectionMode:
+      'この接続方式に対応するアダプターがインストールされていません。',
     defaultDescription: 'ボット',
     getBotConfigError: 'ボット設定の取得に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
-    createSuccess:
-      '作成が完了しました。有効化するか、パイプラインの設定を行ってください',
+    createSuccess: '作成が完了しました。イベントルーティングを設定してください',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
     deleteConfirmation: '本当にこのボットを削除しますか？',
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
+    legacyAdapters: '旧式アダプター',
+    legacyAdapterBadge: '旧式',
+    legacyAdaptersHint:
+      'これらのアダプターには新しいイベント駆動の接続方式があります。\n既存設定との互換性のために残しており、新規ボットには推奨されません。',
     adapterConfig: 'アダプター設定',
     viewAdapterDocs: 'ドキュメントを見る',
     bindPipeline: 'パイプラインを紐付け',
@@ -424,6 +724,222 @@ const jaJP = {
     routingConnection: 'ルーティングと接続',
     routingConnectionDescription:
       'このボットのメッセージを処理するパイプラインを紐付け',
+    eventRouting: 'イベントルーティング',
+    eventRoutingDescription: 'イベントごとの処理先を設定します。',
+    eventBindings: 'イベントルート',
+    addEventBinding: 'ルートを追加',
+    addBehavior: '動作を追加',
+    commonScenarios: 'よく使うシーン',
+    dragEventRoute: 'ルート {{index}} をドラッグ',
+    behaviorReplyMessages: '受信メッセージに返信',
+    behaviorReplyMessagesDescription:
+      '受信メッセージをプロセッサーに渡します。',
+    behaviorWelcomeMembers: '新しいメンバーを歓迎',
+    behaviorWelcomeMembersDescription:
+      'グループへの参加時にプロセッサーを実行します。',
+    behaviorHandleDepartures: 'メンバーの退出を処理',
+    behaviorHandleDeparturesDescription:
+      'グループからの退出時にプロセッサーを実行します。',
+    behaviorReviewFriendRequests: '友だち申請を確認',
+    behaviorReviewFriendRequestsDescription:
+      '新しい友達リクエストをプロセッサーに渡します。',
+    behaviorHandleModeration: 'モデレーションイベントを処理',
+    behaviorHandleModerationDescription:
+      'グループメンバーの制限時にプロセッサーを実行します。',
+    behaviorCustom: '別のイベントを設定',
+    behaviorCustomDescription:
+      'ルートを追加し、このアダプターが対応する全イベントから選択します。',
+    eventPattern: 'イベント',
+    eventPatternPlaceholder: 'イベントを選択',
+    targetType: 'ターゲットタイプ',
+    target: 'プロセッサー',
+    targetAgent: 'Agent',
+    targetPipeline: 'Pipeline',
+    targetDiscard: '破棄',
+    selectTarget: 'プロセッサーを選択',
+    searchTarget: 'プロセッサーを検索…',
+    noTargetFound: '対応するプロセッサーが見つかりません',
+    priority: '優先度',
+    enabled: '有効',
+    eventBindingDescriptionPlaceholder: 'ルール説明',
+    noEventBindings: 'イベントルートはありません',
+    unsupportedPipelineEvent:
+      'Pipeline は message.* イベントにのみ使用できます',
+    disable: '無効化',
+    enable: '有効化',
+    disabledBindings: '無効',
+    adapterEventsTitle: '対応イベント',
+    adapterEventsDescription: '{{count}} 種類',
+    adapterEventsMore: 'ほか {{count}} 件',
+    advancedEventValues: 'すべて表示',
+    eventGroup: 'グループ',
+    eventGroupNames: {
+      bot: 'ボットの状態',
+      feedback: 'フィードバック',
+      friend: '友だち',
+      group: 'グループ',
+      message: 'メッセージ',
+      platform: 'プラットフォーム',
+    },
+    routeConflictTitle: '一部のルートが重複しています',
+    routeConflictShadowed:
+      '{{winner}} が同じイベントを先に処理するため、{{shadowed}} は実行されない可能性があります。',
+    routeConflictMore: 'ほか {{count}} 件のルート競合を確認してください。',
+    routeFallbackCatchAll: '{{route}} はフォールバックルートです。',
+    routeFallbackIgnored:
+      'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
+    testRoute: 'ルートを確認',
+    adapterEventDebugAction: 'イベント監視テスト',
+    adapterEventDebugTitle: 'プラットフォームイベントのデバッグ',
+    adapterEventDebugDescription:
+      '{{platform}} でイベントを発生させると、アダプターの受信後にここへ表示されます。',
+    adapterEventObserveOnly:
+      'この画面はイベントを監視するだけです。受信イベントは現在のルートで通常どおり処理されます。',
+    adapterEventPreparing: '準備中',
+    adapterEventListening: '監視中',
+    adapterEventListenerUnavailable: '監視が中断されました',
+    adapterEventLoadFailed:
+      'プラットフォームイベントを取得できません。ボットが起動していることを確認して、もう一度お試しください。',
+    adapterEventReceivedCount: '{{count}} 件のイベントを受信',
+    adapterEventClear: 'クリア',
+    adapterEventEmptyTitle: 'プラットフォームイベントを待機中',
+    adapterEventEmptyDescription:
+      '{{platform}} でメッセージを送るか、イベントを発生させてください。',
+    adapterEventData: 'イベントデータを表示',
+    adapterEventNeedsSavedBot:
+      'プラットフォームイベントを監視する前にボットを保存してください。',
+    adapterEventCurrentPlatform: '現在のプラットフォーム',
+    adapterConfigurationTest: 'アダプター設定をテスト',
+    adapterConfigurationTestDescription:
+      '先にボットを保存して有効にし、プラットフォームでイベントを発生させて設定を確認します。',
+    refreshRouteStatus: '状態を更新',
+    routeStatusIdle: '実行記録なし',
+    routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',
+    routeStatus: {
+      matched: '一致',
+      delivered: '配信済み',
+      discarded: '破棄済み',
+      failed: '失敗',
+      not_matched: '未一致',
+    },
+    routeStatusDetail: {
+      matched: 'このルートがイベントに一致しました。',
+      delivered: 'プロセッサーがイベントを受信しました。',
+      discarded: '設定に従ってイベントを破棄しました。',
+      failed: 'ルートを完了できませんでした。',
+      not_matched: '設定済みルートに一致しませんでした。',
+    },
+    routeFailure: {
+      binding_disabled: 'このルートは無効です。',
+      event_pattern_mismatch: 'イベントがこのルートに一致しません。',
+      filters_mismatch: 'サンプルデータがルート条件を満たしていません。',
+      lower_priority: '別の一致ルートの優先度が高く設定されています。',
+      route_not_found: 'このイベントに一致するルートがありません。',
+      processor_incompatible:
+        '選択したプロセッサーはこのイベントを処理できません。',
+      processor_not_found: '選択したプロセッサーを利用できません。',
+      runner_failed: 'Runner がイベント処理中に失敗しました。',
+      delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
+    },
+    dryRunTitle: 'イベントルートを確認',
+    dryRunDescription: 'イベントを選び、一致するルートと処理先を確認します。',
+    dryRunEventType: 'イベントタイプ',
+    dryRunSampleReady: 'サンプルイベントを準備しました',
+    dryRunSampleDescription:
+      'LangBot が「{{event}}」用のサンプルデータを準備しました。通常はそのままテストできます。',
+    dryRunEditPayload: 'テストデータ',
+    dryRunHidePayload: 'データを閉じる',
+    dryRunPayload: 'テストデータ（JSON）',
+    dryRunPayloadHint: 'メッセージや会話の条件テストに使用します。',
+    dryRunPayloadJsonError: '有効な JSON を入力してください。',
+    dryRunPayloadObjectError:
+      'ペイロードは JSON オブジェクトである必要があります。',
+    dryRunNeedsSavedBot: 'ルートを確認する前にボットを保存してください。',
+    dryRunFailed: 'ルートを確認できませんでした。後でもう一度お試しください。',
+    dryRunAction: '一致結果を確認',
+    dryRunRunning: '確認中…',
+    dryRunMatched: 'ルートに一致しました',
+    dryRunNotMatched: '一致するルートはありません',
+    dryRunTarget: '対象プロセッサー',
+    dryRunNoTarget: '対象なし',
+    dryRunMatchedRule: '一致したルール',
+    dryRunRuleIndex: 'ルート {{index}}',
+    dryRunNoRule: '一致したルールなし',
+    dryRunDiagnostics: '診断ステップ',
+    dryRunDiagnosticSelected: '{{route}}を選択しました。',
+    dryRunDiagnosticMatched: '{{route}}が一致しました。{{reason}}',
+    dryRunDiagnosticSkipped: '{{route}}をスキップしました。{{reason}}',
+    eventCustom: 'カスタムイベント',
+    eventWildcard: 'すべてのイベント',
+    eventNamespaceWildcard: '{{namespace}}.*',
+    eventNames: {
+      message_received: 'メッセージ受信',
+      message_edited: 'メッセージ編集',
+      message_deleted: 'メッセージ削除',
+      message_reaction: 'メッセージリアクション',
+      feedback_received: 'フィードバック受信',
+      friend_request_received: '友達リクエスト受信',
+      friend_added: '友達追加',
+      group_member_joined: 'メンバー参加',
+      group_member_left: 'メンバー退出',
+      group_member_banned: 'メンバーBAN',
+      bot_invited_to_group: 'ボットがグループに招待された',
+      bot_removed_from_group: 'ボットがグループから削除された',
+      bot_muted: 'ボットがミュートされた',
+      bot_unmuted: 'ボットのミュート解除',
+      platform_specific: 'プラットフォーム固有イベント',
+    },
+    eventDescriptions: {
+      all: 'このアダプターが受信するすべてのイベントに一致します。',
+      namespace: 'すべての{{group}}イベントに一致します。',
+      namespace_bot:
+        'ボットのグループ参加、退出、ミュートなどの状態イベントに一致します。',
+      namespace_feedback:
+        'プラットフォームまたはユーザーからのフィードバックイベントに一致します。',
+      namespace_friend: '友達リクエストや友達関係の変更イベントに一致します。',
+      namespace_group:
+        'メンバーの参加、退出、削除などのグループイベントに一致します。',
+      namespace_message:
+        'メッセージの受信、編集、削除、リアクションイベントに一致します。',
+      namespace_platform:
+        'アダプターが提供するプラットフォーム固有イベントに一致します。',
+      custom: 'カスタムイベント、または説明がまだないイベントです。',
+      message_received:
+        'ユーザーまたはグループがボットへ新しいメッセージを送信します。',
+      message_edited:
+        '既存メッセージが変更されたことをプラットフォームが通知します。',
+      message_deleted:
+        '既存メッセージが削除されたことをプラットフォームが通知します。',
+      message_reaction:
+        'ユーザーがメッセージへのリアクションを追加または削除します。',
+      feedback_received:
+        'プラットフォームまたはユーザーからフィードバックを受信します。',
+      friend_request_received: '誰かがボットを友達に追加しようとしています。',
+      friend_added: '友達関係が作成されました。',
+      group_member_joined: 'ボットがいるグループにメンバーが参加しました。',
+      group_member_left: 'ボットがいるグループからメンバーが退出しました。',
+      group_member_banned: 'グループメンバーがBANまたは削除されました。',
+      bot_invited_to_group: 'ボットがグループに招待されました。',
+      bot_removed_from_group: 'ボットがグループから削除されました。',
+      bot_muted: 'ボットがグループでミュートされました。',
+      bot_unmuted: 'ボットのグループでのミュートが解除されました。',
+      platform_specific: 'アダプター固有のプラットフォームイベントです。',
+    },
+    conditions: '条件',
+    conditionsDescription:
+      'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
+    conditionsEmpty: '条件なし。常に発火します。',
+    addFilter: '条件を追加',
+    filterChatType: 'セッションタイプ',
+    filterChatId: 'セッション ID',
+    filterMessageText: 'メッセージ本文',
+    filterMessageElement: 'メッセージ要素',
+    operator_eq: '等しい',
+    operator_neq: '等しくない',
+    operator_contains: '含む',
+    operator_not_contains: '含まない',
+    operator_starts_with: '前方一致',
+    operator_regex: '正規表現',
     routingRules: '条件付きルーティングルール',
     routingRulesDescription:
       'ルールは順番に評価され、最初に一致したルールのパイプラインにルーティングされます。一致しない場合はデフォルトパイプラインが使用されます。',
@@ -530,6 +1046,317 @@ const jaJP = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    eventsAndTools: 'イベントとツール',
+    eventsAndToolsDescription: '起動イベントと利用できるツールを設定します。',
+    configuredEvents: '追加済みのイベント',
+    configuredEventsCount: '合計 {{count}} 件',
+    addEvent: 'イベントを追加',
+    removeEvent: 'イベントを削除',
+    eventActions: '自動で有効になるツール',
+    eventToolEnabled: '有効',
+    eventToolsEnabledCount: '{{count}} 個のツールが有効',
+    noEventActions: 'このイベントで利用できるアクションはありません。',
+    noEventsConfigured: 'イベントが未追加です',
+    noEventsConfiguredDescription:
+      'この Agent を起動できるイベントがありません。',
+    noEventsConfiguredBadge: 'イベントなし',
+    apiTools: 'ツールへのアクセス',
+    apiToolsDescription: 'この Agent が呼び出せるツールを選びます。',
+    otherTools: 'その他のツール',
+    otherToolsDescription:
+      'プラットフォーム、サンドボックス、MCP、プラグイン、スキルのツールを選びます。',
+    apiToolsSelected: '{{count}} 個を選択中',
+    apiToolsSecurityHint: 'この Agent に必要なツールだけを有効にしてください。',
+    apiToolsSearch: 'ツールを検索…',
+    eventApiTools: 'イベントツール',
+    eventToolUnavailable: '利用不可',
+    eventApiToolsDescription:
+      '操作対象は現在のイベントから決まります。Agent はアクションのパラメーターのみを指定します。',
+    platformApiTools: 'プラットフォームツール',
+    platformApiToolsDescription:
+      'Agent はユーザー、グループ、メッセージの ID を選べます。必要な権限だけを付与してください。',
+    apiToolEvents: 'イベント',
+    apiToolParameters: 'Agent のパラメーター',
+    apiToolSource: '提供元',
+    apiToolNoParameters: 'なし',
+    sandboxTools: 'サンドボックス',
+    mcpTools: 'MCP',
+    pluginTools: 'プラグイン',
+    skillTools: 'スキル',
+    langbotBuiltIn: 'LangBot',
+    apiToolDetails: '詳細',
+    apiToolHideDetails: '非表示',
+    apiToolsNoResults: '一致する API やツールはありません',
+    apiToolsCatalogUnavailable:
+      'LangBot サーバーが API ツール一覧を返しませんでした。サーバーを更新して再起動したか確認してください。プラットフォームにツールがないという意味ではありません。',
+    hostToolsCatalogUnavailable: 'ツール一覧は一時的に利用できません。',
+    apiToolRisk: {
+      read: '読み取り専用',
+      write: 'アクション',
+      dangerous: '機密性の高い操作',
+    },
+    runnerConfigIncomplete: 'ランナー設定が未完了です',
+    runnerConfigIncompleteDescription: '必須項目を入力してください：{{fields}}',
+    debugTab: 'イベントデバッグ',
+    debugTitle: 'Agent のイベントデバッグ',
+    debugDescription:
+      '現在の Agent にメッセージやプラットフォームイベントを渡して実行し、実際の出力を確認します。',
+    debugResetSession: 'セッションをリセット',
+    debugEventType: 'イベントの種類',
+    debugNoEventsTitle: 'デバッグできるイベントがありません',
+    debugNoEventsDescription:
+      'まず「イベントとツール」でイベントを追加してください。',
+    debugMessageReceived: 'メッセージ受信',
+    debugGroupMemberJoined: 'メンバーのグループ参加',
+    debugGroupMemberLeft: 'メンバーのグループ退出',
+    debugFriendRequested: '友達申請の受信',
+    debugFeedbackReceived: 'フィードバック受信',
+    debugCustomEvent: 'カスタムイベント',
+    debugCustomEventType: 'カスタムイベント名',
+    debugMessageInput: '会話の入力',
+    debugEventSummary: 'イベントの概要',
+    debugInputPlaceholder: 'Agent に処理させる内容を入力',
+    debugEventPayload: 'イベントデータ（JSON）',
+    debugSupportedEvents: 'Agent が対応するイベント',
+    debugRun: 'テストを実行',
+    debugSaveAndRun: '保存して実行',
+    debugRunning: '実行中',
+    debugTranscript: 'デバッグ記録',
+    debugTranscriptDescription:
+      '現在のデバッグセッションの入力と Agent の出力です。',
+    debugEmptyTitle: 'この Agent の動作を確認する',
+    debugEmptyTranscript:
+      'イベントを選び、テスト内容を入力して「テストを実行」を押します。結果はこのページに表示されます。',
+    debugAgentOutput: 'Agent の出力',
+    debugTestInput: 'テスト入力',
+    debugNoTextOutput: 'テキスト出力なしで実行が完了しました。',
+    debugEventTypeRequired: 'イベントの種類を入力してください',
+    debugInputRequired: '会話の入力を記入してください',
+    debugInvalidPayload:
+      'イベントデータは有効な JSON オブジェクトである必要があります',
+    debugUnsupportedEvent: 'このイベントは Agent に紐付けできる範囲外です',
+    debugRunnerConfigInvalidDescription:
+      'ランナー設定が未完了です：{{message}}',
+    debugRunnerExecutionFailedDescription:
+      '実行に失敗しました。選択したモデルとランナー設定を確認し、再試行してください。',
+    debugRunnerTimeoutDescription:
+      '実行がタイムアウトしました。後で再試行するか、ランナーのタイムアウト設定を変更してください。',
+    debugApiKeyRequired: 'API キーがありません',
+    debugOpenRunnerConfig: 'ランナー設定を開く',
+    debugReviewRunnerConfig: 'ランナー設定を確認',
+    debugErrorDetails: 'エラーの詳細を表示',
+    debugRunFailed: 'Agent のデバッグ実行に失敗しました',
+
+    monitoring: {
+      description:
+        '各タスクのトリガーイベント、モデル出力、ツール実行を確認します。',
+      empty:
+        '実行記録はありません。プラットフォームイベントまたはデバッグテストを実行してください。',
+      input: 'トリガー入力',
+      eventData: 'イベントデータ',
+      execution: '実行過程',
+      rawEvents: '生の実行イベント',
+      inputUnavailable: 'この実行の入力は記録されていません。',
+    },
+    eventProcessor: {
+      configurations: 'プラグインプロセッサー設定',
+      configTab: '設定',
+      logsTab: 'ログ',
+      noSettings: 'このプラグインプロセッサーに設定項目はありません。',
+      createPageTitle: 'イベントプロセッサーを作成',
+      processWithPlugin: 'プラグインコードで処理',
+      pluginSettings: 'プラグイン設定',
+      pluginSettingsDescription: 'このプラグインが定義するパラメーターです。',
+      selectToDebug: '上でプラグインを選択してデバッグを開始してください。',
+
+      debugOutput: 'プロセッサー出力',
+      debugDescription:
+        'このテストの入力イベント、プラグインログ、アクション結果。',
+      debugNotice:
+        'プラグインはテストイベントを実際に処理します。返信や送信などは Mock を使用し、実際のメッセージは送信しません。他のツールは設定どおりに実行されます。',
+
+      create: 'プラグインプロセッサーを作成',
+      type: 'プラグインプロセッサー',
+      description:
+        '事前に宣言された特定のイベントを、プラグインに実装されたロジックに従って処理します。',
+      component: 'プラグインプロセッサー',
+      selectComponent: 'プラグインプロセッサーを選択',
+      unavailable: 'コンポーネントを利用できません',
+      noComponents:
+        'プロセッサーを提供するプラグインがインストールされていません。',
+      installPlugin: 'プラグインをインストール',
+      loadError: '詳細を読み込めません。',
+      refresh: '更新',
+      runs: '実行履歴',
+      noRuns: '実行履歴はありません。ボットに紐付けて開始します。',
+      bindBot: 'ボットに紐付ける',
+      trace: 'ログとメッセージの流れ',
+      selectRun: '実行履歴を選択して詳細を表示します。',
+      input: '受信イベント',
+      destination: '送信先',
+      loadMore: 'さらに読み込む',
+      activation:
+        'プラグインをインストールし、プロセッサー設定を作成してボットに紐付けます。',
+      status_timeout: 'タイムアウト',
+      status_pending: '待機中',
+      status_running: '実行中',
+      status_completed: '完了',
+      status_failed: '失敗',
+      status_cancelled: 'キャンセル済み',
+      status_queued: 'キュー待ち',
+      trace_run_completed: '実行完了',
+      trace_run_failed: '実行失敗',
+      trace_tool_call_started: 'アクション開始',
+      trace_tool_call_completed: 'アクション結果',
+    },
+    debugData: {
+      chatId: 'チャット ID',
+      feedbackType: 'フィードバック種別（1: 高評価、2: 低評価、3: 取消）',
+
+      title: 'イベントデータ',
+      form: '基本項目',
+      json: '完全な JSON',
+      groupId: 'グループ ID',
+      memberId: 'メンバー ID',
+      memberName: 'メンバー名',
+      userId: 'ユーザー ID',
+      userName: 'ユーザー名',
+      requesterId: '申請者 ID',
+      requesterName: '申請者名',
+      messageId: 'メッセージ ID',
+      duration: '時間（秒）',
+      message: 'メッセージ内容',
+      newMessage: '編集後の内容',
+      verificationMessage: '申請メッセージ',
+      reaction: 'リアクション',
+      groupName: 'グループ名',
+      feedback: 'フィードバック',
+      rating: '評価',
+      eventName: 'イベント名',
+      privateChat: '空欄で個別チャット',
+      sampleUser: 'テストユーザー',
+      sampleMessage: 'こんにちは',
+      sampleFeedback: 'とても役立ちました',
+      invalidField: '{{field}}を確認してください',
+    },
+    debugReasoning: '思考内容',
+    debugTextOutput: 'テキスト出力',
+    debugPlatformNotice:
+      'プラットフォームツールは Mock を使用します。Agent は実際にツールを呼び出し、返信・送信などは模擬実行されます。他のツールは設定どおりに実行されます。',
+    debugToolSimulated: '模擬実行成功 · Mock',
+    debugStop: 'デバッグを停止',
+    debugMockOptions: 'Mock シナリオ（JSON）',
+    debugInvalidMock:
+      'Mock シナリオは有効な JSON オブジェクトで指定してください。',
+    debugToolMockFailed: '模擬実行失敗 · Mock',
+    debugMockOptionsHelp:
+      '既定は成功です。errors にツール別エラー、results に結果、unsupported_apis に未対応 API を指定します。例：{"errors":{"event_reply":"送信失敗"}}',
+    debugCancelled:
+      'デバッグを停止しました。それまでの実行記録は保持されます。',
+    debugNoToolCalls:
+      'ツール呼び出しの記録はありません。テキストの生成は送信完了を意味しません。',
+    debugToolCount:
+      '{{count}} 件のツール呼び出しを記録しました。実行状態と結果は以下をご確認ください。',
+    debugToolRunning: '実行中',
+    debugToolCompleted: '完了',
+    debugToolFailed: '失敗',
+    debugToolInterrupted: '結果なし',
+    debugToolArguments: '引数',
+    debugToolResult: '実行結果',
+    title: 'プロセッサー',
+    description:
+      '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',
+    create: 'プロセッサーを作成',
+    editAgent: 'Agent を編集',
+    selectFromSidebar: 'サイドバーからプロセッサーを選択',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'さまざまなイベントの処理方法を自然言語で指定して AI に実行させるか、外部の Agent プラットフォームに接続して処理します。',
+    pipelineType: 'パイプライン',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'パイプライン',
+    groupByKind: 'タイプ別にグループ化',
+    groupByKindShort: 'グループ',
+    pipelineTypeDescription:
+      'メッセージイベントのみを処理し、AI が直接返信を生成します。ナレッジベースやプラグインなどの便利な機能も利用できます。',
+    allEvents: 'すべてのイベントに対応',
+    messageEventsOnly: 'メッセージイベントのみ',
+    chooseType: '処理方法を選択',
+    chooseTypeDescription:
+      '最初にプロセッサーの動作方式を選びます。作成後に詳しく設定できます。',
+    diagramHint: '動作イメージ',
+    agentDiagramTitle: 'Agent：判断して行動',
+    agentDiagramDescription:
+      'Agent はさまざまなプラットフォームイベントを受け取り、モデルやツールを使って状況を理解し、次の行動を判断します。',
+    pipelineDiagramTitle: 'Pipeline：決めたフローで処理',
+    pipelineDiagramDescription:
+      'Pipeline はメッセージイベントのみを、設定した固定ステップの順番で処理します。',
+    pipelineDiagramFlow: 'メッセージを固定フローで順番に処理',
+    diagramEvents: 'イベント',
+    diagramAgentCanUse: 'Agent が利用可能',
+    diagramMessages: 'メッセージ',
+    diagramMembers: 'メンバー',
+    diagramFeedback: 'フィードバック',
+    diagramDecide: '理解して判断',
+    diagramModel: 'モデル',
+    diagramTools: 'ツール',
+    diagramActions: 'アクション',
+    diagramMessage: 'メッセージ',
+    diagramPreprocess: '前処理',
+    diagramAI: 'AI',
+    diagramPostprocess: '後処理',
+    diagramOutput: '出力',
+    basicInfo: '基本情報',
+    basicInfoDescription: '名前、アイコン、説明を設定します',
+    runnerSettings: 'Runner',
+    advanced: '詳細',
+    bindableEvents: '紐付け可能なイベント範囲',
+    bindableEventsDescription:
+      'この Agent を選択できるボットイベントルートの範囲を制限します。通常は既定値のままで問題ありません。',
+    supportedEvents: 'イベント範囲',
+    supportedEventsDescription:
+      'すべてのイベント、イベントグループ、または個別のイベントを選択します。ボットルートでは一致するイベントにのみこの Agent が表示されます。',
+    searchEvents: 'イベントを検索…',
+    noEventsFound: '一致するイベントがありません',
+    nameRequired: '名前は必須です',
+    createSuccess: '作成に成功しました',
+    createError: '作成に失敗しました：',
+    loadError: '読み込みに失敗しました：',
+    saveSuccess: '保存に成功しました',
+    saveError: '保存に失敗しました：',
+    deleteSuccess: '削除に成功しました',
+    deleteError: '削除に失敗しました：',
+    deleteConfirmation: 'この Agent を削除してもよろしいですか？',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '元に戻せない操作',
+    deleteAgentAction: 'この Agent を削除',
+    deleteAgentHint: '削除すると、紐付けられたイベントは実行できなくなります。',
+    noRunnerMetadata: '現在利用可能な Runner メタデータはありません。',
+    runnerStatusLoading: 'Runner の状態を確認しています',
+    runnerStatusCheckFailed: 'Runner の状態を確認できませんでした',
+    runnerStatusCheckFailedDescription:
+      '再試行してください。失敗が続く場合は、バックエンドとプラグインランタイムを確認してください。',
+    noRunnersAvailable: '利用可能な Runner がありません',
+    noRunnersAvailableDescription:
+      'この Agent を設定する前に Runner 拡張機能をインストールして有効にしてください。',
+    installedRunners: 'インストール済み Runner',
+    marketplaceRunners: 'マーケットプレイスの Runner プラグイン',
+    viewMarketplace: '市場を見る',
+    restoringRunnerInstall:
+      'Runner プラグインのインストールを復元し、ランナーを待機しています…',
+    noInstalledRunners: 'Runner 拡張機能はまだインストールされていません。',
+    installingRunner: '{{runner}} をインストールしています...',
+    runnerInstallSuccess:
+      '{{runner}} をインストールしました。インストール済み一覧から選択できます',
+    selectedRunnerUnavailable: '選択した Runner は利用できません',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} は現在登録されていません。別の Runner を選択するか、対応する拡張機能を復元してください。',
+    noRunnerSelected: 'Runner が選択されていません',
+    runnerReady: 'Runner の準備完了',
+    runnerReadyDescription:
+      '{{runner}} は登録済みで、プラグインランタイムに接続されています。',
+  },
   plugins: {
     title: '拡張機能',
     description:
@@ -559,6 +1386,7 @@ const jaJP = {
     noExtensionInstalled: '拡張機能がインストールされていません',
     loadingExtensions: '拡張機能を読み込み中...',
     groupByType: '形式でグループ化',
+    groupByTypeShort: 'グループ',
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:
@@ -623,6 +1451,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      Runner: 'ランナー',
     },
     uploadLocal: 'ローカルアップロード',
     debugging: 'デバッグ中',
@@ -712,10 +1541,15 @@ const jaJP = {
     goToMarketplace: 'マーケットプレイスへ',
     installProgress: {
       title: '{{name}} をインストール中',
+      updateTitle: '{{name}} を更新中',
       titleGeneric: 'プラグインのインストール',
       overallProgress: '全体の進捗',
+      checkingUpdate: '最新バージョンを確認中',
       downloading: 'プラグインをダウンロード中',
+      validating: 'プラグインパッケージを検証中',
       installingDeps: '依存関係をインストール中',
+      applyingUpdate: 'プラグインの更新を適用中',
+      activating: 'コンポーネントを起動・更新中',
       initializing: '設定を初期化中',
       launching: 'プラグインを起動中',
       completed: '完了',
@@ -725,11 +1559,12 @@ const jaJP = {
       depsProgress:
         '{{installed}}/{{total}} インストール済み · 残り {{remaining}} 個',
       installComplete: 'プラグインのインストール完了',
+      updateComplete: 'プラグインの更新が完了しました',
       dismiss: '閉じる',
       background: 'バックグラウンドで実行',
-      taskQueue: 'インストールタスク',
+      taskQueue: 'プラグインタスク',
       clearCompleted: '完了を消去',
-      noTasks: 'インストールタスクはありません',
+      noTasks: 'プラグインタスクはありません',
       titlePlugin: 'プラグイン {{name}} をインストール中',
       titleMCP: 'MCP サーバー {{name}} をインストール中',
       titleSkill: 'スキル {{name}} をインストール中',
@@ -740,6 +1575,11 @@ const jaJP = {
     uploadPluginOnly: '.lbpkg プラグインパッケージのみ対応しています',
   },
   market: {
+    runnerUsage: 'ランナーの用途',
+    runnerUsageAll: 'すべて',
+    runnerUsageAgent: 'Agent / パイプライン',
+    runnerUsageEvent: 'プラグインプロセッサー',
+
     searchPlaceholder: 'プラグインを検索...',
     searchPlaceholderCount:
       '{{count}} 個の拡張機能・機能・ユースケースを検索...',
@@ -804,6 +1644,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      Runner: 'ランナー',
     },
     filterByType: 'タイプ',
     allTypes: '全部',
@@ -991,6 +1832,7 @@ const jaJP = {
     earliestEdited: '最古編集',
     basicInfo: '基本情報',
     basicInfoDescription: 'パイプラインの名前、アイコン、説明を設定',
+    managementDescription: 'このパイプラインを複製または削除します。',
     aiCapabilities: 'AI機能',
     triggerConditions: 'トリガー条件',
     safetyControls: '安全制御',
@@ -1053,14 +1895,14 @@ const jaJP = {
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
       mcpServersScopeTooltip:
-        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Local Agent で選択します。',
+        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Runner で選択します。',
       enableAllMCPServersTooltip:
         '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
     },
-    localAgent: {
+    runner: {
       toolsTitle: 'ツール',
       toolsDescription:
-        'この Local Agent が使用できるプラグイン、MCP、組み込みツールを選択します。',
+        'この Runner が使用できるプラグイン、MCP、組み込みツールを選択します。',
       toolsScopeTooltip:
         'MCP ツールは拡張機能で紐付けられた MCP サーバーからのみ表示されます。追加するには先に拡張機能でサーバーを紐付けてください。',
       enableAllTools: 'すべてのツールを有効化',
@@ -1078,7 +1920,7 @@ const jaJP = {
       selectTools: 'ツールを選択',
       resourcesTitle: 'リソース',
       resourcesDescription:
-        'この Local Agent が読み取れる MCP リソースとナレッジベースを選択します。',
+        'この Runner が読み取れる MCP リソースとナレッジベースを選択します。',
       knowledgeBases: 'ナレッジベース',
       mcpResources: 'MCP リソース',
       mcpResourcesScopeTooltip:
@@ -1090,6 +1932,8 @@ const jaJP = {
       selectKnowledgeBases: 'ナレッジベースを選択',
     },
     debugDialog: {
+      saveAndSend: '保存して送信',
+
       title: 'パイプラインのチャット',
       selectPipeline: 'パイプラインを選択',
       sessionType: 'セッションタイプ',
@@ -1109,8 +1953,8 @@ const jaJP = {
       atTips: 'ボットをメンション',
       streaming: 'ストリーミング',
       streamOutput: 'ストリーム',
-      connected: 'WebSocket接続済み',
-      disconnected: 'WebSocket未接続',
+      connected: '接続済み',
+      disconnected: '未接続',
       connectionError: 'WebSocket接続エラー',
       connectionFailed: 'WebSocket接続に失敗しました',
       notConnected:
@@ -1127,7 +1971,8 @@ const jaJP = {
       uploading: 'アップロード中...',
     },
     monitoring: {
-      title: 'ダッシュボード',
+      title: '実行ログ',
+      workbench: '設定とデバッグ',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
       detailedLogs: '詳細ログ',
     },
@@ -1231,6 +2076,27 @@ const jaJP = {
     knowledgeEngine: 'ナレッジエンジン',
     knowledgeEngineRequired: 'ナレッジエンジンは必須です',
     selectKnowledgeEngine: 'ナレッジエンジンを選択',
+    installedEngines: 'インストール済みのナレッジエンジン',
+    noInstalledEngines:
+      'ナレッジエンジンプラグインはまだインストールされていません。',
+    marketplaceEngines: 'マーケットプレイスのナレッジエンジンプラグイン',
+    noMarketplaceEngines:
+      'インストール可能なナレッジエンジンプラグインがありません。',
+    loadingEngineCatalog: 'マーケットプレイスを読み込み中…',
+    engineCatalogUnavailable:
+      'マーケットプレイスを利用できません。選択欄を開き直して再試行してください。',
+    viewMarketplace: '市場を見る',
+    installingEngine: '{{engine}} をインストール中…',
+    engineInstallSuccess:
+      '{{engine}} をインストールしました。インストール済み一覧から選択できます',
+    engineInstallFailed:
+      'ナレッジエンジンのインストールに失敗しました。再試行してください。',
+    engineVersionUnavailable:
+      'このプラグインにはインストール可能なバージョンがありません。',
+    engineInstallTimeout:
+      'インストールはまだ実行中です。ページを更新して確認してください。',
+    engineRegistrationTimeout:
+      'プラグインはインストール済みですが、ナレッジエンジンはまだ準備中です。',
     builtInEngine: '組み込みエンジン',
     cannotChangeKnowledgeEngine:
       '作成後にナレッジエンジンを変更することはできません',
@@ -1732,6 +2598,45 @@ const jaJP = {
     },
   },
   storageAnalysis: {
+    notCreated: '未作成',
+    processStorage: 'プロセス別ストレージ',
+    processStorageDescription:
+      '各ランタイムが管理するディレクトリを計測します。内訳は親ディレクトリの合計に含まれます。',
+    directory: 'ディレクトリ',
+    size: 'サイズ',
+    files: 'ファイル',
+    runtimeUnavailable: 'ランタイムのストレージ統計を取得できません。',
+    noManagedDirectories: '管理対象ディレクトリの報告はありません。',
+    scanWarnings: '読み取り不可：{{count}} 件',
+    boxActivity: '{{sessions}} セッション · {{processes}} 管理プロセス',
+    statusLabels: {
+      available: '利用可能',
+      unavailable: '利用不可',
+      disabled: '無効',
+      not_applicable: '該当なし',
+    },
+    sourceLabels: {
+      local_process: 'LangBot プロセスが計測',
+      runtime_rpc: 'ランタイムプロセスが認証済み RPC 経由で計測',
+    },
+    scopeLabels: {
+      runtime_host: 'ランタイムホスト',
+      sandbox_sessions: 'サンドボックスセッション',
+    },
+    processNames: {
+      langbot: 'LangBot メインプロセス',
+      plugin_runtime: 'プラグインランタイム',
+      box_runtime: 'Box ランタイム',
+    },
+    processDescriptions: {
+      langbot:
+        'アプリケーションのデータベース、ログ、アップロードファイル、ベクトルデータ、一時ファイル。',
+      plugin_runtime:
+        'プラグインパッケージ、検証済み成果物、依存関係の環境、非公開のインストールデータ。',
+      box_runtime:
+        'サンドボックスと MCP プロセスのワークスペース、添付ファイル交換ディレクトリ、スキル。',
+    },
+
     title: 'ストレージ分析',
     description: 'ストレージ使用量とクリーンアップ候補を確認します',
     openDialog: '分析を表示',
@@ -1757,6 +2662,21 @@ const jaJP = {
     noExpiredUploads: '期限切れのアップロードファイルはありません',
     noExpiredLogs: '期限切れのログファイルはありません',
     sectionNames: {
+      legacy_plugins: '旧プラグインパッケージ',
+      artifacts: '検証済みプラグイン成果物',
+      dependency_environments: '依存関係の環境',
+      installations: 'プラグインのインストールデータ',
+      staging: 'プラグインのステージングファイル',
+      rpc_transfer: 'ランタイム RPC 転送ファイル',
+      workspace: 'サンドボックスワークスペース',
+      inbox: '受信添付ファイル',
+      outbox: '送信添付ファイル',
+      skills: 'スキル',
+      session_workspaces: 'サンドボックスセッションのワークスペース',
+      session_caches: 'サンドボックスランタイムのキャッシュ',
+      session_temp: 'サンドボックスの一時ファイル',
+      managed_process_workspaces: '管理プロセスのワークスペース（MCP を含む）',
+
       database: 'データベース',
       logs: 'ログ',
       storage: 'アップロードファイル',
@@ -1823,6 +2743,8 @@ const jaJP = {
         'ボットが IM メッセージを受信しました。次のステップに進めます。',
       messageReceivedLocalAccountWarning:
         'ボット側の接続設定は正常で、IM メッセージを受信できています。LangBot Account でログインしていないためモデル呼び出しが失敗する場合がありますが、次のステップで独自のモデルを追加できます。',
+      pageBotPreviewFailed:
+        'テストチャットを読み込めませんでした。設定を再保存してお試しください。',
       pageBotTestPrompt:
         'ページボットが有効になりました。右下のチャットバブルをクリックしてメッセージを送信し、会話フロー全体を確認してください。',
       pageBotTestNotice:
@@ -1843,14 +2765,19 @@ const jaJP = {
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
     },
     aiEngine: {
-      title: 'AIエンジンを設定',
+      defaultModelUnavailable:
+        '既定の会話モデルがありません。再試行してください。',
+      defaultRunnerUnavailable:
+        'ローカル Agent が準備できていません。再試行してください。',
+      preparingDefault: '既定の AI を準備中…',
+      title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
       optionalDescription:
-        'このステップは任意です。現在の Agent をどのように設定するか選択してください。',
+        '既定の AI は設定済みです。そのまま使うか、接続方法を変更できます。',
       externalTitle: '外部プラットフォームの Agent を接続',
       externalDescription:
-        'Dify、n8n、Coze などを接続し、ボットのパイプラインを置き換えます。',
+        'ランナープラグインで Dify、n8n、Coze などの外部 Agent に接続します。',
       ownModelTitle: '自分のモデルを使用',
       ownModelDescription:
         'プロバイダーを追加し、モデルをスキャンまたは手動入力して設定を完了します。',
@@ -1863,7 +2790,7 @@ const jaJP = {
       selectModelTitle: 'モデルを選択',
       selectScannedModelTitle: 'モデルを選択',
       selectScannedModelDescription:
-        '選択したモデルを新しいパイプラインのメインモデルに設定し、ボットをそのパイプラインへ切り替えます。',
+        '選択したモデルを現在のパイプラインのメインモデルに設定します。',
       scanModelMode: 'モデルをスキャン',
       manualModelMode: '手動で追加',
       scanningModels: '利用可能なモデルをスキャン中…',
@@ -1882,14 +2809,35 @@ const jaJP = {
       manualModelOptions: '任意のモデル機能',
       editProvider: 'プロバイダーを編集',
       rescanModels: 'モデルを再スキャン',
-      moreFeaturesTitle: 'Agent に機能を追加',
+      moreFeaturesTitle: '既定の設定を使う',
       moreFeaturesDescription:
-        'ワークベンチを開き、自動生成されたばかりの Agent にツール、ナレッジベースなどの機能を追加します。',
+        'ローカル Agent と推奨モデルを使います。ツールやナレッジベースは後から追加できます。',
       runnerDescription: '外部 Agent の Runner を選択し、接続を設定します。',
       backToChoices: '選択肢に戻る',
+      backToList: '一覧に戻る',
       createExternal: '作成して関連付ける',
       finishWithModel: '選択したモデルを使用して完了',
       openWorkbench: 'ワークベンチを開く',
+      loadingCatalog: 'Runner 拡張機能を読み込んでいます...',
+      catalogUnavailable: 'Runner カタログを読み込めません',
+      catalogUnavailableDescription:
+        'インストール済みの Runner は引き続き使用できます。再試行するか、拡張機能を確認してください。',
+      noMarketplaceRunners: 'この用途に対応するランナープラグインはありません',
+      noMarketplaceRunnersDescription:
+        'インストール済みのランナーを使うか、後でもう一度お試しください。',
+      browseRunners: 'Runner 拡張機能を見る',
+      installAndContinue: 'インストールして続行',
+      installing: 'インストール中...',
+      useInstalled: 'この Runner を使用',
+      installedUnavailable: 'インストール済み、Runner は利用不可',
+      installSuccess: '{{runner}} をインストールして選択しました',
+      installFailed: 'Runner 拡張機能のインストールに失敗しました',
+      versionUnavailable:
+        'マーケットプレイスからインストール可能なバージョンが返されませんでした。',
+      installTimeout:
+        'Runner のインストールがタイムアウトしました。拡張機能のタスクを確認してください。',
+      registrationTimeout:
+        '拡張機能はインストールされましたが、Runner が登録されませんでした。プラグインランタイムを確認して再試行してください。',
     },
     config: {
       botInfo: 'ボット情報',
@@ -1901,7 +2849,7 @@ const jaJP = {
     done: {
       title: '完了しました！',
       description:
-        'ボットが作成され、AIパイプラインに接続されました。ワークベンチから管理できます。',
+        'ボットが作成され、パイプラインに接続されました。ワークベンチから管理できます。',
       backToWorkbench: 'ワークベンチに戻る',
     },
   },

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import typing
+import copy
+
+if typing.TYPE_CHECKING:
+    from .requester import RuntimeLLMModel
 
 
 ReasoningLevel = typing.Literal[
@@ -123,3 +127,30 @@ def default_reasoning_capabilities(
         'levels': ['provider_default'],
         'source': source,
     }
+
+
+def model_with_reasoning_level(
+    model: RuntimeLLMModel,
+    level: ReasoningLevel | None,
+) -> RuntimeLLMModel:
+    """Clone only the runtime wrapper, after the caller has authorized the model.
+
+    Do not mutate shared model entities or providers. Requesters retain ownership
+    of ability/capability validation and provider-specific argument translation.
+    """
+    if level is None:
+        return model
+    abilities = set(model.model_entity.abilities or [])
+    # Managed Space models are read-only. Their detected capability is also what
+    # the model API and UI expose, even when the catalog omits the ability flag.
+    # Custom providers still require the user's explicit ability setting.
+    if (
+        'reasoning' not in abilities
+        and model.provider.provider_entity.requester == 'space-chat-completions'
+        and model.provider.requester.get_reasoning_capabilities(model).get('supported') is True
+    ):
+        abilities.add('reasoning')
+    config = validate_reasoning_config({'level': level}, abilities, model.model_entity.extra_args)
+    scoped_model = copy.copy(model)
+    scoped_model.reasoning_config_override = copy.deepcopy(config)
+    return scoped_model

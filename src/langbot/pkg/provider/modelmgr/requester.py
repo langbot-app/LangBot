@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.telemetry import diagnostics
+
 import abc
 import typing
 import time
@@ -98,6 +100,7 @@ class RuntimeProvider:
             raise WorkspaceInvariantError('LLM invocation requires an ExecutionContext when query is absent')
         return execution_context
 
+    @diagnostics.observe('api', 'model.invoke_llm', source='agent')
     async def invoke_llm(
         self,
         query: pipeline_query.Query | None,
@@ -182,6 +185,7 @@ class RuntimeProvider:
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
 
+    @diagnostics.observe('api', 'model.invoke_llm_stream', source='agent')
     async def invoke_llm_stream(
         self,
         query: pipeline_query.Query | None,
@@ -264,6 +268,7 @@ class RuntimeProvider:
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM stream call: {monitor_err}')
 
+    @diagnostics.observe('api', 'model.invoke_embedding', source='agent')
     async def invoke_embedding(
         self,
         model: RuntimeEmbeddingModel,
@@ -331,6 +336,7 @@ class RuntimeProvider:
             except Exception as monitor_err:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record embedding call: {monitor_err}')
 
+    @diagnostics.observe('api', 'model.invoke_rerank', source='agent')
     async def invoke_rerank(
         self,
         model: RuntimeRerankModel,
@@ -518,6 +524,20 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             llm_entities.Message: 返回消息对象
         """
         pass
+
+    async def count_tokens(
+        self,
+        model: RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> int:
+        """Count model input tokens before invoking the model.
+
+        Requesters should use the same provider/model conversion path as
+        ``invoke_llm`` so the preflight count matches the actual request shape.
+        """
+        raise NotImplementedError('This requester does not support token counting')
 
     async def invoke_llm_stream(
         self,

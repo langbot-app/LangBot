@@ -1,0 +1,1 @@
+"""DingTalk EBA platform adapter."""

@@ -1,6 +1,7 @@
 import {
   bodyText,
   clickFirstVisible,
+  clickFirstVisibleLocator,
   countOccurrences,
   gotoFrontend,
   isLoginUrl,
@@ -28,6 +29,11 @@ export function findNewFailureSignal(beforeText, afterText, failureSignals = DEB
   return failureSignals.find((signal) => countOccurrences(afterText, signal) > countOccurrences(beforeText, signal)) || "";
 }
 
+export function hasDebugChatOutcome(text, expectedText, minExpectedCount, failureBaselines = []) {
+  if (countOccurrences(text, expectedText) >= minExpectedCount) return true;
+  return failureBaselines.some(({ signal, count }) => countOccurrences(text, signal) > count);
+}
+
 function findFailureSignalInText(text, failureSignals = DEBUG_CHAT_FAILURE_SIGNALS) {
   return failureSignals.find((signal) => String(text || "").includes(signal)) || "";
 }
@@ -45,22 +51,24 @@ function debugChatInput(page) {
 }
 
 async function clickDebugChatTab(page) {
-  const tabByRole = page.getByRole("tab", { name: /Debug Chat|调试聊天|调试对话|Debug|调试/i }).first();
-  if (await tabByRole.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await tabByRole.click();
-    return true;
-  }
-
-  const tabBySelector = page.locator('[role="tab"]').filter({ hasText: /Debug Chat|调试聊天|调试对话|Debug|调试/i }).first();
-  if (await tabBySelector.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await tabBySelector.click();
-    return true;
-  }
-
-  return Boolean(await clickFirstVisible(page, ["Debug Chat", "调试聊天", "调试对话"], 2_000));
+  const label = /^(?:Debug Chat|调试聊天|调试对话|对话调试)$/i;
+  const configuredTimeout = Number.parseInt(
+    process.env.LANGBOT_E2E_UI_READY_TIMEOUT_MS
+      || process.env.LANGBOT_E2E_NAVIGATION_TIMEOUT_MS
+      || "30000",
+    10,
+  );
+  const timeout = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : 30_000;
+  return await clickFirstVisibleLocator(page, [
+    page.getByRole("tab", { name: label }),
+    page.locator('[data-slot="tabs-trigger"]').filter({ hasText: label }),
+    page.getByText(label, { exact: true }),
+  ], timeout);
 }
 
-async function waitForDebugChatReady(page, timeout = 20_000) {
+export async function waitForDebugChatReady(page, timeout = 20_000) {
   const input = debugChatInput(page);
   const visible = await input.isVisible({ timeout }).catch(() => false);
   if (!visible) {
@@ -70,7 +78,13 @@ async function waitForDebugChatReady(page, timeout = 20_000) {
     };
   }
 
-  const enabled = await input.isEnabled({ timeout }).catch(() => false);
+  const deadline = Date.now() + timeout;
+  let enabled = false;
+  while (Date.now() < deadline) {
+    enabled = await input.isEnabled().catch(() => false);
+    if (enabled) break;
+    await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+  }
   if (!enabled) {
     return {
       ready: false,
@@ -85,14 +99,22 @@ export function classifyDebugChatResult({
   beforeText,
   afterText,
   expectedText,
+  expectedTexts = null,
   prompt,
   latestExpectedLeaf,
   latestFailureLeaf,
   beforeMessages = null,
   afterMessages = null,
   latestAssistantText = "",
+  latestAssistantIsFinal = null,
+  maxNewAssistantMessages = null,
   failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
 }) {
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
   const finalCount = countOccurrences(afterText, expectedText);
   const failureText = findNewFailureSignal(beforeText, afterText, failureSignals);
@@ -104,11 +126,25 @@ export function classifyDebugChatResult({
   const afterAssistantExpectedCount = hasMessageEvidence
     ? countExpectedInMessages(afterMessages, expectedText)
     : null;
-  const assistantExpectedIncreased = hasMessageEvidence
-    ? afterAssistantExpectedCount > beforeAssistantExpectedCount
-    : false;
+  const beforeAssistantMessageCount = hasMessageEvidence
+    ? beforeMessages.filter((message) => message.role === "assistant").length
+    : null;
+  const afterAssistantMessageCount = hasMessageEvidence
+    ? afterMessages.filter((message) => message.role === "assistant").length
+    : null;
+  const newAssistantMessageCount = hasMessageEvidence
+    ? afterAssistantMessageCount - beforeAssistantMessageCount
+    : null;
+  const assistantMessageEvidence = {
+    before_assistant_message_count: beforeAssistantMessageCount,
+    after_assistant_message_count: afterAssistantMessageCount,
+    new_assistant_message_count: newAssistantMessageCount,
+  };
 
   if (hasMessageEvidence) {
+    const missingExpectedTexts = requiredExpectedTexts.filter(
+      (text) => !String(latestAssistantText).includes(text),
+    );
     const latestAssistantFailure = findFailureSignalInText(latestAssistantText, failureSignals);
     if (latestAssistantFailure) {
       return {
@@ -119,16 +155,44 @@ export function classifyDebugChatResult({
         failure_signal: latestAssistantFailure,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
       };
     }
-    if (assistantExpectedIncreased && String(latestAssistantText).includes(expectedText)) {
+    if (latestAssistantIsFinal === false) {
       return {
-        status: "pass",
-        reason: `Expected text appeared in a new assistant message: ${expectedText}`,
+        status: "fail",
+        reason: "The latest assistant message contained the expected text but was not final.",
         min_expected_count: minExpectedCount,
         final_count: finalCount,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
+        latest_assistant_is_final: false,
+      };
+    }
+    if (maxNewAssistantMessages !== null && newAssistantMessageCount > maxNewAssistantMessages) {
+      return {
+        status: "fail",
+        reason: `Debug Chat created ${newAssistantMessageCount} assistant messages; expected at most ${maxNewAssistantMessages}.`,
+        min_expected_count: minExpectedCount,
+        final_count: finalCount,
+        before_assistant_expected_count: beforeAssistantExpectedCount,
+        after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
+      };
+    }
+    if (newAssistantMessageCount > 0 && missingExpectedTexts.length === 0) {
+      return {
+        status: "pass",
+        reason: requiredExpectedTexts.length === 1
+          ? `Expected text appeared in a new assistant message: ${expectedText}`
+          : `All ${requiredExpectedTexts.length} expected text fragments appeared in a new assistant message.`,
+        min_expected_count: minExpectedCount,
+        final_count: finalCount,
+        before_assistant_expected_count: beforeAssistantExpectedCount,
+        after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
+        missing_expected_texts: [],
       };
     }
     if (failureText) {
@@ -140,15 +204,20 @@ export function classifyDebugChatResult({
         failure_signal: failureText,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
       };
     }
     return {
       status: "fail",
-      reason: `Expected text did not appear in a new assistant message. Expected assistant occurrences to increase above ${beforeAssistantExpectedCount}, saw ${afterAssistantExpectedCount}.`,
+      reason: missingExpectedTexts.length > 0
+        ? `A new assistant message was missing expected text: ${missingExpectedTexts.join(", ")}`
+        : `Expected text did not appear in a new assistant message. Expected assistant occurrences to increase above ${beforeAssistantExpectedCount}, saw ${afterAssistantExpectedCount}.`,
       min_expected_count: minExpectedCount,
       final_count: finalCount,
       before_assistant_expected_count: beforeAssistantExpectedCount,
       after_assistant_expected_count: afterAssistantExpectedCount,
+      ...assistantMessageEvidence,
+      missing_expected_texts: missingExpectedTexts,
     };
   }
   if (failureText) {
@@ -188,8 +257,16 @@ export function classifyDebugChatResult({
 
 export async function openPipelineDebugChat(page, { pipelineUrl, pipelineName, envHint = "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME" }) {
   if (pipelineUrl) {
-    await page.goto(pipelineUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+    let alreadyAtPipeline = false;
+    try {
+      alreadyAtPipeline = new URL(page.url()).href === new URL(pipelineUrl).href;
+    } catch {
+      // Invalid URLs are handled by page.goto below.
+    }
+    if (!alreadyAtPipeline) {
+      await page.goto(pipelineUrl, { waitUntil: "commit" });
+      await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+    }
   } else {
     if (!pipelineName) {
       return {
@@ -290,12 +367,37 @@ export async function visibleDebugChatMessages(page) {
   });
 }
 
-export async function waitForExpectedDebugChatText(page, { expectedText, minExpectedCount, timeoutMs }) {
+export async function waitForExpectedDebugChatText(page, {
+  expectedText,
+  expectedTexts = null,
+  minExpectedCount,
+  minExpectedCounts = null,
+  timeoutMs,
+  beforeText = "",
+  failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
+}) {
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
+  const expectedRequirements = requiredExpectedTexts.map((text, index) => ({
+    text,
+    min: Array.isArray(minExpectedCounts) && Number.isFinite(minExpectedCounts[index])
+      ? minExpectedCounts[index]
+      : (text === expectedText ? minExpectedCount : minExpectedOccurrences(beforeText, text, "")),
+  }));
+  const failureBaselines = failureSignals.map((signal) => ({
+    signal,
+    count: countOccurrences(beforeText, signal),
+  }));
   await page.waitForFunction(
-    ({ expected, min }) => {
-      return document.body.innerText.split(expected).length - 1 >= min;
+    ({ requirements, failures }) => {
+      const text = document.body.innerText;
+      if (requirements.every((item) => text.split(item.text).length - 1 >= item.min)) return true;
+      return failures.some(({ signal, count }) => text.split(signal).length - 1 > count);
     },
-    { expected: expectedText, min: minExpectedCount },
+    { requirements: expectedRequirements, failures: failureBaselines },
     { timeout: timeoutMs },
   ).catch(() => {});
 }
@@ -316,18 +418,104 @@ export async function waitForDebugChatTextStable(page, { timeoutMs = 5_000, quie
   }
 }
 
+async function fetchDebugChatHistory(page, { backendUrl, pipelineId, sessionType }) {
+  if (!backendUrl || !pipelineId || !sessionType) {
+    return { status: "not_required", messages: [] };
+  }
+  return await page.evaluate(async ({ backendUrl, pipelineId, sessionType }) => {
+    const token = localStorage.getItem("token") || "";
+    try {
+      const response = await fetch(
+        `${backendUrl.replace(/\/$/, "")}/api/v1/pipelines/${encodeURIComponent(pipelineId)}/ws/messages/${encodeURIComponent(sessionType)}`,
+        {
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+                "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
+              }
+            : {},
+        },
+      );
+      const json = await response.json().catch(() => ({}));
+      return {
+        status: response.ok && json.code === 0 ? "ready" : "fail",
+        http_status: response.status,
+        code: json.code ?? null,
+        messages: json.data?.messages || [],
+        reason: response.ok && json.code === 0 ? "" : json.msg || `Debug Chat history returned HTTP ${response.status}.`,
+      };
+    } catch (error) {
+      return {
+        status: "retryable",
+        messages: [],
+        reason: `Debug Chat history request failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }, { backendUrl, pipelineId, sessionType });
+}
+
+async function waitForFinalDebugChatAssistant(page, {
+  backendUrl,
+  pipelineId,
+  sessionType,
+  beforeAssistantCount,
+  timeoutMs,
+}) {
+  if (!backendUrl || !pipelineId || !sessionType) {
+    return { status: "not_required", latest_assistant_is_final: null };
+  }
+  const deadline = Date.now() + Math.max(1, timeoutMs);
+  let lastHistory = null;
+  while (Date.now() < deadline) {
+    lastHistory = await fetchDebugChatHistory(page, { backendUrl, pipelineId, sessionType });
+    if (lastHistory.status === "fail") return lastHistory;
+    if (lastHistory.status === "retryable") {
+      await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+      continue;
+    }
+    const assistants = lastHistory.messages.filter((message) => message.role === "assistant");
+    const latest = assistants.at(-1);
+    if (assistants.length > beforeAssistantCount && latest?.is_final === true) {
+      return {
+        status: "pass",
+        latest_assistant_is_final: true,
+        assistant_message_count: assistants.length,
+      };
+    }
+    await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+  }
+  const assistants = (lastHistory?.messages || []).filter((message) => message.role === "assistant");
+  return {
+    status: "fail",
+    reason: "Timed out waiting for the new assistant message to become final.",
+    latest_assistant_is_final: assistants.at(-1)?.is_final === true,
+    assistant_message_count: assistants.length,
+  };
+}
+
 export async function attachDebugChatImage(page, imagePath) {
   if (!imagePath) return { status: "not_required", reason: "" };
   const input = page.locator('input[type="file"][accept*="image"], input[type="file"]').first();
   if (!await input.count()) {
     return { status: "fail", reason: "Could not find a Debug Chat image upload input." };
   }
+  const previews = page.locator('[data-debug-chat-attachment-preview="true"]');
+  const beforePreviewCount = await previews.count();
   await input.setInputFiles(imagePath);
-  await page.locator("img").last().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+  const previewVisible = await previews
+    .nth(beforePreviewCount)
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!previewVisible) {
+    return { status: "fail", reason: "Debug Chat did not show the selected image preview." };
+  }
   return { status: "ready", reason: `Attached image fixture: ${imagePath}` };
 }
 
 export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
+  const sentImages = page.locator('[data-debug-chat-message-image="true"]');
+  const beforeSentImageCount = imagePath ? await sentImages.count() : 0;
   const imageResult = await attachDebugChatImage(page, imagePath);
   if (imageResult.status === "fail") return imageResult;
 
@@ -342,25 +530,74 @@ export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
   const clickedSend = await clickFirstVisible(page, ["Send", "发送", "提交"], 1_500);
   if (!clickedSend) await page.keyboard.press("Enter");
   await page.getByText(prompt, { exact: false }).last().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+  if (imagePath) {
+    const sentImageVisible = await sentImages
+      .nth(beforeSentImageCount)
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!sentImageVisible) {
+      return { status: "fail", reason: "The sent Debug Chat message did not render its image attachment." };
+    }
+  }
   return true;
 }
 
-export async function runDebugChatPrompt(page, { prompt, expectedText, responseTimeoutMs, imagePath = "", failureSignals = DEBUG_CHAT_FAILURE_SIGNALS }) {
+export async function runDebugChatPrompt(page, {
+  prompt,
+  expectedText,
+  expectedTexts = null,
+  responseTimeoutMs,
+  imagePath = "",
+  backendUrl = "",
+  pipelineId = "",
+  sessionType = "person",
+  maxNewAssistantMessages = null,
+  failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
+}) {
   const beforeText = await bodyText(page);
   const beforeMessages = await visibleDebugChatMessages(page);
+  const beforeHistory = await fetchDebugChatHistory(page, { backendUrl, pipelineId, sessionType });
+  const beforeHistoryAssistantCount = beforeHistory.messages.filter((message) => message.role === "assistant").length;
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
+  const minExpectedCounts = requiredExpectedTexts.map(
+    (text) => minExpectedOccurrences(beforeText, text, prompt),
+  );
   const sent = await sendDebugChatPrompt(page, prompt, imagePath);
   if (sent !== true) {
     if (sent && typeof sent === "object" && typeof sent.reason === "string") return sent;
     return { status: "fail", reason: "Could not find a Debug Chat text input." };
   }
 
-  await waitForExpectedDebugChatText(page, {
+  const responseStartedAt = Date.now();
+  const expectedTextPromise = waitForExpectedDebugChatText(page, {
     expectedText,
+    expectedTexts: requiredExpectedTexts,
     minExpectedCount,
+    minExpectedCounts,
     prompt,
     timeoutMs: responseTimeoutMs,
+    beforeText,
+    failureSignals,
   });
+  const finalAssistantPromise = waitForFinalDebugChatAssistant(page, {
+    backendUrl,
+    pipelineId,
+    sessionType,
+    beforeAssistantCount: beforeHistoryAssistantCount,
+    timeoutMs: Math.max(1, responseTimeoutMs - (Date.now() - responseStartedAt)),
+  });
+  if (backendUrl && pipelineId && sessionType) {
+    await Promise.race([expectedTextPromise, finalAssistantPromise]);
+  } else {
+    await expectedTextPromise;
+  }
+  const finalAssistant = await finalAssistantPromise;
   await waitForDebugChatTextStable(page);
 
   const afterText = await bodyText(page);
@@ -370,18 +607,27 @@ export async function runDebugChatPrompt(page, { prompt, expectedText, responseT
   const failureText = findNewFailureSignal(beforeText, afterText, failureSignals);
   const latestFailureLeaf = failureText ? await latestVisibleLeafText(page, [failureText]) : "";
 
-  return classifyDebugChatResult({
+  const classified = classifyDebugChatResult({
     beforeText,
     afterText,
     expectedText,
+    expectedTexts: requiredExpectedTexts,
     prompt,
     latestExpectedLeaf,
     latestFailureLeaf,
     beforeMessages,
     afterMessages,
     latestAssistantText,
+    latestAssistantIsFinal: finalAssistant.latest_assistant_is_final,
+    maxNewAssistantMessages,
     failureSignals,
   });
+  return {
+    ...classified,
+    latest_assistant_is_final: finalAssistant.latest_assistant_is_final,
+    final_assistant_wait_status: finalAssistant.status,
+    final_assistant_wait_reason: finalAssistant.reason || "",
+  };
 }
 
 export async function setDebugChatStreamOutput(page, desired) {

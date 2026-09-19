@@ -58,13 +58,14 @@ test('quota-reached create actions are disabled and explain the current limit', 
       })),
     }),
   );
-  await page.route('**/api/v1/pipelines**', (route) =>
+  await page.route('**/api/v1/agents', (route) =>
     fulfill(route, {
-      pipelines: Array.from({ length: 3 }, (_, index) => ({
+      agents: Array.from({ length: 3 }, (_, index) => ({
         uuid: `pipeline-${index}`,
         name: `Pipeline ${index + 1}`,
         description: '',
         emoji: '⚙️',
+        kind: 'pipeline',
         updated_at: new Date().toISOString(),
       })),
     }),
@@ -103,8 +104,8 @@ test('quota-reached create actions are disabled and explain the current limit', 
     name: 'Create Bots',
     exact: true,
   });
-  const pipelineCreate = page.getByRole('button', {
-    name: 'Create Pipelines',
+  const processorCreate = page.getByRole('button', {
+    name: 'Create Processors',
     exact: true,
   });
   const knowledgeCreate = page.getByRole('button', {
@@ -117,7 +118,7 @@ test('quota-reached create actions are disabled and explain the current limit', 
   });
 
   await expect(botCreate).toBeDisabled();
-  await expect(pipelineCreate).toBeDisabled();
+  await expect(processorCreate).toBeDisabled();
   await expect(knowledgeCreate).toBeDisabled();
   await expect(addExtension).toBeEnabled();
 

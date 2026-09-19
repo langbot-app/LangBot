@@ -16,8 +16,9 @@ import sqlalchemy
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from langbot.pkg.entity import persistence
 from langbot.pkg.entity.persistence.base import Base
-from langbot.pkg.persistence import mgr as persistence_mgr  # noqa: F401 -- register all ORM tables
+from langbot.pkg.utils import importutil
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_downgrade,
     run_alembic_upgrade,
@@ -27,6 +28,11 @@ from langbot.pkg.persistence.alembic_runner import (
 )
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+
+# Match PersistenceManager's model registration before create_all, including
+# workspace foreign-key targets, without relying on other tests being collected.
+importutil.import_modules_in_pkg(persistence)
 
 
 def _get_script_head() -> str:
@@ -56,6 +62,17 @@ async def sqlite_engine(sqlite_db_url):
     engine = create_async_engine(sqlite_db_url)
     yield engine
     await engine.dispose()
+
+
+def test_migration_graph_has_one_head_containing_both_released_branches():
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    scripts = ScriptDirectory.from_config(cfg)
+    heads = scripts.get_heads()
+    assert len(heads) == 1, f'Release migrations must converge, found {heads}'
+    ancestors = {revision.revision for revision in scripts.walk_revisions()}
+    assert {'0024_passkey_credentials', '0025_bot_plugin_processors'} <= ancestors
+    assert all(len(revision) <= 32 for revision in ancestors)
 
 
 class TestSQLiteMigrationBaseline:
@@ -111,6 +128,17 @@ class TestSQLiteMigrationUpgrade:
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
 
     @pytest.mark.asyncio
+    async def test_upgrade_from_development_workspace_head_to_merged_head(self, sqlite_engine):
+        """A database at the 4.11 development head must absorb later master migrations."""
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        await run_alembic_stamp(sqlite_engine, '0018_merge_workspace_heads')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
+
+    @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
         """A database that already ran the feature migration must remain upgradable."""
         async with sqlite_engine.begin() as conn:
@@ -120,6 +148,22 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
+
+    @pytest.mark.asyncio
+    async def test_upgrade_removes_agent_enabled_column(self, sqlite_engine):
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.exec_driver_sql('ALTER TABLE agents ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1')
+
+        await run_alembic_stamp(sqlite_engine, '0022_merge_agent_reasoning_heads')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        async with sqlite_engine.connect() as conn:
+            columns = await conn.run_sync(
+                lambda sync_conn: {column['name'] for column in sqlalchemy.inspect(sync_conn).get_columns('agents')}
+            )
+
+        assert 'enabled' not in columns
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):

@@ -1,0 +1,5800 @@
+{
+  "planner_version": "3",
+  "fixture_only": true,
+  "legacy_sections": {
+    "local-agent": {
+      "model": {
+        "primary": "synthetic-model",
+        "fallbacks": []
+      },
+      "max-round": 10,
+      "prompt": [
+        {
+          "role": "system",
+          "content": "Synthetic prompt"
+        }
+      ],
+      "enable-all-tools": false,
+      "tools": []
+    },
+    "dify-service-api": {
+      "base-url": "https://dify.invalid/v1",
+      "api-key": "synthetic-key",
+      "app-type": "chat",
+      "base-prompt": "Synthetic prompt"
+    },
+    "coze-api": {
+      "api-key": "synthetic-key",
+      "bot-id": "synthetic-bot",
+      "api-base": "https://api.coze.cn",
+      "auto_save_history": false,
+      "timeout": 120
+    },
+    "dashscope-app-api": {
+      "api-key": "synthetic-key",
+      "app-id": "synthetic-app",
+      "app-type": "agent",
+      "references_quote": "Synthetic references"
+    },
+    "n8n-service-api": {
+      "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+      "auth-type": "none",
+      "timeout": 120,
+      "output-key": "response",
+      "response-handling": "reply"
+    },
+    "langflow-api": {
+      "base-url": "https://langflow.invalid",
+      "api-key": "synthetic-key",
+      "flow-id": "synthetic-flow",
+      "input_type": "chat",
+      "output_type": "chat",
+      "tweaks": "{}"
+    },
+    "deerflow-api": {
+      "api-base": "https://deerflow.invalid",
+      "api-key": "synthetic-key",
+      "auth-header": "",
+      "assistant-id": "lead_agent",
+      "model-name": "synthetic-model",
+      "thinking-enabled": false,
+      "plan-mode": false,
+      "subagent-enabled": false,
+      "max-concurrent-subagents": 3,
+      "timeout": 300,
+      "recursion-limit": 1000
+    },
+    "tbox-app-api": {
+      "api-key": "synthetic-key",
+      "app-id": "synthetic-app"
+    },
+    "weknora-api": {
+      "base-url": "https://weknora.invalid/api/v1",
+      "api-key": "synthetic-key",
+      "app-type": "agent",
+      "knowledge-base-ids": [
+        "remote-kb"
+      ],
+      "web-search-enabled": false
+    }
+  },
+  "plugins": {
+    "LocalAgent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "LocalAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/LocalAgent",
+          "label": {
+            "en_US": "Local Agent",
+            "zh_Hans": "内置 Agent",
+            "zh_Hant": "內建 Agent",
+            "ja_JP": "組み込みエージェント",
+            "th_TH": "เอเจนต์ในตัว",
+            "vi_VN": "Tác nhân tích hợp",
+            "es_ES": "Agente integrado",
+            "ru_RU": "Встроенный агент"
+          },
+          "description": {
+            "en_US": "Built-in agent with model fallback, tools, and knowledge retrieval.",
+            "zh_Hans": "内置 Agent，支持模型 fallback、工具调用和知识库检索。",
+            "zh_Hant": "內建 Agent，支援模型備援、工具呼叫與知識庫檢索。",
+            "ja_JP": "モデルのフォールバック、ツール呼び出し、ナレッジ検索に対応する組み込みエージェントです。",
+            "th_TH": "เอเจนต์ในตัวที่รองรับโมเดลสำรอง การเรียกใช้เครื่องมือ และการค้นคืนความรู้",
+            "vi_VN": "Tác nhân tích hợp hỗ trợ mô hình dự phòng, gọi công cụ và truy xuất tri thức.",
+            "es_ES": "Agente integrado con modelos de respaldo, herramientas y recuperación de conocimiento.",
+            "ru_RU": "Встроенный агент с резервными моделями, инструментами и поиском по базе знаний."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "LocalAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "Local Agent",
+            "zh_Hans": "本地 Agent"
+          },
+          "description": {
+            "en_US": "Built-in agent with model fallback, tools, and knowledge retrieval.",
+            "zh_Hans": "内置 Agent，支持模型 fallback、工具调用和知识库检索。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "model",
+              "description": {
+                "en_US": "Primary/fallback model UUIDs and per-model reasoning levels. Host validates and applies reasoning for every request; this is per-pipeline configuration.",
+                "zh_Hans": "主模型/备用模型 UUID 与各模型推理等级。由 Host 对每次请求校验并应用，属于流水线独立配置。"
+              },
+              "label": {
+                "en_US": "Model",
+                "zh_Hans": "模型"
+              },
+              "type": "model-fallback-selector",
+              "required": true,
+              "default": {
+                "primary": "",
+                "fallbacks": [],
+                "reasoning": {}
+              }
+            },
+            {
+              "name": "prompt",
+              "label": {
+                "en_US": "Prompt",
+                "zh_Hans": "提示词"
+              },
+              "type": "prompt-editor",
+              "required": true,
+              "default": [
+                {
+                  "role": "system",
+                  "content": "You are a helpful assistant."
+                }
+              ]
+            },
+            {
+              "name": "knowledge-bases",
+              "label": {
+                "en_US": "Knowledge Bases",
+                "zh_Hans": "知识库"
+              },
+              "type": "knowledge-base-multi-selector",
+              "required": false,
+              "default": []
+            },
+            {
+              "name": "box-enabled",
+              "label": {
+                "en_US": "Sandbox",
+                "zh_Hans": "沙箱"
+              },
+              "description": {
+                "en_US": "Use Box for code execution and file processing.",
+                "zh_Hans": "使用 Box 执行代码和处理文件。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": true
+            },
+            {
+              "name": "box-session-id-template",
+              "label": {
+                "en_US": "Sandbox reuse",
+                "zh_Hans": "沙箱复用范围"
+              },
+              "description": {
+                "en_US": "Choose how sandbox files and environments are shared. Custom templates substitute {variable_name}, for example {launcher_type}_{launcher_id}_{sender_id}. Equal results reuse the same sandbox; {global} shares one sandbox throughout the workspace. Available variables: {launcher_type}, {launcher_id}, {sender_id}, {conversation_id}, {bot_id}, {query_id}, {run_id}, {event_id}, {event_type}, and public request variables. Only named variables are supported, not expressions or attribute access; unavailable variables cause an error.",
+                "zh_Hans": "选择沙箱文件和环境的共享方式。自定义模板使用 {变量名} 插值，如 {launcher_type}_{launcher_id}_{sender_id}；插值结果相同就复用同一个沙箱，{global} 表示在工作区内全局共享。可用变量：{launcher_type}（会话类型）、{launcher_id}（会话 ID）、{sender_id}（用户 ID）、{conversation_id}（对话上下文 ID）、{bot_id}（机器人 ID）、{query_id}（请求 ID）、{run_id}（运行 ID）、{event_id}（事件 ID）、{event_type}（事件类型），也可引用公开请求变量。仅支持变量名，不支持运算或属性访问；变量不可用时会报错。"
+              },
+              "type": "select",
+              "required": true,
+              "default": "{launcher_type}_{launcher_id}",
+              "show_if": {
+                "field": "box-enabled",
+                "operator": "eq",
+                "value": true
+              },
+              "allow_custom": true,
+              "options": [
+                {
+                  "name": "{global}",
+                  "label": {
+                    "en_US": "Global (shared by all)",
+                    "zh_Hans": "全局（所有人共享）",
+                    "zh_Hant": "全域（所有人共用）",
+                    "ja_JP": "グローバル（全員共有）",
+                    "vi_VN": "Toàn cục (chia sẻ cho tất cả)",
+                    "th_TH": "ทั่วไป (แชร์ทั้งหมด)",
+                    "es_ES": "Global (compartido por todos)",
+                    "ru_RU": "Глобальный (общий для всех)"
+                  }
+                },
+                {
+                  "name": "{launcher_type}_{launcher_id}",
+                  "label": {
+                    "en_US": "Per chat (Recommended)",
+                    "zh_Hans": "每个会话（推荐）",
+                    "zh_Hant": "每個會話（推薦）",
+                    "ja_JP": "チャットごと（推奨）",
+                    "vi_VN": "Mỗi cuộc trò chuyện (Khuyến nghị)",
+                    "th_TH": "ต่อแชท (แนะนำ)",
+                    "es_ES": "Por chat (Recomendado)",
+                    "ru_RU": "По чату (Рекомендуется)"
+                  }
+                },
+                {
+                  "name": "{launcher_type}_{launcher_id}_{sender_id}",
+                  "label": {
+                    "en_US": "Per user in chat",
+                    "zh_Hans": "会话中每个用户",
+                    "zh_Hant": "會話中每個用戶",
+                    "ja_JP": "チャット内のユーザーごと",
+                    "vi_VN": "Mỗi người dùng trong cuộc trò chuyện",
+                    "th_TH": "ต่อผู้ใช้ในแชท",
+                    "es_ES": "Por usuario en chat",
+                    "ru_RU": "По пользователю в чате"
+                  }
+                },
+                {
+                  "name": "{launcher_type}_{launcher_id}_{conversation_id}",
+                  "label": {
+                    "en_US": "Per conversation context",
+                    "zh_Hans": "每个对话上下文",
+                    "zh_Hant": "每個對話上下文",
+                    "ja_JP": "会話コンテキストごと",
+                    "vi_VN": "Mỗi ngữ cảnh hội thoại",
+                    "th_TH": "ต่อบริบทการสนทนา",
+                    "es_ES": "Por contexto de conversación",
+                    "ru_RU": "По контексту разговора"
+                  }
+                },
+                {
+                  "name": "{query_id}",
+                  "label": {
+                    "en_US": "Per message (isolated)",
+                    "zh_Hans": "每条消息（完全隔离）",
+                    "zh_Hant": "每條訊息（完全隔離）",
+                    "ja_JP": "メッセージごと（隔離）",
+                    "vi_VN": "Mỗi tin nhắn (cách ly)",
+                    "th_TH": "ต่อข้อความ (แยกส่วน)",
+                    "es_ES": "Por mensaje (aislado)",
+                    "ru_RU": "По сообщению (изолированно)"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show tuning controls for retrieval, tools, timeouts, and context management.",
+                "zh_Hans": "显示检索、工具、超时和上下文管理的调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "date-grounding",
+              "label": {
+                "en_US": "Current Date Grounding",
+                "zh_Hans": "当前日期锚定"
+              },
+              "description": {
+                "en_US": "Add the current UTC date and a reminder to verify time-sensitive facts with available search tools.",
+                "zh_Hans": "注入当前 UTC 日期，并提醒使用可用搜索工具核实有时效性的信息。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": true,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "执行超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 300,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "remove-think",
+              "label": {
+                "en_US": "Remove Thinking Output",
+                "zh_Hans": "移除思考内容"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "retrieval-top-k",
+              "label": {
+                "en_US": "Retrieval Top K",
+                "zh_Hans": "知识库检索数量"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 5,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "rerank-model",
+              "label": {
+                "en_US": "Rerank Model",
+                "zh_Hans": "重排序模型"
+              },
+              "type": "rerank-model-selector",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "rerank-top-k",
+              "label": {
+                "en_US": "Rerank Top K",
+                "zh_Hans": "重排序保留数量"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 5,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "max-tool-iterations",
+              "label": {
+                "en_US": "Max Tool Iterations",
+                "zh_Hans": "最大工具调用轮数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 100,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "tool-execution-mode",
+              "description": {
+                "en_US": "Parallel is faster for independent tools. Use serial for dependent or side-effecting actions; result order does not guarantee execution order.",
+                "zh_Hans": "并行适合独立工具；有依赖或副作用的操作请选择串行。结果排列不保证执行顺序。"
+              },
+              "label": {
+                "en_US": "Tool Execution Mode",
+                "zh_Hans": "工具执行模式"
+              },
+              "type": "select",
+              "required": false,
+              "default": "parallel",
+              "options": [
+                {
+                  "name": "parallel",
+                  "label": {
+                    "en_US": "Parallel",
+                    "zh_Hans": "并行"
+                  }
+                },
+                {
+                  "name": "serial",
+                  "label": {
+                    "en_US": "Serial",
+                    "zh_Hans": "串行"
+                  }
+                }
+              ],
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "max-tool-result-chars",
+              "label": {
+                "en_US": "Max Tool Result Characters",
+                "zh_Hans": "最大工具结果字符数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 20000,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "context-history-fetch-limit",
+              "label": {
+                "en_US": "History Fetch Limit",
+                "zh_Hans": "历史消息拉取数量"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 50,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "context-window-tokens",
+              "label": {
+                "en_US": "Context Window Tokens",
+                "zh_Hans": "上下文窗口 Token 数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 200000,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "context-reserve-tokens",
+              "label": {
+                "en_US": "Reserved Output Tokens",
+                "zh_Hans": "输出保留 Token 数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 16384,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "context-keep-recent-tokens",
+              "label": {
+                "en_US": "Recent Context Tokens",
+                "zh_Hans": "最近上下文 Token 数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 20000,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "context-summary-tokens",
+              "label": {
+                "en_US": "Summary Tokens",
+                "zh_Hans": "摘要 Token 数"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8000,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": true,
+            "skill_authoring": true,
+            "interrupt": true,
+            "steering": true
+          },
+          "permissions": {
+            "models": [
+              "count_tokens",
+              "invoke",
+              "stream",
+              "rerank"
+            ],
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "list",
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "52780785960722cbc0f2a9335c48a852cf631a32e4d04ce1e1ff601af7c0b599",
+      "schema_sha256": "cdb336b8655b53dec482cfe9e191d0ed1d409929423584e5848255aabe499338"
+    },
+    "dify-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "DifyAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dify-agent",
+          "label": {
+            "en_US": "Dify Agent",
+            "zh_Hans": "Dify Agent",
+            "zh_Hant": "Dify Agent",
+            "ja_JP": "Dify Agent",
+            "th_TH": "Dify Agent",
+            "vi_VN": "Dify Agent",
+            "es_ES": "Agente Dify",
+            "ru_RU": "Агент Dify"
+          },
+          "description": {
+            "en_US": "Run a Dify application as a LangBot Runner.",
+            "zh_Hans": "将 Dify 应用作为 LangBot 运行器运行。",
+            "zh_Hant": "將 Dify 應用程式作為 LangBot 運行器執行。",
+            "ja_JP": "Dify アプリを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้แอป Dify เป็น LangBot Runner",
+            "vi_VN": "Chạy ứng dụng Dify dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta una aplicación de Dify como LangBot Runner.",
+            "ru_RU": "Запускает приложение Dify как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "DifyAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "Dify",
+            "zh_Hans": "Dify"
+          },
+          "description": {
+            "en_US": "Run a Dify application as a LangBot Runner.",
+            "zh_Hans": "将 Dify 应用作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "user-id-source",
+              "label": {
+                "en_US": "Provider User Identity",
+                "zh_Hans": "供应商用户身份"
+              },
+              "description": {
+                "en_US": "Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.",
+                "zh_Hans": "默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "sender",
+              "options": [
+                {
+                  "name": "sender",
+                  "label": {
+                    "en_US": "Sender",
+                    "zh_Hans": "发送者"
+                  }
+                },
+                {
+                  "name": "legacy-session",
+                  "label": {
+                    "en_US": "Native identity compatibility",
+                    "zh_Hans": "原生身份兼容"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "base-url",
+              "label": {
+                "en_US": "Base URL",
+                "zh_Hans": "基础 URL"
+              },
+              "type": "string",
+              "description": {
+                "en_US": "Dify Service API base URL. Keep the /v1 suffix for Dify Cloud and standard self-hosted deployments.",
+                "zh_Hans": "Dify Service API 基础地址。Dify Cloud 和标准自托管部署请保留 /v1 后缀。"
+              },
+              "required": true,
+              "default": "https://api.dify.ai/v1"
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show prompt and timeout tuning controls.",
+                "zh_Hans": "显示提示词和超时调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "base-prompt",
+              "label": {
+                "en_US": "Base PROMPT",
+                "zh_Hans": "基础提示词"
+              },
+              "type": "text",
+              "description": {
+                "en_US": "Fallback instruction when LangBot input is empty, for example when only a file is sent.",
+                "zh_Hans": "LangBot 文本输入为空时使用的回退指令，例如仅发送文件时。"
+              },
+              "required": true,
+              "default": "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image.",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "app-type",
+              "label": {
+                "en_US": "App Type",
+                "zh_Hans": "应用类型"
+              },
+              "type": "select",
+              "description": {
+                "en_US": "Must match the Dify application type that issued the Service API key.",
+                "zh_Hans": "必须与生成 Service API 密钥的 Dify 应用类型一致。"
+              },
+              "required": true,
+              "default": "chat",
+              "options": [
+                {
+                  "name": "chat",
+                  "label": {
+                    "en_US": "Chat",
+                    "zh_Hans": "聊天（包括Chatflow）"
+                  }
+                },
+                {
+                  "name": "chatflow",
+                  "label": {
+                    "en_US": "Chatflow",
+                    "zh_Hans": "对话流"
+                  }
+                },
+                {
+                  "name": "agent",
+                  "label": {
+                    "en_US": "Agent",
+                    "zh_Hans": "Agent"
+                  }
+                },
+                {
+                  "name": "workflow",
+                  "label": {
+                    "en_US": "Workflow",
+                    "zh_Hans": "工作流"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "type": "secret",
+              "description": {
+                "en_US": "Service API key from the selected Dify application, not a console login token.",
+                "zh_Hans": "所选 Dify 应用的 Service API 密钥，不是控制台登录令牌。"
+              },
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "type": "integer",
+              "description": {
+                "en_US": "Maximum time in seconds for a Dify request. Use at least 60 seconds when a proxy or long workflow is involved.",
+                "zh_Hans": "Dify 请求的最长等待秒数。使用代理或长工作流时建议至少设置为 60 秒。"
+              },
+              "required": false,
+              "default": 30,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "remove-think",
+              "label": {
+                "en_US": "Hide Thinking Content",
+                "zh_Hans": "隐藏思考内容"
+              },
+              "description": {
+                "en_US": "Remove think-tagged reasoning from responses, including unfinished streamed reasoning.",
+                "zh_Hans": "从回复中移除 think 标签内的推理内容，包括尚未结束的流式思考。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-enabled",
+              "label": {
+                "en_US": "Enable LangBot Assets",
+                "zh_Hans": "启用 LangBot 资产"
+              },
+              "type": "boolean",
+              "description": {
+                "en_US": "Advanced. Expose run-scoped LangBot assets to Dify through a temporary token gateway.",
+                "zh_Hans": "高级选项。通过临时令牌网关向 Dify 暴露本次运行范围内的 LangBot 资产。"
+              },
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "langbot-assets-gateway-host",
+              "label": {
+                "en_US": "LangBot Asset Gateway Host",
+                "zh_Hans": "LangBot 资产网关监听地址"
+              },
+              "type": "string",
+              "required": false,
+              "default": "0.0.0.0",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-port",
+              "label": {
+                "en_US": "LangBot Asset Gateway Port",
+                "zh_Hans": "LangBot 资产网关端口"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8765,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-request-timeout",
+              "label": {
+                "en_US": "LangBot Asset Gateway Request Timeout",
+                "zh_Hans": "LangBot 资产网关请求超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 60,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-token-ttl",
+              "label": {
+                "en_US": "LangBot Asset Token TTL",
+                "zh_Hans": "LangBot 资产令牌有效期"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3600,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-input-name",
+              "label": {
+                "en_US": "LangBot Asset Token Input Name",
+                "zh_Hans": "LangBot 资产令牌输入变量名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "langbot_asset_run_token",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": true,
+            "interrupt": false,
+            "interactions": true
+          },
+          "permissions": {
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ],
+            "storage": [
+              "plugin"
+            ],
+            "interactions": [
+              "request"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "6fc89a8d127b338b6f8d2deca78001b7dbaccfe9862c88c0d2ce95bd1df1ebb2",
+      "schema_sha256": "dccc4b7df7730c4e5e2cfc2ca2e67db5ea9195ad9720a79a329bc11fdcaeb840"
+    },
+    "coze-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "CozeAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/coze-agent",
+          "label": {
+            "en_US": "Coze Agent",
+            "zh_Hans": "扣子 Agent",
+            "zh_Hant": "Coze Agent",
+            "ja_JP": "Coze Agent",
+            "th_TH": "Coze Agent",
+            "vi_VN": "Coze Agent",
+            "es_ES": "Agente Coze",
+            "ru_RU": "Агент Coze"
+          },
+          "description": {
+            "en_US": "Run a Coze bot as a LangBot Runner.",
+            "zh_Hans": "将扣子机器人作为 LangBot 运行器运行。",
+            "zh_Hant": "將 Coze 機器人作為 LangBot 運行器執行。",
+            "ja_JP": "Coze ボットを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้บอต Coze เป็น LangBot Runner",
+            "vi_VN": "Chạy bot Coze dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta un bot de Coze como LangBot Runner.",
+            "ru_RU": "Запускает бота Coze как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "CozeAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "Coze",
+            "zh_Hans": "扣子"
+          },
+          "description": {
+            "en_US": "Run a Coze bot as a LangBot Runner.",
+            "zh_Hans": "将扣子机器人作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "user-id-source",
+              "label": {
+                "en_US": "Provider User Identity",
+                "zh_Hans": "供应商用户身份"
+              },
+              "description": {
+                "en_US": "Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.",
+                "zh_Hans": "默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "sender",
+              "options": [
+                {
+                  "name": "sender",
+                  "label": {
+                    "en_US": "Sender",
+                    "zh_Hans": "发送者"
+                  }
+                },
+                {
+                  "name": "legacy-session",
+                  "label": {
+                    "en_US": "Native identity compatibility",
+                    "zh_Hans": "原生身份兼容"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "remove-think",
+              "label": {
+                "en_US": "Hide reasoning",
+                "zh_Hans": "隐藏思考过程"
+              },
+              "description": {
+                "en_US": "Hide reasoning fields and think blocks without removing answer or tool content.",
+                "zh_Hans": "隐藏推理字段和思考块，保留正文和工具内容。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "type": "secret",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "bot-id",
+              "label": {
+                "en_US": "Bot ID",
+                "zh_Hans": "机器人 ID"
+              },
+              "type": "string",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "api-base",
+              "label": {
+                "en_US": "API Base URL",
+                "zh_Hans": "API 基础 URL"
+              },
+              "type": "string",
+              "required": true,
+              "default": "https://api.coze.cn",
+              "description": {
+                "en_US": "Coze China, Global, or a trusted custom HTTP(S) endpoint (including a path prefix).",
+                "zh_Hans": "扣子中国版、全球版或可信的自定义 HTTP(S) 地址（支持路径前缀）。"
+              }
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show history and timeout tuning controls.",
+                "zh_Hans": "显示历史和超时调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "auto-save-history",
+              "label": {
+                "en_US": "Auto Save History",
+                "zh_Hans": "自动保存历史"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": true,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Request Timeout",
+                "zh_Hans": "请求超时"
+              },
+              "type": "number",
+              "required": false,
+              "default": 120,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-enabled",
+              "label": {
+                "en_US": "Enable LangBot Assets",
+                "zh_Hans": "启用 LangBot 资产"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "langbot-assets-gateway-host",
+              "label": {
+                "en_US": "LangBot Asset Gateway Host",
+                "zh_Hans": "LangBot 资产网关监听地址"
+              },
+              "type": "string",
+              "required": false,
+              "default": "0.0.0.0",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-port",
+              "label": {
+                "en_US": "LangBot Asset Gateway Port",
+                "zh_Hans": "LangBot 资产网关端口"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8765,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-request-timeout",
+              "label": {
+                "en_US": "LangBot Asset Gateway Request Timeout",
+                "zh_Hans": "LangBot 资产网关请求超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 60,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-token-ttl",
+              "label": {
+                "en_US": "LangBot Asset Token TTL",
+                "zh_Hans": "LangBot 资产令牌有效期"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3600,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-input-name",
+              "label": {
+                "en_US": "LangBot Asset Token Input Name",
+                "zh_Hans": "LangBot 资产令牌输入变量名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "langbot_asset_run_token",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": true,
+            "interrupt": false
+          },
+          "permissions": {
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ],
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "c8e48659a0358bd8291137379f6159e61f2b1dbe72766772d81c9af49f7a8317",
+      "schema_sha256": "3f7c4d4e5c8a7ace3e804f0ca02739c48439abcc8f360bfc17394b9cf6660674"
+    },
+    "dashscope-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "DashScopeAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dashscope-agent",
+          "label": {
+            "en_US": "Dashscope Agent",
+            "zh_Hans": "百炼 Agent",
+            "zh_Hant": "DashScope Agent",
+            "ja_JP": "DashScope Agent",
+            "th_TH": "DashScope Agent",
+            "vi_VN": "DashScope Agent",
+            "es_ES": "Agente DashScope",
+            "ru_RU": "Агент DashScope"
+          },
+          "description": {
+            "en_US": "Run an Aliyun DashScope application as a LangBot Runner.",
+            "zh_Hans": "将阿里云百炼应用作为 LangBot 运行器运行。",
+            "zh_Hant": "將阿里雲 DashScope 應用程式作為 LangBot 運行器執行。",
+            "ja_JP": "Alibaba Cloud DashScope アプリを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้แอป Aliyun DashScope เป็น LangBot Runner",
+            "vi_VN": "Chạy ứng dụng Aliyun DashScope dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta una aplicación de Aliyun DashScope como LangBot Runner.",
+            "ru_RU": "Запускает приложение Aliyun DashScope как LangBot Runner."
+          },
+          "icon": "assets/icon.png"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "DashScopeAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "DashScope",
+            "zh_Hans": "百炼"
+          },
+          "description": {
+            "en_US": "Run an Aliyun DashScope application as a LangBot Runner.",
+            "zh_Hans": "将阿里云百炼应用作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "remove-think",
+              "label": {
+                "en_US": "Hide reasoning",
+                "zh_Hans": "隐藏思考过程"
+              },
+              "description": {
+                "en_US": "Hide reasoning fields and think blocks without removing answer or tool content.",
+                "zh_Hans": "隐藏推理字段和思考块，保留正文和工具内容。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "app-type",
+              "label": {
+                "en_US": "App Type",
+                "zh_Hans": "应用类型"
+              },
+              "type": "select",
+              "required": true,
+              "default": "agent",
+              "options": [
+                {
+                  "name": "agent",
+                  "label": {
+                    "en_US": "Agent",
+                    "zh_Hans": "Agent"
+                  }
+                },
+                {
+                  "name": "workflow",
+                  "label": {
+                    "en_US": "Workflow",
+                    "zh_Hans": "工作流"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "type": "secret",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "app-id",
+              "label": {
+                "en_US": "App ID",
+                "zh_Hans": "应用 ID"
+              },
+              "type": "string",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show reference formatting and timeout tuning controls.",
+                "zh_Hans": "显示引用格式和超时调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "references_quote",
+              "label": {
+                "en_US": "References Quote",
+                "zh_Hans": "引用文本"
+              },
+              "type": "string",
+              "required": false,
+              "default": "参考资料来自:",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "type": "number",
+              "required": false,
+              "default": 120,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-enabled",
+              "label": {
+                "en_US": "Enable LangBot Assets",
+                "zh_Hans": "启用 LangBot 资产"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "langbot-assets-gateway-host",
+              "label": {
+                "en_US": "LangBot Asset Gateway Host",
+                "zh_Hans": "LangBot 资产网关监听地址"
+              },
+              "type": "string",
+              "required": false,
+              "default": "0.0.0.0",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-port",
+              "label": {
+                "en_US": "LangBot Asset Gateway Port",
+                "zh_Hans": "LangBot 资产网关端口"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8765,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-request-timeout",
+              "label": {
+                "en_US": "LangBot Asset Gateway Request Timeout",
+                "zh_Hans": "LangBot 资产网关请求超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 60,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-token-ttl",
+              "label": {
+                "en_US": "LangBot Asset Token TTL",
+                "zh_Hans": "LangBot 资产令牌有效期"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3600,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-input-name",
+              "label": {
+                "en_US": "LangBot Asset Token Input Name",
+                "zh_Hans": "LangBot 资产令牌输入变量名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "langbot_asset_run_token",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": false,
+            "interrupt": false
+          },
+          "permissions": {
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ],
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "cd4e28e53eb986b906d6aa92d26b49d8ad4a9514fcc764f359bbdb84ad1a3f00",
+      "schema_sha256": "aadfce3fe0157b124235437f251c24fbfea0e498ece4be8f9de6028b97573937"
+    },
+    "n8n-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "N8nAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/n8n-agent",
+          "label": {
+            "en_US": "N8n Agent",
+            "zh_Hans": "n8n 工作流 Agent",
+            "zh_Hant": "n8n 工作流程 Agent",
+            "ja_JP": "n8n ワークフローエージェント",
+            "th_TH": "เอเจนต์เวิร์กโฟลว์ n8n",
+            "vi_VN": "Tác nhân quy trình n8n",
+            "es_ES": "Agente de flujo n8n",
+            "ru_RU": "Агент рабочих процессов n8n"
+          },
+          "description": {
+            "en_US": "Run an n8n workflow webhook as a LangBot Runner.",
+            "zh_Hans": "将 n8n 工作流 webhook 作为 LangBot 运行器运行。",
+            "zh_Hant": "將 n8n 工作流程 Webhook 作為 LangBot 運行器執行。",
+            "ja_JP": "n8n ワークフローの Webhook を LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้เว็บฮุกเวิร์กโฟลว์ n8n เป็น LangBot Runner",
+            "vi_VN": "Chạy webhook quy trình n8n dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta un webhook de flujo de n8n como LangBot Runner.",
+            "ru_RU": "Запускает webhook рабочего процесса n8n как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "N8nAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "n8n",
+            "zh_Hans": "n8n"
+          },
+          "description": {
+            "en_US": "Run an n8n workflow webhook as a LangBot Runner.",
+            "zh_Hans": "将 n8n 工作流 webhook 作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "user-id-source",
+              "label": {
+                "en_US": "Provider User Identity",
+                "zh_Hans": "供应商用户身份"
+              },
+              "description": {
+                "en_US": "Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.",
+                "zh_Hans": "默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "sender",
+              "options": [
+                {
+                  "name": "sender",
+                  "label": {
+                    "en_US": "Sender",
+                    "zh_Hans": "发送者"
+                  }
+                },
+                {
+                  "name": "legacy-session",
+                  "label": {
+                    "en_US": "Native identity compatibility",
+                    "zh_Hans": "原生身份兼容"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "webhook-url",
+              "label": {
+                "en_US": "Webhook URL",
+                "zh_Hans": "Webhook URL"
+              },
+              "type": "string",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "auth-type",
+              "label": {
+                "en_US": "Authentication Type",
+                "zh_Hans": "认证类型"
+              },
+              "type": "select",
+              "required": true,
+              "default": "none",
+              "options": [
+                {
+                  "name": "none",
+                  "label": {
+                    "en_US": "None",
+                    "zh_Hans": "无认证"
+                  }
+                },
+                {
+                  "name": "basic",
+                  "label": {
+                    "en_US": "Basic Auth",
+                    "zh_Hans": "基本认证"
+                  }
+                },
+                {
+                  "name": "jwt",
+                  "label": {
+                    "en_US": "JWT",
+                    "zh_Hans": "JWT认证"
+                  }
+                },
+                {
+                  "name": "header",
+                  "label": {
+                    "en_US": "Header Auth",
+                    "zh_Hans": "请求头认证"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "basic-username",
+              "label": {
+                "en_US": "Username",
+                "zh_Hans": "用户名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "basic"
+              }
+            },
+            {
+              "name": "basic-password",
+              "label": {
+                "en_US": "Password",
+                "zh_Hans": "密码"
+              },
+              "type": "secret",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "basic"
+              }
+            },
+            {
+              "name": "basic-encoding",
+              "label": {
+                "en_US": "Basic Auth Encoding",
+                "zh_Hans": "Basic 凭据编码",
+                "ja_JP": "Basic 認証の文字コード"
+              },
+              "description": {
+                "en_US": "UTF-8 preserves this plugin's default. Choose Latin-1 to preserve the native runner's non-ASCII Basic credentials.",
+                "zh_Hans": "UTF-8 保持本插件的默认行为。迁移原生运行器的非 ASCII Basic 凭据时，请选择 Latin-1。",
+                "ja_JP": "UTF-8 は本プラグインの既定動作を維持します。旧ネイティブ Runner の非 ASCII Basic 資格情報を引き継ぐ場合は Latin-1 を選択してください。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "utf-8",
+              "options": [
+                {
+                  "name": "utf-8",
+                  "label": {
+                    "en_US": "UTF-8",
+                    "zh_Hans": "UTF-8",
+                    "ja_JP": "UTF-8"
+                  }
+                },
+                {
+                  "name": "latin1",
+                  "label": {
+                    "en_US": "Latin-1",
+                    "zh_Hans": "Latin-1",
+                    "ja_JP": "Latin-1"
+                  }
+                }
+              ],
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "basic"
+              }
+            },
+            {
+              "name": "jwt-secret",
+              "label": {
+                "en_US": "Secret",
+                "zh_Hans": "密钥"
+              },
+              "type": "secret",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "jwt"
+              }
+            },
+            {
+              "name": "jwt-algorithm",
+              "label": {
+                "en_US": "Algorithm",
+                "zh_Hans": "算法"
+              },
+              "type": "string",
+              "required": false,
+              "default": "HS256",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "jwt"
+              }
+            },
+            {
+              "name": "header-name",
+              "label": {
+                "en_US": "Header Name",
+                "zh_Hans": "请求头名称"
+              },
+              "type": "string",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "header"
+              }
+            },
+            {
+              "name": "header-value",
+              "label": {
+                "en_US": "Header Value",
+                "zh_Hans": "请求头值"
+              },
+              "type": "secret",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "auth-type",
+                "operator": "eq",
+                "value": "header"
+              }
+            },
+            {
+              "name": "response-handling",
+              "label": {
+                "en_US": "Response Handling",
+                "zh_Hans": "响应处理",
+                "ja_JP": "レスポンスの処理"
+              },
+              "description": {
+                "en_US": "Reply forwards HTTP 200 output. Ignore accepts any HTTP 2xx without reading or forwarding the body; configure the webhook to Respond Immediately. Run-scoped asset access ends as soon as the request returns.",
+                "zh_Hans": "回复模式转发 HTTP 200 的输出。忽略模式接受任意 HTTP 2xx，不读取或转发正文；请将 Webhook 配置为立即响应。请求返回后，本次运行的资产访问权限即失效。",
+                "ja_JP": "返信モードは HTTP 200 の出力を転送します。無視モードは HTTP 2xx を受け入れ、本文を読み取り・転送しません。Webhook を即時応答に設定してください。リクエストが戻ると実行単位のアセットアクセスは終了します。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "reply",
+              "options": [
+                {
+                  "name": "reply",
+                  "label": {
+                    "en_US": "Forward as chat reply",
+                    "zh_Hans": "转发为聊天回复",
+                    "ja_JP": "チャットの返信として転送"
+                  }
+                },
+                {
+                  "name": "ignore",
+                  "label": {
+                    "en_US": "Ignore response body",
+                    "zh_Hans": "忽略响应正文",
+                    "ja_JP": "レスポンス本文を無視"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show timeout and response mapping controls.",
+                "zh_Hans": "显示超时和响应映射调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 120,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "output-key",
+              "label": {
+                "en_US": "Output Key",
+                "zh_Hans": "输出键名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "response",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-enabled",
+              "label": {
+                "en_US": "Enable LangBot Assets",
+                "zh_Hans": "启用 LangBot 资产"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "langbot-assets-gateway-host",
+              "label": {
+                "en_US": "LangBot Asset Gateway Host",
+                "zh_Hans": "LangBot 资产网关监听地址"
+              },
+              "type": "string",
+              "required": false,
+              "default": "0.0.0.0",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-port",
+              "label": {
+                "en_US": "LangBot Asset Gateway Port",
+                "zh_Hans": "LangBot 资产网关端口"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8765,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-request-timeout",
+              "label": {
+                "en_US": "LangBot Asset Gateway Request Timeout",
+                "zh_Hans": "LangBot 资产网关请求超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 60,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-token-ttl",
+              "label": {
+                "en_US": "LangBot Asset Token TTL",
+                "zh_Hans": "LangBot 资产令牌有效期"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3600,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-input-name",
+              "label": {
+                "en_US": "LangBot Asset Token Input Name",
+                "zh_Hans": "LangBot 资产令牌输入变量名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "langbot_asset_run_token",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": false,
+            "interrupt": false
+          },
+          "permissions": {
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ],
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "507af9773690ff90c8ce2cdf8c3660ca01050e195eeb954cb631ea0116fe680c",
+      "schema_sha256": "9e492577b0e8d197fd792cd1456771e5ff1731ebf897a128c70f4850b4dfece0"
+    },
+    "langflow-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "LangflowAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/langflow-agent",
+          "label": {
+            "en_US": "Langflow Agent",
+            "zh_Hans": "Langflow Agent",
+            "zh_Hant": "Langflow Agent",
+            "ja_JP": "Langflow Agent",
+            "th_TH": "Langflow Agent",
+            "vi_VN": "Langflow Agent",
+            "es_ES": "Agente Langflow",
+            "ru_RU": "Агент Langflow"
+          },
+          "description": {
+            "en_US": "Run a Langflow flow as a LangBot Runner.",
+            "zh_Hans": "将 Langflow 流程作为 LangBot 运行器运行。",
+            "zh_Hant": "將 Langflow 流程作為 LangBot 運行器執行。",
+            "ja_JP": "Langflow フローを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้โฟลว์ Langflow เป็น LangBot Runner",
+            "vi_VN": "Chạy luồng Langflow dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta un flujo de Langflow como LangBot Runner.",
+            "ru_RU": "Запускает поток Langflow как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "LangflowAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "Langflow",
+            "zh_Hans": "Langflow"
+          },
+          "description": {
+            "en_US": "Run a Langflow flow as a LangBot Runner.",
+            "zh_Hans": "将 Langflow 流程作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "base-url",
+              "label": {
+                "en_US": "Base URL",
+                "zh_Hans": "基础 URL"
+              },
+              "type": "string",
+              "required": true,
+              "default": "http://localhost:7860"
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "type": "secret",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "flow-id",
+              "label": {
+                "en_US": "Flow ID",
+                "zh_Hans": "流程 ID"
+              },
+              "type": "string",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show input, output, and flow tweak controls.",
+                "zh_Hans": "显示输入、输出和流程 tweak 调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "input-type",
+              "label": {
+                "en_US": "Input Type",
+                "zh_Hans": "输入类型"
+              },
+              "type": "string",
+              "required": false,
+              "default": "chat",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "output-type",
+              "label": {
+                "en_US": "Output Type",
+                "zh_Hans": "输出类型"
+              },
+              "type": "string",
+              "required": false,
+              "default": "chat",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "tweaks",
+              "label": {
+                "en_US": "Tweaks",
+                "zh_Hans": "调整参数"
+              },
+              "type": "json",
+              "required": false,
+              "default": "{}",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-enabled",
+              "label": {
+                "en_US": "Enable LangBot Assets",
+                "zh_Hans": "启用 LangBot 资产"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "langbot-assets-gateway-host",
+              "label": {
+                "en_US": "LangBot Asset Gateway Host",
+                "zh_Hans": "LangBot 资产网关监听地址"
+              },
+              "type": "string",
+              "required": false,
+              "default": "0.0.0.0",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-port",
+              "label": {
+                "en_US": "LangBot Asset Gateway Port",
+                "zh_Hans": "LangBot 资产网关端口"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 8765,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-gateway-request-timeout",
+              "label": {
+                "en_US": "LangBot Asset Gateway Request Timeout",
+                "zh_Hans": "LangBot 资产网关请求超时"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 60,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-token-ttl",
+              "label": {
+                "en_US": "LangBot Asset Token TTL",
+                "zh_Hans": "LangBot 资产令牌有效期"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3600,
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "langbot-assets-input-name",
+              "label": {
+                "en_US": "LangBot Asset Token Input Name",
+                "zh_Hans": "LangBot 资产令牌输入组件名"
+              },
+              "type": "string",
+              "required": false,
+              "default": "langbot_asset_run_token",
+              "show_if": {
+                "field": "langbot-assets-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": true,
+            "knowledge_retrieval": true,
+            "multimodal_input": false,
+            "interrupt": false
+          },
+          "permissions": {
+            "tools": [
+              "detail",
+              "call"
+            ],
+            "knowledge_bases": [
+              "retrieve"
+            ],
+            "history": [
+              "page"
+            ],
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "93fee3064505d0a69d8b16d8aceb4a171ffdffed63a36278eef635267681f5a1",
+      "schema_sha256": "c7d940674bae9acab993801c6957da778bbdb3fa8734bfad9cda96dbb57f5fee"
+    },
+    "deerflow-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "DeerFlowAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/deerflow-agent",
+          "label": {
+            "en_US": "DeerFlow Agent",
+            "zh_Hans": "DeerFlow Agent",
+            "zh_Hant": "DeerFlow Agent",
+            "ja_JP": "DeerFlow Agent",
+            "th_TH": "DeerFlow Agent",
+            "vi_VN": "DeerFlow Agent",
+            "es_ES": "Agente DeerFlow",
+            "ru_RU": "Агент DeerFlow"
+          },
+          "description": {
+            "en_US": "Run a DeerFlow LangGraph agent as a LangBot Runner.",
+            "zh_Hans": "将 DeerFlow LangGraph 智能体作为 LangBot 运行器运行。",
+            "zh_Hant": "將 DeerFlow LangGraph 代理作為 LangBot 運行器執行。",
+            "ja_JP": "DeerFlow LangGraph エージェントを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้เอเจนต์ DeerFlow LangGraph เป็น LangBot Runner",
+            "vi_VN": "Chạy tác nhân DeerFlow LangGraph dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta un agente DeerFlow LangGraph como LangBot Runner.",
+            "ru_RU": "Запускает агент DeerFlow LangGraph как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "DeerFlowAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "DeerFlow",
+            "zh_Hans": "DeerFlow"
+          },
+          "description": {
+            "en_US": "Run a DeerFlow LangGraph agent as a LangBot Runner.",
+            "zh_Hans": "将 DeerFlow LangGraph 智能体作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "api-base",
+              "label": {
+                "en_US": "API Base URL",
+                "zh_Hans": "API 基础 URL"
+              },
+              "description": {
+                "en_US": "The base URL of the DeerFlow server, such as http://127.0.0.1:2026.",
+                "zh_Hans": "DeerFlow 服务器的基础 URL，例如 http://127.0.0.1:2026。"
+              },
+              "type": "string",
+              "required": true,
+              "default": "http://127.0.0.1:2026"
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "description": {
+                "en_US": "Optional API key for DeerFlow. Leave empty if the server does not require authentication.",
+                "zh_Hans": "DeerFlow API 密钥。如果服务端不需要鉴权可留空。"
+              },
+              "type": "secret",
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "auth-header",
+              "label": {
+                "en_US": "Authorization Header Value",
+                "zh_Hans": "Authorization 请求头值"
+              },
+              "description": {
+                "en_US": "Optional complete Authorization header value. When set, it takes precedence over api-key.",
+                "zh_Hans": "可选的完整 Authorization 请求头值。设置后优先于 api-key。"
+              },
+              "type": "secret",
+              "required": false,
+              "default": ""
+            },
+            {
+              "name": "assistant-id",
+              "label": {
+                "en_US": "Assistant ID",
+                "zh_Hans": "助手 ID"
+              },
+              "description": {
+                "en_US": "The DeerFlow assistant or graph id.",
+                "zh_Hans": "DeerFlow 助手或图 ID。"
+              },
+              "type": "string",
+              "required": true,
+              "default": "lead_agent"
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show model, timeout, and recursion tuning controls.",
+                "zh_Hans": "显示模型、超时和递归调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "model-name",
+              "label": {
+                "en_US": "Model Name",
+                "zh_Hans": "模型名称"
+              },
+              "description": {
+                "en_US": "Optional model override forwarded to DeerFlow configurable.",
+                "zh_Hans": "可选的模型名称覆盖，会作为 configurable 转发给 DeerFlow。"
+              },
+              "type": "string",
+              "required": false,
+              "default": "",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "thinking-enabled",
+              "label": {
+                "en_US": "Enable Thinking",
+                "zh_Hans": "启用思考"
+              },
+              "description": {
+                "en_US": "Whether to enable DeerFlow thinking mode.",
+                "zh_Hans": "是否启用 DeerFlow 思考模式。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "plan-mode",
+              "label": {
+                "en_US": "Plan Mode",
+                "zh_Hans": "规划模式"
+              },
+              "description": {
+                "en_US": "Whether to enable DeerFlow plan mode.",
+                "zh_Hans": "是否启用 DeerFlow 规划模式。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "subagent-enabled",
+              "label": {
+                "en_US": "Enable Subagents",
+                "zh_Hans": "启用子代理"
+              },
+              "description": {
+                "en_US": "Whether to enable parallel subagent execution.",
+                "zh_Hans": "是否启用并行子代理执行。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "max-concurrent-subagents",
+              "label": {
+                "en_US": "Max Concurrent Subagents",
+                "zh_Hans": "最大并发子代理数"
+              },
+              "description": {
+                "en_US": "Maximum number of concurrent subagents. Only effective when subagents are enabled.",
+                "zh_Hans": "最大并发子代理数。仅在启用子代理时生效。"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 3,
+              "show_if": {
+                "field": "subagent-enabled",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "description": {
+                "en_US": "Request timeout in seconds. DeerFlow runs may take a long time.",
+                "zh_Hans": "请求超时时间（秒）。DeerFlow 运行可能耗时较长。"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 300,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "recursion-limit",
+              "label": {
+                "en_US": "Recursion Limit",
+                "zh_Hans": "递归上限"
+              },
+              "description": {
+                "en_US": "LangGraph recursion limit for a single run.",
+                "zh_Hans": "单次运行的 LangGraph 递归上限。"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 1000,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": false,
+            "knowledge_retrieval": false,
+            "multimodal_input": true,
+            "interrupt": false
+          },
+          "permissions": {
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "10c93fec92e2d34c791baa541b71debf060e80aaa5fb64c386dc25fbc6b510a5",
+      "schema_sha256": "8a865320f37e367095a1f332bcc490cad8c0af273bc82baf768015242457c8f6"
+    },
+    "tbox-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "TboxAgent",
+          "version": "0.1.5",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/tbox-agent",
+          "label": {
+            "en_US": "Tbox Agent",
+            "zh_Hans": "百宝箱 Agent",
+            "zh_Hant": "Tbox Agent",
+            "ja_JP": "Tbox Agent",
+            "th_TH": "Tbox Agent",
+            "vi_VN": "Tbox Agent",
+            "es_ES": "Agente Tbox",
+            "ru_RU": "Агент Tbox"
+          },
+          "description": {
+            "en_US": "Run an Ant Tbox application as a LangBot Runner.",
+            "zh_Hans": "将蚂蚁百宝箱应用作为 LangBot 运行器运行。",
+            "zh_Hant": "將螞蟻 Tbox 應用程式作為 LangBot 運行器執行。",
+            "ja_JP": "Ant Tbox アプリを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้แอป Ant Tbox เป็น LangBot Runner",
+            "vi_VN": "Chạy ứng dụng Ant Tbox dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta una aplicación Ant Tbox como LangBot Runner.",
+            "ru_RU": "Запускает приложение Ant Tbox как LangBot Runner."
+          },
+          "icon": "assets/icon.png"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "TboxAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "Tbox",
+            "zh_Hans": "百宝箱"
+          },
+          "description": {
+            "en_US": "Run an Ant Tbox application as a LangBot Runner.",
+            "zh_Hans": "将蚂蚁百宝箱应用作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "user-id-source",
+              "label": {
+                "en_US": "Provider User Identity",
+                "zh_Hans": "供应商用户身份"
+              },
+              "description": {
+                "en_US": "Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.",
+                "zh_Hans": "默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。"
+              },
+              "type": "select",
+              "required": false,
+              "default": "sender",
+              "options": [
+                {
+                  "name": "sender",
+                  "label": {
+                    "en_US": "Sender",
+                    "zh_Hans": "发送者"
+                  }
+                },
+                {
+                  "name": "legacy-bot",
+                  "label": {
+                    "en_US": "Native identity compatibility",
+                    "zh_Hans": "原生身份兼容"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "remove-think",
+              "label": {
+                "en_US": "Hide reasoning",
+                "zh_Hans": "隐藏思考过程"
+              },
+              "description": {
+                "en_US": "Hide reasoning fields and think blocks without removing answer or tool content.",
+                "zh_Hans": "隐藏推理字段和思考块，保留正文和工具内容。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "type": "secret",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "app-id",
+              "label": {
+                "en_US": "App ID",
+                "zh_Hans": "应用 ID"
+              },
+              "type": "string",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "type": "number",
+              "required": false,
+              "default": 120
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": false,
+            "knowledge_retrieval": false,
+            "multimodal_input": true,
+            "interrupt": false
+          },
+          "permissions": {
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "ed9c7a3f7c904a1fc6a95e8e7de0253f85282bf159250e355480fdcc91b4f629",
+      "schema_sha256": "ac34c6a84859728328aa8d554aadbd1bef9b92c35ce4524812a541bac58c5088"
+    },
+    "weknora-agent": {
+      "manifest": {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": {
+          "author": "langbot-team",
+          "name": "WeKnoraAgent",
+          "version": "0.1.7",
+          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/weknora-agent",
+          "label": {
+            "en_US": "WeKnora Agent",
+            "zh_Hans": "WeKnora Agent",
+            "zh_Hant": "WeKnora Agent",
+            "ja_JP": "WeKnora Agent",
+            "th_TH": "WeKnora Agent",
+            "vi_VN": "WeKnora Agent",
+            "es_ES": "Agente WeKnora",
+            "ru_RU": "Агент WeKnora"
+          },
+          "description": {
+            "en_US": "Run a WeKnora agent or knowledge-base chat app as a LangBot Runner.",
+            "zh_Hans": "将 WeKnora 智能体或知识库问答应用作为 LangBot 运行器运行。",
+            "zh_Hant": "將 WeKnora 代理或知識庫聊天應用程式作為 LangBot 運行器執行。",
+            "ja_JP": "WeKnora エージェントまたはナレッジベースチャットを LangBot Runner として実行します。",
+            "th_TH": "เรียกใช้เอเจนต์ WeKnora หรือแอปแชตฐานความรู้เป็น LangBot Runner",
+            "vi_VN": "Chạy tác nhân WeKnora hoặc ứng dụng trò chuyện kho tri thức dưới dạng LangBot Runner.",
+            "es_ES": "Ejecuta un agente WeKnora o una aplicación de chat con base de conocimiento como LangBot Runner.",
+            "ru_RU": "Запускает агент WeKnora или чат с базой знаний как LangBot Runner."
+          },
+          "icon": "assets/icon.svg"
+        },
+        "spec": {
+          "config": [],
+          "components": {
+            "Runner": {
+              "fromDirs": [
+                {
+                  "path": "components/runner/"
+                }
+              ]
+            }
+          },
+          "pages": []
+        },
+        "execution": {
+          "python": {
+            "path": "main.py",
+            "attr": "WeKnoraAgentPlugin"
+          }
+        }
+      },
+      "component": {
+        "apiVersion": "langbot/v1",
+        "kind": "Runner",
+        "metadata": {
+          "name": "default",
+          "label": {
+            "en_US": "WeKnora",
+            "zh_Hans": "WeKnora"
+          },
+          "description": {
+            "en_US": "Run a WeKnora agent or knowledge-base chat app as a LangBot Runner.",
+            "zh_Hans": "将 WeKnora 智能体或知识库问答应用作为 LangBot 运行器运行。"
+          }
+        },
+        "spec": {
+          "usages": [
+            "agent"
+          ],
+          "config": [
+            {
+              "name": "base-url",
+              "label": {
+                "en_US": "Base URL",
+                "zh_Hans": "基础 URL"
+              },
+              "description": {
+                "en_US": "The WeKnora API base URL, including /api/v1.",
+                "zh_Hans": "WeKnora API 基础 URL，包含 /api/v1。"
+              },
+              "type": "string",
+              "required": true,
+              "default": "http://localhost:8080/api/v1"
+            },
+            {
+              "name": "api-key",
+              "label": {
+                "en_US": "API Key",
+                "zh_Hans": "API 密钥"
+              },
+              "description": {
+                "en_US": "API key generated from WeKnora Settings -> API Keys.",
+                "zh_Hans": "从 WeKnora 设置 -> API Keys 生成的 API 密钥。"
+              },
+              "type": "secret",
+              "required": true,
+              "default": ""
+            },
+            {
+              "name": "app-type",
+              "label": {
+                "en_US": "App Type",
+                "zh_Hans": "应用类型"
+              },
+              "type": "select",
+              "required": true,
+              "default": "agent",
+              "options": [
+                {
+                  "name": "agent",
+                  "label": {
+                    "en_US": "Agent (Smart Reasoning)",
+                    "zh_Hans": "Agent（智能推理）"
+                  }
+                },
+                {
+                  "name": "chat",
+                  "label": {
+                    "en_US": "Chat (Knowledge Base RAG)",
+                    "zh_Hans": "聊天（知识库 RAG）"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "agent-id",
+              "label": {
+                "en_US": "Agent ID",
+                "zh_Hans": "智能体 ID"
+              },
+              "description": {
+                "en_US": "When omitted, chat uses builtin-quick-answer and agent uses builtin-smart-reasoning. An explicit empty value lets the server choose. Saved IDs apply in both modes.",
+                "zh_Hans": "未设置时，聊天使用 builtin-quick-answer，智能体使用 builtin-smart-reasoning。显式留空则由服务端选择。已保存的 ID 在两种模式下均生效。"
+              },
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "knowledge-base-ids",
+              "label": {
+                "en_US": "Knowledge Base IDs",
+                "zh_Hans": "知识库 ID 列表"
+              },
+              "description": {
+                "en_US": "Remote WeKnora knowledge base IDs used in both modes, not LangBot knowledge base UUIDs. Values and order are preserved.",
+                "zh_Hans": "两种模式均可使用的远端 WeKnora 知识库 ID，不是 LangBot 知识库 UUID。保留原值和顺序。"
+              },
+              "type": "array[string]",
+              "required": false,
+              "default": []
+            },
+            {
+              "name": "web-search-enabled",
+              "label": {
+                "en_US": "Enable Web Search",
+                "zh_Hans": "启用网络搜索"
+              },
+              "description": {
+                "en_US": "Whether to enable web search in agent mode.",
+                "zh_Hans": "是否在 Agent 模式下启用网络搜索。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false,
+              "show_if": {
+                "field": "app-type",
+                "operator": "eq",
+                "value": "agent"
+              }
+            },
+            {
+              "name": "advanced-settings",
+              "label": {
+                "en_US": "Advanced Settings",
+                "zh_Hans": "高级设置"
+              },
+              "description": {
+                "en_US": "Show timeout and fallback prompt controls.",
+                "zh_Hans": "显示超时和回退提示词调优选项。"
+              },
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "timeout",
+              "label": {
+                "en_US": "Timeout",
+                "zh_Hans": "超时时间"
+              },
+              "description": {
+                "en_US": "Request timeout in seconds.",
+                "zh_Hans": "请求超时时间（秒）。"
+              },
+              "type": "integer",
+              "required": false,
+              "default": 120,
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            },
+            {
+              "name": "base-prompt",
+              "label": {
+                "en_US": "Base Prompt",
+                "zh_Hans": "基础提示词"
+              },
+              "description": {
+                "en_US": "Default prompt when the user message is empty.",
+                "zh_Hans": "用户消息为空时使用的默认提示词。"
+              },
+              "type": "string",
+              "required": false,
+              "default": "请回答用户的问题。",
+              "show_if": {
+                "field": "advanced-settings",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "tool_calling": false,
+            "knowledge_retrieval": false,
+            "multimodal_input": false,
+            "interrupt": false
+          },
+          "permissions": {
+            "storage": [
+              "plugin"
+            ]
+          }
+        },
+        "execution": {
+          "python": {
+            "path": "default.py",
+            "attr": "DefaultRunner"
+          }
+        }
+      },
+      "package_sha256": "63841513ad9a0272f1e9863ab70a280989651a26db421b3f0df634972978135b",
+      "schema_sha256": "78d6d36d38f3991cc1a0bfc057d09a18a43c55e6af45b6ed61908d66bf475aa2"
+    }
+  },
+  "cases": [
+    {
+      "legacy_runner": "local-agent",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "local-agent",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "local-agent",
+        "target_runner_id": "plugin:langbot-team/LocalAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "LocalAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/LocalAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "advanced-settings": false,
+                "date-grounding": true,
+                "timeout": 300,
+                "retrieval-top-k": 5,
+                "rerank-model": "",
+                "rerank-top-k": 5,
+                "max-tool-iterations": 100,
+                "tool-execution-mode": "serial",
+                "max-tool-result-chars": 20000,
+                "context-history-fetch-limit": 50,
+                "context-window-tokens": 200000,
+                "context-reserve-tokens": 16384,
+                "context-keep-recent-tokens": 20000,
+                "context-summary-tokens": 8000,
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "model": {
+                  "fallbacks": [],
+                  "reasoning": {},
+                  "primary": "synthetic-model"
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "Synthetic prompt"
+                  }
+                ],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": true,
+                "remove-think": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "local.context_defaults",
+            "field": "ai.local-agent.max-round"
+          },
+          {
+            "code": "local.serial_tools_preserved",
+            "field": "ai.local-agent.tools"
+          },
+          {
+            "code": "local.retrieval_defaults",
+            "field": "ai.local-agent.knowledge-bases"
+          },
+          {
+            "code": "local.box_state_reset",
+            "field": "ai.local-agent.box-session-id-template"
+          },
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.local-agent"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.output_policy_copied",
+            "field": "output.misc.remove-think"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "dify-service-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "dify-service-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "dify-service-api",
+        "target_runner_id": "plugin:langbot-team/DifyAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "DifyAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/DifyAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/DifyAgent/default": {
+                "timeout": 30,
+                "advanced-settings": false,
+                "base-url": "https://dify.invalid/v1",
+                "api-key": "synthetic-key",
+                "app-type": "chat",
+                "base-prompt": "Synthetic prompt",
+                "user-id-source": "legacy-session",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "langbot-assets-enabled": false,
+                "remove-think": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "dify.timeout_default",
+            "field": "ai.dify-service-api.timeout"
+          },
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.dify-service-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.filtered_variables",
+            "field": "ai.dify-service-api"
+          },
+          {
+            "code": "migration.identity_preserved",
+            "field": "ai.dify-service-api"
+          },
+          {
+            "code": "migration.output_policy_copied",
+            "field": "output.misc.remove-think"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "coze-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "coze-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "coze-api",
+        "target_runner_id": "plugin:langbot-team/CozeAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "CozeAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/CozeAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/CozeAgent/default": {
+                "auto-save-history": false,
+                "advanced-settings": false,
+                "api-key": "synthetic-key",
+                "bot-id": "synthetic-bot",
+                "api-base": "https://api.coze.cn",
+                "timeout": 120,
+                "user-id-source": "legacy-session",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "langbot-assets-enabled": false,
+                "remove-think": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "migration.alias_repaired",
+            "field": "ai.coze-api.auto_save_history"
+          },
+          {
+            "code": "coze.persistent_history",
+            "field": "ai.coze-api"
+          },
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.coze-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.identity_preserved",
+            "field": "ai.coze-api"
+          },
+          {
+            "code": "migration.output_policy_copied",
+            "field": "output.misc.remove-think"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "dashscope-app-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "dashscope-app-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "dashscope-app-api",
+        "target_runner_id": "plugin:langbot-team/DashScopeAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "DashScopeAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/DashScopeAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/DashScopeAgent/default": {
+                "references_quote": "Synthetic references",
+                "timeout": 120,
+                "advanced-settings": false,
+                "api-key": "synthetic-key",
+                "app-id": "synthetic-app",
+                "app-type": "agent",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "langbot-assets-enabled": false,
+                "remove-think": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.dashscope-app-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.filtered_variables",
+            "field": "ai.dashscope-app-api"
+          },
+          {
+            "code": "migration.output_policy_copied",
+            "field": "output.misc.remove-think"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "n8n-service-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "n8n-service-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "n8n-service-api",
+        "target_runner_id": "plugin:langbot-team/N8nAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "N8nAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/N8nAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/N8nAgent/default": {
+                "auth-type": "none",
+                "basic-username": "",
+                "basic-password": "",
+                "jwt-secret": "",
+                "jwt-algorithm": "HS256",
+                "header-name": "",
+                "header-value": "",
+                "timeout": 120,
+                "output-key": "response",
+                "response-handling": "reply",
+                "basic-encoding": "latin1",
+                "advanced-settings": false,
+                "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+                "user-id-source": "legacy-session",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "langbot-assets-enabled": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "n8n.session_ids_reset",
+            "field": "ai.n8n-service-api"
+          },
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.n8n-service-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.filtered_variables",
+            "field": "ai.n8n-service-api"
+          },
+          {
+            "code": "migration.identity_preserved",
+            "field": "ai.n8n-service-api"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "langflow-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "langflow-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "langflow-api",
+        "target_runner_id": "plugin:langbot-team/LangflowAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "LangflowAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/LangflowAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/LangflowAgent/default": {
+                "input-type": "chat",
+                "output-type": "chat",
+                "tweaks": {},
+                "advanced-settings": false,
+                "base-url": "https://langflow.invalid",
+                "api-key": "synthetic-key",
+                "flow-id": "synthetic-flow",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "langbot-assets-enabled": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "migration.alias_repaired",
+            "field": "ai.langflow-api.input_type"
+          },
+          {
+            "code": "migration.alias_repaired",
+            "field": "ai.langflow-api.output_type"
+          },
+          {
+            "code": "langflow.persistent_history",
+            "field": "ai.langflow-api"
+          },
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.langflow-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "deerflow-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "deerflow-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "deerflow-api",
+        "target_runner_id": "plugin:langbot-team/DeerFlowAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "DeerFlowAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/DeerFlowAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/DeerFlowAgent/default": {
+                "api-key": "synthetic-key",
+                "auth-header": "",
+                "assistant-id": "lead_agent",
+                "model-name": "synthetic-model",
+                "thinking-enabled": false,
+                "plan-mode": false,
+                "subagent-enabled": false,
+                "max-concurrent-subagents": 3,
+                "timeout": 300,
+                "recursion-limit": 1000,
+                "api-base": "https://deerflow.invalid",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.deerflow-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "tbox-app-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "tbox-app-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "tbox-app-api",
+        "target_runner_id": "plugin:langbot-team/TboxAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "TboxAgent",
+          "version": "0.1.5"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/TboxAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/TboxAgent/default": {
+                "timeout": 120,
+                "api-key": "synthetic-key",
+                "app-id": "synthetic-app",
+                "user-id-source": "legacy-bot",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "remove-think": false
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.tbox-app-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "migration.identity_preserved",
+            "field": "ai.tbox-app-api"
+          },
+          {
+            "code": "migration.output_policy_copied",
+            "field": "output.misc.remove-think"
+          }
+        ]
+      }
+    },
+    {
+      "legacy_runner": "weknora-api",
+      "source": {
+        "trigger": {
+          "group-respond-rules": {
+            "at": true,
+            "prefix": [
+              "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+          },
+          "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+          },
+          "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+          },
+          "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+          },
+          "misc": {
+            "combine-quote-message": true
+          }
+        },
+        "safety": {
+          "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+          },
+          "rate-limit": {
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+          }
+        },
+        "ai": {
+          "runner": {
+            "runner": "weknora-api",
+            "expire-time": 0
+          },
+          "local-agent": {
+            "model": {
+              "primary": "synthetic-model",
+              "fallbacks": []
+            },
+            "max-round": 10,
+            "prompt": [
+              {
+                "role": "system",
+                "content": "Synthetic prompt"
+              }
+            ],
+            "enable-all-tools": false,
+            "tools": []
+          },
+          "dify-service-api": {
+            "base-url": "https://dify.invalid/v1",
+            "api-key": "synthetic-key",
+            "app-type": "chat",
+            "base-prompt": "Synthetic prompt"
+          },
+          "coze-api": {
+            "api-key": "synthetic-key",
+            "bot-id": "synthetic-bot",
+            "api-base": "https://api.coze.cn",
+            "auto_save_history": false,
+            "timeout": 120
+          },
+          "dashscope-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app",
+            "app-type": "agent",
+            "references_quote": "Synthetic references"
+          },
+          "n8n-service-api": {
+            "webhook-url": "https://n8n.invalid/hook?token=synthetic",
+            "auth-type": "none",
+            "timeout": 120,
+            "output-key": "response",
+            "response-handling": "reply"
+          },
+          "langflow-api": {
+            "base-url": "https://langflow.invalid",
+            "api-key": "synthetic-key",
+            "flow-id": "synthetic-flow",
+            "input_type": "chat",
+            "output_type": "chat",
+            "tweaks": "{}"
+          },
+          "deerflow-api": {
+            "api-base": "https://deerflow.invalid",
+            "api-key": "synthetic-key",
+            "auth-header": "",
+            "assistant-id": "lead_agent",
+            "model-name": "synthetic-model",
+            "thinking-enabled": false,
+            "plan-mode": false,
+            "subagent-enabled": false,
+            "max-concurrent-subagents": 3,
+            "timeout": 300,
+            "recursion-limit": 1000
+          },
+          "tbox-app-api": {
+            "api-key": "synthetic-key",
+            "app-id": "synthetic-app"
+          },
+          "weknora-api": {
+            "base-url": "https://weknora.invalid/api/v1",
+            "api-key": "synthetic-key",
+            "app-type": "agent",
+            "knowledge-base-ids": [
+              "remote-kb"
+            ],
+            "web-search-enabled": false
+          }
+        },
+        "output": {
+          "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+          },
+          "force-delay": {
+            "min": 0,
+            "max": 0
+          },
+          "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "Request failed.",
+            "at-sender": true,
+            "quote-origin": true,
+            "track-function-calls": false,
+            "remove-think": false
+          }
+        }
+      },
+      "plan": {
+        "state": "ready",
+        "legacy_runner": "weknora-api",
+        "target_runner_id": "plugin:langbot-team/WeKnoraAgent/default",
+        "target_plugin": {
+          "author": "langbot-team",
+          "name": "WeKnoraAgent",
+          "version": "0.1.7"
+        },
+        "config": {
+          "trigger": {
+            "group-respond-rules": {
+              "at": true,
+              "prefix": [
+                "ai"
+              ],
+              "regexp": [],
+              "random": 0.0
+            },
+            "access-control": {
+              "mode": "blacklist",
+              "blacklist": [],
+              "whitelist": []
+            },
+            "ignore-rules": {
+              "prefix": [],
+              "regexp": []
+            },
+            "message-aggregation": {
+              "enabled": false,
+              "delay": 1.5
+            },
+            "misc": {
+              "combine-quote-message": true
+            }
+          },
+          "safety": {
+            "content-filter": {
+              "scope": "all",
+              "check-sensitive-words": true
+            },
+            "rate-limit": {
+              "window-length": 60,
+              "limitation": 60,
+              "strategy": "drop"
+            }
+          },
+          "ai": {
+            "runner": {
+              "expire-time": 0,
+              "id": "plugin:langbot-team/WeKnoraAgent/default"
+            },
+            "runner_config": {
+              "plugin:langbot-team/WeKnoraAgent/default": {
+                "knowledge-base-ids": [
+                  "remote-kb"
+                ],
+                "web-search-enabled": false,
+                "timeout": 120,
+                "base-prompt": "请回答用户的问题。",
+                "advanced-settings": false,
+                "base-url": "https://weknora.invalid/api/v1",
+                "api-key": "synthetic-key",
+                "app-type": "agent",
+                "enable-all-tools": false,
+                "tools": [],
+                "knowledge-bases": [],
+                "mcp-resources": [],
+                "mcp-resource-agent-read-enabled": false,
+                "agent-id": "builtin-smart-reasoning"
+              }
+            }
+          },
+          "output": {
+            "long-text-processing": {
+              "threshold": 1000,
+              "strategy": "none",
+              "font-path": ""
+            },
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "exception-handling": "show-hint",
+              "failure-hint": "Request failed.",
+              "at-sender": true,
+              "quote-origin": true,
+              "track-function-calls": false,
+              "remove-think": false
+            }
+          }
+        },
+        "changed_paths": [
+          "ai.runner.runner",
+          "ai.runner.id",
+          "ai.runner_config",
+          "ai.local-agent",
+          "ai.dify-service-api",
+          "ai.coze-api",
+          "ai.dashscope-app-api",
+          "ai.n8n-service-api",
+          "ai.langflow-api",
+          "ai.deerflow-api",
+          "ai.tbox-app-api",
+          "ai.weknora-api"
+        ],
+        "blockers": [],
+        "warnings": [
+          {
+            "code": "external.state_validation_required",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.history_reset",
+            "field": "ai.runner"
+          },
+          {
+            "code": "migration.new_defaults",
+            "field": "ai.weknora-api"
+          },
+          {
+            "code": "migration.legacy_sections_archived",
+            "field": "ai"
+          },
+          {
+            "code": "weknora.session_title_changed",
+            "field": "ai.weknora-api"
+          }
+        ]
+      }
+    }
+  ],
+  "ai_schema": {
+    "name": "ai",
+    "label": {
+      "en_US": "AI Feature",
+      "zh_Hans": "AI 能力"
+    },
+    "stages": [
+      {
+        "name": "runner",
+        "label": {
+          "en_US": "Runner",
+          "zh_Hans": "运行方式"
+        },
+        "description": {
+          "en_US": "Strategy to call AI to process messages",
+          "zh_Hans": "调用 AI 处理消息的方式"
+        },
+        "config": [
+          {
+            "name": "id",
+            "label": {
+              "en_US": "Runner",
+              "zh_Hans": "运行器"
+            },
+            "type": "select",
+            "required": true
+          },
+          {
+            "name": "expire-time",
+            "label": {
+              "en_US": "Conversation expire time (seconds)",
+              "zh_Hans": "单个对话过期时间（秒）"
+            },
+            "description": {
+              "en_US": "Maximum idle time of a single conversation, measured from the last message/preprocess update time. When a new message arrives and the current conversation has been idle for longer than this value, the existing external conversation id is discarded and a new one is started automatically — the user does not need to trigger a reset manually. Set to 0 to disable expiry (conversations live until the user or another mechanism resets them).",
+              "zh_Hans": "单个对话的最长空闲时间，从最后一条消息/preprocess 更新时间开始计算。 当新消息到达且当前对话空闲时间已超过该值时，旧的外部对话 ID 会被自动丢弃并开启新对话， 用户无需手动重置。设置为 0 表示不限制过期时间（对话会一直保留，直到用户或其他机制主动重置）。"
+            },
+            "type": "integer",
+            "required": true,
+            "default": 0
+          }
+        ]
+      }
+    ]
+  },
+  "output_schema": {
+    "name": "output",
+    "label": {
+      "en_US": "Output Processing",
+      "zh_Hans": "输出处理"
+    },
+    "stages": [
+      {
+        "name": "long-text-processing",
+        "label": {
+          "en_US": "Long Text Processing",
+          "zh_Hans": "长文本处理"
+        },
+        "config": [
+          {
+            "name": "threshold",
+            "label": {
+              "en_US": "Threshold",
+              "zh_Hans": "阈值"
+            },
+            "description": {
+              "en_US": "The threshold of the long text",
+              "zh_Hans": "超过此长度的文本将被处理"
+            },
+            "type": "integer",
+            "required": true,
+            "default": 1000
+          },
+          {
+            "name": "strategy",
+            "label": {
+              "en_US": "Strategy",
+              "zh_Hans": "策略"
+            },
+            "description": {
+              "en_US": "The strategy of the long text",
+              "zh_Hans": "长文本的处理策略"
+            },
+            "type": "select",
+            "required": true,
+            "default": "none",
+            "options": [
+              {
+                "name": "forward",
+                "label": {
+                  "en_US": "Forward Message Component",
+                  "zh_Hans": "转换为转发消息组件（部分平台不支持）"
+                }
+              },
+              {
+                "name": "image",
+                "label": {
+                  "en_US": "Convert to Image",
+                  "zh_Hans": "转换为图片"
+                }
+              },
+              {
+                "name": "none",
+                "label": {
+                  "en_US": "None",
+                  "zh_Hans": "不处理"
+                }
+              }
+            ]
+          },
+          {
+            "name": "font-path",
+            "label": {
+              "en_US": "Font Path",
+              "zh_Hans": "字体路径"
+            },
+            "description": {
+              "en_US": "The path of the font to be used when converting to image",
+              "zh_Hans": "选用转换为图片时，所使用的字体路径"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          }
+        ]
+      },
+      {
+        "name": "force-delay",
+        "label": {
+          "en_US": "Force Delay",
+          "zh_Hans": "强制延迟"
+        },
+        "description": {
+          "en_US": "Force the output to be delayed for a while",
+          "zh_Hans": "强制延迟一段时间后再回复给用户"
+        },
+        "config": [
+          {
+            "name": "min",
+            "label": {
+              "en_US": "Min Seconds",
+              "zh_Hans": "最小秒数"
+            },
+            "type": "integer",
+            "required": true,
+            "default": 0
+          },
+          {
+            "name": "max",
+            "label": {
+              "en_US": "Max Seconds",
+              "zh_Hans": "最大秒数"
+            },
+            "type": "integer",
+            "required": true,
+            "default": 0
+          }
+        ]
+      },
+      {
+        "name": "misc",
+        "label": {
+          "en_US": "Misc",
+          "zh_Hans": "杂项"
+        },
+        "config": [
+          {
+            "name": "exception-handling",
+            "label": {
+              "en_US": "Exception Handling Strategy",
+              "zh_Hans": "异常处理策略"
+            },
+            "description": {
+              "en_US": "Controls how error messages are displayed to the user when an AI request fails",
+              "zh_Hans": "控制 AI 请求失败时向用户展示错误信息的方式"
+            },
+            "type": "select",
+            "required": true,
+            "default": "show-hint",
+            "options": [
+              {
+                "name": "show-error",
+                "label": {
+                  "en_US": "Show Full Error",
+                  "zh_Hans": "显示完整报错信息"
+                }
+              },
+              {
+                "name": "show-hint",
+                "label": {
+                  "en_US": "Show Failure Hint",
+                  "zh_Hans": "仅文字提示"
+                }
+              },
+              {
+                "name": "hide",
+                "label": {
+                  "en_US": "Hide All",
+                  "zh_Hans": "不显示任何异常信息"
+                }
+              }
+            ]
+          },
+          {
+            "name": "failure-hint",
+            "label": {
+              "en_US": "Failure Hint Text",
+              "zh_Hans": "失败提示文本"
+            },
+            "description": {
+              "en_US": "The text to display when a request fails. Only effective when Exception Handling Strategy is set to \"Show Failure Hint\"",
+              "zh_Hans": "请求失败时显示的提示文本，仅在异常处理策略设置为\"仅文字提示\"时生效"
+            },
+            "type": "string",
+            "required": false,
+            "default": "Request failed."
+          },
+          {
+            "name": "at-sender",
+            "label": {
+              "en_US": "At Sender",
+              "zh_Hans": "在群聊回复中@发送者"
+            },
+            "type": "boolean",
+            "required": true,
+            "default": true
+          },
+          {
+            "name": "quote-origin",
+            "label": {
+              "en_US": "Quote Origin Message",
+              "zh_Hans": "引用原消息"
+            },
+            "type": "boolean",
+            "required": true,
+            "default": false
+          },
+          {
+            "name": "track-function-calls",
+            "label": {
+              "en_US": "Track Function Calls",
+              "zh_Hans": "跟踪函数调用"
+            },
+            "description": {
+              "en_US": "If enabled, the function calls will be tracked and output to the user",
+              "zh_Hans": "启用后，Agent 每次调用工具时都会输出一个提示给用户"
+            },
+            "type": "boolean",
+            "required": true,
+            "default": false
+          },
+          {
+            "name": "remove-think",
+            "label": {
+              "en_US": "Remove CoT",
+              "zh_Hans": "删除思维链"
+            },
+            "description": {
+              "en_US": "If enabled, LangBot will remove the LLM thought content in response. Note: When using streaming response, removing CoT may cause the first token to wait for a long time.",
+              "zh_Hans": "如果启用，将自动删除大模型回复中的模型思考内容。注意：当您使用流式响应时，删除思维链可能会导致首个 Token 的等待时间过长"
+            },
+            "type": "boolean",
+            "required": true,
+            "default": false
+          }
+        ]
+      }
+    ]
+  }
+}

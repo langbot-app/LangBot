@@ -25,7 +25,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
-from ..logger import EventLogger
+from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger as EventLogger
 
 
 _MAX_DISCORD_MEDIA_BYTES = 10 * 1024 * 1024

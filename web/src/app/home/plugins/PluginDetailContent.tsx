@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
@@ -40,6 +41,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { plugins, setDetailEntityName, refreshPlugins } = useSidebarData();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [pluginInfo, setPluginInfo] = useState<Plugin | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
@@ -76,15 +79,19 @@ export default function PluginDetailContent({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    httpClient.getPlugin(pluginAuthor, pluginName).then((res) => {
-      if (!cancelled) {
-        setPluginInfo(res.plugin);
-      }
-    });
+    setLoadFailed(false);
+    httpClient
+      .getPlugin(pluginAuthor, pluginName)
+      .then((res) => {
+        if (!cancelled) {
+          setPluginInfo(res.plugin);
+        }
+      })
+      .catch(() => setLoadFailed(true));
     return () => {
       cancelled = true;
     };
-  }, [pluginAuthor, pluginName]);
+  }, [pluginAuthor, pluginName, loadAttempt]);
 
   function handleFormSubmit(timeout?: number) {
     if (timeout) {
@@ -189,6 +196,12 @@ export default function PluginDetailContent({ id }: { id: string }) {
     </Card>
   );
 
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!pluginInfo) return <EntityLoadState />;
+
   return (
     <>
       <div className="flex h-full flex-col">
@@ -209,8 +222,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
           )}
         </div>
 
-        <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto md:flex-row md:overflow-hidden">
-          <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden xl:w-[420px]">
+        <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">
+          <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none xl:w-[420px]">
             <PluginForm
               pluginAuthor={pluginAuthor}
               pluginName={pluginName}
@@ -231,7 +244,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
               </TabsList>
               <TabsContent
                 value="docs"
-                className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden"
+                className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none"
               >
                 <PluginReadme
                   pluginAuthor={pluginAuthor}

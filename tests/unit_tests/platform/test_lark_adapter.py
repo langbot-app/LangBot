@@ -292,7 +292,9 @@ def _build_resume_final_chunk_adapter(message_text: str):
     paused before emitting any text, then resumed and completed."""
     adapter = LarkAdapter.model_construct(
         api_client=MagicMock(),
-        message_converter=MagicMock(yiri2target=AsyncMock(return_value=([[{'tag': 'text', 'text': message_text}]], []))),
+        message_converter=MagicMock(
+            yiri2target=AsyncMock(return_value=([[{'tag': 'text', 'text': message_text}]], []))
+        ),
     )
     adapter.config = {'app_type': 'self'}
     LarkAdapter.get_app_access_token = lambda self: None

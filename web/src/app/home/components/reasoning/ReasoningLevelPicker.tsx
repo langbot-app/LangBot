@@ -65,7 +65,7 @@ export default function ReasoningLevelPicker({
           size="sm"
           disabled={disabled || safeLevels.length <= 1}
           aria-label={`${t('models.reasoningLevel')}: ${currentLabel}`}
-          className="h-9 w-9 shrink-0 gap-1.5 px-2.5 text-xs font-normal sm:w-auto sm:max-w-36"
+          className="h-9 w-9 shrink-0 gap-1.5 px-2.5 text-xs font-normal sm:w-auto sm:max-w-52"
         >
           <BrainCircuit
             className={`size-4 shrink-0 ${isExplicit ? 'text-primary' : 'text-muted-foreground'}`}
@@ -77,6 +77,18 @@ export default function ReasoningLevelPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[272px] p-4">
+        {safeLevels.includes('provider_default') && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mb-3 w-full"
+            aria-pressed={safeValue === 'provider_default'}
+            onClick={() => onChange('provider_default')}
+          >
+            {t(REASONING_LEVEL_LABEL_KEYS.provider_default)}
+          </Button>
+        )}
         <div className="flex h-5 items-center gap-0.5 text-sm text-muted-foreground">
           <span>{currentLabel}</span>
           <ChevronRight className="size-3.5" />

@@ -15,6 +15,9 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  RefreshCcw,
+  ShieldCheck,
+  Rocket,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -24,25 +27,51 @@ import {
 } from './PluginInstallTaskContext';
 import { cn } from '@/lib/utils';
 
-const STAGES: {
+type StageConfig = {
   key: InstallStage;
   icon: React.ElementType;
   i18nKey: string;
-}[] = [
-  {
-    key: InstallStage.DOWNLOADING,
-    icon: Download,
-    i18nKey: 'plugins.installProgress.downloading',
-  },
-  {
-    key: InstallStage.INSTALLING_DEPS,
-    icon: Package,
-    i18nKey: 'plugins.installProgress.installingDeps',
-  },
-];
+};
 
-function getStageIndex(stage: InstallStage): number {
-  const idx = STAGES.findIndex((s) => s.key === stage);
+function getStages(task: PluginInstallTask): StageConfig[] {
+  return [
+    ...(task.operation === 'upgrade'
+      ? [
+          {
+            key: InstallStage.CHECKING,
+            icon: RefreshCcw,
+            i18nKey: 'plugins.installProgress.checkingUpdate',
+          } as StageConfig,
+        ]
+      : []),
+    {
+      key: InstallStage.DOWNLOADING,
+      icon: Download,
+      i18nKey: 'plugins.installProgress.downloading',
+    },
+    {
+      key: InstallStage.VALIDATING,
+      icon: ShieldCheck,
+      i18nKey: 'plugins.installProgress.validating',
+    },
+    {
+      key: InstallStage.INSTALLING_DEPS,
+      icon: Package,
+      i18nKey:
+        task.operation === 'upgrade'
+          ? 'plugins.installProgress.applyingUpdate'
+          : 'plugins.installProgress.installingDeps',
+    },
+    {
+      key: InstallStage.ACTIVATING,
+      icon: Rocket,
+      i18nKey: 'plugins.installProgress.activating',
+    },
+  ];
+}
+
+function getStageIndex(stages: StageConfig[], stage: InstallStage): number {
+  const idx = stages.findIndex((item) => item.key === stage);
   return idx >= 0 ? idx : -1;
 }
 
@@ -169,9 +198,13 @@ function formatSpeed(bytesPerSec: number): string {
 function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const { t } = useTranslation();
 
-  const currentStageIndex = getStageIndex(task.stage);
+  const stages = getStages(task);
   const isDone = task.stage === InstallStage.DONE;
   const isError = task.stage === InstallStage.ERROR;
+  const currentStageIndex = getStageIndex(
+    stages,
+    isError ? (task.failedStage ?? InstallStage.INSTALLING_DEPS) : task.stage,
+  );
 
   // MCP / Skill don't have the plugin's download + dependency-install stages;
   // show a single "installing → done/failed" row instead of plugin steps.
@@ -334,43 +367,22 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             isError={isError}
             detail={isError ? task.error : undefined}
           />
-        ) : isDone ? (
-          /* When done: show all stages with completed style */
-          STAGES.map((stageConfig) => (
+        ) : (
+          stages.map((stageConfig, index) => (
             <StageRow
               key={stageConfig.key}
               icon={stageConfig.icon}
               label={t(stageConfig.i18nKey)}
-              isActive={false}
-              isCompleted={true}
-              isError={false}
-              detail={getStageDetail(stageConfig.key, true)}
+              isActive={!isDone && index === currentStageIndex}
+              isCompleted={isDone || index < currentStageIndex}
+              isError={isError && index === currentStageIndex}
+              detail={
+                isDone || index === currentStageIndex
+                  ? getStageDetail(stageConfig.key, isDone)
+                  : undefined
+              }
             />
           ))
-        ) : isError ? (
-          /* Error: show the failed stage */
-          currentStageIndex >= 0 && (
-            <StageRow
-              icon={STAGES[currentStageIndex].icon}
-              label={t(STAGES[currentStageIndex].i18nKey)}
-              isActive={true}
-              isCompleted={false}
-              isError={true}
-              detail={task.error}
-            />
-          )
-        ) : (
-          /* In progress: only show the current active stage */
-          currentStageIndex >= 0 && (
-            <StageRow
-              icon={STAGES[currentStageIndex].icon}
-              label={t(STAGES[currentStageIndex].i18nKey)}
-              isActive={true}
-              isCompleted={false}
-              isError={false}
-              detail={getStageDetail(STAGES[currentStageIndex].key, false)}
-            />
-          )
         )}
       </div>
 
@@ -379,7 +391,9 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
           <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
           <span className="text-sm text-green-700 dark:text-green-300 font-medium break-words">
-            {t('plugins.installProgress.installComplete')}
+            {task.operation === 'upgrade'
+              ? t('plugins.installProgress.updateComplete')
+              : t('plugins.installProgress.installComplete')}
           </span>
         </div>
       )}
@@ -402,6 +416,8 @@ export default function PluginInstallProgressDialog() {
     usePluginInstallTasks();
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+  const TitleIcon =
+    selectedTask?.operation === 'upgrade' ? RefreshCcw : Download;
   const open = !!selectedTask;
 
   const handleClose = () => {
@@ -428,12 +444,16 @@ export default function PluginInstallProgressDialog() {
       >
         <DialogHeader>
           <DialogTitle className="flex items-start gap-3">
-            <Download className="size-5 shrink-0 mt-0.5" />
+            <TitleIcon className="size-5 shrink-0 mt-0.5" />
             <span className="break-words">
               {selectedTask
-                ? t('plugins.installProgress.title', {
-                    name: selectedTask.pluginName,
-                  })
+                ? selectedTask.operation === 'upgrade'
+                  ? t('plugins.installProgress.updateTitle', {
+                      name: selectedTask.pluginName,
+                    })
+                  : t('plugins.installProgress.title', {
+                      name: selectedTask.pluginName,
+                    })
                 : t('plugins.installProgress.titleGeneric')}
             </span>
           </DialogTitle>

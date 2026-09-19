@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import traceback
 import os
+from typing import TYPE_CHECKING
 
 from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
@@ -27,6 +28,7 @@ from ..api.http.service import space as space_service
 from ..api.http.service import model as model_service
 from ..api.http.service import provider as provider_service
 from ..api.http.service import pipeline as pipeline_service
+from ..api.http.service import agent as agent_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
@@ -56,6 +58,9 @@ from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+
+if TYPE_CHECKING:
+    from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
 
 
 class Application:
@@ -173,6 +178,8 @@ class Application:
 
     pipeline_service: pipeline_service.PipelineService = None
 
+    agent_service: agent_service.AgentService = None
+
     bot_service: bot_service.BotService = None
 
     knowledge_service: knowledge_service.KnowledgeService = None
@@ -194,6 +201,13 @@ class Application:
     skill_mgr: skill_mgr.SkillManager = None
 
     maintenance_service: maintenance_service.MaintenanceService = None
+
+    # Agent runner subsystem
+    runner_registry: RunnerRegistry = None
+
+    runner_default_config_service: RunnerDefaultConfigService = None
+
+    agent_run_orchestrator: AgentRunOrchestrator = None
 
     blocking_executor: bounded_executor.BoundedThreadPoolExecutor | None = None
     event_loop_monitor: event_loop_monitor.EventLoopLagMonitor
@@ -583,6 +597,10 @@ class Application:
             if self.telemetry is not None:
                 with contextlib.suppress(Exception):
                     await self.telemetry.shutdown()
+            diagnostics_manager = getattr(self, 'diagnostics', None)
+            if diagnostics_manager is not None:
+                with contextlib.suppress(Exception):
+                    await diagnostics_manager.shutdown()
             if self.vector_db_mgr is not None:
                 with contextlib.suppress(Exception):
                     await self.vector_db_mgr.shutdown()

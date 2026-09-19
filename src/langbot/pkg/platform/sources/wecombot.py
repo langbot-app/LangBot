@@ -11,7 +11,7 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from ..logger import EventLogger
+from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger as EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import (
     WecomBotClient,
@@ -526,9 +526,9 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'WeComBot: cannot register form pause (no active stream session); falling back to plain text'
             )
             try:
-                from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
+                from langbot.pkg.platform.human_input import format_human_input_text
 
-                fallback = _format_human_input_text(
+                fallback = format_human_input_text(
                     form_data.get('node_title', ''),
                     form_data.get('form_content', ''),
                     form_data.get('actions', []) or [],

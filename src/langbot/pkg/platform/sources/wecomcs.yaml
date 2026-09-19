@@ -12,6 +12,7 @@ metadata:
     zh_Hant: 企業微信對外客服機器人，需要公網地址以接收訊息推送，請查看文件了解使用方式
   icon: wecom.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:

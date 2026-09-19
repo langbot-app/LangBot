@@ -3,11 +3,20 @@ from sqlalchemy.exc import IntegrityError
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
+from ....service.bot_errors import BotApplyError, bot_error_message
 from ... import group
 
 
 @group.group_class('bots', '/api/v1/platform/bots')
 class BotsRouterGroup(group.RouterGroup):
+    def _apply_error_response(self, exc: BotApplyError):
+        request_id = self.request_id()
+        logger = getattr(self.ap, 'logger', self.quart_app.logger)
+        logger.error(f'Bot configuration apply failed request_id={request_id} bot_uuid={exc.bot_uuid}', exc_info=True)
+        return quart.jsonify(
+            code='bot_apply_failed', msg=str(exc), data={'uuid': exc.bot_uuid}, request_id=request_id
+        ), 400
+
     async def initialize(self) -> None:
         @self.route(
             '',
@@ -34,7 +43,14 @@ class BotsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             json_data = await quart.request.json
-            bot_uuid = await self.ap.bot_service.create_bot(request_context, json_data)
+            if not isinstance(json_data, dict):
+                return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
+            try:
+                bot_uuid = await self.ap.bot_service.create_bot(request_context, json_data)
+            except BotApplyError as exc:
+                return self._apply_error_response(exc)
+            except ValueError as exc:
+                return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             return self.success(data={'uuid': bot_uuid})
 
         @self.route(
@@ -63,7 +79,14 @@ class BotsRouterGroup(group.RouterGroup):
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
-                await self.ap.bot_service.update_bot(request_context, bot_uuid, json_data)
+                if not isinstance(json_data, dict):
+                    return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
+                try:
+                    await self.ap.bot_service.update_bot(request_context, bot_uuid, json_data)
+                except BotApplyError as exc:
+                    return self._apply_error_response(exc)
+                except ValueError as exc:
+                    return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             else:
                 await self.ap.bot_service.delete_bot(request_context, bot_uuid)
             return self.success()
@@ -82,6 +105,45 @@ class BotsRouterGroup(group.RouterGroup):
                 request_context, bot_uuid, from_index, max_count
             )
             return self.success(data={'logs': logs, 'total_count': total_count})
+
+        @self.route(
+            '/<bot_uuid>/event-routes/status',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            return self.success(data=await self.ap.bot_service.list_event_route_statuses(request_context, bot_uuid))
+
+        async def _dry_run_event_route(bot_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.json
+            if not isinstance(json_data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            result = await self.ap.bot_service.dry_run_event_route(
+                request_context,
+                bot_uuid=bot_uuid,
+                event_type=json_data.get('event_type'),
+                event_data=json_data.get('event_data', json_data.get('payload')),
+                context=json_data.get('context'),
+                event_bindings=json_data.get('event_bindings'),
+            )
+            return self.success(data=result)
+
+        self.route(
+            '/<bot_uuid>/event-routes/dry-run',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )(_dry_run_event_route)
+        # Backward-compatible alias for early local clients/tests created before
+        # the product route naming was settled.
+        self.route(
+            '/<bot_uuid>/event_route/dry_run',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )(_dry_run_event_route)
 
         @self.route(
             '/<bot_uuid>/send_message',

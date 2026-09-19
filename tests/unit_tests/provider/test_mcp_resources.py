@@ -12,6 +12,7 @@ from mcp import types as mcp_types
 from mcp.shared.exceptions import McpError
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 from langbot.pkg.provider.tools.loaders.mcp import (
     MCP_RESOURCE_CONTEXT_QUERY_KEY,
     MCP_RESOURCE_TRACE_QUERY_KEY,
@@ -436,13 +437,13 @@ async def test_mcp_loader_refuses_resource_tool_calls_when_agent_read_disabled()
         }
     )
 
-    result = await loader.invoke_tool(
-        MCP_TOOL_READ_RESOURCE,
-        {'server_name': 'docs', 'uri': 'file:///README.md'},
-        query,
-    )
+    with pytest.raises(ToolExecutionDeniedError, match='MCP resource agent reads are disabled'):
+        await loader.invoke_tool(
+            MCP_TOOL_READ_RESOURCE,
+            {'server_name': 'docs', 'uri': 'file:///README.md'},
+            query,
+        )
 
-    assert result[0].text == 'Error: MCP resource agent reads are disabled.'
     session.session.read_resource.assert_not_called()
 
 

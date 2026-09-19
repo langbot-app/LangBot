@@ -1,0 +1,51 @@
+"""Agent runner errors."""
+
+from __future__ import annotations
+
+
+class RunnerError(Exception):
+    """Base error for agent runner operations."""
+
+    pass
+
+
+class RunnerNotFoundError(RunnerError):
+    """Runner not found in registry."""
+
+    def __init__(self, runner_id: str):
+        self.runner_id = runner_id
+        super().__init__(f'Agent runner not found: {runner_id}')
+
+
+class RunnerNotAuthorizedError(RunnerError):
+    """Runner not authorized for this binding."""
+
+    def __init__(self, runner_id: str, bound_plugins: list[str] | None):
+        self.runner_id = runner_id
+        self.bound_plugins = bound_plugins
+        super().__init__(f'Agent runner {runner_id} not authorized for bound_plugins={bound_plugins}')
+
+
+class RunnerProtocolError(RunnerError):
+    """Runner protocol version mismatch or invalid manifest."""
+
+    def __init__(self, runner_id: str, message: str):
+        self.runner_id = runner_id
+        super().__init__(f'Agent runner protocol error for {runner_id}: {message}')
+
+
+class RunnerExecutionError(RunnerError):
+    """Runner execution failed."""
+
+    def __init__(
+        self,
+        runner_id: str,
+        message: str,
+        retryable: bool = False,
+        error_code: str | None = None,
+    ):
+        self.runner_id = runner_id
+        self.message = message
+        self.retryable = retryable
+        self.error_code = error_code
+        super().__init__(f'Agent runner {runner_id} execution failed: {message}')

@@ -27,6 +27,7 @@ import { CustomApiError } from '@/app/infra/entities/common';
 import { PanelBody } from '../settings-dialog/panel-layout';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import type { WorkspaceSpaceBilling } from '@/app/infra/entities/workspace';
+import { useLangBotModelAvailability } from '../model-availability/useLangBotModelAvailability';
 
 interface ModelsPanelProps {
   // True when this panel is the active section and the dialog is open.
@@ -89,6 +90,10 @@ export default function ModelsPanel({
   const currentWorkspace = useCurrentWorkspace();
   const canManage =
     currentWorkspace?.permissions.includes('provider_secret.manage') ?? false;
+  const {
+    metadata: langbotModelMetadata,
+    loaded: langbotModelAvailabilityLoaded,
+  } = useLangBotModelAvailability(active && !systemInfo.disable_models_service);
 
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [spaceBilling, setSpaceBilling] =
@@ -523,8 +528,9 @@ export default function ModelsPanel({
       setTestResult({ success: true, duration });
     } catch (err) {
       console.error('Failed to test model', err);
-      toast.error(t('models.testError') + ': ' + (err as CustomApiError).msg);
-      setTestResult(null);
+      const message = (err as CustomApiError).msg || t('models.testError');
+      toast.error(t('models.testError') + ': ' + message);
+      setTestResult({ success: false, message });
     } finally {
       setIsTesting(false);
     }
@@ -577,6 +583,8 @@ export default function ModelsPanel({
         isWorkspaceOwner={currentWorkspace?.membership.role === 'owner'}
         ownerSpaceBound={spaceBilling?.owner_space_bound ?? false}
         spaceCredits={spaceBilling?.credits ?? null}
+        modelMetadata={langbotModelMetadata}
+        modelAvailabilityLoaded={langbotModelAvailabilityLoaded}
         addModelPopoverOpen={addModelPopoverOpen}
         editModelPopoverOpen={editModelPopoverOpen}
         deleteConfirmOpen={deleteConfirmOpen}

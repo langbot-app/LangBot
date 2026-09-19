@@ -1,0 +1,176 @@
+[
+  {
+    "name": "base-url",
+    "label": {
+      "en_US": "Base URL",
+      "zh_Hans": "\u57fa\u7840 URL"
+    },
+    "type": "string",
+    "required": true,
+    "default": "http://localhost:7860"
+  },
+  {
+    "name": "api-key",
+    "label": {
+      "en_US": "API Key",
+      "zh_Hans": "API \u5bc6\u94a5"
+    },
+    "type": "secret",
+    "required": true,
+    "default": ""
+  },
+  {
+    "name": "flow-id",
+    "label": {
+      "en_US": "Flow ID",
+      "zh_Hans": "\u6d41\u7a0b ID"
+    },
+    "type": "string",
+    "required": true,
+    "default": ""
+  },
+  {
+    "name": "advanced-settings",
+    "label": {
+      "en_US": "Advanced Settings",
+      "zh_Hans": "\u9ad8\u7ea7\u8bbe\u7f6e"
+    },
+    "description": {
+      "en_US": "Show input, output, and flow tweak controls.",
+      "zh_Hans": "\u663e\u793a\u8f93\u5165\u3001\u8f93\u51fa\u548c\u6d41\u7a0b tweak \u8c03\u4f18\u9009\u9879\u3002"
+    },
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "input-type",
+    "label": {
+      "en_US": "Input Type",
+      "zh_Hans": "\u8f93\u5165\u7c7b\u578b"
+    },
+    "type": "string",
+    "required": false,
+    "default": "chat",
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "output-type",
+    "label": {
+      "en_US": "Output Type",
+      "zh_Hans": "\u8f93\u51fa\u7c7b\u578b"
+    },
+    "type": "string",
+    "required": false,
+    "default": "chat",
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "tweaks",
+    "label": {
+      "en_US": "Tweaks",
+      "zh_Hans": "\u8c03\u6574\u53c2\u6570"
+    },
+    "type": "json",
+    "required": false,
+    "default": "{}",
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "langbot-assets-enabled",
+    "label": {
+      "en_US": "Enable LangBot Assets",
+      "zh_Hans": "\u542f\u7528 LangBot \u8d44\u4ea7"
+    },
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "langbot-assets-gateway-host",
+    "label": {
+      "en_US": "LangBot Asset Gateway Host",
+      "zh_Hans": "LangBot \u8d44\u4ea7\u7f51\u5173\u76d1\u542c\u5730\u5740"
+    },
+    "type": "string",
+    "required": false,
+    "default": "0.0.0.0",
+    "show_if": {
+      "field": "langbot-assets-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "langbot-assets-gateway-port",
+    "label": {
+      "en_US": "LangBot Asset Gateway Port",
+      "zh_Hans": "LangBot \u8d44\u4ea7\u7f51\u5173\u7aef\u53e3"
+    },
+    "type": "integer",
+    "required": false,
+    "default": 8765,
+    "show_if": {
+      "field": "langbot-assets-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "langbot-assets-gateway-request-timeout",
+    "label": {
+      "en_US": "LangBot Asset Gateway Request Timeout",
+      "zh_Hans": "LangBot \u8d44\u4ea7\u7f51\u5173\u8bf7\u6c42\u8d85\u65f6"
+    },
+    "type": "integer",
+    "required": false,
+    "default": 60,
+    "show_if": {
+      "field": "langbot-assets-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "langbot-assets-token-ttl",
+    "label": {
+      "en_US": "LangBot Asset Token TTL",
+      "zh_Hans": "LangBot \u8d44\u4ea7\u4ee4\u724c\u6709\u6548\u671f"
+    },
+    "type": "integer",
+    "required": false,
+    "default": 3600,
+    "show_if": {
+      "field": "langbot-assets-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "langbot-assets-input-name",
+    "label": {
+      "en_US": "LangBot Asset Token Input Name",
+      "zh_Hans": "LangBot \u8d44\u4ea7\u4ee4\u724c\u8f93\u5165\u7ec4\u4ef6\u540d"
+    },
+    "type": "string",
+    "required": false,
+    "default": "langbot_asset_run_token",
+    "show_if": {
+      "field": "langbot-assets-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  }
+]

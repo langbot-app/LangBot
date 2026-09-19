@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..telemetry import diagnostics
+
 import asyncio
 import dataclasses
 import inspect
@@ -305,6 +307,7 @@ class QueryPool:
             )
             object.__setattr__(query, 'query_uuid', query_uuid)
             object.__setattr__(query, '_execution_context', execution_context)
+            object.__setattr__(query, '_diagnostic_context', diagnostics.capture_context())
 
             self.queries.append(query)
             self.cached_queries[(execution_context.workspace_uuid, query_uuid)] = query
@@ -393,32 +396,37 @@ class QueryPool:
     async def remove_query(self, query: pipeline_query.Query) -> bool:
         """Remove a query and both of its Workspace-scoped indexes."""
 
+        async with self.pool_lock:
+            return self.remove_query_locked(query)
+
+    def remove_query_locked(self, query: pipeline_query.Query) -> bool:
+        """Remove a query while the caller owns ``pool_lock``."""
+
         execution_context = get_query_execution_context(query)
         query_uuid = execution_context.query_uuid
         if query_uuid is None:
             raise ExecutionContextRequiredError('Query.query_uuid is required for removal')
 
-        async with self.pool_lock:
-            cache_key = (execution_context.workspace_uuid, query_uuid)
-            cached_query = self.cached_queries.get(cache_key)
-            if cached_query is not query:
-                return False
-            del self.cached_queries[cache_key]
-            remaining = self.active_query_count_by_workspace.get(execution_context.workspace_uuid, 0) - 1
-            if remaining > 0:
-                self.active_query_count_by_workspace[execution_context.workspace_uuid] = remaining
-            else:
-                self.active_query_count_by_workspace.pop(execution_context.workspace_uuid, None)
-            self.legacy_query_index.pop(
-                (execution_context.workspace_uuid, query.query_id),
-                None,
-            )
-            for index, queued_query in enumerate(self.queries):
-                if queued_query is query:
-                    self.queries.pop(index)
-                    break
-            plugin_diagnostics.discard_query_state(query)
-            return True
+        cache_key = (execution_context.workspace_uuid, query_uuid)
+        cached_query = self.cached_queries.get(cache_key)
+        if cached_query is not query:
+            return False
+        del self.cached_queries[cache_key]
+        remaining = self.active_query_count_by_workspace.get(execution_context.workspace_uuid, 0) - 1
+        if remaining > 0:
+            self.active_query_count_by_workspace[execution_context.workspace_uuid] = remaining
+        else:
+            self.active_query_count_by_workspace.pop(execution_context.workspace_uuid, None)
+        self.legacy_query_index.pop(
+            (execution_context.workspace_uuid, query.query_id),
+            None,
+        )
+        for index, queued_query in enumerate(self.queries):
+            if queued_query is query:
+                self.queries.pop(index)
+                break
+        plugin_diagnostics.discard_query_state(query)
+        return True
 
     async def __aenter__(self):
         await self.pool_lock.acquire()

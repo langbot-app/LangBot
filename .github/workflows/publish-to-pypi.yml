@@ -37,8 +37,8 @@ jobs:
           from pathlib import Path
 
           tag = os.environ['RELEASE_TAG']
-          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag):
-              raise SystemExit('source_ref must be an existing release tag: vX.Y.Z')
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|rc)\.[0-9]+)?', tag):
+              raise SystemExit('source_ref must be an existing release tag: vX.Y.Z or vX.Y.Z-beta.N')
           def revision(ref):
               return subprocess.check_output(['git', 'rev-parse', '--verify', ref], text=True).strip()
           if revision('HEAD') != revision(f'refs/tags/{tag}^{{}}'):
@@ -70,6 +70,7 @@ jobs:
 
       - name: Build package
         run: |
+          python3 scripts/stamp_build_revision.py
           uv build
 
       - name: Publish to PyPI

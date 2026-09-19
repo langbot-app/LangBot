@@ -36,7 +36,7 @@ export default function PluginConfigPage() {
   const detailId = searchParams.get('id');
 
   if (detailId) {
-    return <PluginDetailContent id={detailId} />;
+    return <PluginDetailContent key={detailId} id={detailId} />;
   }
 
   return <PluginListView />;
@@ -83,9 +83,18 @@ function PluginListView() {
   }, [t]);
 
   useEffect(() => {
-    const onComplete = (_taskId: number, success: boolean, error?: string) => {
+    const onComplete = (
+      _taskId: number,
+      success: boolean,
+      error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
       if (success) {
-        toast.success(t('plugins.installSuccess'));
+        toast.success(
+          operation === 'upgrade'
+            ? t('plugins.updateSuccess')
+            : t('plugins.installSuccess'),
+        );
         pluginInstalledRef.current?.refreshPluginList();
         refreshPlugins();
       } else {

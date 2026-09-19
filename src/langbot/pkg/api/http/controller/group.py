@@ -27,6 +27,7 @@ from ..authz import (
 )
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ....cloud.support_admin import SupportAdminSessionError
+from ... import management_diagnostics as diagnostics
 
 if typing.TYPE_CHECKING:
     from ....core.app import Application
@@ -224,6 +225,7 @@ class RouterGroup(abc.ABC):
 
                 try:
                     if request_context is not None:
+                        diagnostics.workspace(request_context)
                         with bounded_executor.blocking_work_scope(request_context.workspace_uuid):
                             persistence_mgr = getattr(
                                 self.ap,
@@ -277,7 +279,14 @@ class RouterGroup(abc.ABC):
                     )
                     return self.internal_error_response(request_id)
 
-            new_f = handler_error
+            # Observe outside authentication, using the registered Core handler
+            # identity rather than the URL (which can contain user identifiers).
+            new_f = diagnostics.observe(
+                diagnostics.operation_id('http', f, rule=rule, methods=options.get('methods')),
+                source='http',
+                ap=self.ap,
+                http=True,
+            )(handler_error)
             # Quart/Flask requires a unique endpoint name even when the same URL
             # intentionally has separate handlers for different HTTP methods.
             # Include the method set so CRUD routes can declare distinct
@@ -564,6 +573,7 @@ class RouterGroup(abc.ABC):
     def fail(self, code: int | str, msg: str) -> quart.Response:
         """Return an error response"""
 
+        diagnostics.outcome('failed')
         return quart.jsonify(
             {
                 'code': code,

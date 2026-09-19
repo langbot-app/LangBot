@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.telemetry import diagnostics
+
 import posixpath
 import re
 from typing import TYPE_CHECKING, Any
@@ -71,6 +73,7 @@ class RAGRuntimeService:
             raise WorkspaceNotFoundError('Knowledge base not found')
         return kb_uuid
 
+    @diagnostics.observe('api', 'knowledge.vector_upsert', source='agent')
     async def vector_upsert(
         self,
         execution_context: ExecutionContext,
@@ -98,6 +101,7 @@ class RAGRuntimeService:
             documents=documents,
         )
 
+    @diagnostics.observe('api', 'knowledge.vector_search', source='agent')
     async def vector_search(
         self,
         execution_context: ExecutionContext,
@@ -122,6 +126,7 @@ class RAGRuntimeService:
             vector_weight=vector_weight,
         )
 
+    @diagnostics.observe('api', 'knowledge.vector_delete', source='agent')
     async def vector_delete(
         self,
         execution_context: ExecutionContext,
@@ -158,6 +163,7 @@ class RAGRuntimeService:
             )
         return count
 
+    @diagnostics.observe('api', 'knowledge.vector_list', source='agent')
     async def vector_list(
         self,
         execution_context: ExecutionContext,
@@ -186,6 +192,7 @@ class RAGRuntimeService:
             offset=offset,
         )
 
+    @diagnostics.observe('api', 'knowledge.get_file_stream', source='agent')
     async def get_file_stream(
         self,
         execution_context: ExecutionContext,

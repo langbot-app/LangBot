@@ -68,7 +68,7 @@ Anthropic、Google 和 LiteLLM 的官方文档域名在本次环境中被浏览�
 - `LLMModel.extra_args` 是 JSON 字段，Web 端已有通用高级参数编辑器。
 - `LiteLLMRequester` 会按“模型级 `extra_args`，再调用级 `extra_args`”的顺序合并参数。
 - LiteLLM 已统一处理多个 Provider 的 `reasoning_effort`、`thinking` 和返回的 `reasoning_content`。
-- `LocalAgentRunner` 的非流式、流式、工具调用和 fallback 路径都经过 `RuntimeProvider.invoke_llm*()`。
+- `LocalRunner` 的非流式、流式、工具调用和 fallback 路径都经过 `RuntimeProvider.invoke_llm*()`。
 - `remove-think` 已能控制 `<think>` 或独立 reasoning 内容是否进入展示文本。
 - Gemini 工具调用所需的 `provider_specific_fields` / thought signature 已有保留逻辑和单元测试。
 

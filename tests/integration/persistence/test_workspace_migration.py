@@ -151,6 +151,47 @@ async def test_workspace_upgrade_is_idempotent_and_preserves_identifiers(legacy_
     assert workspace_uuid_after == workspace_uuid_before
 
 
+async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(legacy_engine):
+    await run_alembic_upgrade(legacy_engine, '0016_agent_workspace')
+    async with legacy_engine.begin() as conn:
+        owner_account_uuid = await conn.scalar(sa.text('SELECT uuid FROM users ORDER BY id LIMIT 1'))
+        old_workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+        await conn.execute(sa.text('DELETE FROM workspace_memberships'))
+        await conn.execute(
+            sa.text('UPDATE workspaces SET created_by_account_uuid = NULL WHERE uuid = :workspace_uuid'),
+            {'workspace_uuid': old_workspace_uuid},
+        )
+
+    await run_alembic_upgrade(legacy_engine, 'head')
+
+    async with legacy_engine.connect() as conn:
+        workspace = (
+            await conn.execute(
+                sa.text("SELECT uuid, created_by_account_uuid FROM workspaces WHERE source = 'local'"),
+            )
+        ).mappings().one()
+        membership = (await conn.execute(sa.text('SELECT * FROM workspace_memberships'))).mappings().one()
+
+    assert workspace['uuid'] == workspace_uuid_from_instance_id('instance_migration_test')
+    assert workspace['created_by_account_uuid'] == owner_account_uuid
+    assert membership['workspace_uuid'] == workspace['uuid']
+    assert membership['account_uuid'] == owner_account_uuid
+    assert membership['role'] == 'owner'
+    assert membership['status'] == 'active'
+
+
+async def test_development_owner_repair_revision_upgrades_to_merged_head(legacy_engine):
+    await run_alembic_upgrade(legacy_engine, '0017_local_owner_repair')
+    assert await get_alembic_current(legacy_engine) == '0017_local_owner_repair'
+
+    await run_alembic_upgrade(legacy_engine, 'head')
+
+    assert await get_alembic_current(legacy_engine) == get_alembic_head()
+    async with legacy_engine.connect() as conn:
+        workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+    assert workspace_uuid == workspace_uuid_from_instance_id('instance_migration_test')
+
+
 async def test_existing_oss_workspace_is_rekeyed_to_instance_identity(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-rekey.db"}')
     instance_id = 'instance_a711d9e4-0953-443f-a0e9-7dd50193a79f'

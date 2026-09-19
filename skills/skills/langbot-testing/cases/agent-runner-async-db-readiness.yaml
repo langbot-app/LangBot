@@ -1,5 +1,5 @@
 id: agent-runner-async-db-readiness
-title: "AgentRunner async DB readiness probe"
+title: "Runner async DB readiness probe"
 mode: probe
 area: release
 type: smoke

@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import EntityLoadState from '@/components/EntityLoadState';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
-import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Input } from '@/components/ui/input';
 import EmojiPicker from '@/components/ui/emoji-picker';
 import {
@@ -24,13 +23,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { KnowledgeBase, KnowledgeEngine } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
@@ -43,6 +36,13 @@ import {
   parseDynamicFormItemType,
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { UUID } from 'uuidjs';
+import KnowledgeEngineSelect from './KnowledgeEngineSelect';
+import GuidedTour, {
+  GuidedTourStep,
+} from '@/app/home/components/guided-tour/GuidedTour';
+
+const KNOWLEDGE_ENGINE_MARKETPLACE_URL =
+  'https://space.langbot.app/market?type=plugin&component=KnowledgeEngine';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -85,11 +85,13 @@ export default function KBForm({
   onNewKbCreated,
   onKbUpdated,
   onDirtyChange,
+  guideEnabled = true,
 }: {
   initKbId?: string;
   onNewKbCreated: (kbId: string) => void;
   onKbUpdated: (kbId: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  guideEnabled?: boolean;
 }) {
   const { t } = useTranslation();
   const [ragEngines, setRagEngines] = useState<KnowledgeEngine[]>([]);
@@ -100,12 +102,17 @@ export default function KBForm({
   const [retrievalSettings, setRetrievalSettings] = useState<
     Record<string, unknown>
   >({});
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(Boolean(initKbId));
+  const [engineInitialized, setEngineInitialized] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Dirty tracking: snapshot of saved state for comparison
   const savedSnapshotRef = useRef<string>('');
   const isInitializing = useRef(true);
+  const suppressNextAutoSelectRef = useRef(false);
 
   // Refs to store validation functions from dynamic forms
   const configValidateRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -150,16 +157,23 @@ export default function KBForm({
   };
 
   useEffect(() => {
-    loadRagEngines().then(() => {
-      if (initKbId) {
-        loadKbConfig(initKbId);
-      }
-    });
-  }, []);
+    setInitialDataLoaded(false);
+    setLoadFailed(false);
+    loadRagEngines()
+      .then(() => {
+        if (initKbId) return loadKbConfig(initKbId);
+      })
+      .catch(() => setLoadFailed(true))
+      .finally(() => setInitialDataLoaded(true));
+  }, [initKbId, loadAttempt]);
 
   // Auto-select first engine when engines are loaded and no selection
   useEffect(() => {
     if (ragEngines.length > 0 && !selectedEngineId && !isEditing) {
+      if (suppressNextAutoSelectRef.current) {
+        suppressNextAutoSelectRef.current = false;
+        return;
+      }
       const firstEngine = ragEngines[0];
       setSelectedEngineId(firstEngine.plugin_id);
       form.setValue('ragEngineId', firstEngine.plugin_id);
@@ -180,7 +194,7 @@ export default function KBForm({
       const resp = await httpClient.getKnowledgeEngines();
       setRagEngines(resp.engines);
     } catch (err) {
-      console.error('Failed to load Knowledge Engines:', err);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -206,42 +220,59 @@ export default function KBForm({
 
       setConfigSettings(kb.creation_settings || {});
       setRetrievalSettings(kb.retrieval_settings || {});
+      setEngineInitialized(kb.initialized !== false);
 
       // Capture snapshot after a tick so dynamic forms have emitted initial values
       setTimeout(() => {
         captureSnapshot();
         isInitializing.current = false;
+        onDirtyChange?.(kb.initialized === false);
       }, 500);
     } catch (err) {
-      console.error('Failed to load KB config:', err);
       isInitializing.current = false;
+      throw err;
     }
   };
 
-  const handleEngineChange = (engineId: string) => {
-    setSelectedEngineId(engineId);
-    form.setValue('ragEngineId', engineId);
+  const handleEngineChange = useCallback(
+    (engineId: string, installedEngine?: KnowledgeEngine) => {
+      setSelectedEngineId(engineId);
+      form.setValue('ragEngineId', engineId, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+      form.clearErrors('ragEngineId');
+      void form.trigger('ragEngineId');
 
-    const engine = ragEngines.find((e) => e.plugin_id === engineId);
-    if (engine) {
+      const engine =
+        installedEngine ??
+        ragEngines.find((candidate) => candidate.plugin_id === engineId);
+      if (!engine) return;
+
       const formItems = parseCreationSchema(engine.creation_schema);
-      if (formItems.length > 0) {
-        setConfigSettings(getDefaultValues(formItems));
-      } else {
-        setConfigSettings({});
-      }
+      setConfigSettings(
+        formItems.length > 0 ? getDefaultValues(formItems) : {},
+      );
       const retrievalItems = parseCreationSchema(engine.retrieval_schema);
-      if (retrievalItems.length > 0) {
-        setRetrievalSettings(getDefaultValues(retrievalItems));
-      } else {
-        setRetrievalSettings({});
-      }
-    }
-  };
+      setRetrievalSettings(
+        retrievalItems.length > 0 ? getDefaultValues(retrievalItems) : {},
+      );
+    },
+    [form, ragEngines],
+  );
+
+  const handleEngineInstalled = useCallback((engine: KnowledgeEngine) => {
+    suppressNextAutoSelectRef.current = true;
+    setRagEngines((current) => [
+      ...current.filter((item) => item.plugin_id !== engine.plugin_id),
+      engine,
+    ]);
+  }, []);
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
-    // Validate dynamic forms before submission
-    if (configValidateRef.current) {
+    // Engine parameters are configured only after the draft has been created.
+    if (initKbId && configValidateRef.current) {
       const configValid = await configValidateRef.current();
       if (!configValid) {
         toast.error(t('knowledge.engineSettingsInvalid'));
@@ -249,7 +280,7 @@ export default function KBForm({
       }
     }
 
-    if (retrievalValidateRef.current) {
+    if (initKbId && retrievalValidateRef.current) {
       const retrievalValid = await retrievalValidateRef.current();
       if (!retrievalValid) {
         toast.error(t('knowledge.retrievalSettingsInvalid'));
@@ -264,12 +295,16 @@ export default function KBForm({
       knowledge_engine_plugin_id: selectedEngineId,
       creation_settings: configSettings,
       retrieval_settings: retrievalSettings,
+      ...(initKbId
+        ? { initialize_engine: !engineInitialized }
+        : { defer_initialization: true }),
     };
 
     if (initKbId) {
       httpClient
         .updateKnowledgeBase(initKbId, kbData)
         .then((res) => {
+          setEngineInitialized(true);
           captureSnapshot();
           onDirtyChange?.(false);
           onKbUpdated(res.uuid);
@@ -308,31 +343,52 @@ export default function KBForm({
     [selectedEngine?.retrieval_schema],
   );
 
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <p className="text-muted-foreground">{t('common.loading')}</p>
-      </div>
-    );
-  }
+  const guideSteps = useMemo<GuidedTourStep[]>(() => {
+    const steps: GuidedTourStep[] = [
+      {
+        id: 'engine',
+        target: '[data-guide="knowledge-engine"] [role="combobox"]',
+        title: t('guidedTour.knowledge.engine.title'),
+        description: t('guidedTour.knowledge.engine.description'),
+        action: {
+          href: KNOWLEDGE_ENGINE_MARKETPLACE_URL,
+          label: t('guidedTour.knowledge.engine.action'),
+        },
+      },
+    ];
 
-  // Show message if no engines available
-  if (ragEngines.length === 0) {
+    if (configFormItems.length > 0) {
+      steps.push({
+        id: 'engine-parameters',
+        target: '[data-guide="knowledge-engine-parameters"]',
+        title: t('guidedTour.knowledge.parameters.title'),
+        description: t('guidedTour.knowledge.parameters.description'),
+      });
+    }
+
+    if (retrievalFormItems.length > 0) {
+      steps.push({
+        id: 'retrieval',
+        target: '[data-guide="knowledge-retrieval"]',
+        title: t('guidedTour.knowledge.retrieval.title'),
+        description: t('guidedTour.knowledge.retrieval.description'),
+      });
+    }
+
+    steps.push({
+      id: 'save',
+      target: '[data-guide="knowledge-config-save"]',
+      title: t('guidedTour.knowledge.save.title'),
+      description: t('guidedTour.knowledge.save.description'),
+    });
+    return steps;
+  }, [configFormItems, retrievalFormItems, t]);
+
+  if (loadFailed)
     return (
-      <div className="flex flex-col items-center justify-center py-8 space-y-4">
-        <p className="text-muted-foreground">
-          {t('knowledge.noEnginesAvailable')}
-        </p>
-        <Link
-          to="/home/add-extension"
-          className="text-sm text-primary hover:underline"
-        >
-          {t('knowledge.installEngineHint')}
-        </Link>
-      </div>
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
     );
-  }
+  if (!initialDataLoaded) return <EntityLoadState />;
 
   return (
     <Form {...form}>
@@ -341,26 +397,59 @@ export default function KBForm({
         id="kb-form"
         className="space-y-6"
       >
-        {/* Card 1: Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('knowledge.basicInfo')}</CardTitle>
-            <CardDescription>
-              {t('knowledge.basicInfoDescription')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Name and Emoji in same row */}
-            <div className="flex gap-4 items-start">
+        {/* Basic information is entered here only during creation. */}
+        {!isEditing && (
+          <Card data-guide="knowledge-basic">
+            <CardHeader>
+              <CardTitle>{t('knowledge.basicInfo')}</CardTitle>
+              <CardDescription>
+                {t('knowledge.basicInfoDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Name and Emoji in same row */}
+              <div className="flex gap-4 items-start">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel>
+                        {t('knowledge.kbName')}
+                        <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="emoji"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('common.icon')}</FormLabel>
+                      <FormControl>
+                        <EmojiPicker
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Description */}
               <FormField
                 control={form.control}
-                name="name"
+                name="description"
                 render={({ field }) => (
-                  <FormItem className="flex-1">
-                    <FormLabel>
-                      {t('knowledge.kbName')}
-                      <span className="text-destructive">*</span>
-                    </FormLabel>
+                  <FormItem>
+                    <FormLabel>{t('knowledge.kbDescription')}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -368,40 +457,19 @@ export default function KBForm({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="emoji"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('common.icon')}</FormLabel>
-                    <FormControl>
-                      <EmojiPicker
-                        value={field.value}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Description */}
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('knowledge.kbDescription')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Knowledge Engine Selector */}
+        {/* Knowledge engine selection and settings stay together. */}
+        <Card data-guide="knowledge-engine">
+          <CardHeader>
+            <CardTitle>{t('knowledge.engineSettings')}</CardTitle>
+            <CardDescription>
+              {t('knowledge.engineSettingsDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
             <FormField
               control={form.control}
               name="ragEngineId"
@@ -412,66 +480,18 @@ export default function KBForm({
                     <span className="text-destructive">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Select
-                      disabled={isEditing}
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        handleEngineChange(value);
-                      }}
+                    <KnowledgeEngineSelect
+                      engines={ragEngines}
                       value={field.value}
-                    >
-                      <SelectTrigger className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]">
-                        {field.value ? (
-                          (() => {
-                            const [author, name] = field.value.split('/');
-                            const engine = ragEngines.find(
-                              (e) => e.plugin_id === field.value,
-                            );
-                            return (
-                              <div className="flex items-center gap-2">
-                                <AuthenticatedPluginIcon
-                                  author={author}
-                                  name={name}
-                                  className="h-5 w-5 rounded"
-                                />
-                                <span>
-                                  {engine
-                                    ? extractI18nObject(engine.name)
-                                    : field.value}
-                                </span>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <SelectValue
-                            placeholder={t('knowledge.selectKnowledgeEngine')}
-                          />
-                        )}
-                      </SelectTrigger>
-                      <SelectContent className="fixed z-[1000]">
-                        {ragEngines.map((engine) => {
-                          const [author, name] = engine.plugin_id.split('/');
-                          return (
-                            <SelectItem
-                              key={engine.plugin_id}
-                              value={engine.plugin_id}
-                            >
-                              <div className="flex items-center gap-2">
-                                <AuthenticatedPluginIcon
-                                  author={author}
-                                  name={name}
-                                  className="h-5 w-5 rounded"
-                                />
-                                <span>{extractI18nObject(engine.name)}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+                      disabled={isEditing}
+                      loading={loading}
+                      installScope="knowledge-base-create"
+                      onValueChange={handleEngineChange}
+                      onInstalled={handleEngineInstalled}
+                    />
                   </FormControl>
                   {selectedEngine?.description && (
-                    <FormDescription>
+                    <FormDescription className="max-w-[28rem] leading-5">
                       {extractI18nObject(selectedEngine.description)}
                     </FormDescription>
                   )}
@@ -484,38 +504,33 @@ export default function KBForm({
                 </FormItem>
               )}
             />
+
+            {isEditing && configFormItems.length > 0 && (
+              <div
+                data-guide="knowledge-engine-parameters"
+                className="space-y-6"
+              >
+                <Separator />
+                <DynamicFormComponent
+                  itemConfigList={configFormItems}
+                  initialValues={configSettings as Record<string, object>}
+                  onSubmit={(val) =>
+                    setConfigSettings(val as Record<string, unknown>)
+                  }
+                  isEditing={engineInitialized}
+                  externalDependentValues={retrievalSettings}
+                  onValidate={(validateFn) =>
+                    (configValidateRef.current = validateFn)
+                  }
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Card 2: Engine Settings (dynamic form from creation_schema) */}
-        {configFormItems.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('knowledge.engineSettings')}</CardTitle>
-              <CardDescription>
-                {t('knowledge.engineSettingsDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DynamicFormComponent
-                itemConfigList={configFormItems}
-                initialValues={configSettings as Record<string, object>}
-                onSubmit={(val) =>
-                  setConfigSettings(val as Record<string, unknown>)
-                }
-                isEditing={isEditing}
-                externalDependentValues={retrievalSettings}
-                onValidate={(validateFn) =>
-                  (configValidateRef.current = validateFn)
-                }
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Card 3: Retrieval Settings (dynamic form from retrieval_schema) */}
-        {retrievalFormItems.length > 0 && (
-          <Card>
+        {/* Retrieval Settings (dynamic form from retrieval_schema) */}
+        {isEditing && retrievalFormItems.length > 0 && (
+          <Card data-guide="knowledge-retrieval">
             <CardHeader>
               <CardTitle>{t('knowledge.retrievalSettings')}</CardTitle>
               <CardDescription>
@@ -538,6 +553,12 @@ export default function KBForm({
           </Card>
         )}
       </form>
+      <GuidedTour
+        enabled={isEditing && guideEnabled}
+        storageKey="langbot_knowledge_detail_guide_v1"
+        steps={guideSteps}
+        testId="knowledge-detail-guide"
+      />
     </Form>
   );
 }

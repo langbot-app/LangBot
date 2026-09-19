@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.box.runner import RunBoxBinding
 
 
 _CONTEXT = ExecutionContext(
@@ -28,6 +29,12 @@ def _make_query(*, variables=None, **kwargs):
         variables={} if variables is None else variables,
         **kwargs,
     )
+
+
+def _make_bound_query(**kwargs):
+    query = _make_query(**kwargs)
+    query._box_binding = RunBoxBinding('run-a', 'skill-box', {}, 'run-a')
+    return query
 
 
 def _make_skill_manager(skills: dict[str, dict], **kwargs):
@@ -540,10 +547,20 @@ class TestNativeToolLoaderSkillPaths:
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
+            if not loader._can_interpret_skill_host_paths():
+                # Windows lacks the secure descriptor-relative host file operations.
+                with pytest.raises(ValueError, match='owned by the Box Runtime'):
+                    await loader.invoke_tool(
+                        'read',
+                        {'path': '/workspace/.skills/demo/SKILL.md'},
+                        _make_bound_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
+                    )
+                return
+
             result = await loader.invoke_tool(
                 'read',
                 {'path': '/workspace/.skills/demo/SKILL.md'},
-                _make_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
+                _make_bound_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
             )
 
             assert result['ok'] is True
@@ -567,7 +584,7 @@ class TestNativeToolLoaderSkillPaths:
             )
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
-            query = _make_query(
+            query = _make_bound_query(
                 query_id='q-external-read',
                 variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']},
             )
@@ -599,7 +616,7 @@ class TestNativeToolLoaderSkillPaths:
             )
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
-            query = _make_query(
+            query = _make_bound_query(
                 query_id='q-external-no-protocol',
                 variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']},
             )
@@ -629,7 +646,7 @@ class TestNativeToolLoaderSkillPaths:
             ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
             loader = NativeToolLoader(ap)
 
-            query = _make_query(query_id='q1', launcher_type='person', launcher_id='123')
+            query = _make_bound_query(query_id='q1', launcher_type='person', launcher_id='123')
             register_activated_skill(query, _make_skill_data(name='demo', package_root=tmpdir))
 
             result = await loader.invoke_tool(
@@ -661,7 +678,7 @@ class TestNativeToolLoaderSkillPaths:
         )
         ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
         loader = NativeToolLoader(ap)
-        query = _make_query(query_id='q-external', launcher_type='person', launcher_id='123')
+        query = _make_bound_query(query_id='q-external', launcher_type='person', launcher_id='123')
         register_activated_skill(
             query,
             _make_skill_data(
@@ -699,7 +716,7 @@ class TestNativeToolLoaderSkillPaths:
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
-            query = _make_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
+            query = _make_bound_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
 
             with pytest.raises(ValueError, match='Skill "demo" is not available at this path'):
                 await loader.invoke_tool(
@@ -707,3 +724,16 @@ class TestNativeToolLoaderSkillPaths:
                     {'path': '/workspace/.skills/demo/notes.txt', 'content': 'hi'},
                     query,
                 )
+
+
+@pytest.mark.asyncio
+async def test_native_skill_tools_require_runner_box_binding():
+    from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+    from langbot_plugin.box.errors import BoxValidationError
+
+    ap = _make_ap()
+    ap.box_service = SimpleNamespace(available=True, execute_tool=AsyncMock())
+    loader = NativeToolLoader(ap)
+    with pytest.raises(BoxValidationError, match='Runner must bind a Box'):
+        await loader.invoke_tool('exec', {'command': 'true'}, _make_query())
+    ap.box_service.execute_tool.assert_not_awaited()

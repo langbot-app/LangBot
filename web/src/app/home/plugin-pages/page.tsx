@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -25,7 +26,10 @@ export default function PluginPagesPage() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
   const { t } = useTranslation();
-  const { setDetailEntityName, pluginPages } = useSidebarData();
+  const { setDetailEntityName, pluginPages, refreshPlugins } = useSidebarData();
+  const [lookupCompleteForId, setLookupCompleteForId] = useState<string | null>(
+    null,
+  );
 
   // Find the matching page for breadcrumb
   const page = pluginPages.find((p) => p.id === id);
@@ -34,6 +38,18 @@ export default function PluginPagesPage() {
     setDetailEntityName(page?.name ?? id ?? '');
     return () => setDetailEntityName(null);
   }, [page, id, setDetailEntityName]);
+
+  useEffect(() => {
+    if (!id || page) return;
+    let cancelled = false;
+    setLookupCompleteForId(null);
+    refreshPlugins().finally(() => {
+      if (!cancelled) setLookupCompleteForId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, page, refreshPlugins]);
 
   if (!id) {
     return (
@@ -55,9 +71,19 @@ export default function PluginPagesPage() {
 
   const author = parts[0];
   const pluginName = parts[1];
-  // Use the asset path from the page manifest, not the page ID
-  const assetPath = page?.path ?? parts.slice(2).join('/');
-  const pageId = parts.slice(2).join('/');
+  if (!page) {
+    if (lookupCompleteForId === id) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          {t('pluginPages.invalidPage')}
+        </div>
+      );
+    }
+    return <EntityLoadState />;
+  }
+
+  const assetPath = page.path;
+  const pageId = page.pageId;
 
   return (
     <PluginPageIframe
@@ -180,9 +206,7 @@ function PluginPageIframe({
           {t('plugins.loadFailed')}
         </div>
       ) : loading || !assetUrl ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Loading...
-        </div>
+        <EntityLoadState />
       ) : null}
       {!assetError && assetUrl && (
         <iframe

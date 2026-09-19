@@ -12,6 +12,9 @@ from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError, WorkspaceInvariantError
 
 
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+
+
 def _context(pipeline_uuid: str = 'test-uuid') -> ExecutionContext:
     return ExecutionContext(
         instance_uuid='test-instance',
@@ -226,6 +229,7 @@ async def test_remove_pipeline(mock_app):
 @pytest.mark.asyncio
 async def test_runtime_pipeline_execute(mock_app, sample_query):
     """Test runtime pipeline execution with real Pydantic models."""
+    sample_query.query_id = 1
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
     persistence_pipeline = get_persistence_pipeline_module()
@@ -263,16 +267,57 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     )
 
     # Mock plugin connector
-    event_ctx = Mock()
-    event_ctx.is_prevented_default = Mock(return_value=False)
-    mock_app.plugin_connector.emit_event = AsyncMock(return_value=event_ctx)
+    from langbot_plugin.api.entities.context import EventContext
+
+    async def return_event_context(event, bound_plugins):
+        return EventContext.model_validate(EventContext.from_event(event).model_dump())
+
+    mock_app.plugin_connector.emit_event = AsyncMock(side_effect=return_event_context)
 
     # Execute pipeline
     await runtime_pipeline.run(sample_query)
 
     # Verify stage was called
-    mock_stage.process.assert_called_once()
+    assert mock_stage.process.call_count == 1, mock_app.logger.error.call_args_list
     mock_app.query_pool.remove_query.assert_awaited_once_with(sample_query)
+
+
+@pytest.mark.asyncio
+async def test_received_event_edits_reach_pipeline_stages(mock_app, sample_query):
+    """Read edits from the returned RPC context before running message stages."""
+    from langbot_plugin.api.entities.context import EventContext
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    sample_query.query_id = 1
+    pipeline_entity = SimpleNamespace(
+        name='Compatibility test',
+        uuid='test-pipeline-uuid',
+        workspace_uuid='test-workspace',
+        config=sample_query.pipeline_config,
+        extensions_preferences={'plugins': []},
+    )
+    runtime_pipeline = get_pipelinemgr_module().RuntimePipeline(
+        mock_app,
+        pipeline_entity,
+        [],
+        _context('test-pipeline-uuid'),
+    )
+    observed = []
+
+    async def plugin_edit(event, bound_plugins):
+        ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+        ctx.event.message_chain = MessageChain([Plain(text='edited by plugin')])
+        return ctx
+
+    async def capture_stage(index, query):
+        observed.append((str(query.message_chain), str(query.message_event.message_chain)))
+
+    mock_app.plugin_connector.emit_event = AsyncMock(side_effect=plugin_edit)
+    runtime_pipeline._execute_from_stage = AsyncMock(side_effect=capture_stage)
+
+    await runtime_pipeline.run(sample_query)
+
+    assert observed == [('edited by plugin', 'edited by plugin')], mock_app.logger.error.call_args_list
 
 
 @pytest.mark.asyncio
@@ -350,7 +395,7 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
 
 
 def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
-    """Local Agent resource selection should override legacy extension prefs."""
+    """Runner resource selection should override legacy extension prefs."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
@@ -359,10 +404,13 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
     pipeline_entity.workspace_uuid = 'test-workspace'
     pipeline_entity.config = {
         'ai': {
-            'local-agent': {
-                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
-                'mcp-resource-agent-read-enabled': False,
-            }
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {
+                RUNNER_ID: {
+                    'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                    'mcp-resource-agent-read-enabled': False,
+                },
+            },
         }
     }
     pipeline_entity.extensions_preferences = {
@@ -377,14 +425,19 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
 
 
 def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
-    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    """Existing extension prefs remain compatible until a runner value exists."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.uuid = 'test-uuid'
     pipeline_entity.workspace_uuid = 'test-workspace'
-    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.config = {
+        'ai': {
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {RUNNER_ID: {}},
+        }
+    }
     pipeline_entity.extensions_preferences = {
         'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
         'mcp_resource_agent_read_enabled': False,

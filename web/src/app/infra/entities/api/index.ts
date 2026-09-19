@@ -158,8 +158,137 @@ export interface RerankModel {
   extra_args?: object;
 }
 
+export interface LangBotModelAvailability {
+  up: boolean | null;
+  last_probed_at: string | null;
+  latency_ms: number;
+  http_code: number;
+}
+
+export interface LangBotModelAvailabilityItem {
+  uuid: string;
+  model_id: string;
+  category: string | null;
+  listed_at?: string | null;
+  input_credits: number | null;
+  output_credits: number | null;
+  availability: LangBotModelAvailability;
+}
+
+export interface ApiRespLangBotModelAvailability {
+  models: LangBotModelAvailabilityItem[];
+}
+
 export interface ApiRespPipelines {
   pipelines: Pipeline[];
+}
+
+export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+
+export interface RunnerDescriptor {
+  id: string;
+  label: Record<string, string>;
+  plugin_author: string;
+  plugin_name: string;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+  supported_event_patterns: string[];
+}
+
+export interface ProcessorRun {
+  run_id: string;
+  binding_id?: string;
+  runner_id?: string;
+  usage?: {
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+    total_tokens?: number | null;
+  } | null;
+  status: string;
+  status_reason?: string;
+  created_at: number;
+  started_at?: number | null;
+  finished_at?: number | null;
+  created_at_ms?: number | null;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
+  metadata: {
+    event_type?: string;
+    source?: string;
+    input?: { text?: string; contents?: unknown[]; attachments?: unknown[] };
+    input_event?: unknown;
+    delivery?: unknown;
+  };
+}
+
+export interface ProcessorRunEvent {
+  sequence: number;
+  type: string;
+  data: Record<string, unknown>;
+}
+
+export interface ProcessorRunPage {
+  items: ProcessorRun[];
+  total?: number;
+  next_cursor: number | null;
+  has_more: boolean;
+}
+
+export interface ProcessorRunEventPage {
+  run: ProcessorRun;
+  items: ProcessorRunEvent[];
+  next_cursor: number | null;
+  has_more: boolean;
+}
+
+export interface AgentCapability {
+  supported_event_patterns: string[];
+  message_only: boolean;
+}
+
+export interface Agent {
+  uuid?: string;
+  name: string;
+  description: string;
+  emoji?: string;
+  kind: AgentKind;
+  component_ref?: string | null;
+  config?: Record<string, unknown>;
+  supported_event_patterns?: string[];
+  capability?: AgentCapability;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespAgents {
+  agents: Agent[];
+}
+
+export interface ApiRespAgent {
+  agent: Agent;
+}
+
+export interface GetAgentMetadataResponseData {
+  event_processors?: RunnerDescriptor[];
+  runner_config?: PipelineConfigTab;
+  platform_tools: AgentPlatformTool[];
+  host_tools?: PluginTool[] | null;
+  kinds: Array<{
+    name: AgentKind;
+    supported_event_patterns: string[];
+    message_only: boolean;
+  }>;
+}
+
+export interface AgentPlatformTool {
+  name: string;
+  api: string;
+  scope: 'event' | 'platform';
+  category: string;
+  risk: 'read' | 'write' | 'dangerous';
+  label: I18nObject;
+  description: I18nObject;
+  event_patterns: string[];
+  parameters: Record<string, unknown>;
 }
 
 export interface Pipeline {
@@ -190,7 +319,10 @@ export interface Adapter {
   icon?: string;
   spec: {
     categories?: string[];
+    legacy?: boolean;
     help_links?: Record<string, string>;
+    supported_events?: string[];
+    supported_apis?: string[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -210,31 +342,88 @@ export interface Bot {
   enable?: boolean;
   adapter: string;
   adapter_config: object;
-  use_pipeline_name?: string;
-  use_pipeline_uuid?: string;
-  pipeline_routing_rules?: PipelineRoutingRule[];
+  event_bindings?: EventBinding[];
+  plugin_processors?: PluginProcessorBinding[];
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
 }
 
-export type RoutingRuleOperator =
-  | 'eq'
-  | 'neq'
-  | 'contains'
-  | 'not_contains'
-  | 'starts_with'
-  | 'regex';
+export interface PluginProcessorBinding {
+  processor_uuid: string;
+  enabled: boolean;
+}
 
-export interface PipelineRoutingRule {
-  type:
-    | 'launcher_type'
-    | 'launcher_id'
-    | 'message_content'
-    | 'message_has_element';
-  operator: RoutingRuleOperator;
-  value: string;
-  pipeline_uuid: string;
+export interface EventBinding {
+  id?: string;
+  event_pattern: string;
+  target_type: AgentKind | 'discard';
+  target_uuid: string;
+  filters?: Array<Record<string, unknown>>;
+  priority: number;
+  enabled: boolean;
+  description?: string;
+  order?: number;
+}
+
+export interface BotRouteDryRunRequest {
+  event_type: string;
+  payload?: Record<string, unknown>;
+  event_bindings?: EventBinding[];
+}
+
+export interface BotRouteDryRunTarget {
+  target_type: EventBinding['target_type'];
+  target_uuid?: string | null;
+  target_name?: string | null;
+  kind?: AgentKind | 'discard' | null;
+}
+
+export interface BotRouteDryRunResult {
+  matched: boolean;
+  target?: BotRouteDryRunTarget | null;
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  target_type?: EventBinding['target_type'] | null;
+  target_uuid?: string | null;
+  reason?: string | null;
+  failure_code?: string | null;
+  diagnostic_steps: string[];
+  diagnostic_details?: Array<Record<string, unknown>>;
+  matched_binding_id?: string | null;
+  matched_binding_index?: number | null;
+}
+
+export interface BotEventRouteStatus {
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  event_type?: string | null;
+  target_type?: EventBinding['target_type'] | string | null;
+  target_uuid?: string | null;
+  last_status?:
+    | 'matched'
+    | 'delivered'
+    | 'discarded'
+    | 'failed'
+    | 'not_matched'
+    | string
+    | null;
+  failure_code?: string | null;
+  reason?: string | null;
+  run_id?: string | null;
+  timestamp?: number | null;
+  seq_id?: number | null;
+  level?: string | null;
+  message?: string | null;
+  order?: number | null;
+  enabled?: boolean;
+  current?: boolean;
+}
+
+export interface BotEventRouteStatusResponse {
+  routes: BotEventRouteStatus[];
+  unmatched_events: BotEventRouteStatus[];
+  stale_routes: BotEventRouteStatus[];
 }
 
 export interface ApiRespKnowledgeBases {
@@ -256,6 +445,9 @@ export interface KnowledgeBase {
   knowledge_engine_plugin_id?: string;
   creation_settings?: Record<string, unknown>;
   retrieval_settings?: Record<string, unknown>;
+  initialized?: boolean;
+  defer_initialization?: boolean;
+  initialize_engine?: boolean;
   knowledge_engine?: KnowledgeEngineInfo;
 }
 
@@ -361,6 +553,7 @@ export interface SystemLimitation {
 
 export interface WizardProgress {
   step: number;
+  selected_scenario?: string | null;
   selected_adapter: string | null;
   created_bot_uuid: string | null;
   created_pipeline_uuid?: string | null;
@@ -456,6 +649,7 @@ export interface AsyncTaskTaskContext {
 
 export interface AsyncTask {
   id: number;
+  created_at?: number;
   kind: string;
   name: string;
   label: string;
@@ -728,7 +922,10 @@ export interface ApiRespTools {
 }
 
 export interface ApiRespToolDetail {
-  tool: PluginTool;
+  tool: Omit<PluginTool, 'source' | 'source_id'> & {
+    source: NonNullable<PluginTool['source']>;
+    source_id: string | null;
+  };
 }
 
 // Skills

@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
 from types import SimpleNamespace
 
+from langbot.pkg.provider.modelmgr.errors import RequesterError
 from tests.factories import FakeApp
 
 
@@ -111,16 +112,19 @@ def fake_provider_app():
     app.llm_model_service.create_llm_model = AsyncMock(return_value={'uuid': 'new-model-uuid'})
     app.llm_model_service.update_llm_model = AsyncMock(return_value={})
     app.llm_model_service.delete_llm_model = AsyncMock()
+    app.llm_model_service.test_llm_model = AsyncMock()
 
     # Embedding model service
     app.embedding_models_service = Mock()
     app.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
     app.embedding_models_service.create_embedding_model = AsyncMock(return_value={'uuid': 'new-embedding-uuid'})
+    app.embedding_models_service.test_embedding_model = AsyncMock()
 
     # Rerank model service
     app.rerank_models_service = Mock()
     app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[])
     app.rerank_models_service.create_rerank_model = AsyncMock(return_value={'uuid': 'new-rerank-uuid'})
+    app.rerank_models_service.test_rerank_model = AsyncMock()
 
     # Model manager
     app.model_mgr = Mock()
@@ -289,6 +293,43 @@ class TestModelEndpoints:
         )
 
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('service_name', 'method_name', 'path'),
+        [
+            ('llm_model_service', 'test_llm_model', '/api/v1/provider/models/llm/_/test'),
+            (
+                'embedding_models_service',
+                'test_embedding_model',
+                '/api/v1/provider/models/embedding/_/test',
+            ),
+            ('rerank_models_service', 'test_rerank_model', '/api/v1/provider/models/rerank/_/test'),
+        ],
+    )
+    async def test_model_test_returns_requester_error_details(
+        self,
+        quart_test_client,
+        fake_provider_app,
+        service_name,
+        method_name,
+        path,
+    ):
+        test_model = getattr(getattr(fake_provider_app, service_name), method_name)
+        test_model.side_effect = RequesterError('API key invalid')
+        try:
+            response = await quart_test_client.post(
+                path,
+                headers={'Authorization': 'Bearer test_token'},
+                json={'name': 'broken-model'},
+            )
+        finally:
+            test_model.side_effect = None
+
+        assert response.status_code == 400
+        data = await response.get_json()
+        assert data['code'] == 'model_test_failed'
+        assert data['msg'] == '模型请求失败: API key invalid'
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

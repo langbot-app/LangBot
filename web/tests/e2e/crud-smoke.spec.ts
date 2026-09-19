@@ -15,6 +15,22 @@ async function submit(page: Page) {
   await page.getByRole('button', { name: /^Submit$/ }).click();
 }
 
+async function selectPlaywrightAdapter(page: Page) {
+  await page
+    .getByTestId('adapter-gallery')
+    .getByRole('button', { name: /Playwright Adapter/ })
+    .click();
+}
+
+async function createPlaywrightBot(page: Page, name: string, description = '') {
+  await selectPlaywrightAdapter(page);
+  await page.locator('input[name="name"]').fill(name);
+  if (description) {
+    await page.locator('input[name="description"]').fill(description);
+  }
+  await submit(page);
+}
+
 async function confirmDelete(page: Page) {
   await page
     .getByRole('dialog')
@@ -22,7 +38,72 @@ async function confirmDelete(page: Page) {
     .click();
 }
 
+async function installDelayedFirstSave(page: Page, apiPath: string) {
+  const payloads: Record<string, unknown>[] = [];
+  let releaseFirstSave = () => {};
+  const firstSaveGate = new Promise<void>((resolve) => {
+    releaseFirstSave = resolve;
+  });
+
+  await page.route(`**${apiPath}`, async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.fallback();
+      return;
+    }
+
+    payloads.push(
+      JSON.parse(route.request().postData() || '{}') as Record<string, unknown>,
+    );
+    if (payloads.length === 1) {
+      await firstSaveGate;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {},
+        timestamp: Date.now(),
+      }),
+    });
+  });
+
+  return { payloads, releaseFirstSave };
+}
+
+async function forceFormSubmit(page: Page, formSelector: string) {
+  await page.locator(formSelector).evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 test.describe('frontend CRUD smoke flows', () => {
+  test('localizes the pipeline processor type in Simplified Chinese', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      language: 'zh-Hans',
+    });
+
+    await page.goto('/home/agents?id=new');
+    await expect(
+      page.locator('[data-processor-kind="pipeline"]'),
+    ).toContainText('流水线');
+    await expect(
+      page.locator('[data-processor-kind="pipeline"]'),
+    ).toContainText(
+      '流水线只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
+    );
+  });
+
   test('viewer keeps ordinary bot and pipeline monitoring access', async ({
     page,
   }) => {
@@ -37,22 +118,21 @@ test.describe('frontend CRUD smoke flows', () => {
     });
 
     await page.goto('/home/bots?id=new');
-    await page.locator('input[name="name"]').fill('Viewer Test Bot');
-    await page
-      .locator('input[name="description"]')
-      .fill('Proves monitoring is ordinary resource visibility.');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    await createPlaywrightBot(
+      page,
+      'Viewer Test Bot',
+      'Proves monitoring is ordinary resource visibility.',
+    );
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Viewer Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Viewer Pipeline');
     await page
-      .locator('input[name="basic.description"]')
+      .locator('input[name="description"]')
       .fill('Viewer monitoring permission regression.');
     await submit(page);
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     workspace.membership.role = 'viewer';
     workspace.permissions = ['member.view', 'resource.view', 'workspace.view'];
@@ -64,8 +144,8 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.getByRole('tab', { name: 'Logs' }).click();
     await expect(page.getByText('No logs yet')).toBeVisible();
 
-    await page.goto('/home/pipelines?id=pipeline-1');
-    await expect(page.getByRole('tab', { name: 'Dashboard' })).toBeVisible();
+    await page.goto('/home/agents?id=pipeline-1');
+    await expect(page.getByRole('tab', { name: 'Run logs' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Debug Chat' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
 
@@ -82,27 +162,40 @@ test.describe('frontend CRUD smoke flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/bots?id=new');
-
-    await expect(page.locator('input[name="name"]')).toBeVisible();
-    await page.locator('input[name="name"]').fill('Support Bot');
-    await page
-      .locator('input[name="description"]')
-      .fill('Answers customer support questions.');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    const createRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' &&
+        request.url().endsWith('/api/v1/platform/bots'),
+    );
+    await createPlaywrightBot(
+      page,
+      'Support Bot',
+      'Answers customer support questions.',
+    );
+    expect((await createRequest).postDataJSON()).toMatchObject({
+      name: 'Support Bot',
+      description: 'Answers customer support questions.',
+      adapter: 'playwright-adapter',
+      enable: false,
+    });
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
     await page.reload();
-    await expect(page.locator('input[name="name"]')).toHaveValue('Support Bot');
-
-    await page
-      .locator('input[name="description"]')
+    await expect(
+      page.getByRole('heading', { name: 'Support Bot' }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const botInfoDialog = page.getByRole('dialog');
+    await expect(botInfoDialog.getByLabel('Icon')).toHaveCount(0);
+    await botInfoDialog.getByLabel('Name').fill('Support Bot Updated');
+    await botInfoDialog
+      .getByLabel('Description')
       .fill('Answers customer support questions with context.');
-    await save(page);
-    await expect(page.locator('input[name="description"]')).toHaveValue(
-      'Answers customer support questions with context.',
-    );
+    await botInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Support Bot Updated' }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
@@ -114,35 +207,70 @@ test.describe('frontend CRUD smoke flows', () => {
   test('creates, edits, and deletes a pipeline', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=new');
+    await page.goto('/home/agents?id=new');
+    const agentTypeCard = page.locator('[data-processor-kind="agent"]');
+    const pipelineTypeCard = page.locator('[data-processor-kind="pipeline"]');
+    await expect(agentTypeCard).toHaveAttribute(
+      'data-slot',
+      'toggle-group-item',
+    );
+    await expect(pipelineTypeCard).toHaveAttribute(
+      'data-slot',
+      'toggle-group-item',
+    );
+    await expect(agentTypeCard).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('agent-diagram')).toBeVisible();
+    await expect(
+      page.getByTestId('agent-diagram').locator('[data-motion="flow"]'),
+    ).toHaveCount(3);
+    await expect(
+      page.getByTestId('agent-diagram').locator('[data-motion="relation"]'),
+    ).toHaveCount(3);
+    await expect(page.getByTestId('pipeline-diagram')).toHaveCount(0);
 
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
-    await page.locator('input[name="basic.name"]').fill('Escalation Pipeline');
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+    await expect(page.getByTestId('agent-diagram')).toHaveCSS(
+      '--processor-flow-opacity',
+      '0.72',
+    );
+    await expect(page.getByTestId('agent-diagram')).toHaveCSS(
+      '--processor-node-stroke-opacity',
+      '0.5',
+    );
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
+    await expect(
+      page.getByTestId('pipeline-diagram').locator('[data-motion="flow"]'),
+    ).toHaveAttribute('data-dash-cycle', '15');
+    await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await page.locator('input[name="name"]').fill('Escalation Pipeline');
     await page
-      .locator('input[name="basic.description"]')
+      .locator('input[name="description"]')
       .fill('Routes urgent customer issues.');
     await submit(page);
 
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
     await page.reload();
-    await expect(page.locator('input[name="basic.name"]')).toHaveValue(
-      'Escalation Pipeline',
-    );
-
-    await page
-      .locator('input[name="basic.description"]')
+    await expect(
+      page.getByRole('heading', { name: /Escalation Pipeline/ }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="basic.name"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const pipelineInfoDialog = page.getByRole('dialog');
+    await pipelineInfoDialog
+      .getByLabel('Description')
       .fill('Routes urgent customer issues to operators.');
-    await save(page);
-    await expect(page.locator('input[name="basic.description"]')).toHaveValue(
-      'Routes urgent customer issues to operators.',
-    );
+    await pipelineInfoDialog.getByRole('button', { name: 'Save' }).click();
 
+    await page.getByRole('button', { name: 'Management' }).click();
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
 
-    await expect(page).toHaveURL(/\/home\/pipelines$/);
+    await expect(page).toHaveURL(/\/home\/agents$/);
     await expect(
-      page.getByText('Select a pipeline from the sidebar'),
+      page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
   });
 
@@ -151,15 +279,17 @@ test.describe('frontend CRUD smoke flows', () => {
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=pipeline-ai');
+    await page.goto('/home/agents?id=pipeline-ai');
 
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
-    await page.getByRole('button', { name: /^AI$/ }).click();
+    await expect(
+      page.getByRole('heading', { name: /pipeline-ai/ }),
+    ).toBeVisible();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
 
     await expect(page.getByText('Runtime')).toBeVisible();
     await expect(
       page.locator('[data-slot="card-title"]').filter({
-        hasText: 'Built-in Agent',
+        hasText: 'Local Agent',
       }),
     ).toBeVisible();
     await expect(
@@ -181,22 +311,29 @@ test.describe('frontend CRUD smoke flows', () => {
     await page
       .locator('input[name="description"]')
       .fill('Source material for support answers.');
-    await submit(page);
+    await save(page);
 
     await expect(page).toHaveURL(/\/home\/knowledge\?id=knowledge-1$/);
     await page.reload();
-    await expect(page.locator('input[name="name"]')).toHaveValue(
-      'Support Knowledge',
-    );
-    await page.waitForTimeout(600);
+    await expect(
+      page.getByRole('heading', { name: /Support Knowledge/ }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toHaveCount(0);
+    const engineSettings = page.locator('[data-slot="card"]').filter({
+      has: page.getByText('Engine Settings', { exact: true }),
+    });
+    await expect(engineSettings.getByRole('combobox')).toBeVisible();
 
-    await page
-      .locator('input[name="description"]')
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const kbInfoDialog = page.getByRole('dialog');
+    await kbInfoDialog.getByLabel('Name').fill('Support Knowledge Updated');
+    await kbInfoDialog
+      .getByLabel('Description')
       .fill('Updated source material for support answers.');
-    await save(page);
-    await expect(page.locator('input[name="description"]')).toHaveValue(
-      'Updated source material for support answers.',
-    );
+    await kbInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Support Knowledge Updated/ }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
@@ -284,15 +421,238 @@ test.describe('frontend CRUD smoke flows', () => {
 });
 
 test.describe('bot advanced flows', () => {
-  test('toggles bot enable/disable state', async ({ page }) => {
+  test('keeps event routing compact and hides raw status errors', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
+    await page.route('**/api/v1/platform/bots/*/event-routes/status', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: -1, msg: 'Internal server error' }),
+      }),
+    );
+    await page.route(
+      '**/api/v1/platform/bots/*/event-routes/dry-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 0,
+            msg: 'ok',
+            data: {
+              matched: true,
+              event_type: 'message.received',
+              matched_binding_id: 'binding-1',
+              matched_binding_index: 0,
+              target: {
+                target_type: 'agent',
+                target_uuid: 'agent-1',
+                target_name: 'NewAgent',
+              },
+              diagnostic_steps: ['Matched route 1'],
+              diagnostic_details: [],
+            },
+          }),
+        }),
+    );
+    let botLogPollCount = 0;
+    await page.route('**/api/v1/platform/bots/*/logs', (route) => {
+      botLogPollCount += 1;
+      const logs =
+        botLogPollCount === 1
+          ? []
+          : [
+              {
+                seq_id: 7,
+                timestamp: Math.floor(Date.now() / 1000),
+                level: 'info',
+                text: 'Platform adapter received message.received',
+                images: [],
+                message_session_id: '',
+                metadata: {
+                  kind: 'adapter_event_received',
+                  event_type: 'message.received',
+                  adapter: 'playwright-adapter',
+                  bot_uuid: 'bot-1',
+                  event_data: {
+                    type: 'message.received',
+                    chat_type: 'private',
+                    chat_id: 'test-user',
+                    message_chain: [{ type: 'Plain', text: 'adapter hello' }],
+                  },
+                },
+              },
+            ];
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: 'ok',
+          data: { logs, total_count: logs.length },
+        }),
+      });
+    });
+    await page.goto('/home/bots?id=new');
+    await createPlaywrightBot(page, 'Route Status Bot');
+
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+    await expect(page.getByText('Supported events')).toBeVisible();
+    await expect(page.getByText('5 event types')).toBeVisible();
+    await expect(page.getByText('Messages · 2')).toBeVisible();
+    await expect(page.getByText('Groups · 2')).toBeVisible();
+    await expect(page.getByText('Internal server error')).toHaveCount(0);
+    await expect(
+      page.getByText('Events that match no route are ignored.'),
+    ).toHaveCount(0);
+
+    const routingCard = page
+      .locator('[data-slot="card"]')
+      .filter({ has: page.getByText('Event Routing', { exact: true }) });
+    const adapterCard = page.locator('[data-slot="card"]').filter({
+      has: page.getByText('Adapter Configuration', { exact: true }),
+    });
+    const routingBox = await routingCard.boundingBox();
+    const adapterBox = await adapterCard.boundingBox();
+    expect(routingBox).not.toBeNull();
+    expect(adapterBox).not.toBeNull();
+    expect(routingBox!.x).toBeGreaterThan(adapterBox!.x + adapterBox!.width);
+    expect(Math.abs(routingBox!.y - adapterBox!.y)).toBeLessThan(2);
+    await expect(
+      page.getByRole('button', { name: /^Delete$/ }),
+    ).toBeInViewport();
+
+    await routingCard.getByRole('button', { name: 'View all' }).click();
+    await expect(
+      routingCard.getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      routingCard.getByText('Groups', { exact: true }),
+    ).toBeVisible();
+
+    await routingCard.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /Reply to messages/ }).click();
+    const routeEventSelect = routingCard.getByRole('combobox').first();
+    await expect(routeEventSelect).toContainText('Message received');
+    await expect(routeEventSelect).toContainText('message.received');
+    await routeEventSelect.click();
+    const routeEventOption = page
+      .getByRole('option')
+      .filter({ hasText: 'Message received' });
+    await expect(routeEventOption).toContainText('message.received');
+    await expect(routeEventOption).toContainText(
+      'A user or group sends a new message to the bot.',
+    );
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: 'Refresh status' }).hover();
+    await expect(
+      page.getByText('Failed to refresh route status.'),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Check route' }).click();
+    const routeDialog = page.getByRole('dialog');
+    await expect(
+      routeDialog.getByText('Check event route', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByText(
+        'Choose an event to see which route and processor it matches.',
+      ),
+    ).toBeVisible();
+    await expect(routeDialog.getByText('Sample event is ready')).toHaveCount(0);
+    await expect(
+      routeDialog.getByRole('button', { name: 'Test data' }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByRole('button', { name: 'View match' }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByRole('button', { name: 'Run full test' }),
+    ).toHaveCount(0);
+    const routeEventPicker = routeDialog.getByRole('combobox', {
+      name: 'Event type',
+    });
+    await expect(routeEventPicker).toContainText('message.received');
+    await routeEventPicker.click();
+    await expect(
+      page.getByText('Messages', { exact: true }).last(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Groups', { exact: true }).last(),
+    ).toBeVisible();
+    const receivedMessageOption = page
+      .getByRole('option')
+      .filter({ hasText: 'Message received' });
+    await expect(receivedMessageOption).toContainText('message.received');
+    await expect(receivedMessageOption).toContainText(
+      'A user or group sends a new message to the bot.',
+    );
+    await page.keyboard.press('Escape');
+
+    await routeDialog.getByRole('button', { name: 'View match' }).click();
+    await expect(routeDialog.getByText('Matched route')).toBeVisible();
+    await expect(routeDialog.getByText('Internal server error')).toHaveCount(0);
+    const dialogBox = await routeDialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.height).toBeLessThan(500);
+
+    await routeDialog.getByRole('button', { name: 'Close' }).first().click();
+    await expect(
+      adapterCard.getByText('Test adapter configuration'),
+    ).toHaveCount(0);
+    const listenButton = page.getByRole('button', {
+      name: 'Test listener',
+      exact: true,
+    });
+    const listenBox = await listenButton.boundingBox();
+    const saveBox = await page
+      .getByRole('button', { name: /^Save$/ })
+      .boundingBox();
+    expect(listenBox).not.toBeNull();
+    expect(saveBox).not.toBeNull();
+    expect(listenBox!.x + listenBox!.width).toBeLessThan(saveBox!.x);
+    expect(Math.abs(listenBox!.y - saveBox!.y)).toBeLessThan(2);
+    await listenButton.click();
+    const adapterDialog = page.getByRole('dialog');
+    await expect(
+      adapterDialog.getByText('Platform event debugging', { exact: true }),
+    ).toBeVisible();
+    await expect(adapterDialog).toContainText('Playwright Adapter');
+    await expect(adapterDialog).toContainText(
+      'This window only observes events. Incoming events still follow the current routes.',
+    );
+    await expect(
+      adapterDialog.getByText('Message received', { exact: true }),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(adapterDialog.getByText('message.received')).toBeVisible();
+    await expect(adapterDialog.getByText('adapter hello')).toBeVisible();
+    await adapterDialog
+      .getByRole('button', { name: 'View event data' })
+      .click();
+    await expect(
+      adapterDialog.getByText(/"chat_id": "test-user"/),
+    ).toBeVisible();
+    await adapterDialog.getByRole('button', { name: 'Clear' }).click();
+    await expect(adapterDialog.getByText('0 events received')).toBeVisible();
+    await expect(
+      adapterDialog.getByText('Waiting for a platform event'),
+    ).toBeVisible();
+  });
+
+  test('creates a disabled bot and enables it from the detail page', async ({
+    page,
+  }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a bot first
     await page.goto('/home/bots?id=new');
-    await page.locator('input[name="name"]').fill('Toggle Test Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    await createPlaywrightBot(page, 'Toggle Test Bot');
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
@@ -301,16 +661,16 @@ test.describe('bot advanced flows', () => {
       timeout: 5000,
     });
 
-    // Verify initial state is enabled
-    await expect(page.locator('#bot-enable-switch')).toBeChecked();
-
-    // Toggle to disabled
-    await page.locator('#bot-enable-switch').click();
+    // Draft bots remain disabled until their adapter configuration is ready.
     await expect(page.locator('#bot-enable-switch')).not.toBeChecked();
+
+    // Enable after reaching the detail page.
+    await page.locator('#bot-enable-switch').click();
+    await expect(page.locator('#bot-enable-switch')).toBeChecked();
 
     // Reload and verify state persisted
     await page.reload();
-    await expect(page.locator('#bot-enable-switch')).not.toBeChecked();
+    await expect(page.locator('#bot-enable-switch')).toBeChecked();
   });
 
   test('switches between bot detail tabs', async ({ page }) => {
@@ -318,16 +678,15 @@ test.describe('bot advanced flows', () => {
 
     // Create a bot
     await page.goto('/home/bots?id=new');
-    await page.locator('input[name="name"]').fill('Tab Test Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    await createPlaywrightBot(page, 'Tab Test Bot');
 
     // Verify we're on the Configuration tab
     await expect(
       page.getByRole('tab', { name: /Configuration/ }),
     ).toHaveAttribute('data-state', 'active');
-    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
 
     // Switch to Logs tab
     await page.getByRole('tab', { name: /Logs/ }).click();
@@ -345,7 +704,9 @@ test.describe('bot advanced flows', () => {
 
     // Switch back to Configuration
     await page.getByRole('tab', { name: /Configuration/ }).click();
-    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
   });
 
   test('save button is disabled when form is clean', async ({ page }) => {
@@ -353,21 +714,23 @@ test.describe('bot advanced flows', () => {
 
     // Create a bot
     await page.goto('/home/bots?id=new');
-    await page.locator('input[name="name"]').fill('Clean Form Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    await createPlaywrightBot(page, 'Clean Form Bot');
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
-    // After creation, save button should be disabled (form is clean)
+    // Reload the persisted record so post-create initialization has completed.
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Clean Form Bot' }),
+    ).toBeVisible();
+
+    // After loading, save button should be disabled (form is clean)
     const saveButton = page.getByRole('button', { name: /^Save$/ });
     await expect(saveButton).toBeDisabled();
 
-    // Edit the form
-    await page.locator('input[name="description"]').fill('New description');
-    await expect(saveButton).toBeEnabled();
-
-    // Save
-    await saveButton.click();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Description').fill('New description');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
     await expect(saveButton).toBeDisabled();
   });
 
@@ -376,66 +739,100 @@ test.describe('bot advanced flows', () => {
 
     await page.goto('/home/bots?id=new');
 
-    // Select adapter but leave name empty
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
+    // Select an adapter but leave the required name empty.
+    await selectPlaywrightAdapter(page);
     await submit(page);
 
-    // Should show validation error for name (zod validation)
     await expect(page.getByText(/cannot be empty/i)).toBeVisible();
     await expect(page).toHaveURL(/\/home\/bots\?id=new$/);
   });
 });
 
 test.describe('pipeline advanced flows', () => {
+  test('scopes runner tool catalogs to the edited pipeline', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withRunnerToolSelector: true,
+    });
+    const toolCatalogUrls: URL[] = [];
+    const requestedPaths: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/v1/tools') toolCatalogUrls.push(url);
+      requestedPaths.push(url.pathname);
+    });
+
+    await page.goto('/home/agents?id=pipeline-scope');
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+    await expect(
+      page.getByRole('button', { name: 'Edit tools' }),
+    ).toBeVisible();
+
+    await expect
+      .poll(() =>
+        toolCatalogUrls.some(
+          (url) => url.searchParams.get('pipeline_uuid') === 'pipeline-scope',
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        requestedPaths.includes('/api/v1/pipelines/pipeline-scope/extensions'),
+      )
+      .toBe(true);
+  });
+
   test('switches to monitoring tab from pipeline detail', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Tab Test Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Tab Test Pipeline');
     await submit(page);
 
-    // Verify we're on the Configuration tab
     await expect(
-      page.getByRole('tab', { name: /Configuration/ }),
-    ).toHaveAttribute('data-state', 'active');
+      page.getByRole('region', { name: 'Configuration' }),
+    ).toBeVisible();
 
-    // Switch to Monitoring tab (labeled "Dashboard" in the pipeline context)
-    // Skip Debug tab as it requires WebSocket connection
-    await page.getByRole('tab', { name: /Dashboard/ }).click();
-    await expect(page.getByRole('tab', { name: /Dashboard/ })).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    const viewSwitcher = page.getByRole('tablist', {
+      name: 'Configure & debug / Run logs',
+    });
+    const switcherPosition = await viewSwitcher.boundingBox();
+    await page.getByRole('tab', { name: 'Run logs' }).click();
+    await expect(page.getByRole('region', { name: 'Run logs' })).toBeVisible();
+    await expect
+      .poll(async () => (await viewSwitcher.boundingBox())?.x)
+      .toBe(switcherPosition?.x);
 
     // Switch back to Configuration
-    await page.getByRole('tab', { name: /Configuration/ }).click();
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
+    await page.getByRole('tab', { name: 'Configure & debug' }).click();
+    await expect(
+      page.getByRole('region', { name: 'Configuration' }),
+    ).toBeVisible();
   });
 
   test('save button reflects form dirty state', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Dirty Form Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
     await submit(page);
 
-    // Wait for the page to fully load and form to reset
-    await page.waitForTimeout(500);
-
-    // Edit the form - use the name field which definitely triggers dirty state
-    await page
-      .locator('input[name="basic.name"]')
-      .fill('Dirty Form Pipeline Updated');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    await expect(saveButton).toBeEnabled();
-
-    // Save
-    await saveButton.click();
-    // Wait for save to complete
-    await page.waitForTimeout(500);
+    await expect(saveButton).toBeDisabled();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Name').fill('Dirty Form Pipeline Updated');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
+    ).toBeVisible();
+    await expect(saveButton).toBeDisabled();
   });
 
   test('shows validation error when pipeline name is empty', async ({
@@ -443,49 +840,604 @@ test.describe('pipeline advanced flows', () => {
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=new');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
 
     // Submit without filling name
     await submit(page);
 
     // Should show validation error for name (zod validation)
     await expect(page.getByText(/cannot be empty/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=new$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=new$/);
+  });
+});
+
+test.describe('agent runner resource selectors', () => {
+  test('installs an Runner from the grouped empty selector and refreshes it', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+
+    const runnerId = 'plugin:qa/MarketplaceRunner/default';
+    let installed = false;
+    let installRequests = 0;
+    let taskPolls = 0;
+    let marketplaceSearchBody: Record<string, unknown> | undefined;
+
+    const apiResponse = (data: unknown) =>
+      JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data,
+        timestamp: Date.now(),
+      });
+    const runnerConfig = () => ({
+      name: 'ai',
+      label: { en_US: 'AI Feature', zh_Hans: 'AI 能力' },
+      stages: [
+        {
+          name: 'runner',
+          label: { en_US: 'Runtime', zh_Hans: '运行方式' },
+          config: [
+            {
+              name: 'id',
+              label: { en_US: 'Runner', zh_Hans: '运行器' },
+              type: 'select',
+              required: true,
+              default: '',
+              options: installed
+                ? [
+                    {
+                      name: runnerId,
+                      label: {
+                        en_US: 'Marketplace Runner',
+                        zh_Hans: '市场运行器',
+                      },
+                    },
+                  ]
+                : [],
+            },
+          ],
+        },
+        ...(installed
+          ? [
+              {
+                name: runnerId,
+                label: {
+                  en_US: 'Marketplace Runner',
+                  zh_Hans: '市场运行器',
+                },
+                config: [],
+              },
+            ]
+          : []),
+      ],
+    });
+
+    await page.route('**/api/v1/agents/_/metadata', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({
+          runner_config: runnerConfig(),
+          kinds: [],
+        }),
+      }),
+    );
+    await page.route('**/api/v1/agents/agent-empty', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({
+          agent: {
+            uuid: 'agent-empty',
+            name: 'Empty Runner Agent',
+            description: '',
+            emoji: 'A',
+            kind: 'agent',
+            config: {
+              runner: { id: '', 'expire-time': 0 },
+              runner_config: {},
+            },
+            supported_event_patterns: ['*'],
+          },
+        }),
+      }),
+    );
+    await page.route('**/api/v1/pipelines/_/metadata', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({ configs: [runnerConfig()] }),
+      }),
+    );
+    await page.route('**/api/v1/plugins', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({
+          plugins: installed
+            ? [
+                {
+                  manifest: {
+                    manifest: {
+                      metadata: { author: 'qa', name: 'MarketplaceRunner' },
+                    },
+                  },
+                },
+              ]
+            : [],
+        }),
+      }),
+    );
+    await page.route('**/api/v1/plugins/install/marketplace', (route) => {
+      installRequests += 1;
+      installed = true;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({ task_id: 77 }),
+      });
+    });
+    await page.route('**/api/v1/system/tasks/77', (route) => {
+      taskPolls += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiResponse({
+          id: 77,
+          name: 'plugin-install-marketplace',
+          label: 'Marketplace Runner',
+          runtime: { done: true, exception: null },
+          task_context: { current_action: 'complete', metadata: {} },
+        }),
+      });
+    });
+    await page.route(
+      'https://space.langbot.app/api/v1/marketplace/extensions/search',
+      async (route) => {
+        marketplaceSearchBody = JSON.parse(
+          route.request().postData() || '{}',
+        ) as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({
+            extensions: [
+              {
+                id: 1,
+                plugin_id: 'qa/MarketplaceRunner',
+                author: 'qa',
+                name: 'MarketplaceRunner',
+                label: {
+                  en_US: 'Marketplace Runner',
+                  zh_Hans: '市场运行器',
+                },
+                description: {
+                  en_US: 'Runner used by the grouped selector test.',
+                  zh_Hans: '用于分组选择器测试的运行器。',
+                },
+                icon: '',
+                repository: 'https://example.test/runner',
+                tags: [],
+                install_count: 12,
+                latest_version: '1.0.0',
+                components: { Runner: 1 },
+                runner_usages: ['agent'],
+                status: 'live',
+                type: 'plugin',
+                created_at: '2026-01-01T00:00:00Z',
+                updated_at: '2026-01-01T00:00:00Z',
+              },
+            ],
+            total: 1,
+          }),
+        });
+      },
+    );
+
+    await page.goto('/home/agents?id=agent-empty');
+    await page.getByRole('tab', { name: /^Runner$/ }).click();
+
+    const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
+    const triggerBox = await runnerSelect.boundingBox();
+    await runnerSelect.click();
+    await expect(page.getByText('Installed Runners')).toBeVisible();
+    await expect(
+      page.getByText('No Runner extension is installed yet.'),
+    ).toBeVisible();
+    await expect(page.getByText('Runner plugins in Marketplace')).toBeVisible();
+    const selectorPopup = page.locator('[data-slot="select-content"]');
+    await expect(
+      selectorPopup.getByText('Runner used by the grouped selector test.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const popupBox = await selectorPopup.boundingBox();
+    expect(triggerBox?.width).toBeLessThanOrEqual(353);
+    expect(popupBox?.width ?? 0).toBeLessThanOrEqual(
+      (triggerBox?.width ?? 0) + 1,
+    );
+    expect(popupBox?.width ?? 0).toBeGreaterThan((triggerBox?.width ?? 0) - 20);
+    await expect
+      .poll(() => marketplaceSearchBody)
+      .toMatchObject({
+        component_filter: 'Runner',
+        type_filter: 'plugin',
+      });
+
+    await page
+      .getByRole('button', { name: 'Install Marketplace Runner', exact: true })
+      .click();
+
+    await expect.poll(() => installRequests).toBe(1);
+    await expect.poll(() => taskPolls).toBeGreaterThan(0);
+    await expect(
+      page.getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      })
+      .click();
+    await expect(runnerSelect).toContainText('Marketplace Runner');
+
+    await runnerSelect.click();
+    await expect(
+      page.getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Install Marketplace Runner',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  });
+
+  test('uses the compact Runner marketplace selector in pipeline AI settings', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const apiResponse = (data: unknown) =>
+      JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data,
+        timestamp: Date.now(),
+      });
+
+    await page.route(
+      'https://space.langbot.app/api/v1/marketplace/extensions/search',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({
+            extensions: [
+              {
+                id: 2,
+                plugin_id: 'qa/PipelineMarketplaceRunner',
+                author: 'qa',
+                name: 'PipelineMarketplaceRunner',
+                label: {
+                  en_US: 'Pipeline Marketplace Runner',
+                  zh_Hans: '流水线市场运行器',
+                },
+                description: {
+                  en_US: 'A marketplace runner shown inside pipeline settings.',
+                  zh_Hans: '展示在流水线配置中的市场运行器。',
+                },
+                icon: '',
+                repository: 'https://example.test/pipeline-runner',
+                tags: [],
+                install_count: 9,
+                latest_version: '1.0.0',
+                components: { Runner: 1 },
+                runner_usages: ['agent'],
+                status: 'live',
+                type: 'plugin',
+                created_at: '2026-01-01T00:00:00Z',
+                updated_at: '2026-01-01T00:00:00Z',
+              },
+            ],
+            total: 1,
+          }),
+        }),
+    );
+
+    await page.goto('/home/agents?id=pipeline-runner-selector');
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+
+    const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
+    await runnerSelect.click();
+    await expect(page.getByText('Installed Runners')).toBeVisible();
+    await expect(page.getByText('Runner plugins in Marketplace')).toBeVisible();
+    await expect(
+      page
+        .locator('[data-slot="select-content"]')
+        .getByText('A marketplace runner shown inside pipeline settings.', {
+          exact: true,
+        }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Install Pipeline Marketplace Runner',
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
+
+  test('uses the global catalog and preserves temporarily unavailable tools', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const toolCatalogUrls: URL[] = [];
+    const requestedPaths: string[] = [];
+    let savedAgent: Record<string, unknown> | undefined;
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === '/api/v1/tools') toolCatalogUrls.push(url);
+      if (
+        url.pathname === '/api/v1/agents/agent-scope' &&
+        request.method() === 'PUT'
+      ) {
+        savedAgent = JSON.parse(request.postData() || '{}') as Record<
+          string,
+          unknown
+        >;
+      }
+    });
+
+    await page.goto('/home/agents?id=agent-scope');
+    await page.getByRole('tab', { name: /^Runner$/ }).click();
+    await page.getByRole('button', { name: 'Edit tools' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('available_plugin_tool')).toBeVisible();
+    await dialog
+      .getByRole('checkbox', { name: 'Select available_plugin_tool' })
+      .click();
+    await dialog.getByRole('button', { name: /^Confirm$/ }).click();
+    await save(page);
+
+    await expect.poll(() => savedAgent).toBeTruthy();
+    expect(savedAgent).toMatchObject({
+      config: {
+        runner_config: {
+          'plugin:langbot-team/LocalAgent/default': {
+            tools: ['unavailable_plugin_tool', 'available_plugin_tool'],
+          },
+        },
+      },
+    });
+    expect(
+      toolCatalogUrls.some((url) => url.searchParams.has('pipeline_uuid')),
+    ).toBe(false);
+    expect(requestedPaths).not.toContain(
+      '/api/v1/pipelines/agent-scope/extensions',
+    );
+  });
+});
+
+test.describe('agent and pipeline save concurrency', () => {
+  test('agent save freezes its payload and keeps later edits dirty', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
+    const delayedSave = await installDelayedFirstSave(
+      page,
+      '/api/v1/agents/agent-save-race',
+    );
+
+    await page.goto('/home/agents?id=agent-save-race');
+    const saveButton = page.getByRole('button', { name: /^Save$/ });
+    await page.getByRole('tab', { name: 'Events & tools' }).click();
+    const eventPatterns = page.getByRole('button', {
+      name: 'Add event',
+      exact: true,
+    });
+    await expect(eventPatterns).toBeVisible();
+
+    await eventPatterns.click();
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'message.received' })
+      .click();
+    await page.keyboard.press('Escape');
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(1);
+    await expect(saveButton).toBeDisabled();
+
+    await eventPatterns.click();
+    await page.getByRole('option').filter({ hasText: 'group.*' }).click();
+    await page
+      .getByRole('button', { name: 'Remove event', exact: true })
+      .first()
+      .click();
+    await page.keyboard.press('Escape');
+    await forceFormSubmit(page, '#agent-form');
+    expect(delayedSave.payloads).toHaveLength(1);
+    await expect(saveButton).toBeDisabled();
+
+    delayedSave.releaseFirstSave();
+    await expect(saveButton).toBeEnabled();
+    expect(delayedSave.payloads[0]).toMatchObject({
+      supported_event_patterns: ['message.received'],
+    });
+
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(2);
+    expect(delayedSave.payloads[1]).toMatchObject({
+      supported_event_patterns: ['group.*'],
+    });
+    await expect(saveButton).toBeDisabled();
+  });
+
+  test('pipeline save freezes its payload and keeps later edits dirty', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const delayedSave = await installDelayedFirstSave(
+      page,
+      '/api/v1/pipelines/pipeline-save-race',
+    );
+
+    await page.goto('/home/agents?id=pipeline-save-race');
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    let infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Name').fill('Submitted Pipeline');
+    const dialogSaveButton = infoDialog.getByRole('button', { name: 'Save' });
+    await dialogSaveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(1);
+    await expect(
+      infoDialog.getByRole('button', { name: 'Saving...' }),
+    ).toBeDisabled();
+
+    delayedSave.releaseFirstSave();
+    await expect(infoDialog).toHaveCount(0);
+    expect(delayedSave.payloads[0]).toMatchObject({
+      name: 'Submitted Pipeline',
+      description: '',
+    });
+
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    infoDialog = page.getByRole('dialog');
+    await infoDialog
+      .getByLabel('Description')
+      .fill('Edited in the next basic information save');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(2);
+    expect(delayedSave.payloads[1]).toMatchObject({
+      name: 'Submitted Pipeline',
+      description: 'Edited in the next basic information save',
+    });
+    await expect(infoDialog).toHaveCount(0);
   });
 });
 
 test.describe('cross-resource flows', () => {
+  test('adds custom bot events and reorders routes with a drag preview', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
+
+    await page.goto('/home/bots?id=new');
+    await createPlaywrightBot(page, 'Routing Bot');
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await expect(
+      page.getByText('Common scenarios', { exact: true }),
+    ).toBeVisible();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Welcome new members/ }).click();
+
+    const routeCards = page.locator('[data-testid^="event-route-"]');
+    await expect(routeCards).toHaveCount(2);
+    await expect(routeCards.nth(0)).toContainText('Message received');
+    await expect(routeCards.nth(1)).toContainText('Member joined group');
+
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page
+      .getByRole('menuitem', { name: /^Configure another event/ })
+      .hover();
+    const eventSubmenu = page.locator(
+      '[data-slot="dropdown-menu-sub-content"]',
+    );
+    await expect(
+      eventSubmenu.getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      eventSubmenu.getByRole('menuitem', { name: /^Message edited/ }),
+    ).toBeVisible();
+    await eventSubmenu
+      .getByRole('menuitem', { name: /^Message edited/ })
+      .click();
+    await expect(routeCards).toHaveCount(3);
+    await expect(routeCards.nth(2)).toContainText('Message edited');
+
+    const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
+    const secondCard = routeCards.nth(1);
+    await firstHandle.scrollIntoViewIfNeeded();
+    const handleBox = await firstHandle.boundingBox();
+    const targetBox = await secondCard.boundingBox();
+    expect(handleBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+
+    await page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2 + 10,
+      { steps: 4 },
+    );
+    await expect(page.locator('[data-drag-overlay="true"]')).toBeVisible();
+    await page.mouse.move(
+      targetBox!.x + targetBox!.width / 2,
+      targetBox!.y + targetBox!.height - 4,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+
+    await expect(page.locator('[data-drag-overlay="true"]')).toHaveCount(0);
+    await expect(routeCards.nth(0)).toContainText('Member joined group');
+    await expect(routeCards.nth(1)).toContainText('Message received');
+
+    await save(page);
+    await page.reload();
+    const savedRouteCards = page.locator('[data-testid^="event-route-"]');
+    await expect(savedRouteCards.nth(0)).toContainText('Member joined group');
+    await expect(savedRouteCards.nth(1)).toContainText('Message received');
+    await expect(savedRouteCards.nth(2)).toContainText('Message edited');
+  });
+
   test('creates a pipeline then binds it to a bot', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline first
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Production Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Production Pipeline');
     await submit(page);
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     // Create a bot
     await page.goto('/home/bots?id=new');
-    await page.locator('input[name="name"]').fill('Bound Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
-    await submit(page);
+    await createPlaywrightBot(page, 'Bound Bot');
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     // Wait for form to fully load
-    await expect(page.locator('input[name="name"]')).toHaveValue('Bound Bot');
+    await expect(
+      page.getByRole('heading', { name: 'Bound Bot' }),
+    ).toBeVisible();
 
-    // Find the pipeline select by its label "Bind Pipeline"
-    const pipelineCard = page.getByText('Bind Pipeline').locator('..');
-    await expect(pipelineCard).toBeVisible({ timeout: 5000 });
-
-    // Click on the select trigger within the pipeline binding card
-    // The select trigger shows "Select Pipeline" placeholder initially
-    const pipelineSelectTrigger = page.getByText('Select Pipeline').first();
-    await pipelineSelectTrigger.click();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await page
+      .getByRole('combobox')
+      .filter({ hasText: 'Select processor' })
+      .click();
 
     // Select the pipeline option
-    await page.getByRole('option', { name: 'Production Pipeline' }).click();
+    await page.getByRole('option', { name: /Production Pipeline/ }).click();
 
     // Save the bot
     await save(page);
@@ -494,9 +1446,7 @@ test.describe('cross-resource flows', () => {
     await page.reload();
     // The pipeline name should appear in the select trigger (not in sidebar or options)
     await expect(
-      page
-        .locator('[data-slot="select-trigger"]')
-        .filter({ hasText: 'Production Pipeline' }),
+      page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
     ).toBeVisible();
   });
 });
@@ -509,12 +1459,12 @@ test.describe('empty states', () => {
     await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
   });
 
-  test('shows empty state when no pipelines exist', async ({ page }) => {
+  test('shows empty state when no processors exist', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines');
+    await page.goto('/home/agents');
     await expect(
-      page.getByText('Select a pipeline from the sidebar'),
+      page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
   });
 

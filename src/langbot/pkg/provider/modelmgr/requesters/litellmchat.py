@@ -1147,8 +1147,39 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             if tools:
                 args['tools'] = tools
                 args.setdefault('tool_choice', 'auto')
+                # LangBot owns tool discovery and execution. LiteLLM 1.92+
+                # otherwise probes its optional MCP gateway for every tool call
+                # and imports proxy-only dependencies such as FastAPI.
+                args['_skip_mcp_handler'] = True
 
         return args
+
+    async def count_tokens(
+        self,
+        model: requester.RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> int:
+        """Count input tokens with LiteLLM's model-aware tokenizer."""
+        args = await self._build_completion_args(model, messages, funcs, extra_args, stream=False)
+        count_args: dict[str, typing.Any] = {
+            'model': args['model'],
+            'messages': args['messages'],
+        }
+        if 'tools' in args:
+            count_args['tools'] = args['tools']
+        if 'tool_choice' in args:
+            count_args['tool_choice'] = args['tool_choice']
+
+        try:
+            tokens = litellm.token_counter(**count_args)
+        except Exception as e:
+            self._handle_litellm_error(e)
+
+        if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+            raise errors.RequesterError(f'token counter returned invalid value: {tokens!r}')
+        return tokens
 
     async def invoke_llm(
         self,
@@ -1247,6 +1278,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 delta_content = delta.get('content') or ''
                 reasoning_content = delta.get('reasoning_content') or ''
                 provider_fields = dict(delta.get('provider_specific_fields') or {})
+                if finish_reason:
+                    # Preserve an explicit provider stop even when the final delta is empty.
+                    provider_fields['finish_reason'] = finish_reason
                 raw_thinking_blocks = delta.get('thinking_blocks')
                 if raw_thinking_blocks:
                     thinking_blocks_state = self._merge_thinking_blocks(thinking_blocks_state, raw_thinking_blocks)

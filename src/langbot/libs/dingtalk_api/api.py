@@ -579,8 +579,13 @@ class DingTalkClient:
                     response.status_code,
                     response_body,
                 )
+                try:
+                    body = response.json()
+                except Exception:
+                    body = {'text': response.text}
                 if response.status_code == 200:
-                    return
+                    return body
+                raise Exception(f'Error: {response.status_code}, {body}')
         except Exception:
             _stdout_logger.exception('DingTalk send_proactive_message_to_one error')
             await self.logger.error(f'failed to send proactive massage to person: {traceback.format_exc()}')
@@ -606,8 +611,13 @@ class DingTalkClient:
         try:
             async with self._http_client_context() as client:
                 response = await client.post(url, headers=headers, json=data)
+                try:
+                    body = response.json()
+                except Exception:
+                    body = {'text': response.text}
                 if response.status_code == 200:
-                    return
+                    return body
+                raise Exception(f'Error: {response.status_code}, {body}')
         except Exception:
             await self.logger.error(f'failed to send proactive massage to group: {traceback.format_exc()}')
             raise Exception(f'failed to send proactive massage to group: {traceback.format_exc()}')

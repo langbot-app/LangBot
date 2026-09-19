@@ -163,3 +163,32 @@ async def test_marketplace_response_reader_is_bounded():
 
     with pytest.raises(ValueError, match='exceeds'):
         await _read_httpx_response_limited(response, max_bytes=4)
+
+
+@pytest.mark.asyncio
+async def test_marketplace_missing_release_is_classified_without_upstream_message():
+    from langbot.pkg.plugin.connector import _marketplace_get, MarketplacePluginVersionNotFoundError
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(500, json={'msg': 'plugin version not found: record not found private-token'})
+        )
+    ) as client:
+        with pytest.raises(MarketplacePluginVersionNotFoundError) as exc:
+            await _marketplace_get(client, 'https://market.test/download', max_bytes=4096)
+        assert 'private-token' not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_marketplace_download_reports_byte_progress():
+    from langbot.pkg.plugin.connector import _marketplace_get
+    from langbot.pkg.core.taskmgr import TaskContext
+
+    ctx = TaskContext.new()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, content=b'x' * 1024))
+    ) as client:
+        status, body = await _marketplace_get(client, 'https://market.test/download', max_bytes=2048, task_context=ctx)
+    assert status == 200 and len(body) == 1024
+    assert ctx.metadata['download_current'] == ctx.metadata['download_total'] == 1024
+    assert ctx.metadata['download_speed'] > 0

@@ -162,6 +162,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
   }
@@ -185,4 +189,9 @@
     opacity: 0.7;
     transform: scale(0.95) rotate(-4deg);
   }
+}
+
+/* Show one tour at a time while the sidebar introduction is open. */
+body:has([data-tour-modal='true']) [data-tour-modal='false'] {
+  display: none;
 }

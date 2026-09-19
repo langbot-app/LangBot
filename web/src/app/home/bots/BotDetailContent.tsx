@@ -1,16 +1,10 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +13,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import BotForm from '@/app/home/bots/components/bot-form/BotForm';
+import BotForm, {
+  BotFormHandle,
+} from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
@@ -29,7 +25,14 @@ import { useTranslation } from 'react-i18next';
 import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { showBotError } from './bot-error';
 import { useCurrentWorkspace } from '@/app/infra/http';
+import { Bot } from '@/app/infra/entities/api';
+import EntityBasicInfoDialog, {
+  EntityBasicInfoValues,
+} from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import AdapterEventDebugDialog from './components/bot-form/AdapterEventDebugDialog';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -54,9 +57,15 @@ export default function BotDetailContent({ id }: { id: string }) {
   }, [id, isCreateMode, bots, setDetailEntityName, t]);
 
   const [activeTab, setActiveTab] = useState('config');
+  const [adapterLabel, setAdapterLabel] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [bot, setBot] = useState<Bot | null>(null);
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(false);
   const sessionMonitorRef = useRef<BotSessionMonitorHandle>(null);
+  const botFormRef = useRef<BotFormHandle>(null);
 
   // Track whether the form has unsaved changes
   const [formDirty, setFormDirty] = useState(false);
@@ -68,32 +77,31 @@ export default function BotDetailContent({ id }: { id: string }) {
   // Fetch bot enable state
   useEffect(() => {
     if (!isCreateMode) {
-      httpClient.getBot(id).then((res) => {
-        setBotEnabled(res.bot.enable ?? true);
-        setEnableLoaded(true);
-      });
+      setLoadFailed(false);
+      httpClient
+        .getBot(id)
+        .then((res) => {
+          setBot(res.bot);
+          setBotEnabled(res.bot.enable ?? true);
+          setEnableLoaded(true);
+        })
+        .catch(() => setLoadFailed(true));
     }
-  }, [id, isCreateMode]);
+  }, [id, isCreateMode, loadAttempt]);
 
   const handleEnableToggle = useCallback(
     async (checked: boolean) => {
       const prev = botEnabled;
       setBotEnabled(checked);
       try {
-        // Fetch current bot data to send a complete update
-        const res = await httpClient.getBot(id);
-        const bot = res.bot;
-        await httpClient.updateBot(id, {
-          name: bot.name,
-          description: bot.description,
-          adapter: bot.adapter,
-          adapter_config: bot.adapter_config,
-          enable: checked,
-        });
+        await httpClient.updateBot(id, { enable: checked });
+        setBot((current) =>
+          current ? { ...current, enable: checked } : current,
+        );
         refreshBots();
-      } catch {
+      } catch (error) {
         setBotEnabled(prev);
-        toast.error(t('bots.setBotEnableError'));
+        showBotError(error, t('bots.setBotEnableError'), t);
       }
     },
     [id, botEnabled, refreshBots, t],
@@ -102,6 +110,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   function handleFormSubmit() {
     // Re-sync enable state after form save (form may update enable too)
     httpClient.getBot(id).then((res) => {
+      setBot(res.bot);
       setBotEnabled(res.bot.enable ?? true);
     });
     refreshBots();
@@ -115,6 +124,22 @@ export default function BotDetailContent({ id }: { id: string }) {
   function handleNewBotCreated(newBotId: string) {
     refreshBots();
     navigate(`/home/bots?id=${encodeURIComponent(newBotId)}`);
+  }
+
+  async function saveBasicInfo(values: EntityBasicInfoValues) {
+    try {
+      await httpClient.updateBot(id, {
+        name: values.name,
+        description: values.description,
+      });
+      setBot((current) => (current ? { ...current, ...values } : current));
+      botFormRef.current?.syncBasicInfo(values);
+      await refreshBots();
+      toast.success(t('bots.saveSuccess'));
+    } catch (error) {
+      showBotError(error, t('bots.saveError'), t);
+      throw error;
+    }
   }
 
   function confirmDelete() {
@@ -133,25 +158,27 @@ export default function BotDetailContent({ id }: { id: string }) {
   // ==================== Create Mode ====================
   if (isCreateMode) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 shrink-0">
           <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
-          {canManage && (
-            <Button type="submit" form="bot-form">
+          {canManage && adapterLabel && (
+            <Button type="submit" form="bot-form" data-guide="bot-submit">
               {t('common.submit')}
             </Button>
           )}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl pb-8">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mx-auto w-full min-w-0 max-w-7xl pb-8">
             <fieldset className="contents" disabled={!canManage}>
               <BotForm
                 initBotId={undefined}
                 onFormSubmit={handleFormSubmit}
                 onNewBotCreated={handleNewBotCreated}
+                guideEnabled={canManage}
+                onAdapterLabelChange={setAdapterLabel}
               />
             </fieldset>
           </div>
@@ -160,14 +187,27 @@ export default function BotDetailContent({ id }: { id: string }) {
     );
   }
 
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!enableLoaded) return <EntityLoadState />;
+
   // ==================== Edit Mode ====================
   return (
     <>
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col">
         {/* Sticky Header: title + enable switch + save button */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold">{t('bots.editBot')}</h1>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex min-w-0 items-center gap-1">
+              <h1 className="truncate text-xl font-semibold">
+                {bot?.name || t('bots.editBot')}
+              </h1>
+              {canManage && (
+                <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+              )}
+            </div>
             {enableLoaded && (
               <div className="flex items-center gap-2">
                 <Switch
@@ -186,14 +226,30 @@ export default function BotDetailContent({ id }: { id: string }) {
             )}
           </div>
           {canManage && (
-            <Button
-              type="submit"
-              form="bot-form"
-              disabled={!formDirty}
-              className={activeTab !== 'config' ? 'invisible' : ''}
-            >
-              {t('common.save')}
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <AdapterEventDebugDialog
+                key={id}
+                botId={id}
+                adapterLabel={adapterLabel}
+              />
+              <Button
+                type="submit"
+                form="bot-form"
+                disabled={!formDirty}
+                className={activeTab !== 'config' ? 'invisible' : ''}
+                data-guide="bot-config-save"
+              >
+                {t('common.save')}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="size-4" />
+                {t('common.delete')}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -202,7 +258,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           key={id}
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex flex-1 flex-col min-h-0"
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
           <div className="flex shrink-0 items-center gap-1">
             <TabsList>
@@ -253,52 +309,20 @@ export default function BotDetailContent({ id }: { id: string }) {
           {/* Tab: Configuration */}
           <TabsContent
             value="config"
-            className="flex-1 min-h-0 overflow-y-auto mt-4"
+            className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden lg:overflow-hidden"
           >
-            <div className="mx-auto max-w-3xl space-y-6 pb-8">
+            <div className="min-h-0 min-w-0 pb-4 lg:h-full lg:pb-0">
               <fieldset className="contents" disabled={!canManage}>
                 <BotForm
+                  ref={botFormRef}
                   initBotId={id}
                   onFormSubmit={handleFormSubmit}
                   onNewBotCreated={handleNewBotCreated}
                   onDirtyChange={setFormDirty}
+                  onAdapterLabelChange={setAdapterLabel}
+                  guideEnabled={canManage}
                 />
               </fieldset>
-
-              {/* Card: Danger Zone */}
-              {canManage && (
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="text-destructive">
-                      {t('bots.dangerZone')}
-                    </CardTitle>
-                    <CardDescription>
-                      {t('bots.dangerZoneDescription')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">
-                          {t('bots.deleteBotAction')}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {t('bots.deleteBotHint')}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setShowDeleteConfirm(true)}
-                      >
-                        <Trash2 className="size-4 mr-1.5" />
-                        {t('common.delete')}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </TabsContent>
 
@@ -344,6 +368,17 @@ export default function BotDetailContent({ id }: { id: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EntityBasicInfoDialog
+        open={basicInfoOpen}
+        onOpenChange={setBasicInfoOpen}
+        values={{
+          name: bot?.name || '',
+          description: bot?.description || '',
+        }}
+        showEmoji={false}
+        onSave={saveBasicInfo}
+      />
     </>
   );
 }

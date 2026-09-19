@@ -24,6 +24,7 @@ import uuid
 from ..http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .context import bind_request_context, reset_request_context
 from .server import LangBotMCPServer
+from .. import management_diagnostics as diagnostics
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -85,13 +86,8 @@ class MCPMount:
         authenticate_api_key = self.ap.apikey_service.authenticate_api_key
         is_mcp_path = self._is_mcp_path
 
-        async def dispatcher(scope, receive, send):  # type: ignore[no-untyped-def]
-            # Pass through non-HTTP scopes (lifespan, websocket) to Quart so its
-            # own startup/shutdown and websocket routes keep working.
-            if scope['type'] != 'http' or not is_mcp_path(scope.get('path', '')):
-                await quart_asgi(scope, receive, send)
-                return
-
+        @diagnostics.observe('mcp.request', source='mcp', ap=self.ap)
+        async def dispatch_mcp(scope, receive, send):
             # Authenticate MCP HTTP requests with a LangBot API key.
             api_key = _extract_api_key(scope.get('headers', []))
             identity = None
@@ -100,6 +96,7 @@ class MCPMount:
                     identity = await authenticate_api_key(api_key)
 
             if identity is None:
+                diagnostics.outcome('rejected')
                 await send(
                     {
                         'type': 'http.response.start',
@@ -126,6 +123,7 @@ class MCPMount:
                     entitlement = await resolver.resolve(identity.workspace_uuid)
                     entitlement_revision = entitlement.entitlement_revision
             except Exception:
+                diagnostics.outcome('rejected')
                 await send(
                     {
                         'type': 'http.response.start',
@@ -153,6 +151,7 @@ class MCPMount:
                 ),
                 entitlement_revision=entitlement_revision,
             )
+            diagnostics.workspace(request_context)
             tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
             if not callable(tenant_scope):
                 raise RuntimeError('MCP request persistence scope is unavailable')
@@ -164,5 +163,13 @@ class MCPMount:
                         deployment_admission.require_active()
                 finally:
                     reset_request_context(token)
+
+        async def dispatcher(scope, receive, send):  # type: ignore[no-untyped-def]
+            # Non-MCP traffic keeps its existing Quart boundaries. In
+            # particular, never derive an operation from an ASGI request path.
+            if scope['type'] != 'http' or not is_mcp_path(scope.get('path', '')):
+                await quart_asgi(scope, receive, send)
+                return
+            await dispatch_mcp(scope, receive, send)
 
         return dispatcher

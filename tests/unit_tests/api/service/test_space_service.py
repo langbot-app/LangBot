@@ -827,7 +827,9 @@ class TestSpaceServiceGetModels:
 class TestSpaceServiceGetModelSelection:
     """Tests for availability-ranked model selection."""
 
-    @pytest.mark.parametrize('response_shape', ['direct', 'models-envelope', 'availability-wrapper'])
+    @pytest.mark.parametrize(
+        'response_shape', ['direct', 'models-envelope', 'availability-wrapper', 'legacy-flat-wrapper']
+    )
     async def test_preserves_selection_order_and_category_query(self, response_shape):
         ap = SimpleNamespace(instance_config=SimpleNamespace(data={}))
         service = SpaceService(ap)
@@ -835,6 +837,7 @@ class TestSpaceServiceGetModelSelection:
             {
                 'uuid': 'best-model',
                 'model_id': 'best-chat-model',
+                'listed_at': '2026-09-09T19:00:00.000929Z',
                 'provider': 'provider-1',
                 'category': 'chat',
                 'status': 'active',
@@ -850,6 +853,19 @@ class TestSpaceServiceGetModelSelection:
         if response_shape == 'models-envelope':
             data = {'models': models}
         elif response_shape == 'availability-wrapper':
+            data = [
+                {
+                    'model': model,
+                    'availability': {
+                        'up': True,
+                        'last_probed_at': '2026-09-11T12:01:18Z',
+                        'latency_ms': index + 10,
+                        'http_code': 200,
+                    },
+                }
+                for index, model in enumerate(models)
+            ]
+        elif response_shape == 'legacy-flat-wrapper':
             data = [{'model': model, 'latency_ms': index + 10, 'http_code': 200} for index, model in enumerate(models)]
         else:
             data = models
@@ -871,9 +887,60 @@ class TestSpaceServiceGetModelSelection:
             result = await service.get_model_selection('chat')
 
         assert [model.uuid for model in result] == ['best-model', 'fallback-model']
+        assert result[0].model_dump()['listed_at'] == '2026-09-09T19:00:00.000929Z'
+        assert result[1].listed_at is None
+        if response_shape == 'availability-wrapper':
+            assert result[0].availability.up is True
+            assert result[0].availability.last_probed_at == '2026-09-11T12:01:18Z'
+            assert result[0].availability.latency_ms == 10
         session.get.assert_called_once_with(
             'https://space.langbot.app/api/v1/models/selection',
             params={'category': 'chat'},
+        )
+
+    async def test_selection_without_category_fetches_all_model_statuses(self):
+        ap = SimpleNamespace(instance_config=SimpleNamespace(data={}))
+        service = SpaceService(ap)
+        payload = {
+            'code': 0,
+            'data': {
+                'models': [
+                    {
+                        'model': {
+                            'uuid': 'embedding-model',
+                            'model_id': 'text-embedding',
+                            'category': 'embedding',
+                            'input_credits': 20,
+                            'output_credits': 40,
+                        },
+                        'availability': {'up': None, 'last_probed_at': None},
+                    }
+                ]
+            },
+        }
+        mock_response = MagicMock(status=200)
+
+        with (
+            patch('langbot.pkg.api.http.service.space.httpclient.get_session') as get_session,
+            patch(
+                'langbot.pkg.api.http.service.space.httpclient.read_json_limited',
+                new=AsyncMock(return_value=payload),
+            ),
+        ):
+            session = MagicMock()
+            session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+            session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+            get_session.return_value = session
+
+            result = await service.get_model_selection()
+
+        assert result[0].category == 'embedding'
+        assert result[0].input_credits == 20
+        assert result[0].output_credits == 40
+        assert result[0].availability.up is None
+        session.get.assert_called_once_with(
+            'https://space.langbot.app/api/v1/models/selection',
+            params=None,
         )
 
     async def test_recommended_model_uses_first_selection_and_refreshes_once(self):

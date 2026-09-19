@@ -48,7 +48,7 @@ export default function KnowledgePage() {
           externalKbCount={migrationExternalCount}
           onMigrationComplete={handleMigrationComplete}
         />
-        <KBDetailContent id={detailId} />
+        <KBDetailContent key={detailId} id={detailId} />
       </>
     );
   }

@@ -35,22 +35,15 @@ await ensureEvidence(paths);
 const startedAt = new Date();
 const fixturePath = resolve(env.LANGBOT_MCP_FIXTURE_PATH || "skills/langbot-testing/fixtures/mcp/qa_mcp_echo_server.py");
 const langbotRepo = env.LANGBOT_REPO ? resolve(env.LANGBOT_REPO) : "";
-const uvCandidates = [
-  env.LANGBOT_MCP_FIXTURE_UV,
-  "uv",
-].filter(Boolean);
-const uv = uvCandidates.find((candidate) => candidate === "uv" || existsSync(candidate));
 const pythonCandidates = [
   env.LANGBOT_MCP_FIXTURE_PYTHON,
   langbotRepo ? `${langbotRepo}/.venv/bin/python` : "",
   "python3",
 ].filter(Boolean);
 const python = pythonCandidates.find((candidate) => candidate === "python3" || existsSync(candidate));
-const command = langbotRepo && uv
-  ? { executable: uv, args: ["run", "python", fixturePath], cwd: langbotRepo, mode: "uv" }
-  : python
-    ? { executable: python, args: [fixturePath], cwd: resolve("."), mode: "python" }
-    : null;
+const command = python
+  ? { executable: python, args: [fixturePath], cwd: resolve("."), mode: "python" }
+  : null;
 const expectedText = "qa_mcp_echo:mcp-stdio-fixture-ok";
 
 const result = {
@@ -94,7 +87,7 @@ async function request(child, id, method, params) {
 async function run() {
   if (!command) {
     result.status = "env_issue";
-    result.reason = "No uv or Python interpreter found. Set LANGBOT_REPO, LANGBOT_MCP_FIXTURE_UV, or LANGBOT_MCP_FIXTURE_PYTHON.";
+    result.reason = "No Python interpreter found. Set LANGBOT_REPO or LANGBOT_MCP_FIXTURE_PYTHON.";
     return;
   }
   if (!existsSync(fixturePath)) {

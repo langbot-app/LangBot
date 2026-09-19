@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import React, {
   type ReactNode,
   useState,
@@ -596,6 +597,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchMode = form.watch('mode');
   const {
+    loading: boxLoading,
     available: boxAvailable,
     hint: boxHint,
     reason: boxReason,
@@ -610,6 +612,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     watchMode === 'stdio' && mcpStdioEnabled && !boxAvailable;
   const stdioBlocked = stdioBlockedByPolicy || stdioBlockedByBox;
 
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(!isEditMode);
   const { isDirty } = form.formState;
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -639,10 +644,13 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   );
 
   useEffect(() => {
+    setLoadFailed(false);
+    setInitialDataLoaded(!isEditMode);
     isInitializing.current = true;
     if (isEditMode && initServerName) {
       loadServerForEdit(initServerName).finally(() => {
         isInitializing.current = false;
+        setInitialDataLoaded(true);
       });
     } else {
       form.reset({
@@ -669,7 +677,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         pollingIntervalRef.current = null;
       }
     };
-  }, [initServerName]);
+  }, [initServerName, loadAttempt]);
 
   useEffect(() => {
     if (!onDraftChange || isEditMode) return;
@@ -789,6 +797,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       setRuntimeInfo(server.runtime_info ?? null);
       setReadme(server.readme ?? '');
     } catch (error) {
+      setLoadFailed(true);
       console.error('Failed to load server:', error);
       toast.error(t('mcp.loadFailed'));
     }
@@ -1384,6 +1393,12 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   ) : (
     runtimePanel
   );
+
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!initialDataLoaded || boxLoading) return <EntityLoadState />;
 
   if (layout === 'split') {
     return (

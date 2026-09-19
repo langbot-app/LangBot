@@ -1,0 +1,1134 @@
+"""E2E coverage for the official Local Agent runner with fake Host resources.
+
+These tests start the real LangBot application and the real SDK Plugin Runtime,
+load the consolidated ``langbot-plugin-demo/Runner/LocalAgent`` plugin, and verify Local Agent paths
+that must cross Host run-scoped APIs without calling any external provider.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
+from tests.e2e.utils.process_manager import find_project_root
+
+pytestmark = pytest.mark.e2e
+
+
+LOCAL_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+FAKE_PROVIDER_UUID = 'e2e-fake-provider'
+FAKE_MODEL_UUID = 'e2e-fake-local-agent-model'
+E2E_TOOL_NAME = 'e2e_lookup'
+E2E_KB_UUID = 'e2e-kb-local-agent'
+
+
+def _free_port() -> int:
+    """Reserve a currently-free localhost TCP port for this E2E process."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(('127.0.0.1', 0))
+        return int(sock.getsockname()[1])
+
+
+def _local_agent_repo() -> Path:
+    """Return the sibling local-agent repository used by this workspace E2E."""
+    project_root = find_project_root()
+    return project_root.parent / 'langbot-plugin-demo' / 'Runner' / 'LocalAgent'
+
+
+def _package_local_agent_plugin(tmpdir: Path) -> Path:
+    """Package the sibling Local Agent plugin for the real local-install flow."""
+    local_agent_src = _local_agent_repo()
+    if not (local_agent_src / 'manifest.yaml').exists():
+        pytest.skip(f'local-agent repository not found at {local_agent_src}')
+
+    package_source = tmpdir / 'local-agent-package'
+    ignore = shutil.ignore_patterns(
+        '.git',
+        '.venv*',
+        '__pycache__',
+        '.pytest_cache',
+        '.ruff_cache',
+        'build',
+        'dist',
+    )
+    shutil.copytree(local_agent_src, package_source, ignore=ignore)
+    archive_path = Path(
+        shutil.make_archive(
+            str(tmpdir / 'langbot-local-agent'),
+            'zip',
+            root_dir=package_source,
+        )
+    )
+    shutil.rmtree(package_source)
+    return archive_path
+
+
+def _content_text(content: Any) -> str:
+    """Flatten provider message content into text for assertions."""
+    if content is None:
+        return ''
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            text = item.get('text') if isinstance(item, dict) else getattr(item, 'text', None)
+            if text:
+                parts.append(str(text))
+        return ''.join(parts)
+    return str(content)
+
+
+def _message_text(message: Any) -> str:
+    """Flatten a provider message into text for assertions."""
+    return _content_text(getattr(message, 'content', None))
+
+
+def _invoke_payload_texts(fake_requester: Any) -> list[list[str]]:
+    """Return model-facing text for every fake LLM invocation."""
+    payloads: list[list[str]] = []
+    for payload in fake_requester._invoke_payloads:
+        payloads.append([_message_text(message) for message in payload['messages']])
+    return payloads
+
+
+def _event(
+    *,
+    event_id: str,
+    conversation_id: str,
+    text: str,
+    thread_id: str = 'e2e-local-agent-thread',
+):
+    """Build an Runner event envelope for Local Agent E2E probes."""
+    from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.event import ActorContext, SubjectContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    return AgentEventEnvelope(
+        event_id=event_id,
+        event_type='message.received',
+        source='api',
+        conversation_id=conversation_id,
+        thread_id=thread_id,
+        actor=ActorContext(actor_type='user', actor_id='user-001', actor_name='E2E User'),
+        subject=SubjectContext(subject_type='chat', subject_id='chat-001'),
+        input=AgentInput(text=text),
+        delivery=DeliveryContext(surface='e2e', supports_streaming=False),
+    )
+
+
+def _binding(
+    *,
+    binding_id: str = 'e2e-local-agent-binding',
+    runner_config: dict[str, Any] | None = None,
+    allowed_tool_names: list[str] | None = None,
+    allowed_kb_uuids: list[str] | None = None,
+):
+    """Build a Local Agent binding with fake model access."""
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+
+    config = {
+        'model': {'primary': FAKE_MODEL_UUID, 'fallbacks': []},
+        'timeout': 60,
+        'prompt': [{'role': 'system', 'content': 'You are a concise test assistant.'}],
+        'knowledge-bases': [],
+        'context-window-tokens': 8192,
+        'context-reserve-tokens': 1024,
+        'context-keep-recent-tokens': 1000,
+        'context-summary-tokens': 500,
+    }
+    if runner_config:
+        config.update(runner_config)
+
+    return AgentBinding(
+        binding_id=binding_id,
+        scope=BindingScope(scope_type='global'),
+        runner_id=LOCAL_RUNNER_ID,
+        runner_config=config,
+        resource_policy=ResourcePolicy(
+            allowed_model_uuids=[FAKE_MODEL_UUID],
+            allowed_tool_names=allowed_tool_names,
+            allowed_kb_uuids=allowed_kb_uuids,
+        ),
+        state_policy=StatePolicy(enable_state=True, state_scopes=['conversation']),
+        delivery_policy=DeliveryPolicy(enable_streaming=False, enable_reply=True),
+    )
+
+
+class _FakeToolManager:
+    """Deterministic tool manager used behind the real Host CALL_TOOL action."""
+
+    def __init__(self):
+        self.calls: list[dict[str, Any]] = []
+
+    async def get_resolved_tool_catalog(
+        self,
+        context,
+        bound_plugins=None,
+        bound_mcp_servers=None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=False,
+    ):
+        assert context.workspace_uuid
+        return [{'name': E2E_TOOL_NAME, 'source': 'native', 'source_id': None}]
+
+    async def get_tool_schema(self, context, tool_name: str, source_ref=None):
+        assert context.workspace_uuid
+        assert source_ref == {'source': 'native', 'source_id': None}
+        if tool_name != E2E_TOOL_NAME:
+            return None, None
+        return (
+            'Lookup a deterministic E2E value.',
+            {
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string'},
+                },
+                'required': ['query'],
+            },
+        )
+
+    async def get_tool_detail(self, context, tool_name: str, source_ref=None):
+        description, parameters = await self.get_tool_schema(context, tool_name, source_ref=source_ref)
+        if parameters is None:
+            return None
+        return {'name': tool_name, 'description': description, 'parameters': parameters}
+
+    async def execute_func_call(self, name: str, parameters: dict[str, Any], query: Any = None, source_ref=None):
+        assert query.workspace_uuid
+        assert source_ref == {'source': 'native', 'source_id': None}
+        self.calls.append({'name': name, 'parameters': dict(parameters)})
+        return {
+            'value': f'tool-result:{parameters.get("query")}',
+            'source': 'fake-tool-manager',
+        }
+
+
+class _FakeKnowledgeBase:
+    """Minimal KB object used behind the real Host RETRIEVE_KNOWLEDGE action."""
+
+    def __init__(self):
+        self.knowledge_base_entity = SimpleNamespace(kb_type='fake')
+        self.retrieve_calls: list[dict[str, Any]] = []
+
+    def get_uuid(self) -> str:
+        return E2E_KB_UUID
+
+    def get_name(self) -> str:
+        return 'E2E Fake KB'
+
+    async def retrieve(self, context, query_text: str, settings: dict[str, Any]):
+        assert context.workspace_uuid
+        self.retrieve_calls.append({'query_text': query_text, 'settings': settings})
+        return [
+            SimpleNamespace(
+                content='RAG_SENTINEL Local Agent retrieved this deterministic chunk.',
+                metadata={'source': 'fake-kb'},
+                id='fake-kb-chunk-1',
+                score=0.99,
+                model_dump=lambda mode='json': {
+                    'content': 'RAG_SENTINEL Local Agent retrieved this deterministic chunk.',
+                    'metadata': {'source': 'fake-kb'},
+                    'id': 'fake-kb-chunk-1',
+                    'score': 0.99,
+                },
+            )
+        ]
+
+
+class _FakeRagManager:
+    """Deterministic RAG manager used by resource builder and retrieval action."""
+
+    def __init__(self, kb: _FakeKnowledgeBase):
+        self.kb = kb
+        self.knowledge_bases = {E2E_KB_UUID: kb}
+
+    async def get_knowledge_base_by_uuid(self, context, kb_uuid: str):
+        assert context.workspace_uuid
+        if kb_uuid == E2E_KB_UUID:
+            return self.kb
+        return None
+
+
+@pytest.fixture(scope='session')
+def local_agent_e2e_tmpdir():
+    """Create temporary directory for Local Agent E2E testing."""
+    tmpdir = Path(tempfile.mkdtemp(prefix='langbot_local_agent_e2e_'))
+    yield tmpdir
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@pytest.fixture(scope='session')
+def local_agent_e2e_port() -> int:
+    """HTTP port for the real LangBot app used by this E2E."""
+    return _free_port()
+
+
+@pytest.fixture(scope='session')
+def local_agent_runtime_ports() -> tuple[int, int]:
+    """Control/debug ports for the standalone plugin runtime."""
+    control_port = _free_port()
+    debug_port = _free_port()
+    while debug_port == control_port:
+        debug_port = _free_port()
+    return control_port, debug_port
+
+
+@pytest.fixture(scope='session')
+def local_agent_e2e_config_path(local_agent_e2e_tmpdir, local_agent_e2e_port, local_agent_runtime_ports):
+    """Create a plugin-enabled config and install the Local Agent plugin fixture."""
+    config_path = create_minimal_config(local_agent_e2e_tmpdir, port=local_agent_e2e_port)
+    create_test_directories(local_agent_e2e_tmpdir)
+
+    import yaml
+
+    with open(config_path, encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    runtime_control_port, _runtime_debug_port = local_agent_runtime_ports
+    config['api']['global_api_key'] = 'e2e-local-agent-key'
+    config['plugin']['enable'] = True
+    config['plugin']['runtime_ws_url'] = f'ws://127.0.0.1:{runtime_control_port}/control/ws'
+    config['plugin']['enable_marketplace'] = False
+    config['box']['enabled'] = False
+    config['system']['jwt']['secret'] = 'e2e-local-agent-secret-key'
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(config, f, default_flow_style=False)
+
+    _package_local_agent_plugin(local_agent_e2e_tmpdir)
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_ports, local_agent_e2e_config_path):
+    """Start the real SDK plugin runtime over WebSocket."""
+    del local_agent_e2e_config_path
+    control_port, debug_port = local_agent_runtime_ports
+    stdout_path = local_agent_e2e_tmpdir / 'plugin-runtime.stdout.log'
+    stderr_path = local_agent_e2e_tmpdir / 'plugin-runtime.stderr.log'
+    stdout_file = open(stdout_path, 'wb')
+    stderr_file = open(stderr_path, 'wb')
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            '-m',
+            'langbot_plugin.cli.__init__',
+            'rt',
+            '--ws-control-port',
+            str(control_port),
+            '--ws-debug-port',
+            str(debug_port),
+        ],
+        cwd=local_agent_e2e_tmpdir,
+        stdout=stdout_file,
+        stderr=stderr_file,
+        start_new_session=True,
+    )
+    yield proc
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    stdout_file.close()
+    stderr_file.close()
+
+
+async def _inject_fake_llm_model(ap) -> Any:
+    """Register a runtime-only fake model that supports count_tokens/invoke."""
+    import sqlalchemy
+
+    from langbot.pkg.entity.persistence import model as persistence_model
+    from langbot.pkg.provider.modelmgr import requester, token
+    from tests.unit_tests.provider.conftest import FakeProviderAPIRequester
+
+    execution_context = await ap.plugin_connector._current_execution_context()
+    provider_entity = persistence_model.ModelProvider(
+        uuid=FAKE_PROVIDER_UUID,
+        workspace_uuid=execution_context.workspace_uuid,
+        name='E2E Fake Provider',
+        requester='fake-requester',
+        base_url='https://fake.invalid',
+        api_keys=['fake-key'],
+    )
+    fake_requester = FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
+    runtime_provider = requester.RuntimeProvider(
+        execution_context=execution_context,
+        provider_entity=provider_entity,
+        token_mgr=token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys),
+        requester=fake_requester,
+    )
+    model_entity = persistence_model.LLMModel(
+        uuid=FAKE_MODEL_UUID,
+        workspace_uuid=execution_context.workspace_uuid,
+        name=FAKE_MODEL_UUID,
+        provider_uuid=provider_entity.uuid,
+        abilities=['func_call'],
+        context_length=8192,
+        extra_args={},
+    )
+    runtime_model = requester.RuntimeLLMModel(
+        model_entity=model_entity,
+        execution_context=execution_context,
+        provider=runtime_provider,
+    )
+    await ap.persistence_mgr.execute_async(
+        sqlalchemy.insert(persistence_model.ModelProvider).values(
+            uuid=provider_entity.uuid,
+            workspace_uuid=provider_entity.workspace_uuid,
+            name=provider_entity.name,
+            requester=provider_entity.requester,
+            base_url=provider_entity.base_url,
+            api_keys=provider_entity.api_keys,
+        )
+    )
+    await ap.persistence_mgr.execute_async(
+        sqlalchemy.insert(persistence_model.LLMModel).values(
+            uuid=model_entity.uuid,
+            workspace_uuid=model_entity.workspace_uuid,
+            name=model_entity.name,
+            provider_uuid=model_entity.provider_uuid,
+            abilities=model_entity.abilities,
+            context_length=model_entity.context_length,
+            extra_args=model_entity.extra_args,
+        )
+    )
+    await ap.model_mgr.cache_provider(execution_context, runtime_provider)
+    await ap.model_mgr.cache_llm_model(execution_context, runtime_model)
+    return fake_requester
+
+
+async def _run_runner(ap, event, binding) -> list[Any]:
+    """Execute through the trusted Workspace context used by the real Host."""
+    execution_context = await ap.plugin_connector._current_execution_context()
+    return [
+        message
+        async for message in ap.agent_run_orchestrator.run(
+            event,
+            binding,
+            adapter_context={'_execution_context': execution_context},
+        )
+    ]
+
+
+def _scripted_tool_call(
+    tool_name: str = E2E_TOOL_NAME,
+    *,
+    call_id: str = 'call-e2e-lookup',
+    query: str = 'alpha',
+):
+    """Build an assistant message requesting a deterministic tool call."""
+    from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+    return provider_message.Message(
+        role='assistant',
+        content='',
+        tool_calls=[
+            provider_message.ToolCall(
+                id=call_id,
+                type='function',
+                function=provider_message.FunctionCall(
+                    name=tool_name,
+                    arguments=json.dumps({'query': query}, ensure_ascii=False),
+                ),
+            )
+        ],
+    )
+
+
+async def _boot_local_agent_app(tmpdir: Path):
+    """Boot LangBot and wait until the Local Agent runner is discoverable."""
+    from langbot.pkg.core import boot
+
+    ap = await boot.make_app(asyncio.get_running_loop())
+    run_task = asyncio.create_task(ap.run(), name='local-agent-e2e-app')
+    try:
+        await _wait_for_local_agent_runner(ap, tmpdir)
+    except BaseException:
+        # The caller has not received ap yet. Close it here so a boot failure
+        # cannot reconnect after the probe restores the global transport mode.
+        try:
+            await ap.shutdown()
+        finally:
+            run_task.cancel()
+            await asyncio.gather(run_task, return_exceptions=True)
+        raise
+    return ap, run_task
+
+
+async def _wait_for_local_agent_runner(ap, tmpdir: Path):
+    """Install and discover the runner on the application-owned connection."""
+    from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+
+    for _ in range(60):
+        handler = getattr(ap.plugin_connector, 'handler', None)
+        if handler is not None:
+            await handler.ping()
+            break
+        await asyncio.sleep(1)
+    else:
+        runtime_stdout = (tmpdir / 'plugin-runtime.stdout.log').read_text(encoding='utf-8', errors='replace')
+        runtime_stderr = (tmpdir / 'plugin-runtime.stderr.log').read_text(encoding='utf-8', errors='replace')
+        raise AssertionError(
+            f'Plugin runtime did not connect; tmpdir={tmpdir}\n'
+            f'Runtime stdout:\n{runtime_stdout[-20_000:]}\n'
+            f'Runtime stderr:\n{runtime_stderr[-20_000:]}'
+        )
+
+    execution_context = await ap.plugin_connector._current_execution_context()
+    runners = await ap.runner_registry.list_runners(execution_context, use_cache=False)
+    if not any(runner.id == LOCAL_RUNNER_ID for runner in runners):
+        await ap.plugin_connector.install_plugin(
+            PluginInstallSource.LOCAL,
+            {'plugin_file': (tmpdir / 'langbot-local-agent.zip').read_bytes()},
+        )
+
+        for _ in range(60):
+            runners = await ap.runner_registry.list_runners(execution_context, use_cache=False)
+            if any(runner.id == LOCAL_RUNNER_ID for runner in runners):
+                break
+            await asyncio.sleep(1)
+        else:
+            raise AssertionError(f'{LOCAL_RUNNER_ID} was not discovered after installation')
+
+
+def _run_local_agent_probe(tmpdir: Path, probe):
+    """Run one Local Agent probe inside the temporary LangBot app."""
+    from langbot.pkg.utils import platform as platform_utils
+
+    async def _run():
+        previous_cwd = Path.cwd()
+        previous_standalone_runtime = platform_utils.standalone_runtime
+        os.chdir(tmpdir)
+        platform_utils.standalone_runtime = True
+        ap = None
+        run_task = None
+        try:
+            ap, run_task = await _boot_local_agent_app(tmpdir)
+            return await probe(ap)
+        finally:
+            if ap is not None:
+                import sqlalchemy
+
+                from langbot.pkg.entity.persistence import model as persistence_model
+
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_model.LLMModel).where(
+                        persistence_model.LLMModel.uuid == FAKE_MODEL_UUID
+                    )
+                )
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_model.ModelProvider).where(
+                        persistence_model.ModelProvider.uuid == FAKE_PROVIDER_UUID
+                    )
+                )
+                await ap.shutdown()
+            if run_task is not None:
+                run_task.cancel()
+                await asyncio.gather(run_task, return_exceptions=True)
+            platform_utils.standalone_runtime = previous_standalone_runtime
+            os.chdir(previous_cwd)
+
+    return asyncio.run(_run())
+
+
+def test_local_runner_uses_host_fake_provider_and_persists_ledger(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Local Agent should execute through Host APIs with a token-free fake provider."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def _run_probe(ap):
+        fake_requester = await _inject_fake_llm_model(ap)
+        event = _event(
+            event_id='e2e-local-agent-event-001',
+            conversation_id='e2e-local-agent-conversation',
+            text='Say pong through the fake provider.',
+        )
+        messages = await _run_runner(ap, event, _binding())
+        return messages, list(fake_requester._count_tokens_payloads)
+
+    messages, token_payloads = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
+
+    assert len(messages) == 1
+    assert messages[0].role == 'assistant'
+    assert _content_text(messages[0].content) == 'Fake LLM response'
+    assert token_payloads
+    flattened_token_payloads = [item for payload in token_payloads for item in payload]
+    assert any(item.get('role') == 'system' for item in flattened_token_payloads)
+    assert any('Say pong through the fake provider.' in item.get('content', '') for item in flattened_token_payloads)
+
+    db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+    conn = sqlite3.connect(str(db_path))
+    try:
+        run_row = conn.execute(
+            'SELECT run_id, status, runner_id, status_reason FROM agent_run WHERE event_id = ?',
+            ('e2e-local-agent-event-001',),
+        ).fetchone()
+        assert run_row is not None
+        run_id, status, runner_id, status_reason = run_row
+        assert status == 'completed'
+        assert runner_id == LOCAL_RUNNER_ID
+        assert status_reason == 'stop'
+
+        event_rows = conn.execute(
+            'SELECT sequence, type, data_json FROM agent_run_event WHERE run_id = ? ORDER BY sequence',
+            (run_id,),
+        ).fetchall()
+        event_types = [row[1] for row in event_rows]
+        assert event_types == ['message.completed', 'run.completed']
+        assert 'Fake LLM response' in event_rows[0][2]
+
+        transcript_rows = conn.execute(
+            'SELECT role, content, run_id, runner_id FROM transcript WHERE conversation_id = ? ORDER BY seq',
+            ('e2e-local-agent-conversation',),
+        ).fetchall()
+        assert [row[0] for row in transcript_rows] == ['user', 'assistant']
+        assert transcript_rows[0][1] == 'Say pong through the fake provider.'
+        assert transcript_rows[1][1] == 'Fake LLM response'
+        assert transcript_rows[1][2] == run_id
+        assert transcript_rows[1][3] == LOCAL_RUNNER_ID
+    finally:
+        conn.close()
+
+
+def test_local_runner_executes_authorized_tool_loop_through_host_action(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Local Agent should execute a model tool call through Host CALL_TOOL and finish."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def _run_probe(ap):
+        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester.queue_llm_responses(
+            _scripted_tool_call(),
+            'Tool loop final answer after tool-result:alpha',
+        )
+        tool_mgr = _FakeToolManager()
+        ap.tool_mgr = tool_mgr
+
+        event = _event(
+            event_id='e2e-local-agent-tool-event-001',
+            conversation_id='e2e-local-agent-tool-conversation',
+            text='Use the e2e lookup tool before answering.',
+        )
+        binding = _binding(
+            binding_id='e2e-local-agent-tool-binding',
+            allowed_tool_names=[E2E_TOOL_NAME],
+            runner_config={
+                'max-tool-iterations': 2,
+                'tool-execution-mode': 'serial',
+            },
+        )
+        messages = await _run_runner(ap, event, binding)
+        return messages, tool_mgr.calls, _invoke_payload_texts(fake_requester)
+
+    messages, tool_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
+
+    assert len(messages) == 1
+    assert _content_text(messages[0].content) == 'Tool loop final answer after tool-result:alpha'
+    assert tool_calls == [{'name': E2E_TOOL_NAME, 'parameters': {'query': 'alpha'}}]
+    assert any('tool-result:alpha' in text for text in invoke_payload_texts[-1])
+
+    db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+    conn = sqlite3.connect(str(db_path))
+    try:
+        run_row = conn.execute(
+            'SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?',
+            ('e2e-local-agent-tool-event-001',),
+        ).fetchone()
+        assert run_row is not None
+        run_id, status, status_reason = run_row
+        assert status == 'completed'
+        assert status_reason == 'stop'
+
+        event_rows = conn.execute(
+            'SELECT type, data_json FROM agent_run_event WHERE run_id = ? ORDER BY sequence',
+            (run_id,),
+        ).fetchall()
+        event_types = [row[0] for row in event_rows]
+        assert event_types == [
+            'tool.call.started',
+            'tool.call.completed',
+            'message.completed',
+            'run.completed',
+        ]
+        assert E2E_TOOL_NAME in event_rows[0][1]
+        assert 'tool-result:alpha' in event_rows[1][1]
+    finally:
+        conn.close()
+
+
+def test_local_runner_retrieves_authorized_rag_context_through_host_action(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Local Agent should retrieve configured KB context through Host RETRIEVE_KNOWLEDGE."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def _run_probe(ap):
+        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester.queue_llm_responses('RAG final answer with RAG_SENTINEL')
+        fake_kb = _FakeKnowledgeBase()
+        ap.rag_mgr = _FakeRagManager(fake_kb)
+
+        event = _event(
+            event_id='e2e-local-agent-rag-event-001',
+            conversation_id='e2e-local-agent-rag-conversation',
+            text='Answer with the retrieved RAG sentinel.',
+        )
+        binding = _binding(
+            binding_id='e2e-local-agent-rag-binding',
+            allowed_kb_uuids=[E2E_KB_UUID],
+            runner_config={
+                'knowledge-bases': [E2E_KB_UUID],
+                'retrieval-top-k': 1,
+            },
+        )
+        messages = await _run_runner(ap, event, binding)
+        return messages, fake_kb.retrieve_calls, _invoke_payload_texts(fake_requester)
+
+    messages, retrieve_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
+
+    assert len(messages) == 1
+    assert _content_text(messages[0].content) == 'RAG final answer with RAG_SENTINEL'
+    assert retrieve_calls == [
+        {
+            'query_text': 'Answer with the retrieved RAG sentinel.',
+            'settings': {
+                'top_k': 1,
+                'filters': {},
+                'session_name': 'person_e2e-local-agent-rag-conversation',
+                'bot_uuid': '',
+                'sender_id': 'user-001',
+            },
+        }
+    ]
+    assert any(
+        'RAG_SENTINEL Local Agent retrieved this deterministic chunk.' in text
+        for payload_texts in invoke_payload_texts
+        for text in payload_texts
+    )
+
+    db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+    conn = sqlite3.connect(str(db_path))
+    try:
+        run_row = conn.execute(
+            'SELECT run_id, status FROM agent_run WHERE event_id = ?',
+            ('e2e-local-agent-rag-event-001',),
+        ).fetchone()
+        assert run_row is not None
+        run_id, status = run_row
+        assert status == 'completed'
+        event_types = [
+            row[0]
+            for row in conn.execute(
+                'SELECT type FROM agent_run_event WHERE run_id = ? ORDER BY sequence',
+                (run_id,),
+            )
+        ]
+        assert event_types == ['message.completed', 'run.completed']
+    finally:
+        conn.close()
+
+
+def test_local_runner_compacts_history_and_persists_checkpoint(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Local Agent should compact old Host history and write conversation checkpoint state."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def _run_probe(ap):
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester.queue_llm_responses(
+            'SUMMARY_SENTINEL compacted older history including HIST_SENTINEL',
+            'Compaction final answer',
+        )
+
+        store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        execution_context = await ap.plugin_connector._current_execution_context()
+        for index in range(12):
+            await store.append_transcript(
+                transcript_id=None,
+                event_id=f'e2e-local-agent-history-{index}',
+                conversation_id='e2e-local-agent-compaction-conversation',
+                workspace_id=execution_context.workspace_uuid,
+                role='user' if index % 2 == 0 else 'assistant',
+                content=(
+                    f'HIST_SENTINEL-{index} This is intentionally long deterministic history for compaction. ' * 10
+                ),
+                thread_id='e2e-local-agent-thread',
+                item_type='message',
+            )
+
+        event = _event(
+            event_id='e2e-local-agent-compaction-event-001',
+            conversation_id='e2e-local-agent-compaction-conversation',
+            text='Use compacted context and answer.',
+        )
+        binding = _binding(
+            binding_id='e2e-local-agent-compaction-binding',
+            runner_config={
+                'context-window-tokens': 900,
+                'context-reserve-tokens': 300,
+                'context-keep-recent-tokens': 160,
+                'context-summary-tokens': 240,
+                'context-history-fetch-limit': 20,
+            },
+        )
+        messages = await _run_runner(ap, event, binding)
+        return messages, _invoke_payload_texts(fake_requester), fake_requester._invoke_count
+
+    messages, invoke_payload_texts, invoke_count = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
+
+    assert len(messages) == 1
+    assert _content_text(messages[0].content) == 'Compaction final answer'
+    assert invoke_count == 2
+    assert any('HIST_SENTINEL' in text for text in invoke_payload_texts[0])
+    assert any('SUMMARY_SENTINEL compacted older history' in text for text in invoke_payload_texts[-1])
+
+    db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+    conn = sqlite3.connect(str(db_path))
+    try:
+        run_row = conn.execute(
+            'SELECT run_id, status FROM agent_run WHERE event_id = ?',
+            ('e2e-local-agent-compaction-event-001',),
+        ).fetchone()
+        assert run_row is not None
+        run_id, status = run_row
+        assert status == 'completed'
+
+        event_types = [
+            row[0]
+            for row in conn.execute(
+                'SELECT type FROM agent_run_event WHERE run_id = ? ORDER BY sequence',
+                (run_id,),
+            )
+        ]
+        assert event_types == ['message.completed', 'run.completed']
+
+        state_row = conn.execute(
+            "SELECT value_json FROM runner_state WHERE state_key = 'runner.compaction.checkpoint'"
+        ).fetchone()
+        assert state_row is not None
+        checkpoint = json.loads(state_row[0])
+        assert checkpoint['schema_version'] == 'langbot.local_agent.compaction_checkpoint.v1'
+        assert 'SUMMARY_SENTINEL compacted older history' in checkpoint['summary']
+        assert checkpoint['conversation_id'] == 'e2e-local-agent-compaction-conversation'
+        assert checkpoint['covers_until']
+        assert checkpoint['tokens_before'] > 600
+    finally:
+        conn.close()
+
+
+def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Local Agent should preserve RAG, compressed history, and multi-turn tool results together."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def _run_probe(ap):
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+        fake_requester = await _inject_fake_llm_model(ap)
+
+        async def scripted_response(**kwargs):
+            messages = kwargs['messages']
+            text = '\n'.join(_message_text(message) for message in messages)
+            if 'context summarization assistant' in text or '<conversation>' in text:
+                return 'SUMMARY_COMBO compacted older history including HIST_COMBO_SENTINEL and RAG_TOOL_COMBO_GOAL'
+            if 'tool-result:alpha' not in text:
+                return _scripted_tool_call(call_id='call-combo-alpha', query='alpha')
+            if 'tool-result:beta' not in text:
+                return _scripted_tool_call(call_id='call-combo-beta', query='beta')
+            assert 'RAG_SENTINEL Local Agent retrieved this deterministic chunk.' in text
+            assert 'SUMMARY_COMBO compacted older history' in text
+            assert 'tool-result:alpha' in text
+            assert 'tool-result:beta' in text
+            assert 'current combo request must survive' in text
+            return 'COMBO_FINAL RAG_SENTINEL HIST_COMBO_SENTINEL tool-result:alpha tool-result:beta'
+
+        fake_requester.queue_llm_responses(*(scripted_response for _ in range(20)))
+        tool_mgr = _FakeToolManager()
+        fake_kb = _FakeKnowledgeBase()
+        ap.tool_mgr = tool_mgr
+        ap.rag_mgr = _FakeRagManager(fake_kb)
+
+        store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        execution_context = await ap.plugin_connector._current_execution_context()
+        for index in range(16):
+            await store.append_transcript(
+                transcript_id=None,
+                event_id=f'e2e-local-agent-combo-history-{index}',
+                conversation_id='e2e-local-agent-combo-conversation',
+                workspace_id=execution_context.workspace_uuid,
+                role='user' if index % 2 == 0 else 'assistant',
+                content=(
+                    f'HIST_COMBO_SENTINEL-{index} RAG_TOOL_COMBO_GOAL '
+                    'This old message intentionally creates pressure for combo compaction. ' * 8
+                ),
+                thread_id='e2e-local-agent-thread',
+                item_type='message',
+            )
+
+        event = _event(
+            event_id='e2e-local-agent-combo-event-001',
+            conversation_id='e2e-local-agent-combo-conversation',
+            text='current combo request must survive; use RAG and tools before answering.',
+        )
+        binding = _binding(
+            binding_id='e2e-local-agent-combo-binding',
+            allowed_tool_names=[E2E_TOOL_NAME],
+            allowed_kb_uuids=[E2E_KB_UUID],
+            runner_config={
+                'knowledge-bases': [E2E_KB_UUID],
+                'retrieval-top-k': 1,
+                'max-tool-iterations': 4,
+                'tool-execution-mode': 'serial',
+                'context-window-tokens': 950,
+                'context-reserve-tokens': 300,
+                'context-keep-recent-tokens': 140,
+                'context-summary-tokens': 260,
+                'context-history-fetch-limit': 25,
+            },
+        )
+        messages = await _run_runner(ap, event, binding)
+        return (
+            messages,
+            tool_mgr.calls,
+            fake_kb.retrieve_calls,
+            _invoke_payload_texts(fake_requester),
+            fake_requester._invoke_count,
+        )
+
+    messages, tool_calls, retrieve_calls, invoke_payload_texts, invoke_count = _run_local_agent_probe(
+        local_agent_e2e_tmpdir,
+        _run_probe,
+    )
+
+    assert len(messages) == 1
+    assert _content_text(messages[0].content) == (
+        'COMBO_FINAL RAG_SENTINEL HIST_COMBO_SENTINEL tool-result:alpha tool-result:beta'
+    )
+    assert tool_calls == [
+        {'name': E2E_TOOL_NAME, 'parameters': {'query': 'alpha'}},
+        {'name': E2E_TOOL_NAME, 'parameters': {'query': 'beta'}},
+    ]
+    assert retrieve_calls == [
+        {
+            'query_text': 'current combo request must survive; use RAG and tools before answering.',
+            'settings': {
+                'top_k': 1,
+                'filters': {},
+                'session_name': 'person_e2e-local-agent-combo-conversation',
+                'bot_uuid': '',
+                'sender_id': 'user-001',
+            },
+        }
+    ]
+    assert invoke_count >= 4
+    assert any(
+        'RAG_SENTINEL Local Agent retrieved this deterministic chunk.' in text
+        for payload_texts in invoke_payload_texts
+        for text in payload_texts
+    )
+    assert any('SUMMARY_COMBO compacted older history' in text for text in invoke_payload_texts[-1])
+    assert any('tool-result:alpha' in text for text in invoke_payload_texts[-1])
+    assert any('tool-result:beta' in text for text in invoke_payload_texts[-1])
+    assert any('current combo request must survive' in text for text in invoke_payload_texts[-1])
+
+    db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+    conn = sqlite3.connect(str(db_path))
+    try:
+        run_row = conn.execute(
+            'SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?',
+            ('e2e-local-agent-combo-event-001',),
+        ).fetchone()
+        assert run_row is not None
+        run_id, status, status_reason = run_row
+        assert status == 'completed'
+        assert status_reason == 'stop'
+
+        event_rows = conn.execute(
+            'SELECT type, data_json FROM agent_run_event WHERE run_id = ? ORDER BY sequence',
+            (run_id,),
+        ).fetchall()
+        event_types = [row[0] for row in event_rows]
+        assert event_types == [
+            'tool.call.started',
+            'tool.call.completed',
+            'tool.call.started',
+            'tool.call.completed',
+            'message.completed',
+            'run.completed',
+        ]
+        assert 'tool-result:alpha' in event_rows[1][1]
+        assert 'tool-result:beta' in event_rows[3][1]
+        assert 'COMBO_FINAL' in event_rows[4][1]
+
+        state_rows = conn.execute(
+            "SELECT value_json FROM runner_state WHERE state_key = 'runner.compaction.checkpoint'"
+        ).fetchall()
+        checkpoints = [json.loads(row[0]) for row in state_rows]
+        checkpoint = next(
+            (item for item in checkpoints if item.get('conversation_id') == 'e2e-local-agent-combo-conversation'),
+            None,
+        )
+        assert checkpoint is not None
+        assert checkpoint['conversation_id'] == 'e2e-local-agent-combo-conversation'
+        assert 'SUMMARY_COMBO compacted older history' in checkpoint['summary']
+    finally:
+        conn.close()
+
+
+def test_local_runner_owns_box_reuse_and_explicit_files(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    """Real plugin RPC and Docker sandbox, with only the model scripted."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+    import base64
+    from langbot_plugin.box.backend import DockerBackend
+    from langbot_plugin.box.runtime import BoxRuntime
+    from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.runner import RunnerBoxService, binding_for
+    from tests.unit_tests.box.test_box_service import _InProcessBoxRuntimeClient
+
+    class TestDockerBackend(DockerBackend):
+        async def cleanup_orphaned_containers(self, current_instance_id=''):
+            # This test must never clean up a developer's unrelated containers.
+            pass
+
+    class Client(_InProcessBoxRuntimeClient):
+        async def get_status(self, *, action_context=None):
+            return {**await self._runtime.get_status(), 'capacity': await self._runtime.get_capacity(action_context)}
+
+        async def create_session(self, spec, *, action_context=None):
+            return await self._runtime.create_session(spec, action_context=action_context)
+
+        async def execute(self, spec, *, action_context=None):
+            return await self._runtime.execute(spec, action_context=action_context)
+
+        async def get_sessions(self, *, action_context=None):
+            return self._runtime.get_sessions_for_workspace(action_context)
+
+    class ToolManager(_FakeToolManager):
+        def __init__(self, box):
+            super().__init__()
+            self.box = box
+            self.bindings = []
+
+        async def get_resolved_tool_catalog(self, *args, **kwargs):
+            return [{'name': 'exec', 'source': 'native', 'source_id': None}]
+
+        async def get_tool_schema(self, context, tool_name, source_ref=None):
+            return 'Copy the input into the output directory.', {
+                'type': 'object',
+                'properties': {'query': {'type': 'string'}},
+                'required': ['query'],
+            }
+
+        async def execute_func_call(self, name, parameters, query=None, source_ref=None):
+            binding = binding_for(query)
+            self.bindings.append((binding.session_id, binding.run_id))
+            source = next(iter(binding.imported.values()))['path']
+            outbox = f'/workspace/outbox/{binding.io_scope}'
+            # Shell arguments are Host-issued paths, never model input.
+            import shlex
+
+            result = await self.box.execute_tool(
+                {
+                    'command': f'mkdir -p {shlex.quote(outbox)} && cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")}'
+                },
+                query,
+            )
+            assert result['ok'], result
+            return result
+
+    async def probe(ap):
+        backend = TestDockerBackend(ap.logger)
+        if not await backend.is_available():
+            pytest.skip('Docker is required for the real Box probe')
+        runtime = BoxRuntime(logger=ap.logger, backends=[backend], max_sessions=1)
+        ap.instance_config.data['box'].update(
+            {
+                'enabled': True,
+                'backend': 'docker',
+                'local': {'host_root': str(local_agent_e2e_tmpdir / 'box-files'), 'image': 'python:3.12-alpine'},
+            }
+        )
+        box = BoxService(ap, client=Client(ap.logger, runtime))
+        ap.box_service = box
+        await box.initialize()
+        manager = ToolManager(box)
+        ap.tool_mgr = manager
+        fake = await _inject_fake_llm_model(ap)
+        context = await ap.plugin_connector._current_execution_context()
+        try:
+            for index in range(2):
+                fake.queue_llm_responses(_scripted_tool_call('exec'), 'File is ready.')
+                event = _event(
+                    event_id=f'box-event-{index}',
+                    conversation_id=f'box-conversation-{index}',
+                    text='Copy this attachment into the outbox.',
+                )
+                event.input.attachments = [
+                    InputAttachment(
+                        type='file', name='input.txt', content=base64.b64encode(f'run-{index}'.encode()).decode()
+                    )
+                ]
+                binding = _binding(
+                    binding_id=f'box-binding-{index}',
+                    allowed_tool_names=['exec'],
+                    runner_config={'box-enabled': True, 'box-session-id-template': '{global}'},
+                )
+                binding.processor_type = 'pipeline'
+                messages = await _run_runner(ap, event, binding)
+                output = [component for message in messages for component in (message.attachments or [])]
+                assert len(output) == 1, messages
+                assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
+                status = await RunnerBoxService(box).status(context)
+                assert status['used'] == 1 and status['remaining'] == 0, status
+            assert manager.bindings[0][0] == manager.bindings[1][0]
+            assert manager.bindings[0][1] != manager.bindings[1][1]
+            from langbot_plugin.box.errors import BoxCapacityExceededError
+
+            with pytest.raises(BoxCapacityExceededError):
+                await RunnerBoxService(box).acquire(context, {'reuse_key': 'different'})
+        finally:
+            await box.shutdown()
+
+    _run_local_agent_probe(local_agent_e2e_tmpdir, probe)

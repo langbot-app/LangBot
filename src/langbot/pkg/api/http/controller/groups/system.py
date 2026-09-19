@@ -273,8 +273,8 @@ class SystemRouterGroup(group.RouterGroup):
             """Save wizard progress to metadata table.
 
             Accepts JSON body with wizard state fields:
-            { "step": int, "selected_adapter": str|null, "created_bot_uuid": str|null,
-              "bot_saved": bool, "selected_runner": str|null }
+            { "step": int, "selected_scenario": str|null, "selected_adapter": str|null,
+              "created_bot_uuid": str|null, "bot_saved": bool, "selected_runner": str|null }
             """
             data = await quart.request.get_json(silent=True) or {}
             progress_json = json.dumps(data, ensure_ascii=False)
@@ -321,6 +321,21 @@ class SystemRouterGroup(group.RouterGroup):
             except ValueError as exc:
                 return self.http_status(503, -1, str(exc))
             return self.success(data=model)
+
+        @self.route(
+            '/model-availability',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Expose Space's latest persisted model probes to the WebUI."""
+            try:
+                models = await self.ap.space_service.get_model_selection()
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load LangBot Models availability: {exc}')
+                return self.http_status(503, -1, 'Model availability is unavailable')
+            return self.success(data={'models': [model.model_dump(mode='json') for model in models]})
 
         @self.route(
             '/tasks',

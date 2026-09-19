@@ -80,6 +80,7 @@ export function normalizeDynamicFormFieldValue(
 }
 
 const reasoningLevels = new Set([
+  'provider_default',
   'disabled',
   'enabled',
   'minimal',

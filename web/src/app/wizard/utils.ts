@@ -105,13 +105,16 @@ export function isRequiredRunnerConfigComplete(
     });
 }
 
+export const LOCAL_AGENT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default';
+
 export function configureLocalAgentPrimaryModel(
   config: Record<string, unknown>,
   modelUuid: string,
 ): Record<string, unknown> {
   const aiConfig = (config.ai ?? {}) as Record<string, unknown>;
   const runnerConfig = (aiConfig.runner ?? {}) as Record<string, unknown>;
-  const localAgentConfig = (aiConfig['local-agent'] ?? {}) as Record<
+  const configs = (aiConfig.runner_config ?? {}) as Record<string, unknown>;
+  const localAgentConfig = (configs[LOCAL_AGENT_RUNNER_ID] ?? {}) as Record<
     string,
     unknown
   >;
@@ -121,15 +124,18 @@ export function configureLocalAgentPrimaryModel(
     ...config,
     ai: {
       ...aiConfig,
-      runner: { ...runnerConfig, runner: 'local-agent' },
-      'local-agent': {
-        ...localAgentConfig,
-        model: {
-          ...modelConfig,
-          primary: modelUuid,
-          fallbacks: Array.isArray(modelConfig.fallbacks)
-            ? modelConfig.fallbacks
-            : [],
+      runner: { ...runnerConfig, id: LOCAL_AGENT_RUNNER_ID },
+      runner_config: {
+        ...configs,
+        [LOCAL_AGENT_RUNNER_ID]: {
+          ...localAgentConfig,
+          model: {
+            ...modelConfig,
+            primary: modelUuid,
+            fallbacks: Array.isArray(modelConfig.fallbacks)
+              ? modelConfig.fallbacks
+              : [],
+          },
         },
       },
     },

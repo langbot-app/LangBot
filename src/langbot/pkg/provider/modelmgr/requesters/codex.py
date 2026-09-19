@@ -235,7 +235,10 @@ class CodexRequester(requester.ProviderAPIRequester):
             'stream': True,
             'include': ['reasoning.encrypted_content'],
         }
-        level = reasoning.normalize_reasoning_config(getattr(model.model_entity, 'reasoning_config', None))['level']
+        reasoning_config = getattr(model, 'reasoning_config_override', None)
+        if reasoning_config is None:
+            reasoning_config = getattr(model.model_entity, 'reasoning_config', None)
+        level = reasoning.normalize_reasoning_config(reasoning_config)['level']
         if level != 'provider_default':
             reasoning.validate_reasoning_capabilities(
                 {'level': level}, self.get_reasoning_capabilities(model), model.model_entity.name

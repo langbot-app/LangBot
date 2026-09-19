@@ -7,8 +7,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.platform.sources import websocket_adapter as websocket_adapter_module
 from langbot.pkg.platform.sources.websocket_adapter import WebSocketAdapter, WebSocketMessage, WebSocketSession
 from langbot.pkg.platform.sources.websocket_manager import (
@@ -387,6 +389,61 @@ async def test_dashboard_reply_survives_connection_replacement(monkeypatch):
     assert response['data']['content'] == 'done'
 
 
+@pytest.mark.asyncio
+async def test_late_final_events_update_one_stream_message(monkeypatch):
+    manager = WebSocketConnectionManager()
+    connection = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    message_source = platform_events.FriendMessage(
+        sender=platform_entities.Friend(
+            id=f'websocket_{connection.connection_id}',
+            nickname='User',
+            remark='User',
+        ),
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hello')]),
+        time=1,
+    )
+    first = provider_message.MessageChunk(
+        role='assistant',
+        content='first final',
+        is_final=True,
+        resp_message_id='response-1',
+    )
+    second = provider_message.MessageChunk(
+        role='assistant',
+        content='corrected final',
+        is_final=True,
+        resp_message_id='response-1',
+    )
+
+    await adapter.reply_message_chunk(
+        message_source,
+        first,
+        platform_message.MessageChain([platform_message.Plain(text='first final')]),
+        is_final=True,
+    )
+    await adapter.reply_message_chunk(
+        message_source,
+        second,
+        platform_message.MessageChain([platform_message.Plain(text='corrected final')]),
+        is_final=True,
+    )
+
+    messages = adapter.get_websocket_messages('pipeline-1', 'person')
+    assert len(messages) == 1
+    assert messages[0]['content'] == 'corrected final'
+    assert messages[0]['is_final'] is True
+
+
 def test_session_ids_must_be_canonical_random_uuids():
     assert is_valid_session_id('31c0f2e9-b115-4ee6-8f15-3e624d6456b1')
     assert not is_valid_session_id('session-a')
@@ -425,7 +482,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
     await adapter._process_image_components(connection, message_chain)
 
     assert message_chain[0]['base64'].startswith('data:image/png;base64,')
-    assert message_chain[0]['path'] == ''
+    assert message_chain[0]['path'] == 'v1/current/upload_image/key.png'
     storage_mgr.scoped_prefix.assert_called_once_with(
         connection.execution_context,
         owner_type='upload_image',
@@ -439,11 +496,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
         'v1/current/upload_image/key.png',
         expected_owner_type='upload_image',
     )
-    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
-        connection.execution_context,
-        'v1/current/upload_image/key.png',
-        expected_owner_type='upload_image',
-    )
+    storage_mgr.delete_scoped_object_key.assert_not_awaited()
 
     with pytest.raises(ValueError, match='does not belong'):
         await adapter._process_image_components(

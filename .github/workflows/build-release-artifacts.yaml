@@ -31,6 +31,9 @@ jobs:
             echo ::set-output name=version::${GITHUB_REF}
           fi
 
+      - name: Stamp build revision
+        run: python3 scripts/stamp_build_revision.py
+
       - name: Make Temp Directory
         run: |
           mkdir -p /tmp/langbot_build_web

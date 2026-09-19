@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,8 @@ export default function MCPDetailContent({ id }: { id: string }) {
 
   // Enable state managed here so the header switch works
   const [serverEnabled, setServerEnabled] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [enableLoaded, setEnableLoaded] = useState(false);
   const [detailRuntimeStatus, setDetailRuntimeStatus] =
     useState<MCPRuntimeState | null>(null);
@@ -120,14 +123,18 @@ export default function MCPDetailContent({ id }: { id: string }) {
   useEffect(() => {
     if (!isCreateMode) {
       setDetailRuntimeStatus(null);
-      httpClient.getMCPServer(id).then((res) => {
-        const server = res.server ?? res;
-        setServerEnabled(server.enable ?? true);
-        setDetailRuntimeStatus(server.runtime_info?.status ?? null);
-        setEnableLoaded(true);
-      });
+      setLoadFailed(false);
+      httpClient
+        .getMCPServer(id)
+        .then((res) => {
+          const server = res.server ?? res;
+          setServerEnabled(server.enable ?? true);
+          setDetailRuntimeStatus(server.runtime_info?.status ?? null);
+          setEnableLoaded(true);
+        })
+        .catch(() => setLoadFailed(true));
     }
-  }, [id, isCreateMode]);
+  }, [id, isCreateMode, loadAttempt]);
 
   const handleEnableToggle = useCallback(
     async (checked: boolean) => {
@@ -325,6 +332,12 @@ export default function MCPDetailContent({ id }: { id: string }) {
   );
 
   // ==================== Edit Mode ====================
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!enableLoaded) return <EntityLoadState />;
+
   return (
     <>
       <div className="flex h-full flex-col">

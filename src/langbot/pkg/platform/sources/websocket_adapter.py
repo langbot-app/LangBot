@@ -232,7 +232,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
     @staticmethod
     def _history_message_chain(message_chain: list[dict]) -> list[dict]:
-        """Remove large transient payloads before retaining browser history."""
+        """Retain renderable references without storing large inline payloads."""
 
         history = []
         for component in message_chain:
@@ -280,6 +280,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if reply_context.scope != self._scope():
                 raise ValueError('WebSocket reply context does not match this adapter scope')
             return reply_context.pipeline_uuid, reply_context.session_id
+        pipeline_uuid = getattr(message_source, '_langbot_pipeline_uuid', None)
+        if isinstance(pipeline_uuid, str) and pipeline_uuid:
+            return pipeline_uuid, None
         raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
     async def send_message(
@@ -450,8 +453,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             # 更新历史记录中的对应消息
             message_list[existing_index] = message_data
 
-        if message_is_final and resp_message_id:
-            stream_message_indexes.pop(resp_message_id, None)
+        # Keep the index for the lifetime of the history entry. Runner can
+        # emit a final delta followed by message.completed/run.completed; all
+        # events with the same Host response id must update one UI message.
 
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
@@ -547,7 +551,10 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         Image / Voice / File components uploaded from the web client carry a
         storage key in ``path``. Resolve it to a base64 data URI so downstream
         stages (multimodal LLM input and the Box sandbox inbox) have a usable
-        payload, then drop the now-consumed storage object.
+        payload. Keep image objects for the short-lived browser history so the
+        authenticated image endpoint can render them; normal upload retention
+        cleanup removes them later. Other attachment types are consumed
+        immediately because the chat history does not render them by path.
 
         Args:
             message_chain_obj: 消息链对象列表
@@ -602,12 +609,13 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     mime_type = mimetypes.guess_type(comp_path)[0] or 'application/octet-stream'
 
                 component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                await storage_mgr.delete_scoped_object_key(
-                    execution_context,
-                    comp_path,
-                    expected_owner_type='upload_image',
-                )
-                component['path'] = ''
+                if comp_type != 'Image':
+                    await storage_mgr.delete_scoped_object_key(
+                        execution_context,
+                        comp_path,
+                        expected_owner_type='upload_image',
+                    )
+                    component['path'] = ''
             except Exception as e:
                 await self.logger.error(f'Failed to load {comp_type} file {comp_path}: {e}')
                 raise
@@ -709,6 +717,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 session_id=connection.session_id,
             ),
         )
+        object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
 
         listeners = (
             owner_bot.adapter.listeners

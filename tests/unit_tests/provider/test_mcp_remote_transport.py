@@ -31,6 +31,20 @@ TEST_EXECUTION_CONTEXT = ExecutionContext(
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_loopback_transport_from_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep real loopback transport tests independent of workstation proxies."""
+    for variable in (
+        'ALL_PROXY',
+        'all_proxy',
+        'HTTP_PROXY',
+        'http_proxy',
+        'HTTPS_PROXY',
+        'https_proxy',
+    ):
+        monkeypatch.delenv(variable, raising=False)
+
+
 class _TransportProbe:
     def __init__(self, streamable_status: int | None, streamable_headers: dict[str, str] | None = None) -> None:
         self.streamable_status = streamable_status
@@ -303,7 +317,7 @@ async def test_remote_transport_oauth_challenge_sets_non_retryable_authorization
     async with _transport_server(401, headers) as (probe, url):
         session = _session(url)
 
-        await session._lifecycle_loop_with_retry()
+        await asyncio.wait_for(session._lifecycle_loop_with_retry(), timeout=2)
 
         assert session.status == MCPSessionStatus.ERROR
         assert session.error_phase == MCPSessionErrorPhase.OAUTH_REQUIRED

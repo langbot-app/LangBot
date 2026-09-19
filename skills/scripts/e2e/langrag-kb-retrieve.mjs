@@ -3,6 +3,7 @@
 import {
   bodyText,
   createBrowser,
+  ensureBrowserWorkspace,
   ensureEvidence,
   evidencePaths,
   exitCode,
@@ -57,6 +58,12 @@ try {
   const { page } = browser;
   await page.goto(`${frontendUrl.replace(/\/$/, "")}/home/knowledge`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  const workspace = await ensureBrowserWorkspace(page, backendUrl);
+  if (workspace.status !== "pass") {
+    result.status = workspace.status;
+    result.reason = workspace.reason;
+    throw new Error(result.reason);
+  }
   result.url = page.url();
 
   const text = await bodyText(page);
@@ -77,6 +84,7 @@ try {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
         body: JSON.stringify({ query }),
       });

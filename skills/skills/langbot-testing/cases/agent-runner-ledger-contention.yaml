@@ -1,5 +1,5 @@
 id: agent-runner-ledger-contention
-title: "AgentRunner ledger SQLite contention probe"
+title: "Runner ledger SQLite contention probe"
 mode: probe
 area: release
 type: regression

@@ -9,10 +9,10 @@ const wizardSource = fs.readFileSync(
   path.resolve(currentDirectory, '../../src/app/wizard/page.tsx'),
   'utf8',
 );
-const ownModelSetupSource = fs.readFileSync(
+const runnerMarketplaceSource = fs.readFileSync(
   path.resolve(
     currentDirectory,
-    '../../src/app/wizard/components/OwnModelSetup.tsx',
+    '../../src/app/home/agents/runner-marketplace.ts',
   ),
   'utf8',
 );
@@ -39,44 +39,70 @@ test('shows the test-only notice only when the wizard opts in', () => {
   assert.match(widgetSource, /testNotice\.textContent = scriptTestNotice/);
 });
 
-test('defaults the AI engine step to the workbench option and lists it first', () => {
+test('opens the Page Bot preview after every successful wizard save', () => {
+  assert.match(wizardSource, /script\.dataset\.autoOpen = 'true'/);
   assert.match(
     wizardSource,
-    /const \[aiChoice, setAiChoice\] = useState<[\s\S]*?>\('more-features'\);/,
+    /setPageBotPreviewRequest\(\(request\) => request \+ 1\)/,
   );
 
-  const choicesStart = wizardSource.indexOf('const choices = [');
-  const moreFeaturesChoice = wizardSource.indexOf(
-    "id: 'more-features' as const",
-    choicesStart,
-  );
-  const externalChoice = wizardSource.indexOf(
-    "id: 'external' as const",
-    choicesStart,
-  );
-  const ownModelChoice = wizardSource.indexOf(
-    "id: 'own-model' as const",
-    choicesStart,
-  );
-
-  assert.ok(choicesStart >= 0);
-  assert.ok(moreFeaturesChoice > choicesStart);
-  assert.ok(moreFeaturesChoice < externalChoice);
-  assert.ok(moreFeaturesChoice < ownModelChoice);
+  assert.match(widgetSource, /getAttribute\("data-auto-open"\) === "true"/);
+  assert.match(widgetSource, /root\.langbotOpen = function \(\)/);
+  assert.match(widgetSource, /if \(scriptAutoOpen\) root\.langbotOpen\(\)/);
 });
 
-test('uses the external-runner layout only while that configuration is open', () => {
+test('binds every wizard bot to its provisional pipeline before verification', () => {
   assert.match(
     wizardSource,
-    /currentStep === 2 && aiChoice === 'external' && selectedRunner/,
+    /if \(!previewPipelineUuid\) \{[\s\S]*?httpClient\.createPipeline\(/,
+  );
+  assert.match(
+    wizardSource,
+    /event_pattern: 'message\.received',[\s\S]*?target_type: 'pipeline',[\s\S]*?target_uuid: previewPipelineUuid/,
+  );
+  assert.doesNotMatch(
+    wizardSource,
+    /selectedAdapter === 'web_page_bot' && !previewPipelineUuid/,
   );
 });
 
-test('restores the default workbench choice when leaving a nested AI setup', () => {
-  assert.equal(
-    wizardSource.match(/onChoiceChange\('more-features'\)/g)?.length,
-    3,
+test('keeps the 4.11 Runner marketplace installation flow', () => {
+  assert.match(wizardSource, /loadRunnerCatalog\(\)/);
+  assert.match(
+    wizardSource,
+    /installMarketplaceRunner\(plugin, \{[\s\S]*?scope: WIZARD_RUNNER_INSTALL_SCOPE/,
   );
+  assert.match(wizardSource, /resumePendingRunnerInstall\(/);
+  assert.match(runnerMarketplaceSource, /RUNNER_COMPONENT_FILTER = 'Runner'/);
+  assert.match(runnerMarketplaceSource, /installPluginFromMarketplace\(/);
+  assert.match(
+    runnerMarketplaceSource,
+    /const prefix = runnerPluginPrefix\(\{/,
+  );
+  assert.match(runnerMarketplaceSource, /option\.name\.startsWith\(prefix\)/);
+  assert.match(runnerMarketplaceSource, /registrationDeadline/);
+  assert.match(runnerMarketplaceSource, /sessionStorage\.setItem\(/);
+});
+
+test('requires the selected Runner mandatory configuration before finishing', () => {
+  assert.match(
+    wizardSource,
+    /isRequiredRunnerConfigComplete\(selectedRunnerConfigItems, runnerConfig\)/,
+  );
+  assert.match(wizardSource, /aiChoice === 'external'/);
+  assert.match(
+    wizardSource,
+    /!createdBotUuid \|\| !createdPipelineUuid \|\| !canProceed\(\)/,
+  );
+});
+
+test('requires an observed message before configuring the runner', () => {
+  assert.match(
+    wizardSource,
+    /createdBotUuid !== null && botSaved && messageReceived/,
+  );
+  assert.match(wizardSource, /requiresMessageVerification/);
+  assert.match(wizardSource, /onMessageReceived=\{handleMessageReceived\}/);
 });
 
 test('warns local-account users after the bot receives an IM message', () => {
@@ -91,38 +117,10 @@ test('warns local-account users after the bot receives an IM message', () => {
   assert.match(wizardSource, /<AlertTriangle className="size-3 text-white"/);
 });
 
-test('animates AI engine sub-pages and the return to choices', () => {
+test('offers the HTTP Bot test through the signed inbound API', () => {
   assert.match(
     wizardSource,
-    /key="ai-engine-own-model"[\s\S]*?slide-in-from-right-4/,
+    /testHttpBotInbound\(createdBotUuid, testMessage\.trim\(\)\)/,
   );
-  assert.match(
-    wizardSource,
-    /key="ai-engine-external-picker"[\s\S]*?slide-in-from-right-4/,
-  );
-  assert.match(
-    wizardSource,
-    /key="ai-engine-choices"[\s\S]*?slide-in-from-left-4/,
-  );
-  assert.match(wizardSource, /motion-reduce:animate-none/);
-});
-
-test('aligns the own-model title and back button with external Agent setup', () => {
-  const ownModelTitle = ownModelSetupSource.indexOf(
-    "t('wizard.aiEngine.ownModelSetupTitle')",
-  );
-  const ownModelBack = ownModelSetupSource.indexOf(
-    "t('wizard.aiEngine.backToChoices')",
-  );
-
-  assert.ok(ownModelTitle >= 0);
-  assert.ok(ownModelBack > ownModelTitle);
-  assert.match(ownModelSetupSource, /mx-auto w-full max-w-4xl space-y-6/);
-});
-
-test('labels both external Agent setup states with their specific title', () => {
-  assert.equal(
-    wizardSource.match(/t\('wizard\.aiEngine\.externalTitle'\)/g)?.length,
-    3,
-  );
+  assert.match(wizardSource, /wizard\.botConfig\.sendHttpTest/);
 });

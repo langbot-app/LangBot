@@ -139,6 +139,9 @@ export abstract class BaseHttpClient {
             code: data?.code || status,
             msg: errMsg,
             data: data?.data || null,
+            request_id:
+              (data as { request_id?: string })?.request_id ||
+              error.response.headers['x-request-id'],
           });
         }
 

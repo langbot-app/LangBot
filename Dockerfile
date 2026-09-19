@@ -31,6 +31,9 @@ WORKDIR /app
 
 COPY . .
 
+ARG LANGBOT_BUILD_REVISION
+RUN if [ -n "$LANGBOT_BUILD_REVISION" ]; then python3 scripts/stamp_build_revision.py --revision "$LANGBOT_BUILD_REVISION"; fi
+
 COPY --from=node /app/web/dist ./web/dist
 
 # nsjail binary built in the dedicated stage above. Self-contained sandbox

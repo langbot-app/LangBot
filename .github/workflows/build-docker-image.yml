@@ -41,7 +41,14 @@ jobs:
         run: docker buildx create --name mybuilder --use
       - name: Build for Release # only relase, exlude pre-release
         if: ${{ github.event.release.prerelease == false }}
-        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} -t rockchin/langbot:latest . --push
+        run: docker buildx build --build-arg LANGBOT_BUILD_REVISION=${{ github.sha }} --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} -t rockchin/langbot:latest . --push
       - name: Build for Pre-release # no update for latest tag
         if: ${{ github.event.release.prerelease == true }}
-        run: docker buildx build --platform linux/arm64,linux/amd64 -t rockchin/langbot:${{ steps.check_version.outputs.version }} . --push
+        env:
+          RELEASE_VERSION: ${{ steps.check_version.outputs.version }}
+        run: |
+          tags=(-t "rockchin/langbot:$RELEASE_VERSION")
+          if [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            tags+=(-t rockchin/langbot:beta)
+          fi
+          docker buildx build --build-arg LANGBOT_BUILD_REVISION=${{ github.sha }} --platform linux/arm64,linux/amd64 "${tags[@]}" . --push

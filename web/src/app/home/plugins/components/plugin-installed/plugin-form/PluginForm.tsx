@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useRef } from 'react';
 import { ApiRespPluginConfig } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
@@ -25,6 +26,8 @@ export default function PluginForm({
   onFormSubmit: (timeout?: number) => void;
 }) {
   const { t } = useTranslation();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [pluginInfo, setPluginInfo] = useState<Plugin>();
   const [pluginConfig, setPluginConfig] = useState<ApiRespPluginConfig>();
   const [isSaving, setIsLoading] = useState(false);
@@ -33,36 +36,55 @@ export default function PluginForm({
   const initialFileKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    setPluginInfo(undefined);
+    setPluginConfig(undefined);
     // 获取插件信息
-    httpClient.getPlugin(pluginAuthor, pluginName).then((res) => {
-      setPluginInfo(res.plugin);
-    });
+    httpClient
+      .getPlugin(pluginAuthor, pluginName)
+      .then((res) => {
+        if (cancelled) return;
+        setPluginInfo(res.plugin);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
     // 获取插件配置
-    httpClient.getPluginConfig(pluginAuthor, pluginName).then((res) => {
-      setPluginConfig(res);
+    httpClient
+      .getPluginConfig(pluginAuthor, pluginName)
+      .then((res) => {
+        if (cancelled) return;
+        setPluginConfig(res);
 
-      // 提取初始配置中的所有文件 key
-      const extractFileKeys = (obj: any): string[] => {
-        const keys: string[] = [];
-        if (obj && typeof obj === 'object') {
-          if ('file_key' in obj && typeof obj.file_key === 'string') {
-            keys.push(obj.file_key);
-          }
-          for (const value of Object.values(obj)) {
-            if (Array.isArray(value)) {
-              value.forEach((item) => keys.push(...extractFileKeys(item)));
-            } else if (typeof value === 'object' && value !== null) {
-              keys.push(...extractFileKeys(value));
+        // 提取初始配置中的所有文件 key
+        const extractFileKeys = (obj: any): string[] => {
+          const keys: string[] = [];
+          if (obj && typeof obj === 'object') {
+            if ('file_key' in obj && typeof obj.file_key === 'string') {
+              keys.push(obj.file_key);
+            }
+            for (const value of Object.values(obj)) {
+              if (Array.isArray(value)) {
+                value.forEach((item) => keys.push(...extractFileKeys(item)));
+              } else if (typeof value === 'object' && value !== null) {
+                keys.push(...extractFileKeys(value));
+              }
             }
           }
-        }
-        return keys;
-      };
+          return keys;
+        };
 
-      const fileKeys = extractFileKeys(res.config);
-      initialFileKeys.current = new Set(fileKeys);
-    });
-  }, [pluginAuthor, pluginName]);
+        const fileKeys = extractFileKeys(res.config);
+        initialFileKeys.current = new Set(fileKeys);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginAuthor, pluginName, loadAttempt]);
 
   const handleSubmit = async () => {
     setIsLoading(true);
@@ -132,13 +154,11 @@ export default function PluginForm({
     }
   };
 
-  if (!pluginInfo || !pluginConfig) {
+  if (loadFailed)
     return (
-      <div className="flex items-center justify-center h-full mb-[2rem]">
-        {t('plugins.loading')}
-      </div>
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
     );
-  }
+  if (!pluginInfo || !pluginConfig) return <EntityLoadState />;
 
   return (
     <div className="min-w-0 max-w-full space-y-4">

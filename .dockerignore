@@ -1,4 +1,10 @@
 .github
+.git
+**/.git
+__pycache__
+**/__pycache__
+*.pyc
+**/*.pyc
 .venv
 .vscode
 .data

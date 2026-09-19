@@ -28,6 +28,7 @@ function loadWizardUtils() {
 }
 
 const {
+  LOCAL_AGENT_RUNNER_ID,
   configureLocalAgentPrimaryModel,
   ensureHttpBotSigningSecret,
   findDefaultPipeline,
@@ -81,23 +82,31 @@ test('configures the selected model as the Local Agent primary model', () => {
   const config = {
     trigger: { prefix: '!' },
     ai: {
-      runner: { runner: 'plugin:external', timeout: 30 },
-      'local-agent': {
-        model: { primary: 'old-model', fallbacks: ['fallback-model'] },
-        tools: { enabled: true },
+      runner: { id: 'plugin:external', timeout: 30 },
+      runner_config: {
+        [LOCAL_AGENT_RUNNER_ID]: {
+          model: { primary: 'old-model', fallbacks: ['fallback-model'] },
+          tools: { enabled: true },
+        },
       },
     },
   };
 
   const updated = configureLocalAgentPrimaryModel(config, 'selected-model');
 
-  assert.equal(updated.ai.runner.runner, 'local-agent');
+  assert.equal(updated.ai.runner.id, LOCAL_AGENT_RUNNER_ID);
   assert.equal(updated.ai.runner.timeout, 30);
-  assert.equal(updated.ai['local-agent'].model.primary, 'selected-model');
-  assert.deepEqual(updated.ai['local-agent'].model.fallbacks, [
-    'fallback-model',
-  ]);
-  assert.deepEqual(updated.ai['local-agent'].tools, { enabled: true });
+  assert.equal(
+    updated.ai.runner_config[LOCAL_AGENT_RUNNER_ID].model.primary,
+    'selected-model',
+  );
+  assert.deepEqual(
+    updated.ai.runner_config[LOCAL_AGENT_RUNNER_ID].model.fallbacks,
+    ['fallback-model'],
+  );
+  assert.deepEqual(updated.ai.runner_config[LOCAL_AGENT_RUNNER_ID].tools, {
+    enabled: true,
+  });
   assert.deepEqual(updated.trigger, { prefix: '!' });
 });
 

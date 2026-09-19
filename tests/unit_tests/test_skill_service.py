@@ -5,6 +5,7 @@ import zipfile
 
 import httpx
 import pytest
+from langbot_plugin.entities.io.errors import ActionCallTimeoutError
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.skill import SkillService
@@ -111,6 +112,23 @@ class TestRequireBoxForWrite:
         """list_skills should render an empty surface (not crash) so the
         skills page can show a banner instead of a broken state."""
         service = SkillService(self._ap_with_disabled_box())
+        assert await service.list_skills(_CONTEXT) == []
+
+    @pytest.mark.asyncio
+    async def test_list_skills_returns_empty_when_box_action_times_out(self):
+        """A transient Box list failure should not break unrelated extension surfaces."""
+        box_service = SimpleNamespace(
+            available=True,
+            list_skills=AsyncMock(side_effect=ActionCallTimeoutError('Action box_list_skills call timed out')),
+        )
+        service = SkillService(
+            SimpleNamespace(
+                skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
+                workspace_service=_workspace_service(),
+                box_service=box_service,
+            )
+        )
+
         assert await service.list_skills(_CONTEXT) == []
 
     @pytest.mark.asyncio

@@ -29,6 +29,12 @@ class KnowledgeBase(Base):
     )
     creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
     retrieval_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
+    initialized = sqlalchemy.Column(
+        sqlalchemy.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sqlalchemy.true(),
+    )
     # Server-selected pgvector dimension. ``None`` means no embedding has been
     # written yet; the first pgvector upsert binds it atomically.
     embedding_dimension = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
@@ -44,6 +50,7 @@ class KnowledgeBase(Base):
         'workspace_uuid',
         'legacy_vector_collection',
         'embedding_dimension',
+        'initialized',
         'emoji',
         'created_at',
         'updated_at',

@@ -1,4 +1,20 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import GuidedTour, {
+  type GuidedTourStep,
+} from '@/app/home/components/guided-tour/GuidedTour';
+import EntityLoadState from '@/components/EntityLoadState';
+import { preserveRunnerConfig } from './RunnerConfigPreservation';
+import type { ComponentProps } from 'react';
+import { isCurrentPipelineConfig } from '../../pipeline-config-safety';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
@@ -6,11 +22,9 @@ import {
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
-import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
-import { getBoxScopeContext } from './BoxScopeContext';
-import { systemInfo } from '@/app/infra/http';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -34,7 +48,6 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -53,17 +66,44 @@ import {
   Copy,
 } from 'lucide-react';
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
+import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
+import {
+  getErrorMessage,
+  readPendingRunnerInstall,
+  resumePendingRunnerInstall,
+  type InstalledRunner,
+} from '@/app/home/agents/runner-marketplace';
 
-export default function PipelineFormComponent({
-  onFinish,
-  onNewPipelineCreated,
-  isEditMode,
-  pipelineId,
-  showButtons = true,
-  onDeletePipeline,
-  onCancel,
-  onDirtyChange,
-}: {
+/** A mount-scoped editing session: normalized defaults are UI state, not edits. */
+function PersistedRunnerForm(
+  props: ComponentProps<typeof DynamicFormComponent>,
+) {
+  const initialValues = useRef(props.initialValues);
+  const previous = useRef<Record<string, unknown> | undefined>(undefined);
+  const current = useRef(props.initialValues || {});
+  current.current = props.initialValues || {};
+  return (
+    <DynamicFormComponent
+      {...props}
+      initialValues={initialValues.current}
+      onSubmit={(values) => {
+        const emitted = values as Record<string, unknown>;
+        const next = preserveRunnerConfig(
+          current.current,
+          previous.current,
+          emitted,
+        );
+        previous.current = structuredClone(emitted);
+        if (JSON.stringify(next) !== JSON.stringify(current.current)) {
+          current.current = next;
+          props.onSubmit?.(next);
+        }
+      }}
+    />
+  );
+}
+
+interface PipelineFormComponentProps {
   pipelineId?: string;
   isEditMode: boolean;
   disableForm: boolean;
@@ -73,12 +113,52 @@ export default function PipelineFormComponent({
   onDeletePipeline: () => void;
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
-}) {
+  onSavingChange?: (saving: boolean) => void;
+  onLegacyPipeline?: (pipeline: Pipeline) => void;
+  guideEnabled?: boolean;
+  debugGuideEnabled?: boolean;
+  monitoringGuideEnabled?: boolean;
+}
+
+export interface PipelineFormHandle {
+  save: () => Promise<boolean>;
+  syncBasicInfo: (values: {
+    name: string;
+    description: string;
+    emoji?: string;
+  }) => void;
+}
+
+const PipelineFormComponent = forwardRef<
+  PipelineFormHandle,
+  PipelineFormComponentProps
+>(function PipelineFormComponent(
+  {
+    onFinish,
+    onNewPipelineCreated,
+    isEditMode,
+    pipelineId,
+    showButtons = true,
+    guideEnabled = false,
+    debugGuideEnabled = false,
+    monitoringGuideEnabled = false,
+    onDeletePipeline,
+    onCancel,
+    onDirtyChange,
+    onSavingChange,
+    onLegacyPipeline,
+  },
+  ref,
+) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
-  const { available: boxAvailable } = useBoxStatus();
+  const [isSaving, setIsSaving] = useState(false);
+  const pipelineFormElement = useRef<HTMLFormElement>(null);
+  const isSavingRef = useRef(false);
+  const legacyConfigRef = useRef(false);
+  const [legacyConfig, setLegacyConfig] = useState(false);
 
   const formSchema = isEditMode
     ? z.object({
@@ -118,7 +198,7 @@ export default function PipelineFormComponent({
   const formLabelList: SectionItem[] = isEditMode
     ? [
         {
-          label: t('pipelines.basicInfo'),
+          label: t('common.management'),
           name: 'basic',
           icon: SECTION_ICONS.basic,
         },
@@ -156,7 +236,66 @@ export default function PipelineFormComponent({
         },
       ];
 
-  const [activeSection, setActiveSection] = useState(formLabelList[0].name);
+  const [activeSection, setActiveSection] = useState(
+    isEditMode ? 'trigger' : 'basic',
+  );
+  const guideSteps = useMemo<GuidedTourStep[]>(() => {
+    const sections = [
+      'trigger',
+      'ai',
+      'output',
+      'safety',
+      'extensions',
+      'basic',
+    ];
+    return [
+      ...sections.map((section) => ({
+        id: section,
+        target: `[data-guide="pipeline-section-${section}"]`,
+        title: t(`guidedTour.pipeline.${section}.title`),
+        description: t(`guidedTour.pipeline.${section}.description`),
+        onEnter: () => setActiveSection(section),
+      })),
+      ...(debugGuideEnabled
+        ? [
+            {
+              id: 'debug',
+              target: '[data-guide="pipeline-form-debug"]',
+              title: t('guidedTour.pipeline.debug.title'),
+              description: t('guidedTour.pipeline.debug.description'),
+            },
+          ]
+        : []),
+      ...(monitoringGuideEnabled
+        ? [
+            {
+              id: 'monitoring',
+              target: '[data-guide="pipeline-form-monitoring"]',
+              title: t('guidedTour.pipeline.monitoring.title'),
+              description: t('guidedTour.pipeline.monitoring.description'),
+            },
+          ]
+        : []),
+      {
+        id: 'save',
+        target: '[data-guide="pipeline-form-save"]',
+        title: t('guidedTour.pipeline.save.title'),
+        description: t('guidedTour.pipeline.save.description'),
+        onEnter: () => setActiveSection('trigger'),
+      },
+    ];
+  }, [t, debugGuideEnabled, monitoringGuideEnabled]);
+  const primarySectionNames = ['trigger', 'ai', 'output'];
+  const primarySections = primarySectionNames
+    .map((name) => formLabelList.find((section) => section.name === name))
+    .filter((section): section is SectionItem => Boolean(section));
+  const secondarySections = formLabelList
+    .filter((section) => !primarySectionNames.includes(section.name))
+    .sort((left, right) => {
+      if (left.name === 'basic') return 1;
+      if (right.name === 'basic') return -1;
+      return 0;
+    });
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -166,11 +305,17 @@ export default function PipelineFormComponent({
     useState<PipelineConfigTab>();
   const [outputConfigTabSchema, setOutputConfigTabSchema] =
     useState<PipelineConfigTab>();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  const [pipelineLoaded, setPipelineLoaded] = useState(!isEditMode);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       basic: {
+        name: '',
+        description: '',
         emoji: '⚙️',
       },
       ai: {},
@@ -179,16 +324,24 @@ export default function PipelineFormComponent({
       output: {},
     },
   });
+  const runnerInstallScope = `pipeline:${pipelineId || 'new'}`;
+  const applyInstalledRunner = useCallback((installed: InstalledRunner) => {
+    setAIConfigTabSchema(installed.configTab);
+  }, []);
+  const dynamicFormSystemContext = useMemo(
+    () => ({ pipeline_id: pipelineId }),
+    [pipelineId],
+  );
 
   // Track unsaved changes by comparing current form values against a saved snapshot
   const savedSnapshotRef = useRef<string>('');
   // Track which dynamic form stages have completed their initial mount emission.
   const initializedStagesRef = useRef<Set<string>>(new Set());
   const watchedValues = form.watch();
-  const hasUnsavedChanges = useMemo(() => {
+  const hasUnsavedChanges = (() => {
     if (!isEditMode || !savedSnapshotRef.current) return false;
     return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
-  }, [isEditMode, watchedValues]);
+  })();
   // Keep a ref so that non-reactive callbacks (handleDynamicFormEmit) can
   // read the latest dirty state without stale closures.
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
@@ -200,30 +353,49 @@ export default function PipelineFormComponent({
   }, [hasUnsavedChanges, onDirtyChange]);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    setMetadataLoaded(false);
+    setPipelineLoaded(!isEditMode);
     // get config schema from metadata
-    httpClient.getGeneralPipelineMetadata().then((resp) => {
-      for (const config of resp.configs) {
-        if (config.name === 'ai') {
-          setAIConfigTabSchema(config);
-        } else if (config.name === 'trigger') {
-          setTriggerConfigTabSchema(config);
-        } else if (config.name === 'safety') {
-          setSafetyConfigTabSchema(config);
-        } else if (config.name === 'output') {
-          setOutputConfigTabSchema(config);
+    httpClient
+      .getGeneralPipelineMetadata()
+      .then((resp) => {
+        if (cancelled) return;
+        for (const config of resp.configs) {
+          if (config.name === 'ai') {
+            setAIConfigTabSchema(config);
+          } else if (config.name === 'trigger') {
+            setTriggerConfigTabSchema(config);
+          } else if (config.name === 'safety') {
+            setSafetyConfigTabSchema(config);
+          } else if (config.name === 'output') {
+            setOutputConfigTabSchema(config);
+          }
         }
-      }
-    });
+        setMetadataLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
 
     if (isEditMode) {
       httpClient
         .getPipeline(pipelineId || '')
         .then((resp: GetPipelineResponseData) => {
+          if (cancelled) return;
+          if (!isCurrentPipelineConfig(resp.pipeline.config)) {
+            legacyConfigRef.current = true;
+            setLegacyConfig(true);
+            onLegacyPipeline?.(resp.pipeline);
+            return;
+          }
           setIsDefaultPipeline(resp.pipeline.is_default ?? false);
+
           const loadedValues = {
             basic: {
-              name: resp.pipeline.name,
-              description: resp.pipeline.description,
+              name: resp.pipeline.name ?? '',
+              description: resp.pipeline.description ?? '',
               emoji: resp.pipeline.emoji || '⚙️',
             },
             ai: resp.pipeline.config.ai,
@@ -234,9 +406,53 @@ export default function PipelineFormComponent({
           form.reset(loadedValues);
           savedSnapshotRef.current = JSON.stringify(loadedValues);
           initializedStagesRef.current.clear();
+          setPipelineLoaded(true);
+        })
+        .catch(() => {
+          if (!cancelled) setLoadFailed(true);
         });
     }
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [form, isEditMode, pipelineId, loadAttempt, onLegacyPipeline]);
+
+  useEffect(() => {
+    if (
+      !metadataLoaded ||
+      !pipelineLoaded ||
+      !readPendingRunnerInstall(runnerInstallScope)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void resumePendingRunnerInstall(runnerInstallScope)
+      .then((installed) => {
+        if (cancelled || !installed) return;
+        applyInstalledRunner(installed);
+        toast.success(
+          t('agents.runnerInstallSuccess', {
+            runner: extractI18nObject(installed.runner.label),
+          }),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(
+            getErrorMessage(error) || t('wizard.aiEngine.installFailed'),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInstalledRunner,
+    metadataLoaded,
+    pipelineLoaded,
+    runnerInstallScope,
+    t,
+  ]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -252,19 +468,23 @@ export default function PipelineFormComponent({
 
   function handleFormSubmit(values: FormValues) {
     if (isEditMode) {
-      handleModify(values);
+      void handleModify(values);
     } else {
       handleCreate(values);
     }
   }
 
   function handleCreate(values: FormValues) {
+    if (isSavingRef.current) return;
     const pipeline: Pipeline = {
       config: {},
       description: values.basic.description ?? '',
       name: values.basic.name,
       emoji: values.basic.emoji,
     };
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
     httpClient
       .createPipeline(pipeline)
       .then((resp) => {
@@ -274,10 +494,25 @@ export default function PipelineFormComponent({
       })
       .catch((err) => {
         toast.error(t('pipelines.createError') + err.msg);
+      })
+      .finally(() => {
+        isSavingRef.current = false;
+        setIsSaving(false);
+        onSavingChange?.(false);
       });
   }
 
-  function handleModify(values: FormValues) {
+  async function handleModify(values: FormValues): Promise<boolean> {
+    // Imperative saves bypass native form submission validation. In particular,
+    // never save an old structured value while its visible JSON draft is invalid.
+    if (
+      pipelineFormElement.current &&
+      !pipelineFormElement.current.checkValidity()
+    )
+      return false;
+    if (isSavingRef.current || legacyConfigRef.current || !pipelineLoaded)
+      return false;
+    const submittedSnapshot = JSON.stringify(values);
     const realConfig = {
       ai: values.ai,
       trigger: values.trigger,
@@ -297,19 +532,59 @@ export default function PipelineFormComponent({
       // uuid: pipelineId || '',
       // is_default: false,
     };
-    httpClient
-      .updatePipeline(pipelineId || '', pipeline)
-      .then(() => {
-        savedSnapshotRef.current = JSON.stringify(form.getValues());
-        onFinish();
-        toast.success(t('pipelines.saveSuccess'));
-      })
-      .catch((err) => {
-        toast.error(t('pipelines.saveError') + err.msg);
-      });
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
+    try {
+      await httpClient.updatePipeline(pipelineId || '', pipeline);
+      savedSnapshotRef.current = submittedSnapshot;
+      onFinish();
+      toast.success(t('pipelines.saveSuccess'));
+      return true;
+    } catch (err) {
+      const message =
+        typeof err === 'object' && err && 'msg' in err
+          ? String((err as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('pipelines.saveError') + message);
+      return false;
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+      onSavingChange?.(false);
+    }
   }
 
-  // Called from DynamicFormComponent/N8nAuthFormComponent onSubmit callbacks.
+  useImperativeHandle(ref, () => ({
+    syncBasicInfo(values) {
+      form.setValue('basic', {
+        ...form.getValues('basic'),
+        name: values.name,
+        description: values.description,
+        emoji: values.emoji || '⚙️',
+      });
+      if (savedSnapshotRef.current) {
+        const snapshot = JSON.parse(savedSnapshotRef.current) as FormValues;
+        snapshot.basic = {
+          ...snapshot.basic,
+          name: values.name,
+          description: values.description,
+          emoji: values.emoji || '⚙️',
+        };
+        savedSnapshotRef.current = JSON.stringify(snapshot);
+      }
+    },
+    async save() {
+      if (legacyConfigRef.current || !pipelineLoaded) return false;
+      if (!hasUnsavedChangesRef.current) return true;
+      if (isSavingRef.current || !isEditMode) return false;
+      const valid = await form.trigger();
+      if (!valid) return false;
+      return handleModify(form.getValues());
+    },
+  }));
+
+  // Called from DynamicFormComponent onSubmit callbacks.
   // On the first emission for a stage (mount-time default filling), the
   // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
   // However, if the form is already dirty (the user has made real changes),
@@ -321,14 +596,67 @@ export default function PipelineFormComponent({
     values: object,
   ) {
     const stageKey = `${String(formName)}.${stageName}`;
-    const isFirstEmission = !initializedStagesRef.current.has(stageKey);
+    const isFirstEmission =
+      !initializedStagesRef.current.has(stageKey) &&
+      !(formName === 'output' && stageName === 'misc');
 
     const currentValues =
-      (form.getValues(formName) as Record<string, any>) || {};
-    form.setValue(formName, {
+      (form.getValues(formName) as Record<string, unknown>) || {};
+    const nextValues: Record<string, unknown> = {
       ...currentValues,
       [stageName]: values,
-    });
+    };
+
+    if (formName === 'ai' && stageName === 'runner') {
+      const selectedRunner = (values as Record<string, unknown>).id;
+      const runnerConfigs =
+        currentValues.runner_config &&
+        typeof currentValues.runner_config === 'object' &&
+        !Array.isArray(currentValues.runner_config)
+          ? (currentValues.runner_config as Record<string, unknown>)
+          : {};
+
+      if (
+        typeof selectedRunner === 'string' &&
+        selectedRunner &&
+        !(selectedRunner in runnerConfigs)
+      ) {
+        const runnerStage = aiConfigTabSchema?.stages.find(
+          (stage) => stage.name === selectedRunner,
+        );
+        if (runnerStage) {
+          nextValues.runner_config = {
+            ...runnerConfigs,
+            [selectedRunner]: getDefaultValues(runnerStage.config),
+          };
+        }
+      }
+    }
+
+    form.setValue(formName, nextValues);
+    if (formName === 'output' && stageName === 'misc') {
+      const removeThink = (values as Record<string, unknown>)['remove-think'];
+      const previousThink = (
+        currentValues.misc as Record<string, unknown> | undefined
+      )?.['remove-think'];
+      const runnerId = form.getValues('ai.runner.id') as string;
+      const supported = aiConfigTabSchema?.stages.some(
+        (stage) =>
+          stage.name === runnerId &&
+          stage.config.some((item) => item.name === 'remove-think'),
+      );
+      if (
+        supported &&
+        typeof removeThink === 'boolean' &&
+        removeThink !== previousThink
+      ) {
+        const configs = form.getValues('ai.runner_config') || {};
+        form.setValue('ai.runner_config', {
+          ...configs,
+          [runnerId]: { ...configs[runnerId], 'remove-think': removeThink },
+        });
+      }
+    }
 
     if (isFirstEmission) {
       initializedStagesRef.current.add(stageKey);
@@ -343,14 +671,35 @@ export default function PipelineFormComponent({
     }
   }
 
+  function handleRunnerConfigEmit(stageName: string, values: object) {
+    const currentRunnerConfigs =
+      (form.getValues('ai.runner_config') as Record<
+        string,
+        Record<string, unknown>
+      >) || {};
+    const removeThink = (values as Record<string, unknown>)['remove-think'];
+    const previousThink = currentRunnerConfigs[stageName]?.['remove-think'];
+    form.setValue('ai.runner_config', {
+      ...currentRunnerConfigs,
+      [stageName]: values,
+    });
+    if (typeof removeThink === 'boolean' && removeThink !== previousThink) {
+      const output = form.getValues('output') || {};
+      form.setValue('output', {
+        ...output,
+        misc: { ...output.misc, 'remove-think': removeThink },
+      });
+    }
+  }
+
   function renderDynamicForms(
     stage: PipelineConfigStage,
     formName: keyof FormValues,
   ) {
     // Special handling for AI config section
     if (formName === 'ai') {
-      // Get the currently selected runner
-      const currentRunner = form.watch('ai.runner.runner');
+      const runnerConfig = (form.watch('ai.runner') as any) || {};
+      const currentRunner = runnerConfig.id;
 
       // If this is the runner selector stage, render it directly
       if (stage.name === 'runner') {
@@ -368,8 +717,22 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
+                  (form.watch(formName) as Record<string, unknown>)?.[
+                    stage.name
+                  ] || {}
+                }
+                systemContext={dynamicFormSystemContext}
+                renderItem={({ config, field }) =>
+                  config.name === 'id' ? (
+                    <RunnerSelect
+                      options={config.options ?? []}
+                      label={extractI18nObject(config.label)}
+                      value={String(field.value ?? '')}
+                      onValueChange={field.onChange}
+                      installScope={runnerInstallScope}
+                      onInstalled={applyInstalledRunner}
+                    />
+                  ) : undefined
                 }
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
@@ -385,8 +748,12 @@ export default function PipelineFormComponent({
         return null;
       }
 
-      // For n8n-service-api config, use N8nAuthFormComponent for form linkage
-      if (stage.name === 'n8n-service-api') {
+      // For plugin runner configs, store in ai.runner_config[runnerId]
+      const isPluginRunner =
+        currentRunner && currentRunner.startsWith('plugin:');
+      if (isPluginRunner) {
+        const runnerConfigs = (form.watch('ai.runner_config') as any) || {};
+        const stageInitialValues = runnerConfigs[stage.name] || {};
         return (
           <Card key={stage.name}>
             <CardHeader>
@@ -398,14 +765,12 @@ export default function PipelineFormComponent({
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              <N8nAuthFormComponent
+              <PersistedRunnerForm
                 itemConfigList={stage.config}
-                initialValues={
-                  (form.watch(formName) as Record<string, any>)?.[stage.name] ||
-                  {}
-                }
+                initialValues={stageInitialValues}
+                systemContext={dynamicFormSystemContext}
                 onSubmit={(values) => {
-                  handleDynamicFormEmit(formName, stage.name, values);
+                  handleRunnerConfigEmit(stage.name, values);
                 }}
               />
             </CardContent>
@@ -414,59 +779,12 @@ export default function PipelineFormComponent({
       }
     }
 
-    // Box availability is exposed through ``systemContext.__system.box_available``
-    // so individual yaml-driven fields (e.g. ``box-session-id-template``) can
-    // opt-in via ``disable_if`` + ``disabled_tooltip`` rather than every page
-    // hard-coding a banner. Field-level gating keeps unrelated fields
-    // untouched.
-    //
-    // ``box_scope_editable`` folds the two reasons the Sandbox Scope selector
-    // can be locked into a single flag the yaml ``disable_if`` consumes:
-    //   1. Box sandbox is unavailable, or
-    //   2. the deployment pins all pipelines to a fixed scope via
-    //      ``system.limitation.force_box_session_id_template`` (SaaS).
-    const forcedBoxTemplate =
-      systemInfo.limitation?.force_box_session_id_template?.trim() || '';
-    const boxScopeForced = !!forcedBoxTemplate;
-    const isLocalAgentStage = formName === 'ai' && stage.name === 'local-agent';
-    const stageSystemContext = isLocalAgentStage
-      ? {
-          ...getBoxScopeContext(boxAvailable, forcedBoxTemplate),
-          pipeline_id: pipelineId,
-        }
-      : undefined;
-
-    // When the deployment pins every pipeline to a fixed sandbox scope (SaaS
-    // ``force_box_session_id_template``), the Sandbox Scope selector is locked.
-    // The runtime already overrides the scope on every exec, but the stored
-    // pipeline value can be anything (e.g. the per-chat default), which would
-    // make the locked selector display a scope that is NOT the one actually in
-    // effect. Coerce the displayed/saved value to the forced template so the UI
-    // truthfully reflects runtime behavior.
-
+    const StageForm =
+      formName === 'output' && stage.name === 'misc'
+        ? PersistedRunnerForm
+        : DynamicFormComponent;
     const stageInitialValues: Record<string, any> =
       (form.watch(formName) as Record<string, any>)?.[stage.name] || {};
-    const effectiveInitialValues =
-      isLocalAgentStage && boxScopeForced
-        ? {
-            ...stageInitialValues,
-            'box-session-id-template': forcedBoxTemplate,
-          }
-        : stageInitialValues;
-    const emitStageValues = (values: object) => {
-      if (!isLocalAgentStage) {
-        handleDynamicFormEmit(formName, stage.name, values);
-        return;
-      }
-
-      const latestStageValues =
-        ((form.getValues(formName) as Record<string, any>) || {})[stage.name] ||
-        {};
-      handleDynamicFormEmit(formName, stage.name, {
-        ...latestStageValues,
-        ...values,
-      });
-    };
 
     return (
       <Card key={stage.name}>
@@ -479,11 +797,13 @@ export default function PipelineFormComponent({
           )}
         </CardHeader>
         <CardContent className="space-y-6">
-          <DynamicFormComponent
+          <StageForm
             itemConfigList={stage.config}
-            initialValues={effectiveInitialValues}
-            onSubmit={emitStageValues}
-            systemContext={stageSystemContext}
+            initialValues={stageInitialValues}
+            systemContext={dynamicFormSystemContext}
+            onSubmit={(values) => {
+              handleDynamicFormEmit(formName, stage.name, values);
+            }}
           />
         </CardContent>
       </Card>
@@ -529,109 +849,163 @@ export default function PipelineFormComponent({
     }
   };
 
+  if (legacyConfig)
+    return (
+      <Alert>
+        <AlertDescription>{t('pipelineMigration.legacyGate')}</AlertDescription>
+      </Alert>
+    );
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!metadataLoaded || !pipelineLoaded) return <EntityLoadState />;
+
   return (
     <>
+      <GuidedTour
+        enabled={guideEnabled && isEditMode}
+        storageKey="langbot_pipeline_setup_guide_v1"
+        steps={guideSteps}
+        testId="pipeline-setup-guide"
+      />
       <div className="h-full p-0 flex flex-col">
         <Form {...form}>
           <form
             id="pipeline-form"
+            ref={pipelineFormElement}
             onSubmit={form.handleSubmit(handleFormSubmit)}
             className="h-full flex flex-col flex-1 min-h-0 mb-2"
           >
-            <div className="flex-1 flex flex-col md:flex-row min-h-0">
-              {/* Vertical section navigation (only show when multiple sections) */}
+            <div className="flex-1 flex min-h-0 flex-col">
+              {/* Keep the primary pipeline flow visible while editing. */}
               {formLabelList.length > 1 && (
-                <nav className="shrink-0 mb-4 md:mb-0 md:w-44 md:pr-4 md:mr-4 md:border-r overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
-                  <ul className="flex md:flex-col gap-1 md:space-y-1">
-                    {formLabelList.map((section) => {
-                      const Icon = section.icon;
-                      return (
-                        <li key={section.name}>
-                          <button
+                <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
+                  <Tabs value={activeSection} onValueChange={setActiveSection}>
+                    <div className="overflow-x-auto">
+                      <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                        {primarySections.map((section) => {
+                          const Icon = section.icon;
+                          return (
+                            <TabsTrigger
+                              key={section.name}
+                              data-guide={`pipeline-section-${section.name}`}
+                              value={section.name}
+                            >
+                              <Icon />
+                              {section.label}
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {secondarySections.map((section) => {
+                        const Icon = section.icon;
+                        return (
+                          <Button
+                            key={section.name}
+                            data-guide={`pipeline-section-${section.name}`}
                             type="button"
-                            onClick={() => setActiveSection(section.name)}
-                            className={cn(
-                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left cursor-pointer whitespace-nowrap',
+                            variant={
                               activeSection === section.name
-                                ? 'bg-accent text-accent-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                            )}
+                                ? 'secondary'
+                                : 'ghost'
+                            }
+                            size="sm"
+                            onClick={() => setActiveSection(section.name)}
                           >
-                            <Icon className="size-4 shrink-0" />
+                            <Icon />
                             {section.label}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </Tabs>
                 </nav>
               )}
 
               {/* Content panel */}
               <div className="flex-1 overflow-y-auto min-h-0">
-                {/* Basic info section */}
                 {activeSection === 'basic' && (
                   <div className="space-y-6">
-                    {/* Basic Information Card */}
                     <Card>
                       <CardHeader>
-                        <CardTitle>{t('pipelines.basicInfo')}</CardTitle>
+                        <CardTitle>
+                          {isEditMode
+                            ? t('common.management')
+                            : t('pipelines.basicInfo')}
+                        </CardTitle>
                         <CardDescription>
-                          {t('pipelines.basicInfoDescription')}
+                          {isEditMode
+                            ? t('pipelines.managementDescription')
+                            : t('pipelines.basicInfoDescription')}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* Name and Emoji in same row */}
-                        <div className="flex gap-4 items-start">
-                          <FormField
-                            control={form.control}
-                            name="basic.name"
-                            render={({ field }) => (
-                              <FormItem className="flex-1">
-                                <FormLabel>
-                                  {t('common.name')}
-                                  <span className="text-destructive">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="basic.emoji"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>{t('common.icon')}</FormLabel>
-                                <FormControl>
-                                  <EmojiPicker
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
+                        {!isEditMode && (
+                          <>
+                            <div className="flex gap-4 items-start">
+                              <FormField
+                                control={form.control}
+                                name="basic.name"
+                                render={({ field }) => (
+                                  <FormItem className="flex-1">
+                                    <FormLabel>
+                                      {t('common.name')}
+                                      <span className="text-destructive">
+                                        *
+                                      </span>
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        value={field.value ?? ''}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name="basic.emoji"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('common.icon')}</FormLabel>
+                                    <FormControl>
+                                      <EmojiPicker
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
 
-                        <FormField
-                          control={form.control}
-                          name="basic.description"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{t('common.description')}</FormLabel>
-                              <FormControl>
-                                <Input {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                            <FormField
+                              control={form.control}
+                              name="basic.description"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    {t('common.description')}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      value={field.value ?? ''}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
 
-                        {/* Copy pipeline (edit mode only) */}
                         {isEditMode && (
                           <div className="flex items-center justify-between rounded-lg border p-4">
                             <div className="space-y-0.5">
@@ -699,8 +1073,11 @@ export default function PipelineFormComponent({
                 {/* Dynamic config sections (edit mode only) */}
                 {isEditMode && (
                   <>
-                    {activeSection === 'ai' && aiConfigTabSchema && (
-                      <div className="space-y-6">
+                    {aiConfigTabSchema && (
+                      <div
+                        className="space-y-6"
+                        hidden={activeSection !== 'ai'}
+                      >
                         {aiConfigTabSchema.stages.map((stage) =>
                           renderDynamicForms(stage, 'ai'),
                         )}
@@ -776,7 +1153,7 @@ export default function PipelineFormComponent({
                 </Button>
               )}
 
-              <Button type="submit" form="pipeline-form">
+              <Button type="submit" form="pipeline-form" disabled={isSaving}>
                 {isEditMode ? t('common.save') : t('common.submit')}
               </Button>
             </div>
@@ -822,7 +1199,9 @@ export default function PipelineFormComponent({
       </Dialog>
     </>
   );
-}
+});
+
+export default PipelineFormComponent;
 interface SectionItem {
   label: string;
   name: string;

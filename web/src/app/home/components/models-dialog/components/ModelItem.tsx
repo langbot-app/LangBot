@@ -1,3 +1,4 @@
+import { hasModelReasoningAbility } from '../../reasoning/model-reasoning';
 import { useState, useEffect } from 'react';
 import { Trash2, Eye, Wrench, Check, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import {
   LLMModel,
   EmbeddingModel,
+  LangBotModelAvailabilityItem,
   ReasoningConfig,
 } from '@/app/infra/entities/api';
 import {
@@ -24,12 +26,15 @@ import {
 } from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
 import { userInfo } from '@/app/infra/http';
+import LangBotModelMetadata from '../../model-availability/LangBotModelMetadata';
 
 interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
   canManage: boolean;
   modelType: ModelType;
   isLangBotModels: boolean;
+  metadata?: LangBotModelAvailabilityItem;
+  availabilityLoaded: boolean;
   editModelPopoverOpen: string | null;
   deleteConfirmOpen: string | null;
   onOpenEditModel: (modelId: string) => void;
@@ -86,6 +91,8 @@ export default function ModelItem({
   canManage,
   modelType,
   isLangBotModels,
+  metadata,
+  availabilityLoaded,
   editModelPopoverOpen,
   deleteConfirmOpen,
   onOpenEditModel,
@@ -169,8 +176,7 @@ export default function ModelItem({
 
   const supportsReasoning =
     modelType === 'llm' &&
-    ((model as LLMModel).reasoning_capabilities?.supported === true ||
-      (model as LLMModel).abilities?.includes('reasoning'));
+    hasModelReasoningAbility(model as LLMModel, isLangBotModels);
   const canSaveModel = !isLangBotModels;
 
   // Check if popover should be disabled (space models when not logged in)
@@ -197,7 +203,7 @@ export default function ModelItem({
               : 'hover:bg-accent cursor-pointer'
           }`}
         >
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
             <Badge variant="secondary" className="text-xs">
               {modelType === 'llm'
@@ -219,12 +225,21 @@ export default function ModelItem({
                 </Badge>
               )}
             {supportsReasoning && (
-              <Badge variant="outline" className="text-xs gap-1">
+              <Badge
+                variant="outline"
+                className="text-xs gap-1"
+                aria-label={t('models.reasoningAbility')}
+              >
                 <BrainCircuit className="h-3 w-3" />
-                {t('models.reasoningAbility')}
               </Badge>
             )}
           </div>
+          {isLangBotModels && (
+            <LangBotModelMetadata
+              metadata={metadata}
+              loaded={availabilityLoaded}
+            />
+          )}
           {canManage && !isLangBotModels && (
             <Popover
               open={isDeleteOpen}
@@ -338,7 +353,11 @@ export default function ModelItem({
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id={`edit-reasoning-${model.uuid}`}
-                    checked={editAbilities.includes('reasoning')}
+                    checked={
+                      isLangBotModels
+                        ? supportsReasoning
+                        : editAbilities.includes('reasoning')
+                    }
                     disabled={isLangBotModels}
                     onCheckedChange={(checked) =>
                       toggleAbility('reasoning', checked as boolean)
@@ -412,6 +431,14 @@ export default function ModelItem({
               )}
             </Button>
           </div>
+          {testResult?.success === false && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive [overflow-wrap:anywhere]"
+            >
+              {testResult.message}
+            </p>
+          )}
         </div>
       </PopoverContent>
     </Popover>

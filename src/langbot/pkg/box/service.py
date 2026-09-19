@@ -278,7 +278,14 @@ class BoxService:
                     skill_mgr = getattr(self.ap, 'skill_mgr', None)
                     reload_skills = getattr(skill_mgr, 'reload_skills', None)
                     if callable(reload_skills) and not self._cloud_managed:
-                        await reload_skills()
+                        binding = await self.ap.workspace_service.get_execution_binding()
+                        await reload_skills(
+                            ExecutionContext(
+                                instance_uuid=binding.instance_uuid,
+                                workspace_uuid=binding.workspace_uuid,
+                                placement_generation=binding.placement_generation,
+                            )
+                        )
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
                 except Exception as exc:
@@ -559,6 +566,11 @@ class BoxService:
         namespace = box_namespace(self._action_context(context))
         return os.path.join(self.default_workspace, 'tenants', namespace)
 
+    def workspace_host_path(self, context: TenantContext) -> str | None:
+        """Return the host path mounted as /workspace for one execution context."""
+
+        return self._tenant_workspace(context)
+
     async def execute_spec_payload(
         self,
         spec_payload: dict,
@@ -570,6 +582,12 @@ class BoxService:
             raise BoxError(
                 'Box runtime is not available. Configure an available Box backend before using Box features.'
             )
+        from .runner import binding_for
+
+        binding = binding_for(query)
+        if spec_payload.get('session_id') not in (None, '', binding.session_id):
+            raise BoxValidationError('session_id must match the bound Box')
+        spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
         spec_payload = self._managed_policy_payload(execution_context, spec_payload)
         await self._require_validated_workspace_sandbox(execution_context)
@@ -622,41 +640,10 @@ class BoxService:
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
-        """Resolve the Box session_id from the pipeline's template and query variables.
+        """Use the Box explicitly bound by the current Runner invocation."""
+        from .runner import binding_for
 
-        When ``system.limitation.force_box_session_id_template`` is set to a
-        non-empty value, that template overrides whatever the pipeline
-        configured. This is the authoritative SaaS guard: it runs on every
-        ``exec`` call, so a tenant cannot escape a single shared sandbox even
-        by editing the pipeline config directly through the API (which only
-        gates the web UI).
-        """
-        if self._cloud_managed:
-            return 'global'
-        forced_template = self._forced_box_session_id_template()
-        if forced_template:
-            template = forced_template
-        else:
-            template = (
-                (query.pipeline_config or {})
-                .get('ai', {})
-                .get('local-agent', {})
-                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
-            )
-        variables = dict(query.variables or {})
-        launcher_type = getattr(query, 'launcher_type', None)
-        if hasattr(launcher_type, 'value'):
-            launcher_type = launcher_type.value
-        launcher_id = getattr(query, 'launcher_id', None)
-        sender_id = getattr(query, 'sender_id', None)
-        query_id = getattr(query, 'query_id', None)
-
-        variables.setdefault('query_id', str(query_id or 'unknown'))
-        variables.setdefault('launcher_type', str(launcher_type or 'query'))
-        variables.setdefault('launcher_id', str(launcher_id or query_id or 'unknown'))
-        variables.setdefault('sender_id', str(sender_id or launcher_id or query_id or 'unknown'))
-        variables.setdefault('global', 'global')
-        return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
+        return binding_for(query).session_id
 
     def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
         """Build extra_mounts entries for all pipeline-bound skills.
@@ -804,6 +791,9 @@ class BoxService:
     _EXEC_FALLBACK_MAX_BYTES = 256 * 1024
 
     def _attachment_query_key(self, query: pipeline_query.Query) -> str:
+        binding = getattr(query, '_box_binding', None)
+        if binding is not None:
+            return binding.io_scope
         query_uuid = str(getattr(query, 'query_uuid', '') or '').strip()
         if query_uuid:
             if query_uuid in {'.', '..'} or '/' in query_uuid or '\\' in query_uuid or '\x00' in query_uuid:
@@ -1391,6 +1381,16 @@ class BoxService:
         except Exception:
             return []
 
+    async def get_storage_analysis(self, context: TenantContext) -> dict:
+        """Return Workspace-scoped storage measured by the Box Runtime."""
+
+        if not self._enabled:
+            raise BoxError('Box runtime is disabled')
+        if not self._available:
+            raise BoxError(self._connector_error or 'Box runtime is not available')
+        execution_context = await self._validated_execution_context(context)
+        return await self.client.get_storage_analysis(action_context=self._action_context(execution_context))
+
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
         spec_payload.setdefault('env', {})
@@ -1805,20 +1805,6 @@ class BoxService:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
 
-    def _forced_box_session_id_template(self) -> str:
-        """Return the SaaS-forced sandbox-scope template, or '' when unset.
-
-        Read from ``system.limitation.force_box_session_id_template``. A
-        non-empty value pins every pipeline to a single sandbox scope
-        (e.g. ``'{global}'``) and cannot be overridden per-pipeline.
-        """
-        limitation = (
-            (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
-            if getattr(self.ap, 'instance_config', None) is not None
-            else {}
-        )
-        return str(limitation.get('force_box_session_id_template', '') or '').strip()
-
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = self._local_config().get('workspace_quota_mb')
         if raw_value in (None, ''):
@@ -2044,51 +2030,6 @@ class BoxService:
             if error.get('instance_uuid') == execution_context.instance_uuid
             and error.get('workspace_uuid') == execution_context.workspace_uuid
         ]
-
-    def get_system_guidance(self, query: pipeline_query.Query | int | str | None = None) -> str:
-        """Return LLM system-prompt guidance for the exec tool.
-
-        All execution-specific prompt text is kept here so that callers
-        (e.g. LocalAgentRunner) stay free of box domain knowledge.
-
-        ``query`` is the current turn's pipeline query. When provided,
-        the guidance ALWAYS advertises the per-query outbox path so the agent
-        knows how to deliver generated files back to the user — even on turns
-        where the user sent no inbound attachment (e.g. "generate a QR code"),
-        which is exactly when the inbound-attachment note never fires. Outbound
-        collection in the wrapper runs on every turn regardless of inbound
-        files, so without this the file would be produced and silently dropped.
-        """
-        guidance = (
-            'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '
-            'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
-            'JSON, or other data and asks for a computed answer, prefer running a short Python script via exec '
-            'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
-            'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
-        )
-        if self.default_workspace:
-            guidance += (
-                ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
-                'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '
-                'user for directory parameters unless they explicitly need a different directory.'
-            )
-        if query is not None:
-            if not isinstance(query, (int, str)):
-                query_key = self._attachment_query_key(query)
-            else:
-                # Backwards compatibility for OSS callers/tests that passed
-                # the old process-local integer identity. Cloud callers must
-                # pass the full Query so an opaque UUID is always advertised.
-                if self._cloud_managed:
-                    raise BoxValidationError('Cloud outbox guidance requires a pipeline Query')
-                query_key = str(query)
-            outbox_dir = f'{self.OUTBOX_MOUNT_DIR}/{query_key}'
-            guidance += (
-                f' If you produce any file (image, audio, document, etc.) that should be sent back to the user, '
-                f'write it into {outbox_dir}/ (create the directory if needed). Every file placed there will be '
-                'delivered to the user automatically; do not paste file contents or base64 into your reply.'
-            )
-        return guidance
 
     async def get_backend_status(self) -> dict:
         """Return instance-level backend readiness without tenant resource data."""

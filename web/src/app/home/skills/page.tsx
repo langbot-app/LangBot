@@ -34,7 +34,7 @@ export default function SkillsPage() {
   }, [detailId, isCreateView, navigate]);
 
   if (detailId) {
-    return <SkillDetailContent id={detailId} />;
+    return <SkillDetailContent key={detailId} id={detailId} />;
   }
 
   function handleCreatedSkill(skillName: string) {

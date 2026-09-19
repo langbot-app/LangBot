@@ -117,7 +117,7 @@ function patternContextFromOptions(root: string, options: Record<string, string 
 function latestOrExplicitBackendLog(root: string, options: Record<string, string | boolean>): string {
   const explicit = optionString(options, "backend-log");
   if (explicit) return resolve(explicit);
-  const auto = latestLangBotLogPath(loadEnv(root));
+  const auto = latestLangBotLogPath(loadEnv(root), root);
   return auto ? resolve(auto) : "";
 }
 

@@ -14,6 +14,7 @@ import quart
 from ....authz import Permission, permissions_for_role, require_permission
 from ....context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ... import group
+from ..... import management_diagnostics as diagnostics
 from ......core.task_boundary import run_in_workspace_uow
 from ......platform.sources.websocket_manager import WebSocketScope, ws_connection_manager
 from ......utils import bounded_executor
@@ -210,6 +211,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
 
     async def initialize(self) -> None:
         @self.quart_app.websocket(self.path + '/connect')
+        @diagnostics.observe('websocket.dashboard.session', source='websocket', ap=self.ap)
         async def websocket_connect(pipeline_uuid: str):
             """Open one authenticated dashboard debug connection."""
 
@@ -217,11 +219,14 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             try:
                 request_context, token = await self._authenticate_websocket()
             except Exception:
+                diagnostics.outcome('rejected')
                 await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Unauthorized'}))
                 return
 
+            diagnostics.workspace(request_context)
             session_type = quart.websocket.args.get('session_type', 'person')
             if session_type not in ['person', 'group']:
+                diagnostics.outcome('rejected')
                 await quart.websocket.send(
                     json.dumps({'type': 'error', 'message': 'session_type must be person or group'})
                 )
@@ -230,6 +235,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             try:
                 websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
                 if websocket_adapter is None:
+                    diagnostics.outcome('rejected')
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Pipeline not found'}))
                     return
 
@@ -288,11 +294,13 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 try:
                     await wait_for_duplex_tasks(receive_task, send_task)
                 except Exception as exc:
+                    diagnostics.outcome('failed')
                     logger.error(f'WebSocket task execution error: {exc}')
                 finally:
                     await ws_connection_manager.remove_connection(connection.connection_id)
 
             except Exception:
+                diagnostics.outcome('failed')
                 logger.error('Dashboard WebSocket connection error', exc_info=True)
                 try:
                     await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Internal server error'}))
@@ -410,28 +418,34 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 message = await quart.websocket.receive()
                 await ws_connection_manager.update_activity(connection.connection_id)
 
-                try:
-                    data = await asyncio.to_thread(json.loads, message)
-                    message_type = data.get('type', 'message')
-                    if message_type == 'ping':
-                        await connection.send_queue.put(
-                            {'type': 'pong', 'timestamp': datetime.datetime.now().isoformat()}
-                        )
-                    elif message_type == 'message':
-                        try:
-                            request_context = await self._revalidate_websocket_authorization(request_context, token)
-                        except Exception:
-                            await connection.send_queue.put({'type': 'error', 'message': 'Unauthorized'})
+                with diagnostics.scope(self.ap, 'websocket.dashboard.message', source='websocket'):
+                    diagnostics.workspace(request_context)
+                    try:
+                        data = await asyncio.to_thread(json.loads, message)
+                        message_type = data.get('type', 'message')
+                        if message_type == 'ping':
+                            await connection.send_queue.put(
+                                {'type': 'pong', 'timestamp': datetime.datetime.now().isoformat()}
+                            )
+                        elif message_type == 'message':
+                            try:
+                                request_context = await self._revalidate_websocket_authorization(request_context, token)
+                            except Exception:
+                                diagnostics.outcome('rejected')
+                                await connection.send_queue.put({'type': 'error', 'message': 'Unauthorized'})
+                                break
+                            await websocket_adapter.handle_websocket_message(connection, data)
+                        elif message_type == 'disconnect':
                             break
-                        await websocket_adapter.handle_websocket_message(connection, data)
-                    elif message_type == 'disconnect':
-                        break
-                    else:
-                        logger.warning(f'Unknown WebSocket message type: {message_type}')
-                except json.JSONDecodeError:
-                    await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
+                        else:
+                            diagnostics.outcome('skipped')
+                            logger.warning(f'Unknown WebSocket message type: {message_type}')
+                    except json.JSONDecodeError:
+                        diagnostics.outcome('rejected')
+                        await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
 
         except Exception:
+            diagnostics.outcome('failed')
             logger.error('Dashboard WebSocket receive error', exc_info=True)
         finally:
             connection.is_active = False
@@ -447,11 +461,13 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     message = await asyncio.wait_for(connection.send_queue.get(), timeout=1.0)
                     if message is None:
                         break
-                    encoded = await asyncio.to_thread(json.dumps, message)
-                    await quart.websocket.send(encoded)
+                    with diagnostics.scope(self.ap, 'websocket.dashboard.send', source='websocket'):
+                        encoded = await asyncio.to_thread(json.dumps, message)
+                        await quart.websocket.send(encoded)
                 except asyncio.TimeoutError:
                     continue
         except Exception:
+            diagnostics.outcome('failed')
             logger.error('Dashboard WebSocket send error', exc_info=True)
         finally:
             connection.is_active = False

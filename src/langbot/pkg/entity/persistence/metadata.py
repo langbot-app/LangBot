@@ -1,15 +1,6 @@
 import sqlalchemy
 
 from .base import Base
-from ...utils import constants
-
-
-initial_metadata = [
-    {
-        'key': 'database_version',
-        'value': str(constants.required_database_version),
-    },
-]
 
 
 class Metadata(Base):

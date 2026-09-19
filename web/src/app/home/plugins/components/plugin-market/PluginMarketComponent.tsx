@@ -26,6 +26,7 @@ import {
   Book,
   FileText,
   AppWindow,
+  Bot,
   SlidersHorizontal,
   X,
   Info,
@@ -62,6 +63,26 @@ interface SortOption {
 // Persist the market filter conditions (type / component / tags / sort) across
 // visits via localStorage.
 const MARKET_FILTERS_KEY = 'langbot_market_filters';
+const MARKET_TYPE_VALUES = ['plugin', 'mcp', 'skill'];
+const MARKET_COMPONENT_VALUES = [
+  'Tool',
+  'Command',
+  'EventListener',
+  'KnowledgeEngine',
+  'Parser',
+  'Page',
+  'Runner',
+];
+
+function getComponentFilterFromQuery(
+  searchParams: Pick<URLSearchParams, 'get'>,
+): string | null {
+  const component = searchParams.get('component');
+  return component && MARKET_COMPONENT_VALUES.includes(component)
+    ? component
+    : null;
+}
+
 interface MarketFilters {
   typeFilter?: string;
   componentFilter?: string;
@@ -89,9 +110,7 @@ function MarketPageContent({
   installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-
-  const validTypes = ['plugin', 'mcp', 'skill'];
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const extensionTypeOptions = [
     { value: 'all', label: t('market.filters.allFormats'), icon: null },
@@ -102,18 +121,34 @@ function MarketPageContent({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(
-    () => loadMarketFilters().componentFilter ?? 'all',
+    () =>
+      getComponentFilterFromQuery(searchParams) ??
+      loadMarketFilters().componentFilter ??
+      'all',
   );
+  const [runnerUsage, setRunnerUsage] = useState(() => {
+    const value = searchParams.get('runner_usage');
+    return value === 'agent' || value === 'event' ? value : 'all';
+  });
+  const activeRunnerUsage =
+    componentFilter === 'Runner' && runnerUsage !== 'all'
+      ? (runnerUsage as 'agent' | 'event')
+      : undefined;
   const [typeFilter, setTypeFilter] = useState<string>(() => {
+    if (getComponentFilterFromQuery(searchParams)) {
+      return 'plugin';
+    }
     const type = searchParams.get('type');
-    if (type && validTypes.includes(type)) {
+    if (type && MARKET_TYPE_VALUES.includes(type)) {
       return type;
     }
     const saved = loadMarketFilters().typeFilter;
-    return saved && validTypes.includes(saved) ? saved : 'all';
+    return saved && MARKET_TYPE_VALUES.includes(saved) ? saved : 'all';
   });
   const activeAdvancedFilters =
-    (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
+    (typeFilter === 'all' ? 0 : 1) +
+    (componentFilter === 'all' ? 0 : 1) +
+    (activeRunnerUsage ? 1 : 0);
   const [selectedTags, setSelectedTags] = useState<string[]>(
     () => loadMarketFilters().selectedTags ?? [],
   );
@@ -214,6 +249,11 @@ function MarketPageContent({
       label: t('market.componentName.Page'),
       icon: AppWindow,
     },
+    {
+      value: 'Runner',
+      label: t('market.componentName.Runner'),
+      icon: Bot,
+    },
   ];
 
   // 获取当前排序参数
@@ -283,6 +323,7 @@ function MarketPageContent({
             type_filter: typeFilter === 'all' ? undefined : typeFilter,
             component_filter:
               componentFilter === 'all' ? undefined : componentFilter,
+            runner_usage: activeRunnerUsage,
             tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
           });
 
@@ -314,6 +355,7 @@ function MarketPageContent({
     [
       searchQuery,
       componentFilter,
+      activeRunnerUsage,
       selectedTags,
       pageSize,
       transformToVO,
@@ -440,49 +482,58 @@ function MarketPageContent({
   }, []);
 
   // Handle type filter change
-  const handleTypeFilterChange = useCallback((value: string) => {
-    setTypeFilter(value);
-    if (value !== 'plugin') {
-      setComponentFilter('all');
-    }
-    setCurrentPage(1);
-    setSelectedTags([]);
-    setPlugins([]);
+  const handleTypeFilterChange = useCallback(
+    (value: string) => {
+      setTypeFilter(value);
+      if (value !== 'plugin') {
+        setComponentFilter('all');
+      }
+      setCurrentPage(1);
+      setSelectedTags([]);
+      setPlugins([]);
 
-    // Update URL query param to keep it in sync
-    const params = new URLSearchParams(window.location.search);
-    if (value === 'all') {
-      params.delete('type');
-    } else {
-      params.set('type', value);
-    }
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  }, []);
+      // Update URL query param to keep it in sync
+      const params = new URLSearchParams(searchParams);
+      if (value === 'all') {
+        params.delete('type');
+      } else {
+        params.set('type', value);
+      }
+      if (value !== 'plugin') {
+        params.delete('component');
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleComponentFilterChange = useCallback((value: string) => {
-    setComponentFilter(value);
-    setCurrentPage(1);
-    setPlugins([]);
+  const handleComponentFilterChange = useCallback(
+    (value: string) => {
+      setComponentFilter(value);
+      setCurrentPage(1);
+      setPlugins([]);
 
-    if (value !== 'all') {
-      setTypeFilter('plugin');
-
-      const params = new URLSearchParams(window.location.search);
-      params.set('type', 'plugin');
-      const newUrl = params.toString()
-        ? `${window.location.pathname}?${params.toString()}`
-        : window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
-    }
-  }, []);
+      const params = new URLSearchParams(searchParams);
+      if (value !== 'Runner') {
+        setRunnerUsage('all');
+        params.delete('runner_usage');
+      }
+      if (value === 'all') {
+        params.delete('component');
+      } else {
+        setTypeFilter('plugin');
+        params.set('type', 'plugin');
+        params.set('component', value);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // 当排序选项或组件筛选或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter, typeFilter]);
+  }, [sortOption, componentFilter, typeFilter, activeRunnerUsage]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -791,6 +842,38 @@ function MarketPageContent({
                     })}
                   </ToggleGroup>
                 </div>
+                {componentFilter === 'Runner' && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {t('market.runnerUsage')}
+                    </div>
+                    <ToggleGroup
+                      type="single"
+                      size="sm"
+                      value={runnerUsage}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        setRunnerUsage(value);
+                        setCurrentPage(1);
+                        setPlugins([]);
+                        const params = new URLSearchParams(searchParams);
+                        if (value === 'all') params.delete('runner_usage');
+                        else params.set('runner_usage', value);
+                        setSearchParams(params, { replace: true });
+                      }}
+                    >
+                      <ToggleGroupItem value="all">
+                        {t('market.runnerUsageAll')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="agent">
+                        {t('market.runnerUsageAgent')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="event">
+                        {t('market.runnerUsageEvent')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
 

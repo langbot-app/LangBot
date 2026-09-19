@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
+import { getBackendBaseUrl } from '@/app/infra/http/backendUrl';
 
 export type QrLoginPlatform =
   | 'feishu'
@@ -213,7 +214,7 @@ export default function QrCodeLoginDialog({
 
     const token = localStorage.getItem('token');
     const workspaceUuid = getActiveWorkspaceUuid();
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    const baseUrl = getBackendBaseUrl();
     baseUrlRef.current = baseUrl;
     const cfg = platformConfigRef.current;
 

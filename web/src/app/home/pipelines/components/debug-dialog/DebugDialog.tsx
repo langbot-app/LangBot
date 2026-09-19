@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -40,20 +40,89 @@ import {
   Music,
   Code,
   AlignLeft,
+  RotateCcw,
 } from 'lucide-react';
 
 interface DebugDialogProps {
   open: boolean;
   pipelineId: string;
   isEmbedded?: boolean;
+  compact?: boolean;
   onConnectionStatusChange?: (isConnected: boolean) => void;
+  beforeSend?: () => Promise<boolean>;
+  hasUnsavedChanges?: boolean;
+}
+
+function AuthenticatedMessageImage({
+  image,
+  onOpen,
+}: {
+  image: Image;
+  onOpen: (imageUrl: string) => void;
+}) {
+  const [downloadedUrl, setDownloadedUrl] = useState('');
+  const directUrl =
+    image.url ||
+    (image.base64
+      ? image.base64.startsWith('data:')
+        ? image.base64
+        : `data:image/jpeg;base64,${image.base64}`
+      : '');
+
+  useEffect(() => {
+    if (directUrl || !image.path) return;
+
+    let disposed = false;
+    let objectUrl = '';
+    const encodedPath = image.path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+    void httpClient
+      .downloadFile(`/api/v1/files/image/${encodedPath}`)
+      .then((response) => {
+        objectUrl = URL.createObjectURL(response.data);
+        if (disposed) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setDownloadedUrl(objectUrl);
+      })
+      .catch((error) => {
+        console.error('Failed to load Debug Chat image:', error);
+      });
+
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [directUrl, image.path]);
+
+  const imageUrl = directUrl || downloadedUrl;
+  if (!imageUrl) return null;
+
+  return (
+    <div className="my-2">
+      <img
+        src={imageUrl}
+        alt="Image"
+        data-debug-chat-message-image="true"
+        className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => onOpen(imageUrl)}
+      />
+    </div>
+  );
 }
 
 export default function DebugDialog({
   open,
   pipelineId,
   isEmbedded = false,
+  compact = false,
   onConnectionStatusChange,
+  beforeSend,
+  hasUnsavedChanges = false,
 }: DebugDialogProps) {
   const { t } = useTranslation();
   const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId);
@@ -80,42 +149,60 @@ export default function DebugDialog({
     new Set(),
   );
   const [streamOutput, setStreamOutput] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsClientRef = useRef<WebSocketClient | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  const historyRequestGenerationRef = useRef(0);
+
+  const invalidateHistoryRequests = useCallback(() => {
+    historyRequestGenerationRef.current++;
+  }, []);
 
   const scrollToBottom = useCallback(() => {
-    // Use setTimeout to ensure scroll happens after DOM update
     setTimeout(() => {
-      const scrollArea = document.querySelector('.scroll-area') as HTMLElement;
-      if (scrollArea) {
-        scrollArea.scrollTo({
-          top: scrollArea.scrollHeight,
-          behavior: 'smooth',
-        });
-      }
-      // Also ensure messagesEndRef scrolls into view
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]',
+      );
+      viewport?.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: 'smooth',
+      });
     }, 0);
   }, []);
 
   const loadMessages = useCallback(
     async (pipelineId: string) => {
+      const generation = ++historyRequestGenerationRef.current;
       try {
         const response = await httpClient.getWebSocketHistoryMessages(
           pipelineId,
           sessionType,
         );
-        setMessages(response.messages);
+        if (generation !== historyRequestGenerationRef.current) return;
+        setMessages(Array.isArray(response.messages) ? response.messages : []);
       } catch (error) {
+        if (generation !== historyRequestGenerationRef.current) return;
         console.error('Failed to load messages:', error);
       }
     },
     [sessionType],
   );
+
+  const resetConversation = useCallback(async () => {
+    try {
+      await httpClient.resetWebSocketSession(selectedPipelineId, sessionType);
+      invalidateHistoryRequests();
+      setMessages([]);
+      setQuotedMessage(null);
+      toast.success(t('pipelines.debugDialog.resetSuccess'));
+    } catch (error) {
+      console.error('Failed to reset Debug Chat session:', error);
+      toast.error(t('pipelines.debugDialog.resetFailed'));
+    }
+  }, [invalidateHistoryRequests, selectedPipelineId, sessionType, t]);
 
   // Initialize WebSocket connection
   const initWebSocket = useCallback(
@@ -125,24 +212,30 @@ export default function DebugDialog({
         return;
       }
 
+      let wsClient: WebSocketClient | null = null;
+      let errorReported = false;
       try {
         isInitializingRef.current = true;
 
         // Disconnect old connection
-        if (wsClientRef.current) {
-          wsClientRef.current.disconnect();
-          wsClientRef.current = null;
-        }
+        const previousClient = wsClientRef.current;
+        wsClientRef.current = null;
+        previousClient?.disconnect();
 
         // Create new connection
-        const wsClient = new WebSocketClient(pipelineId, sessionType);
+        wsClient = new WebSocketClient(pipelineId, sessionType);
+        // Store the client before awaiting connect so effect cleanup can also
+        // cancel sockets that are still authenticating.
+        wsClientRef.current = wsClient;
 
         wsClient
           .onConnected(() => {
+            if (wsClientRef.current !== wsClient) return;
             setIsConnected(true);
             isInitializingRef.current = false;
           })
           .onMessage((wsMessage) => {
+            if (wsClientRef.current !== wsClient) return;
             // Convert WebSocketMessage to Message type
             const message: Message = {
               ...wsMessage,
@@ -167,26 +260,32 @@ export default function DebugDialog({
             });
           })
           .onError((error) => {
+            if (wsClientRef.current !== wsClient) return;
+            errorReported = true;
             console.error('WebSocket error:', error);
             setIsConnected(false);
             isInitializingRef.current = false;
             toast.error(t('pipelines.debugDialog.connectionError'));
           })
           .onClose(() => {
+            if (wsClientRef.current !== wsClient) return;
             setIsConnected(false);
             isInitializingRef.current = false;
           })
           .onBroadcast((message) => {
+            if (wsClientRef.current !== wsClient) return;
             toast.info(message);
           });
 
         await wsClient.connect();
-        wsClientRef.current = wsClient;
       } catch (error) {
+        if (!wsClient || wsClientRef.current !== wsClient) return;
         console.error('WebSocket connection failed:', error);
         setIsConnected(false);
         isInitializingRef.current = false;
-        toast.error(t('pipelines.debugDialog.connectionFailed'));
+        if (!errorReported) {
+          toast.error(t('pipelines.debugDialog.connectionFailed'));
+        }
       }
     },
     [sessionType, t],
@@ -202,24 +301,28 @@ export default function DebugDialog({
     if (open) {
       setSelectedPipelineId(pipelineId);
     } else {
+      invalidateHistoryRequests();
       // Disconnect WebSocket immediately when dialog closes
       if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
+        const wsClient = wsClientRef.current;
         wsClientRef.current = null;
+        wsClient.disconnect();
         setIsConnected(false);
         isInitializingRef.current = false;
       }
     }
 
     return () => {
+      invalidateHistoryRequests();
       // Disconnect WebSocket on component unmount
       if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
+        const wsClient = wsClientRef.current;
         wsClientRef.current = null;
+        wsClient.disconnect();
         isInitializingRef.current = false;
       }
     };
-  }, [open, pipelineId]);
+  }, [open, pipelineId, invalidateHistoryRequests]);
 
   // Reload messages and reconnect when sessionType or selectedPipelineId changes
   useEffect(() => {
@@ -259,7 +362,7 @@ export default function DebugDialog({
     }
   }, [showAtPopover]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     if (sessionType === 'group') {
       if (value.endsWith('@')) {
@@ -350,8 +453,11 @@ export default function DebugDialog({
 
     try {
       setIsUploading(true);
+      if (hasUnsavedChanges && beforeSend && !(await beforeSend())) {
+        return;
+      }
 
-      const messageChain = [];
+      const messageChain: MessageChainComponent[] = [];
 
       // Add quoted message if present
       if (quotedMessage) {
@@ -405,17 +511,21 @@ export default function DebugDialog({
               type: 'Image',
               path: result.file_key,
             });
-          } else {
+          } else if (attachment.kind === 'voice') {
             // Voice / File go through the generic document upload endpoint,
             // which returns a storage key the backend resolves into the
             // sandbox inbox just like images.
             const result = await httpClient.uploadDocumentFile(attachment.file);
             messageChain.push({
-              type: attachment.kind === 'voice' ? 'Voice' : 'File',
+              type: 'Voice',
               path: result.file_id,
-              ...(attachment.kind === 'file'
-                ? { name: attachment.file.name }
-                : {}),
+            });
+          } else {
+            const result = await httpClient.uploadDocumentFile(attachment.file);
+            messageChain.push({
+              type: 'File',
+              path: result.file_id,
+              name: attachment.file.name,
             });
           }
         } catch (error) {
@@ -477,22 +587,15 @@ export default function DebugDialog({
 
       case 'Image': {
         const img = component as Image;
-        const imageUrl = img.url || (img.base64 ? img.base64 : '');
-
-        if (!imageUrl) return null;
-
         return (
-          <div key={index} className="my-2">
-            <img
-              src={imageUrl}
-              alt="Image"
-              className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => {
-                setPreviewImageUrl(imageUrl);
-                setShowImagePreview(true);
-              }}
-            />
-          </div>
+          <AuthenticatedMessageImage
+            key={`${index}-${img.path || img.url || 'inline'}`}
+            image={img}
+            onOpen={(imageUrl) => {
+              setPreviewImageUrl(imageUrl);
+              setShowImagePreview(true);
+            }}
+          />
         );
       }
 
@@ -749,39 +852,58 @@ export default function DebugDialog({
   };
 
   const renderContent = () => (
-    <div className="flex flex-1 h-full min-h-0">
-      <div className="w-14 p-2 pl-0 shrink-0 flex flex-col justify-start gap-2">
+    <div className="flex flex-1 h-full min-h-0 flex-col">
+      <div
+        className={cn(
+          'flex shrink-0 flex-wrap items-center gap-1 border-b px-4 py-2',
+          compact && 'px-3',
+        )}
+        data-debug-session-toolbar="true"
+      >
+        <span className="mr-1 text-xs text-muted-foreground">
+          {t('pipelines.debugDialog.sessionType')}
+        </span>
         <Button
+          type="button"
           variant="ghost"
-          size="icon"
+          size="sm"
+          aria-pressed={sessionType === 'person'}
           className={cn(
-            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-            sessionType === 'person'
-              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            'shadow-none',
+            sessionType === 'person' &&
+              'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary',
           )}
           onClick={() => setSessionType('person')}
         >
-          <User className="size-5" />
+          <User className="size-4" />
+          {t('pipelines.debugDialog.privateChat')}
         </Button>
         <Button
+          type="button"
           variant="ghost"
-          size="icon"
+          size="sm"
+          aria-pressed={sessionType === 'group'}
           className={cn(
-            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-            sessionType === 'group'
-              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            'shadow-none',
+            sessionType === 'group' &&
+              'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary',
           )}
           onClick={() => setSessionType('group')}
         >
-          <Users className="size-5" />
+          <Users className="size-4" />
+          {t('pipelines.debugDialog.groupChat')}
         </Button>
       </div>
 
-      <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
-        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 scroll-area">
-          <div className="space-y-6">
+      <div className="flex-1 flex flex-col w-full h-full min-h-0">
+        <ScrollArea
+          ref={scrollAreaRef}
+          className={cn(
+            'flex-1 overflow-y-auto min-h-0 scroll-area',
+            compact ? 'p-3' : 'p-6',
+          )}
+        >
+          <div className={compact ? 'space-y-3' : 'space-y-6'}>
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-lg">
                 {t('pipelines.debugDialog.noMessages')}
@@ -797,7 +919,10 @@ export default function DebugDialog({
                 >
                   <div
                     className={cn(
-                      'max-w-3xl px-5 py-3 rounded-2xl',
+                      'rounded-2xl',
+                      compact
+                        ? 'max-w-[92%] px-3 py-2 text-sm'
+                        : 'max-w-3xl px-5 py-3',
                       message.role === 'user'
                         ? 'user-message-bubble bg-primary/10 text-foreground rounded-br-none'
                         : 'bg-muted text-foreground rounded-bl-none',
@@ -864,7 +989,6 @@ export default function DebugDialog({
                 </div>
               ))
             )}
-            <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
@@ -907,6 +1031,7 @@ export default function DebugDialog({
                     <img
                       src={image.preview}
                       alt={`preview-${index}`}
+                      data-debug-chat-attachment-preview="true"
                       className="w-20 h-20 object-cover rounded-lg border"
                     />
                   ) : (
@@ -934,8 +1059,11 @@ export default function DebugDialog({
           </div>
         )}
 
-        <div className="p-4 pb-0 flex gap-2">
-          <div className="flex gap-2 items-center">
+        <div
+          className={cn('shrink-0 border-t p-4', compact && 'p-3')}
+          data-debug-composer="true"
+        >
+          <div className="mb-2 flex items-center gap-2">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">
                 {t('pipelines.debugDialog.streamOutput')}
@@ -964,69 +1092,93 @@ export default function DebugDialog({
             >
               <ImageIcon className="size-5" />
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto text-muted-foreground"
+              onClick={() => void resetConversation()}
+            >
+              <RotateCcw className="size-4" />
+              {t('pipelines.debugDialog.reset')}
+            </Button>
           </div>
-          <div className="flex-1 flex items-center gap-2">
-            {hasAt && (
-              <AtBadge targetName="websocketbot" onRemove={handleAtRemove} />
-            )}
-            <div className="relative flex-1">
-              <Input
-                ref={inputRef}
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyPress={handleKeyPress}
-                placeholder={t('pipelines.debugDialog.inputPlaceholder', {
-                  type:
-                    sessionType === 'person'
-                      ? t('pipelines.debugDialog.privateChat')
-                      : t('pipelines.debugDialog.groupChat'),
-                })}
-                disabled={!isConnected || isUploading}
-                className="flex-1 rounded-md px-3 py-2 transition-none text-base disabled:opacity-50"
-              />
-              {showAtPopover && (
-                <div
-                  ref={popoverRef}
-                  className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
-                >
-                  <div
-                    className={cn(
-                      'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
-                      isHovering ? 'bg-accent' : '',
-                    )}
-                    onClick={handleAtSelect}
-                    onMouseEnter={() => setIsHovering(true)}
-                    onMouseLeave={() => setIsHovering(false)}
-                  >
-                    <span>
-                      @websocketbot - {t('pipelines.debugDialog.atTips')}
-                    </span>
-                  </div>
+
+          <div className="flex min-w-0 items-end gap-2">
+            <div className="min-w-0 flex-1">
+              {hasAt && (
+                <div className="mb-1">
+                  <AtBadge
+                    targetName="websocketbot"
+                    onRemove={handleAtRemove}
+                  />
                 </div>
               )}
+              <div className="relative">
+                <Textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyPress}
+                  placeholder={t('pipelines.debugDialog.inputPlaceholder', {
+                    type:
+                      sessionType === 'person'
+                        ? t('pipelines.debugDialog.privateChat')
+                        : t('pipelines.debugDialog.groupChat'),
+                  })}
+                  disabled={!isConnected || isUploading}
+                  rows={1}
+                  className="h-11 min-h-11 max-h-32 resize-y rounded-md px-3 py-2 text-sm transition-none disabled:opacity-50"
+                />
+                {showAtPopover && (
+                  <div
+                    ref={popoverRef}
+                    className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
+                  >
+                    <div
+                      className={cn(
+                        'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
+                        isHovering ? 'bg-accent' : '',
+                      )}
+                      onClick={handleAtSelect}
+                      onMouseEnter={() => setIsHovering(true)}
+                      onMouseLeave={() => setIsHovering(false)}
+                    >
+                      <span>
+                        @websocketbot - {t('pipelines.debugDialog.atTips')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+            <Button
+              onClick={sendMessage}
+              disabled={
+                (!inputValue.trim() &&
+                  !hasAt &&
+                  selectedImages.length === 0 &&
+                  !quotedMessage) ||
+                !isConnected ||
+                isUploading
+              }
+              className={cn(
+                'h-11 shrink-0 rounded-md px-4 text-sm font-medium transition-none shadow-none disabled:opacity-50',
+                !compact && 'px-6 text-base',
+              )}
+            >
+              {isUploading ? (
+                t('pipelines.debugDialog.uploading')
+              ) : (
+                <>
+                  <Send className="size-4" />
+                  {hasUnsavedChanges
+                    ? t('pipelines.debugDialog.saveAndSend')
+                    : t('pipelines.debugDialog.send')}
+                </>
+              )}
+            </Button>
           </div>
-          <Button
-            onClick={sendMessage}
-            disabled={
-              (!inputValue.trim() &&
-                !hasAt &&
-                selectedImages.length === 0 &&
-                !quotedMessage) ||
-              !isConnected ||
-              isUploading
-            }
-            className="rounded-md w-20 px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50"
-          >
-            {isUploading ? (
-              t('pipelines.debugDialog.uploading')
-            ) : (
-              <>
-                <Send className="size-4" />
-                {t('pipelines.debugDialog.send')}
-              </>
-            )}
-          </Button>
         </div>
       </div>
     </div>

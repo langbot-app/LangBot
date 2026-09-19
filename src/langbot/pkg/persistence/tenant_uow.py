@@ -46,6 +46,7 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'support_admin_temporary_sessions': 'workspace_uuid',
     'workspace_metadata': 'workspace_uuid',
     'api_keys': 'workspace_uuid',
+    'agents': 'workspace_uuid',
     'bots': 'workspace_uuid',
     'bot_admins': 'workspace_uuid',
     'binary_storages': 'workspace_uuid',
@@ -57,6 +58,7 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'rerank_models': 'workspace_uuid',
     'legacy_pipelines': 'workspace_uuid',
     'pipeline_run_records': 'workspace_uuid',
+    'pipeline_migration_snapshots': 'workspace_uuid',
     'plugin_settings': 'workspace_uuid',
     'knowledge_bases': 'workspace_uuid',
     'knowledge_base_files': 'workspace_uuid',
@@ -466,9 +468,21 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             raise ScopedSessionTransactionError('TenantUnitOfWork does not allow literal-execute SQL parameters')
 
         if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) not in {Vector, HALFVEC}:
-            raise ScopedSessionTransactionError(
-                'TenantUnitOfWork only allows the trusted pgvector cast used by tenant vector search'
+            # Manual Pipeline migration compares DB-native JSON text, because
+            # PostgreSQL JSON has no equality operator. Permit only these fixed
+            # mapped columns and a built-in Text target, never arbitrary casts.
+            source = element.clause
+            pipeline_json_cas = (
+                type(element.type) is sqlalchemy.Text
+                and isinstance(source, sqlalchemy.Column)
+                and type(source.type) is sqlalchemy.JSON
+                and getattr(getattr(source, 'table', None), 'name', None) == 'legacy_pipelines'
+                and source.name in {'config', 'stages', 'extensions_preferences'}
             )
+            if not pipeline_json_cas:
+                raise ScopedSessionTransactionError(
+                    'TenantUnitOfWork only allows trusted pgvector and Pipeline JSON CAS casts'
+                )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
             function_name = str(getattr(element, 'name', '')).casefold()

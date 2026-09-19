@@ -7,7 +7,11 @@ import { delimiter, join, resolve } from "node:path";
 import { env } from "node:process";
 
 function timestampSlug(date = new Date()) {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
+  return date
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z")
+    .replace(/[^0-9A-Za-z]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function localIsoWithOffset(date = new Date()) {
@@ -55,7 +59,14 @@ function runProcess(command, timeoutMs, childEnv) {
     });
     child.on("error", (error) => {
       clearTimeout(timeout);
-      resolveDone({ stdout, stderr, error, timedOut, status: null, signal: null });
+      resolveDone({
+        stdout,
+        stderr,
+        error,
+        timedOut,
+        status: null,
+        signal: null,
+      });
     });
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
@@ -124,17 +135,27 @@ async function main() {
   const root = resolve(env.LBS_ROOT || process.cwd());
   const caseId = "agent-runner-ledger-invariants";
   const runId = env.LBS_RUN_ID || `${timestampSlug()}-${caseId}`;
-  const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
+  const evidenceDir = resolve(
+    env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId),
+  );
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
-  const langbotRepo = resolveFromRoot(root, env.LANGBOT_REPO || "../LangBot");
-  const sdkSrc = resolveFromRoot(root, env.LANGBOT_PLUGIN_SDK_REPO || "../langbot-plugin-sdk/src");
+  const langbotRepo = resolveFromRoot(root, env.LANGBOT_REPO || "..");
+  const sdkRepo = resolveFromRoot(
+    root,
+    env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk",
+  );
+  const sdkSrc = resolve(sdkRepo, "src");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
   const stderrLog = join(evidenceDir, "probe-stderr.log");
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
-  const command = { executable: "rtk", args: ["uv", "run", "python", "-c", probeScript], cwd: langbotRepo };
-  const timeoutMs = Number(env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "30000");
+  const command = {
+    executable: "rtk",
+    args: [resolve(langbotRepo, ".venv/bin/python"), "-c", probeScript],
+    cwd: langbotRepo,
+  };
+  const timeoutMs = Number(env.LANGBOT_RUNNER_PROBE_TIMEOUT_MS || "30000");
   const result = {
     source: "automation",
     probe: "python-sync",
@@ -169,7 +190,9 @@ async function main() {
     } else {
       const childEnv = {
         ...process.env,
-        PYTHONPATH: [sdkSrc, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+        PYTHONPATH: [sdkSrc, process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(delimiter),
         UV_CACHE_DIR: env.UV_CACHE_DIR || join(evidenceDir, ".uv-cache"),
       };
       await mkdir(childEnv.UV_CACHE_DIR, { recursive: true });
@@ -205,7 +228,9 @@ async function main() {
     await writeFile(resultJson, resultText, "utf8");
     console.log(JSON.stringify(result, null, 2));
   }
-  process.exit(result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1);
+  process.exit(
+    result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1,
+  );
 }
 
 await main();

@@ -1,7 +1,7 @@
-"""baseline: stamp existing schema (db version 25)
+"""baseline: stamp the supported 4.x schema
 
 This is a no-op migration that marks the starting point for Alembic.
-All tables already exist via create_all() + legacy DBMigration system.
+Current tables already exist via SQLAlchemy metadata create_all().
 
 Revision ID: 0001_baseline
 Revises: None
@@ -15,8 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # No-op: existing schema is already at database_version=25
-    # This revision serves as the Alembic baseline.
+    # No-op: this revision serves as the Alembic baseline.
     pass
 
 

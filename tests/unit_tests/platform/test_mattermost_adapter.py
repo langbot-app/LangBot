@@ -90,7 +90,9 @@ async def test_send_to_person_creates_or_reuses_direct_channel(monkeypatch):
     monkeypatch.setattr(adapter, '_api_request', api_request)
     monkeypatch.setattr(adapter, '_post_message', post_message)
 
-    await adapter.send_message('person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hello')]))
+    await adapter.send_message(
+        'person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hello')])
+    )
 
     assert requests == [('POST', '/channels/direct', {'user_ids': ['bot-id', 'user-1']})]
     assert posted == [('direct-channel', 'hello', '')]

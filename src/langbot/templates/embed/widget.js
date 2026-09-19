@@ -10,6 +10,9 @@
   var scriptTestNotice = scriptEl
     ? scriptEl.getAttribute("data-test-notice")
     : null;
+  var scriptAutoOpen = scriptEl
+    ? scriptEl.getAttribute("data-auto-open") === "true"
+    : false;
 
   // ========== i18n ==========
   var I18N = {
@@ -1253,6 +1256,9 @@
       }
       root.remove();
     };
+    root.langbotOpen = function () {
+      if (!state.isOpen) togglePanel();
+    };
     document.body.appendChild(root);
 
     var shadow = root.attachShadow({ mode: "open" });
@@ -1260,6 +1266,11 @@
     // Styles
     var style = document.createElement("style");
     style.textContent = STYLES;
+    // Keep the wizard navigation accessible while the chat preview is open.
+    if (scriptTestNotice) {
+      style.textContent +=
+        ".lb-bubble { bottom: 84px; } .lb-panel { bottom: 152px; max-height: calc(100vh - 172px); } @media (max-width: 480px) { .lb-panel { bottom: 64px; height: calc(100vh - 64px); max-height: calc(100vh - 64px); } }";
+    }
     shadow.appendChild(style);
 
     // Chat bubble button
@@ -1407,6 +1418,8 @@
     panel.appendChild(inputArea);
 
     shadow.appendChild(panel);
+
+    if (scriptAutoOpen) root.langbotOpen();
   }
 
   // ========== Initialize ==========

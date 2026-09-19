@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import {
   type FormEvent,
   type ReactNode,
@@ -280,7 +281,8 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
   const [dirContents, setDirContents] = useState<Map<string, FileEntry[]>>(
     new Map(),
   );
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [filesFailed, setFilesFailed] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -288,12 +290,14 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
   }, [selectedFile]);
 
   const loadRootFiles = useCallback(async () => {
+    setFilesFailed(false);
     setLoading(true);
     onLoadingChange?.(true);
     try {
       const result = await httpClient.listSkillFiles(skillName, '.');
       setRootEntries(result.entries);
     } catch (error) {
+      setFilesFailed(true);
       console.error('Failed to load skill files:', error);
       toast.error(t('skills.loadFilesError') + String(error));
     } finally {
@@ -415,6 +419,14 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
       </div>
     );
   };
+
+  if (loading || filesFailed)
+    return (
+      <EntityLoadState
+        error={filesFailed}
+        onRetry={() => void loadRootFiles()}
+      />
+    );
 
   return (
     <div className="space-y-2">
@@ -592,18 +604,26 @@ export default function SkillForm({
   const [fileContent, setFileContent] = useState<string>('');
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const directoryInputRef = useRef<HTMLInputElement>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(!initSkillName);
   const [fileTreeLoading, setFileTreeLoading] = useState(false);
 
   const loadSkill = useCallback(
     async (skillName: string) => {
+      setInitialDataLoaded(false);
+      setLoadFailed(false);
       try {
         const resp = await httpClient.getSkill(skillName);
         setSkill(resp.skill);
         setSelectedFile('SKILL.md');
         setFileContent(resp.skill.instructions || '');
       } catch (error) {
+        setLoadFailed(true);
         console.error('Failed to load skill:', error);
         toast.error(t('skills.getSkillListError') + String(error));
+      } finally {
+        setInitialDataLoaded(true);
       }
     },
     [t],
@@ -627,7 +647,7 @@ export default function SkillForm({
     setDirectorySourceName('');
     setDirectoryTree([]);
     setDirectoryFileMap(new Map());
-  }, [initSkillName, loadSkill]);
+  }, [initSkillName, loadSkill, loadAttempt]);
 
   useEffect(() => {
     if (initSkillName) return;
@@ -958,6 +978,12 @@ export default function SkillForm({
       )}
     </div>
   );
+
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!initialDataLoaded) return <EntityLoadState />;
 
   if (layout === 'split') {
     return (

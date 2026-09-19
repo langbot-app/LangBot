@@ -24,6 +24,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
+from .. import management_diagnostics as diagnostics
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -31,7 +32,7 @@ if typing.TYPE_CHECKING:
 
 INSTRUCTIONS = """\
 This MCP server manages a LangBot instance. LangBot is an LLM-native instant
-messaging bot platform. Use these tools to inspect and manage bots, pipelines,
+messaging bot platform. Use these tools to inspect and manage bots, agents, pipelines,
 models, knowledge bases, MCP servers, and skills.
 
 Authentication uses a LangBot API key (web-UI-created `lbk_...` key or the
@@ -52,6 +53,7 @@ def _dump(value: typing.Any) -> str:
 def _authorized(permission: Permission):
     context = get_request_context()
     require_permission(context, permission)
+    diagnostics.workspace(context)
     return context
 
 
@@ -76,7 +78,7 @@ class LangBotMCPServer:
     # ------------------------------------------------------------------ #
     def _register_tools(self) -> None:
         ap = self.ap
-        mcp = self.mcp
+        mcp = self
 
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
@@ -109,14 +111,22 @@ class LangBotMCPServer:
             description=(
                 'Create a bot. `bot_data` is a JSON object matching the LangBot '
                 'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
-                'Returns the new bot UUID.'
+                'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
+                'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
+                'Subscriptions run independently of each other and of event_bindings. Returns the new bot UUID.'
             )
         )
         async def create_bot(bot_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump({'uuid': await ap.bot_service.create_bot(context, bot_data)})
 
-        @mcp.tool(description='Update a bot by UUID. `bot_data` matches the PUT bot body.')
+        @mcp.tool(
+            description=(
+                'Update a bot by UUID. `bot_data` matches the PUT bot body. '
+                'plugin_processors replaces the bot subscriptions with [{processor_uuid, enabled}]. '
+                'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes.'
+            )
+        )
         async def update_bot(bot_uuid: str, bot_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.bot_service.update_bot(context, bot_uuid, bot_data)
@@ -127,6 +137,10 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.bot_service.delete_bot(context, bot_uuid)
             return _dump({'ok': True})
+
+        @mcp.tool(description='List recent runtime route status for a bot event route table.')
+        async def list_bot_event_route_statuses(bot_uuid: str) -> str:
+            return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
 
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
@@ -170,7 +184,89 @@ class LangBotMCPServer:
             await ap.pipeline_service.delete_pipeline(context, pipeline_uuid)
             return _dump({'ok': True})
 
+        # ----- Processors ---------------------------------------------- #
+        @mcp.tool(description='List product-level processors, including Agents, Pipelines and Event processors.')
+        async def list_processors() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_agents(context))
+
+        @mcp.tool(description='Get an Agent, Pipeline or Event processor by UUID.')
+        async def get_processor(processor_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_agent(context, processor_uuid))
+
+        @mcp.tool(
+            description=(
+                'Create an Agent, Pipeline or Event processor. Set `processor_data.kind` to '
+                '`agent`, `pipeline` or `event_processor`. Event processors may be created without a component; '
+                'then use update_processor with an installed component_ref from get_processor_metadata and optional '
+                'parameters. Unconfigured instances support no events. Returns UUID and kind.'
+            )
+        )
+        async def create_processor(processor_data: dict) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(await ap.agent_service.create_agent(context, processor_data))
+
+        @mcp.tool(description='Update an Agent, Pipeline or Event processor by UUID.')
+        async def update_processor(processor_uuid: str, processor_data: dict) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.agent_service.update_agent(context, processor_uuid, processor_data)
+            return _dump({'ok': True})
+
+        @mcp.tool(description='Delete an Agent, Pipeline or Event processor by UUID.')
+        async def delete_processor(processor_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.agent_service.delete_agent(context, processor_uuid)
+            return _dump({'ok': True})
+
+        @mcp.tool(
+            description='Get processor kinds and installed event-capable Runner components with configuration schemas.'
+        )
+        async def get_processor_metadata() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_agent_metadata(context))
+
+        @mcp.tool(
+            description='List one Agent or plugin processor run history; use before_id to page older runs. '
+            'created_at_ms, started_at_ms and finished_at_ms are Host lifecycle times in epoch milliseconds.'
+        )
+        async def list_processor_runs(processor_uuid: str, before_id: int | None = None) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_processor_runs(context, processor_uuid, before_id=before_id))
+
+        @mcp.tool(
+            description='Read logs and action results for an Agent or plugin processor run; page using after_sequence.'
+        )
+        async def get_processor_run_events(
+            processor_uuid: str,
+            run_id: str,
+            after_sequence: int | None = None,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.agent_service.get_processor_run_events(
+                    context,
+                    processor_uuid,
+                    run_id,
+                    after_sequence=after_sequence,
+                )
+            )
+
         # ----- Models -------------------------------------------------- #
+        @mcp.tool(
+            description=(
+                'Run a synthetic event against an Agent or Event processor without platform delivery. '
+                'Returns final text and execution_events containing reported messages/thinking and tool calls. '
+                'Platform tools use mock adapters; other tools execute normally. '
+                'For Event processors, data contains the complete typed event fields. '
+                'Requires runtime.operate; payload accepts event_type, text, data, conversation_id, actor, subject and '
+                'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs).'
+            )
+        )
+        async def debug_agent(processor_uuid: str, payload: dict) -> str:
+            context = _authorized(Permission.RUNTIME_OPERATE)
+            return _dump(await ap.agent_service.debug_agent(context, processor_uuid, payload))
+
         @mcp.tool(description='List all configured LLM models. Secrets are redacted.')
         async def list_llm_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
@@ -229,6 +325,15 @@ class LangBotMCPServer:
         async def get_skill(skill_name: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.skill_service.get_skill(context, skill_name))
+
+    def tool(self, **options):
+        """Register a tool boundary before its authorization and service call."""
+
+        def register(fn):
+            observed = diagnostics.observe(diagnostics.operation_id('mcp', fn), source='mcp', ap=self.ap)(fn)
+            return self.mcp.tool(**options)(observed)
+
+        return register
 
     # ------------------------------------------------------------------ #
     # ASGI app

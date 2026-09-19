@@ -56,6 +56,17 @@ def _create_mock_result(items: list = None, first_item=None):
     return result
 
 
+def _set_discovered_adapters(ap, *webhook_adapters: str) -> None:
+    components = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(name=adapter_name),
+            spec={'config': [{'name': 'webhook', 'type': 'webhook-url'}]},
+        )
+        for adapter_name in webhook_adapters
+    ]
+    ap.discover = SimpleNamespace(get_components_by_kind=Mock(return_value=components))
+
+
 class TestBotServiceGetBots:
     """Tests for get_bots method."""
 
@@ -225,6 +236,7 @@ class TestBotServiceGetRuntimeBotInfo:
         }
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        _set_discovered_adapters(ap, 'wecom')
 
         bot_data = {
             'uuid': 'wecom-uuid',
@@ -245,11 +257,10 @@ class TestBotServiceGetRuntimeBotInfo:
 
     async def test_get_runtime_bot_info_returns_webhook_for_http_bot(self):
         ap = SimpleNamespace(
-            instance_config=SimpleNamespace(
-                data={'api': {'webhook_prefix': 'https://bot.example.com'}}
-            ),
+            instance_config=SimpleNamespace(data={'api': {'webhook_prefix': 'https://bot.example.com'}}),
             platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=None)),
         )
+        _set_discovered_adapters(ap, 'http_bot')
         service = BotService(ap)
         service.get_bot = AsyncMock(
             return_value={
@@ -262,9 +273,7 @@ class TestBotServiceGetRuntimeBotInfo:
 
         result = await service.get_runtime_bot_info(WORKSPACE_UUID, 'http-bot-uuid')
 
-        assert result['adapter_runtime_values']['webhook_full_url'] == (
-            'https://bot.example.com/bots/http-bot-uuid'
-        )
+        assert result['adapter_runtime_values']['webhook_full_url'] == ('https://bot.example.com/bots/http-bot-uuid')
 
     async def test_get_runtime_bot_info_no_webhook_for_telegram(self):
         """Returns no webhook URL for non-webhook adapters like telegram."""
@@ -274,6 +283,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        _set_discovered_adapters(ap)
 
         bot_data = {
             'uuid': 'telegram-uuid',
@@ -299,6 +309,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
+        _set_discovered_adapters(ap)
 
         # Mock runtime bot with adapter
         runtime_bot = SimpleNamespace()
@@ -341,7 +352,9 @@ class TestBotServiceCreateBot:
         bot2 = _create_mock_bot(bot_uuid='uuid-2')
         mock_result = _create_mock_result([bot1, bot2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'uuid-1', 'name': 'Bot 1'})
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'uuid-1', 'name': 'Bot 1', 'adapter': 'telegram'}
+        )
 
         service = BotService(ap)
 
@@ -397,8 +410,8 @@ class TestBotServiceCreateBot:
         assert bot_uuid is not None
         assert len(bot_uuid) == 36  # UUID format
 
-    async def test_create_bot_sets_default_pipeline(self):
-        """Sets default pipeline when one exists."""
+    async def test_create_bot_scopes_insert_without_legacy_pipeline_fields(self):
+        """Creates a Workspace-owned Bot without restoring removed pipeline columns."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -406,13 +419,6 @@ class TestBotServiceCreateBot:
         ap.instance_config.data = {'system': {'limitation': {'max_bots': -1}}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.load_bot = AsyncMock()
-
-        # Mock default pipeline
-        mock_pipeline = SimpleNamespace()
-        mock_pipeline.uuid = 'default-pipeline-uuid'
-        mock_pipeline.name = 'Default Pipeline'
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=mock_pipeline)
 
         # Mock bot after insert
         bot_result = Mock()
@@ -424,8 +430,6 @@ class TestBotServiceCreateBot:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return pipeline_result  # Check default pipeline
-            elif call_count == 2:
                 return Mock()  # Insert
             return bot_result  # Get bot
 
@@ -434,8 +438,7 @@ class TestBotServiceCreateBot:
             return_value={
                 'uuid': 'new-uuid',
                 'name': 'New Bot',
-                'use_pipeline_uuid': 'default-pipeline-uuid',
-                'use_pipeline_name': 'Default Pipeline',
+                'adapter': 'telegram',
             }
         )
 
@@ -447,60 +450,93 @@ class TestBotServiceCreateBot:
 
         # The service owns a copy and cannot mutate caller input while adding tenant data.
         assert bot_data == {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
-        insert_statement = ap.persistence_mgr.execute_async.await_args_list[1].args[0]
+        insert_statement = ap.persistence_mgr.execute_async.await_args_list[0].args[0]
         insert_values = insert_statement.compile().params
         assert insert_values['workspace_uuid'] == WORKSPACE_UUID
+        assert 'use_pipeline_uuid' not in insert_values
+        assert 'use_pipeline_name' not in insert_values
         assert bot_uuid is not None  # Verify UUID was returned
 
-    async def test_create_bot_rolls_back_insert_when_load_bot_fails(self):
-        """Deletes the inserted row when the adapter fails to load.
+    async def test_failed_apply_keeps_bot_saved_visible_and_retryable(self, tmp_path):
+        """A saved UUID remains editable after create/update runtime failures."""
+        from sqlalchemy.ext.asyncio import create_async_engine
 
-        Regression: a failing adapter constructor (e.g. KeyError on a missing
-        optional credential key) used to leave a permanently disabled orphan
-        bot in the DB — the insert was already committed and the HTTP layer
-        surfaced a 500 without any cleanup.
-        """
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {'system': {'limitation': {'max_bots': -1}}}
-        ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.load_bot = AsyncMock(side_effect=KeyError('token'))
+        from langbot.pkg.api.http.service.bot_errors import BotApplyError
+        from langbot.pkg.entity.persistence.user import User
+        from langbot.pkg.entity.persistence.workspace import Workspace
+        from langbot.pkg.persistence.mgr import PersistenceManager
 
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=None)
-        bot_result = Mock()
-        bot_result.first = Mock(return_value=_create_mock_bot())
-
-        executed_statements = []
-
-        async def mock_execute(query):
-            executed_statements.append(query)
-            if len(executed_statements) <= 2:
-                return pipeline_result  # 1: limitation bots query, 2: pipeline query
-            if len(executed_statements) == 3:
-                return Mock()  # insert
-            return bot_result  # get_bot after insert
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid', 'name': 'New Bot'})
-
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "bots.db"}')
+        runtime_bot = SimpleNamespace(enable=True, run=AsyncMock())
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={'system': {'limitation': {'max_bots': -1}}}),
+            platform_mgr=SimpleNamespace(
+                load_bot=AsyncMock(
+                    side_effect=[
+                        RuntimeError('Invalid token: original-secret'),
+                        RuntimeError('Invalid token: corrected-secret'),
+                        runtime_bot,
+                    ]
+                ),
+                remove_bot=AsyncMock(),
+            ),
+            sess_mgr=SimpleNamespace(session_list=[]),
+        )
+        ap.persistence_mgr = PersistenceManager(ap)
+        ap.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
         service = BotService(ap)
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(sqlalchemy.text('PRAGMA foreign_keys=ON'))
+                await connection.run_sync(User.__table__.create)
+                await connection.run_sync(Workspace.__table__.create)
+                await connection.run_sync(Bot.__table__.create)
+                await connection.execute(
+                    sqlalchemy.insert(Workspace).values(
+                        uuid=WORKSPACE_UUID, instance_uuid='instance-a', name='Test', slug='test'
+                    )
+                )
 
-        # Execute & Verify: the adapter error propagates
-        with pytest.raises(KeyError, match='token'):
-            await service.create_bot(
-                WORKSPACE_UUID, {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
-            )
+            with pytest.raises(BotApplyError) as create_error:
+                await service.create_bot(
+                    WORKSPACE_UUID,
+                    {
+                        'name': 'Saved bot',
+                        'description': 'Editable after an adapter failure',
+                        'adapter': 'telegram',
+                        'adapter_config': {'token': 'original-secret'},
+                        'enable': True,
+                    },
+                )
 
-        # And the inserted row is rolled back via a DELETE on the new uuid
-        # (no limitation query runs because max_bots=-1)
-        assert len(executed_statements) == 4  # pipeline select, insert, bot select, delete
-        delete_statement = executed_statements[-1]
-        assert isinstance(delete_statement, sqlalchemy.sql.dml.Delete)
-        compiled = delete_statement.compile()
-        assert compiled.params['uuid_1'] is not None
+            bot_uuid = create_error.value.bot_uuid
+            assert str(uuid.UUID(bot_uuid)) == bot_uuid
+            assert 'original-secret' not in str(create_error.value)
+            assert 'Invalid token' in str(create_error.value)
+            saved = await service.get_bot(WORKSPACE_UUID, bot_uuid, include_secret=True)
+            assert saved['uuid'] == bot_uuid
+            assert saved['adapter_config'] == {'token': 'original-secret'}
+            assert await service.get_bot('workspace-b', bot_uuid) is None
+            assert [bot['uuid'] for bot in await service.get_bots(WORKSPACE_UUID)] == [bot_uuid]
+
+            with pytest.raises(BotApplyError) as update_error:
+                await service.update_bot(WORKSPACE_UUID, bot_uuid, {'adapter_config': {'token': 'corrected-secret'}})
+            assert update_error.value.bot_uuid == bot_uuid
+            assert 'corrected-secret' not in str(update_error.value)
+            saved = await service.get_bot(WORKSPACE_UUID, bot_uuid, include_secret=True)
+            assert saved['adapter_config'] == {'token': 'corrected-secret'}
+
+            await service.update_bot(WORKSPACE_UUID, bot_uuid, {'adapter_config': {'token': 'working-token'}})
+            saved = await service.get_bot(WORKSPACE_UUID, bot_uuid, include_secret=True)
+            assert saved['adapter_config'] == {'token': 'working-token'}
+            assert [bot['uuid'] for bot in await service.get_bots(WORKSPACE_UUID)] == [bot_uuid]
+            async with engine.connect() as connection:
+                assert await connection.scalar(sqlalchemy.select(sqlalchemy.func.count()).select_from(Bot)) == 1
+            assert ap.platform_mgr.load_bot.await_count == 3
+            assert {call.args[1]['uuid'] for call in ap.platform_mgr.load_bot.await_args_list} == {bot_uuid}
+            runtime_bot.run.assert_awaited_once()
+        finally:
+            await engine.dispose()
 
 
 class TestBotServiceUpdateBot:
@@ -513,6 +549,7 @@ class TestBotServiceUpdateBot:
         ap.persistence_mgr = SimpleNamespace()
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.remove_bot = AsyncMock()
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
         # Mock pipeline query - not updating pipeline
         ap.persistence_mgr.execute_async = AsyncMock()
@@ -535,63 +572,60 @@ class TestBotServiceUpdateBot:
         assert update_params['name'] == 'Updated Name'
         assert 'should-be-removed' not in update_params.values()
 
-    async def test_update_bot_pipeline_not_found_raises(self):
-        """Raises Exception when updating with nonexistent pipeline UUID."""
+    async def test_update_bot_ignores_removed_pipeline_fields(self):
+        """Legacy pipeline fields cannot be written through the current Bot API."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
 
-        # Mock pipeline query returns None
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=None)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=pipeline_result)
-
-        service = BotService(ap)
-
-        # Execute & Verify
-        with pytest.raises(Exception, match='Pipeline not found'):
-            await service.update_bot(WORKSPACE_UUID, 'test-uuid', {'use_pipeline_uuid': 'nonexistent-pipeline'})
-
-    async def test_update_bot_sets_pipeline_name(self):
-        """Sets use_pipeline_name when updating use_pipeline_uuid."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.remove_bot = AsyncMock()
-
-        # Mock pipeline query
-        mock_pipeline = SimpleNamespace()
-        mock_pipeline.name = 'Updated Pipeline'
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=mock_pipeline)
-
-        call_count = 0
-
-        async def mock_execute(query):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return pipeline_result
-            return Mock()
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.sess_mgr = SimpleNamespace()
-        ap.sess_mgr.session_list = []
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+        ap.platform_mgr = SimpleNamespace(
+            get_bot_by_uuid=AsyncMock(return_value=None),
+            remove_bot=AsyncMock(),
+            load_bot=AsyncMock(return_value=SimpleNamespace(enable=False)),
+        )
+        ap.sess_mgr = SimpleNamespace(session_list=[])
 
         service = BotService(ap)
         service.get_bot = AsyncMock(return_value={'uuid': 'test-uuid'})
 
-        runtime_bot = SimpleNamespace()
-        runtime_bot.enable = False
-        ap.platform_mgr.load_bot = AsyncMock(return_value=runtime_bot)
+        await service.update_bot(
+            WORKSPACE_UUID,
+            'test-uuid',
+            {
+                'name': 'Updated',
+                'use_pipeline_uuid': 'nonexistent-pipeline',
+                'use_pipeline_name': 'forged-name',
+            },
+        )
 
-        # Execute
-        await service.update_bot(WORKSPACE_UUID, 'test-uuid', {'use_pipeline_uuid': 'pipeline-uuid'})
+        update_params = ap.persistence_mgr.execute_async.await_args.args[0].compile().params
+        assert update_params['name'] == 'Updated'
+        assert 'use_pipeline_uuid' not in update_params
+        assert 'use_pipeline_name' not in update_params
 
-        update_params = ap.persistence_mgr.execute_async.await_args_list[1].args[0].compile().params
-        assert update_params['use_pipeline_uuid'] == 'pipeline-uuid'
-        assert update_params['use_pipeline_name'] == 'Updated Pipeline'
+    async def test_basic_info_update_does_not_restart_platform_adapter(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=SimpleNamespace(rowcount=1)))
+        runtime_entity = SimpleNamespace(name='Old name', description='Old description')
+        runtime_bot = SimpleNamespace(bot_entity=runtime_entity)
+        ap.platform_mgr = SimpleNamespace(
+            get_bot_by_uuid=AsyncMock(return_value=runtime_bot),
+            remove_bot=AsyncMock(),
+            load_bot=AsyncMock(),
+        )
+
+        service = BotService(ap)
+        await service.update_bot(
+            WORKSPACE_UUID,
+            'test-uuid',
+            {'name': 'New name', 'description': 'New description'},
+        )
+
+        assert runtime_entity.name == 'New name'
+        assert runtime_entity.description == 'New description'
+        ap.platform_mgr.remove_bot.assert_not_awaited()
+        ap.platform_mgr.load_bot.assert_not_awaited()
 
 
 class TestBotServiceDeleteBot:
@@ -676,6 +710,56 @@ class TestBotServiceListEventLogs:
         assert len(logs) == 1
         assert logs[0] == {'msg': 'log1'}
         assert total == 5
+
+
+class TestBotServiceListEventRouteStatuses:
+    """Tests for event route status when a persisted Bot is not running."""
+
+    async def test_returns_saved_routes_when_runtime_bot_is_unavailable(self):
+        ap = SimpleNamespace()
+        ap.platform_mgr = SimpleNamespace()
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+
+        service = BotService(ap)
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': 'bot-uuid',
+                'event_bindings': [
+                    {
+                        'id': 'binding-1',
+                        'event_pattern': 'message.received',
+                        'target_type': 'agent',
+                        'target_uuid': 'agent-1',
+                        'enabled': True,
+                    }
+                ],
+            }
+        )
+
+        result = await service.list_event_route_statuses(WORKSPACE_UUID, 'bot-uuid')
+
+        assert result['routes'] == [
+            {
+                'binding_id': 'binding-1',
+                'event_pattern': 'message.received',
+                'event_type': None,
+                'target_type': 'agent',
+                'target_uuid': 'agent-1',
+                'last_status': None,
+                'failure_code': None,
+                'reason': None,
+                'run_id': None,
+                'timestamp': None,
+                'seq_id': None,
+                'level': None,
+                'message': '',
+                'order': 0,
+                'enabled': True,
+                'current': True,
+            }
+        ]
+        assert result['unmatched_events'] == []
+        assert result['stale_routes'] == []
 
 
 class TestBotServiceHttpBotInboundTest:

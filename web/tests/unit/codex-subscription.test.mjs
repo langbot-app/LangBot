@@ -3,20 +3,33 @@ import fs from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
 
+function loadCatalog(url) {
+  const compiled = ts.transpileModule(fs.readFileSync(url, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const module = { exports: {} };
+  const require = (specifier) => {
+    assert.ok(specifier.startsWith('./'), 'Locale imports must be relative');
+    return loadCatalog(new URL(`${specifier}.ts`, url));
+  };
+  new Function('module', 'exports', 'require', compiled)(
+    module,
+    module.exports,
+    require,
+  );
+  return module.exports;
+}
+
 test('all locale catalogs cover Codex states and preserve the expiry placeholder', () => {
   const directory = new URL('../../src/i18n/locales/', import.meta.url);
+  const files = fs
+    .readdirSync(directory)
+    .filter((file) => file.endsWith('.ts'));
+  assert.equal(files.length, 8);
   let expected;
-  for (const file of fs.readdirSync(directory)) {
-    const compiled = ts.transpileModule(
-      fs.readFileSync(new URL(file, directory), 'utf8'),
-      {
-        compilerOptions: { module: ts.ModuleKind.CommonJS },
-      },
-    ).outputText;
-    const module = { exports: {} };
-    new Function('module', 'exports', compiled)(module, module.exports);
-    const catalog = (module.exports.default || Object.values(module.exports)[0])
-      .models.codex;
+  for (const file of files) {
+    const exports = loadCatalog(new URL(file, directory));
+    const catalog = (exports.default || Object.values(exports)[0]).models.codex;
     const keys = Object.keys(catalog).sort();
     expected ??= keys;
     assert.deepEqual(keys, expected, file);

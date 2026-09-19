@@ -1,4 +1,245 @@
+import pipelineMigration from './pipeline-migration/ru-RU';
+
 const ruRU = {
+  sidebarGuide: {
+    steps: {
+      monitoring: {
+        title: 'Проверьте активность',
+        description:
+          'Просматривайте активность ботов, использование моделей, объём сообщений и производительность системы.',
+      },
+      bots: {
+        title: 'Подключите платформы чата',
+        description:
+          'Подключайте LangBot к платформам чата и управляйте подключениями ботов.',
+      },
+      pipelines: {
+        title: 'Настройте обработчики',
+        description:
+          'Создавайте переиспользуемые конвейеры, Agents и конфигурации обработчиков плагинов, затем подключайте их к ботам.',
+      },
+      knowledge: {
+        title: 'Управляйте базами знаний',
+        description:
+          'Управляйте документами и внешними источниками знаний для улучшения ответов моделей.',
+      },
+      plugins: {
+        title: 'Управляйте расширениями',
+        description:
+          'Управляйте установленными плагинами, серверами MCP и навыками, включая их состояние.',
+      },
+      'add-extension': {
+        title: 'Добавьте расширения',
+        description:
+          'Устанавливайте расширения из магазина, GitHub или локального пакета.',
+      },
+      models: {
+        title: 'Настройте модели',
+        description:
+          'Настройте поставщиков и выберите языковые модели, модели эмбеддингов и другие модели LangBot.',
+      },
+      'api-integration': {
+        title: 'Настройте доступ к API',
+        description:
+          'Создавайте ключи API и настраивайте внешний доступ к сервисам LangBot и MCP.',
+      },
+    },
+  },
+
+  guidedTour: {
+    eventDebugDescription:
+      'Выберите поддерживаемое событие, введите тестовые данные и проверьте вывод и результаты инструментов. Действия платформы имитируются; модели и другие инструменты выполняются согласно настройкам.',
+
+    bot: {
+      connection: {
+        title: 'Выберите способ подключения',
+        description:
+          'Выберите способ подключения, поддерживаемый адаптером. Его параметры обновятся автоматически.',
+      },
+      basic: {
+        title: 'Задайте имя бота',
+        description:
+          'Задайте понятное имя, чтобы находить подключение в маршрутах и журналах.',
+      },
+      adapter: {
+        title: 'Выберите адаптер платформы',
+        description:
+          'Выберите адаптер бота. Способ подключения и параметры платформы настраиваются после создания.',
+      },
+      parameters: {
+        title: 'Настройте платформу',
+        description:
+          'Введите учётные данные и параметры платформы. Настройки на стороне платформы описаны в документации адаптера.',
+        action: 'Открыть документацию адаптера',
+      },
+      routing: {
+        title: 'Настройте маршруты входящих событий',
+        description:
+          'Выберите обработчик для каждого события, получаемого ботом.',
+      },
+      save: {
+        title: 'Сохраните настройки бота',
+        description:
+          'Проверьте параметры подключения и маршруты событий, затем сохраните настройки. После этого можно включить бота.',
+      },
+      submit: {
+        title: 'Создайте бота',
+        description:
+          'Создайте выключенного бота, затем настройте подключение и параметры платформы на его странице.',
+      },
+    },
+    knowledge: {
+      basic: {
+        title: 'Опишите базу знаний',
+        description:
+          'Задайте понятное имя и необязательное описание перед выбором движка хранения и поиска.',
+      },
+      engine: {
+        title: 'Проверьте движок знаний',
+        description:
+          'Проверьте движок этой базы знаний. Его параметры и настройки поиска задаются ниже.',
+        action: 'Открыть магазин движков знаний',
+      },
+      parameters: {
+        title: 'Настройте параметры движка',
+        description:
+          'Заполните требуемые движком настройки хранения, модели, учётных данных или внешнего сервиса.',
+      },
+      retrieval: {
+        title: 'Настройте поиск',
+        description:
+          'Определите, как движок ищет и возвращает подходящий контент обработчикам.',
+      },
+      save: {
+        title: 'Сохраните настройки базы знаний',
+        description:
+          'Проверьте параметры движка и поиска, затем сохраните настройки.',
+      },
+      submit: {
+        title: 'Создайте базу знаний',
+        description:
+          'Создайте базу знаний, затем добавьте документы или подключите источники, поддерживаемые движком.',
+      },
+    },
+
+    pipeline: {
+      trigger: {
+        title: 'Выберите сообщения для ответа',
+        description:
+          'Конвейер обрабатывает события сообщений и автоматически отвечает с помощью ИИ. Здесь задаются условия в группах, правила личных чатов и фильтры сообщений.',
+      },
+      ai: {
+        title: 'Настройте возможности ИИ',
+        description:
+          'Выберите локальный исполнитель или исполнитель внешней платформы, затем настройте модель, инструкции, базы знаний и другие параметры.',
+      },
+      output: {
+        title: 'Настройте ответы',
+        description:
+          'Задайте правила вывода, например обработку длинного текста, чтобы определить способ доставки ответов.',
+      },
+      safety: {
+        title: 'Настройте защиту',
+        description:
+          'При необходимости включите фильтрацию содержимого и ограничения частоты обработки.',
+      },
+      extensions: {
+        title: 'Выберите расширения',
+        description:
+          'Выберите плагины, серверы MCP и навыки, доступные этому конвейеру для обработки сообщений и работы с инструментами.',
+      },
+      basic: {
+        title: 'Управляйте конвейером',
+        description:
+          'Скопируйте конвейер для создания другой конфигурации или удалите ненужный конвейер.',
+      },
+      debug: {
+        title: 'Протестируйте диалог',
+        description:
+          'Отправьте тестовые сообщения, чтобы проверить условия запуска, ответы ИИ и обработку вывода. Изменения сохраняются перед тестом.',
+      },
+      monitoring: {
+        title: 'Посмотрите историю запусков',
+        description:
+          'На вкладке рядом с заголовком доступны прошлые диалоги, этапы обработки и ошибки для диагностики отсутствующих или неожиданных ответов.',
+      },
+      save: {
+        title: 'Сохраните и подключите бота',
+        description:
+          'Сохраните настройки, затем направьте события получения сообщений в этот конвейер на странице бота.',
+      },
+    },
+    pluginProcessor: {
+      select: {
+        title: 'Выберите исполнитель плагина',
+        description:
+          'Выберите исполнитель с поддержкой обработки событий. Автор плагина определяет поддерживаемые события и логику их обработки.',
+      },
+      parameters: {
+        title: 'Настройте параметры плагина',
+        description:
+          'Заполните настройки плагина. Для разных ботов и задач можно сохранить несколько конфигураций одного плагина.',
+      },
+      debug: {
+        title: 'Протестируйте обработку событий',
+      },
+      logs: {
+        title: 'Проверьте результаты',
+        description:
+          'Просмотрите состояние запуска, входное событие, журналы плагина и результаты вызовов, чтобы выяснить причины ошибок.',
+      },
+      save: {
+        title: 'Сохраните и привяжите к боту',
+        description:
+          'После сохранения добавьте конфигурацию в раздел обработчиков плагинов на странице бота. Заявленные события поступают автоматически, без настройки отдельных маршрутов.',
+      },
+    },
+    label: 'Руководство',
+    progress: 'Шаг {{current}} из {{total}}',
+    previous: 'Назад',
+    next: 'Далее',
+    finish: 'Завершить руководство',
+    skip: 'Пропустить',
+    processorCreate: {
+      type: {
+        title: 'Выберите тип обработчика',
+        description:
+          'Конвейеры обрабатывают сообщения по заданному сценарию, агенты принимают решения с помощью моделей и инструментов, а обработчики плагинов обрабатывают заявленные события платформы.',
+      },
+      basic: {
+        title: 'Назовите обработчик',
+        description:
+          'Укажите понятное имя. Исполнитель и события настраиваются после создания.',
+      },
+      submit: {
+        title: 'Создайте и продолжите настройку',
+        description:
+          'После создания настройте исполнителя, параметры, события и инструменты для выбранного типа обработчика.',
+      },
+    },
+    runner: {
+      debug: {
+        title: 'Проверьте обработку событий',
+      },
+      select: {
+        title: 'Выберите или установите исполнителя',
+        description:
+          'Выберите установленного исполнителя или установите его прямо из списка магазина в этом поле.',
+        action: 'Открыть магазин исполнителей',
+      },
+      parameters: {
+        title: 'Настройте параметры исполнителя',
+        description:
+          'Укажите модель, учётные данные, URL сервиса и другие параметры выбранного исполнителя.',
+      },
+      events: {
+        title: 'Настройте события и инструменты',
+        description:
+          'Откройте вкладку событий и инструментов, чтобы выбрать события для агента и разрешённые инструменты платформы или LangBot.',
+      },
+    },
+  },
+  pipelineMigration,
   sidebar: {
     home: 'Главная',
     extensions: 'Расширения',
@@ -15,6 +256,15 @@ const ruRU = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailed: 'Не удалось загрузить. Попробуйте ещё раз.',
+    showSecret: 'Показать секрет',
+    hideSecret: 'Скрыть секрет',
+    editBasicInfo: 'Изменить основные сведения',
+    editBasicInfoDescription: 'Измените имя, описание и значок.',
+    editBasicInfoDescriptionNoIcon: 'Измените имя и описание.',
+    management: 'Управление',
+
+    customValue: 'Свой вариант',
     login: 'Войти',
     logout: 'Выйти',
     accountOptions: 'Настройки',
@@ -257,7 +507,7 @@ const ruRU = {
     reasoningAbility: 'Рассуждение',
     reasoningLevel: 'Уровень рассуждений',
     reasoningLevels: {
-      providerDefault: 'По умолчанию провайдера',
+      providerDefault: 'Использовать настройки поставщика',
       disabled: 'Выключено',
       enabled: 'Включено',
       minimal: 'Минимальный',
@@ -340,6 +590,20 @@ const ruRU = {
     loginToUseModels:
       'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
+    availability: {
+      available: 'Доступна при последней проверке',
+      unavailable: 'Недоступна при последней проверке',
+      notChecked: 'Нет результата проверки',
+      lastChecked: 'Проверено {{time}}',
+    },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'Ввод {{input}} · вывод {{output}}',
+      title: 'Кредиты за 1 млн токенов',
+      input: 'Ввод: {{credits}} кредитов',
+      output: 'Вывод: {{credits}} кредитов',
+      unavailable: 'Цена не найдена. Возможно, модель была удалена.',
+    },
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:
       'Доступны бесплатные пробные кредиты! Войдите с аккаунтом LangBot, чтобы получить доступ к облачным моделям без настройки.',
@@ -385,6 +649,258 @@ const ruRU = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    connectionMode: 'Способ подключения',
+    connectionModeDescription:
+      'Выберите способ подключения, поддерживаемый адаптером.',
+    connectionWebhook: 'Webhook',
+    connectionWebhookDescription:
+      'Платформа отправляет события на URL, созданный LangBot.',
+    connectionPersistent: 'Постоянное соединение',
+    connectionPersistentDescription:
+      'LangBot поддерживает исходящее сокетное или потоковое соединение.',
+    noAdaptersForConnectionMode:
+      'Ни один установленный адаптер не поддерживает этот способ подключения.',
+    eventBindings: 'Маршруты событий',
+    addEventBinding: 'Добавить маршрут',
+    addBehavior: 'Добавить поведение',
+    commonScenarios: 'Типовые сценарии',
+    dragEventRoute: 'Перетащить маршрут {{index}}',
+    behaviorReplyMessages: 'Отвечать на сообщения',
+    behaviorReplyMessagesDescription:
+      'Передавайте входящие сообщения обработчику.',
+    behaviorWelcomeMembers: 'Приветствовать новых участников',
+    behaviorWelcomeMembersDescription:
+      'Запускайте обработчик при вступлении участника в группу.',
+    behaviorHandleDepartures: 'Обрабатывать выход участников',
+    behaviorHandleDeparturesDescription:
+      'Запускайте обработчик при выходе или удалении участника.',
+    behaviorReviewFriendRequests: 'Проверять заявки в друзья',
+    behaviorReviewFriendRequestsDescription:
+      'Передавайте новые заявки в друзья обработчику.',
+    behaviorHandleModeration: 'Обрабатывать события модерации',
+    behaviorHandleModerationDescription:
+      'Запускайте обработчик при ограничении участника группы.',
+    behaviorCustom: 'Настроить другое событие',
+    behaviorCustomDescription:
+      'Добавьте маршрут и выберите событие из поддерживаемых адаптером.',
+    eventPattern: 'Событие',
+    eventPatternPlaceholder: 'Выберите событие',
+    targetType: 'Тип назначения',
+    target: 'Обработчик',
+    targetAgent: 'Agent',
+    targetPipeline: 'Конвейер',
+    targetDiscard: 'Отбросить',
+    selectTarget: 'Выберите обработчик',
+    searchTarget: 'Поиск обработчиков…',
+    noTargetFound: 'Совместимые обработчики не найдены',
+    priority: 'Приоритет',
+    enabled: 'Включено',
+    eventBindingDescriptionPlaceholder: 'Описание правила',
+    noEventBindings: 'Нет маршрутов событий',
+    unsupportedPipelineEvent: 'Конвейеры поддерживают только события message.*',
+    disable: 'Отключить',
+    enable: 'Включить',
+    disabledBindings: 'Отключено',
+    adapterEventsTitle: 'Поддерживаемые события',
+    adapterEventsDescription: 'Типов событий: {{count}}',
+    adapterEventsMore: 'Ещё {{count}}',
+    advancedEventValues: 'Показать все',
+    eventGroup: 'Группа',
+    eventGroupNames: {
+      bot: 'Состояние бота',
+      feedback: 'Обратная связь',
+      friend: 'Друзья',
+      group: 'Группы',
+      message: 'Сообщения',
+      platform: 'Платформа',
+    },
+    routeConflictTitle: 'Некоторые маршруты пересекаются',
+    routeConflictShadowed:
+      '{{shadowed}} может не запускаться, поскольку {{winner}} обрабатывает те же события раньше.',
+    routeConflictMore: 'Ещё {{count}} конфликтов маршрутов требуют внимания.',
+    routeFallbackCatchAll: '{{route}} — маршрут для всех событий.',
+    routeFallbackIgnored:
+      'События без подходящего маршрута игнорируются. Добавляйте общий маршрут, только если каждое событие требует явного результата.',
+    testRoute: 'Проверить маршрут',
+    adapterEventDebugTitle: 'Отладка событий платформы',
+    adapterEventDebugDescription:
+      'Вызовите событие в {{platform}}. Оно появится здесь после получения адаптером.',
+    adapterEventObserveOnly:
+      'Это окно только наблюдает за событиями. Входящие события обрабатываются по текущим маршрутам.',
+    adapterEventPreparing: 'Подготовка',
+    adapterEventListening: 'Ожидание событий',
+    adapterEventListenerUnavailable: 'Приём событий прерван',
+    adapterEventLoadFailed:
+      'Не удалось прочитать события платформы. Убедитесь, что бот работает, и повторите попытку.',
+    adapterEventReceivedCount: 'Получено событий: {{count}}',
+    adapterEventClear: 'Очистить',
+    adapterEventEmptyTitle: 'Ожидание события платформы',
+    adapterEventEmptyDescription:
+      'Отправьте сообщение или вызовите событие в {{platform}}.',
+    adapterEventData: 'Показать данные события',
+    adapterEventNeedsSavedBot:
+      'Сохраните бота перед приёмом событий платформы.',
+    adapterEventCurrentPlatform: 'текущей платформе',
+    adapterConfigurationTest: 'Проверка настроек адаптера',
+    adapterConfigurationTestDescription:
+      'Сначала сохраните и включите бота, затем вызовите событие платформы для проверки настроек.',
+    refreshRouteStatus: 'Обновить состояние',
+    routeStatusIdle: 'Ещё не запускался',
+    routeStatusRefreshFailed: 'Не удалось обновить состояние маршрута.',
+    routeStatus: {
+      matched: 'Совпадение',
+      delivered: 'Доставлено',
+      discarded: 'Отброшено',
+      failed: 'Ошибка',
+      not_matched: 'Нет совпадения',
+    },
+    routeStatusDetail: {
+      matched: 'Маршрут соответствует событию.',
+      delivered: 'Обработчик получил событие.',
+      discarded: 'Событие намеренно отброшено.',
+      failed: 'Не удалось завершить обработку маршрута.',
+      not_matched: 'Ни один настроенный маршрут не соответствует событию.',
+    },
+    routeFailure: {
+      binding_disabled: 'Этот маршрут отключён.',
+      event_pattern_mismatch: 'Событие не соответствует маршруту.',
+      filters_mismatch: 'Тестовые данные не соответствуют условиям маршрута.',
+      lower_priority:
+        'Другой подходящий маршрут имеет более высокий приоритет.',
+      route_not_found: 'Для события не найден подходящий маршрут.',
+      processor_incompatible:
+        'Выбранный обработчик не поддерживает это событие.',
+      processor_not_found: 'Выбранный обработчик недоступен.',
+      runner_failed:
+        'Исполнитель Agent завершился с ошибкой при обработке события.',
+      delivery_failed: 'Обработчик завершил работу, но доставка не удалась.',
+    },
+    dryRunTitle: 'Проверка маршрута события',
+    dryRunDescription:
+      'Выберите событие, чтобы определить подходящий маршрут и обработчик.',
+    dryRunEventType: 'Тип события',
+    dryRunSampleReady: 'Пример события готов',
+    dryRunSampleDescription:
+      'LangBot подготовил пример данных для {{event}}. Обычно его можно использовать без изменений.',
+    dryRunEditPayload: 'Тестовые данные',
+    dryRunHidePayload: 'Скрыть данные',
+    dryRunPayload: 'Тестовые данные (JSON)',
+    dryRunPayloadHint: 'Используйте для проверки условий сообщений и диалогов.',
+    dryRunPayloadJsonError: 'Введите корректный JSON.',
+    dryRunPayloadObjectError: 'Данные должны быть объектом JSON.',
+    dryRunNeedsSavedBot: 'Сохраните бота перед проверкой маршрутов.',
+    dryRunFailed: 'Не удалось проверить маршрут. Повторите позже.',
+    dryRunAction: 'Показать совпадение',
+    dryRunRunning: 'Проверка…',
+    dryRunMatched: 'Маршрут найден',
+    dryRunNotMatched: 'Маршрут не найден',
+    dryRunTarget: 'Целевой обработчик',
+    dryRunNoTarget: 'Нет назначения',
+    dryRunMatchedRule: 'Подходящее правило',
+    dryRunRuleIndex: 'Маршрут {{index}}',
+    dryRunNoRule: 'Нет подходящего правила',
+    dryRunDiagnostics: 'Этапы диагностики',
+    dryRunDiagnosticSelected: 'Выбран маршрут {{route}}.',
+    dryRunDiagnosticMatched: '{{route}} соответствует. {{reason}}',
+    dryRunDiagnosticSkipped: '{{route}} пропущен. {{reason}}',
+    eventCustom: 'Пользовательское событие',
+    eventDescriptions: {
+      all: 'Соответствует всем событиям, полученным адаптером.',
+      namespace: 'Соответствует всем событиям {{group}}.',
+      namespace_bot:
+        'Соответствует приглашениям, удалениям, отключению звука бота и другим изменениям состояния.',
+      namespace_feedback:
+        'Соответствует обратной связи от платформы или пользователя.',
+      namespace_friend:
+        'Соответствует заявкам в друзья и изменениям дружеских связей.',
+      namespace_group:
+        'Соответствует вступлениям, выходам, удалениям участников и другим событиям группы.',
+      namespace_message:
+        'Соответствует получению, редактированию, удалению сообщений и реакциям.',
+      namespace_platform:
+        'Соответствует особым событиям платформы, предоставляемым адаптером.',
+      custom: 'Пользовательское событие или событие без описания.',
+      message_received:
+        'Пользователь или группа отправляет новое сообщение боту.',
+      message_edited:
+        'Платформа сообщает об изменении существующего сообщения.',
+      message_deleted: 'Платформа сообщает об удалении сообщения.',
+      message_reaction:
+        'Пользователь добавляет или удаляет реакцию на сообщение.',
+      feedback_received:
+        'Получена обратная связь от платформы или пользователя.',
+      friend_request_received: 'Кто-то отправляет боту заявку в друзья.',
+      friend_added: 'Установлена дружеская связь.',
+      group_member_joined: 'Участник вступает в группу, где есть бот.',
+      group_member_left: 'Участник покидает группу, где есть бот.',
+      group_member_banned: 'Участник группы заблокирован или удалён.',
+      bot_invited_to_group: 'Бот приглашён в группу.',
+      bot_removed_from_group: 'Бот удалён из группы.',
+      bot_muted: 'Боту запрещено отправлять сообщения в группе.',
+      bot_unmuted: 'Боту разрешено отправлять сообщения в группе.',
+      platform_specific: 'Событие платформы, специфичное для адаптера.',
+    },
+    conditions: 'Условия',
+    conditionsDescription:
+      'Для срабатывания должны выполняться все условия. Пустой список означает срабатывание всегда.',
+    conditionsEmpty: 'Нет условий — срабатывает всегда.',
+    addFilter: 'Добавить условие',
+    filterChatType: 'Тип сеанса',
+    filterChatId: 'ID сеанса',
+    filterMessageText: 'Текст сообщения',
+    filterMessageElement: 'Элемент сообщения',
+    operator_eq: 'равно',
+    operator_neq: 'не равно',
+    operator_contains: 'содержит',
+    operator_not_contains: 'не содержит',
+    operator_starts_with: 'начинается с',
+    operator_regex: 'регулярное выражение',
+
+    eventWildcard: 'Все события',
+    eventNamespaceWildcard: '{{namespace}}.*',
+    eventNames: {
+      message_received: 'Получено сообщение',
+      message_edited: 'Сообщение изменено',
+      message_deleted: 'Сообщение удалено',
+      message_reaction: 'Реакция на сообщение',
+      feedback_received: 'Получен отзыв',
+      friend_request_received: 'Получен запрос в друзья',
+      friend_added: 'Друг добавлен',
+      group_member_joined: 'Участник вступил в группу',
+      group_member_left: 'Участник покинул группу',
+      group_member_banned: 'Участник заблокирован',
+      bot_invited_to_group: 'Бот приглашён в группу',
+      bot_removed_from_group: 'Бот удалён из группы',
+      bot_muted: 'Боту запрещено отправлять сообщения',
+      bot_unmuted: 'Боту разрешено отправлять сообщения',
+      platform_specific: 'Событие конкретной платформы',
+    },
+    pluginSubscriptions: {
+      incompleteEvents:
+        'Этот бот поддерживает только часть отслеживаемых событий ({{events}}). Обработчик может работать не во всех случаях так, как ожидается.',
+      description:
+        'Автоматически получает события, объявленные плагином, независимо от маршрутов выше.',
+      empty: 'Обработчики плагинов не привязаны.',
+      add: 'Добавить обработчик плагина',
+      existing: 'Выбрать конфигурацию',
+      new: 'Новая конфигурация',
+      noExisting: 'Нет доступных конфигураций. Создайте новую.',
+      shared:
+        'Боты с общей конфигурацией используют общие настройки и состояние выполнения.',
+      saveHint: 'Сохраните бота, чтобы активировать привязку.',
+      createAndBind: 'Создать и привязать',
+      created: 'Конфигурация создана. Сохраните бота для активации привязки.',
+      enable: 'Включить {{name}}',
+      remove: 'Отвязать {{name}}',
+      configure: 'Настроить',
+      logs: 'Журнал',
+    },
+    applyFailed: 'Настройки сохранены, но не применены',
+    internalErrorHint:
+      'Внутренняя ошибка. Проверьте журналы сервера по указанному идентификатору.',
+    errorReference: 'Идентификатор ошибки: {{id}}',
+
+    adapterEventDebugAction: 'Тест прослушивания',
     title: 'Боты',
     description:
       'Создание и управление ботами — точками входа LangBot для подключения к различным платформам',
@@ -401,14 +917,17 @@ const ruRU = {
     getBotConfigError: 'Не удалось получить конфигурацию бота: ',
     saveSuccess: 'Успешно сохранено',
     saveError: 'Ошибка сохранения: ',
-    createSuccess:
-      'Успешно создано. Пожалуйста, включите или измените привязанный конвейер',
+    createSuccess: 'Успешно создано. Настройте маршрутизацию событий',
     createError: 'Ошибка создания: ',
     deleteSuccess: 'Успешно удалено',
     deleteError: 'Ошибка удаления: ',
     deleteConfirmation: 'Вы уверены, что хотите удалить этого бота?',
     platformAdapter: 'Выбор платформы/адаптера',
     selectAdapter: 'Выберите адаптер',
+    legacyAdapters: 'Устаревшие адаптеры',
+    legacyAdapterBadge: 'Устаревший',
+    legacyAdaptersHint:
+      'У этих адаптеров есть новые событийные версии.\nОни сохранены только для существующих конфигураций и не рекомендуются для новых ботов.',
     adapterConfig: 'Настройка адаптера',
     viewAdapterDocs: 'Документация',
     bindPipeline: 'Привязать конвейер',
@@ -429,6 +948,9 @@ const ruRU = {
     routingConnection: 'Маршрутизация и подключение',
     routingConnectionDescription:
       'Привяжите конвейер, обрабатывающий сообщения для этого бота',
+    eventRouting: 'Маршрутизация событий',
+    eventRoutingDescription:
+      'Выберите обработчик для каждого события бота. Изменяйте логику в настройках соответствующего Agent или Pipeline. Pipeline поддерживает только события сообщений.',
     routingRules: 'Правила условной маршрутизации',
     routingRulesDescription:
       'Правила проверяются по порядку; первое совпадение направляет в соответствующий конвейер. При отсутствии совпадений используется конвейер по умолчанию.',
@@ -535,6 +1057,318 @@ const ruRU = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    chooseType: 'Выберите способ работы',
+    chooseTypeDescription:
+      'Сначала выберите тип обработчика. Остальные настройки доступны после создания.',
+    diagramHint: 'Как это работает',
+    agentDiagramTitle: 'Agent: решения и действия',
+    agentDiagramDescription:
+      'Agent получает разные события платформы, использует модели и инструменты для понимания ситуации и решает, что делать дальше.',
+    pipelineDiagramTitle: 'Конвейер: заданная последовательность',
+    pipelineDiagramDescription:
+      'Конвейер обрабатывает только события сообщений и выполняет шаги в заданном порядке.',
+    pipelineDiagramFlow: 'Сообщения проходят фиксированную последовательность',
+    diagramEvents: 'События платформы',
+    diagramAgentCanUse: 'Доступно Agent',
+    diagramMessages: 'Сообщения',
+    diagramMembers: 'Участники',
+    diagramFeedback: 'Обратная связь',
+    diagramDecide: 'Понять и решить',
+    diagramModel: 'Использовать модель',
+    diagramTools: 'Использовать инструменты',
+    diagramActions: 'Выполнить действие',
+    diagramMessage: 'Сообщение',
+    diagramPreprocess: 'Подготовка',
+    diagramAI: 'ИИ',
+    diagramPostprocess: 'Обработка результата',
+    diagramOutput: 'Вывод',
+    eventsAndTools: 'События и инструменты',
+    eventsAndToolsDescription:
+      'Задайте события запуска и доступные инструменты.',
+    configuredEvents: 'Добавленные события',
+    configuredEventsCount: 'Всего: {{count}}',
+    addEvent: 'Добавить событие',
+    removeEvent: 'Удалить событие',
+    eventActions: 'Автоматически включённые инструменты',
+    eventToolEnabled: 'Включено',
+    eventToolsEnabledCount: 'Включено инструментов: {{count}}',
+    noEventActions: 'Для этого события нет доступных действий.',
+    noEventsConfigured: 'События не добавлены',
+    noEventsConfiguredDescription:
+      'Ни одно событие не может запустить этот Agent.',
+    noEventsConfiguredBadge: 'Нет событий',
+    apiTools: 'Доступ к инструментам',
+    apiToolsDescription:
+      'Выберите инструменты, которые может вызывать этот Agent.',
+    otherTools: 'Другие инструменты',
+    otherToolsDescription:
+      'Выберите инструменты платформы, песочницы, MCP, плагинов и навыков.',
+    apiToolsSelected: 'Выбрано: {{count}}',
+    apiToolsSecurityHint:
+      'Включайте только необходимые этому Agent инструменты.',
+    apiToolsSearch: 'Поиск инструментов…',
+    eventApiTools: 'Инструменты событий',
+    eventToolUnavailable: 'Недоступно',
+    eventApiToolsDescription:
+      'Цели фиксируются по текущему событию. Agent передаёт только параметры действия.',
+    platformApiTools: 'Инструменты платформы',
+    platformApiToolsDescription:
+      'Agent может выбирать ID пользователей, групп и сообщений. Предоставляйте только необходимые права.',
+    apiToolEvents: 'События',
+    apiToolParameters: 'Параметры Agent',
+    apiToolSource: 'Источник',
+    apiToolNoParameters: 'нет',
+    sandboxTools: 'Песочница',
+    mcpTools: 'MCP',
+    pluginTools: 'Плагины',
+    skillTools: 'Навыки',
+    langbotBuiltIn: 'LangBot',
+    apiToolDetails: 'Подробности',
+    apiToolHideDetails: 'Скрыть',
+    apiToolsNoResults: 'Подходящие API или инструменты не найдены',
+    apiToolsCatalogUnavailable:
+      'Сервер LangBot не вернул каталог инструментов API. Убедитесь, что сервер обновлён и перезапущен. Это не означает отсутствие инструментов у платформы.',
+    hostToolsCatalogUnavailable: 'Каталог инструментов временно недоступен.',
+    apiToolRisk: {
+      read: 'Только чтение',
+      write: 'Действие',
+      dangerous: 'Чувствительное',
+    },
+    runnerStatusLoading: 'Проверка состояния исполнителя',
+    runnerStatusCheckFailed: 'Не удалось проверить состояние исполнителя',
+    runnerStatusCheckFailedDescription:
+      'Повторите проверку. Если ошибка остаётся, проверьте сервер и среду выполнения плагинов.',
+    noRunnersAvailable: 'Нет доступных исполнителей',
+    noRunnersAvailableDescription:
+      'Установите и включите расширение исполнителя перед настройкой Agent.',
+    installedRunners: 'Установленные исполнители',
+    marketplaceRunners: 'Плагины исполнителей в магазине',
+    viewMarketplace: 'Открыть магазин',
+    restoringRunnerInstall:
+      'Восстановление установки плагина и ожидание исполнителя…',
+    noInstalledRunners: 'Расширения исполнителей ещё не установлены.',
+    installingRunner: 'Установка {{runner}}...',
+    runnerInstallSuccess: '{{runner}} установлен и доступен для выбора',
+    selectedRunnerUnavailable: 'Выбранный исполнитель недоступен',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} сейчас не зарегистрирован. Выберите другой исполнитель или восстановите расширение.',
+    noRunnerSelected: 'Исполнитель не выбран',
+    runnerConfigIncomplete: 'Настройка исполнителя не завершена',
+    runnerConfigIncompleteDescription:
+      'Заполните обязательные поля: {{fields}}',
+    runnerReady: 'Исполнитель готов',
+    runnerReadyDescription:
+      '{{runner}} зарегистрирован, среда выполнения плагинов подключена.',
+    debugTab: 'Отладка событий',
+    debugTitle: 'Отладка событий Agent',
+    debugDescription:
+      'Запустите текущий Agent с сообщением или событием платформы и проверьте фактический результат.',
+    debugResetSession: 'Сбросить сеанс',
+    debugEventType: 'Тип события',
+    debugNoEventsTitle: 'Нет событий для отладки',
+    debugNoEventsDescription:
+      'Сначала добавьте событие в разделе «События и инструменты».',
+    debugMessageReceived: 'Получено сообщение',
+    debugGroupMemberJoined: 'Участник вступил в группу',
+    debugGroupMemberLeft: 'Участник покинул группу',
+    debugFriendRequested: 'Получена заявка в друзья',
+    debugFeedbackReceived: 'Получена обратная связь',
+    debugCustomEvent: 'Пользовательское событие',
+    debugCustomEventType: 'Имя пользовательского события',
+    debugMessageInput: 'Ввод диалога',
+    debugEventSummary: 'Сводка события',
+    debugInputPlaceholder: 'Введите задачу для Agent',
+    debugEventPayload: 'Данные события (JSON)',
+    debugSupportedEvents: 'Agent поддерживает',
+    debugRun: 'Запустить тест',
+    debugSaveAndRun: 'Сохранить и запустить',
+    debugRunning: 'Выполняется',
+    debugTranscript: 'Журнал отладки',
+    debugTranscriptDescription:
+      'Входные данные и результаты Agent в текущем сеансе отладки.',
+    debugEmptyTitle: 'Проверьте поведение Agent',
+    debugEmptyTranscript:
+      'Выберите событие, введите тестовые данные и нажмите «Запустить тест». Результаты останутся на странице.',
+    debugAgentOutput: 'Результат Agent',
+    debugReasoning: 'Размышление',
+    debugTextOutput: 'Текстовый вывод',
+    debugPlatformNotice:
+      'Инструменты платформы используют Mock: Agent вызывает инструменты реально, но действия имитируются без отправки сообщений. Остальные инструменты выполняются согласно настройкам.',
+    debugToolSimulated: 'Успешная имитация · Mock',
+    debugStop: 'Остановить отладку',
+    debugMockOptions: 'Сценарий Mock (JSON)',
+    debugInvalidMock: 'Сценарий Mock должен быть корректным объектом JSON.',
+    debugToolMockFailed: 'Имитация ошибки · Mock',
+    debugMockOptionsHelp:
+      'По умолчанию вызовы успешны. Задайте ошибки по именам инструментов в errors, результаты запросов в results и неподдерживаемые API в unsupported_apis. Пример: {"errors":{"event_reply":"Имитация ошибки отправки"}}',
+    debugCancelled:
+      'Отладка остановлена. Предыдущие записи выполнения сохранены.',
+    debugNoToolCalls:
+      'Вызовы инструментов не зарегистрированы. Создание текста не означает отправку сообщения.',
+    debugToolCount:
+      'Зарегистрировано вызовов инструментов: {{count}}. Состояние и результаты приведены ниже.',
+    debugToolRunning: 'Выполняется',
+    debugToolCompleted: 'Завершено',
+    debugToolFailed: 'Ошибка',
+    debugToolInterrupted: 'Результат не получен',
+    debugToolArguments: 'Аргументы',
+    debugToolResult: 'Результат',
+    debugTestInput: 'Тестовый ввод',
+    debugNoTextOutput: 'Выполнение завершилось без текстового вывода.',
+    debugEventTypeRequired: 'Введите тип события',
+    debugInputRequired: 'Введите сообщение для диалога',
+    debugInvalidPayload: 'Данные события должны быть корректным объектом JSON',
+    debugUnsupportedEvent:
+      'Это событие не входит в допустимый набор событий Agent',
+    debugRunnerConfigInvalidDescription:
+      'Настройка исполнителя не завершена: {{message}}',
+    debugRunnerExecutionFailedDescription:
+      'Выполнение завершилось с ошибкой. Проверьте модель и настройки исполнителя и повторите попытку.',
+    debugRunnerTimeoutDescription:
+      'Превышено время выполнения. Повторите позже или измените тайм-аут исполнителя.',
+    debugApiKeyRequired: 'Отсутствует ключ API',
+    debugOpenRunnerConfig: 'Открыть настройки исполнителя',
+    debugReviewRunnerConfig: 'Проверить настройки исполнителя',
+    debugErrorDetails: 'Показать подробности ошибки',
+    debugRunFailed: 'Ошибка отладки Agent',
+
+    monitoring: {
+      description:
+        'Просмотр события, ответа модели и вызовов инструментов для каждой задачи.',
+      empty:
+        'Запусков пока нет. Вызовите событие платформы или запустите отладку.',
+      input: 'Входные данные',
+      eventData: 'Данные события',
+      execution: 'Ход выполнения',
+      rawEvents: 'Исходные события',
+      inputUnavailable: 'Входные данные этого запуска не записаны.',
+    },
+    eventProcessor: {
+      configurations: 'Конфигурации обработчиков плагинов',
+      configTab: 'Настройки',
+      logsTab: 'Журнал',
+      noSettings: 'Этот обработчик плагина не требует настройки.',
+      createPageTitle: 'Создать обработчик событий',
+      processWithPlugin: 'Обработка кодом плагина',
+      pluginSettings: 'Настройки плагина',
+      pluginSettingsDescription: 'Параметры, объявленные этим плагином.',
+      selectToDebug: 'Выберите плагин выше, чтобы начать отладку.',
+
+      debugOutput: 'Вывод обработчика',
+      debugDescription:
+        'Входные события, журналы плагина и результаты действий этой проверки.',
+      debugNotice:
+        'Плагин обрабатывает тестовое событие. Действия платформы используют Mock и не отправляют реальные сообщения; остальные инструменты работают согласно настройкам.',
+
+      create: 'Создать обработчик плагина',
+      type: 'Обработчик плагина',
+      description: 'Обрабатывает события с помощью кода и логики плагина.',
+      component: 'Обработчик плагина',
+      selectComponent: 'Выберите обработчик плагина',
+      unavailable: 'Компонент недоступен',
+      noComponents: 'Плагины с обработчиками не установлены.',
+      installPlugin: 'Установить плагин',
+      loadError: 'Не удалось загрузить данные.',
+      refresh: 'Обновить',
+      runs: 'Запуски',
+      noRuns: 'Запусков пока нет. Привяжите обработчик к боту.',
+      bindBot: 'Привязать к боту',
+      trace: 'Журнал и поток сообщений',
+      selectRun: 'Выберите запуск для просмотра.',
+      input: 'Входящее событие',
+      destination: 'Получатель',
+      loadMore: 'Загрузить ещё',
+      activation:
+        'Установите плагин, создайте конфигурацию обработчика и привяжите бота.',
+      status_timeout: 'Время истекло',
+      status_pending: 'Ожидание',
+      status_running: 'Выполняется',
+      status_completed: 'Завершено',
+      status_failed: 'Ошибка',
+      status_cancelled: 'Отменено',
+      status_queued: 'В очереди',
+      trace_run_completed: 'Выполнение завершено',
+      trace_run_failed: 'Ошибка выполнения',
+      trace_tool_call_started: 'Действие начато',
+      trace_tool_call_completed: 'Результат действия',
+    },
+    debugData: {
+      chatId: 'ID чата',
+      feedbackType: 'Тип отзыва (1: нравится, 2: не нравится, 3: отмена)',
+
+      title: 'Данные события',
+      form: 'Основные поля',
+      json: 'Полный JSON',
+      groupId: 'ID группы',
+      memberId: 'ID участника',
+      memberName: 'Имя участника',
+      userId: 'ID пользователя',
+      userName: 'Имя пользователя',
+      requesterId: 'ID заявителя',
+      requesterName: 'Имя заявителя',
+      messageId: 'ID сообщения',
+      duration: 'Длительность (секунды)',
+      message: 'Текст сообщения',
+      newMessage: 'Новый текст',
+      verificationMessage: 'Текст заявки',
+      reaction: 'Реакция',
+      groupName: 'Название группы',
+      feedback: 'Отзыв',
+      rating: 'Оценка',
+      eventName: 'Название события',
+      privateChat: 'Пусто для личного чата',
+      sampleUser: 'Тестовый пользователь',
+      sampleMessage: 'Привет',
+      sampleFeedback: 'Очень полезно',
+      invalidField: 'Проверьте {{field}}',
+    },
+    title: 'Обработчики',
+    description:
+      'Создавайте переиспользуемые обработчики и используйте их в маршрутизации событий бота',
+    create: 'Создать обработчик',
+    editAgent: 'Редактировать Agent',
+    selectFromSidebar: 'Выберите обработчик на боковой панели',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Используйте runner для обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
+    pipelineType: 'Конвейер',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Группировать по типу',
+    groupByKindShort: 'Группа',
+    pipelineTypeDescription:
+      'Работает по заданному процессу: получить сообщение, вызвать AI и ответить пользователю. Поддерживает настройку баз знаний и плагинов; обрабатывает только события сообщений и подходит для задач с четкими шагами и контролем обработки.',
+    allEvents: 'Поддерживает все события',
+    messageEventsOnly: 'Только события сообщений',
+    basicInfo: 'Основная информация',
+    basicInfoDescription: 'Задайте имя, иконку и описание',
+    runnerSettings: 'Runner',
+    advanced: 'Дополнительно',
+    bindableEvents: 'Диапазон привязываемых событий',
+    bindableEventsDescription:
+      'Ограничьте, какие маршруты событий бота могут выбирать этот Agent. Обычно достаточно значения по умолчанию.',
+    supportedEvents: 'Диапазон событий',
+    supportedEventsDescription:
+      'Выберите все события, группу или отдельные события. В маршрутах бота этот Agent будет доступен только для подходящих событий.',
+    searchEvents: 'Поиск событий…',
+    noEventsFound: 'Подходящие события не найдены',
+    nameRequired: 'Имя не может быть пустым',
+    createSuccess: 'Успешно создано',
+    createError: 'Ошибка создания: ',
+    loadError: 'Ошибка загрузки: ',
+    saveSuccess: 'Успешно сохранено',
+    saveError: 'Ошибка сохранения: ',
+    deleteSuccess: 'Успешно удалено',
+    deleteError: 'Ошибка удаления: ',
+    deleteConfirmation: 'Вы уверены, что хотите удалить этот Agent?',
+    dangerZone: 'Опасная зона',
+    dangerZoneDescription: 'Необратимые и деструктивные действия',
+    deleteAgentAction: 'Удалить этот Agent',
+    deleteAgentHint:
+      'После удаления события, привязанные к ней, больше не смогут выполняться.',
+    noRunnerMetadata: 'Метаданные Runner в данный момент недоступны.',
+  },
   plugins: {
     title: 'Расширения',
     description:
@@ -565,6 +1399,7 @@ const ruRU = {
     noExtensionInstalled: 'Расширения не установлены',
     loadingExtensions: 'Загрузка расширений...',
     groupByType: 'Группировать по формату',
+    groupByTypeShort: 'Группа',
     pluginConfig: 'Настройка плагина',
     pluginSort: 'Порядок плагинов',
     pluginSortDescription:
@@ -629,6 +1464,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      Runner: 'Исполнитель',
     },
     uploadLocal: 'Загрузить локально',
     debugging: 'Отладка',
@@ -717,6 +1553,13 @@ const ruRU = {
     installFromGithubDesc: 'Установить плагин из GitHub Release',
     goToMarketplace: 'Перейти в маркетплейс',
     installProgress: {
+      updateTitle: 'Обновление {{name}}',
+      checkingUpdate: 'Проверка обновлений',
+      validating: 'Проверка пакета',
+      applyingUpdate: 'Применение обновления',
+      activating: 'Запуск и обновление компонентов',
+      updateComplete: 'Плагин успешно обновлён',
+
       title: 'Установка {{name}}',
       titleGeneric: 'Установка плагина',
       overallProgress: 'Общий прогресс',
@@ -746,6 +1589,11 @@ const ruRU = {
     uploadPluginOnly: 'Поддерживаются только пакеты плагинов .lbpkg',
   },
   market: {
+    runnerUsage: 'Назначение исполнителя',
+    runnerUsageAll: 'Все',
+    runnerUsageAgent: 'Agent / Конвейер',
+    runnerUsageEvent: 'Обработчик плагина',
+
     searchPlaceholder: 'Поиск плагинов...',
     searchPlaceholderCount:
       'Поиск среди {{count}} расширений, возможностей или сценариев...',
@@ -809,6 +1657,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      Runner: 'Исполнитель',
     },
     filterByType: 'Тип',
     allTypes: 'Все типы',
@@ -978,6 +1827,8 @@ const ruRU = {
       'После удаления конфигурация этого MCP-сервера не может быть восстановлена.',
   },
   pipelines: {
+    managementDescription: 'Скопируйте или удалите этот конвейер.',
+
     title: 'Конвейеры',
     description:
       'Конвейеры определяют поток обработки событий сообщений и привязываются к ботам',
@@ -1060,14 +1911,14 @@ const ruRU = {
       selectSkills: 'Выбрать навыки',
       noSkillsAvailable: 'Нет доступных навыков',
       mcpServersScopeTooltip:
-        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Local Agent.',
+        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Если включено, все настроенные и включённые MCP-серверы станут кандидатами для инструментов и ресурсов MCP в AI Feature.',
     },
-    localAgent: {
+    runner: {
       toolsTitle: 'Инструменты',
       toolsDescription:
-        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Local Agent.',
+        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Runner.',
       toolsScopeTooltip:
         'MCP-инструменты берутся только из MCP-серверов, привязанных в Расширениях. Чтобы добавить источник, сначала привяжите там сервер.',
       enableAllTools: 'Включить все инструменты',
@@ -1085,7 +1936,7 @@ const ruRU = {
       selectTools: 'Выбрать инструменты',
       resourcesTitle: 'Ресурсы',
       resourcesDescription:
-        'Выберите MCP-ресурсы и базы знаний для этого Local Agent.',
+        'Выберите MCP-ресурсы и базы знаний для этого Runner.',
       knowledgeBases: 'Базы знаний',
       mcpResources: 'MCP-ресурсы',
       mcpResourcesScopeTooltip:
@@ -1097,6 +1948,8 @@ const ruRU = {
       selectKnowledgeBases: 'Выбрать базы знаний',
     },
     debugDialog: {
+      saveAndSend: 'Сохранить и отправить',
+
       title: 'Чат конвейера',
       selectPipeline: 'Выберите конвейер',
       sessionType: 'Тип сессии',
@@ -1116,8 +1969,8 @@ const ruRU = {
       atTips: 'Упомянуть бота',
       streaming: 'Потоковая передача',
       streamOutput: 'Поток',
-      connected: 'WebSocket подключён',
-      disconnected: 'WebSocket отключён',
+      connected: 'Подключено',
+      disconnected: 'Отключено',
       connectionError: 'Ошибка подключения WebSocket',
       connectionFailed: 'Ошибка подключения WebSocket',
       notConnected: 'WebSocket не подключён, повторите попытку позже',
@@ -1133,13 +1986,33 @@ const ruRU = {
       uploading: 'Загрузка...',
     },
     monitoring: {
-      title: 'Мониторинг',
+      title: 'Журнал выполнения',
+      workbench: 'Настройка и отладка',
       description:
         'Просмотр журналов выполнения и ошибок конвейера (за последние 24 часа)',
       detailedLogs: 'Подробные журналы',
     },
   },
   knowledge: {
+    installedEngines: 'Установленные движки знаний',
+    noInstalledEngines: 'Плагины движков знаний ещё не установлены.',
+    marketplaceEngines: 'Плагины движков знаний в магазине',
+    noMarketplaceEngines: 'Нет доступных плагинов движков знаний.',
+    loadingEngineCatalog: 'Загрузка плагинов из магазина…',
+    engineCatalogUnavailable:
+      'Магазин временно недоступен. Откройте список выбора заново для повтора.',
+    viewMarketplace: 'Открыть магазин',
+    installingEngine: 'Установка {{engine}}…',
+    engineInstallSuccess: '{{engine}} установлен и доступен для выбора',
+    engineInstallFailed:
+      'Не удалось установить движок знаний. Повторите попытку.',
+    engineVersionUnavailable:
+      'У этого плагина нет доступной для установки версии.',
+    engineInstallTimeout:
+      'Установка продолжается. Обновите страницу для проверки.',
+    engineRegistrationTimeout:
+      'Плагин установлен, но движок знаний ещё не готов.',
+
     title: 'Знания',
     createKnowledgeBase: 'Создать базу знаний',
     selectFromSidebar: 'Выберите базу знаний из боковой панели',
@@ -1653,6 +2526,45 @@ const ruRU = {
     },
   },
   storageAnalysis: {
+    notCreated: 'Ещё не создано',
+    processStorage: 'Хранилище по процессам',
+    processStorageDescription:
+      'Каждая среда выполнения измеряет свои каталоги. Детализация уже входит в итог родительского каталога.',
+    directory: 'Каталог',
+    size: 'Размер',
+    files: 'Файлы',
+    runtimeUnavailable: 'Статистика хранилища среды выполнения недоступна.',
+    noManagedDirectories: 'Управляемые каталоги не обнаружены.',
+    scanWarnings: 'Недоступно для чтения: {{count}}',
+    boxActivity: 'Сеансов: {{sessions}} · Управляемых процессов: {{processes}}',
+    statusLabels: {
+      available: 'Доступно',
+      unavailable: 'Недоступно',
+      disabled: 'Отключено',
+      not_applicable: 'Не применимо',
+    },
+    sourceLabels: {
+      local_process: 'Измерено процессом LangBot',
+      runtime_rpc: 'Измерено средой выполнения через аутентифицированный RPC',
+    },
+    scopeLabels: {
+      runtime_host: 'Хост среды выполнения',
+      sandbox_sessions: 'Сеансы песочницы',
+    },
+    processNames: {
+      langbot: 'Основной процесс LangBot',
+      plugin_runtime: 'Среда выполнения плагинов',
+      box_runtime: 'Среда выполнения Box',
+    },
+    processDescriptions: {
+      langbot:
+        'База данных приложения, журналы, загруженные файлы, векторные данные и временные файлы.',
+      plugin_runtime:
+        'Пакеты плагинов, проверенные артефакты, окружения зависимостей и закрытые данные установки.',
+      box_runtime:
+        'Рабочие каталоги песочницы и процессов MCP, каталоги обмена вложениями и навыки.',
+    },
+
     title: 'Анализ хранилища',
     description: 'Проверьте использование хранилища и кандидатов на очистку',
     openDialog: 'Открыть анализ',
@@ -1678,6 +2590,22 @@ const ruRU = {
     noExpiredUploads: 'Нет просроченных загруженных файлов',
     noExpiredLogs: 'Нет просроченных журналов',
     sectionNames: {
+      legacy_plugins: 'Старые пакеты плагинов',
+      artifacts: 'Проверенные артефакты плагинов',
+      dependency_environments: 'Окружения зависимостей',
+      installations: 'Данные установки плагинов',
+      staging: 'Промежуточные файлы плагинов',
+      rpc_transfer: 'Файлы передачи RPC среды выполнения',
+      workspace: 'Рабочий каталог песочницы',
+      inbox: 'Входящие вложения',
+      outbox: 'Исходящие вложения',
+      skills: 'Навыки',
+      session_workspaces: 'Рабочие каталоги сеансов песочницы',
+      session_caches: 'Кэш среды выполнения песочницы',
+      session_temp: 'Временные файлы песочницы',
+      managed_process_workspaces:
+        'Рабочие каталоги управляемых процессов (включая MCP)',
+
       database: 'База данных',
       logs: 'Журналы',
       storage: 'Загруженные файлы',
@@ -1743,6 +2671,8 @@ const ruRU = {
         'Бот получил сообщение. Можно перейти к следующему шагу.',
       messageReceivedLocalAccountWarning:
         'Подключение бота настроено правильно, и сообщение получено. Поскольку вход выполнен не через аккаунт LangBot, вызовы модели могут завершаться ошибкой; перейдите к следующему шагу, чтобы добавить собственную модель.',
+      pageBotPreviewFailed:
+        'Не удалось загрузить тестовый чат. Сохраните настройки ещё раз, чтобы повторить попытку.',
       pageBotTestPrompt:
         'Бот для веб-страницы включён. Нажмите на значок чата в правом нижнем углу и отправьте сообщение, чтобы проверить полный сценарий диалога.',
       pageBotTestNotice:
@@ -1764,14 +2694,38 @@ const ruRU = {
         'Отслеживайте активность бота для проверки подключения к платформе.',
     },
     aiEngine: {
+      loadingCatalog: 'Загрузка расширений исполнителей...',
+      catalogUnavailable: 'Каталог исполнителей недоступен',
+      catalogUnavailableDescription:
+        'Установленные исполнители доступны. Повторите загрузку каталога или откройте расширения.',
+      noMarketplaceRunners: 'Нет плагинов исполнителей для этого назначения',
+      noMarketplaceRunnersDescription:
+        'Используйте установленный исполнитель или повторите позже.',
+      browseRunners: 'Открыть расширения исполнителей',
+      installAndContinue: 'Установить и продолжить',
+      installing: 'Установка...',
+      useInstalled: 'Использовать этот исполнитель',
+      installedUnavailable: 'Установлено, исполнитель недоступен',
+      installSuccess: '{{runner}} установлен и выбран',
+      installFailed: 'Не удалось установить расширение исполнителя',
+      versionUnavailable: 'Магазин не вернул доступную для установки версию.',
+      installTimeout:
+        'Время ожидания установки истекло. Проверьте задачу в разделе расширений.',
+      registrationTimeout:
+        'Расширение установлено, но исполнитель не зарегистрирован. Проверьте среду выполнения плагинов и повторите попытку.',
+
+      defaultModelUnavailable:
+        'Модель по умолчанию недоступна. Повторите попытку.',
+      defaultRunnerUnavailable: 'Local Agent ещё не готов. Повторите попытку.',
+      preparingDefault: 'Подготовка ИИ по умолчанию…',
       title: 'Настройте ИИ-движок',
       description:
         'Выберите ИИ-движок, который будет управлять интеллектом вашего бота.',
       optionalDescription:
-        'Этот шаг необязателен. Выберите, как продолжить настройку текущего Agent.',
+        'ИИ уже настроен. Используйте его или измените способ подключения.',
       externalTitle: 'Подключить Agent внешней платформы',
       externalDescription:
-        'Подключите Dify, n8n, Coze или другую платформу и замените Pipeline бота.',
+        'Подключите Dify, n8n, Coze или другой внешний Agent через плагин Runner.',
       ownModelTitle: 'Использовать собственную модель',
       ownModelDescription:
         'Добавьте провайдера, затем найдите модель автоматически или укажите её вручную, чтобы завершить настройку.',
@@ -1784,7 +2738,7 @@ const ruRU = {
       selectModelTitle: 'Выберите модель',
       selectScannedModelTitle: 'Выберите модель',
       selectScannedModelDescription:
-        'Выбранная модель станет основной моделью нового Pipeline, и бот переключится на неё.',
+        'Выбранная модель заменит основную модель в пайплайне этого бота.',
       scanModelMode: 'Найти модели',
       manualModelMode: 'Добавить вручную',
       scanningModels: 'Поиск доступных моделей…',
@@ -1803,12 +2757,13 @@ const ruRU = {
       manualModelOptions: 'Дополнительные возможности модели',
       editProvider: 'Изменить провайдера',
       rescanModels: 'Повторить поиск моделей',
-      moreFeaturesTitle: 'Добавить возможности Agent',
+      moreFeaturesTitle: 'Использовать настройки по умолчанию',
       moreFeaturesDescription:
-        'Откройте рабочую панель, чтобы добавить инструменты, базы знаний и другие возможности только что автоматически созданному Agent.',
+        'Продолжить с Local Agent и рекомендованной моделью. Инструменты и базы знаний можно добавить позже.',
       runnerDescription:
         'Выберите Runner для внешнего Agent и настройте подключение.',
       backToChoices: 'Вернуться к вариантам',
+      backToList: 'Вернуться к списку',
       createExternal: 'Создать и привязать',
       finishWithModel: 'Использовать выбранную модель и завершить',
       openWorkbench: 'Открыть рабочую панель',

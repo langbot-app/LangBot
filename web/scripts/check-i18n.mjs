@@ -46,8 +46,8 @@ function extractKeys(filePath) {
   const stack = [];
 
   // Matches an object key at the start of a line (identifier or quoted string)
-  // Captures: [indent, keyName, hasOpenBrace]
-  const KEY_RE = /^(\s+)([\w]+)\s*:/;
+  // Captures indentation and an identifier, single-quoted, or double-quoted key.
+  const KEY_RE = /^(\s+)(?:([\w]+)|'([^']+)'|"([^"]+)")\s*:/;
   const OPEN_BRACE_RE = /\{\s*$/;
   const CLOSE_BRACE_RE = /^\s*\},?\s*$/;
 
@@ -65,7 +65,7 @@ function extractKeys(filePath) {
     if (!m) continue;
 
     const indent = m[1].length;
-    const keyName = m[2];
+    const keyName = m[2] ?? m[3] ?? m[4];
 
     // Pop stack entries that are at the same or deeper indent level
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {

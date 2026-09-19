@@ -4,8 +4,7 @@ These tests verify the end-to-end behavior of the Box sandbox execution
 system.  Tests decorated with ``requires_container`` need a real container
 runtime (Podman or Docker) and are skipped otherwise.
 
-CI only runs ``tests/unit_tests/``, so these tests never execute in the
-CI pipeline.  Run them locally with::
+CI runs these tests in the Box Integration Tests job. Run them locally with::
 
     pytest tests/integration_tests/ -v
 """
@@ -23,6 +22,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.box.service import BoxService
+from langbot.pkg.box.runner import RunnerBoxService
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxBackendUnavailableError
@@ -358,6 +359,14 @@ async def test_full_service_to_remote_runtime(tmp_path):
             workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
             placement_generation=_ACTION_CONTEXT.placement_generation,
         )
+        context = ExecutionContext(
+            instance_uuid=_ACTION_CONTEXT.instance_uuid,
+            workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+            placement_generation=_ACTION_CONTEXT.placement_generation,
+        )
+        runner_box = RunnerBoxService(service)
+        box = await runner_box.acquire(context, {'reuse_key': 'integration-test'}, query)
+        await runner_box.bind(context, query, 'run-42', box['id'])
         result = await service.execute_tool(
             {'command': 'echo service-path'},
             query,
@@ -366,7 +375,7 @@ async def test_full_service_to_remote_runtime(tmp_path):
         assert result['ok'] is True
         assert result['status'] == 'completed'
         assert 'service-path' in result['stdout']
-        assert result['session_id'] == 'query_42'
+        assert result['session_id'] == box['id']
     finally:
         server_task.cancel()
         client_task.cancel()

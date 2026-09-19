@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useTranslation } from 'react-i18next';
@@ -88,12 +89,15 @@ export default function PluginReadme({
 }) {
   const { t } = useTranslation();
   const [readme, setReadme] = useState<string>('');
-  const [isLoadingReadme, setIsLoadingReadme] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [isLoadingReadme, setIsLoadingReadme] = useState(true);
 
   const language = getAPILanguageCode();
 
   useEffect(() => {
     // Fetch plugin README
+    setLoadFailed(false);
     setIsLoadingReadme(true);
     httpClient
       .getPluginReadme(pluginAuthor, pluginName, language)
@@ -101,19 +105,22 @@ export default function PluginReadme({
         setReadme(res.readme);
       })
       .catch(() => {
+        setLoadFailed(true);
         setReadme('');
       })
       .finally(() => {
         setIsLoadingReadme(false);
       });
-  }, [pluginAuthor, pluginName]);
+  }, [pluginAuthor, pluginName, language, loadAttempt]);
 
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
   return (
-    <div className="w-full h-full overflow-auto">
+    <div className="w-full h-full overflow-auto overscroll-none">
       {isLoadingReadme ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">
-          {t('plugins.loadingReadme')}
-        </div>
+        <EntityLoadState />
       ) : readme ? (
         <div className="markdown-body p-6 max-w-none pt-0">
           <ReactMarkdown

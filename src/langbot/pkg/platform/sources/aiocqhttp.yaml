@@ -12,6 +12,7 @@ metadata:
     zh_Hant: OneBot v11 適配器，用於接入 QQ 機器人協定端，請查看文件了解使用方式
   icon: onebot.png
 spec:
+  legacy: true
   categories:
     - protocol
   help_links:

@@ -10,7 +10,7 @@ import pytest
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.client import ActionRPCBoxClient
-from langbot_plugin.box.errors import BoxAdmissionError
+from langbot_plugin.box.errors import BoxAdmissionError, BoxValidationError
 from langbot_plugin.box.models import (
     BoxExecutionResult,
     BoxExecutionStatus,
@@ -24,6 +24,7 @@ from langbot_plugin.runtime.io.handler import Handler
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.box.service import BoxService
+from langbot.pkg.box.runner import RunnerBoxService
 from langbot.pkg.cloud.entitlements import (
     EntitlementResolver,
     EntitlementSnapshot,
@@ -41,6 +42,7 @@ class _AdmissionBackend(BaseSandboxBackend):
     def __init__(self, logger):
         super().__init__(logger)
         self.started_specs: list[BoxSpec] = []
+        self.executed_specs: list[BoxSpec] = []
         self.stopped_sessions: list[str] = []
 
     async def is_available(self) -> bool:
@@ -82,6 +84,7 @@ class _AdmissionBackend(BaseSandboxBackend):
         )
 
     async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
+        self.executed_specs.append(spec)
         await asyncio.sleep(0)
         return BoxExecutionResult(
             session_id=session.session_id,
@@ -177,6 +180,19 @@ def _query(context: ExecutionContext, query_id: int):
     return query
 
 
+async def _bound_query(service, context, query_id):
+    query = _query(context, query_id)
+    runner_box = RunnerBoxService(service)
+    box = await runner_box.acquire(context, {'reuse_key': 'global'}, query)
+    await runner_box.bind(context, query, f'run-{query_id}', box['id'])
+    return query
+
+
+async def _execute(service, context, query_id, command):
+    query = await _bound_query(service, context, query_id)
+    return await service.execute_tool({'command': command}, query)
+
+
 async def _stack(tmp_path):
     shared_root = tmp_path / 'shared-box'
     workspace_root = shared_root / 'workspaces'
@@ -244,8 +260,8 @@ async def test_concurrent_first_use_creates_one_persistent_global_session(tmp_pa
     entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
     try:
         first, second = await asyncio.gather(
-            service.execute_tool({'command': 'echo first'}, _query(context, 1)),
-            service.execute_tool({'command': 'echo second'}, _query(context, 2)),
+            _execute(service, context, 1, 'echo first'),
+            _execute(service, context, 2, 'echo second'),
         )
 
         assert first['session_id'] == 'global'
@@ -270,7 +286,8 @@ async def test_entitlement_loss_revokes_and_closes_existing_global_session(tmp_p
     context = _context('workspace-a')
     entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid, revision=1)
     try:
-        await service.execute_tool({'command': 'true'}, _query(context, 1))
+        query = await _bound_query(service, context, 1)
+        await service.execute_tool({'command': 'true'}, query)
         assert len(runtime.get_sessions()) == 1
 
         entitlements.snapshots[context.workspace_uuid] = _snapshot(
@@ -279,7 +296,7 @@ async def test_entitlement_loss_revokes_and_closes_existing_global_session(tmp_p
             managed=False,
         )
         with pytest.raises(EntitlementUnavailableError):
-            await service.execute_tool({'command': 'true'}, _query(context, 2))
+            await service.execute_tool({'command': 'true'}, query)
 
         assert runtime.get_sessions() == []
         assert len(backend.stopped_sessions) == 1
@@ -297,8 +314,8 @@ async def test_two_workspaces_get_isolated_physical_sessions_and_paths(tmp_path)
     entitlements.snapshots[first.workspace_uuid] = _snapshot(first.workspace_uuid)
     entitlements.snapshots[second.workspace_uuid] = _snapshot(second.workspace_uuid)
     try:
-        result_a = await service.execute_tool({'command': 'tenant-a'}, _query(first, 1))
-        result_b = await service.execute_tool({'command': 'tenant-b'}, _query(second, 2))
+        result_a = await _execute(service, first, 1, 'tenant-a')
+        result_b = await _execute(service, second, 2, 'tenant-b')
 
         assert result_a['session_id'] == result_b['session_id'] == 'global'
         assert len(backend.started_specs) == 2
@@ -348,7 +365,7 @@ async def test_cloud_skills_reject_host_paths_and_require_managed_entitlement(tm
                 'command': 'python /workspace/.skills/runner/scripts/main.py',
                 'workdir': '/workspace/.skills/runner',
             },
-            _query(first, 91),
+            await _bound_query(service, first, 91),
             skill_name='runner',
         )
 
@@ -383,8 +400,8 @@ async def test_forged_plan_network_session_and_managed_process_never_reach_runti
     service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
     context = _context('workspace-a')
     entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
-    query = _query(context, 1)
     try:
+        query = await _bound_query(service, context, 1)
         with pytest.raises(BoxAdmissionError, match='host-controlled'):
             await service.execute_spec_payload(
                 {'cmd': 'true', 'session_id': 'global', 'plan': 'pro'},
@@ -395,7 +412,7 @@ async def test_forged_plan_network_session_and_managed_process_never_reach_runti
                 {'cmd': 'true', 'session_id': 'global', 'network': 'on'},
                 query,
             )
-        with pytest.raises(BoxAdmissionError, match='session_id is runtime-owned'):
+        with pytest.raises(BoxValidationError, match='session_id must match the bound Box'):
             await service.execute_spec_payload(
                 {'cmd': 'true', 'session_id': 'attacker'},
                 query,
@@ -407,8 +424,9 @@ async def test_forged_plan_network_session_and_managed_process_never_reach_runti
                 {'command': 'sleep', 'args': ['60']},
             )
 
-        assert backend.started_specs == []
-        assert runtime.get_sessions() == []
+        assert len(backend.started_specs) == 1
+        assert len(runtime.get_sessions()) == 1
+        assert backend.executed_specs == []
     finally:
         server_task.cancel()
         client_task.cancel()

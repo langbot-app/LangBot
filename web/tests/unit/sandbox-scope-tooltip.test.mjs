@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import test from 'node:test';
 import ts from 'typescript';
 
-const require = createRequire(import.meta.url);
-const { load } = createRequire(require.resolve('eslint'))('js-yaml');
-const metadata = load(
+// Compatibility fixture, not Core metadata: 4.11 owns sandbox scope in the
+// Runner Host. Keep the original condition/locale matrix without reintroducing
+// a local-agent configuration stage or claiming plugins control Host scope.
+const scope = JSON.parse(
   fs.readFileSync(
-    new URL(
-      '../../../src/langbot/templates/metadata/pipeline/ai.yaml',
-      import.meta.url,
-    ),
+    new URL('../fixtures/sandbox-scope-schema.json', import.meta.url),
     'utf8',
   ),
 );
-const scope = metadata.stages
-  .find((stage) => stage.name === 'local-agent')
-  .config.find((item) => item.name === 'box-session-id-template');
 const unavailable = '沙箱未启用，请启用 Box 并确认连接正常后再修改作用域。';
 const globalForced = '已强制使用全局沙箱，无法修改作用域。';
 const customForced = '已强制使用固定沙箱作用域，无法修改作用域。';

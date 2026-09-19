@@ -55,6 +55,8 @@ const minErrorCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_ERROR_C
 const minOkCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_OK_COUNT, 0);
 const minProviderFaultCount = nonNegativeInteger(env.LANGBOT_DEBUG_CHAT_LOAD_MIN_PROVIDER_FAULT_COUNT, 0);
 const failOnFinalMismatch = bool(env.LANGBOT_DEBUG_CHAT_LOAD_FAIL_ON_FINAL_MISMATCH, false);
+const requireSuccess = bool(env.LANGBOT_DEBUG_CHAT_LOAD_REQUIRE_SUCCESS, true);
+const providerModelThresholds = jsonObject(env.LANGBOT_DEBUG_CHAT_LOAD_PROVIDER_MODEL_THRESHOLDS_JSON);
 const failureSignals = textList(env.LANGBOT_E2E_FAILURE_SIGNALS || env.LANGBOT_DEBUG_CHAT_LOAD_FAILURE_SIGNALS || "");
 
 const result = {
@@ -80,6 +82,7 @@ const result = {
     stream,
     reset_before_run: resetBeforeRun,
     fail_on_final_mismatch: failOnFinalMismatch,
+    require_success: requireSuccess,
   },
   evidence: {
     network_log: paths.networkLog,
@@ -119,7 +122,7 @@ try {
   result.pipeline_id = pipeline.id;
   result.pipeline_name = pipeline.name || pipelineName;
   if (!result.pipeline_url && env.LANGBOT_FRONTEND_URL) {
-    result.pipeline_url = `${env.LANGBOT_FRONTEND_URL.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.id)}`;
+    result.pipeline_url = `${env.LANGBOT_FRONTEND_URL.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(pipeline.id)}`;
   }
 
   if (resetBeforeRun) {
@@ -190,6 +193,8 @@ try {
     status_counts: metrics.status_counts,
     fake_provider_request_count: metrics.fake_provider?.request_count ?? null,
     fake_provider_fault_count: metrics.fake_provider?.fault_count ?? null,
+    fake_provider_mid_stream_disconnect_count: metrics.fake_provider?.mid_stream_disconnect_count ?? null,
+    fake_provider_model_request_counts: metrics.fake_provider?.model_request_counts ?? {},
     fake_provider_duration_p95_ms: metrics.provider_timing?.provider_duration_ms.p95 ?? null,
     langbot_overhead_estimate_p95_ms: metrics.provider_timing?.langbot_overhead_estimate_ms.p95 ?? null,
     send_to_provider_start_p95_ms: metrics.provider_timing?.send_to_provider_start_ms.p95 ?? null,
@@ -782,12 +787,14 @@ function buildMetrics({ samples, totalRequests, concurrency, timeoutMs, loadDura
 function buildThresholds(metrics) {
   const thresholds = {
     error_rate: { actual: metrics.error_rate, max: maxErrorRate, pass: metrics.error_rate <= maxErrorRate },
-    response_p95_ms: {
+  };
+  if (requireSuccess) {
+    thresholds.response_p95_ms = {
       actual: metrics.response_duration_ms.p95,
       max: responseP95BudgetMs,
       pass: metrics.ok_count > 0 && metrics.response_duration_ms.p95 <= responseP95BudgetMs,
-    },
-  };
+    };
+  }
   if (minErrorRate > 0) {
     thresholds.error_rate_min = {
       actual: metrics.error_rate,
@@ -824,7 +831,34 @@ function buildThresholds(metrics) {
       pass: metrics.ok_count > 0 && metrics.first_response_ms.p95 <= firstResponseP95BudgetMs,
     };
   }
+  for (const [model, bounds] of Object.entries(providerModelThresholds)) {
+    const actual = metrics.fake_provider?.model_request_counts?.[model] ?? 0;
+    if (Number.isFinite(bounds?.min)) {
+      thresholds[`provider_model_${model}_min`] = {
+        actual,
+        min: bounds.min,
+        pass: actual >= bounds.min,
+      };
+    }
+    if (Number.isFinite(bounds?.max)) {
+      thresholds[`provider_model_${model}_max`] = {
+        actual,
+        max: bounds.max,
+        pass: actual <= bounds.max,
+      };
+    }
+  }
   return thresholds;
+}
+
+function jsonObject(value) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function looksLikeEnvIssue(error) {

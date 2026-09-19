@@ -152,6 +152,27 @@ def create_minimal_config(tmpdir: Path, port: int = 15300) -> Path:
                 'delete_batch_size': 1000,
             },
         },
+        'box': {
+            'enabled': False,
+            'backend': 'local',
+            'runtime': {
+                'endpoint': '',
+            },
+            'local': {
+                'profile': 'default',
+                'image': '',
+                'host_root': str(tmpdir / 'box'),
+                'default_workspace': '',
+                'skills_root': 'skills',
+                'allowed_mount_roots': [str(tmpdir / 'box'), '/tmp'],
+                'workspace_quota_mb': None,
+            },
+            'e2b': {
+                'api_key': '',
+                'api_url': '',
+                'template': '',
+            },
+        },
         'space': {
             'url': 'https://space.langbot.app',
             'models_gateway_api_url': 'https://api.langbot.cloud/v1',
@@ -179,8 +200,12 @@ def create_test_directories(tmpdir: Path) -> dict[str, Path]:
     """Create necessary directories for LangBot testing."""
     directories = {
         'data': tmpdir / 'data',
+        'labels': tmpdir / 'data' / 'labels',
+        'metadata': tmpdir / 'data' / 'metadata',
         'logs': tmpdir / 'logs',
+        'data_logs': tmpdir / 'data' / 'logs',
         'storage': tmpdir / 'storage',
+        'box': tmpdir / 'box',
         'chroma': tmpdir / 'chroma',
     }
 

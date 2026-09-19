@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..telemetry import diagnostics
+
 import asyncio
 import contextlib
 import dataclasses
@@ -8,6 +10,7 @@ import json
 import re
 import time
 import traceback
+import typing
 import uuid
 import sqlalchemy
 
@@ -16,20 +19,39 @@ from ..core import app, entities as core_entities, taskmgr
 from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
-from ..entity.persistence import pipeline as persistence_pipeline
+from ..entity.errors import platform as platform_errors
+from ..agent.runner.config_resolver import RunnerConfigResolver
+from ..agent.runner.host_models import (
+    AgentBinding,
+    AgentEventEnvelope,
+    BindingScope,
+    DeliveryPolicy,
+    StatePolicy,
+)
+from ..agent.runner.resource_policy import ResourcePolicyProjector
+from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
 from ..entity.persistence import workspace as persistence_workspace
 
-from ..entity.errors import platform as platform_errors
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
 from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+import langbot_plugin.api.entities.events as plugin_events
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+from langbot_plugin.api.entities.builtin.runner.event import (
+    ActorContext,
+    SubjectContext,
+    RawEventRef,
+)
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 
 class RuntimeBot:
@@ -82,6 +104,7 @@ class RuntimeBot:
         self.placement_generation = self.execution_context.placement_generation
         self.enable = bot_entity.enable
         self.adapter = adapter
+        self.task_wrapper = None
         self.task_context = taskmgr.TaskContext()
         self.task_wrapper = None
         self.logger = logger
@@ -96,86 +119,997 @@ class RuntimeBot:
             expected_generation=self.placement_generation,
         )
 
+    PIPELINE_DISCARD = '__discard__'
+    PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
+    EVENT_DATA_MAX_STRING_BYTES = 512
+
     @staticmethod
-    def _match_operator(actual: str, operator: str, expected: str) -> bool:
-        """Evaluate a single operator condition."""
+    def _eba_event_to_plugin_event(event: platform_events.EBAEvent) -> plugin_events.BaseEventModel | None:
+        """Map a platform EBA event to a plugin EventListener event model."""
+        event_mapping: list[tuple[type[platform_events.EBAEvent], type[plugin_events.BaseEventModel]]] = [
+            (platform_events.MessageReceivedEvent, plugin_events.MessageReceived),
+            (platform_events.MessageEditedEvent, plugin_events.MessageEdited),
+            (platform_events.MessageDeletedEvent, plugin_events.MessageDeleted),
+            (platform_events.MessageReactionEvent, plugin_events.MessageReactionReceived),
+            (platform_events.FeedbackReceivedEvent, plugin_events.FeedbackReceived),
+            (platform_events.MemberJoinedEvent, plugin_events.GroupMemberJoined),
+            (platform_events.MemberLeftEvent, plugin_events.GroupMemberLeft),
+            (platform_events.MemberBannedEvent, plugin_events.GroupMemberBanned),
+            (platform_events.BotInvitedToGroupEvent, plugin_events.BotInvitedToGroup),
+            (platform_events.BotRemovedFromGroupEvent, plugin_events.BotRemovedFromGroup),
+            (platform_events.BotMutedEvent, plugin_events.BotMuted),
+            (platform_events.BotUnmutedEvent, plugin_events.BotUnmuted),
+            (platform_events.PlatformSpecificEvent, plugin_events.PlatformSpecificEventReceived),
+        ]
+
+        for platform_event_type, plugin_event_type in event_mapping:
+            if isinstance(event, platform_event_type):
+                return plugin_event_type.from_platform_event(event)
+
+        return None
+
+    @staticmethod
+    def _match_event_pattern(event_type: str, pattern: str) -> bool:
+        if not event_type or not pattern:
+            return False
+        if pattern == '*':
+            return True
+        if pattern.endswith('.*'):
+            return event_type.startswith(f'{pattern[:-2]}.')
+        return event_type == pattern
+
+    @classmethod
+    def _is_message_event_type(cls, event_type: str) -> bool:
+        return cls._match_event_pattern(event_type, 'message.*')
+
+    @classmethod
+    def _agent_supports_event_type(
+        cls,
+        supported_patterns: list[str] | None,
+        event_type: str,
+    ) -> bool:
+        patterns = supported_patterns if isinstance(supported_patterns, list) else ['*']
+        return any(cls._match_event_pattern(event_type, pattern) for pattern in patterns)
+
+    @staticmethod
+    def _get_nested_value(data: dict[str, typing.Any], path: str) -> typing.Any:
+        current: typing.Any = data
+        for key in path.split('.'):
+            if isinstance(current, dict):
+                current = current.get(key)
+            else:
+                current = getattr(current, key, None)
+            if current is None:
+                return None
+        return current
+
+    @classmethod
+    def _match_event_filter(
+        cls,
+        event_data: dict[str, typing.Any],
+        event_filter: dict[str, typing.Any],
+    ) -> bool:
+        field = str(event_filter.get('field') or event_filter.get('path') or '').strip()
+        if not field:
+            return True
+
+        operator = str(event_filter.get('operator') or 'eq')
+        expected = event_filter.get('value')
+        actual = cls._get_nested_value(event_data, field)
+
         if operator == 'eq':
             return actual == expected
-        elif operator == 'neq':
+        if operator == 'neq':
             return actual != expected
-        elif operator == 'contains':
-            return expected in actual
-        elif operator == 'not_contains':
-            return expected not in actual
-        elif operator == 'starts_with':
-            return actual.startswith(expected)
-        elif operator == 'regex':
+        if operator == 'contains':
+            if isinstance(actual, (list, tuple, set)):
+                return expected in actual
+            return str(expected) in str(actual or '')
+        if operator == 'not_contains':
+            if isinstance(actual, (list, tuple, set)):
+                return expected not in actual
+            return str(expected) not in str(actual or '')
+        if operator == 'starts_with':
+            return str(actual or '').startswith(str(expected))
+        if operator == 'regex':
             try:
-                return bool(re.search(expected, actual))
+                return bool(re.search(str(expected), str(actual or '')))
             except re.error:
                 return False
         return False
 
-    PIPELINE_DISCARD = '__discard__'
-    PIPELINE_DISCARD_DISPLAY_NAME = 'Discarded'
+    @classmethod
+    def _augment_event_data(
+        cls,
+        event_data: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Inject virtual computed fields to simplify common filter patterns."""
+        message_chain = event_data.get('message_chain')
+        if isinstance(message_chain, list):
+            text_parts = [
+                comp.get('text', '') for comp in message_chain if isinstance(comp, dict) and comp.get('type') == 'Plain'
+            ]
+            event_data['message_text'] = ''.join(text_parts)
+            event_data['message_element_types'] = [
+                comp.get('type', '') for comp in message_chain if isinstance(comp, dict)
+            ]
+        if 'group' in event_data:
+            event_data['chat_type'] = 'group' if event_data.get('group') is not None else 'person'
+        return event_data
 
-    def resolve_pipeline_uuid(
-        self,
-        launcher_type: str,
-        launcher_id: str,
-        message_text: str,
-        message_element_types: list[str] | None = None,
-    ) -> tuple[str | None, bool]:
-        """Resolve pipeline UUID based on routing rules.
+    @classmethod
+    def _match_event_filters(
+        cls,
+        event: platform_events.EBAEvent,
+        filters: typing.Any,
+    ) -> bool:
+        if not filters:
+            return True
+        if not isinstance(filters, list):
+            return False
 
-        Rules are evaluated in order; first match wins.
-        Falls back to use_pipeline_uuid if no rule matches.
+        event_data = cls._augment_event_data(cls._safe_model_dump(event))
+        return all(
+            cls._match_event_filter(event_data, event_filter)
+            for event_filter in filters
+            if isinstance(event_filter, dict)
+        )
 
-        Rule types:
-          - launcher_type: session type ("person" / "group")
-          - launcher_id: session / group id
-          - message_content: message text content
-          - message_has_element: message contains element of given type
-            (Image, Voice, File, Forward, Face, At, AtAll, Quote)
-            Operators: eq (has), neq (doesn't have)
+    @staticmethod
+    def _get_event_bindings_from_value(raw_bindings: typing.Any) -> list[dict[str, typing.Any]]:
+        raw_bindings = raw_bindings or []
+        if isinstance(raw_bindings, str):
+            try:
+                raw_bindings = json.loads(raw_bindings)
+            except json.JSONDecodeError:
+                raw_bindings = []
+        if not isinstance(raw_bindings, list):
+            return []
+        return [binding for binding in raw_bindings if isinstance(binding, dict)]
 
-        Operators: eq, neq, contains, not_contains, starts_with, regex
+    def _get_event_bindings(self) -> list[dict[str, typing.Any]]:
+        return self._get_event_bindings_from_value(self.bot_entity.event_bindings)
 
-        When pipeline_uuid is ``__discard__``, the message should be
-        silently dropped by the caller.
+    @classmethod
+    def _evaluate_eba_event_bindings(
+        cls,
+        bindings: list[dict[str, typing.Any]],
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
+        """Evaluate Bot event bindings with the same precedence used at runtime."""
+        matched: list[tuple[int, int, dict[str, typing.Any], dict[str, typing.Any]]] = []
+        diagnostic_steps: list[dict[str, typing.Any]] = []
 
-        Returns:
-            tuple: (pipeline_uuid, routed_by_rule) - routed_by_rule is True
-            when a routing rule matched, False when falling back to default.
-        """
-        rules = self.bot_entity.pipeline_routing_rules or []
-        element_type_set = set(message_element_types or [])
+        for index, binding in enumerate(bindings):
+            if binding.get('target_type') == 'event_processor':
+                continue
+            event_pattern = str(binding.get('event_pattern') or '')
+            priority = int(binding.get('priority') or 0)
+            order = int(binding.get('order', index))
+            step = {
+                'step': 'evaluate_binding',
+                'binding_id': binding.get('id'),
+                'event_pattern': event_pattern,
+                'target_type': binding.get('target_type'),
+                'target_uuid': binding.get('target_uuid') or '',
+                'enabled': binding.get('enabled', True),
+                'priority': priority,
+                'order': order,
+                'matched': False,
+                'failure_code': None,
+                'reason': '',
+            }
 
-        for rule in rules:
-            rule_type = rule.get('type')
-            operator = rule.get('operator', 'eq')
-            rule_value = rule.get('value', '')
-            target_uuid = rule.get('pipeline_uuid')
-            if not rule_type or not target_uuid:
+            if not binding.get('enabled', True):
+                step['failure_code'] = 'binding_disabled'
+                step['reason'] = 'Binding is disabled'
+                diagnostic_steps.append(step)
                 continue
 
-            if rule_type == 'launcher_type':
-                if self._match_operator(launcher_type, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'launcher_id':
-                if self._match_operator(str(launcher_id), operator, str(rule_value)):
-                    return target_uuid, True
-            elif rule_type == 'message_content':
-                if self._match_operator(message_text, operator, rule_value):
-                    return target_uuid, True
-            elif rule_type == 'message_has_element':
-                has_element = rule_value in element_type_set
-                if operator == 'eq' and has_element:
-                    return target_uuid, True
-                elif operator == 'neq' and not has_element:
-                    return target_uuid, True
+            if not cls._match_event_pattern(event_type, event_pattern):
+                step['failure_code'] = 'event_pattern_mismatch'
+                step['reason'] = 'Event type does not match binding event_pattern'
+                diagnostic_steps.append(step)
+                continue
+            if not cls._match_event_filters(event, binding.get('filters')):
+                step['failure_code'] = 'filters_mismatch'
+                step['reason'] = 'Event data does not satisfy binding filters'
+                diagnostic_steps.append(step)
+                continue
 
-        return self.bot_entity.use_pipeline_uuid, False
+            step['matched'] = True
+            step['reason'] = 'Binding matched event pattern and filters'
+            diagnostic_steps.append(step)
+            matched.append((priority, -order, binding, step))
+
+        if not matched:
+            return None, diagnostic_steps
+
+        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        selected_binding = matched[0][2]
+        selected_step = matched[0][3]
+        selected_step['selected'] = True
+        selected_step['reason'] = 'Selected by priority and order'
+        for _, _, _, step in matched[1:]:
+            step['selected'] = False
+            step['failure_code'] = 'lower_priority'
+            step['reason'] = 'Another matching binding has higher priority or earlier order'
+        return selected_binding, diagnostic_steps
+
+    def _resolve_eba_event_binding(
+        self,
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> dict[str, typing.Any] | None:
+        """Resolve the highest priority Bot event binding for a platform event."""
+        selected, _ = self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        return selected
+
+    def diagnose_eba_event_binding(
+        self,
+        event: platform_events.EBAEvent,
+        event_type: str,
+    ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
+        """Return the selected event binding plus per-binding diagnostic steps."""
+        return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+
+    async def _record_event_route_trace(
+        self,
+        *,
+        event_type: str,
+        status: str,
+        text: str,
+        level: str = 'info',
+        binding: dict[str, typing.Any] | None = None,
+        target_type: str | None = None,
+        target_uuid: str | None = None,
+        failure_code: str | None = None,
+        reason: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, typing.Any]:
+        """Record structured event routing state while preserving the human log."""
+        binding = binding or {}
+        diagnostics.event(
+            self,
+            'route',
+            'route.primary',
+            {
+                'not_matched': 'skipped',
+                'discarded': 'skipped',
+                'matched': 'started',
+                'delivered': 'succeeded',
+                'failed': 'failed',
+            }.get(status, 'unknown'),
+            stage='dispatch',
+            platform_event_type=event_type,
+            processor_type=target_type or binding.get('target_type', ''),
+            reason_code=failure_code or status,
+        )
+        metadata = {
+            'kind': 'event_route_trace',
+            'event_type': event_type,
+            'status': status,
+            'binding_id': binding.get('id'),
+            'event_pattern': binding.get('event_pattern'),
+            'target_type': target_type or binding.get('target_type'),
+            'target_uuid': target_uuid or binding.get('target_uuid') or '',
+            'failure_code': failure_code,
+            'reason': reason or text,
+            'run_id': run_id,
+        }
+        diagnostics.set_outcome(
+            {
+                'not_matched': 'skipped',
+                'discarded': 'skipped',
+                'matched': 'started',
+                'delivered': 'succeeded',
+                'failed': 'failed',
+            }.get(status, 'unknown'),
+            reason_code=failure_code or status,
+        )
+        log_method = getattr(self.logger, level, self.logger.info)
+        await log_method(text, metadata=metadata)
+        return metadata
+
+    def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
+        """Return the first Pipeline target configured for an event type."""
+        matched: list[tuple[int, int, str]] = []
+        for index, binding in enumerate(self._get_event_bindings()):
+            if not binding.get('enabled', True):
+                continue
+            if binding.get('target_type') != 'pipeline':
+                continue
+            target_uuid = str(binding.get('target_uuid') or '')
+            if not target_uuid:
+                continue
+            if not self._match_event_pattern(event_type, str(binding.get('event_pattern') or '')):
+                continue
+            priority = int(binding.get('priority') or 0)
+            order = int(binding.get('order', index))
+            matched.append((priority, -order, target_uuid))
+
+        if not matched:
+            return None
+
+        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return matched[0][2]
+
+    @staticmethod
+    def _safe_model_dump(model: typing.Any) -> dict[str, typing.Any]:
+        if model is None:
+            return {}
+        if hasattr(model, 'model_dump'):
+            try:
+                return model.model_dump(mode='json')
+            except TypeError:
+                try:
+                    return model.model_dump()
+                except Exception:
+                    return {}
+            except Exception:
+                return {}
+        if isinstance(model, dict):
+            return model
+        return {}
+
+    @classmethod
+    def _compact_event_data(cls, event: platform_events.EBAEvent) -> dict[str, typing.Any]:
+        raw_event_data = cls._safe_model_dump(event)
+        compact: dict[str, typing.Any] = {}
+        for key, value in raw_event_data.items():
+            if key == 'source_platform_object' or key.startswith('_'):
+                continue
+            if value is None or isinstance(value, (bool, int, float)):
+                compact[key] = value
+                continue
+            if isinstance(value, str):
+                if len(value.encode('utf-8')) <= cls.EVENT_DATA_MAX_STRING_BYTES:
+                    compact[key] = value
+                continue
+            if isinstance(value, (list, dict)):
+                try:
+                    encoded = json.dumps(value, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    continue
+                if len(encoded.encode('utf-8')) <= cls.EVENT_DATA_MAX_STRING_BYTES:
+                    compact[key] = value
+        return compact
+
+    async def _record_adapter_event(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> dict[str, typing.Any]:
+        """Record a normalized adapter event for the platform debugging surface."""
+        event_type = getattr(event, 'type', None) or event.__class__.__name__
+        metadata = {
+            'kind': 'adapter_event_received',
+            'event_type': event_type,
+            'event_data': self._compact_event_data(event),
+            'adapter': getattr(self.bot_entity, 'adapter', None) or adapter.__class__.__name__,
+            'bot_uuid': self.bot_entity.uuid,
+        }
+        await self.logger.info(
+            f'Platform adapter received {event_type}',
+            metadata=metadata,
+        )
+        return metadata
+
+    @staticmethod
+    def _get_entity_id(entity: typing.Any) -> str | None:
+        entity_id = getattr(entity, 'id', None)
+        if entity_id is None and isinstance(entity, dict):
+            entity_id = entity.get('id')
+        if entity_id is None or entity_id == '':
+            return None
+        return str(entity_id)
+
+    @staticmethod
+    def _get_entity_name(entity: typing.Any) -> str | None:
+        if entity is None:
+            return None
+        if hasattr(entity, 'get_name'):
+            try:
+                name = entity.get_name()
+                if name:
+                    return str(name)
+            except Exception:
+                pass
+        for attr in ('nickname', 'member_name', 'name', 'display_name'):
+            value = getattr(entity, attr, None)
+            if value:
+                return str(value)
+        if isinstance(entity, dict):
+            for attr in ('nickname', 'member_name', 'name', 'display_name'):
+                value = entity.get(attr)
+                if value:
+                    return str(value)
+        return None
+
+    @classmethod
+    def _infer_actor_context(cls, event: platform_events.EBAEvent) -> ActorContext | None:
+        actor = getattr(event, 'sender', None) or getattr(event, 'member', None) or getattr(event, 'user', None)
+        actor_id = cls._get_entity_id(actor)
+        actor_name = cls._get_entity_name(actor)
+
+        if actor_id is None:
+            user_id = getattr(event, 'user_id', None)
+            if user_id:
+                actor_id = str(user_id)
+
+        if actor_id is None:
+            return None
+
+        return ActorContext(
+            actor_type='user',
+            actor_id=actor_id,
+            actor_name=actor_name,
+            metadata={},
+        )
+
+    @classmethod
+    def _infer_subject_context(cls, event: platform_events.EBAEvent) -> SubjectContext:
+        group = getattr(event, 'group', None)
+        if group is not None:
+            group_id = cls._get_entity_id(group)
+            return SubjectContext(
+                subject_type='group',
+                subject_id=group_id,
+                data={'group_name': cls._get_entity_name(group)},
+            )
+
+        message_id = getattr(event, 'message_id', None)
+        if message_id:
+            return SubjectContext(
+                subject_type='message',
+                subject_id=str(message_id),
+                data={},
+            )
+
+        feedback_id = getattr(event, 'feedback_id', None)
+        if feedback_id:
+            return SubjectContext(
+                subject_type='feedback',
+                subject_id=str(feedback_id),
+                data={'message_id': getattr(event, 'message_id', None)},
+            )
+
+        action = getattr(event, 'action', None)
+        if action:
+            return SubjectContext(
+                subject_type='platform_action',
+                subject_id=str(action),
+                data={},
+            )
+
+        return SubjectContext(
+            subject_type='event',
+            subject_id=getattr(event, 'type', None),
+            data={},
+        )
+
+    @staticmethod
+    def _session_to_reply_target(session_id: str | None) -> tuple[str | None, str | None]:
+        if not session_id or '_' not in session_id:
+            return None, None
+        target_type, target_id = session_id.split('_', 1)
+        if target_type == 'person':
+            target_type = 'person'
+        elif target_type == 'group':
+            target_type = 'group'
+        else:
+            return None, None
+        return target_type, target_id or None
+
+    @classmethod
+    def _infer_reply_target(
+        cls,
+        event: platform_events.EBAEvent,
+    ) -> tuple[str | None, str | None, dict[str, typing.Any]]:
+        metadata: dict[str, typing.Any] = {}
+        group = getattr(event, 'group', None)
+        group_id = cls._get_entity_id(group)
+        if group_id:
+            metadata['group_id'] = group_id
+            return 'group', group_id, metadata
+
+        chat_id = getattr(event, 'chat_id', None)
+        chat_type = getattr(event, 'chat_type', None)
+        chat_type_value = getattr(chat_type, 'value', chat_type)
+        if chat_id:
+            metadata['chat_id'] = str(chat_id)
+            if chat_type_value == 'group':
+                return 'group', str(chat_id), metadata
+            return 'person', str(chat_id), metadata
+
+        session_target_type, session_target_id = cls._session_to_reply_target(getattr(event, 'session_id', None))
+        if session_target_type and session_target_id:
+            return session_target_type, session_target_id, metadata
+
+        raw_data = getattr(event, 'data', None)
+        if isinstance(raw_data, dict):
+            target_type = raw_data.get('target_type') or raw_data.get('chat_type')
+            target_id = (
+                raw_data.get('target_id')
+                or raw_data.get('chat_id')
+                or raw_data.get('group_id')
+                or raw_data.get('user_id')
+            )
+            if target_type and target_id:
+                return str(target_type), str(target_id), metadata
+
+        return None, None, metadata
+
+    @staticmethod
+    def _extract_message_id(message_chain: platform_message.MessageChain) -> str:
+        for component in message_chain:
+            if isinstance(component, platform_message.Source):
+                value = getattr(component, 'id', '')
+                return str(value) if value is not None else ''
+        return ''
+
+    def _legacy_message_to_eba_event(
+        self,
+        event: platform_events.FriendMessage | platform_events.GroupMessage,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> platform_events.MessageReceivedEvent:
+        if isinstance(event, platform_events.GroupMessage):
+            group = platform_entities.UserGroup(
+                id=event.group.id,
+                name=event.group.name,
+            )
+            return platform_events.MessageReceivedEvent(
+                legacy_event=event,
+                message_id=self._extract_message_id(event.message_chain),
+                message_chain=event.message_chain,
+                sender=platform_entities.User(
+                    id=event.sender.id,
+                    nickname=event.sender.member_name,
+                ),
+                chat_type=platform_entities.ChatType.GROUP,
+                chat_id=event.group.id,
+                group=group,
+                timestamp=event.time or time.time(),
+                bot_uuid=self.bot_entity.uuid,
+                adapter_name=adapter.__class__.__name__,
+                source_platform_object=event.source_platform_object,
+            )
+
+        return platform_events.MessageReceivedEvent(
+            legacy_event=event,
+            message_id=self._extract_message_id(event.message_chain),
+            message_chain=event.message_chain,
+            sender=platform_entities.User(
+                id=event.sender.id,
+                nickname=event.sender.nickname,
+                remark=event.sender.remark,
+            ),
+            chat_type=platform_entities.ChatType.PRIVATE,
+            chat_id=event.sender.id,
+            timestamp=event.time or time.time(),
+            bot_uuid=self.bot_entity.uuid,
+            adapter_name=adapter.__class__.__name__,
+            source_platform_object=event.source_platform_object,
+        )
+
+    @classmethod
+    def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
+        text = None
+        contents: list[dict[str, typing.Any]] = []
+
+        message_chain = getattr(event, 'message_chain', None)
+        if message_chain:
+            text_parts: list[str] = []
+            try:
+                for component in message_chain:
+                    if isinstance(component, platform_message.Plain):
+                        text_parts.append(component.text)
+                    elif isinstance(component, platform_message.Image):
+                        if component.url:
+                            contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
+                        elif component.base64:
+                            contents.append({'type': 'image_base64', 'image_base64': component.base64})
+            except TypeError:
+                text_parts.append(str(message_chain))
+            text = ''.join(text_parts) or str(message_chain)
+
+        if text is None:
+            feedback_content = getattr(event, 'feedback_content', None)
+            if feedback_content:
+                text = str(feedback_content)
+            elif getattr(event, 'action', None):
+                text = str(getattr(event, 'action'))
+            else:
+                text = str(getattr(event, 'type', 'event'))
+
+        if text:
+            contents.insert(0, {'type': 'text', 'text': text})
+
+        return AgentInput(
+            text=text,
+            contents=contents,
+            attachments=[],
+        )
+
+    def _eba_event_to_agent_envelope(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> AgentEventEnvelope:
+        event_type = getattr(event, 'type', None) or event.__class__.__name__
+        event_time = getattr(event, 'timestamp', None) or time.time()
+        event_id = (
+            getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
+        )
+        target_type, target_id, target_metadata = self._infer_reply_target(event)
+        supported_apis = self._get_adapter_supported_apis(adapter)
+
+        conversation_id = None
+        if target_type and target_id:
+            conversation_id = f'{target_type}_{target_id}'
+        elif getattr(event, 'session_id', None):
+            conversation_id = str(getattr(event, 'session_id'))
+
+        delivery_data: dict[str, typing.Any] = {
+            'surface': 'platform',
+            'reply_target': {
+                'target_type': target_type,
+                'target_id': target_id,
+                'message_id': getattr(event, 'message_id', None),
+                **target_metadata,
+            },
+            'supports_streaming': False,
+            'supports_edit': 'edit_message' in supported_apis,
+            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
+            'platform_capabilities': {
+                'adapter': adapter.__class__.__name__,
+                'event_type': event_type,
+                'supported_apis': supported_apis,
+            },
+        }
+        interaction_capabilities = self._get_adapter_interaction_capabilities(adapter, supported_apis)
+        if interaction_capabilities is not None:
+            delivery_data['interactions'] = interaction_capabilities
+
+        return AgentEventEnvelope(
+            event_id=f'platform:{self.bot_entity.uuid}:{event_id}',
+            event_type=event_type,
+            event_time=int(event_time) if isinstance(event_time, (int, float)) else None,
+            source='platform',
+            source_event_type=event_type,
+            bot_id=self.bot_entity.uuid,
+            workspace_id=None,
+            conversation_id=conversation_id,
+            thread_id=None,
+            actor=self._infer_actor_context(event),
+            subject=self._infer_subject_context(event),
+            input=self._build_agent_input(event),
+            delivery=DeliveryContext.model_validate(delivery_data),
+            raw_ref=RawEventRef(ref_id=str(event_id), storage_key=None),
+            data=self._compact_event_data(event),
+        )
+
+    @staticmethod
+    def _get_adapter_supported_apis(
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> list[str]:
+        get_supported_apis = getattr(adapter, 'get_supported_apis', None)
+        if not callable(get_supported_apis):
+            return []
+        try:
+            declared_apis = get_supported_apis()
+        except Exception:
+            return []
+        if not isinstance(declared_apis, (list, tuple, set)):
+            return []
+        return list(dict.fromkeys(api_name for api_name in declared_apis if isinstance(api_name, str) and api_name))
+
+    @staticmethod
+    def _get_adapter_interaction_capabilities(
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        supported_apis: list[str],
+    ) -> dict[str, typing.Any] | None:
+        if 'interactions' not in DeliveryContext.model_fields or 'interaction.request' not in supported_apis:
+            return None
+        get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
+        if not callable(get_capabilities):
+            return None
+        try:
+            capabilities = get_capabilities()
+        except Exception:
+            return None
+        return capabilities if isinstance(capabilities, dict) else None
+
+    @staticmethod
+    def _agent_product_to_binding(
+        agent: dict[str, typing.Any],
+        event_binding: dict[str, typing.Any],
+        event_type: str,
+        bot_uuid: str,
+    ) -> AgentBinding | None:
+        config = agent.get('config') if isinstance(agent, dict) else None
+        if config is None:
+            return None
+
+        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_config(config)
+        if not runner_id:
+            return None
+
+        return AgentBinding(
+            binding_id=(
+                f'event_processor:{agent["uuid"]}'
+                if agent.get('kind') == 'event_processor'
+                else f'bot:{bot_uuid}:{event_binding.get("id") or uuid.uuid4()}'
+            ),
+            scope=BindingScope(scope_type='bot', scope_id=bot_uuid),
+            event_types=[event_type],
+            runner_id=runner_id,
+            runner_config=runner_config,
+            resource_policy=ResourcePolicyProjector.from_runner_config(
+                runner_config,
+                allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
+                allowed_host_tool_names=config.get('allowed_tools'),
+                override_runner_tools='allowed_tools' in config,
+            ),
+            state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
+            delivery_policy=DeliveryPolicy(
+                enable_streaming=False,
+                enable_reply=False,
+                enable_interactions=agent.get('kind') != 'event_processor',
+            ),
+            agent_id=agent.get('uuid'),
+            processor_type=agent.get('kind', 'agent'),
+            processor_id=agent.get('uuid'),
+        )
+
+    @diagnostics.observe('event', 'platform.receive', source='platform', stage='dispatch')
+    async def _handle_platform_event(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> None:
+        event.bot_uuid = self.bot_entity.uuid
+        await self._record_adapter_event(event, adapter)
+
+        primary = (
+            self._handle_interaction_submission(event, adapter)
+            if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
+            else self._dispatch_eba_event_to_processor(event, adapter)
+        )
+        subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+        seen = set()
+        tasks = [primary]
+        for subscription in subscriptions:
+            processor_uuid = subscription.get('processor_uuid')
+            if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
+                continue
+            seen.add(processor_uuid)
+            tasks.append(self._dispatch_plugin_subscription(event, adapter, processor_uuid))
+        # Start all deliveries together. A slow or failed subscriber cannot block
+        # another subscriber or the primary route from receiving the event.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                await self.logger.error(f'Event delivery failed: {result}')
+
+    @diagnostics.observe('route', 'route.subscription', source='platform', stage='dispatch')
+    async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid):
+        event_type = event.type
+        event_binding = {
+            'id': f'plugin_processor:{processor_uuid}',
+            'target_type': 'event_processor',
+            'target_uuid': processor_uuid,
+            'event_pattern': event_type,
+        }
+        try:
+            agent = await self.ap.agent_service.get_agent(self.execution_context, processor_uuid)
+            if not agent or agent.get('kind') != 'event_processor':
+                raise ValueError('Plugin processor not found')
+            descriptor = await self.ap.runner_registry.get(self.execution_context, agent.get('component_ref'))
+            if 'event' not in descriptor.usages:
+                raise ValueError('Runner does not support event processing')
+            # Resolve the installed declaration each time, including after plugin updates.
+            patterns = descriptor.supported_event_patterns
+            if not patterns or not self._agent_supports_event_type(patterns, event_type):
+                diagnostics.set_outcome('skipped', reason_code='not_matched')
+                return
+            agent = {**agent, 'supported_event_patterns': patterns}
+            return await self._dispatch_eba_event_to_processor(event, adapter, event_binding, agent)
+        except Exception as exc:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type='event_processor',
+                target_uuid=processor_uuid,
+                failure_code='runner_failed',
+                reason=str(exc),
+                text=f'Plugin processor {processor_uuid} failed: {exc}',
+            )
+
+    @diagnostics.observe('route', 'route.dispatch', source='platform', stage='dispatch')
+    async def _dispatch_eba_event_to_processor(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        event_binding: dict | None = None,
+        agent: dict | None = None,
+    ) -> dict[str, typing.Any]:
+        event_type = getattr(event, 'type', None) or event.__class__.__name__
+
+        if event_binding is None:
+            event_binding = self._resolve_eba_event_binding(event, event_type)
+        if event_binding is None:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='not_matched',
+                failure_code='route_not_found',
+                reason='No event route matched',
+                text=f'Platform event {event_type} ignored: no event route matched',
+            )
+
+        target_type = event_binding.get('target_type')
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='matched',
+            binding=event_binding,
+            target_type=target_type,
+            target_uuid=event_binding.get('target_uuid'),
+            text=f'Event {event_type} matched route {event_binding.get("id") or ""}'.strip(),
+        )
+        if target_type == 'discard':
+            if isinstance(event, platform_events.MessageReceivedEvent):
+                await self._dispatch_eba_message_to_pipeline(
+                    event,
+                    adapter,
+                    pipeline_uuid=self.PIPELINE_DISCARD,
+                    routed_by_event_binding=True,
+                )
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='discarded',
+                    binding=event_binding,
+                    target_type=target_type,
+                    text=f'Event {event_type} discarded by event binding',
+                )
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='discarded',
+                binding=event_binding,
+                target_type=target_type,
+                text=f'Event {event_type} discarded by event binding',
+            )
+        if target_type == 'pipeline':
+            if not self._is_message_event_type(event_type):
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='warning',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=event_binding.get('target_uuid'),
+                    failure_code='processor_incompatible',
+                    reason='Pipeline targets only support message events',
+                    text=f'Event {event_type} ignored Pipeline target for non-message event',
+                )
+            await self._dispatch_eba_message_to_pipeline(
+                event,
+                adapter,
+                pipeline_uuid=event_binding.get('target_uuid'),
+                routed_by_event_binding=True,
+            )
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='delivered',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=event_binding.get('target_uuid'),
+                text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
+            )
+        if target_type not in {'agent', 'event_processor'}:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=event_binding.get('target_uuid'),
+                failure_code='processor_incompatible',
+                reason=f'Unsupported event binding target type: {target_type}',
+                text=f'Event {event_type} ignored unsupported target type {target_type}',
+            )
+
+        target_uuid = event_binding.get('target_uuid')
+        if agent is None:
+            agent = await self.ap.agent_service.get_agent(self.execution_context, target_uuid)
+        if not agent or agent.get('kind') != target_type:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_not_found',
+                reason='Agent target not found',
+                text=f'Event {event_type} target agent not found: {target_uuid}',
+            )
+        if not self._agent_supports_event_type(agent.get('supported_event_patterns'), event_type):
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_incompatible',
+                reason='Agent target does not support this event type',
+                text=f'Event {event_type} target agent does not support this event: {target_uuid}',
+            )
+
+        try:
+            binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
+        except Exception:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='runner_failed',
+                reason='Agent configuration is invalid',
+                text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+            )
+        if binding is None:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='warning',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='processor_not_found',
+                reason='Agent target has no runner',
+                text=f'Event {event_type} target agent has no runner: {target_uuid}',
+            )
+
+        envelope = self._eba_event_to_agent_envelope(event, adapter)
+        if target_type == 'event_processor':
+            envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
+        try:
+            async for _ in self.ap.agent_run_orchestrator.run(
+                envelope,
+                binding,
+                adapter_context={
+                    '_delivery_adapter': adapter,
+                    '_platform_event': event,
+                    '_execution_context': self.execution_context,
+                },
+            ):
+                # Results are journaled by the orchestrator; platform sends require explicit actions.
+                pass
+        except Exception:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='runner_failed',
+                reason='Agent runner failed',
+                text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+            )
+        return await self._record_event_route_trace(
+            event_type=event_type,
+            status='delivered',
+            binding=event_binding,
+            target_type=target_type,
+            target_uuid=target_uuid,
+            text=f'Event {event_type} delivered to Agent {target_uuid}',
+        )
 
     def resolve_event_pipeline_uuid(
         self,
@@ -266,43 +1200,44 @@ class RuntimeBot:
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
-    async def initialize(self):
-        def tenant_scoped_listener(listener):
-            """Bind adapter callbacks to a Workspace without holding a DB transaction."""
+    @diagnostics.observe('event', 'platform.legacy_receive', source='platform', stage='dispatch')
+    async def _handle_legacy_message_event(
+        self,
+        event: platform_events.FriendMessage | platform_events.GroupMessage,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        pipeline_uuid_override: str | None = None,
+        routed_by_event_binding: bool = False,
+        variables: dict[str, typing.Any] | None = None,
+    ) -> None:
+        await self.assert_execution_active()
+        is_group_message = isinstance(event, platform_events.GroupMessage)
+        launcher_kind = 'group' if is_group_message else 'person'
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP if is_group_message else provider_session.LauncherTypes.PERSON
+        )
+        launcher_id = event.group.id if is_group_message else event.sender.id
+        sender_id = event.sender.id
 
-            @functools.wraps(listener)
-            async def wrapped(*args, **kwargs):
-                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
-                cloud_runtime = (
-                    getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        image_components = [
+            component for component in event.message_chain if isinstance(component, platform_message.Image)
+        ]
+
+        await self.logger.info(
+            f'{event.message_chain}',
+            images=image_components,
+            message_session_id=f'{launcher_kind}_{launcher_id}',
+        )
+
+        skip_pipeline = False
+        if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
+            if is_group_message:
+                skip_pipeline = await self.ap.webhook_pusher.push_group_message(
+                    self.execution_context,
+                    event,
+                    self.bot_entity.uuid,
+                    adapter.__class__.__name__,
                 )
-                if cloud_runtime:
-                    if not callable(tenant_scope):
-                        raise RuntimeError('Cloud platform callbacks require an explicit tenant scope')
-                    async with tenant_scope(self.workspace_uuid):
-                        return await listener(*args, **kwargs)
-                return await listener(*args, **kwargs)
-
-            return wrapped
-
-        async def on_friend_message(
-            event: platform_events.FriendMessage,
-            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
-        ):
-            await self.assert_execution_active()
-            image_components = [
-                component for component in event.message_chain if isinstance(component, platform_message.Image)
-            ]
-
-            await self.logger.info(
-                f'{event.message_chain}',
-                images=image_components,
-                message_session_id=f'person_{event.sender.id}',
-            )
-
-            # Push to webhooks and check if pipeline should be skipped
-            skip_pipeline = False
-            if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
+            else:
                 skip_pipeline = await self.ap.webhook_pusher.push_person_message(
                     self.execution_context,
                     event,
@@ -310,123 +1245,333 @@ class RuntimeBot:
                     adapter.__class__.__name__,
                 )
 
-            # Only add to query pool if no webhook requested to skip pipeline
-            if not skip_pipeline:
-                launcher_id = event.sender.id
+        if skip_pipeline:
+            await self.logger.info(f'Pipeline skipped for {launcher_kind} message due to webhook response')
+            return
 
-                if hasattr(adapter, 'get_launcher_id'):
-                    custom_launcher_id = adapter.get_launcher_id(event)
-                    if custom_launcher_id:
-                        launcher_id = custom_launcher_id
+        if hasattr(adapter, 'get_launcher_id'):
+            custom_launcher_id = adapter.get_launcher_id(event)
+            if custom_launcher_id:
+                launcher_id = custom_launcher_id
 
-                message_text = str(event.message_chain)
-                element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_event_pipeline_uuid(
-                    adapter,
-                    'person',
-                    launcher_id,
-                    message_text,
-                    element_types,
+        if pipeline_uuid_override is None:
+            pipeline_uuid = None
+            routed_by_rule = False
+        else:
+            pipeline_uuid = pipeline_uuid_override
+            routed_by_rule = routed_by_event_binding
+
+        if pipeline_uuid == self.PIPELINE_DISCARD:
+            await self.logger.info(f'{launcher_kind.title()} message discarded by routing rule')
+            await self._record_discarded_message(
+                launcher_type,
+                launcher_id,
+                sender_id,
+                event,
+                event.message_chain,
+            )
+            return
+
+        await self.ap.msg_aggregator.add_message(
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=launcher_type,
+            launcher_id=launcher_id,
+            sender_id=sender_id,
+            message_event=event,
+            message_chain=event.message_chain,
+            adapter=adapter,
+            pipeline_uuid=pipeline_uuid,
+            routed_by_rule=routed_by_rule,
+            variables=variables,
+            execution_context=self.execution_context,
+        )
+
+    @diagnostics.observe('interaction', 'interaction.submit', source='platform', stage='dispatch')
+    async def _handle_interaction_submission(
+        self,
+        event: platform_events.PlatformSpecificEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> None:
+        """Consume a platform interaction callback and resume its original processor."""
+        data = event.data if isinstance(event.data, dict) else {}
+        callback_token = str(data.get('callback_token') or '')
+        actor_id = str(data.get('actor_id') or data.get('user_id') or '') or None
+        target_type = str(data.get('target_type') or '') or None
+        target_id = str(data.get('target_id') or data.get('chat_id') or '') or None
+        conversation_id = f'{target_type}_{target_id}' if target_type and target_id else None
+        submission = {
+            'interaction_id': data.get('interaction_id'),
+            'action_id': data.get('action_id'),
+            'values': data.get('values') if isinstance(data.get('values'), dict) else {},
+            'submitted_at': int(event.timestamp) if event.timestamp else None,
+        }
+        for ref_name in ('action_ref', 'field_ref', 'option_ref'):
+            if data.get(ref_name) is not None:
+                submission[ref_name] = data[ref_name]
+
+        record = await self.ap.agent_run_orchestrator.interaction_manager.consume_callback(
+            callback_token=callback_token,
+            submission=submission,
+            bot_id=self.bot_entity.uuid,
+            conversation_id=conversation_id,
+            actor_id=actor_id,
+        )
+        await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
+
+        if record['processor_type'] == 'agent':
+            await self._resume_agent_interaction(record, event, adapter, actor_id)
+            return
+        if record['processor_type'] != 'pipeline':
+            raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
+
+        pipeline = await self.ap.pipeline_service.get_pipeline(
+            self.execution_context,
+            record['processor_id'],
+            include_secret=True,
+        )
+        if not pipeline:
+            raise ValueError(f'Interaction target Pipeline is unavailable: {record["processor_id"]}')
+        current_runner_id = RunnerConfigResolver.resolve_runner_id(pipeline.get('config') or {})
+        if current_runner_id != record['runner_id']:
+            raise ValueError('Interaction target Pipeline runner changed after the request was created')
+
+        message_components: list[platform_message.MessageComponent] = []
+        callback_message_id = data.get('message_id')
+        if callback_message_id:
+            message_components.append(
+                platform_message.Source(
+                    id=str(callback_message_id),
+                    time=int(event.timestamp) if event.timestamp else int(time.time()),
                 )
+            )
+        message_components.append(
+            platform_message.Plain(text=str(data.get('display_text') or data.get('action_id') or 'submitted'))
+        )
+        message_chain = platform_message.MessageChain(message_components)
+        delivery_target = record.get('delivery_target') or {}
+        original_target_type = delivery_target.get('target_type')
+        original_target_id = delivery_target.get('target_id')
+        if original_target_type == 'group':
+            group = platform_entities.Group(
+                id=original_target_id,
+                name='',
+                permission=platform_entities.Permission.Member,
+            )
+            message_event: platform_events.MessageEvent = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=actor_id or '',
+                    member_name='',
+                    permission=platform_entities.Permission.Member,
+                    group=group,
+                ),
+                message_chain=message_chain,
+                time=event.timestamp,
+                source_platform_object=event.source_platform_object,
+            )
+        else:
+            message_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(id=actor_id or '', nickname='', remark=''),
+                message_chain=message_chain,
+                time=event.timestamp,
+                source_platform_object=event.source_platform_object,
+            )
 
-                if pipeline_uuid == self.PIPELINE_DISCARD:
-                    await self.logger.info('Person message discarded by routing rule')
-                    await self._record_discarded_message(
-                        provider_session.LauncherTypes.PERSON,
-                        launcher_id,
-                        event.sender.id,
-                        event,
-                        event.message_chain,
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP
+            if original_target_type == 'group'
+            else provider_session.LauncherTypes.PERSON
+        )
+        await self.ap.msg_aggregator.add_message(
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=launcher_type,
+            launcher_id=original_target_id or target_id or actor_id or '',
+            sender_id=actor_id or '',
+            message_event=message_event,
+            message_chain=message_chain,
+            adapter=adapter,
+            pipeline_uuid=record['processor_id'],
+            routed_by_rule=True,
+            variables={'_interaction_submission': record['submission']},
+            execution_context=self.execution_context,
+        )
+
+    @diagnostics.observe('interaction', 'interaction.resume', source='platform', stage='resume')
+    async def _resume_agent_interaction(
+        self,
+        record: dict[str, typing.Any],
+        event: platform_events.PlatformSpecificEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        actor_id: str | None,
+    ) -> None:
+        """Resume the exact independent Agent that produced an interaction."""
+        agent = await self.ap.agent_service.get_agent(
+            self.execution_context,
+            record['processor_id'],
+        )
+        if not agent or agent.get('kind') != 'agent':
+            raise ValueError(f'Interaction target Agent is unavailable: {record["processor_id"]}')
+
+        binding = self._agent_product_to_binding(
+            agent,
+            {'id': record['binding_id']},
+            'interaction.submitted',
+            self.bot_entity.uuid,
+        )
+        if binding is None or binding.runner_id != record['runner_id']:
+            raise ValueError('Interaction target Agent runner changed after the request was created')
+        binding.binding_id = record['binding_id']
+
+        submission = record['submission']
+        display_text = str(
+            (submission or {}).get('action_id')
+            or (event.data if isinstance(event.data, dict) else {}).get('display_text')
+            or 'submitted'
+        )
+        input_data: dict[str, typing.Any] = {
+            'text': display_text,
+            'contents': [{'type': 'text', 'text': display_text}],
+            'attachments': [],
+        }
+        if 'interaction' in AgentInput.model_fields:
+            input_data['interaction'] = submission
+
+        delivery_target = record.get('delivery_target') or {}
+        supported_apis = self._get_adapter_supported_apis(adapter)
+        delivery_data: dict[str, typing.Any] = {
+            'surface': 'platform',
+            'reply_target': delivery_target,
+            'supports_streaming': False,
+            'supports_edit': 'edit_message' in supported_apis,
+            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
+            'platform_capabilities': {
+                'adapter': adapter.__class__.__name__,
+                'event_type': 'interaction.submitted',
+                'supported_apis': supported_apis,
+            },
+        }
+        interaction_capabilities = self._get_adapter_interaction_capabilities(adapter, supported_apis)
+        if interaction_capabilities is not None:
+            delivery_data['interactions'] = interaction_capabilities
+
+        envelope = AgentEventEnvelope(
+            event_id=f'interaction:{record["id"]}:{uuid.uuid4()}',
+            event_type='interaction.submitted',
+            event_time=int(event.timestamp) if event.timestamp else int(time.time()),
+            source='platform',
+            source_event_type='interaction.submitted',
+            bot_id=self.bot_entity.uuid,
+            workspace_id=record.get('workspace_id'),
+            conversation_id=record.get('conversation_id'),
+            thread_id=record.get('thread_id'),
+            actor=ActorContext(actor_type='user', actor_id=actor_id),
+            subject=SubjectContext(
+                subject_type='interaction',
+                subject_id=record['interaction_id'],
+                data={'action_id': (submission or {}).get('action_id')},
+            ),
+            input=AgentInput.model_validate(input_data),
+            delivery=DeliveryContext.model_validate(delivery_data),
+            raw_ref=RawEventRef(ref_id=f'interaction:{record["id"]}', storage_key=None),
+            data={'interaction': submission},
+        )
+
+        async for _ in self.ap.agent_run_orchestrator.run(
+            envelope,
+            binding,
+            adapter_context={'_delivery_adapter': adapter},
+        ):
+            # Resuming an interaction follows the same explicit-action delivery policy.
+            pass
+
+    async def _dispatch_eba_message_to_pipeline(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        pipeline_uuid: str | None = None,
+        routed_by_event_binding: bool = False,
+    ) -> None:
+        if not isinstance(event, platform_events.MessageReceivedEvent):
+            event_type = getattr(event, 'type', None) or event.__class__.__name__
+            await self.logger.warning(f'Event {event_type} cannot be dispatched to legacy Pipeline')
+            return
+
+        await self._handle_legacy_message_event(
+            event.to_legacy_event(),
+            adapter,
+            pipeline_uuid_override=pipeline_uuid,
+            routed_by_event_binding=routed_by_event_binding,
+        )
+
+    async def initialize(self):
+        def tenant_scoped_listener(listener):
+            @functools.wraps(listener)
+            async def wrapped(*args, **kwargs):
+                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                cloud_runtime = (
+                    getattr(
+                        getattr(self.ap.persistence_mgr, 'mode', None),
+                        'value',
+                        None,
                     )
-                    return
-
-                await self.ap.msg_aggregator.add_message(
-                    bot_uuid=self.bot_entity.uuid,
-                    launcher_type=provider_session.LauncherTypes.PERSON,
-                    launcher_id=launcher_id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter,
-                    pipeline_uuid=pipeline_uuid,
-                    routed_by_rule=routed_by_rule,
-                    execution_context=self.execution_context,
+                    == 'cloud_runtime'
                 )
-            else:
-                await self.logger.info('Pipeline skipped for person message due to webhook response')
+                if cloud_runtime:
+                    if not callable(tenant_scope):
+                        raise RuntimeError('Cloud platform callbacks require a tenant scope')
+                    async with tenant_scope(self.workspace_uuid):
+                        return await listener(*args, **kwargs)
+                return await listener(*args, **kwargs)
+
+            return wrapped
+
+        def websocket_pipeline_uuid(event, adapter):
+            if adapter.__class__.__name__ != 'WebSocketAdapter':
+                return None
+            value = getattr(event, '_langbot_pipeline_uuid', None)
+            return value if isinstance(value, str) and value else None
+
+        async def on_friend_message(
+            event: platform_events.FriendMessage,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            pipeline_uuid = websocket_pipeline_uuid(event, adapter)
+            if pipeline_uuid:
+                await self._handle_legacy_message_event(event, adapter, pipeline_uuid_override=pipeline_uuid)
+                return
+            await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
         async def on_group_message(
             event: platform_events.GroupMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
-            await self.assert_execution_active()
-            image_components = [
-                component for component in event.message_chain if isinstance(component, platform_message.Image)
-            ]
+            pipeline_uuid = websocket_pipeline_uuid(event, adapter)
+            if pipeline_uuid:
+                await self._handle_legacy_message_event(event, adapter, pipeline_uuid_override=pipeline_uuid)
+                return
+            await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
-            await self.logger.info(
-                f'{event.message_chain}',
-                images=image_components,
-                message_session_id=f'group_{event.group.id}',
+        from ..telemetry.diagnostic_catalog import snapshot_bot
+
+        get_supported_events = getattr(self.adapter, 'get_supported_events', None)
+        supported_events: list[str] = []
+        if callable(get_supported_events):
+            try:
+                supported_events = list(get_supported_events() or [])
+            except Exception:
+                supported_events = []
+
+        # EBA adapters emit MessageReceivedEvent directly. Registering both
+        # entry paths would process each native message twice because these
+        # adapters also expose legacy conversion for compatibility consumers.
+        if 'message.received' not in supported_events:
+            self.adapter.register_listener(
+                platform_events.FriendMessage,
+                tenant_scoped_listener(on_friend_message),
             )
-
-            # Push to webhooks and check if pipeline should be skipped
-            skip_pipeline = False
-            if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
-                skip_pipeline = await self.ap.webhook_pusher.push_group_message(
-                    self.execution_context,
-                    event,
-                    self.bot_entity.uuid,
-                    adapter.__class__.__name__,
-                )
-
-            # Only add to query pool if no webhook requested to skip pipeline
-            if not skip_pipeline:
-                launcher_id = event.group.id
-
-                if hasattr(adapter, 'get_launcher_id'):
-                    custom_launcher_id = adapter.get_launcher_id(event)
-                    if custom_launcher_id:
-                        launcher_id = custom_launcher_id
-
-                message_text = str(event.message_chain)
-                element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_event_pipeline_uuid(
-                    adapter,
-                    'group',
-                    launcher_id,
-                    message_text,
-                    element_types,
-                )
-
-                if pipeline_uuid == self.PIPELINE_DISCARD:
-                    await self.logger.info('Group message discarded by routing rule')
-                    await self._record_discarded_message(
-                        provider_session.LauncherTypes.GROUP,
-                        launcher_id,
-                        event.sender.id,
-                        event,
-                        event.message_chain,
-                    )
-                    return
-
-                await self.ap.msg_aggregator.add_message(
-                    bot_uuid=self.bot_entity.uuid,
-                    launcher_type=provider_session.LauncherTypes.GROUP,
-                    launcher_id=launcher_id,
-                    sender_id=event.sender.id,
-                    message_event=event,
-                    message_chain=event.message_chain,
-                    adapter=adapter,
-                    pipeline_uuid=pipeline_uuid,
-                    routed_by_rule=routed_by_rule,
-                    execution_context=self.execution_context,
-                )
-            else:
-                await self.logger.info('Pipeline skipped for group message due to webhook response')
-
-        self.adapter.register_listener(platform_events.FriendMessage, tenant_scoped_listener(on_friend_message))
-        self.adapter.register_listener(platform_events.GroupMessage, tenant_scoped_listener(on_group_message))
+            self.adapter.register_listener(
+                platform_events.GroupMessage,
+                tenant_scoped_listener(on_group_message),
+            )
 
         # Register feedback listener (only effective on adapters that support it)
         async def on_feedback(
@@ -435,21 +1580,14 @@ class RuntimeBot:
         ):
             try:
                 await self.assert_execution_active()
-                # Resolve pipeline name
+                pipeline_id = self.get_pipeline_target_for_event_type('message.received') or ''
                 pipeline_name = ''
-                if self.bot_entity.use_pipeline_uuid:
-                    try:
-                        pipeline_result = await self.ap.persistence_mgr.execute_async(
-                            sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
-                                persistence_pipeline.LegacyPipeline.workspace_uuid == self.workspace_uuid,
-                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid,
-                            )
-                        )
-                        pipeline_row = pipeline_result.first()
-                        if pipeline_row:
-                            pipeline_name = pipeline_row[0]
-                    except Exception:
-                        pass
+                if pipeline_id:
+                    pipeline = await self.ap.pipeline_service.get_pipeline(
+                        self.execution_context,
+                        pipeline_id,
+                    )
+                    pipeline_name = pipeline.get('name', '') if pipeline else ''
 
                 await self.ap.monitoring_service.record_feedback(
                     self.execution_context,
@@ -459,7 +1597,7 @@ class RuntimeBot:
                     inaccurate_reasons=event.inaccurate_reasons,
                     bot_id=self.bot_entity.uuid,
                     bot_name=self.bot_entity.name,
-                    pipeline_id=self.bot_entity.use_pipeline_uuid or '',
+                    pipeline_id=pipeline_id,
                     pipeline_name=pipeline_name,
                     session_id=event.session_id,
                     message_id=event.message_id,
@@ -474,6 +1612,19 @@ class RuntimeBot:
                 await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
 
         self.adapter.register_listener(platform_events.FeedbackEvent, tenant_scoped_listener(on_feedback))
+
+        async def on_eba_event(
+            event: platform_events.EBAEvent,
+            adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        ):
+            await self._handle_platform_event(event, adapter)
+
+        self.adapter.register_listener(
+            platform_events.EBAEvent,
+            tenant_scoped_listener(on_eba_event),
+        )
+        # Registration is evidence of an installed listener, not a live connection.
+        snapshot_bot(self, listener_registered=True)
 
     async def run(self):
         async def exception_wrapper():
@@ -676,7 +1827,10 @@ class PlatformManager:
         # delete all bot log images
         await self.ap.storage_mgr.storage_provider.delete_dir_recursive('bot_log_images')
 
-        disabled_adapters = self.ap.instance_config.data.get('system', {}).get('disabled_adapters', []) or []
+        disabled_adapters = {
+            canonical_adapter_name(name)
+            for name in (self.ap.instance_config.data.get('system', {}).get('disabled_adapters', []) or [])
+        }
 
         self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
         adapter_dict: dict[str, type[abstract_platform_adapter.AbstractMessagePlatformAdapter]] = {}
@@ -973,6 +2127,7 @@ class PlatformManager:
                 owner=bot_entity.uuid,
             )
 
+            bot_entity.adapter = canonical_adapter_name(bot_entity.adapter)
             if bot_entity.adapter not in self.adapter_dict:
                 raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
 
@@ -1096,12 +2251,14 @@ class PlatformManager:
         ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
+        name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:
+        name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component

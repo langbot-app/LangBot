@@ -4,9 +4,12 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { env } from "node:process";
 import {
+  authenticatedApiHeaders,
   apiJson,
   ensureEvidence,
   evidencePaths,
+  isTaskComplete,
+  isTaskFailed,
   loadEnvFiles,
   resetAndAuthLocalUser,
   writeResult,
@@ -26,8 +29,14 @@ const packagePath = resolve(
     || "skills/langbot-testing/fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg",
 );
 const expectedPluginId = env.LANGBOT_E2E_EXPECTED_PLUGIN_ID || "qa/plugin-smoke";
-const expectedTool = env.LANGBOT_E2E_EXPECTED_TOOL || (expectedPluginId === "qa/plugin-smoke" ? "qa_plugin_echo" : "");
+const expectedTools = (env.LANGBOT_E2E_EXPECTED_TOOLS || env.LANGBOT_E2E_EXPECTED_TOOL || (
+  expectedPluginId === "qa/plugin-smoke" ? "qa_plugin_echo" : ""
+))
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
 const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "";
+const forceReinstall = /^(?:1|true|yes|on)$/i.test(env.LANGBOT_E2E_FORCE_REINSTALL || "");
 
 const result = {
   source: "automation",
@@ -40,6 +49,7 @@ const result = {
   package_preview: null,
   task_id: null,
   task: null,
+  reinstall_reason: "",
   plugin_present_before: false,
   plugin_present_after: false,
   tool_names: [],
@@ -64,21 +74,25 @@ try {
   }
   result.plugin_present_before = await hasPlugin(backendUrl, auth.token);
 
-  if (!result.plugin_present_before) {
-    const form = new FormData();
-    form.set("file", new Blob([bytes]), packagePath.split("/").pop());
-    const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/plugins/install/local`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${auth.token}` },
-      body: form,
-    });
-    const json = await response.json().catch(() => ({}));
-    if (response.status >= 400 || json.code !== 0) {
-      throw new Error(json.msg || `Plugin install request failed with HTTP ${response.status}.`);
+  if (expectedTools.length > 0) {
+    result.tool_names = await listToolNames(backendUrl, auth.token);
+  }
+  const missingToolsBefore = expectedTools.filter((tool) => !result.tool_names.includes(tool));
+  if (result.plugin_present_before && (forceReinstall || missingToolsBefore.length > 0)) {
+    result.reinstall_reason = forceReinstall
+      ? "Explicit reinstall requested by LANGBOT_E2E_FORCE_REINSTALL."
+      : `Installed plugin is missing expected tools: ${missingToolsBefore.join(", ")}`;
+    const removeTask = await removePlugin(backendUrl, auth.token);
+    if (!isTaskComplete(removeTask)) {
+      throw new Error(`Plugin reinstall cleanup did not complete successfully: ${JSON.stringify(removeTask)}`);
     }
-    result.task_id = json.data?.task_id ?? null;
-    if (!result.task_id) throw new Error("Plugin install response did not include task_id.");
-    result.task = await waitForTask(backendUrl, auth.token, result.task_id);
+    result.plugin_present_before = false;
+    await sleep(1000);
+  }
+
+  if (!result.plugin_present_before) {
+    result.task = await installPlugin(backendUrl, auth.token, bytes, packagePath);
+    result.task_id = result.task?.id || result.task_id;
     if (!isTaskComplete(result.task)) {
       throw new Error(`Plugin install task did not complete successfully: ${JSON.stringify(result.task)}`);
     }
@@ -87,10 +101,11 @@ try {
   await sleep(1000);
   result.plugin_present_after = await hasPlugin(backendUrl, auth.token);
   if (!result.plugin_present_after) throw new Error(`${expectedPluginId} is not listed by /api/v1/plugins after install.`);
-  if (expectedTool) {
+  if (expectedTools.length > 0) {
     result.tool_names = await listToolNames(backendUrl, auth.token);
-    if (!result.tool_names.includes(expectedTool)) {
-      throw new Error(`${expectedTool} is not listed by /api/v1/tools after install.`);
+    const missingTools = expectedTools.filter((tool) => !result.tool_names.includes(tool));
+    if (missingTools.length > 0) {
+      throw new Error(`${missingTools.join(", ")} is not listed by /api/v1/tools after install.`);
     }
   }
   if (expectedRunnerId) {
@@ -121,12 +136,47 @@ async function hasPlugin(backendUrl, token) {
   });
 }
 
+async function installPlugin(backendUrl, token, bytes, packagePath) {
+  const form = new FormData();
+  form.set("file", new Blob([bytes]), packagePath.split("/").pop());
+  const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/plugins/install/local`, {
+    method: "POST",
+    headers: await authenticatedApiHeaders(backendUrl, token, { contentType: "" }),
+    body: form,
+  });
+  const json = await response.json().catch(() => ({}));
+  if (response.status >= 400 || json.code !== 0) {
+    throw new Error(json.msg || `Plugin install request failed with HTTP ${response.status}.`);
+  }
+  const taskId = json.data?.task_id ?? null;
+  if (!taskId) throw new Error("Plugin install response did not include task_id.");
+  const task = await waitForTask(backendUrl, token, taskId);
+  return { id: taskId, ...task };
+}
+
+async function removePlugin(backendUrl, token) {
+  const [author, pluginName] = expectedPluginId.split("/");
+  if (!author || !pluginName) throw new Error(`Invalid expected plugin id: ${expectedPluginId}`);
+  const response = await apiJson(
+    backendUrl,
+    `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(pluginName)}?delete_data=false`,
+    { method: "DELETE", token },
+  );
+  if (response.status >= 400 || response.json.code !== 0) {
+    throw new Error(response.json.msg || `Plugin delete request failed with HTTP ${response.status}.`);
+  }
+  const taskId = response.json.data?.task_id ?? null;
+  if (!taskId) throw new Error("Plugin delete response did not include task_id.");
+  const task = await waitForTask(backendUrl, token, taskId);
+  return { id: taskId, ...task };
+}
+
 async function previewPackage(backendUrl, token, bytes, packagePath) {
   const form = new FormData();
   form.set("file", new Blob([bytes]), packagePath.split("/").pop());
   const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/plugins/install/local/preview`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: await authenticatedApiHeaders(backendUrl, token, { contentType: "" }),
     body: form,
   });
   const json = await response.json().catch(() => ({}));
@@ -167,30 +217,10 @@ async function waitForTask(backendUrl, token, taskId) {
   while (Date.now() < deadline) {
     const response = await apiJson(backendUrl, `/api/v1/system/tasks/${encodeURIComponent(taskId)}`, { token });
     last = response.json.data || response.json;
-    if (isTaskComplete(last) || isTaskFailed(last)) return last;
+    if (isTaskFailed(last) || isTaskComplete(last)) return last;
     await sleep(1000);
   }
   return last;
-}
-
-function isTaskComplete(task) {
-  const status = String(task?.status || task?.state || "").toLowerCase();
-  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
-  return ["done", "completed", "success", "succeeded", "finished"].includes(status)
-    || ["done", "completed", "success", "succeeded", "finished"].includes(runtimeStatus)
-    || task?.done === true
-    || task?.completed === true
-    || (task?.runtime?.done === true && !task?.runtime?.exception);
-}
-
-function isTaskFailed(task) {
-  const status = String(task?.status || task?.state || "").toLowerCase();
-  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
-  return ["failed", "error", "cancelled", "canceled"].includes(status)
-    || ["failed", "error", "cancelled", "canceled"].includes(runtimeStatus)
-    || task?.failed === true
-    || Boolean(task?.error)
-    || Boolean(task?.runtime?.exception);
 }
 
 function sleep(ms) {

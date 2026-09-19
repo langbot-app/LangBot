@@ -802,6 +802,7 @@ class RAGManager:
         creation_settings: dict,
         retrieval_settings: dict | None = None,
         description: str = '',
+        initialize: bool = True,
     ) -> persistence_rag.KnowledgeBase:
         """Create a new knowledge base using a RAG plugin."""
         execution_context = await self._to_execution_context(context)
@@ -831,6 +832,7 @@ class RAGManager:
             'collection_id': collection_id,
             'creation_settings': creation_settings,
             'retrieval_settings': retrieval_settings or {},
+            'initialized': initialize,
         }
 
         # Create Entity
@@ -839,20 +841,21 @@ class RAGManager:
         # Persist
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
 
-        # Load into Runtime
-        runtime_kb = await self.load_knowledge_base(execution_context, kb)
+        if initialize:
+            # Drafts stay out of the runtime until their engine settings are saved.
+            runtime_kb = await self.load_knowledge_base(execution_context, kb)
 
-        # Notify Plugin — rollback DB record and runtime entry on failure
-        try:
-            await runtime_kb._on_kb_create(execution_context)
-        except Exception:
-            self._pop_runtime(execution_context, kb_uuid)
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(persistence_rag.KnowledgeBase)
-                .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
-                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
-            )
-            raise
+            # Roll back the record and runtime entry if plugin initialization fails.
+            try:
+                await runtime_kb._on_kb_create(execution_context)
+            except Exception:
+                self._pop_runtime(execution_context, kb_uuid)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.KnowledgeBase)
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                )
+                raise
 
         self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {knowledge_engine_plugin_id}')
         return kb
@@ -878,6 +881,8 @@ class RAGManager:
                         .order_by(persistence_rag.KnowledgeBase.uuid)
                     )
                     for knowledge_base in result.all():
+                        if knowledge_base.initialized is False:
+                            continue
                         try:
                             await self.load_knowledge_base(
                                 ExecutionContext(
@@ -899,6 +904,8 @@ class RAGManager:
         knowledge_bases = result.all()
 
         for knowledge_base in knowledge_bases:
+            if knowledge_base.initialized is False:
+                continue
             try:
                 binding = await self.ap.workspace_service.get_execution_binding(knowledge_base.workspace_uuid)
                 execution_context = ExecutionContext(

@@ -98,6 +98,23 @@ message truncation. Do not treat it as a long-term QA contract.
 
 ## 5. Run Gates
 
+Cross-repository contract gate (no model calls):
+
+```bash
+bin/lbs suite plan langbot-workspace-contract-gate
+bin/lbs suite run langbot-workspace-contract-gate --run-id langbot-workspace-contract-local
+```
+
+Top-down workspace release gate (browser workflows plus one complex Agent task):
+
+```bash
+bin/lbs suite plan langbot-workspace-release-gate
+bin/lbs suite run langbot-workspace-release-gate --run-id langbot-workspace-release-local --include-manual-check
+```
+
+Run `agent-run-ledger-audit` immediately after the complex Agent case. Set
+`LANGBOT_AGENT_RUN_ID` when the test instance has concurrent operator traffic.
+
 Fast contract gate, no live service required:
 
 ```bash

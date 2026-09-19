@@ -1,10 +1,12 @@
 import {
-  DynamicFormItemType,
   IDynamicFormItemSchema,
   SYSTEM_FIELD_PREFIX,
+  DynamicFormItemType,
 } from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
+import type { ControllerRenderProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { isJsonValue, isPromptValue } from './StructuredFieldValue';
 import { z } from 'zod';
 import {
   Form,
@@ -22,7 +24,8 @@ import {
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -46,6 +49,7 @@ import {
 } from '@/components/ui/tooltip';
 import { systemInfo } from '@/app/infra/http';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import { parseDynamicFormItemType } from './DynamicFormItemConfig';
 import {
   resolveDisabledState,
   resolveShowIfValue,
@@ -95,7 +99,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
     return z.array(z.any());
   }
 
-  switch (spec.type) {
+  switch (normalizeItemType(spec.type)) {
     case DynamicFormItemType.INT:
       return z.number();
     case DynamicFormItemType.FLOAT:
@@ -103,6 +107,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
     case DynamicFormItemType.BOOLEAN:
       return z.boolean();
     case DynamicFormItemType.STRING:
+    case DynamicFormItemType.SECRET:
       return z.string();
     case DynamicFormItemType.STRING_ARRAY:
       return z.array(z.string());
@@ -129,13 +134,10 @@ function getValueSchema(spec: DynamicFormValueSpec) {
         fallbacks: z.array(z.string()),
         reasoning: z.record(z.string()),
       });
+    case DynamicFormItemType.JSON:
+      return z.custom(isJsonValue);
     case DynamicFormItemType.PROMPT_EDITOR:
-      return z.array(
-        z.object({
-          content: z.string(),
-          role: z.string(),
-        }),
-      );
+      return z.custom(isPromptValue);
     default:
       return z.string();
   }
@@ -162,13 +164,15 @@ function EmbedCodeField({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 max-w-full space-y-2">
       <label className="text-sm font-medium leading-none">{label}</label>
       {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="break-words text-sm text-muted-foreground">
+          {description}
+        </p>
       )}
-      <div className="flex items-center gap-2">
-        <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+      <div className="flex min-w-0 max-w-full items-center gap-2">
+        <pre className="min-w-0 max-w-full flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
           <code>{snippet}</code>
         </pre>
         <Button
@@ -420,6 +424,13 @@ function DisabledTooltipIcon({ text }: { text: string }) {
   );
 }
 
+/**
+ * Normalize plugin manifest type names to frontend-compatible types
+ */
+function normalizeItemType(type: string): DynamicFormItemType {
+  return parseDynamicFormItemType(type);
+}
+
 export default function DynamicFormComponent({
   itemConfigList,
   onSubmit,
@@ -429,10 +440,11 @@ export default function DynamicFormComponent({
   externalDependentValues,
   systemContext,
   onValidate,
+  renderItem,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
-  initialValues?: Record<string, object>;
+  initialValues?: Record<string, any>;
   onFileUploaded?: (fileKey: string) => void;
   isEditing?: boolean;
   externalDependentValues?: Record<string, unknown>;
@@ -442,6 +454,15 @@ export default function DynamicFormComponent({
   /** Callback to expose validation function to parent component.
    *  Parent can call this function to trigger validation and get validity state. */
   onValidate?: (validateFn: () => Promise<boolean>) => void;
+  /** Override a field control while retaining the DynamicForm label,
+   *  description, validation, and value emission behavior. Return undefined
+   *  to use the standard control for that item. */
+  renderItem?: (args: {
+    config: IDynamicFormItemSchema;
+    field: ControllerRenderProps<any, any>;
+    formValues: Record<string, unknown>;
+    setFormValue: (name: string, value: unknown) => void;
+  }) => ReactNode | undefined;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -508,15 +529,15 @@ export default function DynamicFormComponent({
   });
 
   // Expose validation function to parent component
-  const validate = async (): Promise<boolean> => {
+  const validate = useCallback(async (): Promise<boolean> => {
     // Trigger validation for all fields
     const result = await form.trigger();
     return result;
-  };
+  }, [form]);
 
   useEffect(() => {
     onValidate?.(validate);
-  }, [onValidate]);
+  }, [onValidate, validate]);
 
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
@@ -625,7 +646,15 @@ export default function DynamicFormComponent({
           }}
         />
 
-        {itemConfigList.map((config) => {
+        {itemConfigList.map((config, index) => {
+          // Create a normalized config with type converted to frontend format
+          const normalizedConfig = {
+            ...config,
+            type: normalizeItemType(config.type),
+          };
+          const fieldKey = config.id || config.name || `field-${index}`;
+
+          let isHiddenByCondition = false;
           if (config.show_if) {
             const dependValue = resolveShowIfValue(
               config.show_if.field,
@@ -638,22 +667,31 @@ export default function DynamicFormComponent({
               config.show_if.operator === 'eq' &&
               dependValue !== config.show_if.value
             ) {
-              return null;
+              isHiddenByCondition = true;
             }
             if (
               config.show_if.operator === 'neq' &&
               dependValue === config.show_if.value
             ) {
-              return null;
+              isHiddenByCondition = true;
             }
             if (
               config.show_if.operator === 'in' &&
               Array.isArray(config.show_if.value) &&
               !config.show_if.value.includes(dependValue)
             ) {
-              return null;
+              isHiddenByCondition = true;
             }
           }
+
+          // Keep structured drafts mounted across conditional hiding so invalid
+          // JSON cannot disappear from validation when Advanced Settings closes.
+          if (
+            isHiddenByCondition &&
+            normalizedConfig.type !== DynamicFormItemType.JSON &&
+            normalizedConfig.type !== DynamicFormItemType.PROMPT_EDITOR
+          )
+            return null;
 
           // Keep locked fields visible and resolve only the applicable reason.
           const { isDisabledByCondition, disabledTooltip: tooltip } =
@@ -699,7 +737,7 @@ export default function DynamicFormComponent({
           }
 
           // Webhook URL fields are display-only; render outside of form binding
-          if (config.type === 'webhook-url') {
+          if (normalizedConfig.type === 'webhook-url') {
             const webhookUrl = (systemContext?.webhook_url as string) || '';
             const extraWebhookUrl =
               (systemContext?.extra_webhook_url as string) || '';
@@ -708,7 +746,7 @@ export default function DynamicFormComponent({
 
             return (
               <WebhookUrlField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -721,7 +759,7 @@ export default function DynamicFormComponent({
             );
           }
 
-          if (config.type === 'embed-code') {
+          if (normalizedConfig.type === 'embed-code') {
             const botUuid = (systemContext?.bot_uuid as string) || '';
             if (!botUuid) return null;
 
@@ -739,7 +777,7 @@ export default function DynamicFormComponent({
 
             return (
               <EmbedCodeField
-                key={config.id}
+                key={fieldKey}
                 label={extractI18nObject(config.label)}
                 description={
                   config.description
@@ -778,7 +816,7 @@ export default function DynamicFormComponent({
           // QR code login button (e.g. Feishu one-click create, WeChat scan login)
           if (config.type === 'qr-code-login') {
             return (
-              <FormItem key={config.id}>
+              <FormItem key={fieldKey}>
                 <div
                   className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
                   style={{
@@ -871,10 +909,10 @@ export default function DynamicFormComponent({
           }
 
           // Boolean fields use a special inline layout
-          if (config.type === 'boolean') {
+          if (normalizedConfig.type === 'boolean') {
             return (
               <FormField
-                key={config.id}
+                key={fieldKey}
                 control={form.control}
                 name={config.name as keyof FormValues}
                 render={({ field }) => (
@@ -898,7 +936,7 @@ export default function DynamicFormComponent({
                       </div>
                       <FormControl>
                         <DynamicFormItemComponent
-                          config={config}
+                          config={normalizedConfig}
                           field={field}
                           formValues={watchedValues as Record<string, unknown>}
                           onFileUploaded={onFileUploaded}
@@ -916,45 +954,62 @@ export default function DynamicFormComponent({
 
           return (
             <FormField
-              key={config.id}
+              key={fieldKey}
               control={form.control}
               name={config.name as keyof FormValues}
-              render={({ field }) => (
-                <FormItem className="min-w-0">
-                  <FormLabel className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 break-words">
-                      {extractI18nObject(config.label)}{' '}
-                      {config.required && (
-                        <span className="text-red-500">*</span>
-                      )}
-                    </span>
-                    {renderDisabledTooltipIcon()}
-                  </FormLabel>
-                  <FormControl>
-                    <div
-                      className={cn(
-                        'min-w-0 max-w-full overflow-x-hidden',
-                        isFieldDisabled && 'pointer-events-none opacity-60',
-                      )}
-                    >
-                      <DynamicFormItemComponent
-                        config={config}
-                        field={field}
-                        formValues={watchedValues as Record<string, unknown>}
-                        onFileUploaded={onFileUploaded}
-                        setFormValue={setFormValue}
-                        systemContext={systemContext}
-                      />
-                    </div>
-                  </FormControl>
-                  {config.description && (
-                    <p className="text-sm break-words text-muted-foreground">
-                      {extractI18nObject(config.description)}
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const customItem = renderItem?.({
+                  config: normalizedConfig,
+                  field,
+                  formValues: watchedValues as Record<string, unknown>,
+                  setFormValue,
+                });
+                return (
+                  <FormItem
+                    className={cn('min-w-0', isHiddenByCondition && 'hidden')}
+                    hidden={isHiddenByCondition}
+                  >
+                    <FormLabel className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 break-words">
+                        {extractI18nObject(config.label)}{' '}
+                        {config.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </span>
+                      {renderDisabledTooltipIcon()}
+                    </FormLabel>
+                    <FormControl>
+                      <div
+                        className={cn(
+                          'min-w-0 max-w-full overflow-x-hidden',
+                          isFieldDisabled && 'pointer-events-none opacity-60',
+                        )}
+                      >
+                        {customItem !== undefined ? (
+                          customItem
+                        ) : (
+                          <DynamicFormItemComponent
+                            config={normalizedConfig}
+                            field={field}
+                            formValues={
+                              watchedValues as Record<string, unknown>
+                            }
+                            onFileUploaded={onFileUploaded}
+                            setFormValue={setFormValue}
+                            systemContext={systemContext}
+                          />
+                        )}
+                      </div>
+                    </FormControl>
+                    {config.description && (
+                      <p className="text-sm break-words text-muted-foreground">
+                        {extractI18nObject(config.description)}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
           );
         })}

@@ -15,6 +15,9 @@ import pytest
 from tests.factories import FakeApp
 
 
+_LEGACY_SENSITIVE_WORD_PATTERN_COUNT = 70
+
+
 def _load_banwords():
     import_module('langbot.pkg.pipeline.pipelinemgr')
     banwords = import_module('langbot.pkg.pipeline.cntfilter.filters.banwords')
@@ -38,8 +41,7 @@ def _filter_with_words(words: list[str], *, mask: str = '*', mask_word: str = ''
 @pytest.mark.asyncio
 async def test_legacy_word_list_over_pattern_cap_does_not_block_clean_message():
     """A pre-v4.10.7 word list must not fail closed on every message."""
-    _, _, safe_regex = _load_banwords()
-    words = [f'word{i}' for i in range(safe_regex.MAX_PATTERN_COUNT + 6)]
+    words = [f'word{i}' for i in range(_LEGACY_SENSITIVE_WORD_PATTERN_COUNT)]
     filt, entities, _ = _filter_with_words(words)
 
     result = await filt.process(Mock(), 'hello there, nothing banned')
@@ -52,8 +54,7 @@ async def test_legacy_word_list_over_pattern_cap_does_not_block_clean_message():
 @pytest.mark.asyncio
 async def test_legacy_word_list_still_masks_match_beyond_first_batch():
     """Words past the first 64-pattern batch must still be applied."""
-    _, _, safe_regex = _load_banwords()
-    words = [f'word{i}' for i in range(safe_regex.MAX_PATTERN_COUNT)] + ['secret-token']
+    words = [f'word{i}' for i in range(_LEGACY_SENSITIVE_WORD_PATTERN_COUNT)] + ['secret-token']
     filt, entities, _ = _filter_with_words(words, mask_word='[hidden]')
 
     result = await filt.process(Mock(), 'please hide secret-token now')
@@ -65,8 +66,7 @@ async def test_legacy_word_list_still_masks_match_beyond_first_batch():
 
 @pytest.mark.asyncio
 async def test_legacy_word_list_masks_match_in_first_batch():
-    _, _, safe_regex = _load_banwords()
-    words = ['alpha-secret'] + [f'word{i}' for i in range(safe_regex.MAX_PATTERN_COUNT)]
+    words = ['alpha-secret'] + [f'word{i}' for i in range(_LEGACY_SENSITIVE_WORD_PATTERN_COUNT)]
     filt, entities, _ = _filter_with_words(words, mask_word='[hidden]')
 
     result = await filt.process(Mock(), 'alpha-secret is here')

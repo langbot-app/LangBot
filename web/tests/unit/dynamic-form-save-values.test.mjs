@@ -66,6 +66,7 @@ test('normalizes only single-line text fields in a dynamic form save snapshot', 
       fallbacks: ['fallback-model'],
       reasoning: {
         'primary-model': 'high',
+        'fallback-model': 'provider_default',
       },
     },
   });

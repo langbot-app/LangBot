@@ -33,10 +33,11 @@ class _PersistenceManager:
         return _FakeResult(SimpleNamespace(name='Updated Pipeline'))
 
 
-async def test_update_bot_copies_input_before_filtering_and_setting_pipeline_name():
+async def test_update_bot_copies_input_before_filtering_legacy_routing_fields():
     persistence_mgr = _PersistenceManager()
-    runtime_bot = SimpleNamespace(enable=False)
+    runtime_bot = SimpleNamespace(enable=False, bot_entity=SimpleNamespace(name='Test Bot'))
     platform_mgr = SimpleNamespace(
+        get_bot_by_uuid=AsyncMock(return_value=runtime_bot),
         remove_bot=AsyncMock(),
         load_bot=AsyncMock(return_value=runtime_bot),
     )
@@ -51,17 +52,17 @@ async def test_update_bot_copies_input_before_filtering_and_setting_pipeline_nam
         'uuid': 'caller-owned-uuid',
         'name': 'Test Bot',
         'use_pipeline_uuid': 'pipeline-1',
+        'pipeline_routing_rules': [{'type': 'launcher_type'}],
     }
 
     await service.update_bot(WORKSPACE_UUID, 'bot-1', payload)
 
+    # caller's dict must not be mutated
     assert payload == {
         'uuid': 'caller-owned-uuid',
         'name': 'Test Bot',
         'use_pipeline_uuid': 'pipeline-1',
+        'pipeline_routing_rules': [{'type': 'launcher_type'}],
     }
-    assert persistence_mgr.update_values == {
-        'name': 'Test Bot',
-        'use_pipeline_uuid': 'pipeline-1',
-        'use_pipeline_name': 'Updated Pipeline',
-    }
+    # legacy routing fields are stripped; only name is persisted
+    assert persistence_mgr.update_values == {'name': 'Test Bot'}

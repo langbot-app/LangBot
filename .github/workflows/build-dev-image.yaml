@@ -40,6 +40,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            LANGBOT_BUILD_REVISION=${{ github.sha }}
           tags: |
             rockchin/langbot:${{ steps.image.outputs.branch_tag }}
             rockchin/langbot:${{ steps.image.outputs.sha_tag }}

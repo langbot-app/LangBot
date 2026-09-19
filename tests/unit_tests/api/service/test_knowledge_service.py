@@ -121,6 +121,79 @@ async def test_create_validates_schema_and_binds_context():
 
 
 @pytest.mark.asyncio
+async def test_create_draft_defers_required_validation_and_engine_initialization():
+    app = _app()
+    app.plugin_connector.get_rag_creation_schema.return_value = {
+        'schema': [{'name': 'endpoint', 'label': {'en_US': 'Endpoint'}, 'required': True}]
+    }
+    app.rag_mgr.create_knowledge_base.return_value = SimpleNamespace(uuid='kb-draft')
+
+    result = await KnowledgeService(app).create_knowledge_base(
+        CONTEXT,
+        {
+            'name': 'Draft KB',
+            'knowledge_engine_plugin_id': 'author/engine',
+            'defer_initialization': True,
+        },
+    )
+
+    assert result == 'kb-draft'
+    app.plugin_connector.get_rag_creation_schema.assert_not_awaited()
+    app.rag_mgr.create_knowledge_base.assert_awaited_once_with(
+        CONTEXT,
+        name='Draft KB',
+        knowledge_engine_plugin_id='author/engine',
+        creation_settings={},
+        retrieval_settings={},
+        description='',
+        initialize=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_initializes_a_draft_after_required_settings_are_complete():
+    app = _app()
+    draft = {
+        'uuid': 'kb-draft',
+        'workspace_uuid': 'workspace-a',
+        'name': 'Draft KB',
+        'description': '',
+        'knowledge_engine_plugin_id': 'author/engine',
+        'creation_settings': {},
+        'retrieval_settings': {},
+        'initialized': False,
+    }
+    initialized = {
+        **draft,
+        'creation_settings': {'endpoint': 'https://example.invalid'},
+        'initialized': True,
+    }
+    app.rag_mgr.get_knowledge_base_details.side_effect = [draft, initialized]
+    app.plugin_connector.get_rag_creation_schema.return_value = {
+        'schema': [{'name': 'endpoint', 'label': {'en_US': 'Endpoint'}, 'required': True}]
+    }
+    runtime = SimpleNamespace(_on_kb_create=AsyncMock())
+    app.rag_mgr.load_knowledge_base.return_value = runtime
+
+    await KnowledgeService(app).update_knowledge_base(
+        CONTEXT,
+        'kb-draft',
+        {
+            'name': 'Draft KB',
+            'creation_settings': {'endpoint': 'https://example.invalid'},
+            'retrieval_settings': {},
+            'initialize_engine': True,
+        },
+    )
+
+    runtime._on_kb_create.assert_awaited_once_with(CONTEXT)
+    update_statement = app.persistence_mgr.execute_async.await_args_list[0].args[0]
+    params = update_statement.compile().params
+    assert params['creation_settings'] == {'endpoint': 'https://example.invalid'}
+    assert params['initialized'] is True
+
+
+@pytest.mark.asyncio
 async def test_create_enforces_workspace_knowledge_base_limit():
     app = _app()
     app.instance_config.data = {'system': {'limitation': {'max_knowledge_bases': 2}}}

@@ -14,7 +14,7 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "local-agent";
+const RUNNER_ID = "plugin:langbot-team/LocalAgent/default";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const DEFAULT_PIPELINE_NAME = "LangBot QA Fake Provider Debug Chat";
 const DEFAULT_PROVIDER_NAME = "LangBot QA Fake OpenAI Provider";
@@ -41,6 +41,8 @@ const pipelineName = env.LANGBOT_FAKE_PROVIDER_PIPELINE_NAME || DEFAULT_PIPELINE
 const providerName = env.LANGBOT_FAKE_PROVIDER_NAME || DEFAULT_PROVIDER_NAME;
 const requester = env.LANGBOT_FAKE_PROVIDER_REQUESTER || DEFAULT_REQUESTER;
 const modelName = env.LANGBOT_FAKE_PROVIDER_MODEL_NAME || DEFAULT_MODEL_NAME;
+const fallbackModelNames = textList(env.LANGBOT_FAKE_PROVIDER_FALLBACK_MODEL_NAMES)
+  .filter((name) => name !== modelName);
 
 const result = {
   source: "automation",
@@ -75,6 +77,7 @@ const result = {
     test_status: "not_run",
     test_reason: "",
   },
+  fallback_models: [],
   pipeline_id: "",
   pipeline_name: pipelineName,
   pipeline_url: "",
@@ -141,14 +144,26 @@ try {
   });
   result.model = model;
 
+  const fallbackModels = [];
+  for (const fallbackModelName of fallbackModelNames) {
+    fallbackModels.push(await ensureModel({
+      backendUrl,
+      token: auth.token,
+      providerUuid: provider.uuid,
+      name: fallbackModelName,
+    }));
+  }
+  result.fallback_models = fallbackModels;
+
   const pipeline = await ensurePipeline({
     backendUrl,
     token: auth.token,
     name: pipelineName,
     modelUuid: model.uuid,
+    fallbackModelUuids: fallbackModels.map((item) => item.uuid),
   });
   Object.assign(result, pipeline);
-  result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.pipeline_id)}`;
+  result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(pipeline.pipeline_id)}`;
 
   const runConfig = await configureFakeProvider(fakeProvider.url, targetFakeProviderConfig(), true);
   result.fake_provider.config = runConfig.config || targetFakeProviderConfig();
@@ -161,6 +176,7 @@ try {
       LANGBOT_FAKE_PROVIDER_PID: fakeProvider.pid ? String(fakeProvider.pid) : "",
       LANGBOT_FAKE_PROVIDER_PROVIDER_UUID: provider.uuid,
       LANGBOT_FAKE_PROVIDER_MODEL_UUID: model.uuid,
+      LANGBOT_FAKE_PROVIDER_FALLBACK_MODEL_UUIDS: fallbackModels.map((item) => item.uuid).join(","),
       LANGBOT_FAKE_PROVIDER_PIPELINE_URL: result.pipeline_url,
       LANGBOT_FAKE_PROVIDER_PIPELINE_NAME: pipelineName,
     });
@@ -168,7 +184,7 @@ try {
   }
 
   result.status = "pass";
-  result.reason = `Fake provider pipeline is configured with ${requester}/${modelName}.`;
+  result.reason = `Fake provider pipeline is configured with ${requester}/${modelName} and ${fallbackModels.length} fallback(s).`;
 } catch (error) {
   result.status = result.status === "env_issue" ? "env_issue" : "fail";
   result.reason = result.reason || safeReason(error.message);
@@ -328,7 +344,11 @@ function healthyFakeProviderConfig() {
     fault_status: 500,
     fail_first_n: 0,
     fail_every_n: 0,
+    fail_models: [],
     fail_after_first_chunk: false,
+    fail_after_first_chunk_delay_ms: 0,
+    fail_after_first_chunk_mode: "disconnect",
+    fail_after_first_chunk_models: [],
     dynamic_response: true,
   };
 }
@@ -342,7 +362,14 @@ function targetFakeProviderConfig() {
     fault_status: httpFaultStatus(env.LANGBOT_FAKE_PROVIDER_FAULT_STATUS, 500),
     fail_first_n: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_FAIL_FIRST_N, 0),
     fail_every_n: nonNegativeInteger(env.LANGBOT_FAKE_PROVIDER_FAIL_EVERY_N, 0),
+    fail_models: textList(env.LANGBOT_FAKE_PROVIDER_FAIL_MODELS),
     fail_after_first_chunk: envBool(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK, false),
+    fail_after_first_chunk_delay_ms: nonNegativeInteger(
+      env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_DELAY_MS,
+      0,
+    ),
+    fail_after_first_chunk_mode: streamFaultMode(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODE),
+    fail_after_first_chunk_models: textList(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODELS),
     dynamic_response: envBool(env.LANGBOT_FAKE_PROVIDER_DYNAMIC_RESPONSE, true),
   };
 }
@@ -425,7 +452,7 @@ async function ensureModel({ backendUrl, token, providerUuid, name }) {
   const body = {
     name,
     provider_uuid: providerUuid,
-    abilities: [],
+    abilities: ["func_call", "vision"],
     context_length: positiveInteger(env.LANGBOT_FAKE_PROVIDER_CONTEXT_LENGTH, 8192),
     extra_args: {},
     prefered_ranking: 0,
@@ -476,7 +503,7 @@ async function ensureModel({ backendUrl, token, providerUuid, name }) {
   };
 }
 
-async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
+async function ensurePipeline({ backendUrl, token, name, modelUuid, fallbackModelUuids = [] }) {
   const list = await apiJson(backendUrl, "/api/v1/pipelines", { token });
   if (isApiFailure(list)) {
     throw new Error(list.json.msg || "Failed to list pipelines.");
@@ -511,15 +538,17 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
 
   const config = pipeline.config && typeof pipeline.config === "object" ? pipeline.config : {};
   const ai = config.ai && typeof config.ai === "object" ? config.ai : {};
-  const existingLocalAgentConfig = ai["local-agent"] && typeof ai["local-agent"] === "object"
-    ? ai["local-agent"]
+  const runnerConfigs = ai.runner_config && typeof ai.runner_config === "object"
+    ? ai.runner_config
+    : {};
+  const existingLocalAgentConfig = runnerConfigs[RUNNER_ID] && typeof runnerConfigs[RUNNER_ID] === "object"
+    ? runnerConfigs[RUNNER_ID]
     : {};
   const localAgentConfig = {
     timeout: 60,
     prompt: [{ role: "system", content: "You are a deterministic QA assistant. Reply exactly as instructed." }],
     "remove-think": false,
     "knowledge-bases": [],
-    "box-session-id-template": "{launcher_type}_{launcher_id}",
     "retrieval-top-k": 5,
     "rerank-model": "",
     "rerank-top-k": 5,
@@ -536,7 +565,7 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
     "max-round": positiveInteger(existingLocalAgentConfig["max-round"], 10),
     model: {
       primary: modelUuid,
-      fallbacks: [],
+      fallbacks: fallbackModelUuids,
     },
   };
   const updatedConfig = {
@@ -546,10 +575,12 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
       runner: {
         ...(ai.runner && typeof ai.runner === "object" ? ai.runner : {}),
         id: RUNNER_ID,
-        runner: RUNNER_ID,
         "expire-time": 0,
       },
-      "local-agent": localAgentConfig,
+      runner_config: {
+        ...runnerConfigs,
+        [RUNNER_ID]: localAgentConfig,
+      },
     },
   };
 
@@ -599,6 +630,17 @@ function envBool(value, fallback) {
   if (/^(1|true|yes|on)$/i.test(String(value))) return true;
   if (/^(0|false|no|off)$/i.test(String(value))) return false;
   return fallback;
+}
+
+function textList(value) {
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function streamFaultMode(value) {
+  return String(value || "").trim().toLowerCase() === "error_event" ? "error_event" : "disconnect";
 }
 
 function sleep(ms) {

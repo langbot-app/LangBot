@@ -1,4 +1,243 @@
+import pipelineMigration from './pipeline-migration/en-US';
+
 const enUS = {
+  sidebarGuide: {
+    steps: {
+      monitoring: {
+        title: 'Review activity',
+        description:
+          'Review bot activity, model usage, message volume, and system performance at a glance.',
+      },
+      bots: {
+        title: 'Connect chat platforms',
+        description:
+          'Connect LangBot to chat platforms and manage each bot connection from here.',
+      },
+      pipelines: {
+        title: 'Configure processors',
+        description:
+          'Create reusable pipelines, Agents, and plugin processor configurations, then connect them to bots.',
+      },
+      knowledge: {
+        title: 'Manage knowledge bases',
+        description:
+          'Organize documents and external knowledge sources used to improve model responses.',
+      },
+      plugins: {
+        title: 'Manage installed extensions',
+        description:
+          'Manage installed plugins, MCP servers, and skills, including their runtime status.',
+      },
+      'add-extension': {
+        title: 'Add extensions',
+        description:
+          'Install capabilities from the marketplace, GitHub, or a local extension package.',
+      },
+      models: {
+        title: 'Configure models',
+        description:
+          'Configure model providers and choose the language, embedding, and other models LangBot uses.',
+      },
+      'api-integration': {
+        title: 'Configure API access',
+        description:
+          'Create API keys and configure external access to LangBot services and MCP.',
+      },
+    },
+  },
+  guidedTour: {
+    eventDebugDescription:
+      'Choose a supported event, enter test data, and review the output and tool results. Platform actions are simulated; models and other tools run as configured.',
+
+    pipeline: {
+      trigger: {
+        title: 'Choose which messages to answer',
+        description:
+          'Pipelines handle message events and reply automatically with AI. Configure group triggers, private chat rules, and message filters here.',
+      },
+      ai: {
+        title: 'Configure AI capabilities',
+        description:
+          'Choose a local or external platform Runner, then configure its model, prompts, knowledge bases, and other parameters.',
+      },
+      output: {
+        title: 'Adjust replies',
+        description:
+          'Set output rules such as long-text handling to control how AI responses are delivered to users.',
+      },
+      safety: {
+        title: 'Set safety controls',
+        description:
+          'Enable content filtering and rate limits as needed to control message content and processing frequency.',
+      },
+      extensions: {
+        title: 'Choose available extensions',
+        description:
+          'Choose the plugins, MCP servers, and skills this pipeline can use to extend message handling and tools.',
+      },
+      basic: {
+        title: 'Manage the pipeline',
+        description:
+          'Copy this pipeline to create another configuration, or delete a pipeline you no longer need.',
+      },
+      debug: {
+        title: 'Test a conversation',
+        description:
+          'Send test messages to check triggers, AI replies, and output processing. Any configuration changes are saved before testing.',
+      },
+      monitoring: {
+        title: 'Review run history',
+        description:
+          'Use the tab beside the title to review past conversations, processing steps, and errors when replies are missing or unexpected.',
+      },
+      save: {
+        title: 'Save and connect a bot',
+        description:
+          'Save your configuration, then route Message received events to this pipeline on the bot page.',
+      },
+    },
+    pluginProcessor: {
+      select: {
+        title: 'Choose a plugin Runner',
+        description:
+          'Choose a Runner that supports event processing. The plugin author declares which events it handles and implements the processing logic.',
+      },
+      parameters: {
+        title: 'Configure plugin parameters',
+        description:
+          'Fill in the settings provided by the plugin. Save multiple configurations of the same plugin for different bots or use cases.',
+      },
+      debug: {
+        title: 'Test plugin event handling',
+      },
+      logs: {
+        title: 'Review execution results',
+        description:
+          'Review each run’s status, input event, plugin logs, and call results to investigate failures.',
+      },
+      save: {
+        title: 'Save and bind to a bot',
+        description:
+          'After saving, add this configuration in the bot’s Plugin processors section. It automatically receives the plugin’s declared events, with no per-event routing needed.',
+      },
+    },
+    previous: 'Previous',
+    label: 'User guide',
+    progress: 'Step {{current}} of {{total}}',
+    next: 'Next',
+    finish: 'Finish',
+    skip: 'Skip',
+    bot: {
+      connection: {
+        title: 'Choose a connection method',
+        description:
+          'Choose one of the connection methods supported by this adapter. The corresponding adapter parameters update automatically.',
+      },
+      basic: {
+        title: 'Name this bot',
+        description:
+          'Use a recognizable name so this connection is easy to find in routing and logs.',
+      },
+      adapter: {
+        title: 'Choose a platform adapter',
+        description:
+          'Choose the platform adapter for this bot. Connection methods and platform parameters are configured after creation.',
+      },
+      parameters: {
+        title: 'Configure the platform',
+        description:
+          'Fill in the credentials and platform parameters. Use the adapter documentation for settings created on the platform side.',
+        action: 'Open adapter documentation',
+      },
+      routing: {
+        title: 'Route incoming events',
+        description:
+          'Choose which processor handles each event received by this bot.',
+      },
+      save: {
+        title: 'Save the bot configuration',
+        description:
+          'Save after checking the connection parameters and event routing. You can then enable the bot when it is ready.',
+      },
+      submit: {
+        title: 'Create the bot',
+        description:
+          'Create a disabled bot, then continue with its connection method and platform parameters on the bot page.',
+      },
+    },
+    processorCreate: {
+      type: {
+        title: 'Choose a processor type',
+        description:
+          'Pipelines follow a defined message flow, Agents decide with models and tools, and plugin processors handle declared platform events.',
+      },
+      basic: {
+        title: 'Name the processor',
+        description:
+          'Give the processor a recognizable name. Runner and event settings are configured after creation.',
+      },
+      submit: {
+        title: 'Create and continue setup',
+        description:
+          'After creation, continue with the Runner, parameters, events, and tools required by this processor type.',
+      },
+    },
+    runner: {
+      debug: {
+        title: 'Test event handling',
+      },
+      select: {
+        title: 'Choose or install a Runner',
+        description:
+          'Select an installed Runner, or install one directly from the Marketplace list in this selector.',
+        action: 'Browse Runner Marketplace',
+      },
+      parameters: {
+        title: 'Configure Runner parameters',
+        description:
+          'Provide the model, credentials, service URL, and other settings declared by the selected Runner.',
+      },
+      events: {
+        title: 'Set events and tools',
+        description:
+          'Open Events & tools to choose what this Agent can receive and which platform or host tools it may use.',
+      },
+    },
+    knowledge: {
+      basic: {
+        title: 'Describe the knowledge base',
+        description:
+          'Set a recognizable name and optional description before choosing its storage and retrieval engine.',
+      },
+      engine: {
+        title: 'Review the knowledge engine',
+        description:
+          'Confirm the engine used by this knowledge base. Its parameters and retrieval settings are configured below.',
+        action: 'Browse Knowledge Engine Marketplace',
+      },
+      parameters: {
+        title: 'Configure engine parameters',
+        description:
+          'Fill in the storage, model, credentials, or external-service settings requested by this engine.',
+      },
+      retrieval: {
+        title: 'Configure retrieval',
+        description:
+          'Set how this engine searches and returns relevant content to processors.',
+      },
+      save: {
+        title: 'Save the knowledge base configuration',
+        description:
+          'Save after checking the engine parameters and retrieval settings.',
+      },
+      submit: {
+        title: 'Create the knowledge base',
+        description:
+          'Create the knowledge base, then add documents or connect sources supported by the selected engine.',
+      },
+    },
+  },
+  pipelineMigration,
   sidebar: {
     home: 'Home',
     extensions: 'Extensions',
@@ -14,6 +253,8 @@ const enUS = {
     editionCloud: 'Cloud',
   },
   common: {
+    customValue: 'Custom',
+    loadFailed: 'Failed to load. Please try again.',
     login: 'Login',
     logout: 'Logout',
     accountOptions: 'Settings',
@@ -29,6 +270,8 @@ const enUS = {
     loginLoadErrorDesc:
       'Unable to connect to the LangBot backend. Please make sure the service is running and try again.',
     retry: 'Retry',
+    showSecret: 'Show secret',
+    hideSecret: 'Hide secret',
     enterEmail: 'Enter email address',
     enterPassword: 'Enter password',
     invalidEmail: 'Please enter a valid email address',
@@ -40,6 +283,10 @@ const enUS = {
     joinDiscord: 'Join our Discord',
     create: 'Create',
     edit: 'Edit',
+    editBasicInfo: 'Edit basic information',
+    editBasicInfoDescription: 'Change the name, description, and icon.',
+    editBasicInfoDescriptionNoIcon: 'Change the name and description.',
+    management: 'Management',
     delete: 'Delete',
     add: 'Add',
     select: 'Select',
@@ -253,7 +500,7 @@ const enUS = {
     reasoningAbility: 'Reasoning',
     reasoningLevel: 'Reasoning level',
     reasoningLevels: {
-      providerDefault: 'Provider default',
+      providerDefault: 'Use provider default',
       disabled: 'Off',
       enabled: 'On',
       minimal: 'Minimal',
@@ -334,6 +581,20 @@ const enUS = {
     usesOwnerSpaceBilling:
       "Uses the Workspace owner's LangBot Account billing and credits.",
     noModels: 'No models configured',
+    availability: {
+      available: 'Available at last check',
+      unavailable: 'Unavailable at last check',
+      notChecked: 'No check result',
+      lastChecked: 'Checked {{time}}',
+    },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '{{input}} input · {{output}} output',
+      title: 'Credits per 1M tokens',
+      input: 'Input: {{credits}} credits',
+      output: 'Output: {{credits}} credits',
+      unavailable: 'No price found. The model may have been removed.',
+    },
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
       'Free trial credits available! Login with LangBot Account to access cloud models with zero configuration.',
@@ -372,6 +633,32 @@ const enUS = {
     },
   },
   bots: {
+    pluginSubscriptions: {
+      incompleteEvents:
+        'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
+      description:
+        'Automatically receive events declared by the plugin, independently of the routes above.',
+      empty: 'No plugin processors are bound.',
+      add: 'Add plugin processor',
+      existing: 'Choose configuration',
+      new: 'New configuration',
+      noExisting: 'No configurations available. Create one.',
+      shared:
+        'Bots using the same configuration share settings and runtime state.',
+      saveHint:
+        'Save the bot after adding a processor to activate the binding.',
+      createAndBind: 'Create and bind',
+      created: 'Configuration created. Save the bot to activate the binding.',
+      enable: 'Enable {{name}}',
+      remove: 'Unbind {{name}}',
+      configure: 'Configure',
+      logs: 'View logs',
+    },
+    applyFailed: 'Configuration saved, but could not be applied',
+    internalErrorHint:
+      'An unexpected error occurred. Check the backend logs using the reference below.',
+    errorReference: 'Error reference: {{id}}',
+
     title: 'Bots',
     description:
       'Create and manage bots, which are the entry points for LangBot to connect with various platforms',
@@ -384,18 +671,32 @@ const enUS = {
     botNameRequired: 'Bot name cannot be empty',
     botDescriptionRequired: 'Bot description cannot be empty',
     adapterRequired: 'Adapter cannot be empty',
+    connectionMode: 'Connection method',
+    connectionModeDescription:
+      'Choose one of the connection methods supported by this adapter.',
+    connectionWebhook: 'Webhook',
+    connectionWebhookDescription:
+      'The platform sends events to a URL generated by LangBot.',
+    connectionPersistent: 'Persistent connection',
+    connectionPersistentDescription:
+      'LangBot keeps an outbound socket or streaming connection open.',
+    noAdaptersForConnectionMode:
+      'No installed adapters support this connection method.',
     defaultDescription: 'A bot',
     getBotConfigError: 'Failed to get bot configuration: ',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
-    createSuccess:
-      'Created successfully. Please enable or modify the bound pipeline',
+    createSuccess: 'Created successfully. Continue configuring the bot',
     createError: 'Creation failed: ',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     deleteConfirmation: 'Are you sure you want to delete this bot?',
     platformAdapter: 'Platform/Adapter Selection',
     selectAdapter: 'Select Adapter',
+    legacyAdapters: 'Legacy adapters',
+    legacyAdapterBadge: 'Legacy',
+    legacyAdaptersHint:
+      'These adapters have newer event-driven counterparts.\nThey are kept only for existing configurations and are not recommended for new bots.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
     bindPipeline: 'Bind Pipeline',
@@ -416,6 +717,215 @@ const enUS = {
     routingConnection: 'Routing & Connection',
     routingConnectionDescription:
       'Bind the pipeline that processes messages for this bot',
+    eventRouting: 'Event Routing',
+    eventRoutingDescription: 'Choose which processor handles each event.',
+    eventBindings: 'Event Routes',
+    addEventBinding: 'Add Route',
+    addBehavior: 'Add behavior',
+    commonScenarios: 'Common scenarios',
+    dragEventRoute: 'Drag route {{index}}',
+    behaviorReplyMessages: 'Reply to messages',
+    behaviorReplyMessagesDescription: 'Send incoming messages to a processor.',
+    behaviorWelcomeMembers: 'Welcome new members',
+    behaviorWelcomeMembersDescription:
+      'Run a processor when someone joins a group.',
+    behaviorHandleDepartures: 'Handle member departures',
+    behaviorHandleDeparturesDescription:
+      'Run a processor when someone leaves or is removed.',
+    behaviorReviewFriendRequests: 'Review friend requests',
+    behaviorReviewFriendRequestsDescription:
+      'Send new friend requests to a processor.',
+    behaviorHandleModeration: 'Handle moderation events',
+    behaviorHandleModerationDescription:
+      'Run a processor when a group member is restricted.',
+    behaviorCustom: 'Configure another event',
+    behaviorCustomDescription:
+      'Add a route and choose from every event supported by this adapter.',
+    eventPattern: 'Event',
+    eventPatternPlaceholder: 'Select event',
+    targetType: 'Target Type',
+    target: 'Processor',
+    targetAgent: 'Agent',
+    targetPipeline: 'Pipeline',
+    targetDiscard: 'Discard',
+    selectTarget: 'Select processor',
+    searchTarget: 'Search processors…',
+    noTargetFound: 'No compatible processors found',
+    priority: 'Priority',
+    enabled: 'Enabled',
+    eventBindingDescriptionPlaceholder: 'Rule description',
+    noEventBindings: 'No event routes',
+    unsupportedPipelineEvent: 'Pipelines can only be used for message.* events',
+    disable: 'Disable',
+    enable: 'Enable',
+    disabledBindings: 'Disabled',
+    adapterEventsTitle: 'Supported events',
+    adapterEventsDescription: '{{count}} event types',
+    adapterEventsMore: '{{count}} more',
+    advancedEventValues: 'View all',
+    eventGroup: 'Group',
+    eventGroupNames: {
+      bot: 'Bot status',
+      feedback: 'Feedback',
+      friend: 'Friends',
+      group: 'Groups',
+      message: 'Messages',
+      platform: 'Platform',
+    },
+    routeConflictTitle: 'Some routes overlap',
+    routeConflictShadowed:
+      '{{shadowed}} may never run because {{winner}} handles the same events first.',
+    routeConflictMore: '{{count}} more route conflicts need attention.',
+    routeFallbackCatchAll: '{{route}} is the catch-all route.',
+    routeFallbackIgnored:
+      'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
+    testRoute: 'Check route',
+    adapterEventDebugAction: 'Test listener',
+    adapterEventDebugTitle: 'Platform event debugging',
+    adapterEventDebugDescription:
+      'Trigger an event in {{platform}}. It will appear here when the adapter receives it.',
+    adapterEventObserveOnly:
+      'This window only observes events. Incoming events still follow the current routes.',
+    adapterEventPreparing: 'Preparing',
+    adapterEventListening: 'Listening',
+    adapterEventListenerUnavailable: 'Listening interrupted',
+    adapterEventLoadFailed:
+      'Platform events could not be read. Make sure the bot is running, then try again.',
+    adapterEventReceivedCount: '{{count}} events received',
+    adapterEventClear: 'Clear',
+    adapterEventEmptyTitle: 'Waiting for a platform event',
+    adapterEventEmptyDescription:
+      'Send a message or trigger an event in {{platform}}.',
+    adapterEventData: 'View event data',
+    adapterEventNeedsSavedBot:
+      'Save the bot before listening for platform events.',
+    adapterEventCurrentPlatform: 'the current platform',
+    adapterConfigurationTest: 'Test adapter configuration',
+    adapterConfigurationTestDescription:
+      'Save and enable the bot first, then trigger a platform event to confirm these settings work.',
+    refreshRouteStatus: 'Refresh status',
+    routeStatusIdle: 'No run yet',
+    routeStatusRefreshFailed: 'Failed to refresh route status.',
+    routeStatus: {
+      matched: 'Matched',
+      delivered: 'Delivered',
+      discarded: 'Discarded',
+      failed: 'Failed',
+      not_matched: 'Not matched',
+    },
+    routeStatusDetail: {
+      matched: 'This route matched the event.',
+      delivered: 'The processor received the event.',
+      discarded: 'The event was intentionally discarded.',
+      failed: 'The route could not finish.',
+      not_matched: 'No configured route matched the event.',
+    },
+    routeFailure: {
+      binding_disabled: 'This route is disabled.',
+      event_pattern_mismatch: 'The event does not match this route.',
+      filters_mismatch: 'The sample data does not meet the route conditions.',
+      lower_priority: 'Another matching route has higher priority.',
+      route_not_found: 'No route matched this event.',
+      processor_incompatible:
+        'The selected processor cannot handle this event.',
+      processor_not_found: 'The selected processor is unavailable.',
+      runner_failed: 'The Agent runner failed while processing the event.',
+      delivery_failed: 'The processor finished, but delivery failed.',
+    },
+    dryRunTitle: 'Check event route',
+    dryRunDescription:
+      'Choose an event to see which route and processor it matches.',
+    dryRunEventType: 'Event type',
+    dryRunSampleReady: 'Sample event is ready',
+    dryRunSampleDescription:
+      'LangBot prepared example data for {{event}}. Most route tests can use it as-is.',
+    dryRunEditPayload: 'Test data',
+    dryRunHidePayload: 'Hide data',
+    dryRunPayload: 'Test data (JSON)',
+    dryRunPayloadHint: 'Use this to test message and conversation conditions.',
+    dryRunPayloadJsonError: 'Enter valid JSON.',
+    dryRunPayloadObjectError: 'Payload must be a JSON object.',
+    dryRunNeedsSavedBot: 'Save the bot before checking routes.',
+    dryRunFailed: 'Failed to check the route. Try again later.',
+    dryRunAction: 'View match',
+    dryRunRunning: 'Checking…',
+    dryRunMatched: 'Route matched',
+    dryRunNotMatched: 'No route matched',
+    dryRunTarget: 'Target processor',
+    dryRunNoTarget: 'No target',
+    dryRunMatchedRule: 'Matched rule',
+    dryRunRuleIndex: 'Route {{index}}',
+    dryRunNoRule: 'No matched rule',
+    dryRunDiagnostics: 'Diagnostic steps',
+    dryRunDiagnosticSelected: '{{route}} was selected.',
+    dryRunDiagnosticMatched: '{{route}} matched. {{reason}}',
+    dryRunDiagnosticSkipped: '{{route}} was skipped. {{reason}}',
+    eventCustom: 'Custom event',
+    eventWildcard: 'All events',
+    eventNamespaceWildcard: '{{namespace}}.*',
+    eventNames: {
+      message_received: 'Message received',
+      message_edited: 'Message edited',
+      message_deleted: 'Message deleted',
+      message_reaction: 'Message reaction',
+      feedback_received: 'Feedback received',
+      friend_request_received: 'Friend request received',
+      friend_added: 'Friend added',
+      group_member_joined: 'Member joined group',
+      group_member_left: 'Member left group',
+      group_member_banned: 'Member banned',
+      bot_invited_to_group: 'Bot invited to group',
+      bot_removed_from_group: 'Bot removed from group',
+      bot_muted: 'Bot muted',
+      bot_unmuted: 'Bot unmuted',
+      platform_specific: 'Platform-specific event',
+    },
+    eventDescriptions: {
+      all: 'Matches every event received by this adapter.',
+      namespace: 'Matches all {{group}} events.',
+      namespace_bot:
+        'Matches bot invitations, removals, mutes, and other status events.',
+      namespace_feedback: 'Matches feedback events from a platform or user.',
+      namespace_friend: 'Matches friend requests and friendship changes.',
+      namespace_group:
+        'Matches member joins, leaves, removals, and other group events.',
+      namespace_message:
+        'Matches received, edited, deleted, and reaction message events.',
+      namespace_platform:
+        'Matches platform-specific events provided by an adapter.',
+      custom: 'A custom event, or one without a description yet.',
+      message_received: 'A user or group sends a new message to the bot.',
+      message_edited: 'The platform reports that an existing message changed.',
+      message_deleted:
+        'The platform reports that an existing message was deleted.',
+      message_reaction: 'A user adds or removes a reaction on a message.',
+      feedback_received: 'Feedback is received from the platform or user.',
+      friend_request_received: 'Someone requests to add the bot as a friend.',
+      friend_added: 'A friend relationship was created.',
+      group_member_joined: 'A member joins a group where the bot is present.',
+      group_member_left: 'A member leaves a group where the bot is present.',
+      group_member_banned: 'A group member is banned or removed.',
+      bot_invited_to_group: 'The bot is invited to a group.',
+      bot_removed_from_group: 'The bot is removed from a group.',
+      bot_muted: 'The bot is muted in a group.',
+      bot_unmuted: 'The bot is unmuted in a group.',
+      platform_specific: 'An adapter-specific platform event.',
+    },
+    conditions: 'Conditions',
+    conditionsDescription:
+      'All conditions must match to trigger this binding. Leave empty to always trigger.',
+    conditionsEmpty: 'No conditions — always triggers.',
+    addFilter: 'Add condition',
+    filterChatType: 'Session type',
+    filterChatId: 'Session ID',
+    filterMessageText: 'Message text',
+    filterMessageElement: 'Message element',
+    operator_eq: 'equals',
+    operator_neq: 'not equals',
+    operator_contains: 'contains',
+    operator_not_contains: 'not contains',
+    operator_starts_with: 'starts with',
+    operator_regex: 'regex',
     routingRules: 'Conditional Routing Rules',
     routingRulesDescription:
       'Rules are evaluated in order; first match routes to its pipeline. Fallback to the default pipeline above if none match.',
@@ -522,6 +1032,311 @@ const enUS = {
       removeAdminTitle: 'Remove admin',
     },
   },
+  agents: {
+    monitoring: {
+      description:
+        'Follow each task from its triggering event through model output and tool execution.',
+      empty:
+        'No runs yet. Trigger a platform event or run a debug test to see it here.',
+      input: 'Triggering input',
+      eventData: 'Event data',
+      execution: 'Execution steps',
+      rawEvents: 'Raw run events',
+      inputUnavailable: 'Input was not recorded for this run.',
+    },
+    eventProcessor: {
+      configurations: 'Plugin processor configurations',
+      configTab: 'Configuration',
+      logsTab: 'Logs',
+      noSettings: 'This plugin processor requires no configuration.',
+      createPageTitle: 'Create event processor',
+      processWithPlugin: 'Process with plugin code',
+      pluginSettings: 'Plugin settings',
+      pluginSettingsDescription: 'Parameters declared by this plugin.',
+      selectToDebug: 'Select a plugin above to start debugging.',
+
+      debugOutput: 'Processor output',
+      debugDescription:
+        'Input events, plugin logs and action results for this test session.',
+      debugNotice:
+        'The plugin processes a test event. Platform actions use Mock and do not send real messages; other tools run as configured.',
+
+      create: 'Create plugin processor',
+      type: 'Plugin processor',
+      description:
+        'Handle specific, declared event types through logic programmed in a plugin.',
+      component: 'Plugin processor',
+      selectComponent: 'Select a plugin processor',
+      unavailable: 'Component unavailable',
+      noComponents: 'No plugins providing processors are installed.',
+      installPlugin: 'Install a plugin',
+      loadError: 'Unable to load processor details.',
+      refresh: 'Refresh',
+      runs: 'Runs',
+      noRuns: 'No runs yet. Bind this processor to a bot to start.',
+      bindBot: 'Bind to a bot',
+      trace: 'Logs and message flow',
+      selectRun: 'Select a run to view details.',
+      input: 'Incoming event',
+      destination: 'Delivery destination',
+      loadMore: 'Load more',
+      activation:
+        'Install a plugin, create a processor configuration, then bind a bot.',
+      status_timeout: 'Timed out',
+      status_pending: 'Pending',
+      status_running: 'Running',
+      status_completed: 'Completed',
+      status_failed: 'Failed',
+      status_cancelled: 'Cancelled',
+      status_queued: 'Queued',
+      trace_run_completed: 'Run completed',
+      trace_run_failed: 'Run failed',
+      trace_tool_call_started: 'Action started',
+      trace_tool_call_completed: 'Action result',
+    },
+    debugData: {
+      chatId: 'Chat ID',
+      feedbackType: 'Feedback type (1: like, 2: dislike, 3: cancel)',
+
+      title: 'Event data',
+      form: 'Common fields',
+      json: 'Full JSON',
+      groupId: 'Group ID',
+      memberId: 'Member ID',
+      memberName: 'Member name',
+      userId: 'User ID',
+      userName: 'User name',
+      requesterId: 'Requester ID',
+      requesterName: 'Requester name',
+      messageId: 'Message ID',
+      duration: 'Duration (seconds)',
+      message: 'Message content',
+      newMessage: 'New message content',
+      verificationMessage: 'Verification message',
+      reaction: 'Reaction',
+      groupName: 'Group name',
+      feedback: 'Feedback',
+      rating: 'Rating',
+      eventName: 'Event name',
+      privateChat: 'Leave empty for private chat',
+      sampleUser: 'Test User',
+      sampleMessage: 'Hello',
+      sampleFeedback: 'Very helpful',
+      invalidField: 'Check {{field}}',
+    },
+    title: 'Processors',
+    description: 'Create reusable processors and use them in bot event routing',
+    create: 'Create Processor',
+    editAgent: 'Edit Agent',
+    selectFromSidebar: 'Select a processor from the sidebar',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Describe how to handle different events in natural language and let AI act, or connect an external Agent platform to process them.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Group by type',
+    groupByKindShort: 'Group',
+    pipelineTypeDescription:
+      'Handle message events only, with AI generating replies directly and practical features such as knowledge bases and plugins.',
+    allEvents: 'Supports all events',
+    messageEventsOnly: 'Message events only',
+    chooseType: 'Choose how it works',
+    chooseTypeDescription:
+      'Choose the processor model first. You can configure it further after creation.',
+    diagramHint: 'How it works',
+    agentDiagramTitle: 'Agent: decide and act',
+    agentDiagramDescription:
+      'An Agent can receive many platform events, use models and tools to understand the situation, and decide what to do next.',
+    pipelineDiagramTitle: 'Pipeline: follow a defined flow',
+    pipelineDiagramDescription:
+      'A Pipeline handles message events only and runs each step in the order you configure.',
+    pipelineDiagramFlow: 'Messages move through a fixed sequence',
+    diagramEvents: 'Platform events',
+    diagramAgentCanUse: 'Available to Agent',
+    diagramMessages: 'Messages',
+    diagramMembers: 'Members',
+    diagramFeedback: 'Feedback',
+    diagramDecide: 'Understand and decide',
+    diagramModel: 'Use model',
+    diagramTools: 'Use tools',
+    diagramActions: 'Take action',
+    diagramMessage: 'Message',
+    diagramPreprocess: 'Prepare',
+    diagramAI: 'AI',
+    diagramPostprocess: 'Refine',
+    diagramOutput: 'Output',
+    basicInfo: 'Basic Information',
+    basicInfoDescription: 'Set the name, icon and description',
+    runnerSettings: 'Runner',
+    advanced: 'Advanced',
+    eventsAndTools: 'Events & tools',
+    eventsAndToolsDescription: 'Set trigger events and available tools.',
+    bindableEvents: 'Event scope',
+    bindableEventsDescription:
+      'Add an event to automatically provide its tools to the Agent.',
+    configuredEvents: 'Added events',
+    configuredEventsCount: '{{count}} total',
+    addEvent: 'Add event',
+    removeEvent: 'Remove event',
+    eventActions: 'Automatically enabled tools',
+    eventToolEnabled: 'Enabled',
+    eventToolsEnabledCount: '{{count}} tools enabled',
+    noEventActions: 'No actions are available for this event.',
+    noEventsConfigured: 'No events added',
+    noEventsConfiguredDescription: 'No event can trigger this Agent.',
+    noEventsConfiguredBadge: 'No events',
+    apiTools: 'Tool access',
+    apiToolsDescription: 'Choose which tools this Agent can call.',
+    otherTools: 'Other tools',
+    otherToolsDescription:
+      'Choose platform, sandbox, MCP, plugin, and skill tools.',
+    apiToolsSelected: '{{count}} selected',
+    apiToolsSecurityHint: 'Only enable the tools this Agent needs.',
+    apiToolsSearch: 'Search tools…',
+    eventApiTools: 'Event tools',
+    eventToolUnavailable: 'Unavailable',
+    eventApiToolsDescription:
+      'Targets are frozen from the current event. The Agent only supplies action parameters.',
+    platformApiTools: 'Platform tools',
+    platformApiToolsDescription:
+      'The Agent may choose user, group, or message IDs. Grant only what the workflow needs.',
+    apiToolEvents: 'Events',
+    apiToolParameters: 'Agent parameters',
+    apiToolSource: 'Source',
+    apiToolNoParameters: 'none',
+    sandboxTools: 'Sandbox',
+    mcpTools: 'MCP',
+    pluginTools: 'Plugins',
+    skillTools: 'Skills',
+    langbotBuiltIn: 'LangBot',
+    apiToolDetails: 'Details',
+    apiToolHideDetails: 'Hide',
+    apiToolsNoResults: 'No matching API or tool',
+    apiToolsCatalogUnavailable:
+      'The LangBot backend did not return the API tool catalog. Make sure the backend is updated and restarted; this does not mean the current platform has no tools.',
+    hostToolsCatalogUnavailable: 'The tool catalog is temporarily unavailable.',
+    apiToolRisk: {
+      read: 'Read only',
+      write: 'Action',
+      dangerous: 'Sensitive',
+    },
+    supportedEvents: 'Event Range',
+    supportedEventsDescription:
+      'Choose all events, an event group, or individual events. Bot routes will only list this Agent for matching events.',
+    searchEvents: 'Search events…',
+    noEventsFound: 'No matching events found',
+    nameRequired: 'Name cannot be empty',
+    createSuccess: 'Created successfully',
+    createError: 'Creation failed: ',
+    loadError: 'Load failed: ',
+    saveSuccess: 'Saved successfully',
+    saveError: 'Save failed: ',
+    deleteSuccess: 'Deleted successfully',
+    deleteError: 'Delete failed: ',
+    deleteConfirmation: 'Are you sure you want to delete this Agent?',
+    dangerZone: 'Danger Zone',
+    dangerZoneDescription: 'Irreversible and destructive actions',
+    deleteAgentAction: 'Delete this Agent',
+    deleteAgentHint:
+      'Once deleted, events bound to it can no longer be executed.',
+    noRunnerMetadata: 'No Runner metadata is currently available.',
+    runnerStatusLoading: 'Checking runner status',
+    runnerStatusCheckFailed: 'Runner status could not be checked',
+    runnerStatusCheckFailedDescription:
+      'Retry the check. If it still fails, verify the backend and plugin runtime.',
+    noRunnersAvailable: 'No runners are available',
+    noRunnersAvailableDescription:
+      'Install and enable an Runner extension before configuring this Agent.',
+    installedRunners: 'Installed Runners',
+    marketplaceRunners: 'Runner plugins in Marketplace',
+    viewMarketplace: 'View market',
+    restoringRunnerInstall:
+      'Restoring the Runner plugin installation and waiting for the runner…',
+    noInstalledRunners: 'No Runner extension is installed yet.',
+    installingRunner: 'Installing {{runner}}...',
+    runnerInstallSuccess: '{{runner}} is installed and ready to select',
+    selectedRunnerUnavailable: 'Selected runner is unavailable',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} is not currently registered. Select another runner or restore its extension.',
+    noRunnerSelected: 'No runner selected',
+    runnerConfigIncomplete: 'Runner configuration incomplete',
+    runnerConfigIncompleteDescription: 'Complete required fields: {{fields}}',
+    runnerReady: 'Runner ready',
+    runnerReadyDescription:
+      '{{runner}} is registered and the plugin runtime is connected.',
+    debugTab: 'Event Debug',
+    debugTitle: 'Agent Event Debug',
+    debugDescription:
+      'Run the current Agent with a message or platform event and inspect the real output.',
+    debugResetSession: 'Reset session',
+    debugEventType: 'Event type',
+    debugNoEventsTitle: 'No events to debug',
+    debugNoEventsDescription: 'Add an event under Events & tools first.',
+    debugMessageReceived: 'Message received',
+    debugGroupMemberJoined: 'Group member joined',
+    debugGroupMemberLeft: 'Group member left',
+    debugFriendRequested: 'Friend request received',
+    debugFeedbackReceived: 'Feedback received',
+    debugCustomEvent: 'Custom event',
+    debugCustomEventType: 'Custom event name',
+    debugMessageInput: 'Conversation input',
+    debugEventSummary: 'Event summary',
+    debugInputPlaceholder: 'Enter what the Agent should handle',
+    debugEventPayload: 'Event payload (JSON)',
+    debugSupportedEvents: 'Agent supports',
+    debugRun: 'Run test',
+    debugSaveAndRun: 'Save and run',
+    debugRunning: 'Running',
+    debugTranscript: 'Debug transcript',
+    debugTranscriptDescription:
+      'Inputs and Agent outputs from the current debug session.',
+    debugEmptyTitle: 'Verify how this Agent behaves',
+    debugEmptyTranscript:
+      'Choose an event, enter test content, then select “Run test”. Results stay on this page.',
+    debugAgentOutput: 'Agent output',
+    debugReasoning: 'Thinking',
+    debugTextOutput: 'Text output',
+    debugPlatformNotice:
+      'Platform tools use Mock: the Agent makes real tool calls, while platform actions are simulated without sending real messages. Other tools execute as configured.',
+    debugToolSimulated: 'Simulated successfully · Mock',
+    debugStop: 'Stop debugging',
+    debugMockOptions: 'Mock scenario (JSON)',
+    debugInvalidMock: 'Mock scenario must be a valid JSON object.',
+    debugToolMockFailed: 'Simulated failure · Mock',
+    debugMockOptionsHelp:
+      'Defaults to success. Map tool names to failures in errors or query fixtures in results; list unsupported APIs in unsupported_apis. Example: {"errors":{"event_reply":"Simulated send failure"}}',
+    debugCancelled:
+      'Debugging stopped. Earlier execution records are retained.',
+    debugNoToolCalls:
+      'No tool calls recorded. Generated text does not mean a message was sent.',
+    debugToolCount:
+      '{{count}} tool calls recorded. See their execution status and results below.',
+    debugToolRunning: 'Running',
+    debugToolCompleted: 'Completed',
+    debugToolFailed: 'Failed',
+    debugToolInterrupted: 'No result returned',
+    debugToolArguments: 'Arguments',
+    debugToolResult: 'Result',
+    debugTestInput: 'Test input',
+    debugNoTextOutput: 'The run completed without textual output.',
+    debugEventTypeRequired: 'Enter an event type',
+    debugInputRequired: 'Enter a conversation input',
+    debugInvalidPayload: 'The event payload must be a valid JSON object',
+    debugUnsupportedEvent:
+      'This event is outside the Agent’s bindable event range',
+    debugRunnerConfigInvalidDescription:
+      'The runner configuration is incomplete: {{message}}',
+    debugRunnerExecutionFailedDescription:
+      'This run failed. Check the selected model and runner configuration, then try again.',
+    debugRunnerTimeoutDescription:
+      'The run timed out. Try again later or adjust the runner timeout.',
+    debugApiKeyRequired: 'API Key is missing',
+    debugOpenRunnerConfig: 'Open runner configuration',
+    debugReviewRunnerConfig: 'Review runner configuration',
+    debugErrorDetails: 'View error details',
+    debugRunFailed: 'Agent debug run failed',
+  },
   plugins: {
     title: 'Extensions',
     description:
@@ -551,6 +1366,7 @@ const enUS = {
     noExtensionInstalled: 'No extensions installed',
     loadingExtensions: 'Loading extensions...',
     groupByType: 'Group by format',
+    groupByTypeShort: 'Group',
     pluginConfig: 'Plugin Configuration',
     pluginSort: 'Plugin Sort',
     pluginSortDescription:
@@ -615,6 +1431,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
+      Runner: 'Runner',
     },
     uploadLocal: 'Upload Local',
     debugging: 'Debugging',
@@ -704,13 +1521,18 @@ const enUS = {
     goToMarketplace: 'Go to Extension Market',
     installProgress: {
       title: 'Installing {{name}}',
+      updateTitle: 'Updating {{name}}',
       titleGeneric: 'Extension Installation',
       titlePlugin: 'Installing Plugin {{name}}',
       titleMCP: 'Installing MCP Server {{name}}',
       titleSkill: 'Installing Skill {{name}}',
       overallProgress: 'Overall Progress',
+      checkingUpdate: 'Checking for updates',
       downloading: 'Downloading',
+      validating: 'Validating package',
       installingDeps: 'Installing Dependencies',
+      applyingUpdate: 'Applying update',
+      activating: 'Starting and refreshing components',
       initializing: 'Initializing Settings',
       launching: 'Launching',
       completed: 'Completed',
@@ -720,17 +1542,23 @@ const enUS = {
       depsProgress:
         '{{installed}}/{{total}} installed · {{remaining}} remaining',
       installComplete: 'Installation successful',
+      updateComplete: 'Plugin updated successfully',
       installCompletePlugin: 'Plugin installed successfully',
       installCompleteMCP: 'MCP Server installed successfully',
       installCompleteSkill: 'Skill installed successfully',
       dismiss: 'Dismiss',
       background: 'Run in Background',
-      taskQueue: 'Install Tasks',
+      taskQueue: 'Plugin Tasks',
       clearCompleted: 'Clear Completed',
-      noTasks: 'No install tasks',
+      noTasks: 'No plugin tasks',
     },
   },
   market: {
+    runnerUsage: 'Runner usage',
+    runnerUsageAll: 'All',
+    runnerUsageAgent: 'Agent / Pipeline',
+    runnerUsageEvent: 'Plugin processor',
+
     searchPlaceholder: 'Search plugins...',
     searchPlaceholderCount:
       'Search {{count}} extensions, capabilities, or use cases...',
@@ -795,6 +1623,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
+      Runner: 'Runner',
     },
     filterByType: 'Type',
     allTypes: 'All Types',
@@ -984,6 +1813,7 @@ const enUS = {
     earliestEdited: 'Earliest Edited',
     basicInfo: 'Basic Information',
     basicInfoDescription: 'Set the pipeline name, icon and description',
+    managementDescription: 'Copy or delete this pipeline.',
     aiCapabilities: 'AI',
     triggerConditions: 'Trigger',
     safetyControls: 'Safety',
@@ -1046,14 +1876,14 @@ const enUS = {
       selectSkills: 'Select Skills',
       noSkillsAvailable: 'No skills available',
       mcpServersScopeTooltip:
-        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Local Agent.',
+        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'When enabled, all configured and enabled MCP servers become candidates for MCP tools and resources in AI Feature.',
     },
-    localAgent: {
+    runner: {
       toolsTitle: 'Tools',
       toolsDescription:
-        'Select plugin, MCP, skill, and built-in tools available to this Local Agent.',
+        'Select plugin, MCP, skill, and built-in tools available to this Runner.',
       toolsScopeTooltip:
         'MCP tools only come from MCP servers bound in Extensions. Bind another MCP server there to make its tools selectable here.',
       enableAllTools: 'Enable all tools',
@@ -1071,7 +1901,7 @@ const enUS = {
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:
-        'Select MCP resources and knowledge bases available to this Local Agent.',
+        'Select MCP resources and knowledge bases available to this Runner.',
       knowledgeBases: 'Knowledge bases',
       mcpResources: 'MCP resources',
       mcpResourcesScopeTooltip:
@@ -1089,6 +1919,7 @@ const enUS = {
       privateChat: 'Private Chat',
       groupChat: 'Group Chat',
       send: 'Send',
+      saveAndSend: 'Save and send',
       reset: 'Reset Conversation',
       inputPlaceholder: 'Send {{type}} message...',
       noMessages: 'No messages',
@@ -1102,8 +1933,8 @@ const enUS = {
       atTips: 'Mention the bot',
       streaming: 'Streaming',
       streamOutput: 'Stream',
-      connected: 'WebSocket connected',
-      disconnected: 'WebSocket disconnected',
+      connected: 'Connected',
+      disconnected: 'Disconnected',
       connectionError: 'WebSocket connection error',
       connectionFailed: 'WebSocket connection failed',
       notConnected: 'WebSocket not connected, please try again later',
@@ -1119,7 +1950,8 @@ const enUS = {
       uploading: 'Uploading...',
     },
     monitoring: {
-      title: 'Dashboard',
+      title: 'Run logs',
+      workbench: 'Configure & debug',
       description:
         'View execution logs and errors for this pipeline (last 24 hours)',
       detailedLogs: 'Detailed Logs',
@@ -1204,6 +2036,23 @@ const enUS = {
     knowledgeEngine: 'Knowledge Engine',
     knowledgeEngineRequired: 'Knowledge engine is required',
     selectKnowledgeEngine: 'Select Knowledge Engine',
+    installedEngines: 'Installed knowledge engines',
+    noInstalledEngines: 'No knowledge engine plugins are installed yet.',
+    marketplaceEngines: 'Knowledge engine plugins in Marketplace',
+    noMarketplaceEngines: 'No knowledge engine plugins are available.',
+    loadingEngineCatalog: 'Loading Marketplace plugins…',
+    engineCatalogUnavailable:
+      'Marketplace is temporarily unavailable. Reopen the selector to retry.',
+    viewMarketplace: 'View market',
+    installingEngine: 'Installing {{engine}}…',
+    engineInstallSuccess: '{{engine}} is installed and ready to select',
+    engineInstallFailed:
+      'Knowledge engine installation failed. Please try again.',
+    engineVersionUnavailable: 'This plugin has no installable version.',
+    engineInstallTimeout:
+      'Installation is still running. Refresh the page to check again.',
+    engineRegistrationTimeout:
+      'The plugin is installed, but its knowledge engine is not ready yet.',
     builtInEngine: 'Built-in Engine',
     cannotChangeKnowledgeEngine:
       'Knowledge engine cannot be changed after creation',
@@ -1741,6 +2590,44 @@ const enUS = {
     databaseType: 'Database type',
     days: 'days',
     missing: 'Missing',
+    notCreated: 'Not created yet',
+    processStorage: 'Storage by process',
+    processStorageDescription:
+      'Each runtime measures the directories it owns. Detail rows are included in their parent directory total.',
+    directory: 'Directory',
+    size: 'Size',
+    files: 'Files',
+    runtimeUnavailable: 'Runtime storage statistics are unavailable.',
+    noManagedDirectories: 'No managed directories were reported.',
+    scanWarnings: '{{count}} unreadable entries',
+    boxActivity: '{{sessions}} sessions · {{processes}} managed processes',
+    statusLabels: {
+      available: 'Available',
+      unavailable: 'Unavailable',
+      disabled: 'Disabled',
+      not_applicable: 'Not applicable',
+    },
+    sourceLabels: {
+      local_process: 'Measured by the LangBot process',
+      runtime_rpc: 'Measured by the runtime process over authenticated RPC',
+    },
+    scopeLabels: {
+      runtime_host: 'Runtime host',
+      sandbox_sessions: 'Sandbox sessions',
+    },
+    processNames: {
+      langbot: 'LangBot main process',
+      plugin_runtime: 'Plugin Runtime',
+      box_runtime: 'Box Runtime',
+    },
+    processDescriptions: {
+      langbot:
+        'Application database, logs, uploaded files, vector data and temporary files.',
+      plugin_runtime:
+        'Plugin packages, verified artifacts, dependency environments and private installation data.',
+      box_runtime:
+        'Sandbox workspaces, MCP process workspaces, attachment exchange directories and skills.',
+    },
     expiredUploads: 'Expired uploads',
     expiredLogs: 'Expired logs',
     noExpiredUploads: 'No expired uploaded files',
@@ -1753,6 +2640,20 @@ const enUS = {
       plugins: 'Plugins',
       mcp: 'MCP',
       temp: 'Temporary files',
+      legacy_plugins: 'Legacy plugin packages',
+      artifacts: 'Verified plugin artifacts',
+      dependency_environments: 'Plugin dependency environments',
+      installations: 'Plugin installation data',
+      staging: 'Plugin staging files',
+      rpc_transfer: 'Runtime RPC transfer files',
+      workspace: 'Sandbox workspace',
+      inbox: 'Inbound attachments',
+      outbox: 'Outbound attachments',
+      skills: 'Skills',
+      session_workspaces: 'Sandbox session workspaces',
+      session_caches: 'Sandbox runtime caches',
+      session_temp: 'Sandbox temporary files',
+      managed_process_workspaces: 'Managed-process workspaces (including MCP)',
     },
   },
   limitation: {
@@ -1903,6 +2804,8 @@ const enUS = {
         'The bot received an IM message. You can continue to the next step.',
       messageReceivedLocalAccountWarning:
         'The bot-side connection is configured correctly and received an IM message. Because you are not signed in with a LangBot Account, model calls may fail; continue to the next step to add your own model.',
+      pageBotPreviewFailed:
+        'Failed to load the test chat. Please save the configuration again to retry.',
       pageBotTestPrompt:
         'Page Bot is enabled. Click the chat bubble in the lower-right corner and send a message to verify the full conversation flow.',
       pageBotTestNotice:
@@ -1923,14 +2826,18 @@ const enUS = {
         'Monitor bot activity to verify the platform connection is working.',
     },
     aiEngine: {
-      title: 'Configure AI Engine',
+      defaultModelUnavailable:
+        'No default chat model is available. Please retry.',
+      defaultRunnerUnavailable: 'Local Agent is not ready. Please retry.',
+      preparingDefault: 'Preparing default AI…',
+      title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
       optionalDescription:
-        'This step is optional. Choose how you want to continue with the current agent.',
+        'The default AI is ready. Keep it or choose another way to connect.',
       externalTitle: 'Connect an External Agent',
       externalDescription:
-        'Connect Dify, n8n, Coze, or another platform and replace the bot pipeline.',
+        'Connect Dify, n8n, Coze, or another external Agent through a Runner plugin.',
       ownModelTitle: 'Use My Own Model',
       ownModelDescription:
         'Add a provider, then scan or manually enter a model to finish setup.',
@@ -1943,7 +2850,7 @@ const enUS = {
       selectModelTitle: 'Choose a Model',
       selectScannedModelTitle: 'Choose a Model',
       selectScannedModelDescription:
-        'The selected model will be the primary model of a new pipeline, and the bot will switch to it.',
+        'The selected model will replace the primary model in this bot’s pipeline.',
       scanModelMode: 'Scan Models',
       manualModelMode: 'Add Manually',
       scanningModels: 'Scanning available models…',
@@ -1962,15 +2869,36 @@ const enUS = {
       manualModelOptions: 'Optional Model Capabilities',
       editProvider: 'Edit provider',
       rescanModels: 'Scan models again',
-      moreFeaturesTitle: 'Add More Agent Features',
+      moreFeaturesTitle: 'Use the default setup',
       moreFeaturesDescription:
-        'Open the workbench to add tools, knowledge bases, and other capabilities to the Agent that was just generated automatically.',
+        'Keep Local Agent and the recommended model. You can add tools and knowledge bases later.',
       runnerDescription:
         'Select a runner for the external agent and configure its connection.',
       backToChoices: 'Back to options',
+      backToList: 'Back to list',
       createExternal: 'Create and Bind',
       finishWithModel: 'Use Selected Model & Finish',
       openWorkbench: 'Open Workbench',
+      loadingCatalog: 'Loading Runner extensions...',
+      catalogUnavailable: 'Runner catalog is unavailable',
+      catalogUnavailableDescription:
+        'Installed runners are still available. Retry the catalog or browse Extensions.',
+      noMarketplaceRunners: 'No Runner plugins match this usage',
+      noMarketplaceRunnersDescription:
+        'Use an installed Runner or try again later.',
+      browseRunners: 'Browse Runner Extensions',
+      installAndContinue: 'Install & Continue',
+      installing: 'Installing...',
+      useInstalled: 'Use This Runner',
+      installedUnavailable: 'Installed, Runner Unavailable',
+      installSuccess: '{{runner}} installed and selected',
+      installFailed: 'Failed to install the Runner extension',
+      versionUnavailable:
+        'The Marketplace did not return an installable version.',
+      installTimeout:
+        'Runner installation timed out. Check the task in Extensions.',
+      registrationTimeout:
+        'The extension installed, but its Runner did not register. Check the plugin runtime and retry.',
     },
     config: {
       botInfo: 'Bot Information',
@@ -1982,7 +2910,7 @@ const enUS = {
     done: {
       title: 'All Set!',
       description:
-        'Your bot has been created and connected to the AI pipeline. You can now manage it from the workbench.',
+        'Your bot has been created and connected to its pipeline. You can now manage it from the workbench.',
       backToWorkbench: 'Back to Workbench',
     },
   },

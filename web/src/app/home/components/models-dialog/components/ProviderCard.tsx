@@ -9,7 +9,11 @@ import {
   Radar,
 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { ModelProvider, ReasoningConfig } from '@/app/infra/entities/api';
+import {
+  LangBotModelAvailabilityItem,
+  ModelProvider,
+  ReasoningConfig,
+} from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -34,6 +38,7 @@ import {
   ProviderModels,
 } from '../types';
 import ModelItem from './ModelItem';
+import { sortModelsByCatalog } from '../../model-availability/sort-models';
 import AddModelPopover from './AddModelPopover';
 
 interface ProviderCardProps {
@@ -47,6 +52,8 @@ interface ProviderCardProps {
   isWorkspaceOwner: boolean;
   ownerSpaceBound: boolean;
   spaceCredits: number | null;
+  modelMetadata: Record<string, LangBotModelAvailabilityItem>;
+  modelAvailabilityLoaded: boolean;
   // Popover states
   addModelPopoverOpen: string | null;
   editModelPopoverOpen: string | null;
@@ -115,6 +122,8 @@ export default function ProviderCard({
   isWorkspaceOwner,
   ownerSpaceBound,
   spaceCredits,
+  modelMetadata,
+  modelAvailabilityLoaded,
   addModelPopoverOpen,
   editModelPopoverOpen,
   deleteConfirmOpen,
@@ -417,13 +426,20 @@ export default function ProviderCard({
               </p>
             ) : models ? (
               <div className="space-y-2">
-                {models.llm.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.llm, modelMetadata)
+                  : models.llm
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
                     canManage={canManage}
                     modelType="llm"
                     isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}
@@ -468,13 +484,20 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.embedding.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.embedding, modelMetadata)
+                  : models.embedding
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
                     canManage={canManage}
                     modelType="embedding"
                     isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}
@@ -517,13 +540,20 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.rerank.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.rerank, modelMetadata)
+                  : models.rerank
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
                     canManage={canManage}
                     modelType="rerank"
                     isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}

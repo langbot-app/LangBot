@@ -1,0 +1,616 @@
+import { expect, test } from '@playwright/test';
+
+import { installLangBotApiMocks } from './fixtures/langbot-api';
+
+test.describe('processor detail workbench', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('agent keeps debugging left of its orchestration settings', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+      withRunnerToolSelector: true,
+    });
+
+    await page.goto('/home/agents?id=agent-workbench');
+
+    const debugPanel = page.getByRole('region', { name: 'Debug' });
+    const configPanel = page.getByRole('region', { name: 'Configuration' });
+    await expect(debugPanel).toBeVisible();
+    await expect(configPanel).toBeVisible();
+    const debugBox = await debugPanel.boundingBox();
+    const configBox = await configPanel.boundingBox();
+    expect(debugBox).not.toBeNull();
+    expect(configBox).not.toBeNull();
+    expect(debugBox!.x).toBeLessThan(configBox!.x);
+    expect(configBox!.width).toBeGreaterThan(debugBox!.width);
+
+    const debugEventPicker = debugPanel.getByRole('combobox', {
+      name: 'Event type',
+    });
+    await expect(debugEventPicker).toContainText('message.received');
+    const transcriptBox = await debugPanel
+      .getByText('Debug transcript', { exact: true })
+      .boundingBox();
+    const eventPickerBox = await debugEventPicker.boundingBox();
+    const conversationInputBox = await debugPanel
+      .getByRole('textbox', { name: 'Message content' })
+      .boundingBox();
+    expect(transcriptBox).not.toBeNull();
+    expect(eventPickerBox).not.toBeNull();
+    expect(conversationInputBox).not.toBeNull();
+    expect(eventPickerBox!.y).toBeGreaterThan(transcriptBox!.y);
+    expect(eventPickerBox!.y).toBeLessThan(conversationInputBox!.y);
+    await debugEventPicker.click();
+    await expect(page.getByRole('group', { name: 'Messages' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Groups' })).toBeVisible();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toContainText('A member joins a group where the bot is present.');
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toContainText('group.member_joined');
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Message edited' }),
+    ).toContainText('The platform reports that an existing message changed.');
+    await expect(page.getByRole('option')).toHaveCount(6);
+    await page.keyboard.press('Escape');
+
+    const appShell = page.locator('[class*="group/sidebar-wrapper"]');
+    const sidebarInset = page.locator('[data-slot="sidebar-inset"]');
+    await expect(appShell).toHaveCSS('overflow', 'hidden');
+    await expect(sidebarInset).toHaveCSS('overflow', 'hidden');
+    await appShell.evaluate((element) => {
+      element.scrollTop = 300;
+    });
+    await sidebarInset.evaluate((element) => {
+      element.scrollTop = 300;
+    });
+    await expect
+      .poll(() => appShell.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    await expect
+      .poll(() => sidebarInset.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    expect(debugBox!.y).toBeGreaterThanOrEqual(0);
+
+    const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab').nth(0)).toContainText('Runner');
+    await expect(flow.getByRole('tab').nth(1)).toContainText('Events & tools');
+    await expect(flow.getByRole('tab')).toHaveCount(2);
+    const selectorCard = configPanel.locator('[data-slot="card"]').filter({
+      has: page.getByRole('combobox', { name: 'Runner', exact: true }),
+    });
+    const configCard = configPanel.locator('[data-slot="card"]').filter({
+      has: page
+        .locator('[data-slot="card-title"]')
+        .getByText('Local Agent', { exact: true }),
+    });
+    await expect(selectorCard).toBeVisible();
+    await expect(configCard).toBeVisible();
+    const selectorCardBox = await selectorCard.boundingBox();
+    const configCardBox = await configCard.boundingBox();
+    expect(configCardBox!.y).toBeGreaterThan(
+      selectorCardBox!.y + selectorCardBox!.height,
+    );
+
+    await expect(flow.getByText('Management')).toHaveCount(0);
+
+    await page.setViewportSize({ width: 1024, height: 900 });
+    const tabListMetrics = await flow.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(tabListMetrics.scrollWidth).toBeLessThanOrEqual(
+      tabListMetrics.clientWidth,
+    );
+
+    await expect(
+      page.getByRole('heading', { name: /agent-workbench/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
+    const saveButton = page.getByRole('button', { name: 'Save' });
+    const deleteButton = page.getByRole('button', { name: 'Delete' });
+    await expect(saveButton).toBeVisible();
+    await expect(deleteButton).toBeVisible();
+    const saveBox = await saveButton.boundingBox();
+    const deleteBox = await deleteButton.boundingBox();
+    expect(saveBox).not.toBeNull();
+    expect(deleteBox).not.toBeNull();
+    expect(deleteBox!.x).toBeGreaterThan(saveBox!.x);
+    await expect(configPanel.getByLabel('Name')).toHaveCount(0);
+    await expect(configPanel.getByLabel('Icon')).toHaveCount(0);
+    await expect(configPanel.getByLabel('Description')).toHaveCount(0);
+
+    const runnerStatus = page.getByRole('status', { name: 'Runner ready' });
+    await expect(runnerStatus).toBeVisible();
+    await runnerStatus.hover();
+    await expect(
+      page
+        .getByText(
+          'Local Agent is registered and the plugin runtime is connected.',
+        )
+        .last(),
+    ).toBeVisible();
+
+    await flow.getByRole('tab').nth(1).click();
+    await expect(
+      configPanel.getByText('Events & tools', { exact: true }).last(),
+    ).toBeVisible();
+    const eventPicker = configPanel.getByRole('button', {
+      name: 'Add event',
+      exact: true,
+    });
+    await expect(eventPicker).toBeVisible();
+    await expect(configPanel.getByRole('textbox')).toHaveCount(1);
+    await expect(
+      configPanel.getByRole('textbox', { name: 'Search tools…' }),
+    ).toBeVisible();
+    await eventPicker.click();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'message.received' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'group.*' }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('[cmdk-group-heading]')
+        .getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator('[cmdk-group-heading]').getByText('Groups', { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'message.*' })
+      .first()
+      .click();
+    await page.keyboard.press('Escape');
+
+    await debugEventPicker.click();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Message edited' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('option')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+
+    await eventPicker.click();
+    await page.getByRole('option').filter({ hasText: 'All events' }).click();
+    await page.keyboard.press('Escape');
+
+    await flow.getByRole('tab').nth(0).click();
+    await expect(
+      configPanel.getByText('Local Agent', { exact: true }).last(),
+    ).toBeVisible();
+
+    await deleteButton.click();
+    const deleteDialog = page.getByRole('dialog');
+    await expect(deleteDialog).toContainText(
+      'Are you sure you want to delete this Agent?',
+    );
+    await deleteDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(deleteDialog).toHaveCount(0);
+  });
+
+  test('agent saves edits before debugging and shows the real output', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const requests: string[] = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (
+        request.method() === 'PUT' &&
+        path === '/api/v1/agents/agent-workbench'
+      ) {
+        requests.push('save');
+      }
+      if (
+        request.method() === 'POST' &&
+        path === '/api/v1/agents/agent-workbench/debug/stream'
+      ) {
+        requests.push('debug');
+      }
+    });
+
+    await page.goto('/home/agents?id=agent-workbench');
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const basicInfoDialog = page.getByRole('dialog');
+    await expect(basicInfoDialog.getByLabel('Icon')).toBeVisible();
+    await basicInfoDialog
+      .getByLabel('Description')
+      .fill('Updated before debugging');
+    await basicInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(basicInfoDialog).toHaveCount(0);
+    await page.getByRole('textbox', { name: 'Message content' }).fill('Hello');
+    await page.getByRole('button', { name: 'Run test' }).click();
+
+    await expect(page.getByText('Mock Agent response')).toBeVisible();
+    expect(requests).toEqual(['save', 'debug']);
+  });
+
+  test('agent deletion is confirmed from the header and returns to the list', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.goto('/home/agents?id=agent-workbench');
+
+    const deleteRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === '/api/v1/agents/agent-workbench',
+    );
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Confirm Delete' })
+      .click();
+
+    await deleteRequest;
+    await expect(page).toHaveURL(/\/home\/agents$/);
+  });
+
+  test('agent turns runner failures into an actionable message', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.route(
+      '**/api/v1/agents/agent-workbench/debug/stream',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/x-ndjson',
+          body:
+            JSON.stringify({
+              kind: 'error',
+              code: 'dify.config_invalid',
+              msg: 'api-key is required',
+            }) + '\n',
+        });
+      },
+    );
+
+    await page.goto('/home/agents?id=agent-workbench');
+    await page.getByRole('textbox', { name: 'Message content' }).fill('Hello');
+    await page.getByRole('button', { name: 'Run test' }).click();
+
+    await expect(
+      page.getByText(
+        'The runner configuration is incomplete: API Key is missing',
+      ),
+    ).toBeVisible();
+    await expect(page.getByText('Internal server error')).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Review runner configuration' })
+      .click();
+    await expect(
+      page.getByRole('tab', { name: 'Runner', exact: true }),
+    ).toHaveAttribute('data-state', 'active');
+  });
+
+  test('pipeline keeps debug chat left and exposes its main flow first', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const debugImageKey =
+      'v1/mock-instance/workspace-default/1/upload_image/mock-owner/debug-image.png';
+    const debugImageBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await page.route('**/api/v1/files/images', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: { file_key: debugImageKey },
+          timestamp: Date.now(),
+        }),
+      });
+    });
+    await page.route('**/api/v1/files/image/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: debugImageBytes,
+      });
+    });
+    await page.routeWebSocket('**/api/v1/pipelines/**/ws/connect**', (ws) => {
+      ws.onMessage((raw) => {
+        const message = JSON.parse(String(raw));
+        if (message.type === 'authenticate') {
+          ws.send(
+            JSON.stringify({
+              type: 'connected',
+              connection_id: 'playwright-connection',
+              pipeline_uuid: 'pipeline-workbench',
+              session_type: 'person',
+            }),
+          );
+        } else if (message.type === 'message') {
+          ws.send(
+            JSON.stringify({
+              type: 'user_message',
+              session_type: 'person',
+              data: {
+                id: 1,
+                role: 'user',
+                content: 'Describe this image',
+                message_chain: message.message,
+                timestamp: new Date().toISOString(),
+                is_final: true,
+              },
+            }),
+          );
+        }
+      });
+    });
+
+    await page.goto('/home/pipelines?id=pipeline-workbench');
+
+    const debugPanel = page.getByRole('region', { name: 'Debug Chat' });
+    const configPanel = page.getByRole('region', { name: 'Configuration' });
+    await expect(debugPanel).toBeVisible();
+    await expect(configPanel).toBeVisible();
+    await expect(
+      debugPanel.getByText('Connected', { exact: true }),
+    ).toBeVisible();
+    await expect(debugPanel.getByText('WebSocket connected')).toHaveCount(0);
+    await expect(
+      debugPanel.getByRole('button', { name: 'Private Chat' }),
+    ).toBeVisible();
+    await expect(
+      debugPanel.getByRole('button', { name: 'Group Chat' }),
+    ).toBeVisible();
+    const sessionToolbar = debugPanel.locator(
+      '[data-debug-session-toolbar="true"]',
+    );
+    await expect(sessionToolbar.getByText('Session Type')).toBeVisible();
+    const privateChatButton = sessionToolbar.getByRole('button', {
+      name: 'Private Chat',
+    });
+    const groupChatButton = sessionToolbar.getByRole('button', {
+      name: 'Group Chat',
+    });
+    await expect(privateChatButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(privateChatButton).toHaveClass(/bg-primary\/15/);
+    await expect(privateChatButton).toHaveClass(/text-primary/);
+    await expect(groupChatButton).not.toHaveClass(/bg-primary\/15/);
+    await groupChatButton.click();
+    await expect(groupChatButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(groupChatButton).toHaveClass(/bg-primary\/15/);
+    await expect(groupChatButton).toHaveClass(/text-primary/);
+    await expect(privateChatButton).not.toHaveClass(/bg-primary\/15/);
+    await privateChatButton.click();
+
+    const composer = debugPanel.locator('[data-debug-composer="true"]');
+    const messageInput = composer.locator('textarea');
+    const sendButton = composer.getByRole('button', { name: 'Send' });
+    const resetButton = composer.getByRole('button', {
+      name: 'Reset Conversation',
+    });
+    await expect(messageInput).toBeVisible();
+    await expect(messageInput).toHaveAttribute('rows', '1');
+    await expect(resetButton).toBeVisible();
+    const inputBox = await messageInput.boundingBox();
+    const sendBox = await sendButton.boundingBox();
+    const toolbarBox = await sessionToolbar.boundingBox();
+    const emptyStateBox = await debugPanel
+      .getByText('No messages', { exact: true })
+      .boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
+    expect(toolbarBox).not.toBeNull();
+    expect(emptyStateBox).not.toBeNull();
+    expect(sendBox!.x).toBeGreaterThan(inputBox!.x + inputBox!.width);
+    expect(Math.abs(sendBox!.height - inputBox!.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sendBox!.y - inputBox!.y)).toBeLessThanOrEqual(1);
+    expect(toolbarBox!.y).toBeLessThan(emptyStateBox!.y);
+
+    await composer.locator('input[type="file"]').setInputFiles({
+      name: 'debug-image.png',
+      mimeType: 'image/png',
+      buffer: debugImageBytes,
+    });
+    await expect(
+      debugPanel.locator('[data-debug-chat-attachment-preview="true"]'),
+    ).toBeVisible();
+    await messageInput.fill('Describe this image');
+    await sendButton.click();
+    await expect(
+      debugPanel.locator('[data-debug-chat-message-image="true"]'),
+    ).toBeVisible();
+    await expect(debugPanel.getByText('Describe this image')).toBeVisible();
+
+    const streamSwitchBox = await composer.getByRole('switch').boundingBox();
+    const resetBox = await resetButton.boundingBox();
+    expect(streamSwitchBox).not.toBeNull();
+    expect(resetBox).not.toBeNull();
+    expect(resetBox!.x).toBeGreaterThan(
+      streamSwitchBox!.x + streamSwitchBox!.width,
+    );
+    expect(
+      Math.abs(
+        resetBox!.y +
+          resetBox!.height / 2 -
+          (streamSwitchBox!.y + streamSwitchBox!.height / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+
+    await resetButton.click();
+    await expect(
+      page.getByText('Conversation reset successfully'),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole('heading', { name: /pipeline-workbench/ }),
+    ).toBeVisible();
+    await expect(configPanel.locator('input[name="basic.name"]')).toHaveCount(
+      0,
+    );
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const basicInfoDialog = page.getByRole('dialog');
+    await expect(basicInfoDialog.getByLabel('Icon')).toBeVisible();
+    await basicInfoDialog.getByLabel('Name').fill('Renamed Pipeline');
+    await basicInfoDialog
+      .getByLabel('Description')
+      .fill('Updated from the title dialog.');
+    await basicInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Renamed Pipeline/ }),
+    ).toBeVisible();
+
+    const secondaryNavigation = configPanel.locator('nav').getByRole('button');
+    await expect(secondaryNavigation.last()).toHaveText('Management');
+
+    const debugBox = await debugPanel.boundingBox();
+    const configBox = await configPanel.boundingBox();
+    expect(debugBox).not.toBeNull();
+    expect(configBox).not.toBeNull();
+    expect(debugBox!.x).toBeLessThan(configBox!.x);
+    expect(configBox!.width).toBeGreaterThan(debugBox!.width);
+
+    const appShell = page.locator('[class*="group/sidebar-wrapper"]');
+    const sidebarInset = page.locator('[data-slot="sidebar-inset"]');
+    await expect(appShell).toHaveCSS('overflow', 'hidden');
+    await expect(sidebarInset).toHaveCSS('overflow', 'hidden');
+    await expect
+      .poll(() => appShell.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    expect(debugBox!.y).toBeGreaterThanOrEqual(0);
+
+    const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab').nth(0)).toContainText('Trigger');
+    await expect(flow.getByRole('tab').nth(1)).toContainText('AI');
+    await expect(flow.getByRole('tab').nth(2)).toContainText('Output');
+
+    await flow.getByRole('tab').nth(1).click();
+    await expect(
+      configPanel.getByText('Runtime', { exact: true }).last(),
+    ).toBeVisible();
+  });
+});
+
+test('merged runner page preserves both runner configurations when switching and saving', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  const first = 'plugin:qa/first/default';
+  const second = 'plugin:qa/second/default';
+  const agent = {
+    uuid: 'agent-switch',
+    kind: 'agent',
+    name: 'Runner switch',
+    supported_event_patterns: ['*'],
+    config: {
+      runner: { id: first },
+      runner_config: {
+        [first]: { greeting: 'First saved value' },
+        [second]: { greeting: 'Second saved value' },
+      },
+    },
+  };
+  let saved: Record<string, unknown> | undefined;
+  await page.route('**/api/v1/agents/agent-switch', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saved = route.request().postDataJSON();
+      await route.fulfill({ json: { code: 0, data: {} } });
+    } else await route.fulfill({ json: { code: 0, data: { agent } } });
+  });
+  await page.route('**/api/v1/agents/_/metadata', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          platform_tools: [],
+          host_tools: [],
+          runner_config: {
+            name: 'ai',
+            label: { en_US: 'AI' },
+            stages: [
+              {
+                name: 'runner',
+                label: { en_US: 'Execution mode' },
+                config: [
+                  {
+                    name: 'id',
+                    label: { en_US: 'Runner' },
+                    type: 'select',
+                    required: true,
+                    options: [
+                      { name: first, label: { en_US: 'First runner' } },
+                      { name: second, label: { en_US: 'Second runner' } },
+                    ],
+                  },
+                ],
+              },
+              ...[first, second].map((name, index) => ({
+                name,
+                label: {
+                  en_US: index === 0 ? 'First settings' : 'Second settings',
+                },
+                config: [
+                  {
+                    name: 'greeting',
+                    label: { en_US: 'Greeting' },
+                    type: 'string',
+                    required: true,
+                  },
+                ],
+              })),
+            ],
+          },
+        },
+      },
+    }),
+  );
+  await page.goto('/home/agents?id=agent-switch');
+  const config = page.getByRole('region', {
+    name: 'Configuration',
+    exact: true,
+  });
+  const runner = config.getByRole('combobox', { name: 'Runner', exact: true });
+  const greeting = config.getByRole('textbox');
+  await expect(greeting).toHaveValue('First saved value');
+  await greeting.fill('First edited value');
+  await runner.click();
+  await page
+    .getByRole('option', { name: `Second runner ${second}`, exact: true })
+    .click();
+  await expect(greeting).toHaveValue('Second saved value');
+  await greeting.fill('Second edited value');
+  await runner.click();
+  await page
+    .getByRole('option', { name: `First runner ${first}`, exact: true })
+    .click();
+  await expect(greeting).toHaveValue('First edited value');
+  await expect(
+    config.getByRole('tab', { name: 'Runner', exact: true }),
+  ).toHaveAttribute('data-state', 'active');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect
+    .poll(() => saved)
+    .toMatchObject({
+      config: {
+        runner: { id: first },
+        runner_config: {
+          [first]: { greeting: 'First edited value' },
+          [second]: { greeting: 'Second edited value' },
+        },
+      },
+    });
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeDisabled();
+  await page.screenshot({ path: '../../.codex-run/agent-merged-config.png' });
+});

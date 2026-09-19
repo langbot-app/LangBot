@@ -54,7 +54,8 @@ def build_ap() -> SimpleNamespace:
 
     ap.persistence_mgr = SimpleNamespace(tenant_scope=tenant_scope)
     ap.bot_service = SimpleNamespace(
-        get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}])
+        get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}]),
+        list_event_route_statuses=AsyncMock(return_value={'routes': [], 'unmatched_events': [], 'stale_routes': []}),
     )
     ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'pl-1', 'name': 'default'}]))
     ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))

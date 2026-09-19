@@ -1,9 +1,13 @@
 import quart
 
+from langbot.pkg.provider.modelmgr import errors as provider_errors
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ... import group
 from .query import resolve_include_secret
+
+
+MODEL_TEST_ERROR_CODE = 'model_test_failed'
 
 
 @group.group_class('models/llm', '/api/v1/provider/models/llm')
@@ -108,7 +112,14 @@ class LLMModelsRouterGroup(group.RouterGroup):
             permission=Permission.PROVIDER_SECRET_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.llm_model_service.test_llm_model(request_context, model_uuid, await quart.request.json)
+            try:
+                await self.ap.llm_model_service.test_llm_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except provider_errors.RequesterError as exc:
+                return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
             return self.success()
 
 
@@ -214,9 +225,14 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
             permission=Permission.PROVIDER_SECRET_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.embedding_models_service.test_embedding_model(
-                request_context, model_uuid, await quart.request.json
-            )
+            try:
+                await self.ap.embedding_models_service.test_embedding_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except provider_errors.RequesterError as exc:
+                return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
             return self.success()
 
 
@@ -322,5 +338,12 @@ class RerankModelsRouterGroup(group.RouterGroup):
             permission=Permission.PROVIDER_SECRET_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.rerank_models_service.test_rerank_model(request_context, model_uuid, await quart.request.json)
+            try:
+                await self.ap.rerank_models_service.test_rerank_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except provider_errors.RequesterError as exc:
+                return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
             return self.success()

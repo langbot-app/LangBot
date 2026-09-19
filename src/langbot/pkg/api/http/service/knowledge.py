@@ -71,23 +71,26 @@ class KnowledgeService:
 
         creation_settings = restore_secret_placeholders(kb_data.get('creation_settings', {}))
         retrieval_settings = kb_data.get('retrieval_settings', {})
+        defer_initialization = kb_data.get('defer_initialization') is True
 
-        # Validate required fields based on plugin's creation_schema and retrieval_schema
-        await self._validate_schema_required_fields(
-            context,
-            knowledge_engine_plugin_id,
-            creation_settings,
-            retrieval_settings,
-        )
+        if not defer_initialization:
+            await self._validate_schema_required_fields(
+                context,
+                knowledge_engine_plugin_id,
+                creation_settings,
+                retrieval_settings,
+            )
 
-        kb = await self.ap.rag_mgr.create_knowledge_base(
-            context,
-            name=kb_data.get('name', 'Untitled'),
-            knowledge_engine_plugin_id=knowledge_engine_plugin_id,
-            creation_settings=creation_settings,
-            retrieval_settings=retrieval_settings,
-            description=kb_data.get('description', ''),
-        )
+        create_kwargs = {
+            'name': kb_data.get('name', 'Untitled'),
+            'knowledge_engine_plugin_id': knowledge_engine_plugin_id,
+            'creation_settings': creation_settings,
+            'retrieval_settings': retrieval_settings,
+            'description': kb_data.get('description', ''),
+        }
+        if defer_initialization:
+            create_kwargs['initialize'] = False
+        kb = await self.ap.rag_mgr.create_knowledge_base(context, **create_kwargs)
         return kb.uuid
 
     async def _validate_schema_required_fields(
@@ -205,10 +208,32 @@ class KnowledgeService:
     ) -> None:
         """更新知识库"""
         workspace_uuid = require_workspace_uuid(context)
-        if await self.get_knowledge_base(context, kb_uuid) is None:
+        current = await self.get_knowledge_base(context, kb_uuid, include_secret=True)
+        if current is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
-        # Filter to only mutable fields
-        filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.MUTABLE_FIELDS}
+
+        should_initialize = current.get('initialized', True) is False and kb_data.get('initialize_engine') is True
+        if should_initialize:
+            plugin_id = current.get('knowledge_engine_plugin_id')
+            if not plugin_id:
+                raise ValueError('knowledge_engine_plugin_id is required')
+            creation_settings = restore_secret_placeholders(kb_data.get('creation_settings', {}))
+            retrieval_settings = kb_data.get('retrieval_settings', {})
+            await self._validate_schema_required_fields(
+                context,
+                plugin_id,
+                creation_settings,
+                retrieval_settings,
+            )
+            filtered_data = {
+                'name': kb_data.get('name', current.get('name', 'Untitled')),
+                'description': kb_data.get('description', current.get('description', '')),
+                'creation_settings': creation_settings,
+                'retrieval_settings': retrieval_settings,
+                'initialized': True,
+            }
+        else:
+            filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.MUTABLE_FIELDS}
 
         if not filtered_data:
             return
@@ -224,8 +249,28 @@ class KnowledgeService:
         kb = await self.get_knowledge_base(context, kb_uuid, include_secret=True)
         if kb is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
+        if kb.get('initialized', True) is False:
+            return
 
-        await self.ap.rag_mgr.load_knowledge_base(context, kb)
+        runtime_kb = await self.ap.rag_mgr.load_knowledge_base(context, kb)
+        if should_initialize:
+            try:
+                await runtime_kb._on_kb_create(self._execution_context(context))
+            except Exception:
+                await self.ap.rag_mgr.remove_knowledge_base_from_runtime(context, kb_uuid)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_rag.KnowledgeBase)
+                    .values(
+                        name=current.get('name', 'Untitled'),
+                        description=current.get('description', ''),
+                        creation_settings=current.get('creation_settings', {}),
+                        retrieval_settings=current.get('retrieval_settings', {}),
+                        initialized=False,
+                    )
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                )
+                raise
 
     async def _check_doc_capability(self, context: TenantContext, kb_uuid: str, operation: str) -> None:
         """Check if the KB's Knowledge Engine supports document operations.

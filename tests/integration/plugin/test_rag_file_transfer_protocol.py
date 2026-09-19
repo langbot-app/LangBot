@@ -197,7 +197,9 @@ async def test_knowledge_file_roundtrip_reaches_plugin_original_bytes(tmp_path, 
         )
         assert await stack.plugin.read_local_file(result['file_key']) == PAYLOAD
         assert len(stack.storage_calls) == 1
-        core_key = assert_chunks(stack.core_conn, binding)
+        # Core resolves persisted installation authority even for legacy callers;
+        # the Runtime still preserves the legacy envelope on the plugin hop.
+        core_key = assert_chunks(stack.core_conn, BINDING)
         plugin_key = assert_chunks(stack.bridge_conn, binding)
         assert result['file_key'] == plugin_key != core_key
         assert not (Path(stack.control.file_storage_dir) / core_key).exists()

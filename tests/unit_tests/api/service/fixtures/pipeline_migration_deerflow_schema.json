@@ -1,0 +1,94 @@
+[
+  {
+    "name": "api-base",
+    "type": "string",
+    "required": true,
+    "default": "http://127.0.0.1:2026"
+  },
+  {
+    "name": "api-key",
+    "type": "secret",
+    "required": false,
+    "default": ""
+  },
+  {
+    "name": "auth-header",
+    "type": "secret",
+    "required": false,
+    "default": ""
+  },
+  {
+    "name": "assistant-id",
+    "type": "string",
+    "required": true,
+    "default": "lead_agent"
+  },
+  {
+    "name": "advanced-settings",
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "model-name",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "thinking-enabled",
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "plan-mode",
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "subagent-enabled",
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "max-concurrent-subagents",
+    "type": "integer",
+    "required": false,
+    "default": 3,
+    "show_if": {
+      "field": "subagent-enabled",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "timeout",
+    "type": "integer",
+    "required": false,
+    "default": 300,
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "recursion-limit",
+    "type": "integer",
+    "required": false,
+    "default": 1000,
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  }
+]

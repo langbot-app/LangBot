@@ -61,6 +61,7 @@ const EXTENSIONS_ROUTES = [
 const HOME_TITLE_KEYS: { match: (path: string) => boolean; key: string }[] = [
   { match: (p) => p.startsWith('/home/monitoring'), key: 'monitoring.title' },
   { match: (p) => p.startsWith('/home/bots'), key: 'bots.title' },
+  { match: (p) => p.startsWith('/home/agents'), key: 'agents.title' },
   { match: (p) => p.startsWith('/home/pipelines'), key: 'pipelines.title' },
   {
     match: (p) => p.startsWith('/home/add-extension'),
@@ -268,7 +269,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden min-w-0 px-4 pb-4 pt-0">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden px-4 pb-4 pt-0">
           <div
             className={`mx-auto h-full w-full min-w-0 ${HOME_CONTENT_MAX_WIDTH}`}
           >

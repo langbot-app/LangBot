@@ -1,5 +1,5 @@
 id: agent-runner-behavior-matrix
-title: "AgentRunner deterministic behavior matrix probe"
+title: "Runner deterministic behavior matrix probe"
 mode: probe
 area: release
 type: regression

@@ -16,6 +16,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   type: DynamicFormItemType;
   description?: I18nObject;
   options?: IDynamicFormItemOption[];
+  allow_custom?: boolean;
   show_if?: IShowIfCondition;
   login_platform?: string;
   url?: string;
@@ -32,6 +33,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
     this.type = params.type;
     this.description = params.description;
     this.options = params.options;
+    this.allow_custom = params.allow_custom;
     this.show_if = params.show_if;
     this.login_platform = params.login_platform;
     this.url = params.url;
@@ -50,6 +52,17 @@ export function isDynamicFormItemType(
 }
 
 export function parseDynamicFormItemType(value: string): DynamicFormItemType {
+  const typeMap: Record<string, DynamicFormItemType> = {
+    [DynamicFormItemType.SELECT_LLM_MODEL]:
+      DynamicFormItemType.LLM_MODEL_SELECTOR,
+    [DynamicFormItemType.SELECT_KNOWLEDGE_BASES]:
+      DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR,
+    [DynamicFormItemType.NUMBER]: DynamicFormItemType.FLOAT,
+  };
+  if (value in typeMap) {
+    return typeMap[value];
+  }
+
   return isDynamicFormItemType(value) ? value : DynamicFormItemType.UNKNOWN;
 }
 

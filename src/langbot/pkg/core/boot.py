@@ -7,6 +7,7 @@ import os
 
 from . import app
 from . import stage
+from ..telemetry import diagnostics
 from ..utils import constants, importutil
 
 # Import startup stage implementation to register
@@ -39,7 +40,33 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
             stage_cls = stage.preregistered_stages[stage_name]
             stage_inst = stage_cls()
 
-            await stage_inst.run(ap)
+            if stage_name == 'GenKeysStage':
+                # Optional diagnostics must not make startup depend on package
+                # metadata, session markers, or its background transport.
+                ap.diagnostics = None
+                space_config = ap.instance_config.data.get('space', {})
+                if not space_config.get('disable_telemetry', False) and not space_config.get(
+                    'disable_beta_diagnostics', False
+                ):
+                    manager = None
+                    try:
+                        manager = diagnostics.DiagnosticsManager(ap, marker_path='data/labels/beta_diagnostics_session')
+                        await manager.start_session()
+                        manager.start()
+                        ap.diagnostics = manager
+                    except BaseException as exc:
+                        if manager is not None:
+                            # Cleanup faults cannot replace the startup fault.
+                            try:
+                                await manager.shutdown(drain_timeout=0)
+                            except asyncio.CancelledError:
+                                if not isinstance(exc, asyncio.CancelledError):
+                                    raise
+                            except Exception:
+                                pass
+                        if not isinstance(exc, Exception):
+                            raise
+            await diagnostics.observe('lifecycle', 'startup.' + stage_name, source='startup', ap=ap)(stage_inst.run)(ap)
 
         await ap.initialize()
     except BaseException:

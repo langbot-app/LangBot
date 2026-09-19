@@ -6,7 +6,11 @@ import pytest
 from quart import Quart
 from sqlalchemy.exc import SQLAlchemyError
 
-from langbot.pkg.api.http.controller.groups.provider.models import LLMModelsRouterGroup
+from langbot.pkg.api.http.controller.groups.provider.models import (
+    EmbeddingModelsRouterGroup,
+    LLMModelsRouterGroup,
+    RerankModelsRouterGroup,
+)
 from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.provider.modelmgr.requesters.codex import CodexRequester
 from tests.unit_tests.provider.test_codex import requester, MODEL, stream
@@ -64,10 +68,16 @@ async def test_allowlisted_usage_error(monkeypatch, kind, code):
     assert 'secret' not in str(caught.value)
 
 
-async def client_for(error):
+async def client_for(error, model_kind='llm'):
     app = Quart(__name__)
-    ap = SimpleNamespace(logger=Mock(), llm_model_service=SimpleNamespace(test_llm_model=AsyncMock(side_effect=error)))
-    router = LLMModelsRouterGroup(ap, app)
+    router_class, service_name, method_name = {
+        'llm': (LLMModelsRouterGroup, 'llm_model_service', 'test_llm_model'),
+        'embedding': (EmbeddingModelsRouterGroup, 'embedding_models_service', 'test_embedding_model'),
+        'rerank': (RerankModelsRouterGroup, 'rerank_models_service', 'test_rerank_model'),
+    }[model_kind]
+    service = SimpleNamespace(**{method_name: AsyncMock(side_effect=error)})
+    ap = SimpleNamespace(logger=Mock(), **{service_name: service})
+    router = router_class(ap, app)
     router._authenticate_api_key = AsyncMock(
         return_value=SimpleNamespace(
             workspace_uuid='w',
@@ -92,9 +102,12 @@ async def test_real_model_test_route_safe_error(upstream, status, code):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('model_kind', ['llm', 'embedding', 'rerank'])
 @pytest.mark.parametrize('error', [ValueError('private-value-secret'), SQLAlchemyError('private-sql-secret')])
-async def test_real_model_test_route_unexpected_errors_hidden(error):
-    client, _ = await client_for(error)
-    response = await client.post('/api/v1/provider/models/llm/model/test', json={}, headers={'X-API-Key': 'synthetic'})
+async def test_real_model_test_route_unexpected_errors_hidden(error, model_kind):
+    client, _ = await client_for(error, model_kind)
+    response = await client.post(
+        f'/api/v1/provider/models/{model_kind}/model/test', json={}, headers={'X-API-Key': 'synthetic'}
+    )
     assert response.status_code == 500
     assert 'secret' not in await response.get_data(as_text=True)

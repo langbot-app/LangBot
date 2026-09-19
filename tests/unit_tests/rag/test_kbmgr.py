@@ -49,6 +49,7 @@ def _entity(*, kb_uuid='kb-a', workspace_uuid='workspace-a', plugin_id='author/e
         collection_id=kb_uuid,
         creation_settings={},
         retrieval_settings={},
+        initialized=True,
     )
 
 
@@ -67,6 +68,7 @@ def _app():
                     'collection_id': row.collection_id,
                     'creation_settings': row.creation_settings,
                     'retrieval_settings': row.retrieval_settings,
+                    'initialized': row.initialized,
                 }
             ),
         ),
@@ -122,6 +124,24 @@ async def test_create_binds_workspace_and_uses_tuple_runtime_key():
         kb.uuid,
         {'model': 'embedding-a'},
     )
+
+
+@pytest.mark.asyncio
+async def test_create_draft_persists_without_loading_or_notifying_plugin():
+    app = _app()
+    manager = RAGManager(app)
+
+    kb = await manager.create_knowledge_base(
+        CONTEXT_A,
+        name='Draft',
+        knowledge_engine_plugin_id='author/engine',
+        creation_settings={},
+        initialize=False,
+    )
+
+    assert kb.initialized is False
+    assert ('workspace-a', kb.uuid) not in manager.knowledge_bases
+    app.plugin_connector.rag_on_kb_create.assert_not_awaited()
 
 
 @pytest.mark.asyncio

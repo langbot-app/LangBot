@@ -62,37 +62,15 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
   });
 
   let authenticatedAssetRequests = 0;
-  await page.route(
-    '**/api/v1/plugins/langbot-team/LangRAG/authenticated-assets/**',
-    async (route) => {
-      authenticatedAssetRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html',
-        body: `<!doctype html>
-          <html>
-            <body>
-              <h1>LangRAG Observability</h1>
-              <button id="save">Save</button>
-              <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
-              <script>
-                document.querySelector('#save').addEventListener('click', async () => {
-                  await window.langbot.api('/settings', { enabled: true }, 'POST');
-                  document.body.dataset.saved = 'true';
-                });
-              </script>
-            </body>
-          </html>`,
-      });
-    },
-  );
   let pageSdkRequests = 0;
+  let pageApiRequests = 0;
   await page.route('**/api/v1/plugins/_sdk/page-sdk.js', async (route) => {
     pageSdkRequests += 1;
     await route.fulfill({
       status: 200,
       contentType: 'application/javascript',
       body: `window.langbot = {
+        onReady(callback) { callback(); },
         api(endpoint, body, method) {
           return new Promise((resolve) => {
             const requestId = 'request-' + Date.now();
@@ -109,7 +87,28 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
       };`,
     });
   });
-  let pageApiRequests = 0;
+  await page.route(
+    '**/api/v1/plugins/langbot-team/LangRAG/authenticated-assets/**',
+    async (route) => {
+      authenticatedAssetRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<!doctype html><html><body><main></main><button id="save">Save</button>
+          <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+          <script>
+            langbot.onReady(() => {
+              document.querySelector('main').innerHTML = '<h1>LangRAG Observability</h1>';
+              document.querySelector('#save').addEventListener('click', async () => {
+                await window.langbot.api('/settings', { enabled: true }, 'POST');
+                document.body.dataset.saved = 'true';
+              });
+            });
+          </script>
+        </body></html>`,
+      });
+    },
+  );
   await page.route(
     '**/api/v1/plugins/langbot-team/LangRAG/page-api',
     async (route) => {

@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +38,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const skill = skills.find((item) => item.id === id);
   const {
+    loading: boxLoading,
     available: boxAvailable,
     hint: boxHint,
     reason: boxReason,
@@ -76,6 +78,8 @@ export default function SkillDetailContent({ id }: { id: string }) {
       toast.error(t('skills.deleteError') + String(error));
     }
   }
+
+  if (boxLoading) return <EntityLoadState />;
 
   if (isCreateMode) {
     return (

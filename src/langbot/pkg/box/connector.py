@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.telemetry import diagnostics
+
 import asyncio
 import contextlib
 import json
@@ -162,6 +164,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     def _uses_websocket(self) -> bool:
         return self.uses_websocket()
 
+    @diagnostics.observe('lifecycle', 'box.initialize', source='runtime', stage='execute')
     async def initialize(self) -> None:
         async with self._lifecycle_lock:
             if self._closing:
@@ -217,6 +220,8 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
                 await self.ping()
                 failures = 0
                 self.ap.logger.debug('Heartbeat to Box runtime success.')
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 failures += 1
                 self.ap.logger.warning(f'Box runtime heartbeat failed ({failures}/{_HEARTBEAT_FAILURE_THRESHOLD}): {e}')

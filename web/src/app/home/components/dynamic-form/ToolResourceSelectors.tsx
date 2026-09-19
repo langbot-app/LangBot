@@ -106,6 +106,25 @@ function getBoundPluginId(plugin: BoundPlugin) {
   return `${plugin.author || ''}/${plugin.name}`;
 }
 
+function getGlobalExtensions(
+  plugins: AvailablePlugin[],
+  mcpServers: MCPServer[],
+): PipelineExtensions {
+  return {
+    enable_all_plugins: true,
+    enable_all_mcp_servers: true,
+    enable_all_skills: true,
+    mcp_resource_agent_read_enabled: true,
+    bound_plugins: [],
+    available_plugins: plugins,
+    bound_mcp_servers: [],
+    available_mcp_servers: mcpServers,
+    bound_mcp_resources: [],
+    bound_skills: [],
+    available_skills: [],
+  };
+}
+
 function InfoTooltip({ label }: { label: string }) {
   return (
     <Tooltip>
@@ -348,19 +367,60 @@ export default function ToolResourceSelectors({
   const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
+    setTools([]);
+    setKnowledgeBases([]);
+    setExtensions(null);
+
     if (mode !== 'resources') {
-      backendClient.getTools(pipelineId).then((resp) => setTools(resp.tools));
+      backendClient
+        .getTools(pipelineId)
+        .then((resp) => {
+          if (!cancelled) setTools(resp.tools);
+        })
+        .catch(() => {
+          if (!cancelled) setTools([]);
+        });
     }
     if (mode !== 'tools') {
       backendClient
         .getKnowledgeBases()
-        .then((resp) => setKnowledgeBases(resp.bases));
+        .then((resp) => {
+          if (!cancelled) setKnowledgeBases(resp.bases);
+        })
+        .catch(() => {
+          if (!cancelled) setKnowledgeBases([]);
+        });
     }
     if (pipelineId) {
       backendClient
         .getPipelineExtensions(pipelineId)
-        .then((resp) => setExtensions(resp));
+        .then((resp) => {
+          if (!cancelled) setExtensions(resp);
+        })
+        .catch(() => {
+          if (!cancelled) setExtensions(null);
+        });
+    } else {
+      Promise.all([
+        backendClient
+          .getPlugins()
+          .catch(() => ({ plugins: [] as AvailablePlugin[] })),
+        backendClient
+          .getMCPServers()
+          .catch(() => ({ servers: [] as MCPServer[] })),
+      ]).then(([pluginResp, mcpResp]) => {
+        if (!cancelled) {
+          setExtensions(
+            getGlobalExtensions(pluginResp.plugins, mcpResp.servers),
+          );
+        }
+      });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [mode, pipelineId]);
 
   const enableAllTools = value['enable-all-tools'] !== false;
@@ -480,11 +540,6 @@ export default function ToolResourceSelectors({
     ],
   );
 
-  const availableToolNames = useMemo(
-    () => new Set(availableTools.map((tool) => tool.name)),
-    [availableTools],
-  );
-
   const resourceServers = useMemo(() => {
     return scopedMCPServers.filter(
       (server) =>
@@ -513,6 +568,9 @@ export default function ToolResourceSelectors({
       ? availableMCPResourceKeys.has(getMCPResourceKey(server, resource.uri))
       : false;
   });
+  const unavailableSelectedMCPResources = selectedMCPResources.filter(
+    (resource) => !scopedSelectedMCPResources.includes(resource),
+  );
 
   const selectedTools = selectedToolNames
     .map((name: string) => availableTools.find((tool) => tool.name === name))
@@ -524,10 +582,10 @@ export default function ToolResourceSelectors({
 
   const sourceLabels = useMemo<Record<string, string>>(
     () => ({
-      builtin: t('pipelines.localAgent.builtinTools'),
-      plugin: t('pipelines.localAgent.pluginTools'),
-      mcp: t('pipelines.localAgent.mcpTools'),
-      skill: t('pipelines.localAgent.skillTools'),
+      builtin: t('pipelines.runner.builtinTools'),
+      plugin: t('pipelines.runner.pluginTools'),
+      mcp: t('pipelines.runner.mcpTools'),
+      skill: t('pipelines.runner.skillTools'),
     }),
     [t],
   );
@@ -546,11 +604,7 @@ export default function ToolResourceSelectors({
   };
 
   const handleConfirmTools = () => {
-    onChange({
-      tools: tempSelectedToolNames.filter((name) =>
-        availableToolNames.has(name),
-      ),
-    });
+    onChange({ tools: tempSelectedToolNames });
     setToolsDialogOpen(false);
   };
 
@@ -580,7 +634,9 @@ export default function ToolResourceSelectors({
       : scopedSelectedMCPResources.filter(
           (item) => !isSameMCPResource(item, server, resource.uri),
         );
-    onChange({ 'mcp-resources': next });
+    onChange({
+      'mcp-resources': [...unavailableSelectedMCPResources, ...next],
+    });
   };
 
   const isMCPResourceSelected = (server: MCPServer, uri: string) =>
@@ -597,25 +653,27 @@ export default function ToolResourceSelectors({
             <div>
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-semibold">
-                  {t('pipelines.localAgent.toolsTitle')}
+                  {t('pipelines.runner.toolsTitle')}
                 </h3>
-                <InfoTooltip
-                  label={t('pipelines.localAgent.toolsScopeTooltip')}
-                />
+                {pipelineId && (
+                  <InfoTooltip
+                    label={t('pipelines.runner.toolsScopeTooltip')}
+                  />
+                )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                {t('pipelines.localAgent.toolsDescription')}
+                {t('pipelines.runner.toolsDescription')}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Label
-                htmlFor="local-agent-enable-all-tools"
+                htmlFor="runner-enable-all-tools"
                 className="cursor-pointer text-sm font-normal"
               >
-                {t('pipelines.localAgent.enableAllTools')}
+                {t('pipelines.runner.enableAllTools')}
               </Label>
               <Switch
-                id="local-agent-enable-all-tools"
+                id="runner-enable-all-tools"
                 checked={enableAllTools}
                 onCheckedChange={handleToggleToolMode}
               />
@@ -625,13 +683,13 @@ export default function ToolResourceSelectors({
           {enableAllTools ? (
             <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
               <p className="text-sm text-muted-foreground">
-                {t('pipelines.localAgent.allToolsEnabled')}
+                {t('pipelines.runner.allToolsEnabled')}
               </p>
             </div>
           ) : selectedTools.length === 0 ? (
             <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border">
               <p className="text-sm text-muted-foreground">
-                {t('pipelines.localAgent.noToolsSelected')}
+                {t('pipelines.runner.noToolsSelected')}
               </p>
             </div>
           ) : (
@@ -701,16 +759,12 @@ export default function ToolResourceSelectors({
             className="w-full"
             disabled={enableAllTools}
             onClick={() => {
-              setTempSelectedToolNames(
-                selectedToolNames.filter((name: string) =>
-                  availableToolNames.has(name),
-                ),
-              );
+              setTempSelectedToolNames(selectedToolNames);
               setToolsDialogOpen(true);
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            {t('pipelines.localAgent.editTools')}
+            {t('pipelines.runner.editTools')}
           </Button>
         </div>
       )}
@@ -719,10 +773,10 @@ export default function ToolResourceSelectors({
         <div className="space-y-4 rounded-lg border p-4">
           <div>
             <h3 className="text-sm font-semibold">
-              {t('pipelines.localAgent.resourcesTitle')}
+              {t('pipelines.runner.resourcesTitle')}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t('pipelines.localAgent.resourcesDescription')}
+              {t('pipelines.runner.resourcesDescription')}
             </p>
           </div>
 
@@ -731,7 +785,7 @@ export default function ToolResourceSelectors({
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {t('pipelines.localAgent.knowledgeBases')}
+                  {t('pipelines.runner.knowledgeBases')}
                 </span>
               </div>
               <Button
@@ -801,24 +855,26 @@ export default function ToolResourceSelectors({
               <div className="flex items-center gap-2">
                 <Server className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {t('pipelines.localAgent.mcpResources')}
+                  {t('pipelines.runner.mcpResources')}
                 </span>
-                <InfoTooltip
-                  label={t('pipelines.localAgent.mcpResourcesScopeTooltip')}
-                />
+                {pipelineId && (
+                  <InfoTooltip
+                    label={t('pipelines.runner.mcpResourcesScopeTooltip')}
+                  />
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Label
-                  htmlFor="local-agent-mcp-resource-read"
+                  htmlFor="runner-mcp-resource-read"
                   className="cursor-pointer text-sm font-normal"
                 >
-                  {t('pipelines.localAgent.enableMCPResourceRead')}
+                  {t('pipelines.runner.enableMCPResourceRead')}
                 </Label>
                 <InfoTooltip
-                  label={t('pipelines.localAgent.mcpResourceReadTooltip')}
+                  label={t('pipelines.runner.mcpResourceReadTooltip')}
                 />
                 <Switch
-                  id="local-agent-mcp-resource-read"
+                  id="runner-mcp-resource-read"
                   checked={mcpResourceReadEnabled}
                   onCheckedChange={(checked) =>
                     onChange({ 'mcp-resource-agent-read-enabled': checked })
@@ -830,7 +886,7 @@ export default function ToolResourceSelectors({
             {resourceServers.length === 0 ? (
               <div className="flex h-20 items-center justify-center rounded-lg border-2 border-dashed border-border">
                 <p className="text-sm text-muted-foreground">
-                  {t('pipelines.localAgent.noMCPResourcesAvailable')}
+                  {t('pipelines.runner.noMCPResourcesAvailable')}
                 </p>
               </div>
             ) : (
@@ -900,7 +956,7 @@ export default function ToolResourceSelectors({
         <Dialog open={toolsDialogOpen} onOpenChange={setToolsDialogOpen}>
           <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden">
             <DialogHeader>
-              <DialogTitle>{t('pipelines.localAgent.selectTools')}</DialogTitle>
+              <DialogTitle>{t('pipelines.runner.selectTools')}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 space-y-5 overflow-y-auto pr-2">
               {availableToolGroups.map((sourceGroup) => {
@@ -910,16 +966,14 @@ export default function ToolResourceSelectors({
                       <span className="text-sm font-semibold">
                         {sourceGroup.label}
                       </span>
-                      {sourceGroup.key === 'mcp' && (
+                      {pipelineId && sourceGroup.key === 'mcp' && (
                         <InfoTooltip
-                          label={t('pipelines.localAgent.mcpToolsScopeTooltip')}
+                          label={t('pipelines.runner.mcpToolsScopeTooltip')}
                         />
                       )}
                       {sourceGroup.key === 'skill' && (
                         <InfoTooltip
-                          label={t(
-                            'pipelines.localAgent.skillToolsScopeTooltip',
-                          )}
+                          label={t('pipelines.runner.skillToolsScopeTooltip')}
                         />
                       )}
                       <Badge variant="outline" className="ml-auto">
@@ -987,7 +1041,7 @@ export default function ToolResourceSelectors({
               {availableToolGroups.length === 0 && (
                 <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border">
                   <p className="text-sm text-muted-foreground">
-                    {t('pipelines.localAgent.noToolsSelected')}
+                    {t('pipelines.runner.noToolsSelected')}
                   </p>
                 </div>
               )}
@@ -1012,7 +1066,7 @@ export default function ToolResourceSelectors({
           <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>
-                {t('pipelines.localAgent.selectKnowledgeBases')}
+                {t('pipelines.runner.selectKnowledgeBases')}
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 space-y-2 overflow-y-auto pr-2">
