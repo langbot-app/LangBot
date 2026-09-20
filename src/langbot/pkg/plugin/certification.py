@@ -84,7 +84,9 @@ class PluginCertificationFacts:
     certificate: CertificateFacts
 
     def __post_init__(self) -> None:
-        if len(self.artifact_digest) != 64 or any(character not in '0123456789abcdef' for character in self.artifact_digest.lower()):
+        if len(self.artifact_digest) != 64 or any(
+            character not in '0123456789abcdef' for character in self.artifact_digest.lower()
+        ):
             raise ValueError('artifact_digest must be a lowercase-or-uppercase SHA-256 hex digest')
 
 
@@ -171,7 +173,6 @@ class PluginAdmissionDecision:
     runtime_profile: str
 
 
-
 def decide_plugin_admission(
     *,
     deployment: DeploymentMode | str,
@@ -223,7 +224,6 @@ def decide_plugin_admission(
         AdmissionCode.OSS_FORCE_REQUIRED,
         DEDICATED_RUNTIME,
     )
-
 
 
 def decide_plugin_log_visibility(facts: PluginCertificationFacts) -> PluginLogVisibility:
