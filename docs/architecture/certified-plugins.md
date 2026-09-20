@@ -1,88 +1,74 @@
 # Certified Plugins
 
-## Scope
+## Admission boundary
 
-Core now owns the pure, fail-closed policy boundary for certified plugin
-admission and log visibility. It does **not** implement archive signature
-verification or alter process/runtime plumbing. The SDK verifier remains the
-future authority for certificate cryptography, issuer trust, and the binding of
-a certificate to an archive digest.
+Core verifies a plugin archive **before** artifact storage, `PluginSetting`
+persistence, or a Plugin Runtime apply request. It calls the SDK public
+`langbot_plugin.certification.verify_archive()` API, which reads the strict
+certificate envelope from the ZIP comment and verifies the signed normalized
+ZIP digest without extracting the payload.
 
-## Archive facts
+Core retains the normalized digest (`normalized_zip_digest()`), verification
+state, declared shared-runtime profile, key ID, selected admission profile, and
+stable admission code in the durable plugin `install_info._certification`
+record. The record belongs to the installation row; no schema migration is
+needed for this additive JSON metadata.
 
-`langbot.pkg.plugin.archive.inspect_plugin_archive()` returns a
-`PluginArchiveInspection` with the immutable SHA-256 `artifact_digest` and a
-bounded certificate declaration parsed from `manifest.yaml`:
+## Trusted issuer configuration
+
+Configure the non-secret Ed25519 public-key ring in `data/config.yaml`:
 
 ```yaml
-certification:
-  runtime_profile: shared-runtime-v1
-  certificate:
-    # SDK-owned certificate payload
+plugin:
+  certification:
+    trusted_public_keys:
+      issuer-2026-q3: "<base64 encoded 32-byte Ed25519 public key>"
 ```
 
-Its certificate state is syntactic only:
+Key IDs must match the SDK envelope. Values are standard base64 raw public
+keys, not private/signing keys. An invalid key-ring configuration is rejected
+rather than weakening verification. Keep active issuer keys during a rotation
+until archives signed by retired IDs are no longer installed.
 
-| State | Meaning |
-| --- | --- |
-| `absent` | No `certification` declaration exists. |
-| `malformed` | The declaration lacks a non-empty `runtime_profile` or an object `certificate`. |
-| `declared` | The declaration can be passed to an SDK verifier; it is not trusted yet. |
+## Admission matrix
 
-`inspect_plugin_archive_metadata()` deliberately preserves its legacy
-`(manifest, requirements, names)` tuple. New callers that need certification
-facts must use `inspect_plugin_archive()`.
+| Deployment | SDK verification | Explicit `administrator_force` | Result |
+| --- | --- | --- | --- |
+| Cloud | valid envelope declaring `shared-runtime-v1` | any | admitted to the shared profile |
+| Cloud | absent | any | reject before storage with `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED` |
+| Cloud | malformed, untrusted, invalid, or non-shared | any | reject before storage with `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID` |
+| OSS | absent legacy envelope | any | admitted to the dedicated profile |
+| OSS | valid envelope declaring `shared-runtime-v1` | any | selected shared profile |
+| OSS | malformed or invalid declaration | false | reject with `CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` |
+| OSS | malformed or invalid declaration | true | admitted to the dedicated profile |
 
-## Verifier handoff
+`administrator_force` is deliberately strict: it is recognized only when the
+install request carries boolean `true`. The local upload endpoint accepts the
+multipart field `administrator_force=true`; GitHub and marketplace install
+payloads carry the same field. The existing resource-manage authorization fence
+protects those endpoints. A force never creates a Cloud dedicated fallback.
 
-The SDK verifier should convert an archive declaration into Core's
-`CertificateFacts` and bind it to the same immutable `artifact_digest` and
-`installation_uuid` in `PluginCertificationFacts`.
+## Runtime and logs
 
-`CertificateVerification.VALID` has a strict meaning: the verifier validated
-the certificate, trusted issuer, declared profile, and artifact-digest binding.
-Core never promotes `declared` to `valid` itself. A malformed declaration maps
-to `MALFORMED`; a failed verifier result maps to `INVALID`.
+The current Plugin Runtime control protocol has one process-wide runtime profile
+per Core instance. In Cloud that existing profile is `shared`; Cloud admission
+therefore prevents an archive that did not select `shared-runtime-v1` from
+reaching its apply API. In OSS the existing `oss_dev` runtime remains the
+dedicated compatibility profile. Core records the selected profile for every
+installation so a future multi-runtime control protocol can consume it without
+re-verifying an already persisted archive.
 
-## Admission compatibility matrix
+The existing public plugin-log boundary already applies the immutable
+installation binding (including workspace UUID) through
+`RuntimeConnectionHandler.installation_scope()` before requesting logs. This is
+the actual tenant exposure boundary, so valid shared certificates use that
+binding-scoped transport; Core does not invent a second log stream or expose
+process-wide log output. Dedicated and invalid/legacy installations use the
+same existing installation scope.
 
-| Deployment | Certificate result | Administrator force | Decision | Stable code |
-| --- | --- | --- | --- | --- |
-| Cloud | valid `shared-runtime-v1` | any | shared eligible | `CERTIFIED_PLUGIN_SHARED_ELIGIBLE` |
-| Cloud | absent | any | reject; no dedicated fallback | `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED` |
-| Cloud | malformed, invalid, or another profile | any | reject; no dedicated fallback | `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID` |
-| OSS | absent | any | dedicated allowed (legacy compatibility) | `CERTIFIED_PLUGIN_OSS_LEGACY_DEDICATED` |
-| OSS | valid `shared-runtime-v1` | any | shared eligible | `CERTIFIED_PLUGIN_SHARED_ELIGIBLE` |
-| OSS | valid non-shared profile | any | dedicated allowed | `CERTIFIED_PLUGIN_OSS_CERTIFIED_DEDICATED` |
-| OSS | malformed or invalid | false | require explicit administrator force | `CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` |
-| OSS | malformed or invalid | true | dedicated allowed | `CERTIFIED_PLUGIN_OSS_FORCED_DEDICATED` |
+## SDK versioning
 
-The pure policy is `decide_plugin_admission()`. A force flag can never admit a
-Cloud plugin or create a Cloud dedicated-runtime fallback.
-
-## Tenant log visibility
-
-`decide_plugin_log_visibility()` returns `tenant_scoped` only for a valid
-`shared-runtime-v1` certificate. Every other certificate state and profile uses
-`detailed_process`. This is a policy decision only; existing log transport and
-process plumbing remain unchanged.
-
-## Persistence and runtime wiring
-
-No `PluginSetting` certification columns or Alembic revision are introduced in
-this foundation. No existing install/apply path yet produces verified facts or
-consumes an admission decision, so persisting unenforced facts would create
-ambiguous state. When SDK wiring lands, add additive `PluginSetting` fields and
-a matching Alembic migration in the same change that writes and reads them.
-
-## SDK wiring still required
-
-1. Have the SDK emit and verify the certificate payload and artifact-digest
-   binding.
-2. Map the verifier result to `CertificateFacts` at the existing archive
-   install/apply boundary.
-3. Persist those facts atomically with the plugin artifact when a real
-   `PluginSetting` reader/writer consumes them.
-4. Call `decide_plugin_admission()` before selecting a runtime, and pass
-   `decide_plugin_log_visibility()` into the log emission boundary.
-5. Add integration coverage for the SDK-to-Core handoff and runtime behavior.
+Core intentionally continues to declare `langbot-plugin==0.5.8` until the SDK
+beta containing this public certification API is released. Local development
+and the integration tests may install the SDK source checkout, but this Core
+change does not publish or pin a prerelease.

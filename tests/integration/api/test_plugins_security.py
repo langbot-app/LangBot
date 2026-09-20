@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import copy
+import io
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 import quart
+from quart.datastructures import FileStorage
 
 
 pytestmark = pytest.mark.integration
@@ -287,3 +289,34 @@ async def test_github_install_rejects_internal_asset_url_before_task_creation(
     assert response.status_code == 400
     assert 'HTTPS GitHub release asset URL' in (await response.get_json())['msg']
     application.task_mgr.create_user_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_local_install_forwards_explicit_administrator_force(plugin_security_api):
+    application, client, _ = plugin_security_api
+    execution_context = SimpleNamespace(
+        instance_uuid='instance-test',
+        workspace_uuid=WORKSPACE_UUID,
+        placement_generation=1,
+    )
+    application.persistence_mgr.tenant_scope = None
+    application.plugin_connector.require_workspace_context = AsyncMock(return_value=execution_context)
+    application.plugin_connector.install_plugin = AsyncMock()
+    application.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id='task-certification'))
+
+    response = await client.post(
+        '/api/v1/plugins/install/local',
+        headers=_headers('manager-token'),
+        files={
+            'file': FileStorage(stream=io.BytesIO(b'archive'), filename='plugin.lbpkg'),
+        },
+        form={'administrator_force': 'true'},
+    )
+
+    assert response.status_code == 200
+    operation = application.task_mgr.create_user_task.call_args.args[0]
+    await operation
+    assert application.plugin_connector.install_plugin.await_args.args[1] == {
+        'plugin_file': b'archive',
+        'administrator_force': True,
+    }

@@ -6,8 +6,14 @@ must produce ``CertificateFacts`` from an inspected archive before admission.
 
 from __future__ import annotations
 
+import base64
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from langbot_plugin.certification import normalized_zip_digest, verify_archive
 
 
 SHARED_RUNTIME_V1 = 'shared-runtime-v1'
@@ -80,6 +86,82 @@ class PluginCertificationFacts:
     def __post_init__(self) -> None:
         if len(self.artifact_digest) != 64 or any(character not in '0123456789abcdef' for character in self.artifact_digest.lower()):
             raise ValueError('artifact_digest must be a lowercase-or-uppercase SHA-256 hex digest')
+
+
+@dataclass(frozen=True)
+class VerifiedArchiveCertificate:
+    """SDK verification facts bound to the comment-normalized ZIP digest."""
+
+    normalized_digest: str
+    certificate: CertificateFacts
+
+    def for_installation(self, installation_uuid: str) -> PluginCertificationFacts:
+        return PluginCertificationFacts(
+            installation_uuid=installation_uuid,
+            artifact_digest=self.normalized_digest,
+            certificate=self.certificate,
+        )
+
+
+def trusted_public_key_ring(config: object) -> dict[str, Callable[[bytes, bytes], bool]]:
+    """Build the non-secret Ed25519 verifier ring from instance configuration.
+
+    ``plugin.certification.trusted_public_keys`` is a mapping of key IDs to
+    standard base64-encoded 32-byte Ed25519 public keys.  Configuration errors
+    are explicit so an operator never silently gets a weaker trust policy.
+    """
+
+    if config is None:
+        return {}
+    if not isinstance(config, Mapping):
+        raise ValueError('plugin.certification.trusted_public_keys must be a mapping')
+
+    ring: dict[str, Callable[[bytes, bytes], bool]] = {}
+    for raw_key_id, raw_public_key in config.items():
+        key_id = str(raw_key_id).strip()
+        if not key_id or not isinstance(raw_public_key, str):
+            raise ValueError('plugin.certification.trusted_public_keys entries must have string IDs and values')
+        try:
+            public_key_bytes = base64.b64decode(raw_public_key.encode('ascii'), validate=True)
+            public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise ValueError(f'plugin.certification trusted public key {key_id!r} is invalid') from exc
+
+        def verify(payload: bytes, signature: bytes, *, verifier: Ed25519PublicKey = public_key) -> bool:
+            try:
+                verifier.verify(signature, payload)
+            except (InvalidSignature, TypeError, ValueError):
+                return False
+            return True
+
+        ring[key_id] = verify
+    return ring
+
+
+def verify_plugin_archive_certificate(
+    archive: bytes,
+    *,
+    trusted_public_keys: object,
+) -> VerifiedArchiveCertificate:
+    """Use the SDK ZIP-comment API and retain its normalized-digest binding."""
+
+    verification = verify_archive(archive, trusted_public_key_ring(trusted_public_keys).get)
+    envelope = verification.envelope
+    runtime_profile = envelope.shared_runtime if envelope is not None else None
+    certificate_id = envelope.key_id if envelope is not None else None
+    state = {
+        'absent': CertificateVerification.ABSENT,
+        'malformed': CertificateVerification.MALFORMED,
+        'valid': CertificateVerification.VALID,
+    }.get(verification.status, CertificateVerification.INVALID)
+    return VerifiedArchiveCertificate(
+        normalized_digest=normalized_zip_digest(archive),
+        certificate=CertificateFacts(
+            verification=state,
+            runtime_profile=runtime_profile,
+            certificate_id=certificate_id,
+        ),
+    )
 
 
 @dataclass(frozen=True)

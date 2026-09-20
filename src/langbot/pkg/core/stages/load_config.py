@@ -42,6 +42,7 @@ _RUNTIME_POLICY_DEFAULTS = {
     },
     'plugin': {
         'connect_timeout_seconds': 180.0,
+        'certification': {'trusted_public_keys': {}},
         'worker': {
             'max_cpus': 1.0,
             'max_memory_mb': 512,

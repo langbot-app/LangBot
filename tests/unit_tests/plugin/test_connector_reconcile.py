@@ -272,6 +272,12 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
     connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._admit_plugin_archive = Mock(
+        return_value=(
+            {'_certification': {'normalized_digest': digest}},
+            SimpleNamespace(for_installation=lambda _installation_uuid: SimpleNamespace(artifact_digest=digest)),
+        )
+    )
     connector._wait_for_installed_plugin_ready = AsyncMock()
 
     await connector.install_plugin(

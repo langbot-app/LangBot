@@ -22,6 +22,13 @@ from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 from ..core import app
 from . import handler
 from .archive import inspect_plugin_archive_metadata
+from .certification import (
+    AdmissionDisposition,
+    PluginCertificationFacts,
+    VerifiedArchiveCertificate,
+    decide_plugin_admission,
+    verify_plugin_archive_certificate,
+)
 from .github import (
     validate_github_plugin_install_info,
     validate_github_release_asset_url,
@@ -1683,6 +1690,45 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             )
             return plugin_package, latest_version
 
+    def _admit_plugin_archive(
+        self,
+        file_bytes: bytes,
+        install_info: dict[str, Any],
+    ) -> tuple[dict[str, Any], VerifiedArchiveCertificate]:
+        """Verify and admit one archive before it can reach durable storage or Runtime."""
+
+        certification_config = self.ap.instance_config.data.get('plugin', {}).get('certification', {})
+        if not isinstance(certification_config, dict):
+            raise ValueError('plugin.certification must be a mapping')
+        verified = verify_plugin_archive_certificate(
+            file_bytes,
+            trusted_public_keys=certification_config.get('trusted_public_keys', {}),
+        )
+        facts = PluginCertificationFacts(
+            installation_uuid='pending-installation',
+            artifact_digest=verified.normalized_digest,
+            certificate=verified.certificate,
+        )
+        decision = decide_plugin_admission(
+            deployment=getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss'),
+            facts=facts,
+            administrator_force=install_info.get('administrator_force') is True,
+        )
+        if decision.disposition not in {
+            AdmissionDisposition.DEDICATED_ALLOWED,
+            AdmissionDisposition.SHARED_ELIGIBLE,
+        }:
+            raise ValueError(decision.code.value)
+        certification_info = {
+            'normalized_digest': facts.artifact_digest,
+            'verification': facts.certificate.verification.value,
+            'certificate_runtime_profile': facts.certificate.runtime_profile,
+            'certificate_id': facts.certificate.certificate_id,
+            'runtime_profile': decision.runtime_profile,
+            'admission_code': decision.code.value,
+        }
+        return {**install_info, '_certification': certification_info}, verified
+
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
@@ -1719,6 +1765,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         else:
             raise ValueError(f'Unsupported plugin install source: {install_source.value}')
 
+        install_info, verified_certificate = self._admit_plugin_archive(file_bytes, install_info)
         manifest_author, manifest_name = self._inspect_plugin_package(file_bytes, task_context)
         if not manifest_author or not manifest_name:
             raise ValueError('Plugin package manifest identity is missing')
@@ -1749,6 +1796,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             plugin_author=plugin_author,
             plugin_name=plugin_name,
         )
+        certification_facts = verified_certificate.for_installation(binding.installation_uuid)
+        if certification_facts.artifact_digest != install_info['_certification']['normalized_digest']:
+            raise RuntimeError('Plugin certification digest changed before Runtime apply')
         await self._apply_desired_state(
             PluginInstallationDesiredState(binding=binding, enabled=True),
             artifact_package=file_bytes,
