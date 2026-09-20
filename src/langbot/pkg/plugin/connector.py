@@ -139,6 +139,30 @@ def _decode_json_object(body: bytes, *, subject: str) -> dict[str, Any]:
     return payload
 
 
+def _select_marketplace_plugin_version(
+    versions: Any,
+    *,
+    requested_version: str | None,
+    plugin_author: str,
+    plugin_name: str,
+) -> str:
+    if not isinstance(versions, list) or not versions:
+        raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
+
+    if requested_version is None:
+        candidate = versions[0]
+        if not isinstance(candidate, dict) or not candidate.get('version'):
+            raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
+        return str(candidate['version'])
+
+    for candidate in versions:
+        if isinstance(candidate, dict) and str(candidate.get('version') or '') == requested_version:
+            return requested_version
+    raise ValueError(
+        f'Plugin {plugin_author}/{plugin_name} version {requested_version} is not available in marketplace'
+    )
+
+
 class PluginRuntimeNotConnectedError(RuntimeError):
     """Raised when plugin runtime operations are requested before connection."""
 
@@ -1611,6 +1635,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         execution_context: ExecutionContext,
         plugin_author: str,
         plugin_name: str,
+        plugin_version: str | None,
         task_context: taskmgr.TaskContext | None,
     ) -> tuple[bytes | None, str | None]:
         """Return a plugin package, or install an MCP/skill and return none."""
@@ -1675,20 +1700,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 subject='Marketplace plugin versions',
             )
             versions = versions_payload.get('data', {}).get('versions', [])
-            if (
-                not isinstance(versions, list)
-                or not versions
-                or not isinstance(versions[0], dict)
-                or not versions[0].get('version')
-            ):
-                raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
-            latest_version = str(versions[0]['version'])
+            requested_version = str(plugin_version or '').strip()
+            version = _select_marketplace_plugin_version(
+                versions,
+                requested_version=requested_version or None,
+                plugin_author=plugin_author,
+                plugin_name=plugin_name,
+            )
             _download_status, plugin_package = await _marketplace_get(
                 client,
-                f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}',
+                f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{version}',
                 max_bytes=_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES,
             )
-            return plugin_package, latest_version
+            return plugin_package, version
 
     def _admit_plugin_archive(
         self,
@@ -1746,6 +1770,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 execution_context,
                 plugin_author,
                 plugin_name,
+                str(install_info.get('plugin_version') or '') or None,
                 task_context,
             )
             if file_bytes is None:
