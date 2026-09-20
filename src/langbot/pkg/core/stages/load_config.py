@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import copy
+import json
 from typing import Any
 from langbot.pkg.utils import bounded_executor, constants
 import yaml
@@ -215,6 +216,30 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
     return cfg
 
 
+def _apply_certification_key_ring_env(cfg: dict) -> dict:
+    """Load the public certification key ring from one strict JSON env value.
+
+    The generic environment override intentionally skips dictionaries. This
+    narrow exception keeps trusted issuer keys deployable without relying on a
+    mutable persisted config file, while rejecting malformed input instead of
+    silently running with an empty trust ring.
+    """
+    raw = os.getenv('PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON')
+    if raw is None:
+        return cfg
+    try:
+        key_ring = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError('PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON must be valid JSON') from exc
+    if not isinstance(key_ring, dict) or any(
+        not isinstance(key_id, str) or not key_id.strip() or not isinstance(key, str) or not key.strip()
+        for key_id, key in key_ring.items()
+    ):
+        raise ValueError('PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON must be a non-empty string-to-string mapping')
+    cfg['plugin']['certification']['trusted_public_keys'] = key_ring
+    return cfg
+
+
 @stage.stage_class('LoadConfigStage')
 class LoadConfigStage(stage.BootingStage):
     """Load config file stage"""
@@ -268,6 +293,7 @@ class LoadConfigStage(stage.BootingStage):
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)
+        ap.instance_config.data = _apply_certification_key_ring_env(ap.instance_config.data)
 
         blocking_config = ap.instance_config.data['system']['blocking_executor']
         ap.blocking_executor = bounded_executor.configure_bounded_default_executor(

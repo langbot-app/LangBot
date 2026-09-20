@@ -427,3 +427,27 @@ class TestApplyEnvOverridesToConfig:
             result = load_config._apply_env_overrides_to_config(cfg)
 
         assert result['api']['extra_webhook_prefix'] == 'https://extra.example.com'
+
+
+class TestCertificationKeyRingEnv:
+    def test_applies_string_key_mapping_from_strict_json(self):
+        load_config = get_load_config_module()
+        cfg = load_config._complete_runtime_policy_defaults({})
+        with patch.dict(
+            os.environ,
+            {'PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON': '{"ed25519:issuer":"YWJj"}'},
+            clear=True,
+        ):
+            result = load_config._apply_certification_key_ring_env(cfg)
+        assert result['plugin']['certification']['trusted_public_keys'] == {'ed25519:issuer': 'YWJj'}
+
+    def test_rejects_malformed_or_non_mapping_key_ring(self):
+        load_config = get_load_config_module()
+        for value in ('not-json', '[]', '{"":"YWJj"}', '{"ed25519:issuer": 1}'):
+            cfg = load_config._complete_runtime_policy_defaults({})
+            with patch.dict(os.environ, {'PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON': value}, clear=True):
+                try:
+                    load_config._apply_certification_key_ring_env(cfg)
+                except ValueError:
+                    continue
+            raise AssertionError(f'invalid certification key ring was accepted: {value!r}')
