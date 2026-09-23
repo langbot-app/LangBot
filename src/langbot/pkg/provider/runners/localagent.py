@@ -42,6 +42,12 @@ SANDBOX_EXEC_SYSTEM_GUIDANCE = (
 # a sandbox exec), yielding a non-terminating request and runaway cost. Set
 # generously so it never interrupts legitimate multi-step agentic workflows.
 MAX_TOOL_CALL_ROUNDS = 128
+KNOWLEDGE_RETRIEVAL_ERROR_POLICY_FAIL = 'fail'
+KNOWLEDGE_RETRIEVAL_ERROR_POLICY_CONTINUE = 'continue'
+KNOWLEDGE_RETRIEVAL_ERROR_POLICIES = {
+    KNOWLEDGE_RETRIEVAL_ERROR_POLICY_FAIL,
+    KNOWLEDGE_RETRIEVAL_ERROR_POLICY_CONTINUE,
+}
 
 
 def _model_has_ability(model: modelmgr_requester.RuntimeLLMModel, ability: str) -> bool:
@@ -292,6 +298,17 @@ class LocalAgentRunner(runner.RequestRunner):
         configured_model.reasoning_config_override = reasoning_config
         return configured_model
 
+    @staticmethod
+    def _knowledge_retrieval_error_policy(query: pipeline_query.Query) -> str:
+        local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
+        policy = local_agent_config.get(
+            'knowledge-retrieval-error-policy',
+            KNOWLEDGE_RETRIEVAL_ERROR_POLICY_FAIL,
+        )
+        if policy not in KNOWLEDGE_RETRIEVAL_ERROR_POLICIES:
+            return KNOWLEDGE_RETRIEVAL_ERROR_POLICY_FAIL
+        return policy
+
     async def _invoke_with_fallback(
         self,
         query: pipeline_query.Query,
@@ -398,6 +415,8 @@ class LocalAgentRunner(runner.RequestRunner):
             execution_context = get_query_execution_context(query)
 
             kb_engine_plugins: set[str] = set()
+            failed_kb_count = 0
+            knowledge_retrieval_error_policy = self._knowledge_retrieval_error_policy(query)
 
             # Retrieve from each knowledge base
             for kb_uuid in kb_uuids:
@@ -413,15 +432,25 @@ class LocalAgentRunner(runner.RequestRunner):
                     engine_plugin_id = 'builtin'
                 kb_engine_plugins.add(engine_plugin_id)
 
-                result = await kb.retrieve(
-                    execution_context,
-                    user_message_text,
-                    settings={
-                        'bot_uuid': query.bot_uuid or '',
-                        'sender_id': str(query.sender_id),
-                        'session_name': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
-                    },
-                )
+                try:
+                    result = await kb.retrieve(
+                        execution_context,
+                        user_message_text,
+                        settings={
+                            'bot_uuid': query.bot_uuid or '',
+                            'sender_id': str(query.sender_id),
+                            'session_name': f'{query.session.launcher_type.value}_{query.session.launcher_id}',
+                        },
+                    )
+                except Exception as e:
+                    if knowledge_retrieval_error_policy == KNOWLEDGE_RETRIEVAL_ERROR_POLICY_CONTINUE:
+                        failed_kb_count += 1
+                        self.ap.logger.warning(
+                            f'Knowledge base {kb_uuid} retrieve failed, continuing without it: {e}',
+                            exc_info=True,
+                        )
+                        continue
+                    raise
 
                 if result:
                     all_results.extend(result)
@@ -433,6 +462,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 {
                     'kb_count': len(kb_uuids),
                     'engine_plugins': sorted(kb_engine_plugins),
+                    'failed_kb_count': failed_kb_count,
                     'retrieved_entries': len(all_results),
                 },
             )
