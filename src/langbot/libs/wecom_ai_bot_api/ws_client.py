@@ -687,6 +687,18 @@ class WecomBotWsClient:
                 if not _re.sub(r'[\s​‌‍﻿]', '', next_content):
                     return True
 
+            # A blank *final* snapshot would close the stream with an empty
+            # bubble and strand the real answer in a separate reply_text
+            # message. Keep the session open so a following non-blank chunk can
+            # finalize it. The non-final branch above already skips blank
+            # snapshots; final snapshots with earlier content are non-blank
+            # here because ``next_content`` falls back to the previous content.
+            if is_final:
+                import re as _re
+
+                if not _re.sub(r'[\s\u200b\u200c\u200d\ufeff]', '', next_content):
+                    return True
+
             # Generate feedback_id for final chunk
             feedback_id = ''
             if is_final:
