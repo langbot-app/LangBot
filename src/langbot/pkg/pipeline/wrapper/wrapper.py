@@ -161,26 +161,35 @@ class ResponseWrapper(stage.PipelineStage):
                     elif (
                         isinstance(result, provider_message.MessageChunk) and result.is_final and not result.tool_calls
                     ):
-                        # Final streaming chunk with no text content but
-                        # possibly carrying sandbox outbox attachments.
+                        # Final streaming chunk with no text content. It may still
+                        # carry sandbox outbox attachments; deliver them when present.
+                        # Otherwise emit nothing: appending an empty message chain
+                        # would be sent to the platform as an empty bubble and, on
+                        # streaming adapters (e.g. WeCom), would also close the
+                        # stream so the real answer arrives as a separate message.
                         reply_chain = platform_message.MessageChain([])
                         await self._append_outbound_attachments(query, reply_chain)
-                        query.resp_message_chain.append(reply_chain)
-                        yield entities.StageProcessResult(
-                            result_type=entities.ResultType.CONTINUE,
-                            new_query=query,
-                        )
+                        if len(reply_chain) > 0:
+                            query.resp_message_chain.append(reply_chain)
+                            yield entities.StageProcessResult(
+                                result_type=entities.ResultType.CONTINUE,
+                                new_query=query,
+                            )
 
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
 
                         reply_text = f'Call {".".join(function_names)}...'
 
-                        query.resp_message_chain.append(
-                            platform_message.MessageChain([platform_message.Plain(text=reply_text)])
-                        )
-
+                        # Only surface the tool-call notice when the pipeline option
+                        # is enabled. Emitting it unconditionally would become the
+                        # final streaming chunk, closing the stream early and pushing
+                        # the real answer into a separate message.
                         if query.pipeline_config['output']['misc']['track-function-calls']:
+                            query.resp_message_chain.append(
+                                platform_message.MessageChain([platform_message.Plain(text=reply_text)])
+                            )
+
                             event = events.NormalMessageResponded(
                                 launcher_type=query.launcher_type.value,
                                 launcher_id=query.launcher_id,
