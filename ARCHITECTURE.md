@@ -23,6 +23,7 @@ LangBot is not a single-repo system.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
 - `langbot-plugin-sdk/` is published as `langbot-plugin` and pinned in `LangBot/pyproject.toml`. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`).
+- [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
 
 This split matters. If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, verify the sibling SDK repo and install the local SDK into LangBot's virtualenv when testing cross-repo behavior.
@@ -252,6 +253,7 @@ LangBot is deliberately agent-friendly. The agent-facing surfaces are part of th
 
 - `skills/` is the single source of truth for in-repo skills.
 - `pkg/api/mcp/server.py` exposes the LangBot MCP server at `/mcp`.
+- `lbctl` calls the authenticated HTTP Service API from a terminal; its source and releases live in `langbot-cli`.
 - `api.global_api_key` authenticates API/MCP access without a browser login.
 - `AGENTS.md` and `ARCHITECTURE.md` tell coding agents how the repo works.
 
