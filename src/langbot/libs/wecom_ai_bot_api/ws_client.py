@@ -433,6 +433,7 @@ class WecomBotWsClient:
 
             self._stream_ids.pop(msg_id, None)
             self._stream_last_content.pop(msg_id, None)
+            self._stream_last_push_at.pop(msg_id, None)
             self._stream_sessions.pop(msg_id, None)
             return True, stream_id, None
 
@@ -468,6 +469,7 @@ class WecomBotWsClient:
         # push_stream_chunk calls for this msg_id become no-ops.
         self._stream_ids.pop(msg_id, None)
         self._stream_last_content.pop(msg_id, None)
+        self._stream_last_push_at.pop(msg_id, None)
         # Keep _stream_sessions so the button callback can still resolve
         # user/chat context; it gets cleaned up when the click fires.
 
@@ -714,7 +716,12 @@ class WecomBotWsClient:
             # throttled, so a reply always terminates promptly.
             if not is_final:
                 now = time.monotonic()
-                if now - self._stream_last_push_at.get(msg_id, 0.0) < _STREAM_PUSH_MIN_INTERVAL:
+                last_push_at = self._stream_last_push_at.get(msg_id)
+                # A missing entry means "nothing sent yet", not "sent at 0.0":
+                # time.monotonic() has an arbitrary origin, so on a freshly
+                # booted host a raw reading can be smaller than the interval
+                # and the first frame of a message would be dropped.
+                if last_push_at is not None and now - last_push_at < _STREAM_PUSH_MIN_INTERVAL:
                     return True
                 self._stream_last_push_at[msg_id] = now
 
