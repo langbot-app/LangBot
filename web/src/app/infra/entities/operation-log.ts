@@ -76,6 +76,10 @@ export interface OperationLogPage {
   offset: number;
   /** How many records on this page failed hash or chain verification. */
   tampered_count: number;
+  /** Records whose stored hash no longer matches their content. */
+  integrity_failed_count: number;
+  /** Records whose predecessor link is broken. */
+  chain_failed_count: number;
 }
 
 export interface OperationLogFilters {

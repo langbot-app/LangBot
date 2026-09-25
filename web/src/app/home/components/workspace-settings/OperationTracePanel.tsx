@@ -323,6 +323,19 @@ export default function OperationTracePanel({
           )}
           {t('operationTrace.refresh')}
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void downloadLogs()}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Download className="size-3.5" />
+          )}
+          {t('operationTrace.export')}
+        </Button>
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
@@ -429,13 +442,22 @@ export default function OperationTracePanel({
                 {t('operationTrace.records')}
               </h3>
               <Badge variant="secondary">{total}</Badge>
-              {(page?.tampered_count ?? 0) > 0 && (
-                <Badge variant="destructive">
-                  {t('operationTrace.tamperedCount', {
-                    count: page?.tampered_count ?? 0,
-                  })}
-                </Badge>
-              )}
+              {(page?.tampered_count ?? 0) > 0 &&
+                (page?.integrity_failed_count ?? 0) > 0 && (
+                  <Badge variant="destructive">
+                    {t('operationTrace.integrityFailedCount', {
+                      count: page?.integrity_failed_count ?? 0,
+                    })}
+                  </Badge>
+                )}
+              {(page?.tampered_count ?? 0) > 0 &&
+                (page?.chain_failed_count ?? 0) > 0 && (
+                  <Badge variant="destructive">
+                    {t('operationTrace.chainFailedCount', {
+                      count: page?.chain_failed_count ?? 0,
+                    })}
+                  </Badge>
+                )}
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <Select
@@ -490,19 +512,6 @@ export default function OperationTracePanel({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void downloadLogs()}
-                disabled={exporting}
-              >
-                {exporting ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Download className="size-3.5" />
-                )}
-                {t('operationTrace.export')}
-              </Button>
               <Select
                 value={query.actor ?? ALL_VALUE}
                 onValueChange={(value) =>

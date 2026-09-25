@@ -252,6 +252,74 @@ ACTION_RULE_TABLE: typing.Final[tuple[ActionRule, ...]] = (
         bucket='read',
         resource_type='member',
     ),
+    # --- Extension lifecycle (plugins, pages, skills, MCP) --------------
+    ActionRule(
+        action='plugin_view',
+        category='extension',
+        bucket='read',
+        resource_type='plugin',
+    ),
+    ActionRule(
+        action='plugin_config',
+        category='extension',
+        bucket='write',
+        resource_type='plugin',
+    ),
+    ActionRule(
+        action='plugin_install',
+        category='extension',
+        bucket='write',
+        resource_type='plugin',
+    ),
+    ActionRule(
+        action='plugin_upgrade',
+        category='extension',
+        bucket='write',
+        resource_type='plugin',
+    ),
+    ActionRule(
+        action='page_view',
+        category='extension',
+        bucket='read',
+        resource_type='plugin_page',
+    ),
+    ActionRule(
+        action='skill_view',
+        category='extension',
+        bucket='read',
+        resource_type='skill',
+    ),
+    ActionRule(
+        action='skill_install',
+        category='extension',
+        bucket='write',
+        resource_type='skill',
+    ),
+    # --- Knowledge & MCP -------------------------------------------------
+    ActionRule(
+        action='knowledge_base_view',
+        category='knowledge',
+        bucket='read',
+        resource_type='knowledge_base',
+    ),
+    ActionRule(
+        action='knowledge_base_update',
+        category='knowledge',
+        bucket='write',
+        resource_type='knowledge_base',
+    ),
+    ActionRule(
+        action='mcp_view',
+        category='integration',
+        bucket='read',
+        resource_type='mcp_server',
+    ),
+    ActionRule(
+        action='mcp_config',
+        category='integration',
+        bucket='write',
+        resource_type='mcp_server',
+    ),
     # --- Generic resource verbs -----------------------------------------
     ActionRule(
         action='export',
@@ -313,20 +381,43 @@ ACTION_RULES_BY_ACTION: typing.Final[dict[str, ActionRule]] = {rule.action: rule
 
 _READ_METHODS: typing.Final = frozenset({'GET', 'HEAD', 'OPTIONS'})
 
-# Route fragments, evaluated in order, that refine the generic verb mapping.
-# Longer, more specific fragments must precede their prefixes.
-_ROUTE_RULES: typing.Final[tuple[tuple[str, str], ...]] = (
-    ('/settings/operation-logs/export', 'export'),
-    ('/settings/operation-logs', 'audit_log_view'),
-    ('/settings/operation-level', 'settings_update'),
-    ('/settings/governance', 'settings_update'),
-    ('/settings/limits', 'settings_update'),
-    ('/members', 'member_view'),
-    ('/invitations', 'member_invite'),
-    ('/export', 'export'),
-    ('/debug', 'debug'),
-    ('/execute', 'execute'),
-    ('/publish', 'publish'),
+# Route rules evaluated in order; the first match wins, so the most specific
+# rule must precede its prefix. Each rule is ``(fragments, read_action,
+# write_action)``: every fragment must appear in the lowered route (a tuple
+# expresses an AND, which lets ``/plugins/<author>/<name>/config`` be told
+# apart from ``/plugins/<author>/<name>``), and the action is selected by
+# whether the method is a read verb.
+_ROUTE_RULES: typing.Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
+    # --- Audit surface itself -------------------------------------------
+    (('/settings/operation-logs/export',), 'export', 'export'),
+    (('/settings/operation-logs',), 'audit_log_view', 'audit_log_view'),
+    (('/settings/operation-level',), 'settings_view', 'settings_update'),
+    (('/settings/governance',), 'settings_view', 'settings_update'),
+    (('/settings/limits',), 'settings_view', 'settings_update'),
+    # --- Extension lifecycle: plugins -----------------------------------
+    (('/plugins/install',), 'plugin_view', 'plugin_install'),
+    (('/plugins/github',), 'plugin_view', 'plugin_view'),
+    (('/plugins/', '/config'), 'plugin_view', 'plugin_config'),
+    (('/plugins/', '/page-api'), 'page_view', 'page_view'),
+    (('/plugins/', '/upgrade'), 'plugin_view', 'plugin_upgrade'),
+    (('/plugins/', '/logs'), 'plugin_view', 'plugin_view'),
+    (('/plugins',), 'plugin_view', 'plugin_view'),
+    (('/extensions',), 'plugin_view', 'plugin_config'),
+    # --- Extension lifecycle: skills ------------------------------------
+    (('/skills/', '/install'), 'skill_view', 'skill_install'),
+    (('/skills',), 'skill_view', 'skill_view'),
+    # --- Knowledge bases & MCP servers ----------------------------------
+    (('/knowledge/',), 'knowledge_base_view', 'knowledge_base_update'),
+    (('/mcp/', '/config'), 'mcp_view', 'mcp_config'),
+    (('/mcp',), 'mcp_view', 'mcp_config'),
+    # --- Member management ----------------------------------------------
+    (('/members',), 'member_view', 'member_role_update'),
+    (('/invitations',), 'member_view', 'member_invite'),
+    # --- Generic resource verbs -----------------------------------------
+    (('/export',), 'export', 'export'),
+    (('/debug',), 'debug', 'debug'),
+    (('/execute',), 'execute', 'execute'),
+    (('/publish',), 'publish', 'publish'),
 )
 
 
@@ -339,22 +430,13 @@ def classify(method: str, route: str) -> ActionRule:
 
     upper_method = (method or 'GET').upper()
     lowered_route = (route or '').lower()
+    is_read = upper_method in _READ_METHODS
 
-    route_action: str | None = None
-    for fragment, candidate in _ROUTE_RULES:
-        if fragment in lowered_route:
-            route_action = candidate
-            break
+    for fragments, read_action, write_action in _ROUTE_RULES:
+        if all(fragment in lowered_route for fragment in fragments):
+            return ACTION_RULES_BY_ACTION[read_action if is_read else write_action]
 
-    if route_action is not None:
-        if route_action == 'settings_update' and upper_method in _READ_METHODS:
-            return ACTION_RULES_BY_ACTION['settings_view']
-        if route_action == 'member_view' and upper_method not in _READ_METHODS:
-            # POST /members/<id> style routes are writes on the member family.
-            return ACTION_RULES_BY_ACTION['member_role_update']
-        return ACTION_RULES_BY_ACTION[route_action]
-
-    if upper_method in _READ_METHODS:
+    if is_read:
         return ACTION_RULES_BY_ACTION['view']
     if upper_method == 'POST':
         return ACTION_RULES_BY_ACTION['create']
@@ -380,13 +462,19 @@ def role_may_configure(role: str | None) -> bool:
 
 
 def bucket_allows(bucket: str, effective_level: int) -> bool:
-    """Return whether a capture bucket should be persisted at this level."""
+    """Return whether a capture bucket should be persisted at this level.
+
+    ``write`` buckets are recorded from the mutation level upward. ``read``
+    and ``audit`` are both *observation* buckets: viewing a resource and
+    viewing the audit surface itself are reads, so a mutation-level Workspace
+    must not fill its log with page views. They are only persisted once the
+    Workspace opts into the read level.
+    """
 
     if effective_level <= OPERATION_LEVEL_NONE:
         return False
-    if bucket == 'read':
+    if bucket in ('read', 'audit'):
         return effective_level >= OPERATION_LEVEL_READ
-    # ``write`` and ``audit`` are both recorded from mutation level upward.
     return effective_level >= OPERATION_LEVEL_MUTATION
 
 
@@ -1212,7 +1300,12 @@ class WorkspaceSettingsService:
             'total': total,
             'limit': resolved_limit,
             'offset': resolved_offset,
+            # Report the two failure modes separately so the panel can tell a
+            # content edit (integrity) apart from a dropped link (chain) instead
+            # of collapsing both into a single "tampered" signal.
             'tampered_count': sum(1 for record in records if record.get('tampered')),
+            'integrity_failed_count': sum(1 for record in records if not record.get('integrity_ok')),
+            'chain_failed_count': sum(1 for record in records if not record.get('chain_ok')),
         }
 
     def _serialize_log(self, row: typing.Any, *, previous_row: typing.Any | None = None) -> dict[str, typing.Any]:
