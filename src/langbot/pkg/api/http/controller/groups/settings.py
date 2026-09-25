@@ -169,6 +169,9 @@ class SettingsRouterGroup(group.RouterGroup):
                 level=_parse_int(level_raw, 0) if level_raw not in (None, '') else None,
                 since=_parse_timestamp(args.get('since')),
                 until=_parse_timestamp(args.get('until')),
+                # Optional verification filter: lets the panel turn the three
+                # tamper counters into a drill-down instead of a dead badge.
+                integrity=args.get('integrity') or None,
             )
             return self.success(data=result)
 

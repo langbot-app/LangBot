@@ -34,6 +34,7 @@ import {
 import type {
   OperationChangeField,
   OperationGovernance,
+  OperationIntegrityFilter,
   OperationLevel,
   OperationLogFilters,
   OperationLogPage,
@@ -206,6 +207,19 @@ export default function OperationTracePanel({
   // total badge disagree with the list) whenever a page is re-fetched.
   const visibleRecords = page?.records ?? [];
 
+  const integrityFilter: OperationIntegrityFilter = query.integrity ?? 'all';
+
+  // Clicking a counter turns it into a drill-down: the panel is the only place
+  // the operator can learn *which* records failed verification, so a badge that
+  // cannot be acted on would be a dead end.
+  function toggleIntegrityFilter(next: OperationIntegrityFilter) {
+    setQuery((prev) => ({
+      ...prev,
+      integrity: prev.integrity === next ? undefined : next,
+      offset: 0,
+    }));
+  }
+
   async function changeLevel(level: OperationLevel) {
     if (!canConfigure) return;
     setSaving(true);
@@ -235,6 +249,7 @@ export default function OperationTracePanel({
         level: query.level,
         since: query.since,
         until: query.until,
+        integrity: query.integrity,
       });
       const response = await backendClient.downloadFile(url);
       const disposition = response.headers['content-disposition'] as
@@ -450,22 +465,44 @@ export default function OperationTracePanel({
                 {t('operationTrace.records')}
               </h3>
               <Badge variant="secondary">{total}</Badge>
-              {(page?.tampered_count ?? 0) > 0 &&
-                (page?.integrity_failed_count ?? 0) > 0 && (
+              {/* The two failure modes are rendered independently: a record can
+                  drop its chain link without corrupting its own hash, so gating
+                  one badge on the other counter would hide a real mismatch.
+                  The counters cover the whole filtered history, so they stay
+                  stable while the operator pages through the records. */}
+              {(page?.integrity_failed_count ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggleIntegrityFilter('hash_mismatch')}
+                  className="cursor-pointer"
+                >
                   <Badge variant="destructive">
                     {t('operationTrace.integrityFailedCount', {
                       count: page?.integrity_failed_count ?? 0,
                     })}
                   </Badge>
-                )}
-              {(page?.tampered_count ?? 0) > 0 &&
-                (page?.chain_failed_count ?? 0) > 0 && (
+                </button>
+              )}
+              {(page?.chain_failed_count ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggleIntegrityFilter('chain_broken')}
+                  className="cursor-pointer"
+                >
                   <Badge variant="destructive">
                     {t('operationTrace.chainFailedCount', {
                       count: page?.chain_failed_count ?? 0,
                     })}
                   </Badge>
-                )}
+                </button>
+              )}
+              {page?.scan_truncated && (
+                <Badge variant="outline">
+                  {t('operationTrace.scanTruncated', {
+                    count: page?.scanned_count ?? 0,
+                  })}
+                </Badge>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select
@@ -515,7 +552,12 @@ export default function OperationTracePanel({
                   </SelectItem>
                   {(filters?.resource_types ?? []).map((resource) => (
                     <SelectItem key={resource} value={resource}>
-                      {resource}
+                      {/* The API ships the raw resource family (``resource``,
+                          ``member``...); the label is resolved here so no
+                          interface text leaks from the backend. */}
+                      {t(`operationTrace.resourceTypes.${resource}`, {
+                        defaultValue: resource,
+                      })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -553,7 +595,9 @@ export default function OperationTracePanel({
           <div className="space-y-2">
             {visibleRecords.length === 0 && (
               <p className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
-                {t('operationTrace.empty')}
+                {integrityFilter === 'all'
+                  ? t('operationTrace.empty')
+                  : t('operationTrace.emptyFiltered')}
               </p>
             )}
             {visibleRecords.map((record) => (
@@ -586,7 +630,11 @@ export default function OperationTracePanel({
                     </Badge>
                     <Badge variant="outline">L{record.level}</Badge>
                     {record.resource_type && (
-                      <Badge variant="secondary">{record.resource_type}</Badge>
+                      <Badge variant="secondary">
+                        {t(`operationTrace.resourceTypes.${record.resource_type}`, {
+                          defaultValue: record.resource_type,
+                        })}
+                      </Badge>
                     )}
                     {record.tampered ? (
                       <Badge variant="destructive">

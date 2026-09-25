@@ -2739,8 +2739,7 @@ const jaJP = {
   },
   operationTrace: {
     title: '操作トレーサビリティ',
-    description:
-      '管理者とオーナーの変更・閲覧操作を追跡し、「何が何に変更されたか」を記録します。',
+    description: '管理者とオーナーの操作を追跡します。',
     captureLevel: 'キャプチャレベル',
     retention: '保持ポリシー',
     retentionDays: '保持日数',
@@ -2772,6 +2771,8 @@ const jaJP = {
     verifiedBadge: '検証済み',
     integrityFailedCount: '{{count}} 件のハッシュ不一致',
     chainFailedCount: '{{count}} 件のリンク断絶',
+    scanTruncated: '最新 {{count}} 件のみ検証',
+    emptyFiltered: '現在のフィルターでは検証が必要な記録はありません',
     levels: {
       off: {
         label: 'トレース無効',
@@ -2787,6 +2788,20 @@ const jaJP = {
       off: '無効',
       mutation: '変更のみ',
       read: '最上位',
+    },
+    resourceTypes: {
+      workspace_settings: 'ワークスペース設定',
+      member: 'メンバー',
+      member_invitation: 'メンバー招待',
+      operation_log: '操作ログ',
+      plugin: '拡張機能',
+      plugin_page: '拡張ページ',
+      skill: 'スキル',
+      knowledge_base: 'ナレッジベース',
+      mcp_server: 'MCP サーバー',
+      runtime: 'ランタイム',
+      system: 'システム',
+      resource: 'リソース',
     },
     outcomes: {
       ok: '成功',

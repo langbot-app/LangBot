@@ -69,17 +69,35 @@ export interface OperationLogRecord {
   created_at: string | null;
 }
 
+/** Verification filter accepted by the listing endpoint. */
+export type OperationIntegrityFilter =
+  | 'all'
+  | 'issues'
+  | 'hash_mismatch'
+  | 'chain_broken';
+
 export interface OperationLogPage {
   records: OperationLogRecord[];
+  /** Records matching the filters and the active verification filter. */
   total: number;
   limit: number;
   offset: number;
-  /** How many records on this page failed hash or chain verification. */
+  /**
+   * Workspace-wide counters over the filtered history, not just this page.
+   * They stay constant while paging so an operator opening page 2 still sees
+   * the total number of tampered records.
+   */
   tampered_count: number;
   /** Records whose stored hash no longer matches their content. */
   integrity_failed_count: number;
   /** Records whose predecessor link is broken. */
   chain_failed_count: number;
+  /** How many records the verification scan actually inspected. */
+  scanned_count: number;
+  /** The scan stopped at the row cap, so the counters are approximate. */
+  scan_truncated: boolean;
+  /** Which verification filter produced this page. */
+  integrity_filter: OperationIntegrityFilter;
 }
 
 export interface OperationLogFilters {
@@ -97,4 +115,6 @@ export interface OperationLogQuery {
   level?: OperationLevel;
   since?: string;
   until?: string;
+  /** Narrow the listing to records that failed verification. */
+  integrity?: OperationIntegrityFilter;
 }

@@ -28,6 +28,8 @@ import enum
 import hashlib
 import hmac
 import json
+import logging
+import time
 import typing
 
 import sqlalchemy
@@ -43,6 +45,8 @@ from ....entity.persistence.operation_log import (
 from ....utils import constants
 from ..authz import WorkspaceRole
 from ..context import PrincipalType, RequestContext
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +80,30 @@ MAX_DEDUPE_WINDOW_SECONDS = 3600
 
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
+
+#: How many newest records the integrity summary reads before the numbers
+#: beside the list are served from an approximate scan. Verifying a record means
+#: recomputing its HMAC, so an unbounded scan on every page/refresh would make the
+#: panel latency grow with the history size. ``MAX_MAX_ROWS`` (500k) is the
+#: configured ceiling for a Workspace, so a full-table verification at that scale
+#: is exactly what this bound avoids.
+MAX_INTEGRITY_SCAN_ROWS = 20000
+
+#: ``integrity`` query values accepted by :meth:`query_logs`. ``all`` keeps the
+#: previous behaviour; the other two map to the two failure modes the panel
+#: surfaces independently (hash mismatch vs. broken chain link).
+INTEGRITY_FILTER_ALL = 'all'
+INTEGRITY_FILTER_ISSUES = 'issues'
+INTEGRITY_FILTER_HASH_MISMATCH = 'hash_mismatch'
+INTEGRITY_FILTER_CHAIN_BROKEN = 'chain_broken'
+_INTEGRITY_FILTERS = frozenset(
+    {
+        INTEGRITY_FILTER_ALL,
+        INTEGRITY_FILTER_ISSUES,
+        INTEGRITY_FILTER_HASH_MISMATCH,
+        INTEGRITY_FILTER_CHAIN_BROKEN,
+    }
+)
 
 #: Upper bound for a single export so a download cannot load the whole table.
 MAX_EXPORT_ROWS = 10000
@@ -557,6 +585,59 @@ def changed_fields(
             }
         )
     return changes
+
+
+#: Ordered key groups that identify the resource a request acts on. Each group
+#: is joined with ``/`` so ``author`` + ``plugin_name`` renders as
+#: ``author/plugin_name`` — the same identity the UI already shows. Only these
+#: keys are consulted: reading arbitrary payload fields would let a caller
+#: inject unbounded, unattributed text into the audit trail.
+_IDENTITY_KEY_GROUPS: typing.Final[tuple[tuple[str, ...], ...]] = (
+    ('plugin_author', 'plugin_name'),
+    ('author', 'plugin_name'),
+    ('author', 'name'),
+    ('skill_uuid',),
+    ('knowledge_base_uuid',),
+    ('server_uuid',),
+    ('pipeline_uuid',),
+    ('provider_uuid',),
+    ('model_uuid',),
+    ('account_uuid',),
+    ('email',),
+    ('name',),
+    ('uuid',),
+)
+
+
+def resolve_resource_identity(
+    path_params: typing.Mapping[str, typing.Any] | None,
+    body: typing.Mapping[str, typing.Any] | None,
+) -> str | None:
+    """Best-effort identity of the resource one request acts on.
+
+    Path parameters describe the resource a route was registered for and are
+    therefore trusted; the request body is only consulted for install-style
+    endpoints that carry the identity in their payload (a marketplace install
+    names the plugin in the body, not in the URL). The result is bounded and
+    sensitive-looking keys are skipped so a secret can never be echoed back
+    through the trace.
+    """
+
+    params = path_params or {}
+    payload = body or {}
+    for group in _IDENTITY_KEY_GROUPS:
+        parts: list[str] = []
+        for key in group:
+            value = params.get(key)
+            if value is None:
+                value = payload.get(key)
+            if value is None or value == '' or is_sensitive_field(key):
+                parts = []
+                break
+            parts.append(str(value))
+        if parts:
+            return typing.cast(str, truncate('/'.join(parts), _MAX_RESOURCE_ID_CHARS))
+    return None
 
 
 def build_summary(rule: ActionRule, changes: list[dict[str, typing.Any]]) -> str:
@@ -1231,11 +1312,25 @@ class WorkspaceSettingsService:
         level: int | None = None,
         since: datetime.datetime | None = None,
         until: datetime.datetime | None = None,
+        integrity: str | None = None,
     ) -> dict[str, typing.Any]:
-        """Return one page of operation records plus a coarse summary."""
+        """Return one page of operation records plus a Workspace-wide summary.
+
+        The three verification counters describe the whole filtered history, not
+        just the returned page: an operator opening page 2 must still see that
+        39 records are tampered. Only ``total`` and ``records`` follow the
+        pagination window.
+
+        ``integrity`` optionally narrows the listing to the records that failed
+        verification, which lets the panel make its counters actionable instead
+        of decorative.
+        """
 
         resolved_limit = max(1, min(int(limit or DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE))
         resolved_offset = max(int(offset or 0), 0)
+        resolved_integrity = (integrity or INTEGRITY_FILTER_ALL).strip().lower()
+        if resolved_integrity not in _INTEGRITY_FILTERS:
+            resolved_integrity = INTEGRITY_FILTER_ALL
 
         try:
             model = persistence_operation_log.WorkspaceOperationLog
@@ -1253,14 +1348,32 @@ class WorkspaceSettingsService:
             if until is not None:
                 filters.append(model.created_at <= until)
 
+            # Verify the filtered history once per request. This replaces the
+            # previous per-page sum, which made the counters silently restart at
+            # zero on every page after the first.
+            summary = await self._integrity_summary(model, filters)
+
+            # ``total`` follows the active listing filter so the pagination badge
+            # and the pager stay consistent with what the operator asked to see.
+            visible_filters = list(filters)
+            if resolved_integrity == INTEGRITY_FILTER_ISSUES:
+                ids = summary['tampered_ids']
+                visible_filters.append(model.id.in_(ids) if ids else sqlalchemy.false())
+            elif resolved_integrity == INTEGRITY_FILTER_HASH_MISMATCH:
+                ids = summary['integrity_failed_ids']
+                visible_filters.append(model.id.in_(ids) if ids else sqlalchemy.false())
+            elif resolved_integrity == INTEGRITY_FILTER_CHAIN_BROKEN:
+                ids = summary['chain_failed_ids']
+                visible_filters.append(model.id.in_(ids) if ids else sqlalchemy.false())
+
             total_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(sqlalchemy.func.count()).select_from(model).where(*filters)
+                sqlalchemy.select(sqlalchemy.func.count()).select_from(model).where(*visible_filters)
             )
             total = int(total_result.scalar_one_or_none() or 0)
 
             rows_result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(model)
-                .where(*filters)
+                .where(*visible_filters)
                 .order_by(model.id.desc())
                 .limit(resolved_limit)
                 .offset(resolved_offset)
@@ -1287,10 +1400,12 @@ class WorkspaceSettingsService:
                 )
                 for index, row in enumerate(rows)
             ]
+            integrity_summary = summary['summary']
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation log query skipped: {exc}')
             total = 0
             records = []
+            integrity_summary = self._empty_integrity_summary()
 
         return {
             'records': records,
@@ -1299,11 +1414,122 @@ class WorkspaceSettingsService:
             'offset': resolved_offset,
             # Report the two failure modes separately so the panel can tell a
             # content edit (integrity) apart from a dropped link (chain) instead
-            # of collapsing both into a single "tampered" signal.
-            'tampered_count': sum(1 for record in records if record.get('tampered')),
-            'integrity_failed_count': sum(1 for record in records if not record.get('integrity_ok')),
-            'chain_failed_count': sum(1 for record in records if not record.get('chain_ok')),
+            # of collapsing both into a single "tampered" signal. The counters
+            # cover the whole filtered history, not only this page.
+            'tampered_count': integrity_summary['tampered'],
+            'integrity_failed_count': integrity_summary['integrity_failed'],
+            'chain_failed_count': integrity_summary['chain_failed'],
+            'scanned_count': integrity_summary['scanned'],
+            'scan_truncated': integrity_summary['truncated'],
+            'integrity_filter': resolved_integrity,
         }
+
+    @staticmethod
+    def _empty_integrity_summary() -> dict[str, typing.Any]:
+        return {
+            'tampered': 0,
+            'integrity_failed': 0,
+            'chain_failed': 0,
+            'scanned': 0,
+            'truncated': False,
+        }
+
+    async def _integrity_summary(
+        self,
+        model: typing.Any,
+        filters: list[typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Verify the filtered history and classify every failing record.
+
+        Returns the three counters, the number of rows actually verified and the
+        record id lists needed to narrow the listing to one failure mode. The
+        scan walks the records newest-first and stops at
+        :data:`MAX_INTEGRITY_SCAN_ROWS`, so both the counters and the id lists
+        always describe the same, well-defined slice of the history.
+        """
+
+        started = time.monotonic()
+        try:
+            rows_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(model)
+                .where(*filters)
+                .order_by(model.id.desc())
+                .limit(MAX_INTEGRITY_SCAN_ROWS)
+            )
+            rows = list(rows_result.all())
+
+            oldest_id = rows[-1].id if rows else None
+            previous_row = None
+            verification_failed = False
+            if oldest_id is not None:
+                # Check the link of the oldest verified row against the row that
+                # precedes it, even when it sits outside the scan window: the
+                # baseline must still be read from the table, not guessed, or the
+                # boundary record would be reported as broken forever.
+                older_result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(model)
+                    .where(model.workspace_uuid == rows[0].workspace_uuid, model.id < oldest_id)
+                    .order_by(model.id.desc())
+                    .limit(1)
+                )
+                previous_row = older_result.first()
+
+            tampered_ids: list[int] = []
+            integrity_failed_ids: list[int] = []
+            chain_failed_ids: list[int] = []
+            for index, row in enumerate(rows):
+                predecessor = rows[index + 1] if index + 1 < len(rows) else previous_row
+                record = self._serialize_log(row, previous_row=predecessor)
+                if not record['integrity_ok']:
+                    integrity_failed_ids.append(row.id)
+                if not record['chain_ok']:
+                    chain_failed_ids.append(row.id)
+                if record['tampered']:
+                    tampered_ids.append(row.id)
+                    verification_failed = True
+
+            summary = {
+                'tampered': len(tampered_ids),
+                'integrity_failed': len(integrity_failed_ids),
+                'chain_failed': len(chain_failed_ids),
+                'scanned': len(rows),
+                'truncated': len(rows) >= MAX_INTEGRITY_SCAN_ROWS,
+            }
+            if verification_failed or summary['truncated']:
+                # Worth logging: either the store was edited underneath us, or the
+                # history outgrew the verification window and the counters became
+                # approximate.
+                logger.warning(
+                    'Operation log integrity scan: %s tampered / %s hash / %s chain over %s rows (truncated=%s)',
+                    summary['tampered'],
+                    summary['integrity_failed'],
+                    summary['chain_failed'],
+                    summary['scanned'],
+                    summary['truncated'],
+                )
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            if elapsed_ms >= 250:
+                logger.debug(
+                    'Operation log integrity scan took %sms over %s rows',
+                    elapsed_ms,
+                    summary['scanned'],
+                )
+            return {
+                'summary': summary,
+                'tampered_ids': tampered_ids,
+                'integrity_failed_ids': integrity_failed_ids,
+                'chain_failed_ids': chain_failed_ids,
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            # Never take the whole log panel down because verification failed:
+            # fall back to zeroed counters and an unfiltered listing.
+            logger.debug(f'Operation log integrity summary skipped: {exc}')
+            return {
+                'summary': self._empty_integrity_summary(),
+                'tampered_ids': [],
+                'integrity_failed_ids': [],
+                'chain_failed_ids': [],
+            }
 
     def _serialize_log(self, row: typing.Any, *, previous_row: typing.Any | None = None) -> dict[str, typing.Any]:
         """Serialize one row and re-verify its tamper-evidence chain.

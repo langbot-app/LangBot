@@ -2746,8 +2746,7 @@ const ruRU = {
   },
   operationTrace: {
     title: 'Трассировка операций',
-    description:
-      'Отслеживание изменений и просмотров администраторов и владельцев с записью того, что и на что было изменено.',
+    description: 'Отслеживание изменений и просмотров администраторов',
     captureLevel: 'Уровень записи',
     retention: 'Хранение',
     retentionDays: 'Дней хранения',
@@ -2779,6 +2778,8 @@ const ruRU = {
     verifiedBadge: 'Проверено',
     integrityFailedCount: 'Несовпадение хэша: {{count}}',
     chainFailedCount: 'Разрыв связи: {{count}}',
+    scanTruncated: 'Проверены только последние {{count}}',
+    emptyFiltered: 'По текущим фильтрам нет записей, требующих проверки',
     levels: {
       off: {
         label: 'Трассировка выключена',
@@ -2794,6 +2795,20 @@ const ruRU = {
       off: 'Выкл',
       mutation: 'Изменения',
       read: 'Всё',
+    },
+    resourceTypes: {
+      workspace_settings: 'Настройки пространства',
+      member: 'Участник',
+      member_invitation: 'Приглашение участника',
+      operation_log: 'Журнал операций',
+      plugin: 'Расширение',
+      plugin_page: 'Страница расширения',
+      skill: 'Навык',
+      knowledge_base: 'База знаний',
+      mcp_server: 'MCP-сервер',
+      runtime: 'Среда выполнения',
+      system: 'Система',
+      resource: 'Ресурс',
     },
     outcomes: {
       ok: 'Успех',

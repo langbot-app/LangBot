@@ -2673,8 +2673,7 @@ const thTH = {
   },
   operationTrace: {
     title: 'การติดตามการดำเนินการ',
-    description:
-      'ติดตามการแก้ไขและการดูของผู้ดูแลและเจ้าของ โดยบันทึกว่าอะไรเปลี่ยนเป็นอะไร',
+    description: 'ติดตามการแก้ไขและการดูของผู้ดูแลและเจ้าของ',
     captureLevel: 'ระดับการบันทึก',
     retention: 'นโยบายการเก็บรักษา',
     retentionDays: 'จำนวนวันเก็บรักษา',
@@ -2706,6 +2705,8 @@ const thTH = {
     verifiedBadge: 'ตรวจสอบผ่าน',
     integrityFailedCount: 'แฮชไม่ตรงกัน {{count}} รายการ',
     chainFailedCount: 'ลิงก์ขาด {{count}} รายการ',
+    scanTruncated: 'ตรวจสอบเฉพาะ {{count}} รายการล่าสุด',
+    emptyFiltered: 'ไม่มีรายการที่ต้องตรวจสอบภายใต้ตัวกรองปัจจุบัน',
     levels: {
       off: {
         label: 'ปิดการติดตาม',
@@ -2721,6 +2722,20 @@ const thTH = {
       off: 'ปิด',
       mutation: 'เฉพาะแก้ไข',
       read: 'สูงสุด',
+    },
+    resourceTypes: {
+      workspace_settings: 'การตั้งค่าพื้นที่ทำงาน',
+      member: 'สมาชิก',
+      member_invitation: 'คำเชิญสมาชิก',
+      operation_log: 'บันทึกการดำเนินการ',
+      plugin: 'ส่วนขยาย',
+      plugin_page: 'หน้าส่วนขยาย',
+      skill: 'ทักษะ',
+      knowledge_base: 'ฐานความรู้',
+      mcp_server: 'เซิร์ฟเวอร์ MCP',
+      runtime: 'รันไทม์',
+      system: 'ระบบ',
+      resource: 'ทรัพยากร',
     },
     outcomes: {
       ok: 'สำเร็จ',

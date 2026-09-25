@@ -2604,6 +2604,8 @@ const zhHant = {
     verifiedBadge: '驗證通過',
     integrityFailedCount: '{{count}} 筆雜湊不符',
     chainFailedCount: '{{count}} 筆鏈結中斷',
+    scanTruncated: '僅校驗最近 {{count}} 筆',
+    emptyFiltered: '目前篩選下沒有需要校驗的記錄',
     levels: {
       off: {
         label: '關閉溯源',
@@ -2619,6 +2621,20 @@ const zhHant = {
       off: '關閉',
       mutation: '僅修改',
       read: '最高級',
+    },
+    resourceTypes: {
+      workspace_settings: '工作區設定',
+      member: '成員',
+      member_invitation: '成員邀請',
+      operation_log: '操作日誌',
+      plugin: '擴充',
+      plugin_page: '擴充頁面',
+      skill: '技能',
+      knowledge_base: '知識庫',
+      mcp_server: 'MCP 伺服器',
+      runtime: '執行階段',
+      system: '系統',
+      resource: '資源',
     },
     outcomes: {
       ok: '成功',

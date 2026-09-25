@@ -2721,8 +2721,7 @@ const enUS = {
   },
   operationTrace: {
     title: 'Operation traceability',
-    description:
-      'Trace admin and owner changes and views, recording what was changed into what.',
+    description: 'Trace admin and owner edits and views, and what changed.',
     captureLevel: 'Capture level',
     retention: 'Retention',
     retentionDays: 'Retention days',
@@ -2754,6 +2753,8 @@ const enUS = {
     verifiedBadge: 'Verified',
     integrityFailedCount: '{{count}} hash mismatches',
     chainFailedCount: '{{count}} broken links',
+    scanTruncated: 'Only the latest {{count}} verified',
+    emptyFiltered: 'No records need verification under the current filters',
     levels: {
       off: {
         label: 'Tracing off',
@@ -2769,6 +2770,20 @@ const enUS = {
       off: 'Off',
       mutation: 'Mutations',
       read: 'Everything',
+    },
+    resourceTypes: {
+      workspace_settings: 'Workspace settings',
+      member: 'Member',
+      member_invitation: 'Member invitation',
+      operation_log: 'Operation log',
+      plugin: 'Extension',
+      plugin_page: 'Extension page',
+      skill: 'Skill',
+      knowledge_base: 'Knowledge base',
+      mcp_server: 'MCP server',
+      runtime: 'Runtime',
+      system: 'System',
+      resource: 'Resource',
     },
     outcomes: {
       ok: 'Succeeded',

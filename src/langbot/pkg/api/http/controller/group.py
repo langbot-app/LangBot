@@ -387,6 +387,28 @@ class RouterGroup(abc.ABC):
                 if candidate is not None:
                     resource_id = str(candidate)
 
+            # Routes without an explicit resource_param still name the resource
+            # they act on, either as a URL parameter or inside the payload of an
+            # install-style endpoint. Resolving that identity here gives every
+            # resource family a "which plugin/skill/knowledge base" trace without
+            # touching each handler. The body is read defensively: an audit path
+            # must never fail (or block) because a request carries no JSON.
+            try:
+                # Imported lazily so the base controller never participates in an
+                # import cycle with the service layer at module load time.
+                from ..service import settings as settings_service
+
+                request_body: dict[str, typing.Any] | None = None
+                if str(quart.request.method or '').upper() not in ('GET', 'HEAD', 'OPTIONS'):
+                    raw_body = await quart.request.get_json(silent=True)
+                    if isinstance(raw_body, dict):
+                        request_body = raw_body
+                identity = settings_service.resolve_resource_identity(kwargs, request_body)
+                if identity:
+                    resource_id = identity
+            except Exception:  # pragma: no cover - identity resolution is best effort
+                pass
+
             # Handlers may publish request-local traceability facts when a
             # static route declaration cannot describe the runtime diff, e.g.
             # the previous and the new role of a member. ``quart.g`` is

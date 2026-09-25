@@ -2603,6 +2603,8 @@ const zhHans = {
     verifiedBadge: '校验通过',
     integrityFailedCount: '{{count}} 条哈希不匹配',
     chainFailedCount: '{{count}} 条链路断裂',
+    scanTruncated: '仅校验最近 {{count}} 条',
+    emptyFiltered: '当前筛选下没有需要校验的记录',
     levels: {
       off: {
         label: '关闭溯源',
@@ -2618,6 +2620,20 @@ const zhHans = {
       off: '关闭',
       mutation: '仅修改',
       read: '最高级',
+    },
+    resourceTypes: {
+      workspace_settings: '工作区设置',
+      member: '成员',
+      member_invitation: '成员邀请',
+      operation_log: '操作日志',
+      plugin: '扩展',
+      plugin_page: '扩展页面',
+      skill: '技能',
+      knowledge_base: '知识库',
+      mcp_server: 'MCP 服务器',
+      runtime: '运行时',
+      system: '系统',
+      resource: '资源',
     },
     outcomes: {
       ok: '成功',

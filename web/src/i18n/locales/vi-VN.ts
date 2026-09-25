@@ -2708,8 +2708,7 @@ const viVN = {
   },
   operationTrace: {
     title: 'Truy vết thao tác',
-    description:
-      'Theo dõi thao tác sửa và xem của quản trị viên và chủ sở hữu, ghi lại "cái gì đã đổi thành cái gì".',
+    description: 'Theo dõi thao tác sửa và xem của quản trị viên',
     captureLevel: 'Mức ghi nhận',
     retention: 'Chính sách lưu trữ',
     retentionDays: 'Số ngày lưu',
@@ -2741,6 +2740,8 @@ const viVN = {
     verifiedBadge: 'Đã xác minh',
     integrityFailedCount: '{{count}} mã băm không khớp',
     chainFailedCount: '{{count}} liên kết bị đứt',
+    scanTruncated: 'Chỉ xác minh {{count}} bản ghi mới nhất',
+    emptyFiltered: 'Không có bản ghi nào cần xác minh với bộ lọc hiện tại',
     levels: {
       off: {
         label: 'Tắt truy vết',
@@ -2756,6 +2757,20 @@ const viVN = {
       off: 'Tắt',
       mutation: 'Chỉ sửa',
       read: 'Cao nhất',
+    },
+    resourceTypes: {
+      workspace_settings: 'Cài đặt không gian làm việc',
+      member: 'Thành viên',
+      member_invitation: 'Lời mời thành viên',
+      operation_log: 'Nhật ký thao tác',
+      plugin: 'Tiện ích mở rộng',
+      plugin_page: 'Trang tiện ích',
+      skill: 'Kỹ năng',
+      knowledge_base: 'Cơ sở tri thức',
+      mcp_server: 'Máy chủ MCP',
+      runtime: 'Môi trường chạy',
+      system: 'Hệ thống',
+      resource: 'Tài nguyên',
     },
     outcomes: {
       ok: 'Thành công',

@@ -2776,8 +2776,7 @@ const esES = {
   },
   operationTrace: {
     title: 'Trazabilidad de operaciones',
-    description:
-      'Rastrea los cambios y las consultas de administradores y propietarios, registrando qué se cambió y a qué.',
+    description: 'Rastrea cambios y consultas de los administradores',
     captureLevel: 'Nivel de captura',
     retention: 'Retención',
     retentionDays: 'Días de retención',
@@ -2809,6 +2808,8 @@ const esES = {
     verifiedBadge: 'Verificado',
     integrityFailedCount: '{{count}} hashes no coinciden',
     chainFailedCount: '{{count}} enlaces rotos',
+    scanTruncated: 'Solo se verifican los últimos {{count}}',
+    emptyFiltered: 'Ningún registro requiere verificación',
     levels: {
       off: {
         label: 'Sin trazabilidad',
@@ -2824,6 +2825,20 @@ const esES = {
       off: 'Desactivado',
       mutation: 'Solo cambios',
       read: 'Todo',
+    },
+    resourceTypes: {
+      workspace_settings: 'Ajustes del espacio de trabajo',
+      member: 'Miembro',
+      member_invitation: 'Invitación de miembro',
+      operation_log: 'Registro de operaciones',
+      plugin: 'Extensión',
+      plugin_page: 'Página de extensión',
+      skill: 'Habilidad',
+      knowledge_base: 'Base de conocimiento',
+      mcp_server: 'Servidor MCP',
+      runtime: 'Entorno de ejecución',
+      system: 'Sistema',
+      resource: 'Recurso',
     },
     outcomes: {
       ok: 'Correcto',
