@@ -2704,7 +2704,6 @@ const thTH = {
     redacted: 'ปิดบังแล้ว',
     tamperedBadge: 'อาจถูกแก้ไข',
     verifiedBadge: 'ตรวจสอบผ่าน',
-    tamperedCount: 'มี {{count}} บันทึกที่ตรวจสอบไม่ผ่าน',
     integrityFailedCount: 'แฮชไม่ตรงกัน {{count}} รายการ',
     chainFailedCount: 'ลิงก์ขาด {{count}} รายการ',
     levels: {
@@ -2730,7 +2729,6 @@ const thTH = {
     },
     actions: {
       audit_log_view: 'ดูบันทึกการดำเนินการ',
-      clear_prune: 'ล้างบันทึกตามนโยบาย',
       settings_update: 'แก้ไขการตั้งค่าการติดตาม',
       settings_view: 'ดูการตั้งค่าการติดตาม',
       member_invite: 'เชิญสมาชิก',

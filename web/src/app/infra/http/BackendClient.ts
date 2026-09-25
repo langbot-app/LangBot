@@ -1867,11 +1867,18 @@ export class BackendClient extends BaseHttpClient {
       params.set(key, String(value));
     }
     const suffix = params.toString();
-    return `${this.getBaseUrl()}/api/v1/settings/operation-logs/export${
+    // A base of "/" means "same origin". Appending the path directly produced
+    // a protocol-relative "//api/..." URL, which a browser reads as the host
+    // "api" — the export request then never reached the backend. Resolve the
+    // base to the current origin first, mirroring the other URL builders here.
+    const apiBase =
+      this.instance.defaults.baseURL === '/' || !this.instance.defaults.baseURL
+        ? window.location.origin
+        : this.instance.defaults.baseURL.replace(/\/$/, '');
+    return `${apiBase}/api/v1/settings/operation-logs/export${
       suffix ? `?${suffix}` : ''
     }`;
   }
-
 
   public setPassword(
     newPassword: string,

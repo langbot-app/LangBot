@@ -2807,7 +2807,6 @@ const esES = {
     redacted: 'Oculto',
     tamperedBadge: 'Posible manipulación',
     verifiedBadge: 'Verificado',
-    tamperedCount: '{{count}} registros fallaron la verificación',
     integrityFailedCount: '{{count}} hashes no coinciden',
     chainFailedCount: '{{count}} enlaces rotos',
     levels: {
@@ -2833,7 +2832,6 @@ const esES = {
     },
     actions: {
       audit_log_view: 'Ver registros de operación',
-      clear_prune: 'Depurar registros según la política',
       settings_update: 'Actualizar ajustes de trazabilidad',
       settings_view: 'Ver ajustes de trazabilidad',
       member_invite: 'Invitar miembro',

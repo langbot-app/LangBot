@@ -2770,7 +2770,6 @@ const jaJP = {
     redacted: 'マスク済み',
     tamperedBadge: '改ざんの可能性',
     verifiedBadge: '検証済み',
-    tamperedCount: '{{count}} 件が検証に失敗',
     integrityFailedCount: '{{count}} 件のハッシュ不一致',
     chainFailedCount: '{{count}} 件のリンク断絶',
     levels: {
@@ -2796,7 +2795,6 @@ const jaJP = {
     },
     actions: {
       audit_log_view: '操作ログを閲覧',
-      clear_prune: 'ポリシーで記録を整理',
       settings_update: 'トレーサビリティ設定を変更',
       settings_view: 'トレーサビリティ設定を閲覧',
       member_invite: 'メンバーを招待',

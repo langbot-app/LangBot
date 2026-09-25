@@ -2777,7 +2777,6 @@ const ruRU = {
     redacted: 'Скрыто',
     tamperedBadge: 'Возможна подмена',
     verifiedBadge: 'Проверено',
-    tamperedCount: 'Записей с ошибкой проверки: {{count}}',
     integrityFailedCount: 'Несовпадение хэша: {{count}}',
     chainFailedCount: 'Разрыв связи: {{count}}',
     levels: {
@@ -2803,7 +2802,6 @@ const ruRU = {
     },
     actions: {
       audit_log_view: 'Просмотр журнала операций',
-      clear_prune: 'Очистка записей по политике',
       settings_update: 'Изменение настроек трассировки',
       settings_view: 'Просмотр настроек трассировки',
       member_invite: 'Приглашение участника',

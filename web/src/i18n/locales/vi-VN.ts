@@ -2739,7 +2739,6 @@ const viVN = {
     redacted: 'Đã ẩn',
     tamperedBadge: 'Có thể bị sửa',
     verifiedBadge: 'Đã xác minh',
-    tamperedCount: '{{count}} bản ghi không vượt qua kiểm tra',
     integrityFailedCount: '{{count}} mã băm không khớp',
     chainFailedCount: '{{count}} liên kết bị đứt',
     levels: {
@@ -2765,7 +2764,6 @@ const viVN = {
     },
     actions: {
       audit_log_view: 'Xem nhật ký thao tác',
-      clear_prune: 'Dọn bản ghi theo chính sách',
       settings_update: 'Cập nhật cài đặt truy vết',
       settings_view: 'Xem cài đặt truy vết',
       member_invite: 'Mời thành viên',

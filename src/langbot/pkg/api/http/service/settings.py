@@ -213,12 +213,6 @@ ACTION_RULE_TABLE: typing.Final[tuple[ActionRule, ...]] = (
         resource_type='operation_log',
     ),
     ActionRule(
-        action='clear_prune',
-        category='audit',
-        bucket='write',
-        resource_type='operation_log',
-    ),
-    ActionRule(
         action='settings_update',
         category='settings',
         bucket='write',

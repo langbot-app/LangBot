@@ -2602,7 +2602,6 @@ const zhHant = {
     redacted: '已遮罩',
     tamperedBadge: '可能被竄改',
     verifiedBadge: '驗證通過',
-    tamperedCount: '{{count}} 筆記錄驗證異常',
     integrityFailedCount: '{{count}} 筆雜湊不符',
     chainFailedCount: '{{count}} 筆鏈結中斷',
     levels: {
@@ -2628,7 +2627,6 @@ const zhHant = {
     },
     actions: {
       audit_log_view: '查看操作日誌',
-      clear_prune: '依策略清理記錄',
       settings_update: '修改溯源設定',
       settings_view: '查看溯源設定',
       member_invite: '邀請成員',

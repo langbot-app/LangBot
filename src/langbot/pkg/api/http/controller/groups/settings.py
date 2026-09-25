@@ -2,12 +2,15 @@
 
 Exposes the "成员操作日志溯源" (member operation traceability) surface:
 
-* ``GET  /api/v1/settings/governance``            read level + template table
-* ``PUT  /api/v1/settings/governance``            change level / retention
-* ``GET  /api/v1/settings/operation-logs``        page through records
-* ``GET  /api/v1/settings/operation-logs/filters`` available filter values
-* ``POST /api/v1/settings/operation-logs/prune``  enforce retention now
-* ``DEL  /api/v1/settings/operation-logs``        clear records
+* ``GET /api/v1/settings/governance``              read level + template table
+* ``PUT /api/v1/settings/governance``              change level / retention
+* ``GET /api/v1/settings/operation-logs``          page through records
+* ``GET /api/v1/settings/operation-logs/filters``  available filter values
+* ``GET /api/v1/settings/operation-logs/export``   download the filtered CSV
+
+Operation records are append-only and there is no route to delete them on
+demand: retention is the only deletion path, and it runs automatically when
+the governance settings change and from the maintenance loop.
 
 Every route requires ``audit.view``, which is granted to the Workspace owner
 and admin only. Write routes additionally require an owning/admin role so a

@@ -2601,7 +2601,6 @@ const zhHans = {
     redacted: '已脱敏',
     tamperedBadge: '可能被篡改',
     verifiedBadge: '校验通过',
-    tamperedCount: '{{count}} 条记录校验异常',
     integrityFailedCount: '{{count}} 条哈希不匹配',
     chainFailedCount: '{{count}} 条链路断裂',
     levels: {
@@ -2627,7 +2626,6 @@ const zhHans = {
     },
     actions: {
       audit_log_view: '查看操作日志',
-      clear_prune: '按策略清理记录',
       settings_update: '修改溯源设置',
       settings_view: '查看溯源设置',
       member_invite: '邀请成员',

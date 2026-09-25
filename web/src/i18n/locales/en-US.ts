@@ -2752,7 +2752,6 @@ const enUS = {
     redacted: 'Redacted',
     tamperedBadge: 'Possibly tampered',
     verifiedBadge: 'Verified',
-    tamperedCount: '{{count}} records failed verification',
     integrityFailedCount: '{{count}} hash mismatches',
     chainFailedCount: '{{count}} broken links',
     levels: {
@@ -2778,7 +2777,6 @@ const enUS = {
     },
     actions: {
       audit_log_view: 'View operation logs',
-      clear_prune: 'Prune records by policy',
       settings_update: 'Update tracing settings',
       settings_view: 'View tracing settings',
       member_invite: 'Invite member',
