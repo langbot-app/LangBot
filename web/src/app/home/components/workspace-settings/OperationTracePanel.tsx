@@ -303,39 +303,45 @@ export default function OperationTracePanel({
             {t('operationTrace.title')}
           </p>
         </div>
-        {governance && (
-          <Badge
-            variant={governance.configured_level > 0 ? 'default' : 'outline'}
+        {/* Keep the actions in one right-aligned cluster: the panel toolbar
+            spreads direct children apart, so they are grouped instead. */}
+        <div className="ml-auto flex items-center gap-2">
+          {governance && (
+            <Badge
+              variant={governance.configured_level > 0 ? 'default' : 'outline'}
+            >
+              {t(
+                `operationTrace.levelNames.${governance.configured_level_name}`,
+              )}
+            </Badge>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void downloadLogs()}
+            disabled={exporting}
           >
-            {t(`operationTrace.levelNames.${governance.configured_level_name}`)}
-          </Badge>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void load(query)}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-          {t('operationTrace.refresh')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void downloadLogs()}
-          disabled={exporting}
-        >
-          {exporting ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Download className="size-3.5" />
-          )}
-          {t('operationTrace.export')}
-        </Button>
+            {exporting ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+            {t('operationTrace.export')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void load(query)}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {t('operationTrace.refresh')}
+          </Button>
+        </div>
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
@@ -421,7 +427,9 @@ export default function OperationTracePanel({
                 max={governance?.limits.max_dedupe_window_seconds ?? 3600}
                 value={dedupeSeconds}
                 disabled={!canConfigure}
-                onChange={(event) => setDedupeSeconds(Number(event.target.value))}
+                onChange={(event) =>
+                  setDedupeSeconds(Number(event.target.value))
+                }
               />
             </label>
             <Button
@@ -435,7 +443,7 @@ export default function OperationTracePanel({
         </section>
 
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <History className="size-4" />
               <h3 className="text-sm font-semibold">
@@ -459,7 +467,7 @@ export default function OperationTracePanel({
                   </Badge>
                 )}
             </div>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={query.action ?? ALL_VALUE}
                 onValueChange={(value) =>
@@ -554,7 +562,9 @@ export default function OperationTracePanel({
                 size="sm"
                 variant="muted"
                 className={`items-start rounded-lg ${
-                  record.tampered ? 'border-destructive/60 bg-destructive/5' : ''
+                  record.tampered
+                    ? 'border-destructive/60 bg-destructive/5'
+                    : ''
                 }`}
               >
                 <ItemMedia variant="icon">
