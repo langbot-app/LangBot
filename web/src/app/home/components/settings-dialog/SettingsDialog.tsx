@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   HardDrive,
+  History,
   KeyRound,
   Settings,
   Sparkles,
@@ -29,12 +30,14 @@ import ApiIntegrationPanel from '@/app/home/components/api-integration-dialog/Ap
 import ModelsPanel from '@/app/home/components/models-dialog/ModelsPanel';
 import StorageAnalysisPanel from '@/app/home/components/storage-analysis-dialog/StorageAnalysisPanel';
 import WorkspaceSettingsPanel from '@/app/home/components/workspace-settings/WorkspaceSettingsPanel';
+import OperationTracePanel from '@/app/home/components/workspace-settings/OperationTracePanel';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
 // The set of settings sections shown in the unified dialog. The string values
 // are also reused as the ?action= query param suffix so deep links keep working.
 export type SettingsSection =
   | 'workspace'
+  | 'operationTrace'
   | 'account'
   | 'apiIntegration'
   | 'models'
@@ -45,6 +48,7 @@ export type SettingsSection =
 // showStorageAnalysis) continue to resolve to the right section.
 export const SETTINGS_ACTION_BY_SECTION: Record<SettingsSection, string> = {
   workspace: 'showWorkspaceSettings',
+  operationTrace: 'showOperationTrace',
   account: 'showAccountSettings',
   apiIntegration: 'showApiIntegrationSettings',
   models: 'showModelSettings',
@@ -102,6 +106,13 @@ export default function SettingsDialog({
       icon: <UsersRound className="size-4" />,
     },
     {
+      id: 'operationTrace',
+      label: t('settingsDialog.nav.operationTrace'),
+      title: t('operationTrace.title'),
+      description: t('operationTrace.description'),
+      icon: <History className="size-4" />,
+    },
+    {
       id: 'models',
       label: t('settingsDialog.nav.models'),
       title: t('models.title'),
@@ -135,6 +146,9 @@ export default function SettingsDialog({
   const canViewAudit = permissions.includes('audit.view');
   const canViewStorageAnalysis =
     currentWorkspace?.workspace.source !== 'cloud_projection' && canViewAudit;
+  // Operation traceability is an audit surface: it is limited to the roles
+  // that also hold the audit permission (owner / admin).
+  const canViewOperationTrace = canViewAudit;
   const navItems = allNavItems.filter((item) => {
     if (item.id === 'apiIntegration') {
       return canManageApiKeys;
@@ -142,19 +156,24 @@ export default function SettingsDialog({
     if (item.id === 'storageAnalysis') {
       return canViewStorageAnalysis;
     }
+    if (item.id === 'operationTrace') {
+      return canViewOperationTrace;
+    }
     return true;
   });
 
   useEffect(() => {
     const forbiddenSection =
       (section === 'apiIntegration' && !canManageApiKeys) ||
-      (section === 'storageAnalysis' && !canViewStorageAnalysis);
+      (section === 'storageAnalysis' && !canViewStorageAnalysis) ||
+      (section === 'operationTrace' && !canViewOperationTrace);
     if (open && forbiddenSection) {
       onSectionChange('workspace');
     }
   }, [
     canManageApiKeys,
     canViewStorageAnalysis,
+    canViewOperationTrace,
     open,
     section,
     onSectionChange,
@@ -251,6 +270,11 @@ export default function SettingsDialog({
               {section === 'workspace' && (
                 <WorkspaceSettingsPanel
                   active={open && section === 'workspace'}
+                />
+              )}
+              {section === 'operationTrace' && canViewOperationTrace && (
+                <OperationTracePanel
+                  active={open && section === 'operationTrace'}
                 />
               )}
               {section === 'models' && (

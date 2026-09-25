@@ -87,6 +87,7 @@ _ALEMBIC_TENANT_TABLES = {
     'monitoring_errors',
     'monitoring_embedding_calls',
     'monitoring_feedback',
+    'workspace_operation_logs',
     'langbot_vectors',
     'directory_projection_states',
     'directory_projection_inbox',

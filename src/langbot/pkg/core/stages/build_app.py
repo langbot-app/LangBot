@@ -29,6 +29,7 @@ from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
+from ...api.http.service import settings as settings_service
 from ...api.http.service import skill as skill_service
 from ...skill import manager as skill_mgr
 from ...api.http.service import maintenance as maintenance_service
@@ -126,6 +127,9 @@ class BuildAppStage(stage.BootingStage):
 
         mcp_service_inst = mcp_service.MCPService(ap)
         ap.mcp_service = mcp_service_inst
+
+        workspace_settings_service_inst = settings_service.WorkspaceSettingsService(ap)
+        ap.workspace_settings_service = workspace_settings_service_inst
 
         apikey_service_inst = apikey_service.ApiKeyService(ap)
         ap.apikey_service = apikey_service_inst

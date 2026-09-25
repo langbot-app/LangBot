@@ -32,6 +32,7 @@ import {
   Github,
   Zap,
   FilePlus2,
+  History,
   Sparkles,
   Server,
   Puzzle,
@@ -2220,6 +2221,19 @@ export default function HomeSidebar({
                 <span>{t('models.title')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {/* Operation traceability is an audit surface: only roles holding
+                audit.view (owner / admin) get a direct sidebar entry. */}
+            {currentWorkspace?.permissions.includes('audit.view') && (
+              <SidebarMenuItem data-sidebar-guide="operation-trace">
+                <SidebarMenuButton
+                  onClick={() => openSettings('operationTrace')}
+                  tooltip={t('operationTrace.title')}
+                >
+                  <History className="size-4 text-blue-500" />
+                  <span>{t('operationTrace.title')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
 
           {/* API-key management is available only to authorized Workspace roles. */}

@@ -28,6 +28,7 @@ from langbot.pkg.entity.persistence import (
     metadata,  # noqa: F401
     model,  # noqa: F401
     monitoring,  # noqa: F401
+    operation_log,  # noqa: F401
     pipeline,  # noqa: F401
     plugin,  # noqa: F401
     rag,  # noqa: F401

@@ -4,6 +4,7 @@ import abc
 import typing
 import enum
 import quart
+import time
 import traceback
 import inspect
 import uuid
@@ -94,12 +95,23 @@ class RouterGroup(abc.ABC):
         rule: str,
         auth_type: AuthType = AuthType.USER_TOKEN,
         permission: Permission | str | None = None,
+        operation_log_meta: dict[str, typing.Any] | None = None,
         **options: typing.Any,
     ) -> typing.Callable[[RouteCallable], RouteCallable]:  # decorator
-        """Register a route"""
+        """Register a route.
+
+        ``operation_log_meta`` optionally enriches the traceability record for
+        this route with trusted server-side facts. Supported keys:
+
+        * ``resource_param``: handler kwarg holding the target resource id,
+        * ``changes``: a pre-computed before/after diff to persist,
+        * ``detail``: extra structured context (sensitive keys are redacted).
+        """
 
         if auth_type == AuthType.ACCOUNT_TOKEN and permission is not None:
             raise ValueError('Account-token routes cannot declare Workspace permissions')
+        if operation_log_meta is not None and not isinstance(operation_log_meta, dict):
+            raise ValueError('operation_log_meta must be a dict')
 
         def decorator(f: RouteCallable) -> RouteCallable:
             nonlocal rule
@@ -223,6 +235,7 @@ class RouterGroup(abc.ABC):
                             except Exception as e:
                                 return self._auth_error_response(e)
 
+                observed_at = time.monotonic()
                 try:
                     if request_context is not None:
                         diagnostics.workspace(request_context)
@@ -245,11 +258,40 @@ class RouterGroup(abc.ABC):
                                 # runtimes, uploads, or streamed clients.
                                 # Services that need atomic writes open a UoW.
                                 async with persistence_mgr.tenant_scope(request_context.workspace_uuid):
-                                    return await f(*args, **kwargs)
-                            return await f(*args, **kwargs)
-                    return await f(*args, **kwargs)
+                                    response = await f(*args, **kwargs)
+                            else:
+                                response = await f(*args, **kwargs)
+                    else:
+                        response = await f(*args, **kwargs)
+
+                    if request_context is not None:
+                        # Trace after the handler released its tenant scope so
+                        # auditing never extends a business transaction. The
+                        # call is a no-op (and costs no database round trip)
+                        # when tracing is off for this Workspace.
+                        await self._record_operation(
+                            request_context,
+                            rule,
+                            options,
+                            kwargs,
+                            observed_at,
+                            response,
+                            meta=operation_log_meta,
+                        )
+                    return response
 
                 except Exception as e:  # 自动 500
+                    if request_context is not None:
+                        await self._record_operation(
+                            request_context,
+                            rule,
+                            options,
+                            kwargs,
+                            observed_at,
+                            None,
+                            failure=e,
+                            meta=operation_log_meta,
+                        )
                     if isinstance(e, CodexProviderError):
                         return self.http_status(e.status_code, e.error_code, str(e))
                     if isinstance(e, AuthorizationError):
@@ -300,6 +342,98 @@ class RouterGroup(abc.ABC):
             return f
 
         return decorator
+
+    async def _record_operation(
+        self,
+        ctx: RequestContext,
+        route: str,
+        options: dict[str, typing.Any],
+        kwargs: dict[str, typing.Any],
+        observed_at: float,
+        response: typing.Any,
+        *,
+        failure: BaseException | None = None,
+        meta: dict[str, typing.Any] | None = None,
+    ) -> None:
+        """Best-effort traceability for one finished request.
+
+        This runs after the handler released its tenant scope. It never raises:
+        an audit failure must not turn a successful business response into a
+        500. The service performs its own cheap level check before touching the
+        database, so a disabled Workspace pays nothing at steady state.
+        """
+
+        service = getattr(self.ap, 'workspace_settings_service', None)
+        if service is None:
+            return
+
+        try:
+            method = str(quart.request.method or options.get('methods', ['GET'])[0])
+            status_code = self._extract_status_code(response, failure)
+            if failure is not None:
+                outcome = 'denied' if isinstance(failure, AuthorizationError) else 'error'
+            elif status_code >= 500:
+                outcome = 'error'
+            elif status_code >= 400:
+                outcome = 'denied'
+            else:
+                outcome = 'ok'
+
+            resolved_meta = meta or {}
+            resource_id = None
+            resource_param = resolved_meta.get('resource_param')
+            if isinstance(resource_param, str):
+                candidate = kwargs.get(resource_param)
+                if candidate is not None:
+                    resource_id = str(candidate)
+
+            # Handlers may publish request-local traceability facts when a
+            # static route declaration cannot describe the runtime diff, e.g.
+            # the previous and the new role of a member. ``quart.g`` is
+            # request-local, so concurrent requests never share these values.
+            changes = resolved_meta.get('changes')
+            detail = resolved_meta.get('detail')
+            request_changes = getattr(quart.g, 'operation_log_changes', None)
+            request_detail = getattr(quart.g, 'operation_log_detail', None)
+            request_resource_id = getattr(quart.g, 'operation_log_resource_id', None)
+            request_summary = getattr(quart.g, 'operation_log_summary', None)
+            if request_changes:
+                changes = request_changes
+            if request_detail:
+                detail = request_detail
+            if request_resource_id:
+                resource_id = str(request_resource_id)
+
+            await service.record_request(
+                ctx,
+                method=method,
+                route=route,
+                status_code=status_code,
+                outcome=outcome,
+                duration_ms=int(max(time.monotonic() - observed_at, 0.0) * 1000),
+                resource_id=resource_id,
+                changes=changes or None,
+                detail=detail or None,
+            )
+        except Exception as exc:  # pragma: no cover - auditing is best effort
+            logger = getattr(self.ap, 'logger', self.quart_app.logger)
+            logger.debug(f'Operation trace skipped for {route}: {exc}')
+
+    @staticmethod
+    def _extract_status_code(response: typing.Any, failure: BaseException | None) -> int:
+        """Resolve the HTTP status of a handler result without consuming it."""
+
+        if failure is not None:
+            status = getattr(failure, 'status_code', None)
+            if isinstance(status, int):
+                return status
+            return 500
+        if isinstance(response, tuple) and len(response) >= 2 and isinstance(response[1], int):
+            return response[1]
+        status = getattr(response, 'status_code', None)
+        if isinstance(status, int):
+            return status
+        return 200
 
     async def _authenticate_account(self, token: str) -> tuple[typing.Any, str]:
         account: typing.Any = None
