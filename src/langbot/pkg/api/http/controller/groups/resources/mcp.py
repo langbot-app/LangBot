@@ -5,6 +5,7 @@ from urllib.parse import unquote
 
 from ....authz import Permission
 from ....context import RequestContext
+from ....service import settings as settings_service
 from ......provider.tools.loaders.mcp_policy import MCPStdioDisabledError
 from ... import group
 
@@ -62,6 +63,10 @@ class MCPRouterGroup(group.RouterGroup):
             server_data = await self.ap.mcp_service.get_mcp_server_by_name(request_context, server_name)
             if server_data is None:
                 return self.http_status(404, -1, 'Server not found')
+            # Name the MCP server in the trace, and for an update record which
+            # fields actually moved so the card answers "what changed" rather
+            # than only "the MCP config was touched".
+            quart.g.operation_log_resource_id = server_name
             if quart.request.method == 'PUT':
                 data = await quart.request.json
                 try:
@@ -70,6 +75,15 @@ class MCPRouterGroup(group.RouterGroup):
                     return self.http_status(403, exc.code, str(exc))
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
+                changes = settings_service.changed_fields(
+                    server_data,
+                    data if isinstance(data, dict) else {},
+                    ignore=('uuid',),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('mcp_config')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
                 await self.ap.mcp_service.delete_mcp_server(request_context, server_data['uuid'])
             return self.success()

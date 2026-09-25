@@ -631,9 +631,12 @@ export default function OperationTracePanel({
                     <Badge variant="outline">L{record.level}</Badge>
                     {record.resource_type && (
                       <Badge variant="secondary">
-                        {t(`operationTrace.resourceTypes.${record.resource_type}`, {
-                          defaultValue: record.resource_type,
-                        })}
+                        {t(
+                          `operationTrace.resourceTypes.${record.resource_type}`,
+                          {
+                            defaultValue: record.resource_type,
+                          },
+                        )}
                       </Badge>
                     )}
                     {record.tampered ? (

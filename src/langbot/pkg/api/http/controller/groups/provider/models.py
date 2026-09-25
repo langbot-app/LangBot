@@ -3,6 +3,7 @@ import quart
 from langbot.pkg.provider.modelmgr import errors as provider_errors
 from ....authz import Permission, has_permission
 from ....context import RequestContext
+from ....service import settings as settings_service
 from ... import group
 from .query import resolve_include_secret
 
@@ -85,14 +86,28 @@ class LLMModelsRouterGroup(group.RouterGroup):
             permission=Permission.PROVIDER_SECRET_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.json
+            try:
+                previous = await self.ap.llm_model_service.get_llm_model(request_context, model_uuid)
+            except Exception:
+                previous = None
             try:
                 await self.ap.llm_model_service.update_llm_model(
                     request_context,
                     model_uuid,
-                    await quart.request.json,
+                    json_data,
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
+            changes = settings_service.changed_fields(
+                previous if isinstance(previous, dict) else {},
+                json_data if isinstance(json_data, dict) else {},
+                ignore=('uuid', 'created_at', 'updated_at'),
+            )
+            rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
+            quart.g.operation_log_changes = changes
+            if rule is not None and changes:
+                quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             return self.success()
 
         @self.route(

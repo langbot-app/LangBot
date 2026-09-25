@@ -7,6 +7,7 @@ from langbot_plugin.box.errors import BoxError
 
 from ...authz import Permission
 from ...context import RequestContext
+from ...service import settings as settings_service
 from .. import group
 
 
@@ -72,13 +73,30 @@ class SkillsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def update_delete_skill(skill_name: str, request_context: RequestContext) -> quart.Response:
+            # The skill name is the resource identity for both verbs; without it
+            # the card could only say "a skill was updated".
+            quart.g.operation_log_resource_id = skill_name
             if quart.request.method == 'PUT':
                 data = await quart.request.json
                 try:
+                    previous = await self.ap.skill_service.get_skill(request_context, skill_name)
+                except (ValueError, BoxError):
+                    previous = None
+                try:
                     skill = await self.ap.skill_service.update_skill(request_context, skill_name, data)
-                    return self.success(data={'skill': skill})
                 except (ValueError, BoxError) as exc:
                     return self.http_status(400, -1, str(exc))
+
+                changes = settings_service.changed_fields(
+                    previous if isinstance(previous, dict) else {},
+                    data if isinstance(data, dict) else {},
+                    ignore=('files', 'package_root', 'created_at', 'updated_at'),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('skill_view')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
+                return self.success(data={'skill': skill})
 
             try:
                 await self.ap.skill_service.delete_skill(request_context, skill_name)

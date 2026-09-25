@@ -4,6 +4,7 @@ import quart
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
+from ....service import settings as settings_service
 from ....service.secrets import redact_secrets
 from ... import group
 from ......pipeline.extension_preferences import (
@@ -87,15 +88,30 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            quart.g.operation_log_resource_id = pipeline_uuid
             if quart.request.method == 'PUT':
+                json_data = await quart.request.json
+                try:
+                    previous = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+                except Exception:
+                    previous = None
                 try:
                     await self.ap.pipeline_service.update_pipeline(
                         request_context,
                         pipeline_uuid,
-                        await quart.request.json,
+                        json_data,
                     )
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
+                changes = settings_service.changed_fields(
+                    previous if isinstance(previous, dict) else {},
+                    json_data if isinstance(json_data, dict) else {},
+                    ignore=('uuid', 'created_at', 'updated_at'),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
                 await self.ap.pipeline_service.delete_pipeline(request_context, pipeline_uuid)
             return self.success()
