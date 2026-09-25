@@ -17,8 +17,6 @@ Design constraints
 
 from __future__ import annotations
 
-import datetime
-
 import sqlalchemy
 
 from .base import Base
@@ -48,7 +46,9 @@ class WorkspaceOperationLog(Base):
 
     __tablename__ = 'workspace_operation_logs'
 
-    id = sqlalchemy.Column(sqlalchemy.BigInteger().with_variant(sqlalchemy.Integer, 'sqlite'), primary_key=True, autoincrement=True)
+    id = sqlalchemy.Column(
+        sqlalchemy.BigInteger().with_variant(sqlalchemy.Integer, 'sqlite'), primary_key=True, autoincrement=True
+    )
 
     workspace_uuid = sqlalchemy.Column(
         sqlalchemy.String(36),

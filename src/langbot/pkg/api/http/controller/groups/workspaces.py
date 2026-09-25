@@ -224,7 +224,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 {
                     'field': 'invitation',
                     'before': None,
-                    'after': f"{created.invitation.normalized_email}:{created.invitation.role}",
+                    'after': f'{created.invitation.normalized_email}:{created.invitation.role}',
                 }
             ]
             quart.g.operation_log_changes = invite_changes

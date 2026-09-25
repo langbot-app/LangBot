@@ -413,12 +413,13 @@ class RouterGroup(abc.ABC):
             # static route declaration cannot describe the runtime diff, e.g.
             # the previous and the new role of a member. ``quart.g`` is
             # request-local, so concurrent requests never share these values.
+            # The stored summary is derived by the service from ``changes`` and
+            # the classified action, so handlers only publish the diff itself.
             changes = resolved_meta.get('changes')
             detail = resolved_meta.get('detail')
             request_changes = getattr(quart.g, 'operation_log_changes', None)
             request_detail = getattr(quart.g, 'operation_log_detail', None)
             request_resource_id = getattr(quart.g, 'operation_log_resource_id', None)
-            request_summary = getattr(quart.g, 'operation_log_summary', None)
             if request_changes:
                 changes = request_changes
             if request_detail:

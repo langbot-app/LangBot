@@ -440,9 +440,7 @@ class Application:
             # Operation-log retention piggybacks on the shared maintenance loop
             # instead of starting another long-lived task, so enabling
             # traceability adds no scheduling cost of its own.
-            operation_log_cleanup_cfg = (
-                self.instance_config.data.get('operation_log', {}).get('auto_cleanup', {})
-            )
+            operation_log_cleanup_cfg = self.instance_config.data.get('operation_log', {}).get('auto_cleanup', {})
             operation_log_enabled = (
                 operation_log_cleanup_cfg.get('enabled', True) and self.workspace_settings_service is not None
             )

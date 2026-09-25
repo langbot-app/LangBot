@@ -651,7 +651,7 @@ def build_summary(rule: ActionRule, changes: list[dict[str, typing.Any]]) -> str
         return ''
     fragments: list[str] = []
     for change in changes[:_MAX_SUMMARY_FIELDS]:
-        fragments.append(f"{change['field']}: {change['before']} → {change['after']}")
+        fragments.append(f'{change["field"]}: {change["before"]} → {change["after"]}')
     remaining = len(changes) - len(fragments)
     if remaining > 0:
         fragments.append(f'+{remaining}')
@@ -1287,9 +1287,11 @@ class WorkspaceSettingsService:
         level: int | None = None,
     ) -> int:
         try:
-            query = sqlalchemy.select(sqlalchemy.func.count()).select_from(
-                persistence_operation_log.WorkspaceOperationLog
-            ).where(persistence_operation_log.WorkspaceOperationLog.workspace_uuid == workspace_uuid)
+            query = (
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_operation_log.WorkspaceOperationLog)
+                .where(persistence_operation_log.WorkspaceOperationLog.workspace_uuid == workspace_uuid)
+            )
             if since is not None:
                 query = query.where(persistence_operation_log.WorkspaceOperationLog.created_at >= since)
             if level is not None:
@@ -1451,10 +1453,7 @@ class WorkspaceSettingsService:
         started = time.monotonic()
         try:
             rows_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(model)
-                .where(*filters)
-                .order_by(model.id.desc())
-                .limit(MAX_INTEGRITY_SCAN_ROWS)
+                sqlalchemy.select(model).where(*filters).order_by(model.id.desc()).limit(MAX_INTEGRITY_SCAN_ROWS)
             )
             rows = list(rows_result.all())
 
@@ -1691,15 +1690,23 @@ class WorkspaceSettingsService:
         try:
             model = persistence_operation_log.WorkspaceOperationLog
             actions = (
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(model.action).where(model.workspace_uuid == workspace_uuid).distinct()
+                (
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(model.action).where(model.workspace_uuid == workspace_uuid).distinct()
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             resources = (
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(model.resource_type).where(model.workspace_uuid == workspace_uuid).distinct()
+                (
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(model.resource_type).where(model.workspace_uuid == workspace_uuid).distinct()
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             actors = (
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.select(model.actor_account_uuid, model.actor_name)
@@ -1752,18 +1759,20 @@ class WorkspaceSettingsService:
         try:
             model = persistence_operation_log.WorkspaceOperationLog
             oldest_ids = (
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(model.id)
-                    .where(model.workspace_uuid == workspace_uuid)
-                    .order_by(model.id.asc())
-                    .limit(int(count))
+                (
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(model.id)
+                        .where(model.workspace_uuid == workspace_uuid)
+                        .order_by(model.id.asc())
+                        .limit(int(count))
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             if not oldest_ids:
                 return 0
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(model).where(model.id.in_(list(oldest_ids)))
-            )
+            await self.ap.persistence_mgr.execute_async(sqlalchemy.delete(model).where(model.id.in_(list(oldest_ids))))
             return len(oldest_ids)
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation log trim skipped: {exc}')
@@ -1783,7 +1792,9 @@ class WorkspaceSettingsService:
         by a privileged click.
         """
 
-        days = await self.get_retention_days(workspace_uuid) if retention_days is None else clamp_retention(retention_days)
+        days = (
+            await self.get_retention_days(workspace_uuid) if retention_days is None else clamp_retention(retention_days)
+        )
         budget = await self.get_max_rows(workspace_uuid) if max_rows is None else clamp_max_rows(max_rows)
         cutoff = _utcnow() - datetime.timedelta(days=days)
 
@@ -1816,12 +1827,16 @@ class WorkspaceSettingsService:
         removed = 0
         try:
             workspaces = (
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid).where(
-                        persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY
+                (
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid).where(
+                            persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation log workspace enumeration skipped: {exc}')
             return {'workspaces': 0, 'removed': 0}

@@ -244,7 +244,7 @@ class SettingsRouterGroup(group.RouterGroup):
 
             # Prepend a UTF-8 BOM so spreadsheet tools detect the encoding.
             body = '\ufeff' + '\r\n'.join(lines) + '\r\n'
-            filename = f"operation-logs-{document['exported_at'].replace(':', '')}.csv"
+            filename = f'operation-logs-{document["exported_at"].replace(":", "")}.csv'
             response = quart.Response(body, mimetype='text/csv', content_type='text/csv; charset=utf-8')
             response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
