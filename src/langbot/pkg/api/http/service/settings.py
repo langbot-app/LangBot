@@ -54,7 +54,10 @@ OPERATION_RETENTION_DAYS_KEY = 'operation_log_retention_days'
 OPERATION_MAX_ROWS_KEY = 'operation_log_max_rows'
 OPERATION_DEDUPE_WINDOW_KEY = 'operation_log_dedupe_seconds'
 
-DEFAULT_OPERATION_LEVEL = OPERATION_LEVEL_READ
+#: Tracing is opt-in: a Workspace records nothing until an owner or admin
+#: explicitly turns it on. This keeps auditing off the hot path by default and
+#: avoids collecting administrative activity before the operator asked for it.
+DEFAULT_OPERATION_LEVEL = OPERATION_LEVEL_NONE
 DEFAULT_RETENTION_DAYS = 30
 DEFAULT_MAX_ROWS = 20000
 
