@@ -2499,7 +2499,6 @@ const thTH = {
       noToolCalls: 'ยังไม่มีการบันทึกการเรียกใช้เครื่องมือ',
       showDetails: 'แสดงรายละเอียด',
       hideDetails: 'ซ่อนรายละเอียด',
-      pageOf: 'หน้า {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Token ทั้งหมด',

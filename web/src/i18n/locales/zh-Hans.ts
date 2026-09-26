@@ -2399,7 +2399,6 @@ const zhHans = {
       noToolCalls: '未记录工具调用',
       showDetails: '查看详情',
       hideDetails: '隐藏详情',
-      pageOf: '第 {{page}} / {{total}} 页',
     },
     tokens: {
       totalTokens: '总 Token 数',

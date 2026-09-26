@@ -2602,7 +2602,6 @@ const esES = {
       noToolCalls: 'No se registraron llamadas de herramientas',
       showDetails: 'Mostrar detalles',
       hideDetails: 'Ocultar detalles',
-      pageOf: 'Página {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Tokens totales',

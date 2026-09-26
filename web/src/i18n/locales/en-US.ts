@@ -2548,7 +2548,6 @@ const enUS = {
       noToolCalls: 'No tool calls recorded',
       showDetails: 'Show details',
       hideDetails: 'Hide details',
-      pageOf: 'Page {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Total Tokens',

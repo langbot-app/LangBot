@@ -2534,7 +2534,6 @@ const viVN = {
       noToolCalls: 'Chưa ghi nhận lượt gọi công cụ',
       showDetails: 'Hiện chi tiết',
       hideDetails: 'Ẩn chi tiết',
-      pageOf: 'Trang {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Tổng số Token',

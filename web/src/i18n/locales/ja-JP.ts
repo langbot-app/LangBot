@@ -2565,7 +2565,6 @@ const jaJP = {
       noToolCalls: 'ツール呼び出しは記録されていません',
       showDetails: '詳細を表示',
       hideDetails: '詳細を非表示',
-      pageOf: '{{page}} / {{total}} ページ',
     },
     tokens: {
       totalTokens: '総トークン数',

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Item,
+  ItemActions,
   ItemContent,
   ItemDescription,
   ItemMedia,
@@ -137,6 +138,32 @@ function groupRecords(records: OperationLogRecord[]): GroupedRecord[] {
     grouped.push({ key, record, count: 1 });
   }
   return grouped;
+}
+
+/**
+ * Build a compact page list: the first and last page are always shown, with a
+ * one-page window around the current page and gaps collapsed to an ellipsis.
+ * ``'…'`` entries are rendered as non-clickable separators.
+ */
+function pageWindow(
+  current: number,
+  count: number,
+  span = 1,
+): (number | '…')[] {
+  if (count <= 0) return [];
+  const pages = new Set<number>([1, count]);
+  for (let page = current - span; page <= current + span; page += 1) {
+    if (page >= 1 && page <= count) pages.add(page);
+  }
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result: (number | '…')[] = [];
+  let previous = 0;
+  for (const page of sorted) {
+    if (previous && page - previous > 1) result.push('…');
+    result.push(page);
+    previous = page;
+  }
+  return result;
 }
 
 /** Compact timestamp: time-only for today, date+time otherwise. */
@@ -744,7 +771,10 @@ export default function OperationTracePanel({
                           <span aria-hidden="true">·</span>
                           <span className="font-mono">
                             {record.http_method}
-                            {record.status_code !== null
+                            {/* A successful 2xx is the default; only surface the
+                                status when it carries a signal (an error). */}
+                            {record.status_code !== null &&
+                            record.status_code >= 400
                               ? ` ${record.status_code}`
                               : ''}
                           </span>
@@ -793,21 +823,29 @@ export default function OperationTracePanel({
                             redactedLabel={t('operationTrace.redacted')}
                           />
                         ))}
-                        <div className="flex items-center gap-2 pt-1 text-[10px] text-muted-foreground">
-                          <span>{record.duration_ms}ms</span>
-                          {record.record_hash && (
-                            <span
-                              className="flex items-center gap-1 font-mono"
-                              title={record.record_hash}
-                            >
-                              <Fingerprint className="size-3" />
-                              {record.record_hash.slice(0, 8)}
-                            </span>
-                          )}
-                        </div>
                       </div>
                     )}
                   </ItemContent>
+                  {/* Restore the always-visible right column: each row is
+                      anchored by its duration and tamper-evidence hash, so the
+                      digest stays one click away instead of being the only way
+                      to see it. */}
+                  <ItemActions className="max-sm:hidden">
+                    <div className="flex flex-col items-end gap-0.5 text-right">
+                      <span className="text-[10px] text-muted-foreground">
+                        {record.duration_ms}ms
+                      </span>
+                      {record.record_hash && (
+                        <span
+                          className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground"
+                          title={record.record_hash}
+                        >
+                          <Fingerprint className="size-3" />
+                          {record.record_hash.slice(0, 8)}
+                        </span>
+                      )}
+                    </div>
+                  </ItemActions>
                 </Item>
               );
             })}
@@ -836,32 +874,35 @@ export default function OperationTracePanel({
               >
                 <ChevronLeft className="size-4" />
               </Button>
-              {/* Jump straight to a page instead of only stepping one at a
-                  time; with hundreds of records the arrows alone are painful. */}
-              <Select
-                value={String(pageIndex)}
-                onValueChange={(value) =>
-                  setQuery((prev) => ({
-                    ...prev,
-                    offset: (Number(value) - 1) * PAGE_SIZE,
-                  }))
-                }
-                disabled={loading || pageCount <= 1}
-              >
-                <SelectTrigger size="sm" className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: pageCount }, (_, index) => (
-                    <SelectItem key={index} value={String(index + 1)}>
-                      {t('operationTrace.pageOf', {
-                        page: index + 1,
-                        total: pageCount,
-                      })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Numbered pager: the first and last page stay visible with an
+                  ellipsis between, so any page is one click away without the
+                  arrows filling the bar with "Page x / y" rows. */}
+              {pageWindow(pageIndex, pageCount).map((item, index) =>
+                item === '…' ? (
+                  <span
+                    key={`gap-${index}`}
+                    className="px-1 text-xs text-muted-foreground"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={item}
+                    size="sm"
+                    variant={item === pageIndex ? 'default' : 'outline'}
+                    className="h-8 min-w-8 px-2 font-mono text-xs"
+                    disabled={loading}
+                    onClick={() =>
+                      setQuery((prev) => ({
+                        ...prev,
+                        offset: (item - 1) * PAGE_SIZE,
+                      }))
+                    }
+                  >
+                    {item}
+                  </Button>
+                ),
+              )}
               <Button
                 size="icon"
                 variant="outline"

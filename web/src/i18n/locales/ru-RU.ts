@@ -2573,7 +2573,6 @@ const ruRU = {
       noToolCalls: 'Вызовы инструментов не записаны',
       showDetails: 'Показать детали',
       hideDetails: 'Скрыть детали',
-      pageOf: 'Стр. {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Всего токенов',

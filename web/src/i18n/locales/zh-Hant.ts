@@ -2400,7 +2400,6 @@ const zhHant = {
       noToolCalls: '未記錄工具呼叫',
       showDetails: '查看詳情',
       hideDetails: '隱藏詳情',
-      pageOf: '第 {{page}} / {{total}} 頁',
     },
     tokens: {
       totalTokens: '總 Token 數',
