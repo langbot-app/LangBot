@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
 import typing
 
@@ -470,6 +471,58 @@ _ROUTE_RULES: typing.Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
     (('/publish',), 'publish', 'publish'),
 )
 
+#: Refines the resource family for the generic verb rules. The route rules above
+#: only cover the extension/tenant surfaces; everything else (bots, providers,
+#: pipelines, users, monitoring...) falls back to a nameless ``resource``. This
+#: table names the family from the registered route identity, so a read of
+#: ``/api/v1/pipelines`` is reported as a Pipeline, not as an opaque Resource.
+#: It is only consulted when the matched rule still carries the generic
+#: ``resource`` type, so specific rules keep their own family. More specific
+#: fragments must precede their prefixes because the first match wins.
+_RESOURCE_RULES: typing.Final[tuple[tuple[tuple[str, ...], str], ...]] = (
+    (('/platform/bots',), 'bot'),
+    (('/platform/',), 'adapter'),
+    (('/provider/providers',), 'model_provider'),
+    (('/provider/models',), 'llm_model'),
+    (('/provider/',), 'model_provider'),
+    (('/pipelines',), 'pipeline'),
+    (('/user/',), 'user'),
+    (('/workspaces/current',), 'workspace'),
+    (('/workspaces',), 'workspace'),
+    (('/monitoring',), 'monitoring'),
+    (('/webhooks',), 'webhook'),
+    (('/apikeys',), 'api_key'),
+    # The sandbox, survey and generic system probes share the ``system`` family.
+    (('/box/',), 'system'),
+    (('/survey',), 'system'),
+    (('/system/',), 'system'),
+)
+
+
+def _resource_type_for(route: str) -> str | None:
+    """Return the resource family for a route, or ``None`` when unknown."""
+
+    lowered = (route or '').lower()
+    for fragments, resource_type in _RESOURCE_RULES:
+        if all(fragment in lowered for fragment in fragments):
+            return resource_type
+    return None
+
+
+def _with_resource_type(rule: ActionRule, route: str) -> ActionRule:
+    """Refine a generic rule's resource family from the route identity.
+
+    Only the generic fallback (``resource``) is refined; a rule that already
+    names a family (plugin, skill, member...) is returned unchanged.
+    """
+
+    if rule.resource_type != 'resource':
+        return rule
+    resource_type = _resource_type_for(route)
+    if resource_type is None:
+        return rule
+    return dataclasses.replace(rule, resource_type=resource_type)
+
 
 def classify(method: str, route: str) -> ActionRule:
     """Map one HTTP request to its normalized action rule.
@@ -484,17 +537,17 @@ def classify(method: str, route: str) -> ActionRule:
 
     for fragments, read_action, write_action in _ROUTE_RULES:
         if all(fragment in lowered_route for fragment in fragments):
-            return ACTION_RULES_BY_ACTION[read_action if is_read else write_action]
+            return _with_resource_type(ACTION_RULES_BY_ACTION[read_action if is_read else write_action], route)
 
     if is_read:
-        return ACTION_RULES_BY_ACTION['view']
+        return _with_resource_type(ACTION_RULES_BY_ACTION['view'], route)
     if upper_method == 'POST':
-        return ACTION_RULES_BY_ACTION['create']
+        return _with_resource_type(ACTION_RULES_BY_ACTION['create'], route)
     if upper_method in {'PUT', 'PATCH'}:
-        return ACTION_RULES_BY_ACTION['update']
+        return _with_resource_type(ACTION_RULES_BY_ACTION['update'], route)
     if upper_method == 'DELETE':
-        return ACTION_RULES_BY_ACTION['delete']
-    return ACTION_RULES_BY_ACTION['probe']
+        return _with_resource_type(ACTION_RULES_BY_ACTION['delete'], route)
+    return _with_resource_type(ACTION_RULES_BY_ACTION['probe'], route)
 
 
 def level_cap_for_role(role: str | None) -> int:
@@ -858,6 +911,11 @@ class WorkspaceSettingsService:
         self._policy_cache_ttl = 5.0
         # Inserts since the last row-budget check, keyed by Workspace UUID.
         self._insert_counters: dict[str, int] = {}
+        # Serializes the "read newest hash, then insert" pair. The route wrapper
+        # traces concurrent requests (the panel opens a dozen parallel GETs), and
+        # without this lock two rows would read the same predecessor and one of
+        # them would look like a broken chain link even though nobody edited it.
+        self._write_lock = threading.Lock()
 
     # -- level resolution -------------------------------------------------
 
@@ -1204,21 +1262,26 @@ class WorkspaceSettingsService:
                 return False
 
             # Link each record to its predecessor so silent edits or removals
-            # become detectable when the chain is re-verified on read.
-            record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
-            record_fields['record_hash'] = compute_record_hash(record_fields)
+            # become detectable when the chain is re-verified on read. Reading
+            # the newest hash and inserting must be atomic: concurrent traces
+            # (the panel opens a dozen parallel GETs) would otherwise both link
+            # to the same predecessor and manufacture a false "chain broken"
+            # report even though nobody edited anything.
+            with self._write_lock:
+                record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
+                record_fields['record_hash'] = compute_record_hash(record_fields)
 
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(
-                    **record_fields,
-                    request_id=str(request_id)[:128] if request_id else None,
-                    detail=json.dumps(redact_payload(dict(detail or {})), ensure_ascii=False, default=str)
-                    if detail
-                    else None,
-                    user_agent=str(user_agent)[:_MAX_USER_AGENT_CHARS] if user_agent else None,
-                    duration_ms=max(int(duration_ms), 0),
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(
+                        **record_fields,
+                        request_id=str(request_id)[:128] if request_id else None,
+                        detail=json.dumps(redact_payload(dict(detail or {})), ensure_ascii=False, default=str)
+                        if detail
+                        else None,
+                        user_agent=str(user_agent)[:_MAX_USER_AGENT_CHARS] if user_agent else None,
+                        duration_ms=max(int(duration_ms), 0),
+                    )
                 )
-            )
             await self._maybe_enforce_row_budget(workspace_uuid)
             return True
         except Exception as exc:  # pragma: no cover - auditing is best effort
