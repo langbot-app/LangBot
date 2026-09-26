@@ -55,6 +55,11 @@ Behavior:
 
 ## Using API Keys
 
+The standalone [`lbctl` CLI](https://github.com/langbot-app/langbot-cli) uses
+these API keys to manage a running LangBot Workspace through the Service API.
+It can check the key's Workspace identity and server capabilities before
+managing resources. See the CLI repository for installation and commands.
+
 ### Authentication Headers
 
 Include your API key in the request header using one of these methods:

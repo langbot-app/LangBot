@@ -46,6 +46,7 @@ Run the narrowest useful test first, then broader checks when confidence is need
 - Dev environment guide: https://langbot.app/docs/zh/develop/dev-config.
 - Plugin runtime / CLI / SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.
 - API-key auth: `docs/API_KEY_AUTH.md`.
+- Service API CLI: [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`) manages running Workspaces; it is separate from the SDK's `lbp` CLI.
 - Box deep-dive notes: `docs/review/box-architecture.md` and related files.
 - In-repo skills: `skills/` is the single source of truth for LangBot agent skills.
 - SDK repo: `../langbot-plugin-sdk/` when changing shared entities, plugin APIs, action protocol, `lbp rt`, or `lbp box`.
@@ -83,6 +84,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 ## Change Rules
 
 - HTTP API changes that should be agent-accessible must update the matching MCP tool in `src/langbot/pkg/api/mcp/server.py` and the relevant skill under `skills/` in the same pass.
+- When changing Service API routes or capabilities used by `lbctl`, check compatibility with the separate `langbot-cli` repository.
 - New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`. LangBot 4.x does not support upgrading 3.x databases.
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
 - User-facing strings must support i18n (`en_US`, `zh_Hans`; include `ja_JP` where the repo already does).

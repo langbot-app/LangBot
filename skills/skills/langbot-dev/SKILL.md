@@ -94,7 +94,9 @@ discovered by `importutil.import_modules_in_pkg`.
 3. **If the endpoint should be agent-accessible, add/adjust the matching MCP tool
    in `pkg/api/mcp/server.py` and update the `langbot-mcp-ops` skill.** API and
    MCP surface must stay aligned (see `AGENTS.md`).
-4. Update `docs/service-api-openapi.json` if you maintain the OpenAPI overview.
+4. If `lbctl` uses the route or capability, check the separate
+   [`langbot-cli`](https://github.com/langbot-app/langbot-cli) client for compatibility.
+5. Update `docs/service-api-openapi.json` if you maintain the OpenAPI overview.
 
 ## Database migrations (Alembic)
 
@@ -127,3 +129,4 @@ uv run python tests/manual/mcp_smoke.py    # MCP server e2e smoke
 - `langbot-testing` — WebUI/e2e QA harness (`bin/lbs`).
 - `langbot-deploy` — Docker/compose deployment + config.
 - `langbot-mcp-ops` — operating the LangBot MCP server.
+- [`langbot-cli`](https://github.com/langbot-app/langbot-cli) — `lbctl`, a standalone Service API client for managing running Workspaces.
