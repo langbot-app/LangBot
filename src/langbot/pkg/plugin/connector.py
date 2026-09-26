@@ -1950,7 +1950,29 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if task_context is not None:
             task_context.set_current_action('waiting for plugin initialization')
             task_context.metadata['progress_percent'] = 84
-        await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
+        startup_timeout = 30.0
+        if desired.execution_mode is PluginExecutionMode.SHARED_CERTIFIED:
+            worker_policy = self.worker_policy or PluginWorkerPolicy(
+                max_cpus=1.0,
+                max_memory_mb=512,
+                max_pids=64,
+                max_open_files=1024,
+                max_file_size_mb=128,
+            )
+            startup_timeout = (
+                120.0
+                * (
+                    math.ceil(worker_policy.max_workers / worker_policy.max_concurrent_restarts)
+                    + worker_policy.max_installations
+                )
+                + 5.0
+            )
+        await self._wait_for_installed_plugin_ready(
+            plugin_author,
+            plugin_name,
+            task_context,
+            timeout=startup_timeout,
+        )
         if task_context is not None:
             task_context.set_current_action('refreshing plugin components')
             task_context.metadata['progress_percent'] = 95
