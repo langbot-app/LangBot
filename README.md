@@ -129,6 +129,7 @@ docker compose --profile all up -d
 | [Moonshot](https://www.moonshot.cn/)                                                                              | LLM          | ✅     |
 | [Zhipu AI](https://open.bigmodel.cn/)                                                                             | LLM          | ✅     |
 | [Ollama](https://ollama.com/)                                                                                     | Local LLM    | ✅     |
+| [llmman](https://github.com/llmmanorg/llmman)                                                                     | Local LLM    | ✅     |
 | [LM Studio](https://lmstudio.ai/)                                                                                 | Local LLM    | ✅     |
 | [Dify](https://dify.ai)                                                                                           | LLMOps       | ✅     |
 | [MCP](https://modelcontextprotocol.io/)                                                                           | Protocol     | ✅     |
