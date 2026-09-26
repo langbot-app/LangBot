@@ -2534,6 +2534,7 @@ const viVN = {
       noToolCalls: 'Chưa ghi nhận lượt gọi công cụ',
       showDetails: 'Hiện chi tiết',
       hideDetails: 'Ẩn chi tiết',
+      pageOf: 'Trang {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Tổng số Token',
@@ -2715,6 +2716,8 @@ const viVN = {
     maxRows: 'Số bản ghi tối đa',
     dedupeWindow: 'Khoảng khử trùng lặp (giây)',
     records: 'Bản ghi thao tác',
+    changesCount: '{{count}} thay đổi',
+    hideDetails: 'Ẩn chi tiết',
     levelUpdated: 'Đã cập nhật mức ghi nhận',
     levelUpdateFailed: 'Cập nhật mức ghi nhận thất bại',
     retentionUpdated: 'Đã cập nhật chính sách lưu trữ',

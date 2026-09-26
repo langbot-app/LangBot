@@ -2573,6 +2573,7 @@ const ruRU = {
       noToolCalls: 'Вызовы инструментов не записаны',
       showDetails: 'Показать детали',
       hideDetails: 'Скрыть детали',
+      pageOf: 'Стр. {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Всего токенов',
@@ -2753,6 +2754,8 @@ const ruRU = {
     maxRows: 'Максимум записей',
     dedupeWindow: 'Окно дедупликации (с)',
     records: 'Записи операций',
+    changesCount: 'Изменений: {{count}}',
+    hideDetails: 'Скрыть детали',
     levelUpdated: 'Уровень записи обновлён',
     levelUpdateFailed: 'Не удалось обновить уровень записи',
     retentionUpdated: 'Хранение обновлено',

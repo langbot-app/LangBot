@@ -2400,6 +2400,7 @@ const zhHant = {
       noToolCalls: '未記錄工具呼叫',
       showDetails: '查看詳情',
       hideDetails: '隱藏詳情',
+      pageOf: '第 {{page}} / {{total}} 頁',
     },
     tokens: {
       totalTokens: '總 Token 數',
@@ -2579,6 +2580,8 @@ const zhHant = {
     maxRows: '最大記錄數',
     dedupeWindow: '去重視窗（秒）',
     records: '操作記錄',
+    changesCount: '{{count}} 項變更',
+    hideDetails: '收合詳情',
     levelUpdated: '操作等級已更新',
     levelUpdateFailed: '操作等級更新失敗',
     retentionUpdated: '保留策略已更新',

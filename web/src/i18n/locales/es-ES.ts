@@ -2602,6 +2602,7 @@ const esES = {
       noToolCalls: 'No se registraron llamadas de herramientas',
       showDetails: 'Mostrar detalles',
       hideDetails: 'Ocultar detalles',
+      pageOf: 'Página {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Tokens totales',
@@ -2783,6 +2784,8 @@ const esES = {
     maxRows: 'Registros máximos',
     dedupeWindow: 'Ventana de deduplicación (s)',
     records: 'Registros de operación',
+    changesCount: '{{count}} cambio(s)',
+    hideDetails: 'Ocultar detalles',
     levelUpdated: 'Nivel de captura actualizado',
     levelUpdateFailed: 'No se pudo actualizar el nivel de captura',
     retentionUpdated: 'Retención actualizada',

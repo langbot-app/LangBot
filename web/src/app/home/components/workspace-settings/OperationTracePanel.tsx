@@ -7,7 +7,6 @@ import {
   Loader2,
   RefreshCw,
   ShieldAlert,
-  ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +17,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Item,
-  ItemActions,
   ItemContent,
   ItemDescription,
   ItemMedia,
@@ -102,6 +100,63 @@ function outcomeVariant(
   return 'secondary';
 }
 
+/** A record paired with how many times it repeated on the current page. */
+interface GroupedRecord {
+  key: string;
+  record: OperationLogRecord;
+  count: number;
+}
+
+/**
+ * Collapse consecutive identical observations into a single row.
+ *
+ * An open WebUI or a refresh burst otherwise fills the log with the same
+ * "view X" line and buries the operations that actually changed something.
+ * The identity includes the summary and the change digest, so two rows are
+ * merged only when nothing about them differs; a differing change is kept as
+ * its own row.
+ */
+function groupRecords(records: OperationLogRecord[]): GroupedRecord[] {
+  const grouped: GroupedRecord[] = [];
+  for (const record of records) {
+    const key = [
+      record.action,
+      record.resource_type,
+      record.resource_id,
+      record.actor_account_uuid,
+      record.outcome,
+      record.status_code,
+      record.summary ?? '',
+      record.changes.map((change) => change.field).join(','),
+    ].join('|');
+    const last = grouped[grouped.length - 1];
+    if (last && last.key === key) {
+      last.count += 1;
+      continue;
+    }
+    grouped.push({ key, record, count: 1 });
+  }
+  return grouped;
+}
+
+/** Compact timestamp: time-only for today, date+time otherwise. */
+function formatTimestamp(value: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const time = date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  return sameDay ? time : `${date.toLocaleDateString()} ${time}`;
+}
+
 export default function OperationTracePanel({
   active,
 }: OperationTracePanelProps) {
@@ -120,6 +175,9 @@ export default function OperationTracePanel({
   const [retentionDays, setRetentionDays] = useState<number>(30);
   const [maxRows, setMaxRows] = useState<number>(20000);
   const [dedupeSeconds, setDedupeSeconds] = useState<number>(60);
+  // Only one record shows its full change detail at a time, so the list stays
+  // scannable: the payload diff is long and is opt-in per row.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const role = currentWorkspace?.membership.role ?? null;
   const canConfigure = role === 'owner' || role === 'admin';
@@ -200,12 +258,15 @@ export default function OperationTracePanel({
   const total = page?.total ?? 0;
   const canGoBack = offset > 0;
   const canGoForward = offset + PAGE_SIZE < total;
+  const pageCount = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  const pageIndex = Math.floor(offset / PAGE_SIZE) + 1;
 
-  // Render the server page as-is. Record ids are unique and stable, the
-  // backend already collapses repeated observations at write time, and a
-  // client-side dedupe would hide legitimately distinct rows (making the
-  // total badge disagree with the list) whenever a page is re-fetched.
-  const visibleRecords = page?.records ?? [];
+  // Collapse consecutive identical rows so a refresh burst reads as one line
+  // with a count instead of twenty identical entries.
+  const groupedRecords = useMemo(
+    () => groupRecords(page?.records ?? []),
+    [page],
+  );
 
   const integrityFilter: OperationIntegrityFilter = query.integrity ?? 'all';
 
@@ -593,142 +654,163 @@ export default function OperationTracePanel({
           </div>
 
           <div className="space-y-2">
-            {visibleRecords.length === 0 && (
+            {groupedRecords.length === 0 && (
               <p className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
                 {integrityFilter === 'all'
                   ? t('operationTrace.empty')
                   : t('operationTrace.emptyFiltered')}
               </p>
             )}
-            {visibleRecords.map((record) => (
-              <Item
-                key={record.id}
-                size="sm"
-                variant="muted"
-                className={`items-start rounded-lg ${
-                  record.tampered
-                    ? 'border-destructive/60 bg-destructive/5'
-                    : ''
-                }`}
-              >
-                <ItemMedia variant="icon">
-                  {record.tampered ? (
-                    <ShieldAlert className="size-4 text-destructive" />
-                  ) : (
-                    <History className="size-4" />
-                  )}
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className="flex flex-wrap items-center gap-1.5">
-                    <span>
-                      {t(record.action_i18n_key, {
-                        defaultValue: record.action ?? '',
-                      })}
-                    </span>
-                    <Badge variant={outcomeVariant(record.outcome)}>
-                      {t(`operationTrace.outcomes.${record.outcome}`)}
-                    </Badge>
-                    <Badge variant="outline">L{record.level}</Badge>
-                    {record.resource_type && (
-                      <Badge variant="secondary">
-                        {t(
-                          `operationTrace.resourceTypes.${record.resource_type}`,
-                          {
-                            defaultValue: record.resource_type,
-                          },
-                        )}
-                      </Badge>
-                    )}
-                    {record.resource_id && (
-                      // Which concrete resource was touched (author/name,
-                      // owner/repo, filename...). Rendered as data, not copy,
-                      // so it is not localized.
-                      <Badge
-                        variant="outline"
-                        className="max-w-[16rem] truncate font-mono"
-                        title={record.resource_id}
-                      >
-                        {record.resource_id}
-                      </Badge>
-                    )}
+            {groupedRecords.map(({ key, record, count }) => {
+              const expanded = expandedId === record.id;
+              return (
+                <Item
+                  key={key}
+                  size="sm"
+                  variant="muted"
+                  className={`items-start rounded-lg ${
+                    record.tampered
+                      ? 'border-destructive/60 bg-destructive/5'
+                      : ''
+                  }`}
+                >
+                  <ItemMedia variant="icon">
                     {record.tampered ? (
-                      <Badge variant="destructive">
-                        <ShieldAlert className="size-3" />
-                        {t('operationTrace.tamperedBadge')}
-                      </Badge>
+                      <ShieldAlert className="size-4 text-destructive" />
                     ) : (
-                      <Badge variant="outline" className="text-emerald-600">
-                        <ShieldCheck className="size-3" />
-                        {t('operationTrace.verifiedBadge')}
-                      </Badge>
+                      <History className="size-4" />
                     )}
-                  </ItemTitle>
-                  <ItemDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                    <span className="font-medium">
-                      {record.actor_name ??
-                        record.actor_account_uuid ??
-                        t('operationTrace.systemActor')}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {record.actor_role
-                        ? t(`workspace.roles.${record.actor_role}`)
-                        : t('operationTrace.systemActor')}
-                    </span>
-                    {record.http_method && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono">{record.http_method}</span>
-                      </>
-                    )}
-                    {record.status_code !== null && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono">{record.status_code}</span>
-                      </>
-                    )}
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {record.created_at
-                        ? new Date(record.created_at).toLocaleString()
-                        : ''}
-                    </span>
-                  </ItemDescription>
-                  {record.summary && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {record.summary}
-                    </p>
-                  )}
-                  {record.changes.length > 0 && (
-                    <div className="mt-2 space-y-1 rounded-md bg-background/60 p-2">
-                      {record.changes.map((change, index) => (
-                        <ChangeRow
-                          key={`${record.id}-${index}-${change.field}`}
-                          change={change}
-                          redactedLabel={t('operationTrace.redacted')}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </ItemContent>
-                <ItemActions className="max-sm:hidden">
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-muted-foreground">
-                      {record.duration_ms}ms
-                    </span>
-                    {record.record_hash && (
-                      <span
-                        className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground"
-                        title={record.record_hash}
-                      >
-                        <Fingerprint className="size-3" />
-                        {record.record_hash.slice(0, 8)}
+                  </ItemMedia>
+                  <ItemContent className="min-w-0">
+                    {/* Primary line: only what changed hands — the action, the
+                        resource, and an exception badge. The level ("L2") and
+                        the "verified" badge were constant for almost every row
+                        and only added noise, so they are gone. */}
+                    <ItemTitle className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">
+                        {t(record.action_i18n_key, {
+                          defaultValue: record.action ?? '',
+                        })}
                       </span>
+                      {record.resource_type && (
+                        <span className="text-xs text-muted-foreground">
+                          {t(
+                            `operationTrace.resourceTypes.${record.resource_type}`,
+                            {
+                              defaultValue: record.resource_type,
+                            },
+                          )}
+                        </span>
+                      )}
+                      {record.resource_id && (
+                        <span
+                          className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
+                          title={record.resource_id}
+                        >
+                          {record.resource_id}
+                        </span>
+                      )}
+                      {record.outcome !== 'ok' && (
+                        <Badge variant={outcomeVariant(record.outcome)}>
+                          {t(`operationTrace.outcomes.${record.outcome}`)}
+                        </Badge>
+                      )}
+                      {record.tampered && (
+                        <Badge variant="destructive">
+                          <ShieldAlert className="size-3" />
+                          {t('operationTrace.tamperedBadge')}
+                        </Badge>
+                      )}
+                      {count > 1 && (
+                        <Badge variant="outline" className="shrink-0">
+                          ×{count}
+                        </Badge>
+                      )}
+                    </ItemTitle>
+                    <ItemDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+                      <span className="font-medium">
+                        {record.actor_name ??
+                          record.actor_account_uuid ??
+                          t('operationTrace.systemActor')}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {record.actor_role
+                          ? t(`workspace.roles.${record.actor_role}`)
+                          : t('operationTrace.systemActor')}
+                      </span>
+                      {record.http_method && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono">
+                            {record.http_method}
+                            {record.status_code !== null
+                              ? ` ${record.status_code}`
+                              : ''}
+                          </span>
+                        </>
+                      )}
+                      <span aria-hidden="true">·</span>
+                      <span>{formatTimestamp(record.created_at)}</span>
+                      {record.changes.length > 0 && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <button
+                            type="button"
+                            className="cursor-pointer underline underline-offset-2 hover:text-foreground"
+                            onClick={() =>
+                              setExpandedId(expanded ? null : record.id)
+                            }
+                          >
+                            {expanded
+                              ? t('operationTrace.hideDetails')
+                              : t('operationTrace.changesCount', {
+                                  count: record.changes.length,
+                                })}
+                          </button>
+                        </>
+                      )}
+                    </ItemDescription>
+                    {/* The registered route is the concrete answer to "what is
+                        this entry?": a bare "Resource / System" label is opaque
+                        without the endpoint it came from. */}
+                    {record.route && (
+                      <p
+                        className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground"
+                        title={record.route}
+                      >
+                        {record.route}
+                      </p>
                     )}
-                  </div>
-                </ItemActions>
-              </Item>
-            ))}
+                    {/* The change digest is only meaningful once expanded, so
+                        the collapsed row stays a single scannable line. */}
+                    {expanded && record.changes.length > 0 && (
+                      <div className="mt-2 space-y-1 rounded-md bg-background/60 p-2">
+                        {record.changes.map((change, index) => (
+                          <ChangeRow
+                            key={`${record.id}-${index}-${change.field}`}
+                            change={change}
+                            redactedLabel={t('operationTrace.redacted')}
+                          />
+                        ))}
+                        <div className="flex items-center gap-2 pt-1 text-[10px] text-muted-foreground">
+                          <span>{record.duration_ms}ms</span>
+                          {record.record_hash && (
+                            <span
+                              className="flex items-center gap-1 font-mono"
+                              title={record.record_hash}
+                            >
+                              <Fingerprint className="size-3" />
+                              {record.record_hash.slice(0, 8)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </ItemContent>
+                </Item>
+              );
+            })}
           </div>
 
           <div className="flex items-center justify-between">
@@ -754,6 +836,32 @@ export default function OperationTracePanel({
               >
                 <ChevronLeft className="size-4" />
               </Button>
+              {/* Jump straight to a page instead of only stepping one at a
+                  time; with hundreds of records the arrows alone are painful. */}
+              <Select
+                value={String(pageIndex)}
+                onValueChange={(value) =>
+                  setQuery((prev) => ({
+                    ...prev,
+                    offset: (Number(value) - 1) * PAGE_SIZE,
+                  }))
+                }
+                disabled={loading || pageCount <= 1}
+              >
+                <SelectTrigger size="sm" className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: pageCount }, (_, index) => (
+                    <SelectItem key={index} value={String(index + 1)}>
+                      {t('operationTrace.pageOf', {
+                        page: index + 1,
+                        total: pageCount,
+                      })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 size="icon"
                 variant="outline"

@@ -59,6 +59,8 @@ export interface OperationLogRecord {
   action_i18n_key: string;
   resource_type: string | null;
   resource_id: string | null;
+  /** Registered Core route identity, e.g. ``/api/v1/settings/governance``. */
+  route: string | null;
   level: OperationLevel;
   level_name: string;
   outcome: 'ok' | 'denied' | 'error';

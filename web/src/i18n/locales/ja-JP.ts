@@ -2565,6 +2565,7 @@ const jaJP = {
       noToolCalls: 'ツール呼び出しは記録されていません',
       showDetails: '詳細を表示',
       hideDetails: '詳細を非表示',
+      pageOf: '{{page}} / {{total}} ページ',
     },
     tokens: {
       totalTokens: '総トークン数',
@@ -2746,6 +2747,8 @@ const jaJP = {
     maxRows: '最大レコード数',
     dedupeWindow: '重複排除ウィンドウ（秒）',
     records: '操作レコード',
+    changesCount: '変更 {{count}} 件',
+    hideDetails: '詳細を隠す',
     levelUpdated: 'キャプチャレベルを更新しました',
     levelUpdateFailed: 'キャプチャレベルの更新に失敗しました',
     retentionUpdated: '保持ポリシーを更新しました',

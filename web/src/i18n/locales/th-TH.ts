@@ -2499,6 +2499,7 @@ const thTH = {
       noToolCalls: 'ยังไม่มีการบันทึกการเรียกใช้เครื่องมือ',
       showDetails: 'แสดงรายละเอียด',
       hideDetails: 'ซ่อนรายละเอียด',
+      pageOf: 'หน้า {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Token ทั้งหมด',
@@ -2680,6 +2681,8 @@ const thTH = {
     maxRows: 'จำนวนบันทึกสูงสุด',
     dedupeWindow: 'ช่วงเวลาลบรายการซ้ำ (วินาที)',
     records: 'บันทึกการดำเนินการ',
+    changesCount: '{{count}} การเปลี่ยนแปลง',
+    hideDetails: 'ซ่อนรายละเอียด',
     levelUpdated: 'อัปเดตระดับการบันทึกแล้ว',
     levelUpdateFailed: 'อัปเดตระดับการบันทึกไม่สำเร็จ',
     retentionUpdated: 'อัปเดตนโยบายการเก็บรักษาแล้ว',

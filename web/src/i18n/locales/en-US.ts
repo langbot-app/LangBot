@@ -2548,6 +2548,7 @@ const enUS = {
       noToolCalls: 'No tool calls recorded',
       showDetails: 'Show details',
       hideDetails: 'Hide details',
+      pageOf: 'Page {{page}} / {{total}}',
     },
     tokens: {
       totalTokens: 'Total Tokens',
@@ -2728,6 +2729,8 @@ const enUS = {
     maxRows: 'Max records',
     dedupeWindow: 'Dedupe window (s)',
     records: 'Operation records',
+    changesCount: '{{count}} change(s)',
+    hideDetails: 'Hide details',
     levelUpdated: 'Capture level updated',
     levelUpdateFailed: 'Failed to update capture level',
     retentionUpdated: 'Retention updated',

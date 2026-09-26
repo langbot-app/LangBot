@@ -2399,6 +2399,7 @@ const zhHans = {
       noToolCalls: '未记录工具调用',
       showDetails: '查看详情',
       hideDetails: '隐藏详情',
+      pageOf: '第 {{page}} / {{total}} 页',
     },
     tokens: {
       totalTokens: '总 Token 数',
@@ -2578,6 +2579,8 @@ const zhHans = {
     maxRows: '最大记录数',
     dedupeWindow: '去重窗口（秒）',
     records: '操作记录',
+    changesCount: '{{count}} 项变更',
+    hideDetails: '收起详情',
     levelUpdated: '操作等级已更新',
     levelUpdateFailed: '操作等级更新失败',
     retentionUpdated: '保留策略已更新',
