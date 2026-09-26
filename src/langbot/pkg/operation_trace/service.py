@@ -22,6 +22,7 @@ Human-readable labels are never returned from this module. The persisted
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import enum
@@ -29,7 +30,6 @@ import hashlib
 import hmac
 import json
 import logging
-import threading
 import time
 import typing
 
@@ -140,6 +140,16 @@ MAX_EXPORT_ROWS = 10000
 #: the overshoot bounded by this stride while the maintenance loop still
 #: enforces the exact limit.
 _ROW_BUDGET_CHECK_STRIDE = 64
+
+#: Bounded trace queue. The request path never blocks on it: when growing faster
+#: than the single writer can drain, the oldest pending traces are dropped rather
+#: than slowing the business request down. Dropping audit rows is acceptable;
+#: stalling live traffic is not.
+_QUEUE_MAX_SIZE = 2048
+
+#: Seconds the writer waits for more work after draining a batch before flushing
+#: the row-budget check. Batching turns N inserts into one budget query.
+_WRITER_DRAIN_TIMEOUT = 0.2
 
 _MAX_SUMMARY_FIELDS = 6
 _MAX_FIELD_VALUE_CHARS = 320
@@ -865,6 +875,35 @@ def verify_record_hash(row: typing.Mapping[str, typing.Any], stored_hash: str | 
     return hmac.compare_digest(compute_record_hash(row), str(stored_hash))
 
 
+def dedupe_material(
+    *,
+    actor_account_uuid: str | None,
+    action: str,
+    route: str | None,
+    resource_id: str | None,
+) -> str:
+    """Return the raw material the dedupe key hashes.
+
+    The request path builds this cheap string; the background writer hashes it,
+    so enabling tracing never runs a hash on the request path.
+    """
+
+    return '|'.join(
+        [
+            str(actor_account_uuid or ''),
+            str(action or ''),
+            str(route or ''),
+            str(resource_id or ''),
+        ]
+    )
+
+
+def hash_dedupe_material(material: str) -> str:
+    """Hash the raw dedupe material into the stored key."""
+
+    return hashlib.sha256(material.encode('utf-8')).hexdigest()
+
+
 def compute_dedupe_key(
     *,
     actor_account_uuid: str | None,
@@ -874,15 +913,14 @@ def compute_dedupe_key(
 ) -> str:
     """Build the key that collapses repeated identical observations."""
 
-    material = '|'.join(
-        [
-            str(actor_account_uuid or ''),
-            str(action or ''),
-            str(route or ''),
-            str(resource_id or ''),
-        ]
+    return hash_dedupe_material(
+        dedupe_material(
+            actor_account_uuid=actor_account_uuid,
+            action=action,
+            route=route,
+            resource_id=resource_id,
+        )
     )
-    return hashlib.sha256(material.encode('utf-8')).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -911,11 +949,20 @@ class WorkspaceSettingsService:
         self._policy_cache_ttl = 5.0
         # Inserts since the last row-budget check, keyed by Workspace UUID.
         self._insert_counters: dict[str, int] = {}
-        # Serializes the "read newest hash, then insert" pair. The route wrapper
-        # traces concurrent requests (the panel opens a dozen parallel GETs), and
-        # without this lock two rows would read the same predecessor and one of
-        # them would look like a broken chain link even though nobody edited it.
-        self._write_lock = threading.Lock()
+        # Single-writer queue. Trace recording must never run on the request
+        # path: when tracing is enabled the WebUI fires a burst of parallel
+        # requests (login alone touches a dozen endpoints) and doing several
+        # database round trips and a serialized write for each one stalls the
+        # whole service. Instead the request path only enqueues a plain dict and
+        # returns immediately; one background coroutine drains the queue and
+        # writes sequentially. Sequential writes also remove the read-newest-hash
+        # race that used to manufacture false "chain broken" reports.
+        self._queue: asyncio.Queue[dict[str, typing.Any]] = asyncio.Queue(maxsize=_QUEUE_MAX_SIZE)
+        self._writer_task: asyncio.Task[None] | None = None
+        self._dropped_count = 0
+        # Set while the queue is empty; lets tests/shutdown await a drain.
+        self._idle = asyncio.Event()
+        self._idle.set()
 
     # -- level resolution -------------------------------------------------
 
@@ -1214,10 +1261,13 @@ class WorkspaceSettingsService:
         user_agent: str | None = None,
         duration_ms: int = 0,
     ) -> bool:
-        """Append one operation row. Returns whether a row was persisted.
+        """Queue one operation for traceability. Returns whether it was queued.
 
-        The level only decides *whether* an operation is stored; it never
-        rewrites or hides records already written.
+        This method runs on the request path, so it must never touch the
+        database or await slow work: it only builds a bounded dict and pushes it
+        onto the writer queue. The background writer persists it later. When the
+        queue is full (traffic outruns the writer) the oldest pending trace is
+        dropped rather than slowing the request down.
         """
 
         if level <= OPERATION_LEVEL_NONE:
@@ -1227,66 +1277,156 @@ class WorkspaceSettingsService:
         if level < OPERATION_LEVEL_MUTATION:
             return False
 
+        record_fields: dict[str, typing.Any] = {
+            'workspace_uuid': workspace_uuid,
+            'actor_account_uuid': actor_account_uuid,
+            'actor_name': str(actor_name)[:255] if actor_name else None,
+            'actor_role': actor_role,
+            'principal_type': str(principal_type)[:32] if principal_type else None,
+            'api_key_uuid': str(api_key_uuid)[:255] if api_key_uuid else None,
+            'auth_type': str(auth_type)[:32] if auth_type else None,
+            'request_id': str(request_id)[:128] if request_id else None,
+            'http_method': (http_method or '')[:12] or None,
+            'route': (route or '')[:_MAX_ROUTE_CHARS] or None,
+            'action': rule.action,
+            'resource_type': rule.resource_type,
+            'resource_id': str(resource_id)[:_MAX_RESOURCE_ID_CHARS] if resource_id else None,
+            'level': int(level),
+            'outcome': outcome,
+            'status_code': int(status_code) if status_code is not None else None,
+            'summary': summary,
+            'changes': changes_payload(changes or []),
+            'detail': json.dumps(redact_payload(dict(detail or {})), ensure_ascii=False, default=str)
+            if detail
+            else None,
+            'client_ip': str(client_ip)[:64] if client_ip else None,
+            'user_agent': str(user_agent)[:_MAX_USER_AGENT_CHARS] if user_agent else None,
+            'duration_ms': max(int(duration_ms), 0),
+        }
+        # Collapse repeated identical observations (e.g. a WebUI left open
+        # polling the same list) so page liveness cannot inflate the log. Only
+        # the cheap raw material is built here; the writer hashes it off the
+        # request path.
+        record_fields['_dedupe_material'] = dedupe_material(
+            actor_account_uuid=actor_account_uuid,
+            action=rule.action,
+            route=record_fields['route'],
+            resource_id=record_fields['resource_id'],
+        )
+
+        return self._enqueue(record_fields)
+
+    # -- background writer ------------------------------------------------
+
+    def _enqueue(self, record_fields: dict[str, typing.Any]) -> bool:
+        """Push one trace onto the writer queue without blocking the request."""
+
+        self._ensure_writer()
+        self._idle.clear()
         try:
-            record_fields: dict[str, typing.Any] = {
-                'workspace_uuid': workspace_uuid,
-                'actor_account_uuid': actor_account_uuid,
-                'actor_name': str(actor_name)[:255] if actor_name else None,
-                'actor_role': actor_role,
-                'principal_type': str(principal_type)[:32] if principal_type else None,
-                'api_key_uuid': str(api_key_uuid)[:255] if api_key_uuid else None,
-                'auth_type': str(auth_type)[:32] if auth_type else None,
-                'http_method': (http_method or '')[:12] or None,
-                'route': (route or '')[:_MAX_ROUTE_CHARS] or None,
-                'action': rule.action,
-                'resource_type': rule.resource_type,
-                'resource_id': str(resource_id)[:_MAX_RESOURCE_ID_CHARS] if resource_id else None,
-                'level': int(level),
-                'outcome': outcome,
-                'status_code': int(status_code) if status_code is not None else None,
-                'summary': summary,
-                'changes': changes_payload(changes or []),
-                'client_ip': str(client_ip)[:64] if client_ip else None,
-            }
+            self._queue.put_nowait(record_fields)
+        except asyncio.QueueFull:
+            # Drop the oldest pending trace to make room; never block the request.
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:  # pragma: no cover - race, harmless
+                pass
+            self._dropped_count += 1
+            if self._dropped_count % 100 == 1:
+                self.ap.logger.warning('Operation trace queue full; dropped %s traces so far', self._dropped_count)
+            try:
+                self._queue.put_nowait(record_fields)
+            except asyncio.QueueFull:  # pragma: no cover - defensive
+                pass
+        return True
 
-            # Collapse repeated identical observations (e.g. a WebUI left open
-            # polling the same list) so page liveness cannot inflate the log.
-            dedupe_key = compute_dedupe_key(
-                actor_account_uuid=actor_account_uuid,
-                action=rule.action,
-                route=record_fields['route'],
-                resource_id=record_fields['resource_id'],
-            )
-            record_fields['dedupe_key'] = dedupe_key
-            if await self._is_duplicate_observation(workspace_uuid, dedupe_key):
+    def _ensure_writer(self) -> None:
+        """Start the single-writer task on first use (inside a running loop)."""
+
+        if self._writer_task is not None and not self._writer_task.done():
+            return
+        self._writer_task = asyncio.get_running_loop().create_task(self._writer_loop())
+
+    async def _writer_loop(self) -> None:
+        """Drain the queue and persist traces sequentially.
+
+        A single writer keeps the hash chain correct without a lock: each row is
+        linked to the previously written row, so concurrent request producers can
+        never both link to the same predecessor.
+        """
+
+        while True:
+            try:
+                record_fields = await self._queue.get()
+            except asyncio.CancelledError:
+                raise
+
+            batch = [record_fields]
+            while True:
+                try:
+                    batch.append(self._queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+
+            touched: set[str] = set()
+            for fields in batch:
+                written = await self._persist(fields)
+                if written:
+                    touched.add(fields['workspace_uuid'])
+
+            for workspace_uuid in touched:
+                await self._maybe_enforce_row_budget(workspace_uuid)
+
+            if self._queue.empty():
+                self._idle.set()
+            else:
+                # More work is already waiting; give the event loop a breath so a
+                # sustained burst cannot starve other tasks, then drain again.
+                await asyncio.sleep(_WRITER_DRAIN_TIMEOUT)
+
+    async def _persist(self, record_fields: dict[str, typing.Any]) -> bool:
+        """Persist one queued trace. Never raises (auditing is best effort)."""
+
+        try:
+            workspace_uuid = record_fields['workspace_uuid']
+            # Off the request path: hash the dedupe material, resolve the actor
+            # display name, then link and insert this row.
+            record_fields['dedupe_key'] = hash_dedupe_material(record_fields.pop('_dedupe_material'))
+            if record_fields.get('actor_name') is None and record_fields.get('actor_account_uuid'):
+                await self._fill_actor_name(record_fields)
+            if await self._is_duplicate_observation(workspace_uuid, record_fields['dedupe_key']):
                 return False
-
-            # Link each record to its predecessor so silent edits or removals
-            # become detectable when the chain is re-verified on read. Reading
-            # the newest hash and inserting must be atomic: concurrent traces
-            # (the panel opens a dozen parallel GETs) would otherwise both link
-            # to the same predecessor and manufacture a false "chain broken"
-            # report even though nobody edited anything.
-            with self._write_lock:
-                record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
-                record_fields['record_hash'] = compute_record_hash(record_fields)
-
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(
-                        **record_fields,
-                        request_id=str(request_id)[:128] if request_id else None,
-                        detail=json.dumps(redact_payload(dict(detail or {})), ensure_ascii=False, default=str)
-                        if detail
-                        else None,
-                        user_agent=str(user_agent)[:_MAX_USER_AGENT_CHARS] if user_agent else None,
-                        duration_ms=max(int(duration_ms), 0),
-                    )
-                )
-            await self._maybe_enforce_row_budget(workspace_uuid)
+            record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
+            record_fields['record_hash'] = compute_record_hash(record_fields)
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(**record_fields)
+            )
             return True
         except Exception as exc:  # pragma: no cover - auditing is best effort
             self.ap.logger.debug(f'Operation log write skipped: {exc}')
             return False
+
+    async def _fill_actor_name(self, record_fields: dict[str, typing.Any]) -> None:
+        """Resolve the actor display name off the request path."""
+
+        if self.ap.user_service is None:
+            return
+        try:
+            account = await self.ap.user_service.get_user_by_uuid(record_fields['actor_account_uuid'])
+            if account is not None:
+                record_fields['actor_name'] = account.user
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    async def flush_pending(self, timeout: float = 5.0) -> None:
+        """Wait for the queue to drain. Used by tests and shutdown paths."""
+
+        if self._writer_task is None:
+            return
+        try:
+            await asyncio.wait_for(self._idle.wait(), timeout=timeout)
+        except asyncio.TimeoutError:  # pragma: no cover - defensive
+            pass
 
     async def _latest_record_hash(self, workspace_uuid: str) -> str | None:
         """Return the hash of the newest record, forming the chain link."""
@@ -1360,7 +1500,6 @@ class WorkspaceSettingsService:
         resolved_outcome = outcome or ('ok' if (status_code is None or status_code < 400) else 'error')
         summary = build_summary(rule, changes or []) or None
 
-        actor_name: str | None = None
         actor_account_uuid: str | None = None
         api_key_uuid: str | None = None
         principal_type: str | None = None
@@ -1377,14 +1516,6 @@ class WorkspaceSettingsService:
             auth_type = ctx.auth_type
             request_id = ctx.request_id
 
-        if actor_account_uuid and self.ap.user_service is not None:
-            try:
-                account = await self.ap.user_service.get_user_by_uuid(actor_account_uuid)
-                if account is not None:
-                    actor_name = account.user
-            except Exception:  # pragma: no cover - defensive
-                actor_name = None
-
         client_ip = None
         user_agent = None
         try:
@@ -1398,29 +1529,41 @@ class WorkspaceSettingsService:
             client_ip = None
             user_agent = None
 
-        return await self.record(
-            target_workspace,
-            rule=rule,
-            level=level,
-            actor_account_uuid=actor_account_uuid,
-            actor_name=actor_name,
-            actor_role=role,
-            principal_type=principal_type,
-            api_key_uuid=api_key_uuid,
-            auth_type=auth_type,
-            request_id=request_id,
-            http_method=method,
-            route=route,
-            resource_id=resource_id,
-            outcome=resolved_outcome,
-            status_code=status_code,
-            summary=summary,
-            changes=changes,
-            detail=detail,
-            client_ip=client_ip,
-            user_agent=user_agent,
-            duration_ms=duration_ms,
-        )
+        # Enqueue directly: no database read on the request path. The writer
+        # resolves the actor display name and hashes the dedupe material later.
+        record_fields: dict[str, typing.Any] = {
+            'workspace_uuid': target_workspace,
+            'actor_account_uuid': actor_account_uuid,
+            'actor_name': None,
+            'actor_role': role,
+            'principal_type': principal_type,
+            'api_key_uuid': api_key_uuid,
+            'auth_type': auth_type,
+            'request_id': str(request_id)[:128] if request_id else None,
+            'http_method': (method or '')[:12] or None,
+            'route': (route or '')[:_MAX_ROUTE_CHARS] or None,
+            'action': rule.action,
+            'resource_type': rule.resource_type,
+            'resource_id': str(resource_id)[:_MAX_RESOURCE_ID_CHARS] if resource_id else None,
+            'level': int(level),
+            'outcome': resolved_outcome,
+            'status_code': int(status_code) if status_code is not None else None,
+            'summary': summary,
+            'changes': changes_payload(changes or []),
+            'detail': json.dumps(redact_payload(dict(detail or {})), ensure_ascii=False, default=str)
+            if detail
+            else None,
+            'client_ip': str(client_ip)[:64] if client_ip else None,
+            'user_agent': str(user_agent)[:_MAX_USER_AGENT_CHARS] if user_agent else None,
+            'duration_ms': max(int(duration_ms), 0),
+            '_dedupe_material': dedupe_material(
+                actor_account_uuid=actor_account_uuid,
+                action=rule.action,
+                route=route,
+                resource_id=resource_id,
+            ),
+        }
+        return self._enqueue(record_fields)
 
     # -- reader -----------------------------------------------------------
 
