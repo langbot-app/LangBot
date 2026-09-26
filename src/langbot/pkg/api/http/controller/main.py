@@ -20,6 +20,12 @@ from .groups import knowledge as groups_knowledge
 from .groups import resources as groups_resources
 from ...mcp.mount import MCPMount
 
+# The traceability subsystem is self-contained and auto-registers its routes
+# through ``group.group_class``. Importing it here (instead of from within the
+# ``groups`` package) keeps the feature decoupled: the Core controller package
+# contains no code that depends on it, only this single bootstrap import.
+from ....operation_trace import routes as _operation_trace_routes  # noqa: F401
+
 importutil.import_modules_in_pkg(groups)
 importutil.import_modules_in_pkg(groups_provider)
 importutil.import_modules_in_pkg(groups_platform)

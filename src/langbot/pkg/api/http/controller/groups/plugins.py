@@ -18,6 +18,7 @@ from .....core import taskmgr
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
+from .....operation_trace import service as settings_service
 from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from .....plugin.github import validate_github_plugin_install_info
@@ -527,14 +528,32 @@ class PluginsRouterGroup(group.RouterGroup):
                 plugin,
             )
             try:
+                incoming_config = await quart.request.json
+            except Exception:
+                incoming_config = None
+            try:
                 config = restore_plugin_secret_placeholders(
-                    await quart.request.json,
+                    incoming_config,
                     current_config,
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             await self._require_authenticated_plugin_runtime_context(request_context)
             await self.ap.plugin_connector.set_plugin_config(author, plugin_name, config)
+
+            # Record which plugin was reconfigured and which keys actually moved.
+            # The diff is computed over the *requested* payload (secrets restored
+            # from the stored config) so a masked ``***`` round-trip never shows
+            # up as a change; sensitive keys are redacted by ``changed_fields``.
+            config_changes = settings_service.changed_fields(
+                current_config if isinstance(current_config, dict) else {},
+                config if isinstance(config, dict) else {},
+            )
+            rule = settings_service.ACTION_RULES_BY_ACTION.get('plugin_config')
+            quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
+            quart.g.operation_log_changes = config_changes
+            if rule is not None and config_changes:
+                quart.g.operation_log_summary = settings_service.build_summary(rule, config_changes)
             return self.success(data={})
 
         @self.route(
@@ -853,6 +872,11 @@ class PluginsRouterGroup(group.RouterGroup):
             owner = install_info['owner']
             repo = install_info['repo']
             release_tag = install_info['release_tag']
+            # Name the installed extension in the trace. GitHub installs carry
+            # owner/repo in the body, which the audit identity resolver can also
+            # read, but publishing it here keeps the trace correct regardless of
+            # how the request was encoded.
+            quart.g.operation_log_resource_id = f'{owner}/{repo}'
 
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
@@ -893,6 +917,7 @@ class PluginsRouterGroup(group.RouterGroup):
 
             plugin_author = data.get('plugin_author', '')
             plugin_name = data.get('plugin_name', '')
+            quart.g.operation_log_resource_id = f'{plugin_author}/{plugin_name}'
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             ctx = taskmgr.TaskContext.new()
@@ -934,6 +959,9 @@ class PluginsRouterGroup(group.RouterGroup):
             file_bytes = file.read()
             form = await quart.request.form
             administrator_force = form.get('administrator_force', '').strip().lower() == 'true'
+            # A local upload is multipart with no JSON body, so the archive
+            # filename is the only identity available for the trace.
+            quart.g.operation_log_resource_id = file.filename or 'local plugin'
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             data = {

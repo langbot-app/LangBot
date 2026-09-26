@@ -89,6 +89,13 @@ import type {
   WorkspaceRole,
   WorkspaceSpaceBilling,
 } from '@/app/infra/entities/workspace';
+import type {
+  OperationGovernance,
+  OperationLevel,
+  OperationLogFilters,
+  OperationLogPage,
+  OperationLogQuery,
+} from '@/app/infra/entities/operation-log';
 
 /**
  * 后端服务客户端
@@ -1822,6 +1829,55 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(
       `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
     );
+  }
+
+  // ============ Workspace governance / operation traceability ============
+
+  public getOperationGovernance(): Promise<OperationGovernance> {
+    return this.get('/api/v1/settings/governance');
+  }
+
+  public updateOperationGovernance(request: {
+    level: OperationLevel;
+    retention_days?: number;
+    max_rows?: number;
+    dedupe_window_seconds?: number;
+  }): Promise<OperationGovernance> {
+    return this.put('/api/v1/settings/governance', request);
+  }
+
+  public getOperationLogs(
+    query: OperationLogQuery = {},
+  ): Promise<OperationLogPage> {
+    return this.get('/api/v1/settings/operation-logs', query);
+  }
+
+  public getOperationLogFilters(): Promise<OperationLogFilters> {
+    return this.get('/api/v1/settings/operation-logs/filters');
+  }
+
+  /**
+   * Build the export URL so the browser can download the CSV attachment
+   * directly; axios would try to parse the response body as JSON.
+   */
+  public buildOperationLogExportURL(query: OperationLogQuery = {}): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    // A base of "/" means "same origin". Appending the path directly produced
+    // a protocol-relative "//api/..." URL, which a browser reads as the host
+    // "api" — the export request then never reached the backend. Resolve the
+    // base to the current origin first, mirroring the other URL builders here.
+    const apiBase =
+      this.instance.defaults.baseURL === '/' || !this.instance.defaults.baseURL
+        ? window.location.origin
+        : this.instance.defaults.baseURL.replace(/\/$/, '');
+    return `${apiBase}/api/v1/settings/operation-logs/export${
+      suffix ? `?${suffix}` : ''
+    }`;
   }
 
   public setPassword(

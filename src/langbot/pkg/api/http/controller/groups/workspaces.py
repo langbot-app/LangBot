@@ -12,6 +12,7 @@ from .....entity.persistence.workspace import WorkspaceSource
 from .....workspace.collaboration import WorkspaceMemberView
 from .....workspace.errors import WorkspaceNotFoundError
 from .....workspace.invitation_delivery import InvitationDeliveryService
+from .....operation_trace import service as settings_service
 from .. import group
 
 
@@ -218,6 +219,18 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 )
 
             created = await self._run_in_workspace_uow(workspace_uuid, create_invitation)
+            invite_rule = settings_service.ACTION_RULES_BY_ACTION['member_invite']
+            invite_changes = [
+                {
+                    'field': 'invitation',
+                    'before': None,
+                    'after': f'{created.invitation.normalized_email}:{created.invitation.role}',
+                }
+            ]
+            quart.g.operation_log_changes = invite_changes
+            quart.g.operation_log_resource_id = created.invitation.uuid
+            quart.g.operation_log_detail = {'role': created.invitation.role}
+            quart.g.operation_log_summary = settings_service.build_summary(invite_rule, invite_changes)
             delivery_service = self._invitation_delivery_service()
             link = delivery_service.build_invitation_link(created.token)
             workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
@@ -266,6 +279,11 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
+
+            # Capture the previous role before mutating so the operation trace
+            # can answer "what was changed into what" for this member.
+            before_role = await self._member_role(workspace_uuid, account_uuid)
+
             if quart.request.method == 'DELETE':
                 if Permission.MEMBER_REMOVE.value not in request_context.workspace.permissions:
                     return self.http_status(403, 'permission_denied', 'Member removal permission is required')
@@ -276,6 +294,17 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     )
 
                 member = await self._run_in_workspace_uow(workspace_uuid, remove_member)
+                await self._publish_member_trace(
+                    rule_action='member_remove',
+                    account_uuid=account_uuid,
+                    changes=[
+                        {
+                            'field': 'member',
+                            'before': f'{account_uuid}:{before_role or "unknown"}',
+                            'after': 'removed',
+                        }
+                    ],
+                )
                 return self.success(data={'account_uuid': member.account_uuid})
 
             data = await quart.request.get_json(silent=True) or {}
@@ -290,6 +319,18 @@ class WorkspacesRouterGroup(group.RouterGroup):
 
             member = await self._run_in_workspace_uow(workspace_uuid, update_member_role)
             account = await self.ap.user_service.get_user_by_uuid(member.account_uuid)
+
+            role_changes = [
+                {'field': 'role', 'before': before_role, 'after': member.role},
+            ]
+            await self._publish_member_trace(
+                rule_action='member_role_update',
+                account_uuid=account_uuid,
+                changes=role_changes,
+                detail={
+                    'member_email': account.normalized_email if account is not None else None,
+                },
+            )
             return self.success(
                 data={
                     'member': _membership_payload(
@@ -299,6 +340,41 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     )
                 }
             )
+
+    async def _member_role(self, workspace_uuid: str, account_uuid: str) -> str | None:
+        """Return a member's current role without failing the request."""
+
+        try:
+            members = await self.ap.workspace_collaboration_service.list_members(
+                workspace_uuid, quart.g.workspace_membership
+            )
+        except Exception:
+            return None
+        for view in members:
+            if view.membership.account_uuid == account_uuid:
+                return view.membership.role
+        return None
+
+    async def _publish_member_trace(
+        self,
+        *,
+        rule_action: str,
+        account_uuid: str,
+        changes: list[dict[str, typing.Any]],
+        detail: dict[str, typing.Any] | None = None,
+    ) -> None:
+        """Publish request-local trace facts consumed by the route wrapper.
+
+        ``quart.g`` is request-local, so concurrent member operations never
+        share these values.
+        """
+
+        rule = settings_service.ACTION_RULES_BY_ACTION.get(rule_action)
+        quart.g.operation_log_changes = changes
+        quart.g.operation_log_resource_id = account_uuid
+        quart.g.operation_log_detail = detail or {}
+        if rule is not None:
+            quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
 
     @staticmethod
     def _require_current_workspace(workspace_uuid: str, request_context: RequestContext) -> None:

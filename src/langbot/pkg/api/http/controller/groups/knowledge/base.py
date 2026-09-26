@@ -2,6 +2,7 @@ import quart
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
+from ......operation_trace import service as settings_service
 from ... import group
 
 
@@ -67,13 +68,33 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> quart.Response:
+            # Name the knowledge base and, on update, record which settings moved
+            # instead of only "a knowledge base was changed".
+            quart.g.operation_log_resource_id = knowledge_base_uuid
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
+                try:
+                    previous = await self.ap.knowledge_service.get_knowledge_base(
+                        request_context,
+                        knowledge_base_uuid,
+                        include_secret=True,
+                    )
+                except Exception:
+                    previous = None
                 await self.ap.knowledge_service.update_knowledge_base(
                     request_context,
                     knowledge_base_uuid,
                     json_data,
                 )
+                changes = settings_service.changed_fields(
+                    previous if isinstance(previous, dict) else {},
+                    json_data if isinstance(json_data, dict) else {},
+                    ignore=('uuid', 'created_at', 'updated_at'),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('knowledge_base_update')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
                 return self.success(data={'uuid': knowledge_base_uuid})
             await self.ap.knowledge_service.delete_knowledge_base(request_context, knowledge_base_uuid)
             return self.success({})

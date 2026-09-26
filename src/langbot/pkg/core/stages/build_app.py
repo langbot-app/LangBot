@@ -29,6 +29,7 @@ from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
+from ...operation_trace import service as operation_trace_service
 from ...api.http.service import skill as skill_service
 from ...skill import manager as skill_mgr
 from ...api.http.service import maintenance as maintenance_service
@@ -127,6 +128,9 @@ class BuildAppStage(stage.BootingStage):
         mcp_service_inst = mcp_service.MCPService(ap)
         ap.mcp_service = mcp_service_inst
 
+        workspace_settings_service_inst = operation_trace_service.WorkspaceSettingsService(ap)
+        ap.workspace_settings_service = workspace_settings_service_inst
+
         apikey_service_inst = apikey_service.ApiKeyService(ap)
         ap.apikey_service = apikey_service_inst
 
@@ -157,6 +161,12 @@ class BuildAppStage(stage.BootingStage):
         )
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
+
+        # Persistence is ready now. Open the cheap global traceability gate if
+        # any Workspace already has tracing enabled, so a restart resumes
+        # recording without ever checking the database on the request path.
+        if ap.workspace_settings_service is not None:
+            await ap.workspace_settings_service.prime_global_flag()
 
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(

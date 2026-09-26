@@ -1,5 +1,4 @@
 import pipelineMigration from './pipeline-migration/en-US';
-
 const enUS = {
   assistant: {
     modelHint: 'Switch assistant model for your next message',
@@ -99,7 +98,6 @@ const enUS = {
   guidedTour: {
     eventDebugDescription:
       'Choose a supported event, enter test data, and review the output and tool results. Platform actions are simulated; models and other tools run as configured.',
-
     pipeline: {
       trigger: {
         title: 'Choose which messages to answer',
@@ -727,7 +725,6 @@ const enUS = {
     internalErrorHint:
       'An unexpected error occurred. Check the backend logs using the reference below.',
     errorReference: 'Error reference: {{id}}',
-
     title: 'Bots',
     description:
       'Create and manage bots, which are the entry points for LangBot to connect with various platforms',
@@ -1127,13 +1124,11 @@ const enUS = {
       pluginSettings: 'Plugin settings',
       pluginSettingsDescription: 'Parameters declared by this plugin.',
       selectToDebug: 'Select a plugin above to start debugging.',
-
       debugOutput: 'Processor output',
       debugDescription:
         'Input events, plugin logs and action results for this test session.',
       debugNotice:
         'The plugin processes a test event. Platform actions use Mock and do not send real messages; other tools run as configured.',
-
       create: 'Create plugin processor',
       type: 'Plugin processor',
       description:
@@ -1170,7 +1165,6 @@ const enUS = {
     debugData: {
       chatId: 'Chat ID',
       feedbackType: 'Feedback type (1: like, 2: dislike, 3: cancel)',
-
       title: 'Event data',
       form: 'Common fields',
       json: 'Full JSON',
@@ -1633,7 +1627,6 @@ const enUS = {
     runnerUsageAll: 'All',
     runnerUsageAgent: 'Agent / Pipeline',
     runnerUsageEvent: 'Plugin processor',
-
     searchPlaceholder: 'Search plugins...',
     searchPlaceholderCount:
       'Search {{count}} extensions, capabilities, or use cases...',
@@ -2719,10 +2712,124 @@ const enUS = {
     title: 'Settings',
     nav: {
       workspace: 'Workspace',
+      operationTrace: 'Traceability',
       models: 'Models',
       api: 'API',
       storage: 'Storage',
       account: 'Account',
+    },
+  },
+  operationTrace: {
+    title: 'Operation traceability',
+    description: 'Trace admin and owner edits and views, and what changed.',
+    captureLevel: 'Capture level',
+    retention: 'Retention',
+    retentionDays: 'Retention days',
+    maxRows: 'Max records',
+    dedupeWindow: 'Dedupe window (s)',
+    records: 'Operation records',
+    changesCount: '{{count}} change(s)',
+    hideDetails: 'Hide details',
+    levelUpdated: 'Capture level updated',
+    levelUpdateFailed: 'Failed to update capture level',
+    retentionUpdated: 'Retention updated',
+    retentionUpdateFailed: 'Failed to update retention',
+    export: 'Download logs',
+    exportFailed: 'Failed to download operation logs',
+    empty: 'No operation records yet',
+    systemActor: 'System',
+    pageInfo: '{{from}}-{{to}} of {{total}}',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
+    filterAction: 'Action',
+    filterAllActions: 'All actions',
+    filterResource: 'Resource',
+    filterAllResources: 'All resources',
+    filterActor: 'Actor',
+    filterAllActors: 'All actors',
+    loadFailed: 'Failed to load traceability data',
+    refresh: 'Refresh',
+    save: 'Save',
+    redacted: 'Redacted',
+    tamperedBadge: 'Possibly tampered',
+    verifiedBadge: 'Verified',
+    integrityFailedCount: '{{count}} hash mismatches',
+    chainFailedCount: '{{count}} broken links',
+    scanTruncated: 'Only the latest {{count}} verified',
+    emptyFiltered: 'No records need verification under the current filters',
+    levels: {
+      off: {
+        label: 'Tracing off',
+      },
+      mutation: {
+        label: 'Mutations only',
+      },
+      read: {
+        label: 'Everything (incl. views)',
+      },
+    },
+    levelNames: {
+      off: 'Off',
+      mutation: 'Mutations',
+      read: 'Everything',
+    },
+    resourceTypes: {
+      bot: 'Bot',
+      adapter: 'Adapter',
+      model_provider: 'Model provider',
+      llm_model: 'Model',
+      pipeline: 'Pipeline',
+      user: 'User',
+      workspace: 'Workspace',
+      monitoring: 'Monitoring',
+      webhook: 'Webhook',
+      api_key: 'API key',
+      workspace_settings: 'Workspace settings',
+      member: 'Member',
+      member_invitation: 'Member invitation',
+      operation_log: 'Operation log',
+      plugin: 'Extension',
+      plugin_page: 'Extension page',
+      skill: 'Skill',
+      knowledge_base: 'Knowledge base',
+      mcp_server: 'MCP server',
+      runtime: 'Runtime',
+      system: 'System',
+      resource: 'Resource',
+    },
+    outcomes: {
+      ok: 'Succeeded',
+      denied: 'Denied',
+      error: 'Failed',
+    },
+    actions: {
+      audit_log_view: 'View operation logs',
+      settings_update: 'Update tracing settings',
+      settings_view: 'View tracing settings',
+      member_invite: 'Invite member',
+      member_role_update: 'Update member role',
+      member_remove: 'Remove member',
+      member_view: 'View members',
+      plugin_view: 'View extension pages',
+      plugin_config: 'Change extension config',
+      plugin_install: 'Install extension',
+      plugin_upgrade: 'Upgrade extension',
+      page_view: 'View extension page',
+      skill_view: 'View skill',
+      skill_install: 'Install skill',
+      knowledge_base_view: 'View knowledge base',
+      knowledge_base_update: 'Change knowledge base',
+      mcp_view: 'View MCP server',
+      mcp_config: 'Change MCP server',
+      export: 'Export data',
+      execute: 'Execute task',
+      debug: 'Debug task',
+      publish: 'Publish resource',
+      create: 'Create resource',
+      update: 'Update resource',
+      delete: 'Delete resource',
+      view: 'View resource',
+      probe: 'Probe endpoint',
     },
   },
   storageAnalysis: {
@@ -3182,5 +3289,4 @@ const enUS = {
     invalidPage: 'Invalid plugin page',
   },
 };
-
 export default enUS;

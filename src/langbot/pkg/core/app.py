@@ -36,6 +36,7 @@ from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
+from ..operation_trace import service as workspace_settings_service
 from ..api.http.service import skill as skill_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
@@ -197,6 +198,8 @@ class Application:
     survey: survey_module.SurveyManager = None
 
     monitoring_service: monitoring_service.MonitoringService = None
+
+    workspace_settings_service: workspace_settings_service.WorkspaceSettingsService = None
 
     skill_service: skill_service.SkillService = None
 
@@ -434,6 +437,22 @@ class Application:
                 * 3600
             )
 
+            # Operation-log retention piggybacks on the shared maintenance loop
+            # instead of starting another long-lived task, so enabling
+            # traceability adds no scheduling cost of its own.
+            operation_log_cleanup_cfg = self.instance_config.data.get('operation_log', {}).get('auto_cleanup', {})
+            operation_log_enabled = (
+                operation_log_cleanup_cfg.get('enabled', True) and self.workspace_settings_service is not None
+            )
+            operation_log_interval_seconds = (
+                self._get_positive_float_config(
+                    operation_log_cleanup_cfg.get('check_interval_hours', 1),
+                    default=1,
+                    name='operation_log.auto_cleanup.check_interval_hours',
+                )
+                * 3600
+            )
+
             maintenance_intervals: dict[str, float] = {}
             if monitoring_enabled:
                 maintenance_intervals['monitoring'] = monitoring_interval_seconds
@@ -441,6 +460,8 @@ class Application:
                 maintenance_intervals['storage'] = storage_interval_seconds
             if self.workspace_collaboration_service is not None:
                 maintenance_intervals['invitations'] = 3600.0
+            if operation_log_enabled:
+                maintenance_intervals['operation_logs'] = operation_log_interval_seconds
 
             if maintenance_intervals:
 
@@ -506,6 +527,24 @@ class Application:
                                         self.logger.warning(
                                             f'Storage maintenance failed for Workspace {context.workspace_uuid}: {exc}'
                                         )
+                            if 'operation_logs' in due:
+                                try:
+                                    report = await self.workspace_settings_service.prune(
+                                        context.workspace_uuid,
+                                    )
+                                    removed = report['expired'] + report['trimmed']
+                                    if removed > 0:
+                                        self.logger.info(
+                                            f'Operation log auto-cleanup for Workspace '
+                                            f'{context.workspace_uuid}: removed {removed} records'
+                                        )
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(
+                                        f'Operation log auto-cleanup failed for '
+                                        f'Workspace {context.workspace_uuid}: {exc}'
+                                    )
                             if 'invitations' in due:
                                 try:
                                     await self.workspace_collaboration_service.cleanup_expired_invitations(
