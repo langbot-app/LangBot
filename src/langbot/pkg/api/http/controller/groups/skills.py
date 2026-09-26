@@ -7,7 +7,7 @@ from langbot_plugin.box.errors import BoxError
 
 from ...authz import Permission
 from ...context import RequestContext
-from ...service import settings as settings_service
+from .....operation_trace import service as settings_service
 from .. import group
 
 
@@ -185,6 +185,9 @@ class SkillsRouterGroup(group.RouterGroup):
             if not asset_url.endswith('skill.md') and not data.get('release_tag'):
                 return self.http_status(400, -1, 'Missing required field: release_tag')
 
+            # Name the installed skill in the trace (owner/repo from the body).
+            quart.g.operation_log_resource_id = f'{data.get("owner", "")}/{data.get("repo", "")}'
+
             try:
                 skill = await self.ap.skill_service.install_from_github(request_context, data)
                 return self.success(data={'skills': skill})
@@ -228,6 +231,9 @@ class SkillsRouterGroup(group.RouterGroup):
             if file is None:
                 return self.http_status(400, -1, 'file is required')
             form = await quart.request.form
+            # A zip upload is multipart with no JSON body, so the filename is
+            # the only identity available for the trace.
+            quart.g.operation_log_resource_id = file.filename or 'skill'
 
             try:
                 skill = await self.ap.skill_service.install_from_zip_upload(

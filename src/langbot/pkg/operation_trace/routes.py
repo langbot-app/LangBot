@@ -25,10 +25,10 @@ import typing
 
 import quart
 
-from ...authz import Permission
-from ...context import RequestContext
-from ...service import settings as settings_service
-from .. import group
+from ..api.http.authz import Permission
+from ..api.http.context import RequestContext
+from ..api.http.controller import group
+from . import service as settings_service
 
 
 def _parse_timestamp(value: str | None) -> datetime.datetime | None:

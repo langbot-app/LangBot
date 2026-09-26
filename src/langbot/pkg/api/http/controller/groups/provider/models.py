@@ -3,7 +3,7 @@ import quart
 from langbot.pkg.provider.modelmgr import errors as provider_errors
 from ....authz import Permission, has_permission
 from ....context import RequestContext
-from ....service import settings as settings_service
+from ......operation_trace import service as settings_service
 from ... import group
 from .query import resolve_include_secret
 

@@ -129,7 +129,7 @@ class WorkspaceOperationLog(Base):
     Linking rows this way makes silent edits or deletions detectable.
     """
 
-    dedupe_key = sqlalchemy.Column(sqlalchemy.String(64), nullable=True, index=True)
+    dedupe_key = sqlalchemy.Column(sqlalchemy.String(64), nullable=True)
     """Hash used to collapse repeated read observations into one row."""
 
     # --- Client fingerprint ---------------------------------------------

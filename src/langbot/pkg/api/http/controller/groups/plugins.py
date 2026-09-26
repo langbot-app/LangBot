@@ -18,7 +18,7 @@ from .....core import taskmgr
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
-from ...service import settings as settings_service
+from .....operation_trace import service as settings_service
 from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from .....plugin.github import validate_github_plugin_install_info
@@ -872,6 +872,11 @@ class PluginsRouterGroup(group.RouterGroup):
             owner = install_info['owner']
             repo = install_info['repo']
             release_tag = install_info['release_tag']
+            # Name the installed extension in the trace. GitHub installs carry
+            # owner/repo in the body, which the audit identity resolver can also
+            # read, but publishing it here keeps the trace correct regardless of
+            # how the request was encoded.
+            quart.g.operation_log_resource_id = f'{owner}/{repo}'
 
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
@@ -912,6 +917,7 @@ class PluginsRouterGroup(group.RouterGroup):
 
             plugin_author = data.get('plugin_author', '')
             plugin_name = data.get('plugin_name', '')
+            quart.g.operation_log_resource_id = f'{plugin_author}/{plugin_name}'
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             ctx = taskmgr.TaskContext.new()
@@ -953,6 +959,9 @@ class PluginsRouterGroup(group.RouterGroup):
             file_bytes = file.read()
             form = await quart.request.form
             administrator_force = form.get('administrator_force', '').strip().lower() == 'true'
+            # A local upload is multipart with no JSON body, so the archive
+            # filename is the only identity available for the trace.
+            quart.g.operation_log_resource_id = file.filename or 'local plugin'
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             data = {

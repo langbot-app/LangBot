@@ -34,19 +34,44 @@ import typing
 
 import sqlalchemy
 
-from ....core import app
-from ....entity.persistence import metadata as persistence_metadata
-from ....entity.persistence import operation_log as persistence_operation_log
-from ....entity.persistence.operation_log import (
+from ..api.http.authz import WorkspaceRole
+from ..api.http.context import PrincipalType, RequestContext
+from ..core import app
+from ..entity.persistence import metadata as persistence_metadata
+from ..entity.persistence import operation_log as persistence_operation_log
+from ..entity.persistence.operation_log import (
     OPERATION_LEVEL_MUTATION,
     OPERATION_LEVEL_NONE,
     OPERATION_LEVEL_READ,
 )
-from ....utils import constants
-from ..authz import WorkspaceRole
-from ..context import PrincipalType, RequestContext
+from ..utils import constants
 
 logger = logging.getLogger(__name__)
+
+
+#: Cheap process-wide gate for the Core route wrapper. It is a module-level
+#: boolean, so checking it costs a load and a branch with no import, service
+#: lookup, JSON parse or database round trip. It stays ``False`` until some
+#: Workspace actually opts into tracing, which keeps the isolated subsystem
+#: entirely off the hot path for the default (tracing disabled) instance.
+_global_enabled = False
+
+
+def is_globally_enabled() -> bool:
+    """Return whether any Workspace may currently produce traces.
+
+    The Core route wrapper reads this before doing any trace work. ``False``
+    means the whole subsystem is inert and costs the request path nothing.
+    """
+
+    return _global_enabled
+
+
+def enable_globally() -> None:
+    """Open the cheap gate. Idempotent; called when a Workspace turns tracing on."""
+
+    global _global_enabled
+    _global_enabled = True
 
 
 # ---------------------------------------------------------------------------
@@ -595,6 +620,11 @@ def changed_fields(
 _IDENTITY_KEY_GROUPS: typing.Final[tuple[tuple[str, ...], ...]] = (
     ('plugin_author', 'plugin_name'),
     ('author', 'plugin_name'),
+    ('plugin_author', 'name'),
+    # GitHub installs (plugins and skills) name the target as owner + repo in
+    # the request body rather than in the URL, so without this group a
+    # GitHub install would be traced as "a plugin was installed" with no name.
+    ('owner', 'repo'),
     ('author', 'name'),
     ('skill_uuid',),
     ('knowledge_base_uuid',),
@@ -814,6 +844,9 @@ class WorkspaceSettingsService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+        # Publish the cheap gate on the app so the Core route wrapper can read
+        # it as a plain attribute without importing this package.
+        ap.operation_trace_active = is_globally_enabled()
         # Level cache keyed by Workspace UUID: {"level": int, "expires": float}
         self._level_cache: dict[str, tuple[int, float]] = {}
         self._level_cache_ttl = 5.0
@@ -849,6 +882,34 @@ class WorkspaceSettingsService:
 
         self._level_cache.pop(workspace_uuid, None)
         self._policy_cache.pop(workspace_uuid, None)
+
+    def _activate(self) -> None:
+        """Open the cheap global gate once any Workspace enables tracing."""
+
+        enable_globally()
+        self.ap.operation_trace_active = True
+
+    async def prime_global_flag(self) -> None:
+        """Open the cheap global gate at startup if a Workspace already opted in.
+
+        Runs one bounded query during application build, never per request, so a
+        previously-enabled Workspace keeps recording after a restart while a
+        disabled instance still pays nothing on the hot path.
+        """
+
+        try:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid)
+                .where(
+                    persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY,
+                    persistence_metadata.WorkspaceMetadata.value != str(OPERATION_LEVEL_NONE),
+                )
+                .limit(1)
+            )
+            if result.first() is not None:
+                self._activate()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.ap.logger.debug(f'Operation trace global gate prime skipped: {exc}')
 
     async def _read_metadata(self, workspace_uuid: str, key: str) -> str | None:
         try:
@@ -950,7 +1011,12 @@ class WorkspaceSettingsService:
         raw = await self._read_metadata(workspace_uuid, OPERATION_LEVEL_KEY)
         if raw is None:
             return DEFAULT_OPERATION_LEVEL
-        return clamp_level(raw)
+        configured = clamp_level(raw)
+        if configured > OPERATION_LEVEL_NONE:
+            # Reading an enabled Workspace re-opens the gate, so tracing resumes
+            # on its own after a restart even before a write occurs.
+            self._activate()
+        return configured
 
     async def effective_level(self, workspace_uuid: str, role: str | None) -> int:
         """Return the level actually used for a request by ``role``."""
@@ -979,6 +1045,8 @@ class WorkspaceSettingsService:
         """
 
         resolved_level = clamp_level(level)
+        if resolved_level > OPERATION_LEVEL_NONE:
+            self._activate()
         values = {
             OPERATION_LEVEL_KEY: str(resolved_level),
         }
@@ -1005,6 +1073,20 @@ class WorkspaceSettingsService:
         """Return the dedupe window in seconds for repeated observations."""
 
         return (await self._operations_policy(workspace_uuid))['dedupe_window_seconds']
+
+    def resolve_resource_identity(
+        self,
+        path_params: typing.Mapping[str, typing.Any] | None,
+        body: typing.Mapping[str, typing.Any] | None,
+    ) -> str | None:
+        """Identify the resource a request acts on.
+
+        Thin instance wrapper over the module-level resolver so the Core route
+        wrapper can name a resource through the service handle without importing
+        this package directly.
+        """
+
+        return resolve_resource_identity(path_params, body)
 
     async def describe_governance(self, workspace_uuid: str) -> dict[str, typing.Any]:
         """Return the governance payload rendered by the settings panel.

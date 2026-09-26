@@ -12,7 +12,7 @@ from .....entity.persistence.workspace import WorkspaceSource
 from .....workspace.collaboration import WorkspaceMemberView
 from .....workspace.errors import WorkspaceNotFoundError
 from .....workspace.invitation_delivery import InvitationDeliveryService
-from ...service import settings as settings_service
+from .....operation_trace import service as settings_service
 from .. import group
 
 

@@ -639,6 +639,18 @@ export default function OperationTracePanel({
                         )}
                       </Badge>
                     )}
+                    {record.resource_id && (
+                      // Which concrete resource was touched (author/name,
+                      // owner/repo, filename...). Rendered as data, not copy,
+                      // so it is not localized.
+                      <Badge
+                        variant="outline"
+                        className="max-w-[16rem] truncate font-mono"
+                        title={record.resource_id}
+                      >
+                        {record.resource_id}
+                      </Badge>
+                    )}
                     {record.tampered ? (
                       <Badge variant="destructive">
                         <ShieldAlert className="size-3" />

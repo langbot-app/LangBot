@@ -5,7 +5,7 @@ from urllib.parse import unquote
 
 from ....authz import Permission
 from ....context import RequestContext
-from ....service import settings as settings_service
+from ......operation_trace import service as settings_service
 from ......provider.tools.loaders.mcp_policy import MCPStdioDisabledError
 from ... import group
 

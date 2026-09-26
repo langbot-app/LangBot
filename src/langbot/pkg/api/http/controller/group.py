@@ -363,6 +363,13 @@ class RouterGroup(abc.ABC):
         database, so a disabled Workspace pays nothing at steady state.
         """
 
+        # Cheap global gate: a single attribute read on the application object.
+        # While no Workspace has enabled traceability this is ``False`` and the
+        # isolated subsystem stays entirely off the hot request path, with no
+        # import, service lookup, JSON parse or database round trip.
+        if not getattr(self.ap, 'operation_trace_active', False):
+            return
+
         service = getattr(self.ap, 'workspace_settings_service', None)
         if service is None:
             return
@@ -394,16 +401,15 @@ class RouterGroup(abc.ABC):
             # touching each handler. The body is read defensively: an audit path
             # must never fail (or block) because a request carries no JSON.
             try:
-                # Imported lazily so the base controller never participates in an
-                # import cycle with the service layer at module load time.
-                from ..service import settings as settings_service
-
+                # Identity resolution lives in the isolated traceability service
+                # and is reached through the handle, so the Core controller never
+                # imports that subsystem.
                 request_body: dict[str, typing.Any] | None = None
                 if str(quart.request.method or '').upper() not in ('GET', 'HEAD', 'OPTIONS'):
                     raw_body = await quart.request.get_json(silent=True)
                     if isinstance(raw_body, dict):
                         request_body = raw_body
-                identity = settings_service.resolve_resource_identity(kwargs, request_body)
+                identity = service.resolve_resource_identity(kwargs, request_body)
                 if identity:
                     resource_id = identity
             except Exception:  # pragma: no cover - identity resolution is best effort
