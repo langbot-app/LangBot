@@ -22,6 +22,15 @@ services:
       - LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING=${LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING:-128}
       - LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE=${LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE:-4}
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
+    # The control WebSocket port also serves an unauthenticated GET /healthz
+    # (see langbot_plugin runtime/io/controllers/ws/server.py). curl is removed
+    # from the image, so probe with the always-present python.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5400/healthz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - langbot_network
 
@@ -65,6 +74,16 @@ services:
     # `-s` / `--stdio-control` only for the stdio mode LangBot uses outside
     # containers.
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
+    # Box serves GET /healthz (liveness) and GET /readyz (readiness, 503 until
+    # the configured backend and isolation guarantees are ready) on the control
+    # port (default 5410). Use /readyz so the container is only reported healthy
+    # once it can actually accept sandbox work.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5410/readyz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       - langbot_network
 
@@ -98,6 +117,15 @@ services:
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection
+    # The core Quart app exposes an unauthenticated GET /healthz on api.port
+    # (see langbot/pkg/api/http/controller/main.py). curl is removed from the
+    # image, so probe with the always-present python.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5300/healthz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     networks:
       - langbot_network
 
