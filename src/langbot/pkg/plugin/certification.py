@@ -18,6 +18,7 @@ from langbot_plugin.entities.io.context import PluginExecutionMode
 
 
 SHARED_RUNTIME_V1 = 'shared-runtime-v1'
+STATELESS_COMPONENT_MODEL_V1 = 'stateless-v1'
 DEDICATED_RUNTIME = 'dedicated'
 
 
@@ -66,11 +67,16 @@ class CertificateFacts:
 
     verification: CertificateVerification
     runtime_profile: str | None = None
+    component_model: str | None = None
     certificate_id: str | None = None
 
     @property
     def is_valid_shared_runtime(self) -> bool:
-        return self.verification is CertificateVerification.VALID and self.runtime_profile == SHARED_RUNTIME_V1
+        return (
+            self.verification is CertificateVerification.VALID
+            and self.runtime_profile == SHARED_RUNTIME_V1
+            and self.component_model == STATELESS_COMPONENT_MODEL_V1
+        )
 
     @property
     def is_declared(self) -> bool:
@@ -153,6 +159,7 @@ def verify_plugin_archive_certificate(
     verification = verify_archive(archive, key_ring.get)
     envelope = verification.envelope
     runtime_profile = envelope.shared_runtime if envelope is not None else None
+    component_model = envelope.component_model if envelope is not None else None
     # Record the issuer identity only when this instance actually resolved it
     # through the configured ring. When the ring is empty (for example a
     # self-hosted deployment that never configured
@@ -170,6 +177,7 @@ def verify_plugin_archive_certificate(
         certificate=CertificateFacts(
             verification=state,
             runtime_profile=runtime_profile,
+            component_model=component_model,
             certificate_id=certificate_id,
         ),
     )
@@ -299,6 +307,7 @@ def execution_mode_for_persisted_installation(
         'artifact_digest': artifact_digest,
         'verification': CertificateVerification.VALID.value,
         'certificate_runtime_profile': SHARED_RUNTIME_V1,
+        'certificate_component_model': STATELESS_COMPONENT_MODEL_V1,
         'runtime_profile': SHARED_RUNTIME_V1,
         'admission_code': AdmissionCode.SHARED_ELIGIBLE.value,
     }

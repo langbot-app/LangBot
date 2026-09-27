@@ -1809,6 +1809,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'normalized_digest': facts.artifact_digest,
             'verification': facts.certificate.verification.value,
             'certificate_runtime_profile': facts.certificate.runtime_profile,
+            'certificate_component_model': facts.certificate.component_model,
             'certificate_id': facts.certificate.certificate_id,
             'runtime_profile': decision.runtime_profile,
             'admission_code': decision.code.value,

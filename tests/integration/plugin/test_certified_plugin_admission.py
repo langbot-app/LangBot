@@ -249,7 +249,10 @@ def _connector(deployment: str, trusted_public_keys: dict[str, str]):
 def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
     manifest = {
         'metadata': {'author': 'certified', 'name': 'example', 'version': '1.0.0'},
-        'execution': {'sharedRuntime': 'shared-runtime-v1'},
+        'execution': {
+            'sharedRuntime': 'shared-runtime-v1',
+            'componentModel': 'stateless-v1',
+        },
     }
     if kind == 'legacy':
         manifest.pop('execution')

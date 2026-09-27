@@ -10,7 +10,7 @@ ZIP digest without extracting the payload.
 
 Core retains the artifact SHA-256, normalized digest
 (`normalized_zip_digest()`), verification state, declared shared-runtime
-profile, key ID, selected admission profile, and stable admission code in the
+profile, `stateless-v1` component model, key ID, selected admission profile, and stable admission code in the
 durable plugin `install_info._certification` record. The record belongs to the
 installation row; no schema migration is needed for this additive JSON
 metadata.
@@ -48,11 +48,11 @@ dedicated profile.
 
 | Deployment | SDK verification | Explicit `administrator_force` | Result |
 | --- | --- | --- | --- |
-| Cloud | valid envelope declaring `shared-runtime-v1` | any | admitted to the shared profile |
+| Cloud | valid envelope declaring `shared-runtime-v1` + `stateless-v1` | any | admitted to the shared singleton profile |
 | Cloud | absent | any | reject before storage with `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED` |
 | Cloud | malformed, untrusted, invalid, or non-shared | any | reject before storage with `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID` |
 | OSS | absent legacy envelope | any | admitted to the dedicated profile |
-| OSS | valid envelope declaring `shared-runtime-v1` | any | selected shared profile |
+| OSS | valid envelope declaring `shared-runtime-v1` + `stateless-v1` | any | selected shared singleton profile |
 | OSS | declaration signed by a **key this instance resolves** | false | reject with `CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` |
 | OSS | declaration signed by a **key this instance resolves** | true | admitted to the dedicated profile |
 | OSS | declaration this instance **cannot resolve** (empty ring) | any | admitted to the dedicated profile |
@@ -69,9 +69,10 @@ the existing `oss_dev` dedicated profile and records
 withholds the shared profile rather than granting it.
 
 A declaration is "resolvable" only when its `key_id` is present in the
-configured ring. When the ring is configured and the declaration still fails
-(malformed, `signature_invalid`, `digest_mismatch`, `unsupported_schema`, ...),
-admission stays explicit and requires `administrator_force`.
+configured ring. A parseable declaration from a resolved key that fails
+signature, digest, identity, profile, or component-model validation requires
+`administrator_force` in OSS. Malformed or unsupported envelopes without a
+resolved certificate identity are treated as untrusted and stay dedicated.
 
 `administrator_force` is deliberately strict: it is recognized only when the
 install request carries boolean `true`. The local upload endpoint accepts the
@@ -81,14 +82,22 @@ protects those endpoints. A force never creates a Cloud dedicated fallback.
 
 ## Runtime and logs
 
-SDK 0.6.2 carries an installation-level execution mode in both apply and
-authoritative reconcile payloads. Core selects `shared-runtime-v1` only when
+The first stateless-compatible SDK release will carry the v2 certificate and
+singleton component contract; its final version is assigned only at release.
+Core must pin that release before sending or selecting the new contract. Core selects `shared-runtime-v1` only when
 the persisted certification record says verification was valid, both the
 certificate and admission profiles are `shared-runtime-v1`, the admission code
 is shared-eligible, and the record's artifact SHA-256 exactly matches the
 installation row. Missing, malformed, stale, invalid, or dedicated admission
 facts select `dedicated`. Install, upgrade, configuration revision, restart,
 and reconnect all use this same persisted-fact derivation.
+
+The certificate must also bind `component_model=stateless-v1`. This profile
+creates one `BasePlugin` and one instance of each component per digest Worker.
+Installation slots contain immutable config snapshots and authority only;
+task-local invocation context selects the active slot. Older certificates that
+do not bind the component model are not eligible for shared placement. Their
+source packages remain compatible on dedicated Workers under OSS policy.
 
 The existing public plugin-log boundary already applies the immutable
 installation binding (including workspace UUID) through
@@ -100,5 +109,7 @@ same existing installation scope.
 
 ## SDK versioning
 
-Core pins `langbot-plugin==0.6.2`, the first published SDK release carrying the
-canonical installation execution-mode contract.
+Ship in dependency order: SDK v2 certificate support, then Core exact pin and
+lockfile, then Space signing, then Runtime/Core rollout. Legacy v1 envelopes
+remain verifiable but do not carry `stateless-v1`, so they never select shared
+singleton placement without re-review and v2 re-signing.
