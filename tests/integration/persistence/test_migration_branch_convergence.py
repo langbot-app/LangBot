@@ -370,7 +370,7 @@ def _legacy_shared_certification(**overrides):
 
 
 @pytest.mark.asyncio
-async def test_certification_artifact_digest_backfill_is_safe_and_enables_shared_placement(convergence_engine):
+async def test_certification_artifact_digest_backfill_is_safe_and_keeps_legacy_dedicated(convergence_engine):
     engine = convergence_engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -461,7 +461,7 @@ async def test_certification_artifact_digest_backfill_is_safe_and_enables_shared
                 artifact_digest=eligible_digest,
                 install_info=eligible_info,
             )
-            is PluginExecutionMode.SHARED_CERTIFIED
+            is PluginExecutionMode.DEDICATED
         )
 
     for name, (original_certification, artifact_digest) in rows.items():

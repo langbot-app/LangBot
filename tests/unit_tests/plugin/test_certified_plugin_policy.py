@@ -85,6 +85,11 @@ def test_admission_policy_enforces_certification_matrix(
         certificate=CertificateFacts(
             verification=CertificateVerification(verification),
             runtime_profile=runtime_profile,
+            component_model=(
+                'stateless-v1'
+                if verification == 'valid' and runtime_profile == 'shared-runtime-v1'
+                else None
+            ),
             certificate_id=certificate_id,
         ),
     )
@@ -100,6 +105,33 @@ def test_admission_policy_enforces_certification_matrix(
     assert decision.runtime_profile == (
         'shared-runtime-v1' if expected_disposition == 'shared_eligible' else 'dedicated'
     )
+
+
+def test_legacy_shared_certificate_without_stateless_contract_is_not_shared() -> None:
+    from langbot.pkg.plugin.certification import (
+        AdmissionDisposition,
+        CertificateFacts,
+        CertificateVerification,
+        DeploymentMode,
+        PluginCertificationFacts,
+        decide_plugin_admission,
+    )
+
+    decision = decide_plugin_admission(
+        deployment=DeploymentMode.CLOUD,
+        facts=PluginCertificationFacts(
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            artifact_digest='a' * 64,
+            certificate=CertificateFacts(
+                verification=CertificateVerification.VALID,
+                runtime_profile='shared-runtime-v1',
+                component_model=None,
+                certificate_id='legacy-issuer',
+            ),
+        ),
+    )
+
+    assert decision.disposition is AdmissionDisposition.REJECTED
 
 
 def test_archive_inspection_preserves_legacy_tuple_and_exposes_certificate_facts() -> None:
@@ -181,6 +213,7 @@ def test_log_visibility_policy_only_scopes_valid_shared_certifications(
         certificate=CertificateFacts(
             verification=CertificateVerification(verification),
             runtime_profile='shared-runtime-v1',
+            component_model='stateless-v1',
         ),
     )
 
@@ -195,6 +228,7 @@ def _complete_persisted_certification() -> dict[str, object]:
         'normalized_digest': 'b' * 64,
         'verification': 'valid',
         'certificate_runtime_profile': 'shared-runtime-v1',
+        'certificate_component_model': 'stateless-v1',
         'certificate_id': 'ed25519:trusted-issuer',
         'runtime_profile': 'shared-runtime-v1',
         'admission_code': 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE',
@@ -261,6 +295,7 @@ def test_persisted_certification_selects_shared_execution_only_for_exact_admitte
         'normalized_digest',
         'verification',
         'certificate_runtime_profile',
+        'certificate_component_model',
         'certificate_id',
         'runtime_profile',
         'admission_code',
@@ -303,6 +338,9 @@ def test_persisted_certification_requires_every_shared_admission_fact(missing_fi
         ('certificate_runtime_profile', None),
         ('certificate_runtime_profile', 123),
         ('certificate_runtime_profile', ''),
+        ('certificate_component_model', None),
+        ('certificate_component_model', 123),
+        ('certificate_component_model', ''),
         ('runtime_profile', None),
         ('runtime_profile', 123),
         ('runtime_profile', ''),
