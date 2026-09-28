@@ -13,7 +13,8 @@ export function BetaBanner() {
     const checkBetaStatus = async () => {
       try {
         const info = await backendClient.getSystemInfo();
-        const shouldShow = info.deployment_mode === 'cloud' && info.beta === true;
+        const shouldShow =
+          info.deployment_mode === 'cloud' && info.beta === true;
         setShow(shouldShow);
       } catch {
         setShow(false);
