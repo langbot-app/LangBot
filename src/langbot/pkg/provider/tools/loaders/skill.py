@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import re
 import typing
 
-from ....box import workspace as box_workspace
 from ....api.http.context import ExecutionContext
+from ....utils.python_workspace import (
+    should_prepare_python_env,
+    wrap_python_command_with_env,
+)
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -70,6 +74,37 @@ def register_created_skill_visibility(query: pipeline_query.Query, skill_name: s
         bound_skills.append(skill_name)
 
 
+def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
+    """Mount only immutable revisions pinned by this run's activations."""
+
+    mounts: list[dict] = []
+    for skill_name, skill_data in get_activated_skills(query).items():
+        package_root = str(skill_data.get('package_root', '') or '').strip()
+        manifest_path = str(skill_data.get('manifest_path', '') or '').strip()
+        revision = str(skill_data.get('revision', '') or '').strip()
+        if not package_root:
+            raise ValueError(f'Activated skill "{skill_name}" has no immutable package root.')
+        if not revision:
+            raise ValueError(f'Activated skill "{skill_name}" has no pinned revision.')
+        if not os.path.isdir(package_root):
+            raise ValueError(
+                f'Activated skill "{skill_name}" pinned revision {revision} is unavailable; '
+                'the run cannot be recovered safely.'
+            )
+        if not manifest_path or not os.path.isfile(manifest_path):
+            raise ValueError(f'Activated skill "{skill_name}" pinned revision {revision} has no publication manifest.')
+        mounts.append(
+            {
+                'host_path': package_root,
+                'mount_path': get_virtual_skill_mount_path(skill_name),
+                'mode': 'ro',
+                'content_digest': revision,
+                'manifest_path': manifest_path,
+            }
+        )
+    return mounts
+
+
 def get_activated_skills(query: pipeline_query.Query) -> dict[str, dict]:
     if query.variables is None:
         return {}
@@ -84,14 +119,18 @@ def get_activated_skill(query: pipeline_query.Query, skill_name: str) -> dict | 
     return get_activated_skills(query).get(skill_name)
 
 
-def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> None:
+def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> dict:
     if query.variables is None:
         query.variables = {}
 
     activated = query.variables.setdefault(ACTIVATED_SKILLS_KEY, {})
     skill_name = str(skill_data.get('name', '') or '').strip()
-    if skill_name and skill_name not in activated:
-        activated[skill_name] = skill_data
+    revision = str(skill_data.get('revision', '') or '').strip()
+    if not skill_name or not revision:
+        raise ValueError('Activated Skills require a name and immutable revision.')
+    if skill_name not in activated:
+        activated[skill_name] = dict(skill_data)
+    return activated[skill_name]
 
 
 def normalize_skill_names(value: typing.Any) -> list[str]:
@@ -112,36 +151,97 @@ def get_activated_skill_names(query: pipeline_query.Query) -> list[str]:
     return normalize_skill_names(list(get_activated_skills(query).keys()))
 
 
-def restore_activated_skills(
+def get_activated_skill_bindings(query: pipeline_query.Query) -> list[dict[str, str]]:
+    """Return exact bindings suitable for persistence and restart recovery."""
+
+    return [
+        {'name': name, 'revision': str(skill.get('revision', '') or '')}
+        for name, skill in get_activated_skills(query).items()
+    ]
+
+
+def normalize_skill_bindings(value: typing.Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        raise ValueError('Activated Skill recovery requires revision bindings.')
+    bindings: list[dict[str, str]] = []
+    seen: dict[str, str] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError('Activated Skill recovery cannot use names without revisions.')
+        name = str(item.get('name', '') or '').strip()
+        revision = str(item.get('revision', '') or '').strip()
+        if not name or not revision:
+            raise ValueError('Each activated Skill binding requires name and revision.')
+        previous = seen.get(name)
+        if previous is not None and previous != revision:
+            raise ValueError(f'Conflicting pinned revisions supplied for Skill "{name}".')
+        if previous is None:
+            seen[name] = revision
+            bindings.append({'name': name, 'revision': revision})
+    return bindings
+
+
+async def restore_activated_skills(
     ap: app.Application,
     query: pipeline_query.Query,
-    skill_names: typing.Any,
+    skill_bindings: typing.Any,
 ) -> list[str]:
-    """Restore caller-provided names from the current visible skill set."""
+    """Restore exact revisions or fail explicitly; never resolve latest by name."""
+
+    repository = getattr(ap, 'skill_repository', None)
+    if repository is None:
+        raise ValueError('Skill repository is unavailable during run recovery.')
+    context = ExecutionContext(
+        instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+        workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+        placement_generation=getattr(query, 'placement_generation', 0) or 0,
+        bot_uuid=getattr(query, 'bot_uuid', None),
+        pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+        query_uuid=getattr(query, 'query_uuid', None),
+    )
+    bound_names = get_bound_skill_names(query)
     restored: list[str] = []
-    for skill_name in normalize_skill_names(skill_names):
-        skill_data = get_visible_skill(ap, query, skill_name)
+    for binding in normalize_skill_bindings(skill_bindings):
+        skill_name = binding['name']
+        if bound_names is not None and skill_name not in bound_names:
+            raise ValueError(f'Skill "{skill_name}" is no longer authorized for this recoverable run.')
+        skill_data = await repository.get_skill(
+            context,
+            skill_name,
+            snapshot=True,
+            revision=binding['revision'],
+        )
         if skill_data is None:
-            continue
+            raise ValueError(f'Skill "{skill_name}" pinned revision {binding["revision"]} is unavailable.')
         register_activated_skill(query, skill_data)
         restored.append(skill_name)
     return restored
 
 
-def restore_activated_skills_from_state(
+async def restore_activated_skills_from_state(
     ap: app.Application,
     query: pipeline_query.Query,
     state: dict[str, dict[str, typing.Any]],
 ) -> list[str]:
-    """Restore persisted activated skill names into Query variables.
-
-    The state value stores names only. Full skill metadata is rebuilt from the
-    current pipeline-visible skill cache so removed or unbound skills remain
-    unavailable to native exec/write/edit.
-    """
+    """Restore the exact activated Skill revisions stored by the Host."""
     conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
-    skill_names = normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
-    return restore_activated_skills(ap, query, skill_names)
+    if not isinstance(conversation_state, dict):
+        raise ValueError('Activated Skill conversation state must be an object.')
+    if ACTIVATED_SKILL_NAMES_STATE_KEY not in conversation_state:
+        return []
+    bindings = conversation_state[ACTIVATED_SKILL_NAMES_STATE_KEY]
+    if isinstance(bindings, list) and bindings and all(isinstance(item, str) for item in bindings):
+        logger = getattr(ap, 'logger', None)
+        if logger is not None:
+            workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(
+                getattr(query, '_execution_context', None), 'workspace_uuid', 'unknown'
+            )
+            logger.warning(
+                f'Legacy name-only activated Skill state in Workspace {workspace_uuid}; '
+                'reactivate Skills to pin their revisions.'
+            )
+        return []
+    return await restore_activated_skills(ap, query, bindings)
 
 
 async def persist_activated_skill(
@@ -149,10 +249,10 @@ async def persist_activated_skill(
     query: pipeline_query.Query,
     skill_name: str,
 ) -> None:
-    """Persist activated skill names into host-owned conversation state.
+    """Persist activated Skill revision bindings into Host-owned conversation state.
 
-    ``activate`` runs host-side. This writes the run's current activated skill
-    names to the conversation-scope ``host.activated_skills`` snapshot so a later
+    ``activate`` runs host-side. This writes the run's pinned Skill revisions
+    to the conversation-scope ``host.activated_skills`` snapshot so a later
     run can restore them via ``restore_activated_skills_from_state``. Host writes
     here and a runner ``state.updated`` to the same key follow last-write-wins.
 
@@ -184,7 +284,7 @@ async def persist_activated_skill(
         await store.state_set(
             scope_key=conversation_scope_key,
             state_key=ACTIVATED_SKILL_NAMES_STATE_KEY,
-            value=get_activated_skill_names(query),
+            value=get_activated_skill_bindings(query),
             runner_id=str(session.get('runner_id', '') or ''),
             binding_identity=str(state_context.get('binding_identity', 'unknown') or 'unknown'),
             scope='conversation',
@@ -275,7 +375,7 @@ def build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str
 
 
 def should_prepare_skill_python_env(package_root: str | None) -> bool:
-    return box_workspace.should_prepare_python_env(package_root)
+    return should_prepare_python_env(package_root)
 
 
 def wrap_skill_command_with_python_env(
@@ -284,7 +384,7 @@ def wrap_skill_command_with_python_env(
     mount_path: str = '/workspace',
     state_path: str | None = None,
 ) -> str:
-    return box_workspace.wrap_python_command_with_env(
+    return wrap_python_command_with_env(
         command,
         mount_path=mount_path,
         state_path=state_path,

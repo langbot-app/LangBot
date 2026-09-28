@@ -24,7 +24,6 @@ def service():
         require_workspace_sandbox=AsyncMock(side_effect=lambda context: context),
         _action_context=lambda context: context,
         client=SimpleNamespace(get_sessions=AsyncMock(side_effect=lambda **kw: list(sessions.values()))),
-        build_skill_extra_mounts=lambda query: [],
     )
     return RunnerBoxService(box)
 

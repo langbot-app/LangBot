@@ -152,8 +152,6 @@ class RunnerBoxService:
         if set(request.options) - {'image'}:
             raise BoxValidationError('Only the Box image can be specified; resource limits are Host-owned')
         spec = {'session_id': session_id, **request.options}
-        if query is not None:
-            spec['extra_mounts'] = self.box.build_skill_extra_mounts(query)
         result = await self.box.create_session(context, spec)
         return self.public_session(result)
 
@@ -174,7 +172,6 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
-        spec['extra_mounts'] = self.box.build_skill_extra_mounts(query)
         binding = RunBoxBinding(run_id, box_id, spec, run_id)
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)
