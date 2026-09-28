@@ -582,6 +582,8 @@ volumes:
 
 > Core 的 SkillRepository 是 `langbot_plugin.skill_store.SkillStore` 的异步 Workspace 适配层。默认 `skills.root` 保持原 `data/box/skills/tenants/...` 布局，升级时无需移动已安装 Skill；旧 `box.local.skills_root` 仅作为在线升级 fallback，并将在下一大版本删除。Box 只消费 Core 下发的通用只读 mount。
 
+自定义 `skills.root` 若位于 Box 的 `allowed_mount_roots` 之外，Skill 仍可管理和读取，但脚本执行的只读挂载会被拒绝。执行这些 Skill 时，需将该路径加入允许的挂载根；分离部署还需让 Core 和 Box Runtime 在相同路径看见这份目录。
+
 ### Session scope
 
 Pipeline 与 Runner 配置不再暴露 sandbox session 模板。Host 将当前平台会话/事件 scope 规范化后哈希成固定长度的 `lb-box-<sha256>`；相同 scope 稳定复用，不同 scope 隔离，缺少 identity 时拒绝执行。SDK/Python 与 scoped MCP bridge 的工具调用遵守同一规则。详见 [box-session-scope.md](./box-session-scope.md)。

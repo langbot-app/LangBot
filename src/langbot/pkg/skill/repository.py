@@ -103,6 +103,9 @@ class SkillRepository:
     def _workspace_root(self, namespace: str) -> str:
         return os.path.join(self._default_workspace(), 'tenants', namespace)
 
+    def storage_root(self, context: TenantContext) -> str:
+        return self._store.scoped(self._namespace(context)).root
+
     async def _call(self, context: TenantContext, method_name: str, *args, **kwargs):
         execution_context = await self._validated_execution_context(context)
         namespace = self._namespace(execution_context)

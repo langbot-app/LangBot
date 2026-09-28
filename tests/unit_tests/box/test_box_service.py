@@ -585,7 +585,6 @@ async def test_box_service_reconnect_restores_workspace_and_runs_cleanup(
     connector.reconnect.assert_awaited_once()
     service._ensure_default_workspace.assert_called_once()
     service._purge_attachment_dirs.assert_awaited_once()
-    app.skill_mgr.reload_skills.assert_not_awaited()
     assert service.available is True
 
 

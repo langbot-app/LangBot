@@ -73,6 +73,7 @@ def register_created_skill_visibility(query: pipeline_query.Query, skill_name: s
     if isinstance(bound_skills, list) and skill_name not in bound_skills:
         bound_skills.append(skill_name)
 
+
 def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
     """Mount only immutable revisions pinned by this run's activations."""
 
@@ -217,20 +218,30 @@ async def restore_activated_skills(
     return restored
 
 
-def restore_activated_skills_from_state(
+async def restore_activated_skills_from_state(
     ap: app.Application,
     query: pipeline_query.Query,
     state: dict[str, dict[str, typing.Any]],
 ) -> list[str]:
-    """Restore persisted activated skill names into Query variables.
-
-    The state value stores names only. Full skill metadata is rebuilt from the
-    current pipeline-visible skill cache so removed or unbound skills remain
-    unavailable to native exec/write/edit.
-    """
+    """Restore the exact activated Skill revisions stored by the Host."""
     conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
-    skill_names = normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
-    return restore_activated_skills(ap, query, skill_names)
+    if not isinstance(conversation_state, dict):
+        raise ValueError('Activated Skill conversation state must be an object.')
+    if ACTIVATED_SKILL_NAMES_STATE_KEY not in conversation_state:
+        return []
+    bindings = conversation_state[ACTIVATED_SKILL_NAMES_STATE_KEY]
+    if isinstance(bindings, list) and bindings and all(isinstance(item, str) for item in bindings):
+        logger = getattr(ap, 'logger', None)
+        if logger is not None:
+            workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(
+                getattr(query, '_execution_context', None), 'workspace_uuid', 'unknown'
+            )
+            logger.warning(
+                f'Legacy name-only activated Skill state in Workspace {workspace_uuid}; '
+                'reactivate Skills to pin their revisions.'
+            )
+        return []
+    return await restore_activated_skills(ap, query, bindings)
 
 
 async def persist_activated_skill(
@@ -238,10 +249,10 @@ async def persist_activated_skill(
     query: pipeline_query.Query,
     skill_name: str,
 ) -> None:
-    """Persist activated skill names into host-owned conversation state.
+    """Persist activated Skill revision bindings into Host-owned conversation state.
 
-    ``activate`` runs host-side. This writes the run's current activated skill
-    names to the conversation-scope ``host.activated_skills`` snapshot so a later
+    ``activate`` runs host-side. This writes the run's pinned Skill revisions
+    to the conversation-scope ``host.activated_skills`` snapshot so a later
     run can restore them via ``restore_activated_skills_from_state``. Host writes
     here and a runner ``state.updated`` to the same key follow last-write-wins.
 
@@ -273,7 +284,7 @@ async def persist_activated_skill(
         await store.state_set(
             scope_key=conversation_scope_key,
             state_key=ACTIVATED_SKILL_NAMES_STATE_KEY,
-            value=get_activated_skill_names(query),
+            value=get_activated_skill_bindings(query),
             runner_id=str(session.get('runner_id', '') or ''),
             binding_identity=str(state_context.get('binding_identity', 'unknown') or 'unknown'),
             scope='conversation',

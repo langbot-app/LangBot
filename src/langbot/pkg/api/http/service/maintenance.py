@@ -148,6 +148,10 @@ class MaintenanceService:
             scoped_storage_path = Path('data/storage') / self.ap.storage_mgr.scoped_prefix(context)
             roots = [('storage', scoped_storage_path)]
 
+        skill_repository = getattr(self.ap, 'skill_repository', None)
+        if skill_repository is not None:
+            roots.append(('skills', Path(skill_repository.storage_root(context))))
+
         sections = await asyncio.to_thread(self._collect_sections, roots)
         runtime_processes = await self._runtime_storage_processes(
             context,

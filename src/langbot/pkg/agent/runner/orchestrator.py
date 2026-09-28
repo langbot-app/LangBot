@@ -150,10 +150,15 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
+        authorized_skill_names = [
+            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
+        ]
+        prepare_execution_query(execution_query, event, authorized_skill_names)
+
         session_query_id = None
         if adapter_context:
             if execution_query is not None:
-                skill_loader.restore_activated_skills_from_state(
+                await skill_loader.restore_activated_skills_from_state(
                     self.ap,
                     execution_query,
                     context.get('state', {}),
@@ -164,10 +169,6 @@ class AgentRunOrchestrator:
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
 
-        authorized_skill_names = [
-            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
-        ]
-        prepare_execution_query(execution_query, event, authorized_skill_names)
         context['variables'] = {
             key: value
             for key, value in (execution_query.variables or {}).items()

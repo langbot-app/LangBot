@@ -262,6 +262,33 @@ class TestSkillToolLoader:
     """
 
     @pytest.mark.asyncio
+    async def test_frozen_skill_source_runs_activation_without_box(self):
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+        from langbot.pkg.provider.tools.toolmgr import ToolManager
+
+        skill = _make_skill_data(name='demo', instructions='Read this first')
+        ap = _make_ap()
+        ap.skill_mgr = _make_skill_manager({'demo': skill})
+        ap.skill_repository = SimpleNamespace(get_skill=AsyncMock(return_value=skill))
+        ap.box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
+        manager = ToolManager(ap)
+        manager.skill_tool_loader = SkillToolLoader(ap)
+        query = _make_query(_execution_context=_CONTEXT)
+        source_ref = {'source': 'skill', 'source_id': None}
+
+        result = await manager.execute_func_call('activate', {'skill_name': 'demo'}, query, source_ref)
+
+        assert result['activated'] is True
+        assert result['revision'] == skill['revision']
+        assert result['capabilities']['execution_available'] is False
+        assert query.variables['_skill_execution_available'] is False
+        assert await manager.get_tool_by_source(_CONTEXT, 'activate', source_ref) is not None
+        assert await manager.get_tool_by_source(_CONTEXT, 'register_skill', source_ref) is None
+
+        ap.box_service.is_workspace_sandbox_available.return_value = True
+        assert await manager.get_tool_by_source(_CONTEXT, 'register_skill', source_ref) is not None
+
+    @pytest.mark.asyncio
     async def test_activate_returns_instructions_and_registers_skill(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
             ACTIVATE_SKILL_TOOL_NAME,

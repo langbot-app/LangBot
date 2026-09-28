@@ -352,7 +352,7 @@ class NativeToolLoader(loader.ToolLoader):
 
         # All exec calls (with or without skills) go through the same container
         # via execute_tool. Skills are mounted at /workspace/.skills/{name}/
-        # via extra_mounts built by BoxService.
+        # via read-only mounts composed by the Core skill loader.
         result = await self.ap.box_service.execute_tool(
             parameters,
             query,

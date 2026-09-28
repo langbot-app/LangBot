@@ -376,7 +376,8 @@ class ToolManager:
         if source in {'builtin', 'native'}:
             return await self.native_tool_loader.get_tool(name)
         if source == 'skill':
-            return await self.skill_tool_loader.get_tool(name)
+            sandbox_available = await self._workspace_sandbox_available(context)
+            return await self.skill_tool_loader.get_tool(name, sandbox_available=sandbox_available)
         if source == 'plugin':
             if not source_id:
                 return None
@@ -512,11 +513,11 @@ class ToolManager:
                 telemetry_source = 'native'
                 exists = await loader.has_tool(name)
             elif source == 'skill':
-                if not sandbox_available:
+                if not sandbox_available and self.skill_tool_loader.is_sandbox_tool(name):
                     raise ToolNotFoundError(name)
                 loader = self.skill_tool_loader
                 telemetry_source = 'skill'
-                exists = await loader.has_tool(name)
+                exists = await loader.has_tool(name, sandbox_available=sandbox_available)
             elif source == 'plugin' and source_id:
                 loader = self.plugin_tool_loader
                 telemetry_source = 'plugin'
@@ -536,6 +537,9 @@ class ToolManager:
 
             if not exists:
                 raise ToolNotFoundError(name)
+
+            if source == 'skill' and isinstance(getattr(query, 'variables', None), dict):
+                query.variables['_skill_execution_available'] = sandbox_available
 
             async def invoke_selected_tool() -> typing.Any:
                 if source == 'mcp':
