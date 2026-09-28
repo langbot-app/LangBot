@@ -3123,5 +3123,13 @@ const zhHans = {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',
   },
+  beta_banner: {
+    message: '当前环境正在进行 Beta 测试，服务稳定性不受保证，建议优先选择',
+    cloud_link: '独立环境版 LangBot Cloud',
+    or: '或',
+    oss_link: '自部署开源版本',
+    period: '。',
+    dismiss: '关闭横幅',
+  },
 };
 export default zhHans;

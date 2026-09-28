@@ -3327,5 +3327,13 @@ const jaJP = {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',
   },
+  beta_banner: {
+    message: 'この環境はベータテスト中です。サービスの安定性は保証されません。',
+    cloud_link: 'LangBot Cloud（専用環境）',
+    or: 'または',
+    oss_link: 'セルフホスト版',
+    period: 'をご検討ください。',
+    dismiss: '閉じる',
+  },
 };
 export default jaJP;
