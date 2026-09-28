@@ -593,6 +593,31 @@ async def test_host_file_api_falls_back_to_tenant_box_when_openat_is_unavailable
 
 
 @pytest.mark.asyncio
+async def test_box_workspace_file_script_uses_python3_not_unversioned_python(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            _tenant_workspace=Mock(return_value=tmpdir),
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': '{"ok": true, "content": "box-owned", "truncated": false}',
+                    'stderr': '',
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+        monkeypatch.setattr(native_loader, '_SECURE_HOST_FILE_OPS_AVAILABLE', False)
+
+        await loader.invoke_tool('read', {'path': '/workspace/file.txt'}, _make_query())
+
+        command = box_service.execute_tool.await_args.args[0]['command']
+        # The generated script body uses f-strings, unsupported on an unversioned Python 2.
+        assert command.startswith("python3 - <<'PY'\n")
+
+
+@pytest.mark.asyncio
 async def test_box_workspace_edit_script_bounds_file_read_and_replacement(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         box_service = SimpleNamespace(

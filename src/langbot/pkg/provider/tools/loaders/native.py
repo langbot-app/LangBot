@@ -754,9 +754,11 @@ class NativeToolLoader(loader.ToolLoader):
         return f'{str(base).rstrip("/")}/{relative}'
 
     async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
+        # The generated script uses f-strings, so it needs an explicit python3, not an
+        # unversioned `python` that can resolve to Python 2 on the sandbox host/image.
         result = await self.ap.box_service.execute_tool(
             {
-                'command': f"python - <<'PY'\n{script}\nPY",
+                'command': f"python3 - <<'PY'\n{script}\nPY",
                 'timeout_sec': 30,
             },
             query,
