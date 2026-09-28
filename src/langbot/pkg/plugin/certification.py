@@ -199,7 +199,7 @@ def decide_plugin_admission(
 
     mode = DeploymentMode(deployment)
     certificate = facts.certificate
-    if certificate.is_valid_shared_runtime:
+    if mode is DeploymentMode.CLOUD and certificate.is_valid_shared_runtime:
         return PluginAdmissionDecision(
             AdmissionDisposition.SHARED_ELIGIBLE,
             AdmissionCode.SHARED_ELIGIBLE,
@@ -210,6 +210,15 @@ def decide_plugin_admission(
         return PluginAdmissionDecision(
             AdmissionDisposition.DEDICATED_ALLOWED,
             AdmissionCode.UNSIGNED_DEDICATED if mode is DeploymentMode.CLOUD else AdmissionCode.OSS_LEGACY_DEDICATED,
+            DEDICATED_RUNTIME,
+        )
+
+    # OSS has no cross-tenant shared placement; a verified claim stays dedicated
+    # there without inventing a dedicated certification tier.
+    if mode is DeploymentMode.OSS and certificate.is_valid_shared_runtime:
+        return PluginAdmissionDecision(
+            AdmissionDisposition.DEDICATED_ALLOWED,
+            AdmissionCode.OSS_UNTRUSTED_DEDICATED,
             DEDICATED_RUNTIME,
         )
 

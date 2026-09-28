@@ -749,6 +749,7 @@ class TestSetPluginConfig:
         """Config changes are fenced by a new runtime revision."""
         get_connector_module()
         connector = create_mock_connector()
+        connector.ap.deployment.mode = 'cloud'
 
         configure_handler(connector, AsyncMock())
         connector.handler.register_installation_binding = Mock()

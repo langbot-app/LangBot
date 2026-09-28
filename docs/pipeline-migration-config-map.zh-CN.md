@@ -26,7 +26,7 @@
 
 ## 插件版本要求
 
-以下是迁移器要求的已发布 Certified Plugin 版本。旧版本即使名称相同，也不能作为当前 Cloud 迁移能力的证明。
+以下是迁移器要求的插件最低版本，不是认证版本清单。已发布的专属运行版本不等于已认证可跨工作区共享；旧版本即使名称相同，也不能作为当前 Cloud 迁移能力的证明。认证须由精确制品的有效签名及 `shared-runtime-v1`、`stateless-v1` 声明证明。
 
 - `local-agent` → `LocalAgent` **0.1.10**。
 - `dify-service-api` → `DifyAgent` **0.1.10**。

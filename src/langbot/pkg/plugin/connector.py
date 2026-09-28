@@ -345,8 +345,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             artifact_digest=setting.artifact_digest,
         )
 
-    @staticmethod
-    def _execution_mode_from_setting(setting: persistence_plugin.PluginSetting) -> PluginExecutionMode:
+    def _execution_mode_from_setting(self, setting: persistence_plugin.PluginSetting) -> PluginExecutionMode:
+        if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+            return PluginExecutionMode.DEDICATED
         return execution_mode_for_persisted_installation(
             artifact_digest=setting.artifact_digest,
             install_info=setting.install_info,

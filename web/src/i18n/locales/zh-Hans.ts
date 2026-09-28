@@ -2175,7 +2175,8 @@ const zhHans = {
     totpRecoveryCodesRegenerated: '已生成新的恢复代码',
     totpStatusDisabled: '未启用',
     totpCodesRemaining: '剩余 {{count}} 个恢复代码',
-    totpManagerSectionDesc: '所有者和管理员可以查看并重置本工作区账户的两步验证。',
+    totpManagerSectionDesc:
+      '所有者和管理员可以查看并重置本工作区账户的两步验证。',
     revokeTotp: '重新绑定',
     totpAdminResetTitle: '重新绑定 {{user}} 的两步验证',
     totpAdminResetDesc:

@@ -17,7 +17,10 @@ metadata.
 
 ## Trusted issuer configuration
 
-Configure the non-secret Ed25519 public-key ring in `data/config.yaml`:
+Hosted Cloud provisions the non-secret Ed25519 issuer public-key ring out of
+band. Key IDs must match the SDK envelope; values are base64 public keys, never
+private signing keys. Invalid configuration fails closed; keep old issuer keys
+through rotation while their signed archives remain installed.
 
 ```yaml
 plugin:
@@ -39,10 +42,11 @@ PLUGIN__CERTIFICATION__TRUSTED_PUBLIC_KEYS_JSON='{"ed25519:issuer":"<base64>"}'
 ```
 
 An **empty** ring is a supported state, not a misconfiguration. OSS defaults to
-it, so a self-hosted instance that has not provisioned any issuer key still
-installs packages (see the admission matrix below). Configure the ring to grant
-the shared-runtime profile; leave it empty to keep every package on the
-dedicated profile.
+it and supports one Workspace; configuring certification keys on OSS is not a
+supported way to enable cross-tenant sharing. Cloud provisions the ring to grant
+shared placement only to eligible v2 artifacts. Certification means eligibility
+for Cloud cross-tenant use of the same Worker and the same plugin/component
+singleton, never a dedicated certificate or intermediate trust tier.
 
 ## Admission matrix
 
@@ -52,21 +56,20 @@ dedicated profile.
 | Cloud | no signature | any | install on dedicated worker, without shared eligibility |
 | Cloud | malformed, untrusted, invalid, or non-shared declaration | any | reject before storage with `CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID`; do not treat a broken signature as unsigned |
 | OSS | absent legacy envelope | any | admitted to the dedicated profile |
-| OSS | valid envelope declaring `shared-runtime-v1` + `stateless-v1` | any | selected shared singleton profile |
-| OSS | declaration signed by a **key this instance resolves** | false | reject with `CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` |
-| OSS | declaration signed by a **key this instance resolves** | true | admitted to the dedicated profile |
+| OSS | valid envelope declaring `shared-runtime-v1` + `stateless-v1` | any | dedicated only; OSS has no cross-tenant shared placement |
+| OSS | invalid declaration referencing a **key this instance resolves** | false | reject with `CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` |
+| OSS | invalid declaration referencing a **key this instance resolves** | true | admitted to the dedicated profile |
 | OSS | declaration this instance **cannot resolve** (empty ring) | any | admitted to the dedicated profile |
 
-The OSS row that matters for availability is the last one. Marketplace
-packages are signed by the marketplace issuer and declare
-`shared-runtime-v1`, while OSS ships an empty key ring by default. Treating that
-as a rejection made every certified marketplace package uninstallable with
-`CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED` before artifact storage. Because the
-certificate is signed by an issuer the instance does not declare trusted, no
-shared-runtime privilege may be granted, so admission degrades the install to
-the existing `oss_dev` dedicated profile and records
-`CERTIFIED_PLUGIN_OSS_UNTRUSTED_DEDICATED`. This is not an escalation: it
-withholds the shared profile rather than granting it.
+There is no dedicated certification, dedicated signature, or intermediate
+certification trust tier. Advisory review is an internal prerequisite, not an
+installation trust status. An `issued` marketplace badge, source candidate,
+matching version, or shared artifact/dependency tree alone does not prove Cloud
+admission or Worker sharing. Compare the downloaded archive's ZIP comment,
+normalized digest and signed claims with the public version record and deployed
+Core trust-key ring. Confirm two Workspace bindings share one Worker PID, one
+plugin object, and one object for each declared component before claiming live
+cross-tenant sharing.
 
 A declaration is "resolvable" only when its `key_id` is present in the
 configured ring. A parseable declaration from a resolved key that fails
@@ -78,7 +81,11 @@ resolved certificate identity are treated as untrusted and stay dedicated.
 install request carries boolean `true`. The local upload endpoint accepts the
 multipart field `administrator_force=true`; GitHub and marketplace install
 payloads carry the same field. The existing resource-manage authorization fence
-protects those endpoints. A force never creates a Cloud dedicated fallback.
+protects those endpoints. A force never creates a Cloud dedicated fallback or
+certifies an invalid signature. A legacy v1 certificate may verify
+cryptographically, but without a signed stateless component claim it is
+rejected in Cloud; an old marketplace `issued` badge alone grants no placement.
+Unsigned Cloud archives are the dedicated fallback.
 
 ## Runtime and logs
 

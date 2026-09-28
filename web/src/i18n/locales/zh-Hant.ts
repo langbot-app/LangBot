@@ -2172,7 +2172,8 @@ const zhHant = {
     totpRecoveryCodesRegenerated: '已產生新的恢復代碼',
     totpStatusDisabled: '未啟用',
     totpCodesRemaining: '剩餘 {{count}} 個恢復代碼',
-    totpManagerSectionDesc: '擁有者與管理員可以檢視並重設本工作區帳號的兩步驗證。',
+    totpManagerSectionDesc:
+      '擁有者與管理員可以檢視並重設本工作區帳號的兩步驗證。',
     revokeTotp: '重新綁定',
     totpAdminResetTitle: '重新綁定 {{user}} 的兩步驗證',
     totpAdminResetDesc:

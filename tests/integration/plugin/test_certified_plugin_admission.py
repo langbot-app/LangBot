@@ -30,7 +30,7 @@ pytestmark = pytest.mark.integration
     [
         ('cloud', 'signed_shared', False, 'shared-runtime-v1'),
         ('cloud', 'legacy', False, 'dedicated'),
-        ('oss', 'signed_shared', False, 'shared-runtime-v1'),
+        ('oss', 'signed_shared', False, 'dedicated'),
         ('oss', 'legacy', False, 'dedicated'),
         ('oss', 'forged_shared', True, 'dedicated'),
     ],
