@@ -205,10 +205,10 @@ class SystemRouterGroup(group.RouterGroup):
             diagnostics = getattr(self.ap, 'diagnostics', None)
             if diagnostics is not None:
                 is_beta = getattr(diagnostics, 'beta', False)
-            
+
             # Detect Cloud deployment mode
             is_cloud = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
-            
+
             return self.success(
                 data={
                     'version': constants.semantic_version,
