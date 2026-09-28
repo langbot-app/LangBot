@@ -566,6 +566,8 @@ export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
   edition: string;
+  beta: boolean;
+  deployment_mode: 'cloud' | 'oss';
   /** Independent instance-level gate for local stdio MCP transports. */
   mcp_stdio_enabled: boolean;
   cloud_service_url: string;

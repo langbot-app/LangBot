@@ -3181,6 +3181,14 @@ const enUS = {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',
   },
+  beta_banner: {
+    message: 'This environment is in Beta testing. Service stability is not guaranteed. Consider using',
+    cloud_link: 'LangBot Cloud (dedicated environment)',
+    or: 'or',
+    oss_link: 'self-hosted open-source version',
+    period: '.',
+    dismiss: 'Dismiss',
+  },
 };
 
 export default enUS;
