@@ -503,8 +503,10 @@ class PluginsRouterGroup(group.RouterGroup):
                 uuid.UUID(installation_uuid)
                 payload = await quart.request.get_json()
                 if not isinstance(payload, dict) or set(payload) != {
-                    'expected_runtime_revision', 'expected_version',
-                    'expected_artifact_digest', 'expected_normalized_digest',
+                    'expected_runtime_revision',
+                    'expected_version',
+                    'expected_artifact_digest',
+                    'expected_normalized_digest',
                 }:
                     raise ValueError('Exact revision, version and both artifact digests are required')
                 revision = payload['expected_runtime_revision']

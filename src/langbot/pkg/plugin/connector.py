@@ -2025,9 +2025,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     ) -> dict[str, Any]:
         """Remove only the exact certified installation observed by the caller.
 
-        The tenant row lock serializes upgrades and replacement installs through
-        their persisted revision change. Keep it across Runtime removal and the
-        guarded delete so no replacement can be installed between those steps.
+        Lock the desired-state row while checking its identity and deleting it.
+        Runtime removal is external to the database transaction: a failed commit
+        can leave the row intact after the Runtime has already removed the binding.
+        Reconciliation must then restore the desired state.
         """
         if self.runtime_profile == 'oss_dev':
             raise ValueError('Conditional uninstall requires the durable plugin runtime')
@@ -2044,10 +2045,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 setting_table.install_info['_certification']['normalized_digest'].as_string()
                 == expected_normalized_digest
             )
-            & (
-                setting_table.install_info['_certification']['artifact_digest'].as_string()
-                == expected_artifact_digest
-            )
+            & (setting_table.install_info['_certification']['artifact_digest'].as_string() == expected_artifact_digest)
         )
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         if not callable(tenant_uow):
@@ -2118,15 +2116,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
                     pass
         await runtime_handler.remove_plugin_installation(binding)
-        runtime_handler.unregister_installation_binding(binding)
 
         async def delete(execute):
-            await execute(
+            deleted = await execute(
                 sqlalchemy.delete(persistence_plugin.PluginSetting)
                 .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
                 .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
                 .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                .where(persistence_plugin.PluginSetting.installation_uuid == binding.installation_uuid)
+                .where(persistence_plugin.PluginSetting.runtime_revision == binding.runtime_revision)
+                .where(persistence_plugin.PluginSetting.artifact_digest == binding.artifact_digest)
             )
+            if deleted.rowcount != 1:
+                raise ValueError('Installation changed before plugin removal')
             await self._delete_artifact_if_unreferenced(
                 execution_context,
                 setting.artifact_digest,
@@ -2147,6 +2149,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         else:
             await delete(self.ap.persistence_mgr.execute_async)
 
+        runtime_handler.unregister_installation_binding(binding)
         self._known_desired_states.pop(binding.installation_uuid, None)
         workspace_installations = self._workspace_installations.get(binding.workspace_uuid)
         if workspace_installations is not None:
