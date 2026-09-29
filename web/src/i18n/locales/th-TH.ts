@@ -3251,5 +3251,13 @@ const thTH = {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',
   },
+  beta_banner: {
+    message: 'สภาพแวดล้อมนี้อยู่ระหว่างการทดสอบเบต้า ไม่รับประกันความเสถียรของบริการ โปรดพิจารณาใช้',
+    cloud_link: 'LangBot Cloud (สภาพแวดล้อมเฉพาะ)',
+    or: 'หรือ',
+    oss_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
+    period: '',
+    dismiss: 'ปิด',
+  },
 };
 export default thTH;

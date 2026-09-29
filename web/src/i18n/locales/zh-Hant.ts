@@ -3125,5 +3125,13 @@ const zhHant = {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',
   },
+  beta_banner: {
+    message: '此環境正處於 Beta 測試階段，服務穩定性尚未保證。建議使用',
+    cloud_link: 'LangBot Cloud（獨立環境）',
+    or: '或',
+    oss_link: '自行部署的開源版本',
+    period: '。',
+    dismiss: '關閉',
+  },
 };
 export default zhHant;

@@ -3299,5 +3299,13 @@ const viVN = {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
   },
+  beta_banner: {
+    message: 'Môi trường này đang trong giai đoạn thử nghiệm beta. Độ ổn định của dịch vụ không được đảm bảo. Hãy cân nhắc sử dụng',
+    cloud_link: 'LangBot Cloud (môi trường riêng)',
+    or: 'hoặc',
+    oss_link: 'phiên bản mã nguồn mở tự lưu trữ',
+    period: '.',
+    dismiss: 'Đóng',
+  },
 };
 export default viVN;
