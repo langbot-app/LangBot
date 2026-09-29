@@ -248,7 +248,15 @@ export default function PluginSpaceUploadDialog({
         commit_message: syncGithub ? commitMessage.trim() : '',
         manifest_overrides: buildOverrides(),
       });
-      toast.success(t('plugins.spaceUpload.uploadSuccess'));
+      const spaceBase =
+        config?.cloud_service_url || 'https://space.langbot.app';
+      toast.success(t('plugins.spaceUpload.uploadSuccess'), {
+        action: {
+          label: t('plugins.spaceUpload.reviewOnSpace'),
+          onClick: () =>
+            window.open(`${spaceBase}/market`, '_blank', 'noopener'),
+        },
+      });
       onUploaded?.();
       onOpenChange(false);
     } catch (error) {
@@ -270,11 +278,11 @@ export default function PluginSpaceUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      {/* Compact card (~36rem) so it no longer feels oversized while still
+      {/* Compact card (~34rem) so it no longer feels oversized while still
           fitting the locale tabs. The base DialogContent applies
           `sm:max-w-lg` at the `sm` breakpoint, which would otherwise clamp the
           width back to 32rem, so the max-width must be set explicitly too. */}
-      <DialogContent className="w-[min(92vw,36rem)] max-w-[min(92vw,36rem)] sm:max-w-[36rem] max-h-[85vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] sm:max-w-[34rem] max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="size-4" />
