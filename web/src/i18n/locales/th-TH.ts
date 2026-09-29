@@ -1502,10 +1502,12 @@ const thTH = {
       commitMessage: 'ข้อความคอมมิต',
       syncOnly: 'ซิงค์ไปยัง GitHub เท่านั้น',
       gitSynced: 'ซิงค์ไปยัง GitHub แล้ว',
-      gitCommittedNoRemote: 'คอมมิตในเครื่องแล้ว แต่ยังไม่ได้ตั้งค่ารีโมตให้พุช',
+      gitCommittedNoRemote:
+        'คอมมิตในเครื่องแล้ว แต่ยังไม่ได้ตั้งค่ารีโมตให้พุช',
       gitNothing: 'ไม่มีสิ่งที่ต้องซิงค์',
       gitFailed: 'ซิงค์ Git ล้มเหลว: ',
       uploadSuccess: 'อัปโหลดปลั๊กอินไปยัง LangBot Space แล้ว',
+      reviewOnSpace: 'ส่งขอตรวจสอบบน LangBot Space',
       uploadFailed: 'อัปโหลดปลั๊กอินล้มเหลว: ',
       basicInfo: 'ข้อมูลพื้นฐาน',
       changeIcon: 'เปลี่ยนไอคอน',

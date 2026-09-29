@@ -1544,10 +1544,12 @@ const jaJP = {
       commitMessage: 'コミットメッセージ',
       syncOnly: 'GitHub にのみ同期',
       gitSynced: 'GitHub に同期しました',
-      gitCommittedNoRemote: 'ローカルにコミットしましたが、プッシュ先が未設定です',
+      gitCommittedNoRemote:
+        'ローカルにコミットしましたが、プッシュ先が未設定です',
       gitNothing: '同期する変更はありません',
       gitFailed: 'Git 同期に失敗しました：',
       uploadSuccess: 'プラグインを LangBot Space にアップロードしました',
+      reviewOnSpace: 'LangBot Space で審査を申請',
       uploadFailed: 'プラグインのアップロードに失敗しました：',
       basicInfo: '基本情報',
       changeIcon: 'アイコンを変更',

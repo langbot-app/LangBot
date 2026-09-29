@@ -1561,6 +1561,7 @@ const ruRU = {
       gitNothing: 'Нет изменений для синхронизации',
       gitFailed: 'Ошибка синхронизации Git: ',
       uploadSuccess: 'Плагин загружен в LangBot Space',
+      reviewOnSpace: 'Отправить на проверку в LangBot Space',
       uploadFailed: 'Не удалось загрузить плагин: ',
       basicInfo: 'Основная информация',
       changeIcon: 'Изменить иконку',

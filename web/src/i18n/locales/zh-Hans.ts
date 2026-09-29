@@ -1420,7 +1420,8 @@ const zhHans = {
     spaceUpload: {
       menuAction: '上传到 LangBot Space',
       title: '上传插件到 LangBot Space',
-      description: '构建正在调试的插件 {{author}}/{{name}} 并发布到 LangBot Space。',
+      description:
+        '构建正在调试的插件 {{author}}/{{name}} 并发布到 LangBot Space。',
       loadFailed: '加载插件上传信息失败',
       spaceNotConnected:
         '当前工作区未绑定 LangBot Space 账号，请先绑定后再上传。',
@@ -1444,6 +1445,7 @@ const zhHans = {
       gitNothing: '没有需要同步的变更',
       gitFailed: 'Git 同步失败：',
       uploadSuccess: '插件已上传到 LangBot Space',
+      reviewOnSpace: '前往 LangBot Space 提交审核',
       uploadFailed: '上传插件失败：',
       basicInfo: '基本信息',
       changeIcon: '更换图标',

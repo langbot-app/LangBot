@@ -1529,6 +1529,7 @@ const viVN = {
       gitNothing: 'Không có thay đổi để đồng bộ',
       gitFailed: 'Đồng bộ Git thất bại: ',
       uploadSuccess: 'Đã tải plugin lên LangBot Space',
+      reviewOnSpace: 'Gửi duyệt trên LangBot Space',
       uploadFailed: 'Tải plugin lên thất bại: ',
       basicInfo: 'Thông tin cơ bản',
       changeIcon: 'Đổi biểu tượng',

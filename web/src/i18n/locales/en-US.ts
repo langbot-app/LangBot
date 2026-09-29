@@ -1535,6 +1535,7 @@ const enUS = {
       gitNothing: 'No changes to synchronise',
       gitFailed: 'Git sync failed: ',
       uploadSuccess: 'Plugin uploaded to LangBot Space',
+      reviewOnSpace: 'Submit for review on LangBot Space',
       uploadFailed: 'Failed to upload plugin: ',
       basicInfo: 'Basic information',
       changeIcon: 'Change icon',

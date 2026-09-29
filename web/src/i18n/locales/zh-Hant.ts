@@ -1418,9 +1418,11 @@ const zhHant = {
     spaceUpload: {
       menuAction: '上傳到 LangBot Space',
       title: '上傳插件到 LangBot Space',
-      description: '建置正在偵錯的插件 {{author}}/{{name}} 並發佈到 LangBot Space。',
+      description:
+        '建置正在偵錯的插件 {{author}}/{{name}} 並發佈到 LangBot Space。',
       loadFailed: '載入插件上傳資訊失敗',
-      spaceNotConnected: '目前工作區未綁定 LangBot Space 帳號，請先綁定後再上傳。',
+      spaceNotConnected:
+        '目前工作區未綁定 LangBot Space 帳號，請先綁定後再上傳。',
       label: '名稱',
       version: '版本',
       pluginDescription: '描述',
@@ -1441,6 +1443,7 @@ const zhHant = {
       gitNothing: '沒有需要同步的變更',
       gitFailed: 'Git 同步失敗：',
       uploadSuccess: '插件已上傳到 LangBot Space',
+      reviewOnSpace: '前往 LangBot Space 提交審核',
       uploadFailed: '上傳插件失敗：',
       basicInfo: '基本資訊',
       changeIcon: '更換圖示',

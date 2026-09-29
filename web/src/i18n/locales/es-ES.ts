@@ -1565,6 +1565,7 @@ const esES = {
       gitNothing: 'No hay cambios que sincronizar',
       gitFailed: 'Falló la sincronización con Git: ',
       uploadSuccess: 'Plugin subido a LangBot Space',
+      reviewOnSpace: 'Enviar a revisión en LangBot Space',
       uploadFailed: 'No se pudo subir el plugin: ',
       basicInfo: 'Información básica',
       changeIcon: 'Cambiar icono',
