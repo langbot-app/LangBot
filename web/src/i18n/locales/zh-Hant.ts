@@ -1428,7 +1428,7 @@ const zhHant = {
       changelog: '更新說明',
       syncGithub: '同步到 GitHub',
       syncGithubHint:
-        '提交並推送插件工作目錄。預設沿用本地 git 設定；也可在下方填寫倉庫位址與 token 覆寫。',
+        '提交並推送插件工作目錄。預設沿用本地 git 設定；也可在下方填寫倉庫位址與 token 覆寫。填寫 token 且 GitHub 倉庫尚不存在時，會自動建立該倉庫。',
       repoUrl: '倉庫位址（可選）',
       repoUrlHint: '留空則沿用本地 git 的 origin。',
       token: '存取權杖（可選）',

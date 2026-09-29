@@ -534,8 +534,17 @@ class PluginsRouterGroup(group.RouterGroup):
                     plugin_name,
                     manifest_overrides=overrides,
                 )
-            except ValueError as exc:
-                return self.http_status(400, -1, str(exc))
+            except Exception as exc:
+                self.ap.logger.warning(
+                    'Building package for %s/%s failed: %s', author, plugin_name, exc
+                )
+                message = str(exc)
+                if 'build_plugin_package' in message and 'not found' in message.lower():
+                    message = (
+                        'The debugging plugin process does not support packaging yet. '
+                        'Update the LangBot plugin SDK used by `lbp run` and restart it.'
+                    )
+                return self.http_status(400, -1, message)
 
             package_bytes = package_result.get('package') or b''
             if not package_bytes:

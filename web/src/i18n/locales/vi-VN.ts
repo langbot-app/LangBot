@@ -1515,7 +1515,7 @@ const viVN = {
       changelog: 'Nhật ký thay đổi',
       syncGithub: 'Đồng bộ lên GitHub',
       syncGithubHint:
-        'Commit và push thư mục làm việc của plugin. Mặc định dùng cấu hình git cục bộ; URL kho và token bên dưới có thể ghi đè.',
+        'Commit và push thư mục làm việc của plugin. Mặc định dùng cấu hình git cục bộ; URL kho và token bên dưới có thể ghi đè. Nếu có token và kho GitHub chưa tồn tại, hệ thống sẽ tự tạo.',
       repoUrl: 'URL kho (tùy chọn)',
       repoUrlHint: 'Để trống để dùng origin git cục bộ.',
       token: 'Token truy cập (tùy chọn)',

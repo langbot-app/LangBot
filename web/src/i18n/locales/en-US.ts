@@ -1521,7 +1521,7 @@ const enUS = {
       changelog: 'Changelog',
       syncGithub: 'Sync to GitHub',
       syncGithubHint:
-        'Commit and push the plugin working directory. By default the local git configuration is reused; a repository URL and token below can override it.',
+        'Commit and push the plugin working directory. By default the local git configuration is reused; a repository URL and token below can override it. When a token is provided and the GitHub repository does not exist yet, it is created automatically.',
       repoUrl: 'Repository URL (optional)',
       repoUrlHint: 'Leave empty to reuse the local git origin.',
       token: 'Access token (optional)',

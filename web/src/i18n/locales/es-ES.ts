@@ -1551,7 +1551,7 @@ const esES = {
       changelog: 'Registro de cambios',
       syncGithub: 'Sincronizar con GitHub',
       syncGithubHint:
-        'Confirma y sube el directorio de trabajo del plugin. Por defecto se reutiliza la configuración local de git; la URL y el token de abajo pueden sobrescribirla.',
+        'Confirma y sube el directorio de trabajo del plugin. Por defecto se reutiliza la configuración local de git; la URL y el token de abajo pueden sobrescribirla. Si indicas un token y el repositorio de GitHub no existe, se crea automáticamente.',
       repoUrl: 'URL del repositorio (opcional)',
       repoUrlHint: 'Déjala vacía para reutilizar el origin local de git.',
       token: 'Token de acceso (opcional)',

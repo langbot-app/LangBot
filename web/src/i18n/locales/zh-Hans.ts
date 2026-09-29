@@ -1431,7 +1431,7 @@ const zhHans = {
       changelog: '更新说明',
       syncGithub: '同步到 GitHub',
       syncGithubHint:
-        '提交并推送插件工作目录。默认复用本地 git 配置；也可在下方填写仓库地址与 token 覆盖。',
+        '提交并推送插件工作目录。默认复用本地 git 配置；也可在下方填写仓库地址与 token 覆盖。填写 token 且 GitHub 仓库尚不存在时，会自动创建该仓库。',
       repoUrl: '仓库地址（可选）',
       repoUrlHint: '留空则复用本地 git 的 origin。',
       token: '访问令牌（可选）',

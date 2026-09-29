@@ -260,7 +260,8 @@ export default function PluginSpaceUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      {/* Fixed width so toggling the GitHub section never resizes the dialog. */}
+      <DialogContent className="w-[min(96vw,54rem)] max-w-none max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="size-4" />
@@ -363,9 +364,13 @@ export default function PluginSpaceUploadDialog({
             <div className="space-y-2">
               <Label>{t('plugins.spaceUpload.basicInfo')}</Label>
               <Tabs value={activeLocale} onValueChange={setActiveLocale}>
-                <TabsList className="flex-wrap h-auto">
+                <TabsList className="flex-nowrap w-full justify-start overflow-x-auto h-auto">
                   {LOCALES.map((locale) => (
-                    <TabsTrigger key={locale.code} value={locale.code}>
+                    <TabsTrigger
+                      key={locale.code}
+                      value={locale.code}
+                      className="flex-shrink-0 whitespace-nowrap"
+                    >
                       {locale.label}
                     </TabsTrigger>
                   ))}
