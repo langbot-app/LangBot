@@ -58,6 +58,7 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'plugin.install.marketplace',
     'plugin.install.local',
     'plugin.upgrade',
+    'plugin.space_upload',
     'plugin.get',
     'plugin.list',
     'plugin.config.get',

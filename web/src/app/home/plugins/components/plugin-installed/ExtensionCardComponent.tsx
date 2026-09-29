@@ -11,6 +11,7 @@ import {
   Server,
   Sparkles,
   Puzzle,
+  Upload,
 } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { useAuthenticatedPluginIcon } from '@/hooks/useAuthenticatedPluginResource';
@@ -28,6 +29,8 @@ type ExtensionCardComponentProps = {
   onCardClick: () => void;
   onDeleteClick: (cardVO: ExtensionCardVO) => void;
   onUpgradeClick?: (cardVO: ExtensionCardVO) => void;
+  /** Upload a debug-connected plugin to LangBot Space. */
+  onUploadToSpace?: (cardVO: ExtensionCardVO) => void;
 };
 
 export default function ExtensionCardComponent({
@@ -35,6 +38,7 @@ export default function ExtensionCardComponent({
   onCardClick,
   onDeleteClick,
   onUpgradeClick,
+  onUploadToSpace,
 }: ExtensionCardComponentProps) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -272,6 +276,19 @@ export default function ExtensionCardComponent({
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                  {cardVO.type === 'plugin' && cardVO.debug && (
+                    <DropdownMenuItem
+                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUploadToSpace?.(cardVO);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{t('plugins.spaceUpload.menuAction')}</span>
+                    </DropdownMenuItem>
+                  )}
                   {cardVO.type === 'plugin' &&
                     cardVO.install_source === 'marketplace' && (
                       <DropdownMenuItem

@@ -3245,6 +3245,65 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
+    async def get_plugin_package(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        *,
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a ``.lbpkg`` from a debug plugin's live source tree.
+
+        The Runtime returns the package over the file-transfer channel; the
+        bytes are read back here so callers receive the package inline.
+        """
+        result = await self.call_action(
+            _langbot_to_runtime_action('BUILD_PLUGIN_PACKAGE', 'build_plugin_package'),
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'manifest_overrides': manifest_overrides or {},
+            },
+            timeout=300,
+        )
+        package_file_key = result.get('package_file_key')
+        package_bytes = b''
+        if package_file_key:
+            package_bytes = await self.read_local_file(package_file_key)
+            await self.delete_local_file(package_file_key)
+        return {
+            'package': package_bytes,
+            'filename': result.get('filename', ''),
+            'metadata': result.get('metadata', {}),
+            'manifest': result.get('manifest', {}),
+        }
+
+    async def git_sync_plugin(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        *,
+        repo_url: str = '',
+        token: str = '',
+        branch: str = '',
+        commit_message: str = '',
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Commit and push a debug plugin's working directory to GitHub."""
+        return await self.call_action(
+            _langbot_to_runtime_action('GIT_SYNC_PLUGIN', 'git_sync_plugin'),
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'repo_url': repo_url,
+                'token': token,
+                'branch': branch,
+                'commit_message': commit_message,
+                'manifest_overrides': manifest_overrides or {},
+            },
+            timeout=300,
+        )
+
     # ================= RAG Capability Callers (LangBot -> Runtime) =================
 
     async def rag_ingest_document(
