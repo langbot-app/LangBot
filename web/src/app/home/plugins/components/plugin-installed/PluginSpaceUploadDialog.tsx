@@ -16,7 +16,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Upload, Github, AlertTriangle, ImagePlus } from 'lucide-react';
+import {
+  Loader2,
+  Upload,
+  Github,
+  AlertTriangle,
+  ImagePlus,
+} from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useAuthenticatedPluginIcon } from '@/hooks/useAuthenticatedPluginResource';
 import type {
@@ -215,12 +221,16 @@ export default function PluginSpaceUploadDialog({
       if (git?.pushed) {
         toast.success(t('plugins.spaceUpload.gitSynced'));
       } else if (git?.committed) {
-        toast.warning(git.message || t('plugins.spaceUpload.gitCommittedNoRemote'));
+        toast.warning(
+          git.message || t('plugins.spaceUpload.gitCommittedNoRemote'),
+        );
       } else {
         toast.info(git?.message || t('plugins.spaceUpload.gitNothing'));
       }
     } catch (error) {
-      toast.error(`${t('plugins.spaceUpload.gitFailed')} ${formatError(error)}`);
+      toast.error(
+        `${t('plugins.spaceUpload.gitFailed')} ${formatError(error)}`,
+      );
     } finally {
       setSyncing(false);
     }
@@ -260,8 +270,11 @@ export default function PluginSpaceUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      {/* Fixed width so toggling the GitHub section never resizes the dialog. */}
-      <DialogContent className="w-[min(96vw,54rem)] max-w-none max-h-[85vh] overflow-y-auto">
+      {/* Compact card (~36rem) so it no longer feels oversized while still
+          fitting the locale tabs. The base DialogContent applies
+          `sm:max-w-lg` at the `sm` breakpoint, which would otherwise clamp the
+          width back to 32rem, so the max-width must be set explicitly too. */}
+      <DialogContent className="w-[min(92vw,36rem)] max-w-[min(92vw,36rem)] sm:max-w-[36rem] max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="size-4" />
@@ -313,7 +326,9 @@ export default function PluginSpaceUploadDialog({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => handleIconSelect(e.target.files?.[0] ?? null)}
+                  onChange={(e) =>
+                    handleIconSelect(e.target.files?.[0] ?? null)
+                  }
                 />
                 <Button
                   type="button"
@@ -364,12 +379,12 @@ export default function PluginSpaceUploadDialog({
             <div className="space-y-2">
               <Label>{t('plugins.spaceUpload.basicInfo')}</Label>
               <Tabs value={activeLocale} onValueChange={setActiveLocale}>
-                <TabsList className="flex-nowrap w-full justify-start overflow-x-auto h-auto">
+                <TabsList className="h-auto w-full flex-wrap justify-start">
                   {LOCALES.map((locale) => (
                     <TabsTrigger
                       key={locale.code}
                       value={locale.code}
-                      className="flex-shrink-0 whitespace-nowrap"
+                      className="flex-none whitespace-nowrap"
                     >
                       {locale.label}
                     </TabsTrigger>
