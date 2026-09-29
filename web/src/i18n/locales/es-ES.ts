@@ -3384,7 +3384,8 @@ const esES = {
     invalidPage: 'Página de plugin no válida',
   },
   beta_banner: {
-    message: 'Este entorno está en fase beta. La estabilidad del servicio no está garantizada. Considera usar',
+    message:
+      'Este entorno está en fase beta. La estabilidad del servicio no está garantizada. Considera usar',
     cloud_link: 'LangBot Cloud (entorno dedicado)',
     or: 'o',
     oss_link: 'la versión de código abierto autoalojada',
