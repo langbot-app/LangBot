@@ -491,6 +491,57 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'task_id': wrapper.id})
 
         @self.route(
+            '/installations/<installation_uuid>/conditional-uninstall',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(installation_uuid: str, request_context: RequestContext) -> str:
+            """Queue an exact-installation uninstall; check preconditions in the task."""
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
+            try:
+                uuid.UUID(installation_uuid)
+                payload = await quart.request.get_json()
+                if not isinstance(payload, dict) or set(payload) != {
+                    'expected_runtime_revision',
+                    'expected_version',
+                    'expected_artifact_digest',
+                    'expected_normalized_digest',
+                }:
+                    raise ValueError('Exact revision, version and both artifact digests are required')
+                revision = payload['expected_runtime_revision']
+                version = payload['expected_version']
+                digests = (payload['expected_artifact_digest'], payload['expected_normalized_digest'])
+                if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+                    raise ValueError('Invalid expected runtime revision')
+                if not isinstance(version, str) or not version:
+                    raise ValueError('Invalid expected version')
+                if any(not isinstance(d, str) or re.fullmatch(r'[0-9a-f]{64}', d) is None for d in digests):
+                    raise ValueError('Expected digests must be lowercase SHA-256')
+            except (ValueError, TypeError) as exc:
+                return self.http_status(400, -1, str(exc))
+            ctx = taskmgr.TaskContext.new()
+            wrapper = self.ap.task_mgr.create_user_task(
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.conditional_uninstall(
+                        installation_uuid=installation_uuid,
+                        expected_runtime_revision=revision,
+                        expected_version=version,
+                        expected_artifact_digest=digests[0],
+                        expected_normalized_digest=digests[1],
+                        task_context=ctx,
+                    ),
+                ),
+                kind='plugin-operation',
+                name=f'plugin-conditional-uninstall-{installation_uuid}',
+                label='Removing exact plugin installation',
+                context=ctx,
+                **self._task_scope(request_context),
+            )
+            return self.success(data={'task_id': wrapper.id})
+
+        @self.route(
             '/<author>/<plugin_name>/config',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
