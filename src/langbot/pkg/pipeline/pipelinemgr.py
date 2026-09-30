@@ -367,11 +367,15 @@ class RuntimePipeline:
             i += 1
 
     async def process_query(self, query: pipeline_query.Query):
+        from ..telemetry.execution import ingress
         from ..telemetry.platform import processing_mode
 
         token = processing_mode.set('pipeline')
         try:
-            return await self._process_query(query)
+            # Callers without a platform event (Webchat, HTTP API) still get one
+            # trace for the whole Pipeline lane; nested calls reuse the trace.
+            with ingress(self.ap, 'pipeline_done'):
+                return await self._process_query(query)
         finally:
             processing_mode.reset(token)
 

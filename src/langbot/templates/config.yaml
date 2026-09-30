@@ -429,3 +429,8 @@ space:
     # Optional telemetry is enabled by default. Set true to disable usage,
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
+    # Per-event execution traces: off | failures | sampled | all.
+    # 'sampled' keeps every failed run plus every N-th successful one
+    # (N is execution_trace_sample) and always keeps WebUI debug runs.
+    execution_trace: sampled
+    execution_trace_sample: 20

@@ -352,6 +352,20 @@ class RuntimeBot:
         """Return the selected event binding plus per-binding diagnostic steps."""
         return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
 
+    @staticmethod
+    def _route_ref(
+        binding: dict | None,
+        target_type: str | None = None,
+        target_uuid: str | None = None,
+    ) -> str:
+        """Code-defined route identity for telemetry; never a user-facing name."""
+        binding = binding or {}
+        kind = str(target_type or binding.get('target_type') or '').strip()
+        target = str(target_uuid or binding.get('target_uuid') or '').strip()
+        if not kind or not target:
+            return ''
+        return f'{kind}:{target}'[:160]
+
     async def _record_event_route_trace(
         self,
         *,
@@ -383,17 +397,19 @@ class RuntimeBot:
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
         if status in {'delivered', 'failed', 'discarded', 'not_matched'}:
+            from ..telemetry import trace as trace_mod
             from ..telemetry.execution import record
 
-            record(
-                getattr(self, 'ap', None),
-                getattr(self, 'execution_context', None),
-                family='event_route',
-                operation=event_type,
-                adapter=type(getattr(self, 'adapter', None)).__name__,
-                mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
-                outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
-            )
+            with trace_mod.scope(route_ref=self._route_ref(binding, target_type, target_uuid)):
+                record(
+                    getattr(self, 'ap', None),
+                    getattr(self, 'execution_context', None),
+                    family='event_route',
+                    operation=event_type,
+                    adapter=type(getattr(self, 'adapter', None)).__name__,
+                    mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
+                    outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
+                )
         return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
@@ -852,7 +868,19 @@ class RuntimeBot:
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
     ) -> None:
+        # One inbound event owns one execution trace; every stage recorded while
+        # it is handled (routing, runner, platform API calls) joins that trace.
+        from ..telemetry.execution import ingress
+
         event.bot_uuid = self.bot_entity.uuid
+        with ingress(getattr(self, 'ap', None), 'event_done'):
+            await self._handle_platform_event_body(event, adapter)
+
+    async def _handle_platform_event_body(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> None:
         from ..telemetry.execution import record
 
         record(
@@ -951,12 +979,15 @@ class RuntimeBot:
         )
         if target_type == 'discard':
             if isinstance(event, platform_events.MessageReceivedEvent):
-                await self._dispatch_eba_message_to_pipeline(
-                    event,
-                    adapter,
-                    pipeline_uuid=self.PIPELINE_DISCARD,
-                    routed_by_event_binding=True,
-                )
+                from ..telemetry import trace as trace_mod
+
+                with trace_mod.scope(route_ref=self._route_ref(event_binding)):
+                    await self._dispatch_eba_message_to_pipeline(
+                        event,
+                        adapter,
+                        pipeline_uuid=self.PIPELINE_DISCARD,
+                        routed_by_event_binding=True,
+                    )
                 return await self._record_event_route_trace(
                     event_type=event_type,
                     status='discarded',
@@ -984,12 +1015,17 @@ class RuntimeBot:
                     reason='Pipeline targets only support message events',
                     text=f'Event {event_type} ignored Pipeline target for non-message event',
                 )
-            await self._dispatch_eba_message_to_pipeline(
-                event,
-                adapter,
-                pipeline_uuid=event_binding.get('target_uuid'),
-                routed_by_event_binding=True,
-            )
+            from ..telemetry import trace as trace_mod
+
+            with trace_mod.scope(
+                route_ref=self._route_ref(event_binding, target_type, event_binding.get('target_uuid'))
+            ):
+                await self._dispatch_eba_message_to_pipeline(
+                    event,
+                    adapter,
+                    pipeline_uuid=event_binding.get('target_uuid'),
+                    routed_by_event_binding=True,
+                )
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='delivered',
@@ -1068,18 +1104,21 @@ class RuntimeBot:
         envelope = self._eba_event_to_agent_envelope(event, adapter)
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
+        from ..telemetry import trace as trace_mod
+
         try:
-            async for _ in self.ap.agent_run_orchestrator.run(
-                envelope,
-                binding,
-                adapter_context={
-                    '_delivery_adapter': adapter,
-                    '_platform_event': event,
-                    '_execution_context': self.execution_context,
-                },
-            ):
-                # Results are journaled by the orchestrator; platform sends require explicit actions.
-                pass
+            with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
+                async for _ in self.ap.agent_run_orchestrator.run(
+                    envelope,
+                    binding,
+                    adapter_context={
+                        '_delivery_adapter': adapter,
+                        '_platform_event': event,
+                        '_execution_context': self.execution_context,
+                    },
+                ):
+                    # Results are journaled by the orchestrator; platform sends require explicit actions.
+                    pass
         except Exception:
             return await self._record_event_route_trace(
                 event_type=event_type,

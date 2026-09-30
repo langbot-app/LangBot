@@ -37,6 +37,8 @@ from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
+from ...telemetry import trace as trace_mod
+from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
 
 
@@ -211,8 +213,14 @@ class AgentRunOrchestrator:
         terminal_reason: str | None = None
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
+        # A run reached without a platform ingress (WebUI debug, service API)
+        # owns its own chain; a run inside an ingress reuses that chain.
+        trace_binding: trace_mod.TraceBinding | None = None
+        run_token: typing.Any = None
 
         try:
+            trace_binding = trace_mod.bind()
+            run_token = trace_mod.set_run(run_id)
             await self.journal.create_run(
                 event=event,
                 binding=binding,
@@ -419,6 +427,9 @@ class AgentRunOrchestrator:
                 outcome=execution_outcome,
                 synthetic=event.source == 'webui',
             )
+            trace_mod.reset_run(run_token)
+            if trace_binding is not None and trace_mod.unbind_root(trace_binding):
+                close_execution_trace(self.ap, trace_binding.state, 'runner_done')
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
                 object.__delattr__(execution_query, '_box_binding')
