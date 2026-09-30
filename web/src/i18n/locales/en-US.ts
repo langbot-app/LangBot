@@ -1513,7 +1513,7 @@ const enUS = {
         'Build the debugging plugin {{author}}/{{name}} and publish it to LangBot Space.',
       loadFailed: 'Failed to load plugin upload information',
       spaceNotConnected:
-        'This Workspace is not bound to a LangBot Space account. Bind one before uploading.',
+        'This Workspace is not bound to a LangBot Account. Bind one before uploading.',
       label: 'Name',
       version: 'Version',
       pluginDescription: 'Description',

@@ -2172,9 +2172,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """Resolve the binding that owns a plugin, installed or debug-connected."""
 
         try:
-            return await self._target_binding(
-                author, plugin_name, require_enabled=False
-            )
+            return await self._target_binding(author, plugin_name, require_enabled=False)
         except ValueError as exc:
             if str(exc) == f'Plugin {author}/{plugin_name} is not installed in this Workspace':
                 binding = await self._debug_plugin_binding(author, plugin_name)

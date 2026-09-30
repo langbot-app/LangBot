@@ -1527,7 +1527,7 @@ const jaJP = {
         'デバッグ中のプラグイン {{author}}/{{name}} をビルドして LangBot Space に公開します。',
       loadFailed: 'プラグインのアップロード情報の読み込みに失敗しました',
       spaceNotConnected:
-        'このワークスペースは LangBot Space アカウントに連携されていません。先に連携してください。',
+        'このワークスペースは LangBot アカウントに連携されていません。先に連携してください。',
       label: '名前',
       version: 'バージョン',
       pluginDescription: '説明',

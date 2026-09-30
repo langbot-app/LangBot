@@ -432,9 +432,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 space_service = getattr(self.ap, 'space_service', None)
                 if user_service is None or space_service is None:
                     return None
-                owner = await user_service.get_workspace_owner(
-                    request_context.workspace_uuid
-                )
+                owner = await user_service.get_workspace_owner(request_context.workspace_uuid)
                 if owner is None:
                     return None
                 return await space_service.get_valid_access_token(owner.user)
@@ -458,9 +456,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 try:
                     info = await resolver(author, plugin_name)
                 except Exception:
-                    self.ap.logger.exception(
-                        'Failed to resolve plugin %s/%s for upload', author, plugin_name
-                    )
+                    self.ap.logger.exception('Failed to resolve plugin %s/%s for upload', author, plugin_name)
                     continue
                 if info:
                     return info
@@ -479,9 +475,7 @@ class PluginsRouterGroup(group.RouterGroup):
             if plugin is None:
                 return self.http_status(404, -1, 'plugin not found')
 
-            metadata = (
-                plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}) or {}
-            )
+            metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}) or {}
             access_token = await _space_access_token_for_workspace(request_context)
             return self.success(
                 data={
@@ -495,9 +489,9 @@ class PluginsRouterGroup(group.RouterGroup):
                         'repository': metadata.get('repository'),
                     },
                     'space_connected': bool(access_token),
-                    'cloud_service_url': self.ap.instance_config.data.get(
-                        'space', {}
-                    ).get('url', 'https://space.langbot.app'),
+                    'cloud_service_url': self.ap.instance_config.data.get('space', {}).get(
+                        'url', 'https://space.langbot.app'
+                    ),
                 }
             )
 
@@ -535,9 +529,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     manifest_overrides=overrides,
                 )
             except Exception as exc:
-                self.ap.logger.warning(
-                    'Building package for %s/%s failed: %s', author, plugin_name, exc
-                )
+                self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
                 message = str(exc)
                 if 'build_plugin_package' in message and 'not found' in message.lower():
                     message = (
@@ -562,9 +554,7 @@ class PluginsRouterGroup(group.RouterGroup):
                         manifest_overrides=overrides,
                     )
                 except Exception as exc:
-                    self.ap.logger.warning(
-                        'Git sync failed for %s/%s: %s', author, plugin_name, exc
-                    )
+                    self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
                     return self.http_status(400, -1, f'Git sync failed: {exc}')
 
             access_token = await _space_access_token_for_workspace(request_context)
@@ -625,9 +615,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     manifest_overrides=overrides,
                 )
             except Exception as exc:
-                self.ap.logger.warning(
-                    'Git sync failed for %s/%s: %s', author, plugin_name, exc
-                )
+                self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
                 return self.http_status(400, -1, str(exc))
 
             return self.success(data={'git': git_result})
