@@ -35,6 +35,10 @@ export interface PluginManifestOverrides {
   description?: string | I18nObject;
   version?: string;
   repository?: string;
+  /** Reassigns the published plugin author (publishes under a new identity). */
+  author?: string;
+  /** SPDX license identifier (e.g. MIT, Apache-2.0). */
+  license?: string;
   /** Archive-relative icon path (e.g. assets/icon.png). */
   icon?: string;
   /** A data URL of an uploaded replacement icon. */
@@ -51,6 +55,7 @@ export interface PluginSpaceUploadConfig {
     description?: I18nObject | string;
     version?: string;
     repository?: string;
+    license?: string;
   };
   space_connected: boolean;
   cloud_service_url: string;

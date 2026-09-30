@@ -56,6 +56,9 @@ export default function ExtensionCardComponent({
         : Puzzle;
   const iconSrc = cardVO.type === 'plugin' ? pluginIconURL : cardVO.iconURL;
   const showFallback = iconFailed || !iconSrc;
+  // Debug plugins can always be uploaded to LangBot Space; surface the same
+  // persistent red-dot reminder as an available plugin update.
+  const hasSpaceUpload = cardVO.type === 'plugin' && !!cardVO.debug;
 
   const getTypeLabel = (type: ExtensionType) => {
     switch (type) {
@@ -268,7 +271,7 @@ export default function ExtensionCardComponent({
                     <Button variant="ghost" size="icon">
                       <Ellipsis className="w-4 h-4" />
                     </Button>
-                    {cardVO.hasUpdate && (
+                    {(cardVO.hasUpdate || hasSpaceUpload) && (
                       <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-destructive rounded-full border-2 border-card"></div>
                     )}
                   </div>
@@ -276,7 +279,7 @@ export default function ExtensionCardComponent({
                 <DropdownMenuContent>
                   {cardVO.type === 'plugin' && cardVO.debug && (
                     <DropdownMenuItem
-                      className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      className="relative flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         onUploadToSpace?.(cardVO);
@@ -285,6 +288,8 @@ export default function ExtensionCardComponent({
                     >
                       <Upload className="w-4 h-4" />
                       <span>{t('plugins.spaceUpload.menuAction')}</span>
+                      {/* Persistent red-dot reminder, matching the update dot. */}
+                      <span className="ml-auto w-2 h-2 flex-shrink-0 rounded-full bg-destructive" />
                     </DropdownMenuItem>
                   )}
                   {cardVO.type === 'plugin' &&
