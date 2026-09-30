@@ -569,7 +569,7 @@ const PluginInstalledComponent = forwardRef<
         <PluginSpaceUploadDialog
           author={spaceUploadTarget.author}
           name={spaceUploadTarget.name}
-          open={spaceUploadTarget !== null}
+          open
           onOpenChange={(open) => {
             if (!open) setSpaceUploadTarget(null);
           }}
