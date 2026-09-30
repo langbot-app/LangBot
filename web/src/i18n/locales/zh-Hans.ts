@@ -1531,6 +1531,11 @@ const zhHans = {
     },
   },
   market: {
+    certifiedPlugin: '认证插件',
+    certificationTooltip:
+      '此版本已通过数据隔离与共享运行环境兼容性审核，插件包已签名。',
+    certificationLearnMore: '了解插件认证',
+
     runnerUsage: '运行器用途',
     runnerUsageAll: '全部',
     runnerUsageAgent: 'Agent / 流水线',

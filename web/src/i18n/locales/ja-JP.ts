@@ -1639,6 +1639,11 @@ const jaJP = {
     },
   },
   market: {
+    certifiedPlugin: '認証済みプラグイン',
+    certificationTooltip:
+      'このバージョンはデータ分離と共有実行環境との互換性の審査に合格し、パッケージに署名されています。',
+    certificationLearnMore: 'プラグイン認証について',
+
     runnerUsage: 'ランナーの用途',
     runnerUsageAll: 'すべて',
     runnerUsageAgent: 'Agent / パイプライン',

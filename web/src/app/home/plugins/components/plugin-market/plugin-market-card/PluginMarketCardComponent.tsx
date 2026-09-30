@@ -1,3 +1,4 @@
+import { CertifiedPluginBadge } from '@/components/market/CertifiedPluginBadge';
 import { PluginMarketCardVO } from './PluginMarketCardVO';
 import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -275,6 +276,9 @@ export default function PluginMarketCardComponent({
                     />
                     <span className="truncate">{typeLabel}</span>
                   </Badge>
+                )}
+                {cardVO.certificationStatus === 'issued' && (
+                  <CertifiedPluginBadge compact />
                 )}
               </div>
             </div>

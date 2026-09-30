@@ -1655,6 +1655,11 @@ const esES = {
     },
   },
   market: {
+    certifiedPlugin: 'Plugin certificado',
+    certificationTooltip:
+      'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',
+    certificationLearnMore: 'Acerca de la certificación',
+
     runnerUsage: 'Uso del ejecutor',
     runnerUsageAll: 'Todos',
     runnerUsageAgent: 'Agent / Flujo',

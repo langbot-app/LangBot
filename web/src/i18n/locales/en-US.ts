@@ -1624,6 +1624,11 @@ const enUS = {
     },
   },
   market: {
+    certifiedPlugin: 'Certified plugin',
+    certificationTooltip:
+      'This version has passed a review of data isolation and compatibility with shared runtimes, and its package is signed.',
+    certificationLearnMore: 'Learn about certification',
+
     runnerUsage: 'Runner usage',
     runnerUsageAll: 'All',
     runnerUsageAgent: 'Agent / Pipeline',

@@ -57,6 +57,7 @@ function pluginToVO(
     iconURL,
     githubURL: plugin.repository,
     version: plugin.latest_version,
+    certificationStatus: plugin.certification_status,
     components: plugin.components,
     tags: plugin.tags || [],
     type: plugin.type,

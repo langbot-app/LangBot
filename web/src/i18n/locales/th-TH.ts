@@ -1593,6 +1593,11 @@ const thTH = {
     },
   },
   market: {
+    certifiedPlugin: 'ปลั๊กอินที่ผ่านการรับรอง',
+    certificationTooltip:
+      'เวอร์ชันนี้ผ่านการตรวจสอบการแยกข้อมูลและความเข้ากันได้กับสภาพแวดล้อมรันร่วมกัน และแพ็กเกจได้รับการลงนามแล้ว',
+    certificationLearnMore: 'เกี่ยวกับการรับรองปลั๊กอิน',
+
     runnerUsage: 'การใช้งานรันเนอร์',
     runnerUsageAll: 'ทั้งหมด',
     runnerUsageAgent: 'Agent / ไปป์ไลน์',

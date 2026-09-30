@@ -1529,6 +1529,11 @@ const zhHant = {
     },
   },
   market: {
+    certifiedPlugin: '認證外掛',
+    certificationTooltip:
+      '此版本已通過資料隔離與共享執行環境相容性審核，外掛套件已簽章。',
+    certificationLearnMore: '瞭解外掛認證',
+
     runnerUsage: '運行器用途',
     runnerUsageAll: '全部',
     runnerUsageAgent: 'Agent / 流水線',

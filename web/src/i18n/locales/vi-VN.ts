@@ -1619,6 +1619,11 @@ const viVN = {
     },
   },
   market: {
+    certifiedPlugin: 'Plugin được chứng nhận',
+    certificationTooltip:
+      'Phiên bản này đã vượt qua đánh giá về cách ly dữ liệu và khả năng tương thích với môi trường chạy dùng chung. Gói đã được ký.',
+    certificationLearnMore: 'Tìm hiểu về chứng nhận',
+
     runnerUsage: 'Mục đích trình chạy',
     runnerUsageAll: 'Tất cả',
     runnerUsageAgent: 'Agent / Pipeline',

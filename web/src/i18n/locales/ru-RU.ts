@@ -1651,6 +1651,11 @@ const ruRU = {
     },
   },
   market: {
+    certifiedPlugin: 'Сертифицированный плагин',
+    certificationTooltip:
+      'Эта версия прошла проверку изоляции данных и совместимости с общей средой выполнения. Пакет подписан.',
+    certificationLearnMore: 'О сертификации',
+
     runnerUsage: 'Назначение исполнителя',
     runnerUsageAll: 'Все',
     runnerUsageAgent: 'Agent / Конвейер',
