@@ -188,7 +188,3 @@ Thanks to all [contributors](https://github.com/langbot-app/LangBot/graphs/contr
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
-
-## Optional telemetry
-
-Telemetry is enabled by default. To opt out, set `space.disable_telemetry: true` in your instance’s `data/config.yaml`, preserve other settings, and restart the instance. This disables usage, heartbeat and execution telemetry. In Cloud, the instance operator controls this setting for every workspace in the instance. Delivery is best-effort in background tasks; connection failures, timeouts and server errors do not block normal operations. Failure details are logged only at DEBUG level.

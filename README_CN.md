@@ -212,7 +212,3 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 
 If you're a code agent based on LLM, you should read [AGENTS.md](AGENTS.md) to understand the project structure and development process before you start any development.
 -->
-
-## 可选遥测
-
-遥测默认开启。可以在实例 `data/config.yaml` 中将 `space.disable_telemetry` 改为 `true`，保留其他配置，然后重启实例。此开关关闭使用统计、实例心跳和功能执行遥测；Cloud 由实例运维方配置，对该实例所有工作区生效。遥测在后台尽力发送，网络故障、超时或服务端错误不会阻断正常操作；失败详情仅记录在 DEBUG 日志中。
