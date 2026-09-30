@@ -344,3 +344,28 @@ class TestIngress:
         _, execution = get_modules()
         with execution.ingress(types.SimpleNamespace(), 'event_done'):
             pass
+
+
+class AsyncSendManager(FakeManager):
+    """Stand-in whose start_send_task is a coroutine, like TelemetryManager."""
+
+    async def start_send_task(self, payload: dict) -> None:
+        self.sent.append(payload)
+
+
+class TestTraceDispatch:
+    async def test_close_trace_schedules_the_coroutine_send(self):
+        trace, execution = get_modules()
+        manager = AsyncSendManager(trace_config())
+        counters = execution.ExecutionCounters(manager)
+        binding = trace.bind()
+        try:
+            counters.record(CONTEXT, **STAGE)
+            counters.close_trace(binding.state, 'event_done')
+            # The payload is only delivered once the scheduled task runs.
+            assert manager.sent == []
+            await asyncio.sleep(0)
+        finally:
+            trace.unbind_root(binding)
+        assert len(manager.sent) == 1
+        assert manager.sent[0]['event_type'] == 'feature_execution'

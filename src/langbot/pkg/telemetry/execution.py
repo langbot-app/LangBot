@@ -167,9 +167,27 @@ class ExecutionCounters:
                 return
             payload = self._build_trace_payload(state, reason)
             if payload is not None:
-                self.manager.start_send_task(payload)
+                self._dispatch_payload(payload)
         except Exception:
             return
+
+    def _dispatch_payload(self, payload: dict) -> None:
+        """Hand one built payload to the telemetry manager from this sync context.
+
+        TelemetryManager.start_send_task is a coroutine, so calling it without
+        scheduling dropped every trace closed here. Stand-ins used by tests and
+        manual tools schedule synchronously, hence the coroutine check.
+        """
+        result = self.manager.start_send_task(payload)
+        if not asyncio.iscoroutine(result):
+            return
+        try:
+            asyncio.get_running_loop().create_task(result)
+        except RuntimeError:
+            result.close()
+            logger = getattr(getattr(self.manager, 'ap', None), 'logger', None)
+            if logger is not None:
+                logger.debug('Execution trace payload dropped: no running event loop')
 
     def _trace_emitted(self, state: TraceState) -> bool:
         mode = self.trace_mode()
