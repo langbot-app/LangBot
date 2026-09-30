@@ -56,6 +56,10 @@ _MAX_SCAN_ROUNDS = 100000
 # Mandatory client name for production observability (CLIENT LIST / dashboards).
 VALKEY_CLIENT_NAME = 'langbot_vector_client'
 
+# Library-name tag sent via CLIENT SETINFO LIB-NAME, so the server reports
+# lib-name=GlidePy(langbot) and Valkey usage can be attributed to LangBot.
+VALKEY_CLIENT_INFO_TAG = 'langbot'
+
 # Fixed, indexed metadata schema.  LangBot's RAG layer stores ``file_id`` on
 # every chunk; it is the only metadata field we promote to a first-class
 # (filterable) index field.  All other metadata is preserved verbatim inside
@@ -126,7 +130,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         if not VALKEY_SEARCH_AVAILABLE:
             raise ImportError(
                 'valkey-glide is not installed or is unavailable on this platform. '
-                "On Linux or macOS, install it with: pip install 'valkey-glide>=2.4.1,<3.0.0'"
+                "On Linux or macOS, install it with: pip install 'valkey-glide>=2.5.2,<3.0.0'"
             )
 
         self.ap = ap
@@ -192,6 +196,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             conf = GlideClientConfiguration(
                 addresses=[NodeAddress(self._host, self._port)],
                 client_name=VALKEY_CLIENT_NAME,
+                client_info_tag=VALKEY_CLIENT_INFO_TAG,
                 database_id=self._db,
                 use_tls=self._tls,
                 lazy_connect=True,
