@@ -170,7 +170,7 @@ class TelemetryManager:
 
                         if resp.status_code >= 400:
                             body = await httpclient.response_text(resp, max_chars=200)
-                            self.ap.logger.warning(
+                            self.ap.logger.debug(
                                 f'Telemetry post to {url} returned status {resp.status_code} - {body}'
                             )
                         else:
@@ -181,7 +181,7 @@ class TelemetryManager:
                                 app_code = j.get('code') if isinstance(j, dict) else None
                                 if app_code is not None and int(app_code) >= 400:
                                     app_err = True
-                                    self.ap.logger.warning(
+                                    self.ap.logger.debug(
                                         f'Telemetry post to {url} returned application error code {j.get("code")} - {j.get("msg")}'
                                     )
                             except Exception:
@@ -189,7 +189,7 @@ class TelemetryManager:
 
                             if app_err:
                                 body = await httpclient.response_text(resp, max_chars=200)
-                                self.ap.logger.warning(
+                                self.ap.logger.debug(
                                     f'Telemetry post to {url} returned app-level error - response: {body}'
                                 )
                             else:
@@ -200,19 +200,19 @@ class TelemetryManager:
                             if not app_err:
                                 return True
                     except asyncio.TimeoutError:
-                        self.ap.logger.warning(f'Telemetry post to {url} timed out')
+                        self.ap.logger.debug(f'Telemetry post to {url} timed out')
                     except Exception as e:
-                        self.ap.logger.warning(f'Failed to post telemetry to {url}: {e}', exc_info=True)
+                        self.ap.logger.debug(f'Failed to post telemetry to {url}: {e}', exc_info=True)
             except Exception as e:
                 try:
-                    self.ap.logger.warning(
+                    self.ap.logger.debug(
                         f'Failed to create HTTP client for telemetry or sanitize payload: {e}', exc_info=True
                     )
                 except Exception:
                     pass
         except Exception as e:
-            # Never raise from telemetry; surface as warning for visibility
+            # Never raise from telemetry; diagnostics are debug-only.
             try:
-                self.ap.logger.warning(f'Unexpected telemetry error: {e}', exc_info=True)
+                self.ap.logger.debug(f'Unexpected telemetry error: {e}', exc_info=True)
             except Exception:
                 pass

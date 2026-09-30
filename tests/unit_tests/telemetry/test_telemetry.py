@@ -431,6 +431,7 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
+        mock_app.logger.warning.assert_not_called()
         mock_app.logger.debug.assert_called()
         # Verify debug message contains URL and status
         debug_call_args = mock_app.logger.debug.call_args[0][0]
@@ -459,8 +460,9 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
-        warning_call_args = mock_app.logger.warning.call_args[0][0]
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
+        warning_call_args = mock_app.logger.debug.call_args[0][0]
         assert 'status 500' in warning_call_args
 
     @pytest.mark.asyncio
@@ -488,9 +490,9 @@ class TestHTTPScenarios:
             await manager.send({'query_id': 'test'})
 
         # Source code calls warning twice for application errors
-        assert mock_app.logger.warning.call_count >= 1
+        assert mock_app.logger.debug.call_count >= 1
         # Check that one of the calls contains application error info
-        all_warnings = [call[0][0] for call in mock_app.logger.warning.call_args_list]
+        all_warnings = [call[0][0] for call in mock_app.logger.debug.call_args_list]
         assert any('400' in w for w in all_warnings), f'No warning contained error code 400: {all_warnings}'
 
     @pytest.mark.asyncio
@@ -516,8 +518,9 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
-        warning_call_args = mock_app.logger.warning.call_args[0][0]
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
+        warning_call_args = mock_app.logger.debug.call_args[0][0]
         assert 'timed out' in warning_call_args
 
     @pytest.mark.asyncio
@@ -542,7 +545,8 @@ class TestHTTPScenarios:
             # Should not raise exception
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
 
     @pytest.mark.asyncio
     async def test_send_never_raises_exception(self):
@@ -551,7 +555,7 @@ class TestHTTPScenarios:
         mock_app = Mock()
         # Even logger may fail
         mock_app.logger = Mock()
-        mock_app.logger.warning = Mock(side_effect=Exception('Logger failed'))
+        mock_app.logger.debug = Mock(side_effect=Exception('Logger failed'))
 
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': 'https://example.com'}

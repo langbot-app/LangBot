@@ -426,5 +426,6 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
-    # Disable usage telemetry.
+    # Optional telemetry is enabled by default. Set true to disable usage,
+    # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
