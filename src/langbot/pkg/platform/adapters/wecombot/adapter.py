@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 from langbot.pkg.platform.sources.wecombot import WecomBotAdapter as LegacyWecomBotAdapter
 
 import asyncio
@@ -135,7 +133,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
     _iter_media_components = staticmethod(LegacyWecomBotAdapter._iter_media_components)
     _send_media = staticmethod(LegacyWecomBotAdapter._send_media)
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -151,7 +148,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         raw = await self.bot.send_message(str(target_id), content)
         return platform_events.MessageResult(raw={'result': raw})
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -173,7 +169,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             raw = await self.bot.set_message(event.message_id, content)
         return platform_events.MessageResult(message_id=event.message_id, raw={'result': raw})
 
-    @diagnostics.observe('api', 'reply_message_chunk', source='platform', stage='accepted')
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -201,7 +196,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
     async def is_stream_output_supported(self) -> bool:
         return self.config.get('enable-stream-reply', True)
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request' and 'interaction.request' in self.get_supported_apis():
             return await send_interaction(self, params)
@@ -277,7 +271,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             self.bot.on_message('event')(self._handle_native_event)
             self.bot.on_message('template_card_event')(self._handle_interaction_event)
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_interaction_event(self, event: WecomBotEvent):
         try:
             interaction_event = interaction_event_from_native(event)
@@ -286,7 +279,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         except Exception:
             await self.logger.error(f'Error in WeComBot interaction callback: {traceback.format_exc()}')
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_native_event(self, event: WecomBotEvent):
         try:
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
@@ -312,7 +304,6 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             await self.logger.error(f'Error in wecombot feedback event: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:

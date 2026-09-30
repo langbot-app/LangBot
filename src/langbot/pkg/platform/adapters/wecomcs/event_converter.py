@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from langbot.libs.wecom_customer_service_api.api import WecomCSClient
@@ -19,7 +17,6 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(
         event: WecomCSEvent, bot: WecomCSClient | None = None
     ) -> platform_events.FriendMessage | None:
@@ -29,7 +26,6 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return None
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(event: WecomCSEvent, bot: WecomCSClient | None = None) -> platform_events.Event | None:
         if event.type in {'text', 'image', 'file', 'voice'}:
             return await WecomCSEventConverter.message_to_eba(event, bot)

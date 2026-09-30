@@ -1493,59 +1493,6 @@ async def test_synthetic_event_query_exposes_trusted_workspace_to_tools(clean_ag
 
 
 @pytest.mark.asyncio
-async def test_beta_diagnostics_close_releases_real_orchestrator_session(clean_agent_state):
-    from langbot.pkg.telemetry.diagnostics import DiagnosticsManager
-
-    plugin_connector = FakePluginConnector(
-        results=[{'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'CANARY'}}}]
-    )
-    ap = FakeApplication(plugin_connector, clean_agent_state)
-    ap.instance_config = types.SimpleNamespace(data={'space': {'url': 'https://example.invalid'}})
-    ap.diagnostics = DiagnosticsManager(ap, version='4.11.0b2', instance_id='instance-test')
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
-    gen = orchestrator.run_from_query(make_query())
-    assert (await anext(gen)).content == 'CANARY'
-    run_id = plugin_connector.contexts[0]['run_id']
-    assert await get_session_registry().get(run_id) is not None
-    await gen.aclose()
-    assert await get_session_registry().get(run_id) is None
-    records = [e for e in ap.diagnostics.pending if e['operation'] == 'runner.run']
-    assert records[-1]['outcome'] == 'cancelled'
-    import json
-
-    assert 'CANARY' not in json.dumps(ap.diagnostics.pending)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('terminal', ['run.completed', 'run.failed'])
-async def test_beta_diagnostics_real_runner_terminal(clean_agent_state, terminal):
-    from langbot.pkg.telemetry.diagnostics import DiagnosticsManager
-
-    plugin_connector = FakePluginConnector(
-        results=[
-            {
-                'type': terminal,
-                'data': {'finish_reason': 'stop'} if terminal == 'run.completed' else {'error': 'CANARY'},
-            }
-        ]
-    )
-    ap = FakeApplication(plugin_connector, clean_agent_state)
-    ap.instance_config = types.SimpleNamespace(data={'space': {'url': 'https://example.invalid'}})
-    ap.diagnostics = DiagnosticsManager(ap, version='4.11.0b2', instance_id='instance-test')
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
-    try:
-        _ = [v async for v in orchestrator.run_from_query(make_query())]
-    except RunnerExecutionError:
-        assert terminal == 'run.failed'
-    records = [e for e in ap.diagnostics.pending if e['operation'] == 'runner.run']
-    assert records[-1]['outcome'] == ('succeeded' if terminal == 'run.completed' else 'failed')
-    assert records[-1]['run_id'] == plugin_connector.contexts[0]['run_id']
-    import json
-
-    assert 'CANARY' not in json.dumps(ap.diagnostics.pending)
-
-
-@pytest.mark.asyncio
 async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent_state):
     """Returning file handles must not bypass the Agent's reply authorization."""
     connector = FakePluginConnector(

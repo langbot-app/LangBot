@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from langbot.pkg.platform.adapters.kook.message_converter import KookMessageConverter
@@ -16,7 +14,6 @@ class KookAPIMixin:
     _user_cache: dict[str, platform_entities.User]
     _group_cache: dict[str, platform_entities.UserGroup]
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -37,7 +34,6 @@ class KookAPIMixin:
         data = raw.get('data') or {}
         return platform_events.MessageResult(message_id=data.get('msg_id'), raw=raw)
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -77,7 +73,6 @@ class KookAPIMixin:
         data = raw.get('data') or {}
         return platform_events.MessageResult(message_id=data.get('msg_id'), raw=raw)
 
-    @diagnostics.observe('api', 'get_message', source='platform', stage='accepted')
     async def get_message(
         self,
         chat_type: str,
@@ -89,7 +84,6 @@ class KookAPIMixin:
             raise NotSupportedError('get_message:message_not_cached')
         return event
 
-    @diagnostics.observe('api', 'get_group_info', source='platform', stage='accepted')
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         cached = self._group_cache.get(str(group_id))
         if cached:
@@ -102,18 +96,15 @@ class KookAPIMixin:
             member_count=data.get('user_count'),
         )
 
-    @diagnostics.observe('api', 'get_group_list', source='platform', stage='accepted')
     async def get_group_list(self) -> list[platform_entities.UserGroup]:
         return list(self._group_cache.values())
 
-    @diagnostics.observe('api', 'get_group_member_list', source='platform', stage='accepted')
     async def get_group_member_list(
         self,
         group_id: typing.Union[int, str],
     ) -> list[platform_entities.UserGroupMember]:
         raise NotSupportedError('get_group_member_list')
 
-    @diagnostics.observe('api', 'get_group_member_info', source='platform', stage='accepted')
     async def get_group_member_info(
         self,
         group_id: typing.Union[int, str],
@@ -137,7 +128,6 @@ class KookAPIMixin:
             display_name=user.nickname,
         )
 
-    @diagnostics.observe('api', 'get_user_info', source='platform', stage='accepted')
     async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
         cached = self._user_cache.get(str(user_id))
         if cached:
@@ -152,22 +142,18 @@ class KookAPIMixin:
             is_bot=bool(data.get('bot', False)),
         )
 
-    @diagnostics.observe('api', 'get_friend_list', source='platform', stage='accepted')
     async def get_friend_list(self) -> list[platform_entities.User]:
         return list(self._user_cache.values())
 
-    @diagnostics.observe('api', 'upload_file', source='platform', stage='accepted')
     async def upload_file(self, file_data: bytes, filename: str) -> str:
         data = {'file': file_data}
         raw = await self._request('POST', '/asset/create', data=data, filename=filename)
         result = raw.get('data') or {}
         return str(result.get('url') or result.get('id') or '')
 
-    @diagnostics.observe('api', 'get_file_url', source='platform', stage='accepted')
     async def get_file_url(self, file_id: str) -> str:
         return file_id
 
-    @diagnostics.observe('api', 'edit_message', source='platform', stage='accepted')
     async def edit_message(
         self,
         chat_type: str,
@@ -177,7 +163,6 @@ class KookAPIMixin:
     ) -> None:
         raise NotSupportedError('edit_message')
 
-    @diagnostics.observe('api', 'delete_message', source='platform', stage='accepted')
     async def delete_message(
         self,
         chat_type: str,
@@ -187,7 +172,6 @@ class KookAPIMixin:
         endpoint = '/message/delete' if str(chat_type).lower() in {'group', 'channel'} else '/direct-message/delete'
         await self._request('POST', endpoint, json={'msg_id': str(message_id)})
 
-    @diagnostics.observe('api', 'forward_message', source='platform', stage='accepted')
     async def forward_message(
         self,
         from_chat_type: str,
@@ -201,7 +185,6 @@ class KookAPIMixin:
             raise NotSupportedError('forward_message:message_not_cached')
         return await self.send_message(to_chat_type, str(to_chat_id), cached.message_chain)
 
-    @diagnostics.observe('api', 'mute_member', source='platform', stage='accepted')
     async def mute_member(
         self,
         group_id: typing.Union[int, str],
@@ -210,7 +193,6 @@ class KookAPIMixin:
     ) -> None:
         raise NotSupportedError('mute_member')
 
-    @diagnostics.observe('api', 'unmute_member', source='platform', stage='accepted')
     async def unmute_member(
         self,
         group_id: typing.Union[int, str],
@@ -218,7 +200,6 @@ class KookAPIMixin:
     ) -> None:
         raise NotSupportedError('unmute_member')
 
-    @diagnostics.observe('api', 'kick_member', source='platform', stage='accepted')
     async def kick_member(
         self,
         group_id: typing.Union[int, str],
@@ -226,6 +207,5 @@ class KookAPIMixin:
     ) -> None:
         raise NotSupportedError('kick_member')
 
-    @diagnostics.observe('api', 'leave_group', source='platform', stage='accepted')
     async def leave_group(self, group_id: typing.Union[int, str]) -> None:
         raise NotSupportedError('leave_group')

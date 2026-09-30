@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from lark_oapi.api.im.v1 import GetChatRequest, GetMessageRequest
@@ -19,7 +17,6 @@ class LarkAPIMixin:
     _user_cache: dict[str, platform_entities.User]
     _group_cache: dict[str, platform_entities.UserGroup]
 
-    @diagnostics.observe('api', 'get_message', source='platform', stage='accepted')
     async def get_message(
         self,
         chat_type: str,
@@ -55,7 +52,6 @@ class LarkAPIMixin:
         self._message_cache[str(message_id)] = event
         return event
 
-    @diagnostics.observe('api', 'get_group_info', source='platform', stage='accepted')
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         cached = self._group_cache.get(str(group_id))
         if cached:
@@ -75,7 +71,6 @@ class LarkAPIMixin:
         self._group_cache[str(group.id)] = group
         return group
 
-    @diagnostics.observe('api', 'get_group_member_info', source='platform', stage='accepted')
     async def get_group_member_info(
         self,
         group_id: typing.Union[int, str],
@@ -84,14 +79,12 @@ class LarkAPIMixin:
         user = self._user_cache.get(str(user_id)) or platform_entities.User(id=user_id)
         return platform_entities.UserGroupMember(user=user, group_id=group_id, role=platform_entities.MemberRole.MEMBER)
 
-    @diagnostics.observe('api', 'get_user_info', source='platform', stage='accepted')
     async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
         cached = self._user_cache.get(str(user_id))
         if cached:
             return cached
         return platform_entities.User(id=user_id)
 
-    @diagnostics.observe('api', 'get_file_url', source='platform', stage='accepted')
     async def get_file_url(self, file_id: str) -> str:
         if str(file_id).startswith('file://'):
             return str(file_id)

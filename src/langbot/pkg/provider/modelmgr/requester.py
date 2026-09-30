@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import abc
 import typing
 import time
@@ -100,7 +98,6 @@ class RuntimeProvider:
             raise WorkspaceInvariantError('LLM invocation requires an ExecutionContext when query is absent')
         return execution_context
 
-    @diagnostics.observe('api', 'model.invoke_llm', source='agent')
     async def invoke_llm(
         self,
         query: pipeline_query.Query | None,
@@ -185,7 +182,6 @@ class RuntimeProvider:
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
 
-    @diagnostics.observe('api', 'model.invoke_llm_stream', source='agent')
     async def invoke_llm_stream(
         self,
         query: pipeline_query.Query | None,
@@ -268,7 +264,6 @@ class RuntimeProvider:
                 except Exception as monitor_err:
                     self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM stream call: {monitor_err}')
 
-    @diagnostics.observe('api', 'model.invoke_embedding', source='agent')
     async def invoke_embedding(
         self,
         model: RuntimeEmbeddingModel,
@@ -336,7 +331,6 @@ class RuntimeProvider:
             except Exception as monitor_err:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record embedding call: {monitor_err}')
 
-    @diagnostics.observe('api', 'model.invoke_rerank', source='agent')
     async def invoke_rerank(
         self,
         model: RuntimeRerankModel,

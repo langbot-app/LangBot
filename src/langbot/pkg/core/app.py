@@ -642,10 +642,6 @@ class Application:
             if self.telemetry is not None:
                 with contextlib.suppress(Exception):
                     await self.telemetry.shutdown()
-            diagnostics_manager = getattr(self, 'diagnostics', None)
-            if diagnostics_manager is not None:
-                with contextlib.suppress(Exception):
-                    await diagnostics_manager.shutdown()
             if self.vector_db_mgr is not None:
                 with contextlib.suppress(Exception):
                     await self.vector_db_mgr.shutdown()

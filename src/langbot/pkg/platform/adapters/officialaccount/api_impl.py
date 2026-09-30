@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -14,7 +12,6 @@ class OfficialAccountAPIMixin:
     _message_cache: dict[str, platform_events.MessageReceivedEvent]
     _user_cache: dict[str, platform_entities.User]
 
-    @diagnostics.observe('api', 'get_message', source='platform', stage='accepted')
     async def get_message(
         self,
         chat_type: str,
@@ -26,18 +23,15 @@ class OfficialAccountAPIMixin:
             raise NotSupportedError('get_message:message_not_cached')
         return event
 
-    @diagnostics.observe('api', 'get_user_info', source='platform', stage='accepted')
     async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
         user = self._user_cache.get(str(user_id))
         if user is None:
             raise NotSupportedError('get_user_info:not_cached')
         return user
 
-    @diagnostics.observe('api', 'get_friend_list', source='platform', stage='accepted')
     async def get_friend_list(self) -> list[platform_entities.User]:
         return list(self._user_cache.values())
 
-    @diagnostics.observe('api', 'edit_message', source='platform', stage='accepted')
     async def edit_message(
         self,
         chat_type: str,
@@ -47,7 +41,6 @@ class OfficialAccountAPIMixin:
     ) -> None:
         raise NotSupportedError('edit_message')
 
-    @diagnostics.observe('api', 'delete_message', source='platform', stage='accepted')
     async def delete_message(
         self,
         chat_type: str,
@@ -56,7 +49,6 @@ class OfficialAccountAPIMixin:
     ) -> None:
         raise NotSupportedError('delete_message')
 
-    @diagnostics.observe('api', 'forward_message', source='platform', stage='accepted')
     async def forward_message(
         self,
         from_chat_type: str,
@@ -67,30 +59,24 @@ class OfficialAccountAPIMixin:
     ) -> platform_events.MessageResult:
         raise NotSupportedError('forward_message')
 
-    @diagnostics.observe('api', 'upload_file', source='platform', stage='accepted')
     async def upload_file(self, file_data: bytes, filename: str) -> str:
         raise NotSupportedError('upload_file')
 
-    @diagnostics.observe('api', 'get_file_url', source='platform', stage='accepted')
     async def get_file_url(self, file_id: str) -> str:
         raise NotSupportedError('get_file_url')
 
-    @diagnostics.observe('api', 'get_group_info', source='platform', stage='accepted')
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         raise NotSupportedError('get_group_info')
 
-    @diagnostics.observe('api', 'get_group_list', source='platform', stage='accepted')
     async def get_group_list(self) -> list[platform_entities.UserGroup]:
         raise NotSupportedError('get_group_list')
 
-    @diagnostics.observe('api', 'get_group_member_list', source='platform', stage='accepted')
     async def get_group_member_list(
         self,
         group_id: typing.Union[int, str],
     ) -> list[platform_entities.UserGroupMember]:
         raise NotSupportedError('get_group_member_list')
 
-    @diagnostics.observe('api', 'get_group_member_info', source='platform', stage='accepted')
     async def get_group_member_info(
         self,
         group_id: typing.Union[int, str],

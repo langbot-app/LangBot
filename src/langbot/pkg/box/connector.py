@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import asyncio
 import contextlib
 import json
@@ -164,7 +162,6 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     def _uses_websocket(self) -> bool:
         return self.uses_websocket()
 
-    @diagnostics.observe('lifecycle', 'box.initialize', source='runtime', stage='execute')
     async def initialize(self) -> None:
         async with self._lifecycle_lock:
             if self._closing:

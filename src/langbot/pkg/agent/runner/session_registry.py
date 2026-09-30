@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from ...telemetry import diagnostics
-
 import asyncio
 import copy
 import typing
@@ -172,7 +170,6 @@ class AgentRunSessionRegistry:
             'query_id': query_id,
             'execution_query': execution_query,
             'reply_streams': reply_streams,
-            '_diagnostic_context': diagnostics.capture_context(),
             'plugin_identity': plugin_identity,
             'authorization': authorization,
             'status': {

@@ -10,8 +10,6 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-
-from ...telemetry import diagnostics as diagnostics
 from .reply_stream import ReplyStreamSession
 from ...core import app
 from ...api.http.context import ExecutionContext
@@ -80,7 +78,6 @@ class AgentRunOrchestrator:
         self.journal = AgentRunJournal(ap)
         self._session_registry = get_session_registry()
 
-    @diagnostics.observe('run', 'runner.run', source='agent', stage='prepare')
     async def run(
         self,
         event: AgentEventEnvelope,
@@ -106,8 +103,6 @@ class AgentRunOrchestrator:
             runner_id,
             bound_plugins,
         )
-
-        diagnostics.runner_metadata(self.ap, descriptor, binding.processor_type)
         usage = 'event' if binding.processor_type == 'event_processor' else 'agent'
         if usage not in descriptor.usages:
             raise ValueError(f'The selected Runner does not support {usage} usage')
@@ -177,7 +172,6 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
-        diagnostics.annotate(run_id=run_id, stage='execute')
         context['context']['available_apis']['reply_stream'] = hasattr(PluginToRuntimeAction, 'REPLY_STREAM') and any(
             tool.get('tool_name') == 'event_reply' and tool.get('tool_type') == 'platform'
             for tool in resources.get('tools', [])
@@ -188,7 +182,6 @@ class AgentRunOrchestrator:
             source=(adapter_context or {}).get('_platform_event')
             or getattr((adapter_context or {}).get('_query'), 'message_event', None),
         )
-        reply_streams.diagnostics = getattr(self.ap, 'diagnostics', None)
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {
             'runner_id': descriptor.id,
@@ -390,12 +383,6 @@ class AgentRunOrchestrator:
                         terminal_status = 'cancelled'
                         terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
                         break
-            diagnostics.set_outcome(
-                {'completed': 'succeeded', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
-                    terminal_status, 'succeeded'
-                ),
-                reason_code='runner_failed' if terminal_status == 'failed' else '',
-            )
             await self.journal.finalize_run(
                 run_id=run_id,
                 status=terminal_status or 'completed',
@@ -403,7 +390,6 @@ class AgentRunOrchestrator:
                 usage=terminal_usage,
             )
         except Exception as exc:
-            diagnostics.set_outcome('timeout' if self._is_deadline_exhausted(context) else 'failed')
             failed_usage = terminal_usage
             await self.journal.finalize_run(
                 run_id=run_id,
@@ -432,7 +418,6 @@ class AgentRunOrchestrator:
                         exc_info=True,
                     )
 
-    @diagnostics.observe('lifecycle', 'runner.query_prepare', source='pipeline', stage='prepare')
     async def run_from_query(
         self,
         query: pipeline_query.Query,

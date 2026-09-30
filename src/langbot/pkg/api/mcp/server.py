@@ -24,7 +24,6 @@ from mcp.server.fastmcp import FastMCP
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
-from .. import management_diagnostics as diagnostics
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -53,7 +52,6 @@ def _dump(value: typing.Any) -> str:
 def _authorized(permission: Permission):
     context = get_request_context()
     require_permission(context, permission)
-    diagnostics.workspace(context)
     return context
 
 
@@ -443,7 +441,7 @@ class LangBotMCPServer:
         """Register a tool boundary before its authorization and service call."""
 
         def register(fn):
-            observed = diagnostics.observe(diagnostics.operation_id('mcp', fn), source='mcp', ap=self.ap)(fn)
+            observed = fn
             return self.mcp.tool(**options)(observed)
 
         return register

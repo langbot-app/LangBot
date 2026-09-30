@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 import asyncio
 import contextlib
 import dataclasses
@@ -370,22 +368,6 @@ class RuntimeBot:
     ) -> dict[str, typing.Any]:
         """Record structured event routing state while preserving the human log."""
         binding = binding or {}
-        diagnostics.event(
-            self,
-            'route',
-            'route.primary',
-            {
-                'not_matched': 'skipped',
-                'discarded': 'skipped',
-                'matched': 'started',
-                'delivered': 'succeeded',
-                'failed': 'failed',
-            }.get(status, 'unknown'),
-            stage='dispatch',
-            platform_event_type=event_type,
-            processor_type=target_type or binding.get('target_type', ''),
-            reason_code=failure_code or status,
-        )
         metadata = {
             'kind': 'event_route_trace',
             'event_type': event_type,
@@ -398,16 +380,6 @@ class RuntimeBot:
             'reason': reason or text,
             'run_id': run_id,
         }
-        diagnostics.set_outcome(
-            {
-                'not_matched': 'skipped',
-                'discarded': 'skipped',
-                'matched': 'started',
-                'delivered': 'succeeded',
-                'failed': 'failed',
-            }.get(status, 'unknown'),
-            reason_code=failure_code or status,
-        )
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
         return metadata
@@ -863,7 +835,6 @@ class RuntimeBot:
             processor_id=agent.get('uuid'),
         )
 
-    @diagnostics.observe('event', 'platform.receive', source='platform', stage='dispatch')
     async def _handle_platform_event(
         self,
         event: platform_events.EBAEvent,
@@ -893,7 +864,6 @@ class RuntimeBot:
             if isinstance(result, BaseException):
                 await self.logger.error(f'Event delivery failed: {result}')
 
-    @diagnostics.observe('route', 'route.subscription', source='platform', stage='dispatch')
     async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid):
         event_type = event.type
         event_binding = {
@@ -912,7 +882,6 @@ class RuntimeBot:
             # Resolve the installed declaration each time, including after plugin updates.
             patterns = descriptor.supported_event_patterns
             if not patterns or not self._agent_supports_event_type(patterns, event_type):
-                diagnostics.set_outcome('skipped', reason_code='not_matched')
                 return
             agent = {**agent, 'supported_event_patterns': patterns}
             return await self._dispatch_eba_event_to_processor(event, adapter, event_binding, agent)
@@ -929,7 +898,6 @@ class RuntimeBot:
                 text=f'Plugin processor {processor_uuid} failed: {exc}',
             )
 
-    @diagnostics.observe('route', 'route.dispatch', source='platform', stage='dispatch')
     async def _dispatch_eba_event_to_processor(
         self,
         event: platform_events.EBAEvent,
@@ -1200,7 +1168,6 @@ class RuntimeBot:
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
-    @diagnostics.observe('event', 'platform.legacy_receive', source='platform', stage='dispatch')
     async def _handle_legacy_message_event(
         self,
         event: platform_events.FriendMessage | platform_events.GroupMessage,
@@ -1286,7 +1253,6 @@ class RuntimeBot:
             execution_context=self.execution_context,
         )
 
-    @diagnostics.observe('interaction', 'interaction.submit', source='platform', stage='dispatch')
     async def _handle_interaction_submission(
         self,
         event: platform_events.PlatformSpecificEvent,
@@ -1395,7 +1361,6 @@ class RuntimeBot:
             execution_context=self.execution_context,
         )
 
-    @diagnostics.observe('interaction', 'interaction.resume', source='platform', stage='resume')
     async def _resume_agent_interaction(
         self,
         record: dict[str, typing.Any],
@@ -1550,8 +1515,6 @@ class RuntimeBot:
                 return
             await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
-        from ..telemetry.diagnostic_catalog import snapshot_bot
-
         get_supported_events = getattr(self.adapter, 'get_supported_events', None)
         supported_events: list[str] = []
         if callable(get_supported_events):
@@ -1623,8 +1586,6 @@ class RuntimeBot:
             platform_events.EBAEvent,
             tenant_scoped_listener(on_eba_event),
         )
-        # Registration is evidence of an installed listener, not a live connection.
-        snapshot_bot(self, listener_registered=True)
 
     async def run(self):
         async def exception_wrapper():

@@ -24,7 +24,6 @@ import uuid
 from ..http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .context import bind_request_context, reset_request_context
 from .server import LangBotMCPServer
-from .. import management_diagnostics as diagnostics
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -86,7 +85,6 @@ class MCPMount:
         authenticate_api_key = self.ap.apikey_service.authenticate_api_key
         is_mcp_path = self._is_mcp_path
 
-        @diagnostics.observe('mcp.request', source='mcp', ap=self.ap)
         async def dispatch_mcp(scope, receive, send):
             # Authenticate MCP HTTP requests with a LangBot API key.
             api_key = _extract_api_key(scope.get('headers', []))
@@ -96,7 +94,6 @@ class MCPMount:
                     identity = await authenticate_api_key(api_key)
 
             if identity is None:
-                diagnostics.outcome('rejected')
                 await send(
                     {
                         'type': 'http.response.start',
@@ -123,7 +120,6 @@ class MCPMount:
                     entitlement = await resolver.resolve(identity.workspace_uuid)
                     entitlement_revision = entitlement.entitlement_revision
             except Exception:
-                diagnostics.outcome('rejected')
                 await send(
                     {
                         'type': 'http.response.start',
@@ -151,7 +147,6 @@ class MCPMount:
                 ),
                 entitlement_revision=entitlement_revision,
             )
-            diagnostics.workspace(request_context)
             tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
             if not callable(tenant_scope):
                 raise RuntimeError('MCP request persistence scope is unavailable')

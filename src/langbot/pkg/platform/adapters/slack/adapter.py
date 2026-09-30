@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import asyncio
 import traceback
 import typing
@@ -92,7 +90,6 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             'call_platform_api',
         ]
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -103,7 +100,6 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         raw = await self._send_text(str(target_type), str(target_id), content)
         return platform_events.MessageResult(raw=raw)
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -118,7 +114,6 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         raw = await self._send_text(target_type, target_id, await SlackMessageConverter.yiri2target(message))
         return platform_events.MessageResult(message_id=source.message_id, raw=raw)
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
@@ -167,7 +162,6 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         for msg_type in ('im', 'channel'):
             self.bot.on_message(msg_type)(self._handle_native_event)
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_native_event(self, event: SlackEvent):
         try:
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
@@ -183,7 +177,6 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             await self.logger.error(f'Error in slack native event: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:

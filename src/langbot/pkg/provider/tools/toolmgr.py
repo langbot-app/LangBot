@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 import time
 import inspect
@@ -475,7 +473,6 @@ class ToolManager:
         )
         return result
 
-    @diagnostics.observe('api', 'tool.execute', source='agent', stage='execute')
     async def execute_func_call(
         self,
         name: str,

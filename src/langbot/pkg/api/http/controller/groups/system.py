@@ -200,11 +200,14 @@ class SystemRouterGroup(group.RouterGroup):
             if invitation_delivery_service is None:
                 invitation_delivery_service = InvitationDeliveryService(self.ap)
 
-            # Detect beta flag from telemetry diagnostics manager
-            is_beta = False
-            diagnostics = getattr(self.ap, 'diagnostics', None)
-            if diagnostics is not None:
-                is_beta = getattr(diagnostics, 'beta', False)
+            # Release channel is independent of diagnostics or usage telemetry.
+            from packaging.version import Version, InvalidVersion
+
+            try:
+                release = Version(constants.semantic_version)
+                is_beta = bool(release.pre and release.pre[0] == 'b' and not release.local)
+            except InvalidVersion:
+                is_beta = False
 
             # Detect Cloud deployment mode
             is_cloud = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'

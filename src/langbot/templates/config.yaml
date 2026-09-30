@@ -426,8 +426,5 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
-    # Master OFF for usage telemetry and Beta diagnostics.
+    # Disable usage telemetry.
     disable_telemetry: false
-    # Beta builds only: opt out of content-free quality diagnostics separately.
-    # Stable, alpha and RC builds never enable this diagnostics producer.
-    disable_beta_diagnostics: false

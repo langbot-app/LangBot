@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import time
 import typing
 
@@ -26,7 +24,6 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(
         event: lark_oapi.im.v1.P2ImMessageReceiveV1,
         api_client: lark_oapi.Client,
@@ -34,7 +31,6 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return await LarkEventConverter.message_to_eba(event, api_client)
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(
         event: lark_oapi.im.v1.P2ImMessageReceiveV1,
         api_client: lark_oapi.Client,

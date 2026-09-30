@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import os
 import time
 import traceback
@@ -47,30 +45,10 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         adapter_self = self
 
         class LangBotDiscordClient(discord.Client):
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_ready(self: discord.Client):
                 adapter_self.bot_account_id = str(self.user.id) if self.user else ''
                 await adapter_self.logger.info(f'Discord adapter running as {self.user}')
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_message(self: discord.Client, message: discord.Message):
                 if self.user and message.author.id == self.user.id:
                     return
@@ -94,16 +72,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                 except Exception:
                     await adapter_self.logger.error(f'Error in discord on_message: {traceback.format_exc()}')
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_interaction(self: discord.Client, interaction: discord.Interaction):
                 custom_id = (interaction.data or {}).get('custom_id') if isinstance(interaction.data, dict) else None
                 try:
@@ -123,46 +91,16 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                 except Exception:
                     await adapter_self.logger.error(f'Error in Discord interaction callback: {traceback.format_exc()}')
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_message_edit(self: discord.Client, before: discord.Message, after: discord.Message):
                 await adapter_self._dispatch_gateway_tuple(
                     'message_edit', (before, after), self.user.id if self.user else None
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_message_delete(self: discord.Client, message: discord.Message):
                 await adapter_self._dispatch_gateway_tuple(
                     'message_delete', message, self.user.id if self.user else None
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_raw_message_delete(self: discord.Client, payload: discord.RawMessageDeleteEvent):
                 await adapter_self._dispatch_gateway_tuple(
                     'raw_message_delete',
@@ -170,16 +108,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     self.user.id if self.user else None,
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_reaction_add(
                 self: discord.Client, reaction: discord.Reaction, user: discord.User | discord.Member
             ):
@@ -189,16 +117,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     'reaction_add', (reaction, user), self.user.id if self.user else None
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_reaction_remove(
                 self: discord.Client, reaction: discord.Reaction, user: discord.User | discord.Member
             ):
@@ -208,16 +126,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     'reaction_remove', (reaction, user), self.user.id if self.user else None
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_raw_reaction_add(self: discord.Client, payload: discord.RawReactionActionEvent):
                 if self.user and payload.user_id == self.user.id:
                     return
@@ -227,16 +135,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     self.user.id if self.user else None,
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_raw_reaction_remove(self: discord.Client, payload: discord.RawReactionActionEvent):
                 if self.user and payload.user_id == self.user.id:
                     return
@@ -246,55 +144,15 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     self.user.id if self.user else None,
                 )
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_member_join(self: discord.Client, member: discord.Member):
                 await adapter_self._dispatch_gateway_tuple('member_join', member, self.user.id if self.user else None)
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_member_remove(self: discord.Client, member: discord.Member):
                 await adapter_self._dispatch_gateway_tuple('member_remove', member, self.user.id if self.user else None)
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_guild_join(self: discord.Client, guild: discord.Guild):
                 await adapter_self._dispatch_gateway_tuple('guild_join', guild, self.user.id if self.user else None)
 
-            @diagnostics.observe(
-                'event',
-                'platform.native_callback',
-                source='platform',
-                stage='convert',
-                ap=lambda: getattr(logger, 'ap', None),
-                fields=lambda b: {
-                    'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-                },
-            )
             async def on_guild_remove(self: discord.Client, guild: discord.Guild):
                 await adapter_self._dispatch_gateway_tuple('guild_remove', guild, self.user.id if self.user else None)
 
@@ -352,7 +210,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content, files = await self.message_converter.yiri2target(message)
         channel = await self._get_channel(target_id)
@@ -362,7 +219,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         sent = await channel.send(**kwargs)
         return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -380,7 +236,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         sent = await message_source.source_platform_object.channel.send(**kwargs)
         return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _dispatch_gateway_tuple(self, kind: str, payload, bot_user_id: int | None):
         try:
             event = await self.event_converter.target2yiri((kind, payload), bot_user_id)
@@ -390,7 +245,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             await self.logger.error(f'Error in discord {kind}: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:
@@ -415,7 +269,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
     ):
         self.listeners.pop(event_type, None)
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request':
             return await send_interaction(self, params)
@@ -437,7 +290,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
     async def is_stream_output_supported(self) -> bool:
         return True
 
-    @diagnostics.observe('api', 'create_message_card', source='platform', stage='accepted')
     async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
         """Set up a stream context for progressive editing.
 
@@ -457,7 +309,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         }
         return True
 
-    @diagnostics.observe('api', 'reply_message_chunk', source='platform', stage='accepted')
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,

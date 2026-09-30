@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import datetime
 import time
 import typing
@@ -33,7 +31,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
     async def yiri2target(event: platform_events.Event) -> typing.Any:
         return getattr(event, 'source_platform_object', None)
 
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(
         self, event: QQOfficialEvent
     ) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
@@ -68,7 +65,6 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
             source_platform_object=event,
         )
 
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(self, event: QQOfficialEvent) -> platform_events.Event:
         if event.t in MESSAGE_EVENT_TYPES:
             return await self.message_to_eba(event)

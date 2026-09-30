@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 import dataclasses
 import typing
 import traceback
@@ -180,7 +178,6 @@ class RuntimePipeline:
             raise WorkspaceInvariantError('RuntimePipeline instance does not match the active Workspace binding')
         return execution_context
 
-    @diagnostics.observe('run', 'pipeline.run', source='pipeline', fields=lambda b: {'processor_type': 'pipeline'})
     async def run(self, query: pipeline_query.Query):
         if (
             query.instance_uuid != self.execution_context.instance_uuid
@@ -257,7 +254,6 @@ class RuntimePipeline:
         if result.console_notice:
             self.ap.logger.info(result.console_notice)
         if result.error_notice:
-            diagnostics.set_outcome('failed', reason_code='response_error')
             self.ap.logger.error(result.error_notice)
             # Mark query as having error
             query.variables['_monitoring_has_error'] = True
@@ -430,7 +426,6 @@ class RuntimePipeline:
             await self._assert_execution_active(query)
 
             if event_ctx.is_prevented_default():
-                diagnostics.set_outcome('skipped', reason_code='discarded')
                 self.ap.logger.debug(
                     f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
                 )
@@ -477,11 +472,8 @@ class RuntimePipeline:
                     self.ap.logger.error(f'Failed to record query response: {e}')
 
         except WorkspaceError as e:
-            diagnostics.set_outcome('rejected', reason_code='processor_incompatible')
             self.ap.logger.info(f'Dropped query {query.query_id} because its Workspace execution binding is stale: {e}')
         except Exception as e:
-            diagnostics.set_outcome('failed', reason_code='response_error')
-            diagnostics.annotate(error=e)
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
             self.ap.logger.error(f'Error processing query {query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')

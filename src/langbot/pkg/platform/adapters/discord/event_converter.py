@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 import discord
@@ -18,7 +16,6 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         raise NotImplementedError
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(event: typing.Any, bot_user_id: int | None = None) -> platform_events.Event | None:
         if isinstance(event, discord.Message):
             return await DiscordEventConverter.message_to_eba(event)
@@ -241,7 +238,6 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         )
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(message: discord.Message) -> platform_events.FriendMessage | platform_events.GroupMessage:
         message_chain = await DiscordMessageConverter.target2yiri(message)
         if isinstance(message.channel, discord.DMChannel):

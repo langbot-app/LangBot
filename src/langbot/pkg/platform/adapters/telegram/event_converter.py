@@ -5,8 +5,6 @@ Converts all Telegram Update types to unified EBA events, not just messages.
 
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 import telegram
@@ -56,7 +54,6 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return None
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(
         update: Update,
         bot: telegram.Bot,
@@ -387,13 +384,6 @@ class LegacyEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return event.source_platform_object
 
     @staticmethod
-    @diagnostics.observe(
-        'event',
-        'platform.target2yiri',
-        source='platform',
-        stage='convert',
-        fields=lambda _: {'attributes': {'adapter_evidence': False}},
-    )
     async def target2yiri(event: Update, bot: telegram.Bot, bot_account_id: str):
         """Convert to legacy format (FriendMessage / GroupMessage)."""
         import langbot_plugin.api.entities.builtin.platform.events as legacy_events

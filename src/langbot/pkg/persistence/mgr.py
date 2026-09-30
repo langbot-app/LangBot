@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import datetime
 import enum
 import sqlite3
@@ -162,7 +160,6 @@ class PersistenceManager:
             default=None,
         )
 
-    @diagnostics.observe('lifecycle', 'persistence.initialize', source='startup', stage='execute')
     async def initialize(self):
         database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
         self.ap.logger.info(f'Initializing database type: {database_type}...')
@@ -1658,7 +1655,6 @@ class PersistenceManager:
 
     # =================================
 
-    @diagnostics.observe('lifecycle', 'persistence.run_alembic_migrations', source='startup', stage='execute')
     async def _run_alembic_migrations(self, target_revision: str = 'head'):
         """Run the supported Alembic-based 4.x migrations."""
         from . import alembic_runner

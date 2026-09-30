@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 import aiocqhttp
@@ -23,7 +21,6 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(
         event: aiocqhttp.Event,
         bot: aiocqhttp.CQHttp | None = None,
@@ -42,7 +39,6 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return None
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(
         event: aiocqhttp.Event,
         bot: aiocqhttp.CQHttp | None = None,

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter as LegacyLarkAdapter,
     NonBlockingLarkWSClient,
@@ -188,16 +186,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         self.request_app_ticket()
 
     def _build_event_handler(self):
-        @diagnostics.observe(
-            'event',
-            'platform.native_callback',
-            source='platform',
-            stage='convert',
-            ap=lambda: getattr(logger, 'ap', None),
-            fields=lambda b: {
-                'workspace_uuid': getattr(getattr(logger, 'execution_context', None), 'workspace_uuid', '')
-            },
-        )
         async def on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
             await self._handle_message_event(event)
 
@@ -338,7 +326,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.request_tenant_access_token(tenant_key)
         return self.tenant_access_tokens.get(tenant_key, {}).get('token')
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -372,7 +359,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             message_id=message_ids[-1] if message_ids else '', raw={'message_ids': message_ids}
         )
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -449,7 +435,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             while len(self.pending_monitoring_msg) > 1000:
                 self.pending_monitoring_msg.pop(next(iter(self.pending_monitoring_msg)), None)
 
-    @diagnostics.observe('api', 'create_message_card', source='platform', stage='accepted')
     async def create_message_card(self, message_id, event) -> bool:
         card_id = await self.create_card_id(message_id)
         content = {'type': 'card', 'data': {'card_id': card_id, 'template_variable': {'content': 'Thinking...'}}}
@@ -554,7 +539,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             raise RuntimeError(f'Lark card update failed: {response.code} {response.msg}')
         self.closed_streaming_cards.add(card_id)
 
-    @diagnostics.observe('api', 'reply_message_chunk', source='platform', stage='accepted')
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -605,7 +589,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.card_last_update_dict.pop(card_id, None)
             self.closed_streaming_cards.discard(card_id)
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request':
             return await send_interaction(self, params)
@@ -750,7 +733,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     async def is_muted(self, group_id: int | None = None) -> bool:
         return False
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_message_event(self, event: lark_oapi.im.v1.P2ImMessageReceiveV1):
         try:
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
@@ -765,7 +747,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             await self.logger.error(f'Error in lark message event: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.Event):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:

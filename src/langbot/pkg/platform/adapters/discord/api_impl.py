@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import datetime
 import typing
 
@@ -17,7 +15,6 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 class DiscordAPIMixin:
     bot: discord.Client
 
-    @diagnostics.observe('api', 'edit_message', source='platform', stage='accepted')
     async def edit_message(
         self,
         chat_type: str,
@@ -34,7 +31,6 @@ class DiscordAPIMixin:
             return
         await message.edit(content=content)
 
-    @diagnostics.observe('api', 'delete_message', source='platform', stage='accepted')
     async def delete_message(
         self,
         chat_type: str,
@@ -45,7 +41,6 @@ class DiscordAPIMixin:
         message = await channel.fetch_message(int(message_id))
         await message.delete()
 
-    @diagnostics.observe('api', 'forward_message', source='platform', stage='accepted')
     async def forward_message(
         self,
         from_chat_type: str,
@@ -61,12 +56,10 @@ class DiscordAPIMixin:
         sent = await to_channel.send(content=message.content, files=files)
         return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
 
-    @diagnostics.observe('api', 'get_group_info', source='platform', stage='accepted')
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         guild = await self._get_guild(group_id)
         return DiscordEventConverter.group_from_guild(guild)
 
-    @diagnostics.observe('api', 'get_group_member_list', source='platform', stage='accepted')
     async def get_group_member_list(
         self,
         group_id: typing.Union[int, str],
@@ -75,7 +68,6 @@ class DiscordAPIMixin:
         members = guild.members or [member async for member in guild.fetch_members(limit=None)]
         return [self._member_to_entity(member) for member in members]
 
-    @diagnostics.observe('api', 'get_group_member_info', source='platform', stage='accepted')
     async def get_group_member_info(
         self,
         group_id: typing.Union[int, str],
@@ -85,22 +77,18 @@ class DiscordAPIMixin:
         member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
         return self._member_to_entity(member)
 
-    @diagnostics.observe('api', 'get_user_info', source='platform', stage='accepted')
     async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
         user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
         return DiscordEventConverter.user_from_author(user)
 
-    @diagnostics.observe('api', 'upload_file', source='platform', stage='accepted')
     async def upload_file(self, file_data: bytes, filename: str) -> str:
         from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
 
         raise NotSupportedError('upload_file')
 
-    @diagnostics.observe('api', 'get_file_url', source='platform', stage='accepted')
     async def get_file_url(self, file_id: str) -> str:
         return file_id
 
-    @diagnostics.observe('api', 'mute_member', source='platform', stage='accepted')
     async def mute_member(
         self,
         group_id: typing.Union[int, str],
@@ -114,7 +102,6 @@ class DiscordAPIMixin:
             until = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=duration)
         await member.timeout(until, reason='LangBot Omni mute_member')
 
-    @diagnostics.observe('api', 'unmute_member', source='platform', stage='accepted')
     async def unmute_member(
         self,
         group_id: typing.Union[int, str],
@@ -124,7 +111,6 @@ class DiscordAPIMixin:
         member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
         await member.timeout(None, reason='LangBot Omni unmute_member')
 
-    @diagnostics.observe('api', 'kick_member', source='platform', stage='accepted')
     async def kick_member(
         self,
         group_id: typing.Union[int, str],
@@ -134,7 +120,6 @@ class DiscordAPIMixin:
         member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
         await member.kick(reason='LangBot Omni kick_member')
 
-    @diagnostics.observe('api', 'leave_group', source='platform', stage='accepted')
     async def leave_group(self, group_id: typing.Union[int, str]) -> None:
         guild = await self._get_guild(group_id)
         await guild.leave()

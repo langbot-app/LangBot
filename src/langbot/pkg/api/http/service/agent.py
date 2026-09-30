@@ -6,7 +6,6 @@ import fnmatch
 import time
 import uuid
 import typing
-from ... import management_diagnostics as diagnostics
 
 import sqlalchemy
 from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
@@ -135,7 +134,6 @@ class AgentService:
 
         return None
 
-    @diagnostics.observe('http.agent.debug_agent', source='webui_debug')
     async def debug_agent(
         self,
         context: RequestContext,
@@ -150,7 +148,6 @@ class AgentService:
         delivers outputs to a real platform, and supports both message and
         non-message event envelopes.
         """
-        diagnostics.workspace(context)
         agent = await self.get_agent(context, agent_uuid)
         if agent is None or agent.get('kind') not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
             raise ValueError('Agent not found')

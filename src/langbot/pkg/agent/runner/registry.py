@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from ...telemetry import diagnostics
-
 import typing
 import asyncio
 
@@ -138,9 +136,6 @@ class RunnerRegistry:
             permissions=typed_manifest.permissions,
             raw_manifest=manifest,
         )
-        manager = getattr(self.ap, 'diagnostics', None)
-        if isinstance(manager, diagnostics.DiagnosticsManager) and manager.enabled:
-            diagnostics.declare_runner(descriptor)
         return descriptor
 
     async def refresh(self, context: TenantContext) -> None:

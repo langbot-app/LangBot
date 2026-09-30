@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from ...telemetry import diagnostics
-
 import copy
 import fnmatch
 import typing
@@ -669,7 +667,6 @@ def resolve_platform_api_call(session, bot_uuid, action, params, context_tool=No
     raise ValueError(f'Platform API {action} or its target is not authorized for this run')
 
 
-@diagnostics.observe('api', 'host.platform_tool', source='agent')
 async def execute_platform_tool(
     ap: typing.Any,
     execution_context: typing.Any,
@@ -689,7 +686,6 @@ async def execute_platform_tool(
         normalized = _event_params(definition, context, normalized)
     # This flag is frozen by the Host from the synthetic debug envelope, not tool arguments.
     if delivery.get('surface') == 'webui' and (delivery.get('platform_capabilities') or {}).get('debug_mock') is True:
-        diagnostics.annotate(source='webui_debug', attributes={'synthetic': True})
         result = _execute_mock_platform_tool(definition, context, normalized)
         if message_chain is not None:
             result['parameters']['message'] = message_chain.model_dump(mode='json')

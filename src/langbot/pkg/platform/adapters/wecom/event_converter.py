@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from langbot.libs.wecom_api.api import WecomClient
@@ -19,7 +17,6 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(event: WecomEvent, bot: WecomClient | None = None) -> platform_events.FriendMessage | None:
         eba_event = await WecomEventConverter.target2yiri(event, bot)
         if hasattr(eba_event, 'to_legacy_event'):
@@ -39,7 +36,6 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return None
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(event: WecomEvent, bot: WecomClient | None = None) -> platform_events.Event | None:
         if event.type in {'text', 'image'}:
             return await WecomEventConverter.message_to_eba(event, bot)

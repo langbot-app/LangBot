@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 import asyncio
 import inspect
 import typing
@@ -646,8 +644,6 @@ class RuntimeConnectionHandler(handler.Handler):
         payload fields can never select the scope. A transaction-free boundary
         avoids reserving one pooled connection across provider and network waits.
         """
-
-        diagnostics.annotate(workspace_uuid=action_context.workspace_uuid)
         persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
         if persistence_mgr is None:
             yield
@@ -700,9 +696,7 @@ class RuntimeConnectionHandler(handler.Handler):
                             async for response in responses:
                                 yield response
 
-                self.actions[action_name] = diagnostics.observe(
-                    'api', 'host.' + action_name, source='plugin', ap=self.ap
-                )(secured_stream_action)
+                self.actions[action_name] = secured_stream_action
                 continue
 
             async def secured_action(
@@ -731,9 +725,7 @@ class RuntimeConnectionHandler(handler.Handler):
                         response = await response
                     return response
 
-            self.actions[action_name] = diagnostics.observe('api', 'host.' + action_name, source='plugin', ap=self.ap)(
-                secured_action
-            )
+            self.actions[action_name] = secured_action
 
     async def _get_plugin_setting(
         self,
