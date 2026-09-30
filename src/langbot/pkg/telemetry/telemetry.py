@@ -170,9 +170,7 @@ class TelemetryManager:
 
                         if resp.status_code >= 400:
                             body = await httpclient.response_text(resp, max_chars=200)
-                            self.ap.logger.debug(
-                                f'Telemetry post to {url} returned status {resp.status_code} - {body}'
-                            )
+                            self.ap.logger.debug(f'Telemetry post to {url} returned status {resp.status_code} - {body}')
                         else:
                             # Detect application-level errors inside HTTP 200 responses
                             app_err = False
