@@ -17,6 +17,9 @@ const homeSidebarSource = readSource(
 const botFormSource = readSource(
   'src/app/home/bots/components/bot-form/BotForm.tsx',
 );
+const dynamicFormSource = readSource(
+  'src/app/home/components/dynamic-form/DynamicFormComponent.tsx',
+);
 const kbFormSource = readSource(
   'src/app/home/knowledge/components/kb-form/KBForm.tsx',
 );
@@ -50,6 +53,27 @@ test('keeps bot forms spaced with responsive setup and detail columns', () => {
     /initBotId\s*\?\s*'grid gap-4 lg:h-full lg:min-h-0 lg:grid-cols-\[minmax\(0,2fr\)_minmax\(0,3fr\)\] lg:grid-rows-\[minmax\(0,1fr\)\]'\s*:\s*'grid items-start gap-6 lg:grid-cols-\[minmax\(16rem,0\.7fr\)_minmax\(0,2fr\)\]'/,
   );
   assert.match(kbFormSource, /<form[\s\S]*?className="space-y-6"/);
+});
+
+test('hides the manifest connection switch behind the dedicated selector', () => {
+  assert.match(
+    botFormSource,
+    /webhookField\?\.show_if\?\.field\s*\?\s*\[webhookField\.show_if\.field\]/,
+  );
+  assert.match(
+    botFormSource,
+    /hiddenItemNames=\{connectionModeControllerNames\}/,
+  );
+  assert.match(
+    dynamicFormSource,
+    /if \(hiddenItemNames\?\.includes\(config\.name\)\) return null/,
+  );
+  assert.doesNotMatch(
+    dynamicFormSource.match(
+      /const editableItems = useMemo\([\s\S]*?\n  \);/,
+    )?.[0] ?? '',
+    /hiddenItemNames/,
+  );
 });
 
 test('does not expose storage analysis in Cloud settings or via a deep link', () => {
