@@ -1490,6 +1490,13 @@ const thTH = {
       version: 'เวอร์ชัน',
       pluginDescription: 'คำอธิบาย',
       repository: 'ที่เก็บโค้ด',
+      repositoryPublicHint:
+        'เมื่อซิงค์ไปยัง GitHub ที่เก็บที่ยังไม่มีจะถูกสร้าง และที่เก็บส่วนตัวที่มีอยู่จะถูกเปลี่ยนเป็นสาธารณะ',
+      author: 'ผู้พัฒนา',
+      authorHint: 'เมื่อเผยแพร่จะใช้ชื่อผู้พัฒนานี้บน LangBot Space',
+      license: 'สัญญาอนุญาต',
+      licensePlaceholder: 'เลือกสัญญาอนุญาต',
+      licenseNone: 'ไม่ระบุ',
       changelog: 'บันทึกการเปลี่ยนแปลง',
       syncGithub: 'ซิงค์ไปยัง GitHub',
       syncGithubHint:

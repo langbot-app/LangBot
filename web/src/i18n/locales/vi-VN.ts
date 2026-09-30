@@ -1512,6 +1512,13 @@ const viVN = {
       version: 'Phiên bản',
       pluginDescription: 'Mô tả',
       repository: 'Kho lưu trữ',
+      repositoryPublicHint:
+        'Khi đồng bộ lên GitHub, kho chưa tồn tại sẽ được tạo và kho riêng tư hiện có sẽ được chuyển sang công khai.',
+      author: 'Tác giả',
+      authorHint: 'Khi phát hành sẽ dùng danh tính tác giả này trên LangBot Space.',
+      license: 'Giấy phép',
+      licensePlaceholder: 'Chọn giấy phép',
+      licenseNone: 'Không chỉ định',
       changelog: 'Nhật ký thay đổi',
       syncGithub: 'Đồng bộ lên GitHub',
       syncGithubHint:

@@ -1429,6 +1429,13 @@ const zhHans = {
       version: '版本',
       pluginDescription: '描述',
       repository: '代码仓库',
+      repositoryPublicHint:
+        '同步到 GitHub 时，仓库不存在会自动创建，已存在的私有仓库也会自动改为公开。',
+      author: '作者',
+      authorHint: '发布到 LangBot Space 时将使用此作者身份。',
+      license: '开源协议',
+      licensePlaceholder: '选择开源协议',
+      licenseNone: '未指定',
       changelog: '更新说明',
       syncGithub: '同步到 GitHub',
       syncGithubHint:

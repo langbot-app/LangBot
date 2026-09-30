@@ -1427,6 +1427,13 @@ const zhHant = {
       version: '版本',
       pluginDescription: '描述',
       repository: '程式碼倉庫',
+      repositoryPublicHint:
+        '同步到 GitHub 時，倉庫不存在會自動建立，已存在的私有倉庫也會自動改為公開。',
+      author: '作者',
+      authorHint: '發佈到 LangBot Space 時將使用此作者身分。',
+      license: '開源授權條款',
+      licensePlaceholder: '選擇開源授權條款',
+      licenseNone: '未指定',
       changelog: '更新說明',
       syncGithub: '同步到 GitHub',
       syncGithubHint:

@@ -17,11 +17,24 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Loader2,
   Upload,
   Github,
   AlertTriangle,
   ImagePlus,
+  ChevronDown,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useAuthenticatedPluginIcon } from '@/hooks/useAuthenticatedPluginResource';
@@ -45,6 +58,28 @@ const LOCALES: { code: string; label: string }[] = [
   { code: 'vi_VN', label: 'Tiếng Việt' },
   { code: 'es_ES', label: 'Español' },
 ];
+
+/**
+ * Open-source licenses offered by the upload page. Values are SPDX identifiers
+ * so the published manifest stays tool-friendly.
+ */
+const LICENSE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'MIT', label: 'MIT' },
+  { value: 'Apache-2.0', label: 'Apache License 2.0' },
+  { value: 'GPL-3.0', label: 'GPL-3.0' },
+  { value: 'GPL-2.0', label: 'GPL-2.0' },
+  { value: 'LGPL-3.0', label: 'LGPL-3.0' },
+  { value: 'AGPL-3.0', label: 'AGPL-3.0' },
+  { value: 'MPL-2.0', label: 'Mozilla Public License 2.0' },
+  { value: 'BSD-3-Clause', label: 'BSD-3-Clause' },
+  { value: 'BSD-2-Clause', label: 'BSD-2-Clause' },
+  { value: 'ISC', label: 'ISC' },
+  { value: 'Unlicense', label: 'The Unlicense' },
+  { value: 'CC0-1.0', label: 'CC0-1.0' },
+];
+
+/** Sentinel used by the license ``Select`` for "no license chosen". */
+const LICENSE_UNSET = '__none__';
 
 /**
  * Icon size ceiling, mirrored by the backend validator.
@@ -135,8 +170,11 @@ export default function PluginSpaceUploadDialog({
   const [descriptionDraft, setDescriptionDraft] = useState<I18nDraft>({});
   const [version, setVersion] = useState('');
   const [repository, setRepository] = useState('');
+  const [authorDraft, setAuthorDraft] = useState(author);
+  const [license, setLicense] = useState('');
   const [changelog, setChangelog] = useState('');
   const [activeLocale, setActiveLocale] = useState('en_US');
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
 
   const [iconDataUrl, setIconDataUrl] = useState('');
   const [iconFileName, setIconFileName] = useState('');
@@ -163,6 +201,8 @@ export default function PluginSpaceUploadDialog({
         setVersion(info.metadata.version ?? '');
         setRepository(info.metadata.repository ?? '');
         setRepoUrl(info.metadata.repository ?? '');
+        setAuthorDraft(info.metadata.author ?? author);
+        setLicense(info.metadata.license ?? '');
       } catch {
         setLoadError(true);
         toast.error(t('plugins.spaceUpload.loadFailed'));
@@ -174,7 +214,12 @@ export default function PluginSpaceUploadDialog({
   );
 
   useEffect(() => {
-    if (open) void loadConfig();
+    if (open) {
+      // Basic information starts collapsed so the compact dialog is not
+      // dominated by the multilingual name/description fields.
+      setBasicInfoOpen(false);
+      void loadConfig();
+    }
   }, [open, loadConfig]);
 
   function handleIconSelect(file: File | null) {
@@ -203,6 +248,8 @@ export default function PluginSpaceUploadDialog({
     if (description) overrides.description = description;
     if (version.trim()) overrides.version = version.trim();
     if (repository.trim()) overrides.repository = repository.trim();
+    if (authorDraft.trim()) overrides.author = authorDraft.trim();
+    if (license.trim()) overrides.license = license.trim();
     if (iconDataUrl) overrides.icon_base64 = iconDataUrl;
     return overrides;
   }
@@ -278,11 +325,11 @@ export default function PluginSpaceUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      {/* Compact card (~36rem) so it no longer feels oversized while still
-          fitting the locale tabs. The base DialogContent applies
-          `sm:max-w-lg` at the `sm` breakpoint, which would otherwise clamp the
-          width back to 32rem, so the max-width must be set explicitly too. */}
-      <DialogContent className="w-[min(92vw,36rem)] max-w-[min(92vw,36rem)] sm:max-w-[36rem] max-h-[85vh] overflow-y-auto overflow-x-hidden">
+      {/* Two-column card (~72rem): icon + metadata on the left, changelog on the
+          right. The base DialogContent applies `sm:max-w-lg` at the `sm`
+          breakpoint, which would otherwise clamp the width back to 32rem, so the
+          max-width must be set explicitly too. */}
+      <DialogContent className="w-[min(94vw,72rem)] max-w-[min(94vw,72rem)] sm:max-w-[72rem] max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="size-4" />
@@ -318,140 +365,186 @@ export default function PluginSpaceUploadDialog({
               </div>
             )}
 
-            {/* Icon + version/repository */}
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="flex flex-col items-center gap-2">
-                <img
-                  src={iconDataUrl || authenticatedIcon.url || undefined}
-                  alt="plugin icon"
-                  className="h-20 w-20 rounded-lg border object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.visibility = 'hidden';
-                  }}
-                />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) =>
-                    handleIconSelect(e.target.files?.[0] ?? null)
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={busy}
-                >
-                  <ImagePlus className="mr-1.5 size-4" />
-                  {t('plugins.spaceUpload.changeIcon')}
-                </Button>
-                {iconFileName && (
-                  <span className="max-w-[10rem] truncate text-[0.7rem] text-muted-foreground">
-                    {iconFileName}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex-1 space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="space-upload-version">
-                    {t('plugins.spaceUpload.version')}
-                  </Label>
-                  <Input
-                    id="space-upload-version"
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    placeholder="0.1.0"
-                    disabled={busy}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="space-upload-repository">
-                    {t('plugins.spaceUpload.repository')}
-                  </Label>
-                  <Input
-                    id="space-upload-repository"
-                    value={repository}
-                    onChange={(e) => setRepository(e.target.value)}
-                    placeholder="https://github.com/owner/repo"
-                    disabled={busy}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Multi-language name & description */}
-            <div className="space-y-2">
-              <Label>{t('plugins.spaceUpload.basicInfo')}</Label>
-              <Tabs value={activeLocale} onValueChange={setActiveLocale}>
-                <TabsList className="h-auto w-full flex-wrap justify-start">
-                  {LOCALES.map((locale) => (
-                    <TabsTrigger
-                      key={locale.code}
-                      value={locale.code}
-                      className="flex-none whitespace-nowrap"
+            {/* Two columns: metadata + basic info on the left, changelog on the
+                right (the changelog spans the full column height). */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <img
+                      src={iconDataUrl || authenticatedIcon.url || undefined}
+                      alt="plugin icon"
+                      className="h-20 w-20 shrink-0 rounded-lg border object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.visibility =
+                          'hidden';
+                      }}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleIconSelect(e.target.files?.[0] ?? null)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={busy}
                     >
-                      {locale.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+                      <ImagePlus className="mr-1.5 size-4" />
+                      {t('plugins.spaceUpload.changeIcon')}
+                    </Button>
+                    {iconFileName && (
+                      <span className="max-w-[10rem] truncate text-[0.7rem] text-muted-foreground">
+                        {iconFileName}
+                      </span>
+                    )}
+                  </div>
 
-              <div className="space-y-1.5 pt-1">
-                <Label htmlFor="space-upload-label">
-                  {t('plugins.spaceUpload.label')}
-                </Label>
-                <Input
-                  id="space-upload-label"
-                  value={labelDraft[activeLocale] ?? ''}
-                  onChange={(e) =>
-                    setLabelDraft((prev) => ({
-                      ...prev,
-                      [activeLocale]: e.target.value,
-                    }))
-                  }
-                  disabled={busy}
-                />
+                  <div className="flex-1 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="space-upload-version">
+                        {t('plugins.spaceUpload.version')}
+                      </Label>
+                      <Input
+                        id="space-upload-version"
+                        value={version}
+                        onChange={(e) => setVersion(e.target.value)}
+                        placeholder="0.1.0"
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="space-upload-repository">
+                        {t('plugins.spaceUpload.repository')}
+                      </Label>
+                      <Input
+                        id="space-upload-repository"
+                        value={repository}
+                        onChange={(e) => setRepository(e.target.value)}
+                        placeholder="https://github.com/owner/repo"
+                        disabled={busy}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t('plugins.spaceUpload.repositoryPublicHint')}
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="space-upload-author">
+                        {t('plugins.spaceUpload.author')}
+                      </Label>
+                      <Input
+                        id="space-upload-author"
+                        value={authorDraft}
+                        onChange={(e) => setAuthorDraft(e.target.value)}
+                        placeholder={author}
+                        disabled={busy}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t('plugins.spaceUpload.authorHint')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Multi-language name & description (collapsed by default) */}
+                <Collapsible
+                  open={basicInfoOpen}
+                  onOpenChange={setBasicInfoOpen}
+                  className="space-y-2 rounded-md border px-3 py-2"
+                >
+                  <CollapsibleTrigger
+                    type="button"
+                    disabled={busy}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <ChevronDown
+                      className={`size-4 shrink-0 text-muted-foreground transition-transform ${basicInfoOpen ? 'rotate-180' : ''}`}
+                    />
+                    <span className="text-sm font-medium">
+                      {t('plugins.spaceUpload.basicInfo')}
+                    </span>
+                    {!hasLabel && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400">
+                        {t('plugins.spaceUpload.labelRequired')}
+                      </span>
+                    )}
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent className="space-y-2 pt-1">
+                    <Tabs value={activeLocale} onValueChange={setActiveLocale}>
+                      <TabsList className="flex h-auto w-full items-stretch gap-1">
+                        {LOCALES.map((locale) => (
+                          <TabsTrigger
+                            key={locale.code}
+                            value={locale.code}
+                            className="min-w-0 flex-1 whitespace-nowrap px-1 text-xs"
+                          >
+                            {locale.label}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </Tabs>
+
+                    {/* Name and description sit side by side so the expanded
+                        section stays compact vertically. */}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="space-upload-label">
+                          {t('plugins.spaceUpload.label')}
+                        </Label>
+                        <Input
+                          id="space-upload-label"
+                          value={labelDraft[activeLocale] ?? ''}
+                          onChange={(e) =>
+                            setLabelDraft((prev) => ({
+                              ...prev,
+                              [activeLocale]: e.target.value,
+                            }))
+                          }
+                          disabled={busy}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="space-upload-description">
+                          {t('plugins.spaceUpload.pluginDescription')}
+                        </Label>
+                        <Textarea
+                          id="space-upload-description"
+                          value={descriptionDraft[activeLocale] ?? ''}
+                          onChange={(e) =>
+                            setDescriptionDraft((prev) => ({
+                              ...prev,
+                              [activeLocale]: e.target.value,
+                            }))
+                          }
+                          rows={2}
+                          disabled={busy}
+                        />
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="space-upload-description">
-                  {t('plugins.spaceUpload.pluginDescription')}
+              <div className="flex min-h-0 flex-col space-y-1.5">
+                <Label htmlFor="space-upload-changelog">
+                  {t('plugins.spaceUpload.changelog')}
                 </Label>
                 <Textarea
-                  id="space-upload-description"
-                  value={descriptionDraft[activeLocale] ?? ''}
-                  onChange={(e) =>
-                    setDescriptionDraft((prev) => ({
-                      ...prev,
-                      [activeLocale]: e.target.value,
-                    }))
-                  }
-                  rows={3}
+                  id="space-upload-changelog"
+                  value={changelog}
+                  onChange={(e) => setChangelog(e.target.value)}
+                  className="min-h-[8rem] flex-1"
                   disabled={busy}
                 />
               </div>
-              {!hasLabel && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {t('plugins.spaceUpload.labelRequired')}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="space-upload-changelog">
-                {t('plugins.spaceUpload.changelog')}
-              </Label>
-              <Textarea
-                id="space-upload-changelog"
-                value={changelog}
-                onChange={(e) => setChangelog(e.target.value)}
-                rows={2}
-                disabled={busy}
-              />
             </div>
 
             {/* GitHub sync */}
@@ -531,6 +624,41 @@ export default function PluginSpaceUploadDialog({
                       onChange={(e) => setCommitMessage(e.target.value)}
                       disabled={busy}
                     />
+                  </div>
+                  {/* License is stored in the plugin manifest and applied by the
+                      same commit/push, so it is only offered while syncing. */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="space-upload-license">
+                      {t('plugins.spaceUpload.license')}
+                    </Label>
+                    <Select
+                      value={license || LICENSE_UNSET}
+                      onValueChange={(value) =>
+                        setLicense(value === LICENSE_UNSET ? '' : value)
+                      }
+                      disabled={busy}
+                    >
+                      <SelectTrigger
+                        id="space-upload-license"
+                        className="w-full"
+                      >
+                        <SelectValue
+                          placeholder={t(
+                            'plugins.spaceUpload.licensePlaceholder',
+                          )}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={LICENSE_UNSET}>
+                          {t('plugins.spaceUpload.licenseNone')}
+                        </SelectItem>
+                        {LICENSE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <Button
                     type="button"

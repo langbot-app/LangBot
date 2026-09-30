@@ -1548,6 +1548,13 @@ const esES = {
       version: 'Versión',
       pluginDescription: 'Descripción',
       repository: 'Repositorio',
+      repositoryPublicHint:
+        'Al sincronizar con GitHub, un repositorio inexistente se crea y un repositorio privado existente pasa a ser público.',
+      author: 'Autor',
+      authorHint: 'Al publicar se usa esta identidad de autor en LangBot Space.',
+      license: 'Licencia',
+      licensePlaceholder: 'Selecciona una licencia',
+      licenseNone: 'Sin especificar',
       changelog: 'Registro de cambios',
       syncGithub: 'Sincronizar con GitHub',
       syncGithubHint:

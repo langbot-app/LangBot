@@ -487,6 +487,7 @@ class PluginsRouterGroup(group.RouterGroup):
                         'description': metadata.get('description'),
                         'version': metadata.get('version'),
                         'repository': metadata.get('repository'),
+                        'license': metadata.get('license'),
                     },
                     'space_connected': bool(access_token),
                     'cloud_service_url': self.ap.instance_config.data.get('space', {}).get(

@@ -1544,6 +1544,13 @@ const ruRU = {
       version: 'Версия',
       pluginDescription: 'Описание',
       repository: 'Репозиторий',
+      repositoryPublicHint:
+        'При синхронизации с GitHub отсутствующий репозиторий создаётся, а существующий приватный становится публичным.',
+      author: 'Автор',
+      authorHint: 'При публикации используется эта личность автора в LangBot Space.',
+      license: 'Лицензия',
+      licensePlaceholder: 'Выберите лицензию',
+      licenseNone: 'Не указана',
       changelog: 'Список изменений',
       syncGithub: 'Синхронизировать с GitHub',
       syncGithubHint:

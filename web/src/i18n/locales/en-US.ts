@@ -1518,6 +1518,13 @@ const enUS = {
       version: 'Version',
       pluginDescription: 'Description',
       repository: 'Repository',
+      repositoryPublicHint:
+        'When syncing to GitHub, a missing repository is created and an existing private repository is switched to public.',
+      author: 'Author',
+      authorHint: 'Publishing uses this author identity on LangBot Space.',
+      license: 'License',
+      licensePlaceholder: 'Select a license',
+      licenseNone: 'Not specified',
       changelog: 'Changelog',
       syncGithub: 'Sync to GitHub',
       syncGithubHint:

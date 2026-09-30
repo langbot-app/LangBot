@@ -1532,6 +1532,13 @@ const jaJP = {
       version: 'バージョン',
       pluginDescription: '説明',
       repository: 'リポジトリ',
+      repositoryPublicHint:
+        'GitHub へ同期する際、存在しないリポジトリは作成され、既存のプライベートリポジトリは公開に変更されます。',
+      author: '作者',
+      authorHint: '公開時は LangBot Space 上でこの作者として登録されます。',
+      license: 'ライセンス',
+      licensePlaceholder: 'ライセンスを選択',
+      licenseNone: '未指定',
       changelog: '変更履歴',
       syncGithub: 'GitHub に同期',
       syncGithubHint:
