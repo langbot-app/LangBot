@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import asyncio
 import contextlib
 import typing
 
@@ -36,6 +37,7 @@ from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
+from ...telemetry.execution import record as record_execution
 
 
 ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
@@ -208,6 +210,7 @@ class AgentRunOrchestrator:
         terminal_status: str | None = None
         terminal_reason: str | None = None
         terminal_usage: dict[str, typing.Any] | None = None
+        execution_outcome = 'unknown'
 
         try:
             await self.journal.create_run(
@@ -389,7 +392,14 @@ class AgentRunOrchestrator:
                 status_reason=terminal_reason,
                 usage=terminal_usage,
             )
+            execution_outcome = {'completed': 'success', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
+                terminal_status or '', 'unknown'
+            )
+        except asyncio.CancelledError:
+            execution_outcome = 'cancelled'
+            raise
         except Exception as exc:
+            execution_outcome = 'timeout' if self._is_deadline_exhausted(context) else 'failed'
             failed_usage = terminal_usage
             await self.journal.finalize_run(
                 run_id=run_id,
@@ -399,6 +409,16 @@ class AgentRunOrchestrator:
             )
             raise
         finally:
+            record_execution(
+                self.ap,
+                execution_context,
+                family='runner',
+                operation='execute',
+                mode=binding.processor_type,
+                runner=descriptor.id,
+                outcome=execution_outcome,
+                synthetic=event.source == 'webui',
+            )
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
                 object.__delattr__(execution_query, '_box_binding')

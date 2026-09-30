@@ -9,6 +9,7 @@ import httpx
 
 from ..core import app as core_app
 from ..utils import httpclient
+from .execution import ExecutionCounters
 
 
 _MAX_INFLIGHT_TELEMETRY_TASKS = 8
@@ -28,6 +29,7 @@ class TelemetryManager:
         self.telemetry_config: dict[str, typing.Any] = {}
         self.send_tasks: list[asyncio.Task] = []
         self._client: httpx.AsyncClient | None = None
+        self.execution = ExecutionCounters(self)
 
     async def initialize(self):
         self.telemetry_config = self.ap.instance_config.data.get('space', {})
@@ -48,6 +50,7 @@ class TelemetryManager:
             pass
 
     async def shutdown(self) -> None:
+        await self.execution.shutdown()
         tasks = list(self.send_tasks)
         for task in tasks:
             task.cancel()
@@ -194,6 +197,8 @@ class TelemetryManager:
                                 self.ap.logger.debug(
                                     f'Telemetry posted to {url}, status {resp.status_code} - response: {body}'
                                 )
+                            if not app_err:
+                                return True
                     except asyncio.TimeoutError:
                         self.ap.logger.warning(f'Telemetry post to {url} timed out')
                     except Exception as e:

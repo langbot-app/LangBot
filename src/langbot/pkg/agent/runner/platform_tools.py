@@ -689,6 +689,17 @@ async def execute_platform_tool(
         result = _execute_mock_platform_tool(definition, context, normalized)
         if message_chain is not None:
             result['parameters']['message'] = message_chain.model_dump(mode='json')
+        from ...telemetry.execution import record
+
+        record(
+            ap,
+            execution_context,
+            family='platform_api',
+            operation=definition.api,
+            mode=authorization.get('processor_type', 'none'),
+            synthetic=True,
+            outcome='success',
+        )
         return result
     bot_id = authorization.get('bot_id')
     if not bot_id:
@@ -709,7 +720,13 @@ async def execute_platform_tool(
             if message_chain is not None
             else platform_message.MessageChain([platform_message.Plain(text=_require_string(normalized, 'text'))]),
         }
-    return await api_func(**normalized)
+    from ...telemetry.platform import processing_mode
+
+    token = processing_mode.set(authorization.get('processor_type', 'none'))
+    try:
+        return await api_func(**normalized)
+    finally:
+        processing_mode.reset(token)
 
 
 def _execute_mock_platform_tool(

@@ -382,6 +382,18 @@ class RuntimeBot:
         }
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
+        if status in {'delivered', 'failed', 'discarded', 'not_matched'}:
+            from ..telemetry.execution import record
+
+            record(
+                self.ap,
+                self.execution_context,
+                family='event_route',
+                operation=event_type,
+                adapter=self.adapter.__class__.__name__,
+                mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
+                outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
+            )
         return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
@@ -841,6 +853,16 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
     ) -> None:
         event.bot_uuid = self.bot_entity.uuid
+        from ..telemetry.execution import record
+
+        record(
+            self.ap,
+            self.execution_context,
+            family='platform_event',
+            operation=event.type,
+            adapter=adapter.__class__.__name__,
+            outcome='success',
+        )
         await self._record_adapter_event(event, adapter)
 
         primary = (
@@ -1468,6 +1490,10 @@ class RuntimeBot:
         )
 
     async def initialize(self):
+        from ..telemetry.platform import observe_adapter
+
+        observe_adapter(self.ap, self.execution_context, self.adapter)
+
         def tenant_scoped_listener(listener):
             @functools.wraps(listener)
             async def wrapped(*args, **kwargs):

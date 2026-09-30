@@ -367,6 +367,15 @@ class RuntimePipeline:
             i += 1
 
     async def process_query(self, query: pipeline_query.Query):
+        from ..telemetry.platform import processing_mode
+
+        token = processing_mode.set('pipeline')
+        try:
+            return await self._process_query(query)
+        finally:
+            processing_mode.reset(token)
+
+    async def _process_query(self, query: pipeline_query.Query):
         """处理请求"""
         await self._assert_execution_active(query)
         # Get monitoring metadata
