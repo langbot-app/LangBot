@@ -386,11 +386,11 @@ class RuntimeBot:
             from ..telemetry.execution import record
 
             record(
-                self.ap,
-                self.execution_context,
+                getattr(self, 'ap', None),
+                getattr(self, 'execution_context', None),
                 family='event_route',
                 operation=event_type,
-                adapter=self.adapter.__class__.__name__,
+                adapter=type(getattr(self, 'adapter', None)).__name__,
                 mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
                 outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
             )
@@ -856,8 +856,8 @@ class RuntimeBot:
         from ..telemetry.execution import record
 
         record(
-            self.ap,
-            self.execution_context,
+            getattr(self, 'ap', None),
+            getattr(self, 'execution_context', None),
             family='platform_event',
             operation=event.type,
             adapter=adapter.__class__.__name__,
