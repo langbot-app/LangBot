@@ -56,7 +56,9 @@ from langbot_plugin.api.entities.builtin.command import (
     errors as command_errors,
 )
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+from langbot_plugin.runtime.io.handler import SHARED_WORKER_FILE_STORAGE_DIR
 from langbot_plugin.runtime.security import (
+    PLUGIN_FILE_STORAGE_DIR_ENV,
     PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
     PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
     validate_runtime_secret,
@@ -231,6 +233,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.runtime_profile: typing.Literal['oss_dev', 'shared'] = (
             'shared' if getattr(getattr(ap, 'deployment', None), 'mode', 'oss') == 'cloud' else 'oss_dev'
         )
+        self._align_plugin_file_transfer_root()
         self.runtime_identity: RuntimeIdentity | None = None
         self._runtime_id = self._build_runtime_id()
         self.worker_policy: PluginWorkerPolicy | None = None
@@ -255,6 +258,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'failed_installations': 0,
             'missing_artifacts': 0,
         }
+
+    def _align_plugin_file_transfer_root(self) -> None:
+        """Use the Runtime's plugin file-transfer root when running shared.
+
+        The SDK binds its transfer root to one directory inode with mode 0700 and
+        picks the default per process: a shared worker uses
+        ``SHARED_WORKER_FILE_STORAGE_DIR``, every other process falls back to
+        ``data/temp/lbp``. A host talking to a shared Runtime must use the same root,
+        otherwise plugin icons and assets die with "Invalid file transfer
+        capability" (the icon route then answers 500/404 instead of the image).
+        An explicit operator value always wins.
+        """
+
+        if self.runtime_profile != 'shared':
+            return
+        if os.environ.get(PLUGIN_FILE_STORAGE_DIR_ENV):
+            return
+        os.environ[PLUGIN_FILE_STORAGE_DIR_ENV] = SHARED_WORKER_FILE_STORAGE_DIR
 
     @staticmethod
     def _build_runtime_id() -> str:
@@ -634,6 +655,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'installation_uuid': installation_uuid,
             'error_code': error_code,
             'message': message,
+            # When the failure actually happened. The ops reporter must publish this
+            # instead of its own sampling time, otherwise every sample re-stamps the
+            # same failure with the newest report time.
+            'failed_at': _utc_now_iso(),
         }
         self._installation_failures[installation_uuid] = failure
         self.ap.logger.error(
@@ -675,9 +700,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 'installation_uuid': installation_uuid,
                 'error_code': error_code,
                 'message': message,
+                # See _raise_apply_failure: never let the reporter substitute its own
+                # sampling time for the moment the failure was observed.
+                'failed_at': _utc_now_iso(),
             }
             failures[installation_uuid] = failure
-            if self._installation_failures.get(installation_uuid) != failure:
+            previous = self._installation_failures.get(installation_uuid) or {}
+            if {key: value for key, value in previous.items() if key != 'failed_at'} != {
+                key: value for key, value in failure.items() if key != 'failed_at'
+            }:
                 self.ap.logger.error(
                     'Plugin installation %s failed during reconcile [%s]: %s',
                     installation_uuid,

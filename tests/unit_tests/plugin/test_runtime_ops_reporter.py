@@ -282,6 +282,39 @@ class TestUpload:
         await reporter.stop()
 
 
+class TestFailureTimestamps:
+    def test_publishes_when_the_failure_happened_not_when_it_was_sampled(self):
+        failures = {
+            'inst-1': {
+                'installation_uuid': 'inst-1',
+                'error_code': 'dependency_prepare_failed',
+                'message': 'prepare failed',
+                'failed_at': '2026-10-01T07:11:00Z',
+            }
+        }
+        reporter = RuntimeOpsReporter(make_app(connector=make_connector(failures=failures)))
+
+        payload = reporter.build_payload({'live': True})
+
+        entry = payload['failures'][0]
+        assert entry['observed_at'] == '2026-10-01T07:11:00Z'
+        assert entry['observed_at'] != payload['generated_at']
+
+    def test_legacy_records_without_a_timestamp_fall_back_to_the_sample_time(self):
+        failures = {
+            'inst-2': {
+                'installation_uuid': 'inst-2',
+                'error_code': 'worker_launch_failed',
+                'message': 'boom',
+            }
+        }
+        reporter = RuntimeOpsReporter(make_app(connector=make_connector(failures=failures)))
+
+        payload = reporter.build_payload({'live': True})
+
+        assert payload['failures'][0]['observed_at'] == payload['generated_at']
+
+
 def test_payload_never_contains_a_control_token(monkeypatch):
     monkeypatch.setenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, 'runtime-control-secret')
     monkeypatch.setenv(_CONTROL_PLANE_TOKEN_ENV, 'space-control-plane-secret')

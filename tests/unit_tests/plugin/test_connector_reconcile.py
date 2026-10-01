@@ -735,11 +735,13 @@ async def test_apply_dependency_failure_raises_stable_observable_error():
     assert error.installation_uuid == setting.installation_uuid
     assert error.error_code == 'dependency_prepare_failed'
     assert '[dependency_prepare_failed]' in str(error)
-    assert connector._installation_failures[setting.installation_uuid] == {
+    recorded = connector._installation_failures[setting.installation_uuid]
+    assert {key: value for key, value in recorded.items() if key != 'failed_at'} == {
         'installation_uuid': setting.installation_uuid,
         'error_code': 'dependency_prepare_failed',
         'message': 'Plugin dependency installer exited with code 1',
     }
+    assert str(recorded['failed_at']).endswith('Z')
     connector.ap.logger.error.assert_called_once()
 
 
@@ -767,9 +769,12 @@ async def test_shared_reconcile_records_one_failure_without_blocking_other_state
         setting_a.installation_uuid,
         setting_b.installation_uuid,
     }
-    assert connector._installation_failures == {
-        setting_a.installation_uuid: failure,
-    }
+    recorded_failures = connector._installation_failures
+    assert {
+        uuid: {key: value for key, value in record.items() if key != 'failed_at'}
+        for uuid, record in recorded_failures.items()
+    } == {setting_a.installation_uuid: failure}
+    assert str(recorded_failures[setting_a.installation_uuid]['failed_at']).endswith('Z')
     assert set(connector._known_desired_states) == {
         setting_a.installation_uuid,
         setting_b.installation_uuid,

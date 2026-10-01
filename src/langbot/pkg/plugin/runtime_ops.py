@@ -356,7 +356,10 @@ class RuntimeOpsReporter:
                     'execution_mode': mode,
                     'error_code': str(record.get('error_code', '') or ''),
                     'message': _sanitize_failure_message(record.get('message')),
-                    'observed_at': observed_at,
+                    # The moment the failure was observed by the connector. Falling back to
+                    # the sampling time would make a stale failure look freshly broken on
+                    # every report.
+                    'observed_at': str(record.get('failed_at') or observed_at),
                 }
             )
         return failures
