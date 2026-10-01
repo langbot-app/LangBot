@@ -33,14 +33,14 @@ async def test_slow_failed_and_duplicate_subscriptions_do_not_block_primary_rout
     started = []
     release = asyncio.Event()
 
-    async def subscriber(event, adapter, uuid):
+    async def subscriber(event, adapter, uuid, execution_id=None):
         started.append(uuid)
         if uuid == 'slow':
             await release.wait()
         if uuid == 'failed':
             raise ValueError('plugin error')
 
-    async def primary(event, adapter):
+    async def primary(event, adapter, execution_id=None):
         started.append('primary')
 
     bot._dispatch_plugin_subscription = subscriber

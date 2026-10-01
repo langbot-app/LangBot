@@ -75,35 +75,51 @@ class FakeAdapter:
         return []
 
 
+async def flushed_records(counters, manager) -> list[dict]:
+    """Flush buffered telemetry and return everything the pipeline emitted.
+
+    Records are batched and uploaded by ``ExecutionCounters.flush()``; there is
+    no per-trace direct send any more.
+    """
+
+    await counters.flush()
+    assert manager.sent, 'expected the flushed telemetry batch'
+    return [record for payload in manager.sent for record in payload.get('records', [])]
+
+
 @pytest.mark.asyncio
 async def test_route_miss_emits_one_closed_trace():
     bot, manager, counters = make_bot([])
 
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
 
+    records = await flushed_records(counters, manager)
     assert len(manager.sent) == 1
-    payload = manager.sent[0]
+    trace_records = [item for item in records if item.get('event_type') == 'feature_execution']
+    assert len(trace_records) == 1
+    payload = trace_records[0]
     assert payload['event_type'] == 'feature_execution'
-    assert len(payload['query_id']) == 36
+    # The execution identity is deterministic: one inbound event, one chain.
+    assert payload['query_id'] == 'platform:bot-1:message-1'
     assert payload['instance_id'] == 'instance-test'
     assert payload['workspace_uuid'] == 'workspace-test'
     features = payload['features']
     assert features['schema'] == 1
     assert [(row['family'], row['operation'], row['outcome']) for row in features['observations']] == [
-        ('platform_event', 'message.received', 'success'),
         ('event_route', 'message.received', 'skipped'),
+        ('platform_event', 'message.received', 'success'),
     ]
     assert [row['seq'] for row in features['observations']] == [0, 1]
     assert all(row['trace_id'] == payload['query_id'] for row in features['observations'])
     assert all(row['adapter'] == 'FakeAdapter' for row in features['observations'])
     assert features['trace']['closed_by'] == 'event_done'
-    # Window counters are still aggregated for coverage.
-    assert counters.pending
+    # The trace is closed and deregistered: nothing dangles after the event.
+    assert counters.traces == {}
 
 
 @pytest.mark.asyncio
 async def test_unavailable_route_target_carries_route_identity():
-    bot, manager, _ = make_bot(
+    bot, manager, counters = make_bot(
         [
             {
                 'id': 'agent-binding',
@@ -117,18 +133,18 @@ async def test_unavailable_route_target_carries_route_identity():
 
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
 
-    stages = manager.sent[0]['features']['observations']
+    stages = (await flushed_records(counters, manager))[0]['features']['observations']
     assert [(stage['family'], stage['outcome'], stage['mode']) for stage in stages] == [
-        ('platform_event', 'success', 'none'),
         ('event_route', 'failed', 'agent'),
+        ('platform_event', 'success', 'none'),
     ]
-    assert stages[1]['route_ref'] == 'agent:agent-1'
-    assert stages[0]['route_ref'] == ''
+    assert stages[0]['route_ref'] == 'agent:agent-1'
+    assert stages[1]['route_ref'] == ''
 
 
 @pytest.mark.asyncio
 async def test_discarded_route_is_visible_without_user_values():
-    bot, manager, _ = make_bot(
+    bot, manager, counters = make_bot(
         [
             {
                 'id': 'discard-binding',
@@ -141,10 +157,10 @@ async def test_discarded_route_is_visible_without_user_values():
 
     await bot._handle_platform_event(SimpleNamespace(type='platform.member.joined'), FakeAdapter())
 
-    stages = manager.sent[0]['features']['observations']
-    assert [stage['outcome'] for stage in stages] == ['success', 'skipped']
-    assert stages[1]['operation'] == 'platform.member.joined'
-    assert stages[1]['mode'] == 'none'
+    stages = (await flushed_records(counters, manager))[0]['features']['observations']
+    assert [stage['outcome'] for stage in stages] == ['skipped', 'success']
+    assert stages[0]['operation'] == 'platform.member.joined'
+    assert stages[0]['mode'] == 'none'
 
 
 @pytest.mark.asyncio
@@ -154,7 +170,7 @@ async def test_telemetry_opt_out_emits_nothing():
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
 
     assert manager.sent == []
-    assert counters.pending == {}
+    assert counters.records == []
     assert counters.traces == {}
 
 
@@ -162,25 +178,28 @@ async def test_telemetry_opt_out_emits_nothing():
 async def test_route_trace_scope_is_restored_after_dispatch():
     from langbot.pkg.telemetry import trace as trace_mod
 
-    bot, _, _ = make_bot([])
+    bot, _, counters = make_bot([])
     assert trace_mod.current() is None
 
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
 
     assert trace_mod.current() is None
-    # A later record outside the ingress must not join the closed trace.
+    buffered = list(counters.records)
+    # A later record outside the ingress must not join the closed trace, and an
+    # observation without an owning chain is not buffered at all.
     from langbot.pkg.telemetry.execution import record
 
     record(bot.ap, TEST_CONTEXT, family='platform_api', operation='send_message', outcome='success')
-    assert list(bot.ap.telemetry.execution.pending.values())[-1]['count'] == 1
+    assert counters.records == buffered
+    assert counters.traces == {}
 
 
 @pytest.mark.asyncio
 async def test_adapter_call_without_ingress_still_counts():
     """Mock adapter objects used by other tests must not break the ingress path."""
-    bot, manager, _ = make_bot([])
+    bot, manager, counters = make_bot([])
     adapter = Mock()
 
     await bot._handle_platform_event(message_received_event(), adapter)
 
-    assert manager.sent
+    assert await flushed_records(counters, manager)
