@@ -2,7 +2,7 @@ import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { RunnerDescriptor } from '@/app/infra/entities/api';
-import { httpClient } from '@/app/infra/http';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
   Select,
@@ -27,6 +27,10 @@ function ProcessorComponentContent({
     ...component.label,
   });
   const pluginId = `${component.plugin_author}/${component.plugin_name}`;
+  const iconURL = useInstalledPluginIcon(
+    component.plugin_author,
+    component.plugin_name,
+  );
   return (
     <span
       className={
@@ -35,18 +39,25 @@ function ProcessorComponentContent({
           : 'flex min-w-0 items-center gap-2'
       }
     >
-      <img
-        src={httpClient.getPluginIconURL(
-          component.plugin_author,
-          component.plugin_name,
-        )}
-        alt=""
-        className={
-          option
-            ? 'row-span-2 size-7 shrink-0 rounded-md object-cover'
-            : 'size-5 shrink-0 rounded object-cover'
-        }
-      />
+      {iconURL ? (
+        <img
+          src={iconURL}
+          alt=""
+          className={
+            option
+              ? 'row-span-2 size-7 shrink-0 rounded-md object-cover'
+              : 'size-5 shrink-0 rounded object-cover'
+          }
+        />
+      ) : (
+        <Puzzle
+          className={
+            option
+              ? 'row-span-2 size-5 shrink-0 justify-self-center text-muted-foreground'
+              : 'size-4 shrink-0 text-muted-foreground'
+          }
+        />
+      )}
       <span className={option ? 'truncate font-medium leading-5' : 'truncate'}>
         {label}
       </span>

@@ -22,6 +22,7 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import {
   LLMModel,
   Bot,
@@ -94,19 +95,6 @@ function hasUsableOptionName(option: { name?: string | null }): boolean {
   return typeof option.name === 'string' && option.name.trim().length > 0;
 }
 
-function getPluginComponentIconURL(value?: string): string | null {
-  if (!value?.startsWith('plugin:')) {
-    return null;
-  }
-
-  const match = value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
-  if (!match) {
-    return null;
-  }
-
-  return httpClient.getPluginIconURL(match[1], match[2]);
-}
-
 function SelectOptionContent({
   label,
   value,
@@ -114,7 +102,10 @@ function SelectOptionContent({
   label: string;
   value: string;
 }) {
-  const iconURL = getPluginComponentIconURL(value);
+  const match = value?.startsWith('plugin:')
+    ? value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/)
+    : null;
+  const iconURL = useInstalledPluginIcon(match?.[1], match?.[2]);
 
   return (
     <div className="flex min-w-0 items-center gap-2">

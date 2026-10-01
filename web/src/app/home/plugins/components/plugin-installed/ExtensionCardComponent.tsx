@@ -13,7 +13,7 @@ import {
   Puzzle,
 } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
-import { useAuthenticatedPluginIcon } from '@/hooks/useAuthenticatedPluginResource';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -39,10 +39,9 @@ export default function ExtensionCardComponent({
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [iconFailed, setIconFailed] = useState(false);
-  const authenticatedIcon = useAuthenticatedPluginIcon(
-    cardVO.author,
-    cardVO.name,
-    cardVO.type === 'plugin',
+  const pluginIconURL = useInstalledPluginIcon(
+    cardVO.type === 'plugin' ? cardVO.author : null,
+    cardVO.type === 'plugin' ? cardVO.name : null,
   );
 
   const FallbackIcon =
@@ -51,9 +50,8 @@ export default function ExtensionCardComponent({
       : cardVO.type === 'skill'
         ? Sparkles
         : Puzzle;
-  const iconSrc =
-    cardVO.type === 'plugin' ? authenticatedIcon.url : cardVO.iconURL;
-  const showFallback = iconFailed || authenticatedIcon.error || !iconSrc;
+  const iconSrc = cardVO.type === 'plugin' ? pluginIconURL : cardVO.iconURL;
+  const showFallback = iconFailed || !iconSrc;
 
   const getTypeLabel = (type: ExtensionType) => {
     switch (type) {

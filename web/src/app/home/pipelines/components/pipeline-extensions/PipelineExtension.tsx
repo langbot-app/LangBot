@@ -12,7 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CircleHelp, Plus, X, Server, Wrench, Sparkles } from 'lucide-react';
+import { CircleHelp, Plus, X, Server, Wrench, Sparkles, Puzzle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -26,6 +26,27 @@ import { MCPServer, Skill } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
+
+function PluginThumbnail({ author, name }: { author: string; name: string }) {
+  const iconURL = useInstalledPluginIcon(author, name);
+
+  if (!iconURL) {
+    return (
+      <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center flex-shrink-0">
+        <Puzzle className="size-5 text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={iconURL}
+      alt={name}
+      className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+    />
+  );
+}
 
 function InfoTooltip({ label }: { label: string }) {
   return (
@@ -373,13 +394,9 @@ export default function PipelineExtension({
                     className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
                   >
                     <div className="flex-1 flex items-center gap-3">
-                      <img
-                        src={backendClient.getPluginIconURL(
-                          metadata.author || '',
-                          metadata.name,
-                        )}
-                        alt={metadata.name}
-                        className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                      <PluginThumbnail
+                        author={metadata.author || ''}
+                        name={metadata.name}
                       />
                       <div className="flex-1">
                         <div className="font-medium">{metadata.name}</div>
@@ -665,13 +682,9 @@ export default function PipelineExtension({
                     onClick={() => handleTogglePlugin(pluginId)}
                   >
                     <Checkbox checked={isSelected} />
-                    <img
-                      src={backendClient.getPluginIconURL(
-                        metadata.author || '',
-                        metadata.name,
-                      )}
-                      alt={metadata.name}
-                      className="w-10 h-10 rounded-lg border bg-muted object-cover flex-shrink-0"
+                    <PluginThumbnail
+                      author={metadata.author || ''}
+                      name={metadata.name}
                     />
                     <div className="flex-1">
                       <div className="font-medium">{metadata.name}</div>

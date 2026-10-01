@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import {
   systemInfo,
   bootstrapWorkspaceSession,
@@ -1904,6 +1905,30 @@ function runnerPluginId(runner: string) {
     .join('/');
 }
 
+function InstalledRunnerIcon({
+  author,
+  name,
+}: {
+  author: string;
+  name: string;
+}) {
+  const iconURL = useInstalledPluginIcon(author, name);
+
+  if (!iconURL) {
+    return (
+      <Blocks className="size-10 shrink-0 rounded-md border bg-muted p-2 text-muted-foreground" />
+    );
+  }
+
+  return (
+    <img
+      src={iconURL}
+      alt=""
+      className="size-10 shrink-0 rounded-md border bg-muted object-cover"
+    />
+  );
+}
+
 function StepAIEngine({
   choice,
   onChoiceChange,
@@ -2298,11 +2323,7 @@ function StepAIEngine({
             >
               <CardHeader className="flex flex-row items-start gap-3 px-4">
                 {author && name ? (
-                  <img
-                    src={httpClient.getPluginIconURL(author, name)}
-                    alt=""
-                    className="size-10 shrink-0 rounded-md border bg-muted object-cover"
-                  />
+                  <InstalledRunnerIcon author={author} name={name} />
                 ) : (
                   <Blocks className="size-10 shrink-0 rounded-md border bg-muted p-2 text-muted-foreground" />
                 )}

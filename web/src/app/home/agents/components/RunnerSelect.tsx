@@ -3,7 +3,8 @@ import { Bot, ExternalLink, Loader2, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
+import { getCloudServiceClientSync } from '@/app/infra/http';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
 import {
@@ -51,13 +52,13 @@ function installErrorMessage(
   return getErrorMessage(error) || t('wizard.aiEngine.installFailed');
 }
 
-function installedRunnerIconURL(option: IDynamicFormItemOption) {
-  return option.name.startsWith('plugin:')
-    ? (() => {
-        const match = option.name.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
-        return match ? httpClient.getPluginIconURL(match[1], match[2]) : null;
-      })()
-    : null;
+function pluginOptionParts(option: IDynamicFormItemOption): {
+  author: string;
+  name: string;
+} | null {
+  if (!option.name.startsWith('plugin:')) return null;
+  const match = option.name.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
+  return match ? { author: match[1], name: match[2] } : null;
 }
 
 function InstalledRunnerContent({
@@ -65,7 +66,8 @@ function InstalledRunnerContent({
 }: {
   option: IDynamicFormItemOption;
 }) {
-  const iconURL = installedRunnerIconURL(option);
+  const parts = pluginOptionParts(option);
+  const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -90,7 +92,8 @@ function InstalledRunnerOptionContent({
   option: IDynamicFormItemOption;
   description: string;
 }) {
-  const iconURL = installedRunnerIconURL(option);
+  const parts = pluginOptionParts(option);
+  const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
   return (
     <span className="grid w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-x-2 text-left">

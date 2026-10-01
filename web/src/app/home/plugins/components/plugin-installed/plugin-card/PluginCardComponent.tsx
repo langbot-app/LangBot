@@ -2,9 +2,16 @@ import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/Plu
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
-import { BugIcon, ExternalLink, Ellipsis, Trash, ArrowUp } from 'lucide-react';
+import {
+  BugIcon,
+  ExternalLink,
+  Ellipsis,
+  Trash,
+  ArrowUp,
+  Puzzle,
+} from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
-import { httpClient } from '@/app/infra/http/HttpClient';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -27,6 +34,7 @@ export default function PluginCardComponent({
 }) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const iconURL = useInstalledPluginIcon(cardVO.author, cardVO.name);
 
   return (
     <>
@@ -36,11 +44,17 @@ export default function PluginCardComponent({
       >
         <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
           {/* Icon - fixed width */}
-          <img
-            src={httpClient.getPluginIconURL(cardVO.author, cardVO.name)}
-            alt="plugin icon"
-            className="w-16 h-16 rounded-[8%] flex-shrink-0"
-          />
+          {iconURL ? (
+            <img
+              src={iconURL}
+              alt="plugin icon"
+              className="w-16 h-16 rounded-[8%] flex-shrink-0"
+            />
+          ) : (
+            <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">
+              <Puzzle className="w-12 h-12 text-blue-500" />
+            </div>
+          )}
 
           {/* Content area - flexible width with min-width to prevent overflow */}
           <div className="flex-1 min-w-0 h-full flex flex-col items-start justify-between gap-[0.6rem]">
