@@ -165,6 +165,16 @@ except Exception:
     pass
 
 
+def _is_plugin_not_installed(exc: BaseException) -> bool:
+    """True when the connector reports a plugin absent from the resolved Workspace.
+
+    The connector raises a plain ``ValueError`` for this case, so resource routes
+    answer 404 instead of surfacing a 500 the WebUI would have to swallow.
+    """
+
+    return 'is not installed in this workspace' in str(exc).lower()
+
+
 def _normalize_plugin_asset_path(filepath: str) -> str | None:
     filepath = filepath.replace('\\', '/')
     if filepath.startswith('/'):
@@ -596,7 +606,15 @@ class PluginsRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> quart.Response:
             await self._require_authenticated_plugin_runtime_context(request_context)
-            icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+            try:
+                icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+            except ValueError as exc:
+                # A plugin that is not installed for this Workspace is a missing
+                # resource, not a server fault: the WebUI asks for icons by plugin
+                # identity and must be able to fall back silently.
+                if _is_plugin_not_installed(exc):
+                    return quart.Response('Icon not found', status=404)
+                raise
             icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
             return quart.Response(icon_bytes, mimetype=icon_data['mime_type'])
 
