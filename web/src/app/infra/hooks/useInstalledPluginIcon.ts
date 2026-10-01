@@ -56,8 +56,8 @@ export function useInstalledPluginIcon(
   marketplaceURL?: string | null,
 ): string | null {
   const key = author && name ? `${author}/${name}` : null;
-  const [url, setUrl] = useState<string | null>(() =>
-    marketplaceURL ?? (key ? iconCache.get(key)?.url ?? null : null),
+  const [url, setUrl] = useState<string | null>(
+    () => marketplaceURL ?? (key ? (iconCache.get(key)?.url ?? null) : null),
   );
 
   useEffect(() => {
