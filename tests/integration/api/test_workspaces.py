@@ -530,6 +530,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'plugin.config.get',
             'plugin.config.update',
             'plugin.logs',
+            'plugin.space_upload',
             'plugin.delete',
             'provider.list',
             'provider.get',

@@ -2180,6 +2180,64 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         return plugins
 
+    async def _debug_plugin_binding(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> InstallationBinding | None:
+        """Locate a debug-connected (non-installed) plugin in this Workspace.
+
+        Debug plugins are not persisted as settings, so they are only reachable
+        through the OSS compatibility bridge binding. Returns ``None`` when the
+        identity is not present on that bridge, so the caller can distinguish a
+        genuinely unknown plugin from a permission error.
+        """
+
+        if self.runtime_profile != 'oss_dev':
+            return None
+        execution_context = await self._current_execution_context()
+        runtime_handler = self._runtime_handler()
+        binding = self._legacy_oss_bridge_binding(execution_context)
+        with runtime_handler.installation_scope(binding):
+            info = await runtime_handler.get_plugin_info(author, plugin_name)
+        if not isinstance(info, dict) or not info.get('manifest'):
+            return None
+        return binding
+
+    async def _plugin_operation_binding(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> InstallationBinding:
+        """Resolve the binding that owns a plugin, installed or debug-connected."""
+
+        try:
+            return await self._target_binding(author, plugin_name, require_enabled=False)
+        except ValueError as exc:
+            if str(exc) == f'Plugin {author}/{plugin_name} is not installed in this Workspace':
+                binding = await self._debug_plugin_binding(author, plugin_name)
+                if binding is not None:
+                    return binding
+            raise
+
+    async def get_debug_plugin_info(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> dict[str, Any] | None:
+        """Return a debug-connected plugin's info without touching installs.
+
+        This is an additive read used only by the "upload to Space" surface; the
+        installed-plugin lookup in :meth:`get_plugin_info` is left unchanged.
+        """
+
+        binding = await self._debug_plugin_binding(author, plugin_name)
+        if binding is None:
+            return None
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_info(author, plugin_name)
+
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any] | None:
         runtime_handler = self._runtime_handler()
         try:
@@ -2291,6 +2349,52 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return {}
         return await self._runtime_handler().get_debug_info(execution_context)
+
+    async def get_plugin_package(
+        self,
+        author: str,
+        plugin_name: str,
+        *,
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a ``.lbpkg`` from a debug plugin's live source tree.
+
+        Only debug plugins can be packaged: an installed plugin's on-disk
+        directory is an extracted artifact, not the developer's source tree.
+        """
+        runtime_handler = self._runtime_handler()
+        binding = await self._plugin_operation_binding(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_package(
+                author,
+                plugin_name,
+                manifest_overrides=manifest_overrides,
+            )
+
+    async def git_sync_plugin(
+        self,
+        author: str,
+        plugin_name: str,
+        *,
+        repo_url: str = '',
+        token: str = '',
+        branch: str = '',
+        commit_message: str = '',
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Commit and push a debug plugin's working directory to GitHub."""
+        runtime_handler = self._runtime_handler()
+        binding = await self._plugin_operation_binding(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.git_sync_plugin(
+                author,
+                plugin_name,
+                repo_url=repo_url,
+                token=token,
+                branch=branch,
+                commit_message=commit_message,
+                manifest_overrides=manifest_overrides,
+            )
 
     async def emit_event(
         self,

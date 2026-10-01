@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from langbot.pkg.utils import httpclient
+import aiohttp
 import typing
 import datetime
 import time
@@ -284,6 +285,51 @@ class SpaceService:
                 else:
                     models.append(selection)
             return [SpaceModelSelection.model_validate(model) for model in models]
+
+    # === Plugin publishing ===
+
+    async def publish_plugin(
+        self,
+        access_token: str,
+        package_bytes: bytes,
+        *,
+        filename: str = 'plugin.lbpkg',
+        changelog: str = '',
+    ) -> typing.Dict:
+        """Publish a built ``.lbpkg`` to the LangBot Space marketplace.
+
+        Mirrors the CLI's ``POST /api/v1/marketplace/plugins/publish`` contract
+        (multipart ``file`` + ``changelog``). The caller supplies a valid Space
+        access token resolved from the Workspace owner.
+        """
+
+        if not access_token:
+            raise ValueError('A LangBot Space account is required to publish plugins')
+
+        space_url = self._get_space_config()['url'].rstrip('/')
+
+        form = aiohttp.FormData()
+        form.add_field('changelog', changelog or '')
+        form.add_field(
+            'file',
+            package_bytes,
+            filename=filename,
+            content_type='application/octet-stream',
+        )
+
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/marketplace/plugins/publish',
+            data=form,
+            headers={'Authorization': f'Bearer {access_token}'},
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to publish plugin: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to publish plugin: {data.get("msg")}')
+            return data.get('data', {})
 
     async def get_recommended_chat_model(self, context: typing.Any) -> dict:
         """Resolve Space's first ranked chat model to a local Workspace model."""

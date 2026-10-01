@@ -11,6 +11,7 @@ import {
   Server,
   Sparkles,
   Puzzle,
+  Upload,
 } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { useAuthenticatedPluginIcon } from '@/hooks/useAuthenticatedPluginResource';
@@ -28,6 +29,8 @@ type ExtensionCardComponentProps = {
   onCardClick: () => void;
   onDeleteClick: (cardVO: ExtensionCardVO) => void;
   onUpgradeClick?: (cardVO: ExtensionCardVO) => void;
+  /** Upload a debug-connected plugin to LangBot Space. */
+  onUploadToSpace?: (cardVO: ExtensionCardVO) => void;
 };
 
 export default function ExtensionCardComponent({
@@ -35,6 +38,7 @@ export default function ExtensionCardComponent({
   onCardClick,
   onDeleteClick,
   onUpgradeClick,
+  onUploadToSpace,
 }: ExtensionCardComponentProps) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -54,6 +58,9 @@ export default function ExtensionCardComponent({
   const iconSrc =
     cardVO.type === 'plugin' ? authenticatedIcon.url : cardVO.iconURL;
   const showFallback = iconFailed || authenticatedIcon.error || !iconSrc;
+  // Debug plugins can always be uploaded to LangBot Space; surface the same
+  // persistent red-dot reminder as an available plugin update.
+  const hasSpaceUpload = cardVO.type === 'plugin' && !!cardVO.debug;
 
   const getTypeLabel = (type: ExtensionType) => {
     switch (type) {
@@ -266,12 +273,27 @@ export default function ExtensionCardComponent({
                     <Button variant="ghost" size="icon">
                       <Ellipsis className="w-4 h-4" />
                     </Button>
-                    {cardVO.hasUpdate && (
+                    {(cardVO.hasUpdate || hasSpaceUpload) && (
                       <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-destructive rounded-full border-2 border-card"></div>
                     )}
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                  {cardVO.type === 'plugin' && cardVO.debug && (
+                    <DropdownMenuItem
+                      className="relative flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUploadToSpace?.(cardVO);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{t('plugins.spaceUpload.menuAction')}</span>
+                      {/* Persistent red-dot reminder, matching the update dot. */}
+                      <span className="ml-auto w-2 h-2 flex-shrink-0 rounded-full bg-destructive" />
+                    </DropdownMenuItem>
+                  )}
                   {cardVO.type === 'plugin' &&
                     cardVO.install_source === 'marketplace' && (
                       <DropdownMenuItem

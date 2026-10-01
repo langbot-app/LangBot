@@ -28,6 +28,68 @@ export interface PluginLogEntry {
   text: string;
 }
 
+/** Editable plugin metadata for the "upload to LangBot Space" page. */
+export interface PluginManifestOverrides {
+  /** A single string applies to all locales; an object targets specific ones. */
+  label?: string | I18nObject;
+  description?: string | I18nObject;
+  version?: string;
+  repository?: string;
+  /** Reassigns the published plugin author (publishes under a new identity). */
+  author?: string;
+  /** SPDX license identifier (e.g. MIT, Apache-2.0). */
+  license?: string;
+  /** Archive-relative icon path (e.g. assets/icon.png). */
+  icon?: string;
+  /** A data URL of an uploaded replacement icon. */
+  icon_base64?: string;
+}
+
+/** Connection state + pre-fill data for the upload page. */
+export interface PluginSpaceUploadConfig {
+  debug: boolean;
+  metadata: {
+    author: string;
+    name: string;
+    label?: I18nObject | string;
+    description?: I18nObject | string;
+    version?: string;
+    repository?: string;
+    license?: string;
+  };
+  space_connected: boolean;
+  cloud_service_url: string;
+}
+
+export interface PluginGithubSyncPayload {
+  repo_url?: string;
+  token?: string;
+  branch?: string;
+  commit_message?: string;
+  manifest_overrides?: PluginManifestOverrides;
+}
+
+export interface PluginGithubSyncResult {
+  committed: boolean;
+  pushed: boolean;
+  branch: string;
+  remote_url: string;
+  commit_sha: string;
+  message: string;
+  warnings: string[];
+}
+
+export interface PluginSpaceUploadPayload extends PluginGithubSyncPayload {
+  sync_github?: boolean;
+  changelog?: string;
+}
+
+export interface PluginSpaceUploadResult {
+  submission: Record<string, unknown>;
+  git: PluginGithubSyncResult | null;
+  filename: string;
+}
+
 // marketplace plugin v4
 export enum PluginV4Status {
   Any = 'any',

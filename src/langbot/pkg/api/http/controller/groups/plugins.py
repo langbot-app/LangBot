@@ -418,6 +418,209 @@ class PluginsRouterGroup(group.RouterGroup):
                 }
             )
 
+        async def _space_access_token_for_workspace(
+            request_context: RequestContext,
+        ) -> str | None:
+            """Resolve the Workspace owner's LangBot Space token, if bound.
+
+            Every step is best-effort: a Space account is optional for the
+            underlying LangBot install, so an unavailable identity service must
+            not turn the upload page's metadata read into a 500.
+            """
+            try:
+                user_service = getattr(self.ap, 'user_service', None)
+                space_service = getattr(self.ap, 'space_service', None)
+                if user_service is None or space_service is None:
+                    return None
+                owner = await user_service.get_workspace_owner(request_context.workspace_uuid)
+                if owner is None:
+                    return None
+                return await space_service.get_valid_access_token(owner.user)
+            except Exception:
+                return None
+
+        async def _resolve_upload_target(author: str, plugin_name: str) -> dict | None:
+            """Resolve a plugin for the upload page, preferring debug connections.
+
+            A plugin shown as "debugging" is not persisted as an installation, so
+            it is looked up through the OSS debug bridge first; installed plugins
+            remain a fallback so the page also works for local/marketplace ones.
+            """
+            connector = self.ap.plugin_connector
+            for resolver in (
+                getattr(connector, 'get_debug_plugin_info', None),
+                getattr(connector, 'get_plugin_info', None),
+            ):
+                if resolver is None:
+                    continue
+                try:
+                    info = await resolver(author, plugin_name)
+                except Exception:
+                    self.ap.logger.exception('Failed to resolve plugin %s/%s for upload', author, plugin_name)
+                    continue
+                if info:
+                    return info
+            return None
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload/config',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Metadata and connection state for the "upload to Space" page."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            plugin = await _resolve_upload_target(author, plugin_name)
+            if plugin is None:
+                return self.http_status(404, -1, 'plugin not found')
+
+            metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}) or {}
+            access_token = await _space_access_token_for_workspace(request_context)
+            return self.success(
+                data={
+                    'debug': bool(plugin.get('debug')),
+                    'metadata': {
+                        'author': metadata.get('author', author),
+                        'name': metadata.get('name', plugin_name),
+                        'label': metadata.get('label'),
+                        'description': metadata.get('description'),
+                        'version': metadata.get('version'),
+                        'repository': metadata.get('repository'),
+                        'license': metadata.get('license'),
+                    },
+                    'space_connected': bool(access_token),
+                    'cloud_service_url': self.ap.instance_config.data.get('space', {}).get(
+                        'url', 'https://space.langbot.app'
+                    ),
+                }
+            )
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Build the debug plugin and publish it to LangBot Space.
+
+            Optionally synchronises the working directory to GitHub first, so the
+            published plugin and the repository stay aligned.
+            """
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            try:
+                data = await quart.request.get_json(silent=True) or {}
+            except Exception:
+                data = {}
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            overrides = data.get('manifest_overrides') or {}
+            if not isinstance(overrides, dict):
+                return self.http_status(400, -1, 'manifest_overrides must be an object')
+
+            sync_github = data.get('sync_github') is True
+            git_result: dict | None = None
+
+            try:
+                package_result = await self.ap.plugin_connector.get_plugin_package(
+                    author,
+                    plugin_name,
+                    manifest_overrides=overrides,
+                )
+            except Exception as exc:
+                self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
+                message = str(exc)
+                if 'build_plugin_package' in message and 'not found' in message.lower():
+                    message = (
+                        'The debugging plugin process does not support packaging yet. '
+                        'Update the LangBot plugin SDK used by `lbp run` and restart it.'
+                    )
+                return self.http_status(400, -1, message)
+
+            package_bytes = package_result.get('package') or b''
+            if not package_bytes:
+                return self.http_status(400, -1, 'Failed to build the plugin package')
+
+            if sync_github:
+                try:
+                    git_result = await self.ap.plugin_connector.git_sync_plugin(
+                        author,
+                        plugin_name,
+                        repo_url=str(data.get('repo_url') or ''),
+                        token=str(data.get('token') or ''),
+                        branch=str(data.get('branch') or ''),
+                        commit_message=str(data.get('commit_message') or ''),
+                        manifest_overrides=overrides,
+                    )
+                except Exception as exc:
+                    self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
+                    return self.http_status(400, -1, f'Git sync failed: {exc}')
+
+            access_token = await _space_access_token_for_workspace(request_context)
+            if not access_token:
+                return self.http_status(
+                    400,
+                    -1,
+                    'Bind a LangBot Space account before uploading plugins',
+                )
+
+            try:
+                submission = await self.ap.space_service.publish_plugin(
+                    access_token,
+                    package_bytes,
+                    filename=package_result.get('filename') or 'plugin.lbpkg',
+                    changelog=str(data.get('changelog') or ''),
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+            quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
+            return self.success(
+                data={
+                    'submission': submission,
+                    'git': git_result,
+                    'filename': package_result.get('filename', ''),
+                }
+            )
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload/git-sync',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Synchronise only the debug plugin's working directory to GitHub."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            try:
+                data = await quart.request.get_json(silent=True) or {}
+            except Exception:
+                data = {}
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            overrides = data.get('manifest_overrides') or {}
+            if not isinstance(overrides, dict):
+                return self.http_status(400, -1, 'manifest_overrides must be an object')
+
+            try:
+                git_result = await self.ap.plugin_connector.git_sync_plugin(
+                    author,
+                    plugin_name,
+                    repo_url=str(data.get('repo_url') or ''),
+                    token=str(data.get('token') or ''),
+                    branch=str(data.get('branch') or ''),
+                    commit_message=str(data.get('commit_message') or ''),
+                    manifest_overrides=overrides,
+                )
+            except Exception as exc:
+                self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
+                return self.http_status(400, -1, str(exc))
+
+            return self.success(data={'git': git_result})
+
         @self.route(
             '/<author>/<plugin_name>/upgrade',
             methods=['POST'],

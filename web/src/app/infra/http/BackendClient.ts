@@ -75,7 +75,14 @@ import {
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
-import type { PluginLogEntry } from '@/app/infra/entities/plugin';
+import type {
+  PluginLogEntry,
+  PluginSpaceUploadConfig,
+  PluginSpaceUploadPayload,
+  PluginSpaceUploadResult,
+  PluginGithubSyncPayload,
+  PluginGithubSyncResult,
+} from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -1399,6 +1406,37 @@ export class BackendClient extends BaseHttpClient {
     expires_at: string;
   }> {
     return this.get('/api/v1/plugins/debug-info');
+  }
+
+  public getPluginSpaceUploadConfig(
+    author: string,
+    name: string,
+  ): Promise<PluginSpaceUploadConfig> {
+    return this.get(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/config`,
+    );
+  }
+
+  public uploadPluginToSpace(
+    author: string,
+    name: string,
+    payload: PluginSpaceUploadPayload,
+  ): Promise<PluginSpaceUploadResult> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload`,
+      payload,
+    );
+  }
+
+  public syncPluginToGithub(
+    author: string,
+    name: string,
+    payload: PluginGithubSyncPayload,
+  ): Promise<{ git: PluginGithubSyncResult }> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/git-sync`,
+      payload,
+    );
   }
 
   public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {

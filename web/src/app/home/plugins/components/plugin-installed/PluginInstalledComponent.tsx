@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import ExtensionCardComponent from './ExtensionCardComponent';
+import PluginSpaceUploadDialog from './PluginSpaceUploadDialog';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -87,6 +88,8 @@ const PluginInstalledComponent = forwardRef<
   const [targetExtension, setTargetExtension] =
     useState<ExtensionCardVO | null>(null);
   const [deleteData, setDeleteData] = useState<boolean>(false);
+  const [spaceUploadTarget, setSpaceUploadTarget] =
+    useState<ExtensionCardVO | null>(null);
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
@@ -530,6 +533,7 @@ const PluginInstalledComponent = forwardRef<
                           ? () => handleExtensionUpdate(vo)
                           : undefined
                       }
+                      onUploadToSpace={() => setSpaceUploadTarget(vo)}
                     />
                   </div>
                 ))}
@@ -551,11 +555,27 @@ const PluginInstalledComponent = forwardRef<
                       ? () => handleExtensionUpdate(vo)
                       : undefined
                   }
+                  onUploadToSpace={() => setSpaceUploadTarget(vo)}
                 />
               </div>
             );
           })}
         </div>
+      )}
+
+      {spaceUploadTarget && (
+        <PluginSpaceUploadDialog
+          author={spaceUploadTarget.author}
+          name={spaceUploadTarget.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSpaceUploadTarget(null);
+          }}
+          onUploaded={() => {
+            getExtensionList(true);
+            refreshPlugins();
+          }}
+        />
       )}
     </>
   );
