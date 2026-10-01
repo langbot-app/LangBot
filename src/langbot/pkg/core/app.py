@@ -304,6 +304,11 @@ class Application:
         if callable(database_snapshot):
             database_stats = database_snapshot()
 
+        runtime_ops_stats = {}
+        runtime_ops_reporter = getattr(self.plugin_connector, 'runtime_ops_reporter', None)
+        if runtime_ops_reporter is not None:
+            runtime_ops_stats = runtime_ops_reporter.get_stats()
+
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
@@ -314,6 +319,7 @@ class Application:
             'query_pool': query_pool_stats,
             'models': model_stats,
             'runtimes': runtime_stats,
+            'runtime_ops': runtime_ops_stats,
             'telemetry_tasks': len(getattr(self.telemetry, 'send_tasks', ())),
         }
 
