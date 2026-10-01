@@ -102,9 +102,7 @@ class RuntimeOpsReporter:
         self._token = str(os.environ.get(_CONTROL_PLANE_TOKEN_ENV, '') or '').strip()
 
         if self.enabled and not self.health_url:
-            self._log_info(
-                'Plugin runtime ops reporter is disabled: no plugin runtime WebSocket URL is configured'
-            )
+            self._log_info('Plugin runtime ops reporter is disabled: no plugin runtime WebSocket URL is configured')
             self.enabled = False
         if self.enabled and not self.space_url:
             self._log_info('Plugin runtime ops reporter is disabled: no Space URL is configured')
