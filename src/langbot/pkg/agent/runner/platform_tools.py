@@ -684,49 +684,71 @@ async def execute_platform_tool(
     normalized = _normalize_platform_params(definition, parameters)
     if definition.scope == 'event':
         normalized = _event_params(definition, context, normalized)
-    # This flag is frozen by the Host from the synthetic debug envelope, not tool arguments.
-    if delivery.get('surface') == 'webui' and (delivery.get('platform_capabilities') or {}).get('debug_mock') is True:
-        result = _execute_mock_platform_tool(definition, context, normalized)
-        if message_chain is not None:
-            result['parameters']['message'] = message_chain.model_dump(mode='json')
-        from ...telemetry.execution import record
+    # Plugin/RPC actions run outside the ingress context, so bind the owning
+    # execution id here: nested adapter observations then join its trace.
+    from ...telemetry.execution import record, reset_execution_id, set_execution_id
 
-        record(
-            ap,
-            execution_context,
-            family='platform_api',
-            operation=definition.api,
-            mode=authorization.get('processor_type', 'none'),
-            synthetic=True,
-            outcome='success',
-        )
-        return result
-    bot_id = authorization.get('bot_id')
-    if not bot_id:
-        raise ValueError('This run is not associated with a platform bot')
-    bot = await ap.platform_mgr.get_bot_by_uuid(execution_context, bot_id)
-    if bot is None:
-        raise ValueError(f'Bot {bot_id} is not running')
-    if definition.api not in set(bot.adapter.get_supported_apis() or []):
-        raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
-    api_func = getattr(bot.adapter, definition.api, None)
-    if not callable(api_func):
-        raise ValueError(f'Platform API {definition.api} is declared but not implemented')
-    if definition.api == 'send_message':
-        normalized = {
-            'target_type': _require_string(normalized, 'target_type'),
-            'target_id': _require_string(normalized, 'target_id'),
-            'message': message_chain
-            if message_chain is not None
-            else platform_message.MessageChain([platform_message.Plain(text=_require_string(normalized, 'text'))]),
-        }
-    from ...telemetry.platform import processing_mode
-
-    token = processing_mode.set(authorization.get('processor_type', 'none'))
+    execution_id = str(session.get('run_id') or '').strip()
+    execution_token = set_execution_id(execution_id)
     try:
-        return await api_func(**normalized)
+        # This flag is frozen by the Host from the synthetic debug envelope, not tool arguments.
+        mock = (
+            delivery.get('surface') == 'webui'
+            and (delivery.get('platform_capabilities') or {}).get('debug_mock') is True
+        )
+        if mock:
+            outcome = 'unknown'
+            error_detail = ''
+            try:
+                result = _execute_mock_platform_tool(definition, context, normalized)
+                if message_chain is not None:
+                    result['parameters']['message'] = message_chain.model_dump(mode='json')
+                outcome = 'success'
+            except Exception as exc:
+                outcome = 'failed'
+                error_detail = str(exc)
+                raise
+            finally:
+                record(
+                    ap,
+                    execution_context,
+                    family='platform_api',
+                    operation=definition.api,
+                    mode=authorization.get('processor_type', 'none'),
+                    synthetic=True,
+                    outcome=outcome,
+                    error=error_detail,
+                    execution_id=execution_id or None,
+                )
+            return result
+        bot_id = authorization.get('bot_id')
+        if not bot_id:
+            raise ValueError('This run is not associated with a platform bot')
+        bot = await ap.platform_mgr.get_bot_by_uuid(execution_context, bot_id)
+        if bot is None:
+            raise ValueError(f'Bot {bot_id} is not running')
+        if definition.api not in set(bot.adapter.get_supported_apis() or []):
+            raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
+        api_func = getattr(bot.adapter, definition.api, None)
+        if not callable(api_func):
+            raise ValueError(f'Platform API {definition.api} is declared but not implemented')
+        if definition.api == 'send_message':
+            normalized = {
+                'target_type': _require_string(normalized, 'target_type'),
+                'target_id': _require_string(normalized, 'target_id'),
+                'message': message_chain
+                if message_chain is not None
+                else platform_message.MessageChain([platform_message.Plain(text=_require_string(normalized, 'text'))]),
+            }
+        from ...telemetry.platform import processing_mode
+
+        token = processing_mode.set(authorization.get('processor_type', 'none'))
+        try:
+            return await api_func(**normalized)
+        finally:
+            processing_mode.reset(token)
     finally:
-        processing_mode.reset(token)
+        reset_execution_id(execution_token)
 
 
 def _execute_mock_platform_tool(

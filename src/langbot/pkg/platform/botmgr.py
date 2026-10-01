@@ -401,15 +401,19 @@ class RuntimeBot:
             from ..telemetry.execution import record
 
             with trace_mod.scope(route_ref=self._route_ref(binding, target_type, target_uuid)):
-                record(
-                    getattr(self, 'ap', None),
-                    getattr(self, 'execution_context', None),
-                    family='event_route',
-                    operation=event_type,
-                    adapter=type(getattr(self, 'adapter', None)).__name__,
-                    mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
-                    outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
-                )
+                # The routing decision is its own workflow step; the Pipeline or
+                # processor it delivers to hangs under this node.
+                with trace_mod.stage_scope() as node:
+                    record(
+                        getattr(self, 'ap', None),
+                        getattr(self, 'execution_context', None),
+                        family='event_route',
+                        operation=event_type,
+                        adapter=type(getattr(self, 'adapter', None)).__name__,
+                        mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
+                        outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
+                        node=node,
+                    )
         return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
@@ -736,12 +740,19 @@ class RuntimeBot:
         self,
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
     ) -> AgentEventEnvelope:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
         event_time = getattr(event, 'timestamp', None) or time.time()
-        event_id = (
-            getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
-        )
+        if execution_id:
+            # Reuse the ingress execution identity so the run view, the journaled
+            # event and the uploaded chain all share one id.
+            envelope_event_id = str(execution_id)
+            prefix = f'platform:{self.bot_entity.uuid}:'
+            event_id = envelope_event_id[len(prefix) :] if envelope_event_id.startswith(prefix) else envelope_event_id
+        else:
+            event_id = self._platform_event_raw_id(event)
+            envelope_event_id = f'platform:{self.bot_entity.uuid}:{event_id}'
         target_type, target_id, target_metadata = self._infer_reply_target(event)
         supported_apis = self._get_adapter_supported_apis(adapter)
 
@@ -773,7 +784,7 @@ class RuntimeBot:
             delivery_data['interactions'] = interaction_capabilities
 
         return AgentEventEnvelope(
-            event_id=f'platform:{self.bot_entity.uuid}:{event_id}',
+            event_id=envelope_event_id,
             event_type=event_type,
             event_time=int(event_time) if isinstance(event_time, (int, float)) else None,
             source='platform',
@@ -863,6 +874,21 @@ class RuntimeBot:
             processor_id=agent.get('uuid'),
         )
 
+    def _platform_event_execution_id(self, event: platform_events.EBAEvent) -> str:
+        """Space-visible execution identity for one inbound platform event.
+
+        Matches the ``AgentEventEnvelope.event_id`` the same event produces, so
+        the stored chain and the Space run view share one identity.
+        """
+        return f'platform:{self.bot_entity.uuid}:{self._platform_event_raw_id(event)}'
+
+    @staticmethod
+    def _platform_event_raw_id(event: platform_events.EBAEvent) -> str:
+        event_type = getattr(event, 'type', None) or event.__class__.__name__
+        return str(
+            getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
+        )
+
     async def _handle_platform_event(
         self,
         event: platform_events.EBAEvent,
@@ -870,51 +896,85 @@ class RuntimeBot:
     ) -> None:
         # One inbound event owns one execution trace; every stage recorded while
         # it is handled (routing, runner, platform API calls) joins that trace.
+        from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
 
         event.bot_uuid = self.bot_entity.uuid
-        with ingress(getattr(self, 'ap', None), 'event_done'):
-            await self._handle_platform_event_body(event, adapter)
+        execution_id = self._platform_event_execution_id(event)
+        with ingress(getattr(self, 'ap', None), 'event_done', getattr(self, 'execution_context', None), execution_id):
+            # The inbound event is the root workflow step: everything recorded
+            # while handling it hangs under this node.
+            with trace_mod.stage_scope() as node:
+                await self._handle_platform_event_body(event, adapter, execution_id, node)
 
-    async def _handle_platform_event_body(
-        self,
-        event: platform_events.EBAEvent,
-        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
-    ) -> None:
+    @staticmethod
+    def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
+        outcome = 'success'
+        error_detail = ''
+        for result in results:
+            if isinstance(result, BaseException):
+                outcome = 'failed'
+                error_detail = error_detail or f'{type(result).__name__}: {result}'
+        return outcome, error_detail
+
+    def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
         from ..telemetry.execution import record
 
         record(
             getattr(self, 'ap', None),
             getattr(self, 'execution_context', None),
             family='platform_event',
-            operation=event.type,
+            operation=str(getattr(event, 'type', None) or event.__class__.__name__),
             adapter=adapter.__class__.__name__,
-            outcome='success',
+            outcome=outcome,
+            error=error_detail,
+            node=node,
         )
-        await self._record_adapter_event(event, adapter)
 
-        primary = (
-            self._handle_interaction_submission(event, adapter)
-            if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
-            else self._dispatch_eba_event_to_processor(event, adapter)
-        )
-        subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
-        seen = set()
-        tasks = [primary]
-        for subscription in subscriptions:
-            processor_uuid = subscription.get('processor_uuid')
-            if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
-                continue
-            seen.add(processor_uuid)
-            tasks.append(self._dispatch_plugin_subscription(event, adapter, processor_uuid))
-        # Start all deliveries together. A slow or failed subscriber cannot block
-        # another subscriber or the primary route from receiving the event.
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    async def _handle_platform_event_body(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
+        node: str = '',
+    ) -> None:
+        results: list[typing.Any] = []
+        try:
+            await self._record_adapter_event(event, adapter)
+
+            primary = (
+                self._handle_interaction_submission(event, adapter, execution_id)
+                if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
+                else self._dispatch_eba_event_to_processor(event, adapter, execution_id=execution_id)
+            )
+            subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+            seen = set()
+            tasks = [primary]
+            for subscription in subscriptions:
+                processor_uuid = subscription.get('processor_uuid')
+                if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
+                    continue
+                seen.add(processor_uuid)
+                tasks.append(self._dispatch_plugin_subscription(event, adapter, processor_uuid, execution_id))
+            # Start all deliveries together. A slow or failed subscriber cannot block
+            # another subscriber or the primary route from receiving the event.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except BaseException as exc:
+            self._record_platform_event(event, adapter, 'failed', f'{type(exc).__name__}: {exc}', node)
+            raise
+
+        # Recorded after handling so the inbound stage carries the real outcome
+        # instead of a hardcoded success.
+        outcome, error_detail = self._summarize_event_delivery(results)
         for result in results:
             if isinstance(result, BaseException):
-                await self.logger.error(f'Event delivery failed: {result}')
+                try:
+                    await self.logger.error(f'Event delivery failed: {result}')
+                except Exception:
+                    pass
+        self._record_platform_event(event, adapter, outcome, error_detail, node)
 
-    async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid):
+    async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid, execution_id=None):
         event_type = event.type
         event_binding = {
             'id': f'plugin_processor:{processor_uuid}',
@@ -934,7 +994,9 @@ class RuntimeBot:
             if not patterns or not self._agent_supports_event_type(patterns, event_type):
                 return
             agent = {**agent, 'supported_event_patterns': patterns}
-            return await self._dispatch_eba_event_to_processor(event, adapter, event_binding, agent)
+            return await self._dispatch_eba_event_to_processor(
+                event, adapter, event_binding, agent, execution_id=execution_id
+            )
         except Exception as exc:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -954,6 +1016,7 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         event_binding: dict | None = None,
         agent: dict | None = None,
+        execution_id: str | None = None,
     ) -> dict[str, typing.Any]:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
 
@@ -1101,7 +1164,7 @@ class RuntimeBot:
                 text=f'Event {event_type} target agent has no runner: {target_uuid}',
             )
 
-        envelope = self._eba_event_to_agent_envelope(event, adapter)
+        envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
         from ..telemetry import trace as trace_mod
@@ -1318,6 +1381,7 @@ class RuntimeBot:
         self,
         event: platform_events.PlatformSpecificEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
     ) -> None:
         """Consume a platform interaction callback and resume its original processor."""
         data = event.data if isinstance(event.data, dict) else {}
@@ -1346,7 +1410,7 @@ class RuntimeBot:
         await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
 
         if record['processor_type'] == 'agent':
-            await self._resume_agent_interaction(record, event, adapter, actor_id)
+            await self._resume_agent_interaction(record, event, adapter, actor_id, execution_id)
             return
         if record['processor_type'] != 'pipeline':
             raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
@@ -1428,6 +1492,7 @@ class RuntimeBot:
         event: platform_events.PlatformSpecificEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         actor_id: str | None,
+        execution_id: str | None = None,
     ) -> None:
         """Resume the exact independent Agent that produced an interaction."""
         agent = await self.ap.agent_service.get_agent(
@@ -1480,7 +1545,7 @@ class RuntimeBot:
             delivery_data['interactions'] = interaction_capabilities
 
         envelope = AgentEventEnvelope(
-            event_id=f'interaction:{record["id"]}:{uuid.uuid4()}',
+            event_id=execution_id or f'interaction:{record["id"]}:{uuid.uuid4()}',
             event_type='interaction.submitted',
             event_time=int(event.timestamp) if event.timestamp else int(time.time()),
             source='platform',

@@ -38,6 +38,7 @@ from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
 from ...telemetry import trace as trace_mod
+from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
 
@@ -213,13 +214,16 @@ class AgentRunOrchestrator:
         terminal_reason: str | None = None
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
+        execution_error = ''
         # A run reached without a platform ingress (WebUI debug, service API)
         # owns its own chain; a run inside an ingress reuses that chain.
         trace_binding: trace_mod.TraceBinding | None = None
         run_token: typing.Any = None
+        # Workflow step node for this run; '' until the step scope is opened.
+        node = ''
 
         try:
-            trace_binding = trace_mod.bind()
+            trace_binding = bind_execution_trace(self.ap, run_id)
             run_token = trace_mod.set_run(run_id)
             await self.journal.create_run(
                 event=event,
@@ -261,139 +265,140 @@ class AgentRunOrchestrator:
                     event_log_id=event_log_id,
                 )
 
-            async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
-                async for result_dict in results:
-                    result_dict = dict(result_dict)
-                    sequence = result_dict.get('sequence')
-                    if sequence is not None:
-                        try:
-                            sequence_int = int(sequence)
-                        except (TypeError, ValueError):
-                            self.ap.logger.warning(
-                                f'Runner {descriptor.id} returned invalid result sequence: {sequence}'
-                            )
-                            sequence_int = last_sequence + 1
-                            result_dict['sequence'] = sequence_int
-                        else:
-                            if sequence_int in seen_sequences:
+            with trace_mod.stage_scope() as node:
+                async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
+                    async for result_dict in results:
+                        result_dict = dict(result_dict)
+                        sequence = result_dict.get('sequence')
+                        if sequence is not None:
+                            try:
+                                sequence_int = int(sequence)
+                            except (TypeError, ValueError):
                                 self.ap.logger.warning(
-                                    f'Runner {descriptor.id} returned duplicate result sequence '
-                                    f'{sequence_int} for run {run_id}; dropping duplicate'
-                                )
-                                continue
-                            if sequence_int <= 0:
-                                self.ap.logger.warning(
-                                    f'Runner {descriptor.id} returned non-positive result sequence '
-                                    f'{sequence_int} for run {run_id}'
+                                    f'Runner {descriptor.id} returned invalid result sequence: {sequence}'
                                 )
                                 sequence_int = last_sequence + 1
                                 result_dict['sequence'] = sequence_int
-                            elif last_sequence and sequence_int != last_sequence + 1:
-                                self.ap.logger.warning(
-                                    f'Runner {descriptor.id} result sequence gap or out-of-order '
-                                    f'for run {run_id}: previous={last_sequence}, current={sequence_int}'
-                                )
+                            else:
+                                if sequence_int in seen_sequences:
+                                    self.ap.logger.warning(
+                                        f'Runner {descriptor.id} returned duplicate result sequence '
+                                        f'{sequence_int} for run {run_id}; dropping duplicate'
+                                    )
+                                    continue
+                                if sequence_int <= 0:
+                                    self.ap.logger.warning(
+                                        f'Runner {descriptor.id} returned non-positive result sequence '
+                                        f'{sequence_int} for run {run_id}'
+                                    )
+                                    sequence_int = last_sequence + 1
+                                    result_dict['sequence'] = sequence_int
+                                elif last_sequence and sequence_int != last_sequence + 1:
+                                    self.ap.logger.warning(
+                                        f'Runner {descriptor.id} result sequence gap or out-of-order '
+                                        f'for run {run_id}: previous={last_sequence}, current={sequence_int}'
+                                    )
+                                seen_sequences.add(sequence_int)
+                                last_sequence = max(last_sequence, sequence_int)
+                        else:
+                            sequence_int = last_sequence + 1
+                            result_dict['sequence'] = sequence_int
                             seen_sequences.add(sequence_int)
-                            last_sequence = max(last_sequence, sequence_int)
-                    else:
-                        sequence_int = last_sequence + 1
-                        result_dict['sequence'] = sequence_int
-                        seen_sequences.add(sequence_int)
-                        last_sequence = sequence_int
+                            last_sequence = sequence_int
 
-                    result_type = result_dict.get('type')
-                    if result_type and not self.result_normalizer.validate_payload(
-                        result_type,
-                        result_dict.get('data', {}),
-                        descriptor,
-                    ):
-                        continue
-
-                    await self.journal.append_run_result(
-                        result_dict=result_dict,
-                        run_id=run_id,
-                        sequence=sequence_int,
-                    )
-
-                    # Trusted Host observers receive validated events before message-only normalization.
-                    result_observer = (adapter_context or {}).get('_result_observer')
-                    if result_observer is not None:
-                        await result_observer(result_dict)
-
-                    if result_type == 'state.updated':
-                        await self.journal.handle_state_updated_event(
-                            result_dict,
-                            event,
-                            binding,
+                        result_type = result_dict.get('type')
+                        if result_type and not self.result_normalizer.validate_payload(
+                            result_type,
+                            result_dict.get('data', {}),
                             descriptor,
-                            run_id=run_id,
-                        )
-                        await self.result_normalizer.normalize(result_dict, descriptor)
-                        continue
-
-                    if result_type == 'action.requested':
-                        if await self.interaction_manager.handle_result(
-                            result_dict=result_dict,
-                            event=event,
-                            binding=binding,
-                            descriptor=descriptor,
-                            run_id=run_id,
-                            adapter_context=adapter_context,
                         ):
                             continue
 
-                    if result_type == 'run.completed':
-                        terminal_status = 'completed'
-                        terminal_reason = (
-                            result_dict.get('data', {}).get('finish_reason')
-                            if isinstance(result_dict.get('data'), dict)
-                            else None
-                        )
-                        usage = result_dict.get('usage')
-                        if isinstance(usage, dict):
-                            terminal_usage = usage
-                    elif result_type == 'run.failed':
-                        terminal_status = 'failed'
-                        data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
-                        terminal_reason = data.get('error') or data.get('code')
-                        usage = result_dict.get('usage')
-                        if isinstance(usage, dict):
-                            terminal_usage = usage
-
-                    has_completed_message = result_type == 'message.completed' or (
-                        result_type == 'run.completed'
-                        and isinstance(result_dict.get('data'), dict)
-                        and bool(result_dict['data'].get('message'))
-                    )
-                    if has_completed_message and event.conversation_id and not assistant_transcript_written:
-                        await self.journal.write_assistant_transcript(
+                        await self.journal.append_run_result(
                             result_dict=result_dict,
-                            event=event,
                             run_id=run_id,
-                            runner_id=descriptor.id,
+                            sequence=sequence_int,
                         )
-                        assistant_transcript_written = True
 
-                    result = await self.result_normalizer.normalize(result_dict, descriptor)
-                    file_ids = result_dict.get('data', {}).get('file_ids', [])
-                    if file_ids:
-                        if result_type != 'message.completed' or result is None:
-                            raise ValueError('Files must be attached to a completed message')
-                        if binding.processor_type != 'pipeline':
-                            raise ValueError('Agent files must be sent explicitly through the reply API')
-                        from ...box.runner import exported_message, binding_for
+                        # Trusted Host observers receive validated events before message-only normalization.
+                        result_observer = (adapter_context or {}).get('_result_observer')
+                        if result_observer is not None:
+                            await result_observer(result_dict)
 
-                        async with binding_for(execution_query).lock:
-                            result.attachments = exported_message(execution_query, file_ids, consume=True)
+                        if result_type == 'state.updated':
+                            await self.journal.handle_state_updated_event(
+                                result_dict,
+                                event,
+                                binding,
+                                descriptor,
+                                run_id=run_id,
+                            )
+                            await self.result_normalizer.normalize(result_dict, descriptor)
+                            continue
 
-                    if result is not None:
-                        yield result
+                        if result_type == 'action.requested':
+                            if await self.interaction_manager.handle_result(
+                                result_dict=result_dict,
+                                event=event,
+                                binding=binding,
+                                descriptor=descriptor,
+                                run_id=run_id,
+                                adapter_context=adapter_context,
+                            ):
+                                continue
 
-                    run_snapshot = await self.journal.get_run(run_id)
-                    if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
-                        terminal_status = 'cancelled'
-                        terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
-                        break
+                        if result_type == 'run.completed':
+                            terminal_status = 'completed'
+                            terminal_reason = (
+                                result_dict.get('data', {}).get('finish_reason')
+                                if isinstance(result_dict.get('data'), dict)
+                                else None
+                            )
+                            usage = result_dict.get('usage')
+                            if isinstance(usage, dict):
+                                terminal_usage = usage
+                        elif result_type == 'run.failed':
+                            terminal_status = 'failed'
+                            data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                            terminal_reason = data.get('error') or data.get('code')
+                            usage = result_dict.get('usage')
+                            if isinstance(usage, dict):
+                                terminal_usage = usage
+
+                        has_completed_message = result_type == 'message.completed' or (
+                            result_type == 'run.completed'
+                            and isinstance(result_dict.get('data'), dict)
+                            and bool(result_dict['data'].get('message'))
+                        )
+                        if has_completed_message and event.conversation_id and not assistant_transcript_written:
+                            await self.journal.write_assistant_transcript(
+                                result_dict=result_dict,
+                                event=event,
+                                run_id=run_id,
+                                runner_id=descriptor.id,
+                            )
+                            assistant_transcript_written = True
+
+                        result = await self.result_normalizer.normalize(result_dict, descriptor)
+                        file_ids = result_dict.get('data', {}).get('file_ids', [])
+                        if file_ids:
+                            if result_type != 'message.completed' or result is None:
+                                raise ValueError('Files must be attached to a completed message')
+                            if binding.processor_type != 'pipeline':
+                                raise ValueError('Agent files must be sent explicitly through the reply API')
+                            from ...box.runner import exported_message, binding_for
+
+                            async with binding_for(execution_query).lock:
+                                result.attachments = exported_message(execution_query, file_ids, consume=True)
+
+                        if result is not None:
+                            yield result
+
+                        run_snapshot = await self.journal.get_run(run_id)
+                        if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
+                            terminal_status = 'cancelled'
+                            terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
+                            break
             await self.journal.finalize_run(
                 run_id=run_id,
                 status=terminal_status or 'completed',
@@ -403,11 +408,15 @@ class AgentRunOrchestrator:
             execution_outcome = {'completed': 'success', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
                 terminal_status or '', 'unknown'
             )
+            execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except asyncio.CancelledError:
             execution_outcome = 'cancelled'
+            execution_error = 'cancelled'
             raise
         except Exception as exc:
             execution_outcome = 'timeout' if self._is_deadline_exhausted(context) else 'failed'
+            # A chain that broke must always carry a reason, even for a bare exception.
+            execution_error = str(exc) or type(exc).__name__
             failed_usage = terminal_usage
             await self.journal.finalize_run(
                 run_id=run_id,
@@ -426,6 +435,8 @@ class AgentRunOrchestrator:
                 runner=descriptor.id,
                 outcome=execution_outcome,
                 synthetic=event.source == 'webui',
+                error=execution_error,
+                node=node,
             )
             trace_mod.reset_run(run_token)
             if trace_binding is not None and trace_mod.unbind_root(trace_binding):

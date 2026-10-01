@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import typing
 import traceback
+import asyncio
 
 import sqlalchemy
 
@@ -257,6 +258,9 @@ class RuntimePipeline:
             self.ap.logger.error(result.error_notice)
             # Mark query as having error
             query.variables['_monitoring_has_error'] = True
+            # The lane reports failures as a value instead of raising, so record the
+            # reason here: without it the uploaded trace would not explain the break.
+            self._record_lane_failure(query, str(result.error_notice))
             # Record error to monitoring system
             try:
                 await self._assert_execution_active(query)
@@ -368,14 +372,59 @@ class RuntimePipeline:
 
     async def process_query(self, query: pipeline_query.Query):
         from ..telemetry.execution import ingress
+        from ..telemetry.execution import record as record_execution
         from ..telemetry.platform import processing_mode
+        from ..telemetry.trace import stage_scope
 
         token = processing_mode.set('pipeline')
+        # The Workspace-scoped opaque query uuid is the execution identity Space
+        # shows for this lane; it is a stable UUID for every pooled query.
+        execution_id = str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
         try:
             # Callers without a platform event (Webchat, HTTP API) still get one
             # trace for the whole Pipeline lane; nested calls reuse the trace.
-            with ingress(self.ap, 'pipeline_done'):
-                return await self._process_query(query)
+            with ingress(self.ap, 'pipeline_done', getattr(self, 'execution_context', None), execution_id=execution_id):
+                # The lane is its own workflow step: acknowledgements and replies it
+                # sends directly, and the runner it drives, hang under this node.
+                # When the lane runs under a platform route the node nests there.
+                with stage_scope() as node:
+                    lane_outcome = 'success'
+                    lane_error = ''
+                    try:
+                        return await self._process_query(query)
+                    except asyncio.CancelledError:
+                        lane_outcome = 'cancelled'
+                        lane_error = 'cancelled'
+                        raise
+                    except BaseException as exc:
+                        lane_outcome = 'failed'
+                        lane_error = str(exc) or type(exc).__name__
+                        raise
+                    finally:
+                        try:
+                            variables = getattr(query, 'variables', None) or {}
+                            lane_has_error = bool(variables.get('_monitoring_has_error'))
+                        except Exception:
+                            lane_has_error = False
+                        if lane_outcome == 'success' and lane_has_error:
+                            # The lane reported the failure as a value, not an exception.
+                            lane_outcome = 'failed'
+                        config = getattr(query, 'pipeline_config', None)
+                        try:
+                            runner_id = (RunnerConfigResolver.resolve_runner_id(config) or '') if config else ''
+                        except Exception:
+                            runner_id = ''
+                        record_execution(
+                            self.ap,
+                            getattr(self, 'execution_context', None),
+                            family='pipeline',
+                            operation='run',
+                            mode='pipeline',
+                            runner=runner_id,
+                            outcome=lane_outcome,
+                            error=lane_error,
+                            node=node,
+                        )
         finally:
             processing_mode.reset(token)
 
@@ -490,6 +539,9 @@ class RuntimePipeline:
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
             self.ap.logger.error(f'Error processing query {query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+            # The lane itself broke: land the reason on the execution trace so the
+            # chain is uploaded even though the error never became a StageProcessResult.
+            self._record_lane_failure(query, str(e) or type(e).__name__)
 
             # Record query error
             try:
@@ -512,6 +564,46 @@ class RuntimePipeline:
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
             await self.ap.query_pool.remove_query(query)
+
+    def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
+        """Land one failed ``runner/execute`` stage on the owning execution trace."""
+        try:
+            from ..telemetry.execution import record as record_execution
+            from ..telemetry.trace import current as current_trace
+            from ..telemetry.trace import stage_scope
+
+            detail = reason or 'pipeline_lane_failed'
+            state = current_trace()
+            # The runner orchestrator already lands its own failed ``runner/execute``
+            # node when the break happens inside a runner; in that case only carry the
+            # reason over instead of repeating the node on the trace.
+            already_recorded = bool(
+                state is not None
+                and any(
+                    stage.get('family') == 'runner' and stage.get('outcome') not in ('success', 'skipped')
+                    for stage in state.stages
+                )
+            )
+            if not already_recorded:
+                # The lane failure is its own workflow step, hanging under whatever
+                # step routed into it (or a root when nothing did).
+                with stage_scope() as node:
+                    record_execution(
+                        self.ap,
+                        getattr(self, 'execution_context', None),
+                        family='runner',
+                        operation='execute',
+                        mode='pipeline',
+                        runner=(RunnerConfigResolver.resolve_runner_id(query.pipeline_config) or ''),
+                        outcome='failed',
+                        error=detail,
+                        node=node,
+                    )
+                state = current_trace()
+            if state is not None:
+                state.mark_failure(detail)
+        except Exception:
+            pass
 
 
 class PipelineManager:
