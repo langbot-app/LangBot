@@ -12,7 +12,15 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CircleHelp, Plus, X, Server, Wrench, Sparkles, Puzzle } from 'lucide-react';
+import {
+  CircleHelp,
+  Plus,
+  X,
+  Server,
+  Wrench,
+  Sparkles,
+  Puzzle,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
