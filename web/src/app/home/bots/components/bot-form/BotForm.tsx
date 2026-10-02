@@ -552,6 +552,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     [adapterNameToDynamicConfigMap, currentAdapter],
   );
 
+  const connectionModeControllerNames = useMemo(() => {
+    if (supportedConnectionModes.length <= 1) return [];
+    const webhookField = dynamicFormConfigList.find(
+      (item) => item.type === DynamicFormItemType.WEBHOOK_URL,
+    );
+    return webhookField?.show_if?.field ? [webhookField.show_if.field] : [];
+  }, [dynamicFormConfigList, supportedConnectionModes.length]);
+
   const botGuideSteps = useMemo<GuidedTourStep[]>(() => {
     const steps: GuidedTourStep[] = [];
 
@@ -1140,6 +1148,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   <div data-guide="bot-adapter-parameters">
                     <DynamicFormComponent
                       itemConfigList={dynamicFormConfigList}
+                      hiddenItemNames={connectionModeControllerNames}
                       initialValues={currentAdapterConfig}
                       onSubmit={(values) => {
                         form.setValue('adapter_config', values, {
