@@ -271,4 +271,8 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
                 ap.logger.debug(f'Telemetry heartbeat failed: {e}')
             except Exception:
                 pass
-        await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+        # Cloud dashboards need fresh scoped snapshots, including Workspaces
+        # discovered after startup. A transient startup/projection failure must
+        # not suppress synchronization for an entire day.
+        cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        await asyncio.sleep(300 if cloud_runtime else HEARTBEAT_INTERVAL_SECONDS)
