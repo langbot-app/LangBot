@@ -22,6 +22,7 @@ from langbot.libs.wecom_ai_bot_api.api import (  # noqa: E402
     build_human_input_text_prompt,
     parse_select_button_action,
 )
+from langbot.libs.wecom_ai_bot_api import ws_client  # noqa: E402
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient  # noqa: E402
 
 
@@ -355,7 +356,12 @@ async def test_ws_push_form_pause_sends_text_prompt_without_empty_card():
 
 
 @pytest.mark.asyncio
-async def test_ws_stream_sends_cumulative_snapshots_to_wecom():
+async def test_ws_stream_sends_cumulative_snapshots_to_wecom(monkeypatch):
+    # Frame pacing has its own coverage in test_wecombot_stream_throttle.py.
+    # Disable it here so this test keeps asserting what it is named for: that
+    # every frame carries the cumulative snapshot rather than a delta.
+    monkeypatch.setattr(ws_client, '_STREAM_PUSH_MIN_INTERVAL', 0.0)
+
     client = WecomBotWsClient('bot-id', 'secret', object())
     client._stream_ids['msg-1'] = 'req-1|stream-1'
     client._stream_sessions['msg-1'] = {}
