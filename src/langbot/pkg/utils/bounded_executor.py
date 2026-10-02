@@ -173,6 +173,13 @@ class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             max_workers=max_workers,
             thread_name_prefix=thread_name_prefix,
         )
+        # asyncio DNS uses the default executor too. Keep a separately bounded
+        # resolver pool so long-lived SDK calls cannot starve control-plane DNS.
+        self._dns_executor = (
+            BoundedThreadPoolExecutor(max_workers=2, max_pending=32, thread_name_prefix='langbot-dns')
+            if thread_name_prefix != 'langbot-dns'
+            else None
+        )
         self.max_workers = max_workers
         self.max_pending = max_pending
         self.max_inflight_per_scope = max_inflight_per_scope
@@ -194,6 +201,10 @@ class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
         *args: Any,
         **kwargs: Any,
     ) -> concurrent.futures.Future:
+        import socket
+
+        if self._dns_executor is not None and fn in (socket.getaddrinfo, socket.getnameinfo):
+            return self._dns_executor.submit(fn, *args, **kwargs)
         scope = current_blocking_work_scope()
         if not self._capacity.acquire(blocking=False):
             with self._stats_lock:
@@ -245,6 +256,11 @@ class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
 
         future.add_done_callback(complete)
         return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        if self._dns_executor is not None:
+            self._dns_executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+        super().shutdown(wait=wait, cancel_futures=cancel_futures)
 
     def _release_scope_locked(self, scope: str | None) -> None:
         if scope is None:
