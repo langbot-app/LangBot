@@ -1426,13 +1426,19 @@ else:
                     },
                     'encoding': {
                         'type': 'string',
-                        'description': 'Write content as text by default, or decode it from base64 for binary files.',
+                        'description': (
+                            'Write content as text by default, or decode it from base64 for binary files. '
+                            'base64 is not supported when writing to activated skill packages under /workspace/.skills/.'
+                        ),
                         'enum': ['text', 'base64'],
                         'default': 'text',
                     },
                     'mode': {
                         'type': 'string',
-                        'description': 'Overwrite the file by default, or append to it.',
+                        'description': (
+                            'Overwrite the file by default, or append to it. '
+                            'Append is not supported when writing to activated skill packages under /workspace/.skills/.'
+                        ),
                         'enum': ['overwrite', 'append'],
                         'default': 'overwrite',
                     },
