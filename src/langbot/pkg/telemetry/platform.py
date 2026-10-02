@@ -117,5 +117,7 @@ def observe_adapter(ap, context, adapter):
 
             return wrapped
 
-        setattr(adapter, name, make_wrapper(original, name))
-    setattr(adapter, '_execution_observed', True)
+        # Adapters are Pydantic models: method instrumentation is not a model
+        # field assignment. Keep wrappers instance-local, never on the class.
+        object.__setattr__(adapter, name, make_wrapper(original, name))
+    object.__setattr__(adapter, '_execution_observed', True)

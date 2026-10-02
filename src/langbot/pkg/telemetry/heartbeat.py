@@ -189,10 +189,10 @@ async def build_heartbeat_payload(
             cloud_counter=lambda: len(ap.platform_mgr._bots_by_key),
         )
 
-    # Plugin count (from plugin runtime)
+    # Scoped Cloud counts are already available; never issue tenantless RPCs.
     try:
         plugin_connector = getattr(ap, 'plugin_connector', None)
-        if plugin_connector is not None:
+        if workspace_resource is None and plugin_connector is not None:
             plugins = await plugin_connector.list_plugins()
             features['plugin_count'] = len(plugins)
     except Exception:
