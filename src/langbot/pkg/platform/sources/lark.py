@@ -723,7 +723,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             ]
 
         for ele in message_content['content']:
-            if ele['tag'] == 'text':
+            if ele['tag'] in {'text', 'code_block'}:
                 lb_msg_list.append(platform_message.Plain(text=ele['text']))
             elif ele['tag'] == 'at':
                 lb_msg_list.append(platform_message.At(target=ele['user_name']))
