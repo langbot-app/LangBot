@@ -107,6 +107,12 @@ class ExecutionCounters:
     # ------------------------------------------------------------------ config
 
     def trace_mode(self) -> str:
+        # Cloud activity counts must not be computed from sampled successes.
+        # Telemetry opt-out is still enforced before recording observations.
+        from ..utils import constants
+
+        if constants.edition == 'cloud':
+            return 'all'
         mode = str(self.manager.telemetry_config.get('execution_trace', DEFAULT_TRACE_MODE) or '').strip().lower()
         return mode if mode in TRACE_MODES else DEFAULT_TRACE_MODE
 
