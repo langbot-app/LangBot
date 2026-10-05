@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: wechatferry
+  label:
+    en_US: WeChatFerry
+    zh_Hans: WeChatFerry (PC微信)
+    zh_Hant: WeChatFerry (PC微信)
+  description:
+    en_US: WeChatFerry PC WeChat adapter, supports authentic wxid recognition and bi-directional messaging
+    zh_Hans: 基于 WeChatFerry 的 PC 微信适配器，支持群聊/私聊真实 wxid 获取与消息双向收发
+    zh_Hant: 基於 WeChatFerry 的 PC 微信適配器
+  icon: wechatferry.png
+spec:
+  categories:
+    - china
+  config:
+    - name: api_url
+      label:
+        en_US: WCF API URL
+        zh_Hans: WCF 服务 HTTP 地址
+        zh_Hant: WCF 服務 HTTP 地址
+      description:
+        en_US: HTTP Base URL of WeChatFerry daemon service (e.g. http://127.0.0.1:18080)
+        zh_Hans: WeChatFerry 后台服务的 HTTP 地址，例如 http://127.0.0.1:18080
+        zh_Hant: WeChatFerry 後台服務的 HTTP 地址
+      type: string
+      required: true
+      default: "http://127.0.0.1:18080"
+    - name: ws_url
+      label:
+        en_US: WCF WebSocket URL
+        zh_Hans: WCF 消息 WebSocket 地址
+        zh_Hant: WCF 消息 WebSocket 地址
+      description:
+        en_US: WebSocket URL for real-time message stream (e.g. ws://127.0.0.1:18080/ws)
+        zh_Hans: 接收实时微信消息推送的 WebSocket 地址，例如 ws://127.0.0.1:18080/ws
+        zh_Hant: 接收實時微信消息推送的 WebSocket 地址
+      type: string
+      required: true
+      default: "ws://127.0.0.1:18080/ws"
+    - name: bot_wxid
+      label:
+        en_US: Bot WxID
+        zh_Hans: 机器人自身 wxid
+        zh_Hant: 機器人自身 wxid
+      description:
+        en_US: The authentic WeChat ID of the bot account (e.g. wxid_hpff6wk2y9zd12)
+        zh_Hans: 机器人微信账号的真实微信 ID，例如 wxid_hpff6wk2y9zd12
+        zh_Hant: 機器人微信帳號的真實微信 ID
+      type: string
+      required: false
+      default: "wxid_hpff6wk2y9zd12"
+execution:
+  python:
+    path: ./wechatferry.py
+    attr: WeChatFerryAdapter
