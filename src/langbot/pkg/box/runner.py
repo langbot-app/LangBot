@@ -33,14 +33,20 @@ def prepare_input_files(query, agent_input):
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
-    from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 
     originals = input_files(query)
     if not agent_input.attachments:
+        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
         agent_input.attachments = [
             InputAttachment.model_validate(item)
             for item in QueryEntryAdapter._build_attachments(query, [c.model_dump() for c in agent_input.contents])
         ]
+    inline_images = {
+        content.image_base64
+        for content in (agent_input.contents or [])
+        if content.type == 'image_base64' and content.image_base64
+    }
     components = []
     for i, attachment in enumerate(agent_input.attachments):
         kind = (attachment.type or 'file').lower()
@@ -74,6 +80,8 @@ def prepare_input_files(query, agent_input):
                 break
         components.append(component)
         attachment.ref, attachment.path = f'attachment-{i}', None
+        if kind == 'image' and attachment.content in inline_images:
+            attachment.content = None
     object.__setattr__(query, '_box_inputs', components)
 
 
