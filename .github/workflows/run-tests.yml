@@ -84,6 +84,93 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+  postgres-contracts:
+    name: PostgreSQL Contract Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only this disposable, loopback-bound CI service uses trust authentication.
+    # Admission fixtures create a separate unprivileged role with no password;
+    # the literal postgres@ URL lets that fixture switch to the runtime role.
+    env:
+      TEST_POSTGRES_URL: postgresql+asyncpg://postgres@localhost:5432/langbot_test
+      LANGBOT_ADMISSION_TEST_URL: postgresql+asyncpg://postgres@localhost:5432/langbot_admission_test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: langbot_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd="pg_isready -U postgres -d langbot_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --dev --frozen
+
+      - name: Create isolated admission test database
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          -c 'CREATE DATABASE langbot_admission_test;'
+
+      - name: Run required PostgreSQL contracts
+        run: |
+          uv run pytest \
+            tests/integration/persistence/test_pipeline_admission_postgres.py \
+            tests/integration/persistence/test_rag_document_identity.py \
+            tests/integration/persistence/test_rag_interrupted_ingestion.py \
+            tests/integration/persistence/test_migration_branch_convergence.py \
+            tests/integration/persistence/test_runner_timestamps_postgres.py \
+            -k postgres -q --tb=short -rs --durations=10 \
+            --junitxml=postgres-contract-results.xml
+          python - <<'PY'
+          from collections import Counter
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse('postgres-contract-results.xml').getroot().iter('testcase'))
+          expected = {
+              'test_pipeline_admission_postgres': 27,
+              'test_rag_document_identity': 34,
+              'test_rag_interrupted_ingestion': 22,
+              'test_migration_branch_convergence': 7,
+              'test_runner_timestamps_postgres': 32,
+          }
+          counts = Counter(case.get('classname', '').rsplit('.', 1)[-1] for case in cases)
+          for module, minimum in expected.items():
+              assert counts[module] >= minimum, f'{module}: expected at least {minimum} cases, got {counts[module]}'
+          unsuccessful = [
+              case.get('name') for case in cases
+              if any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error'))
+          ]
+          assert not unsuccessful, f'PostgreSQL contracts must pass without skips: {unsuccessful}'
+          print(f'PostgreSQL contracts: {len(cases)} passed, 0 skipped; {dict(counts)}')
+          PY
+
+      - name: Upload PostgreSQL contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-contract-results
+          path: postgres-contract-results.xml
+          if-no-files-found: ignore
+
   e2e:
     name: E2E Startup Tests
     runs-on: ubuntu-latest
@@ -148,9 +235,16 @@ jobs:
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest
-    needs: [test, integration]
+    needs: [test, integration, postgres-contracts]
+    if: always()
 
     steps:
+      - name: Verify required test jobs
+        run: |
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          test "${{ needs.postgres-contracts.result }}" = success
+
       - name: Checkout code
         uses: actions/checkout@v4
 

@@ -868,7 +868,8 @@ class TestBotServiceSendMessage:
         with pytest.raises(Exception, match='Invalid message_chain format'):
             await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', {'invalid': 'format'})
 
-    async def test_send_message_valid_call(self):
+    @pytest.mark.parametrize(('target_type', 'target_id'), [('group', 123), ('person', 'user-456')])
+    async def test_send_message_valid_call(self, target_type, target_id):
         """Sends message through adapter when all valid."""
         # Setup
         ap = SimpleNamespace()
@@ -882,14 +883,18 @@ class TestBotServiceSendMessage:
         service = BotService(ap)
         service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
-        # Execute with valid message chain format
-        message_chain_data = {'messages': [{'type': 'text', 'data': {'text': 'Hello'}}]}
+        from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
-        # Patch the import location - the module imports inside the function
-        with patch('langbot_plugin.api.entities.builtin.platform.message.MessageChain') as MockMessageChain:
-            mock_chain = Mock()
-            MockMessageChain.model_validate = Mock(return_value=mock_chain)
-            await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', message_chain_data)
+        expected_chain = MessageChain([Plain(text='Hello')])
+        message_chain_data = expected_chain.model_dump()
+        await service.send_message(WORKSPACE_UUID, 'bot-uuid', target_type, target_id, message_chain_data)
 
-        # Verify adapter.send_message was called
-        runtime_bot.adapter.send_message.assert_called_once_with('group', '123', mock_chain)
+        service.get_bot.assert_awaited_once_with(WORKSPACE_UUID, 'bot-uuid', include_secret=False)
+        ap.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(WORKSPACE_UUID, 'bot-uuid')
+        runtime_bot.adapter.send_message.assert_awaited_once()
+        sent_target_type, sent_target_id, sent_chain = runtime_bot.adapter.send_message.await_args.args
+        assert sent_target_type == target_type
+        assert sent_target_id == str(target_id)
+        assert isinstance(sent_chain, MessageChain)
+        assert sent_chain.model_dump() == expected_chain.model_dump()
+        assert str(sent_chain) == 'Hello'
