@@ -84,9 +84,7 @@ class TelemetryManager:
                 else:
                     if 'query_id' in sanitized:
                         try:
-                            sanitized['query_id'] = (
-                                '' if sanitized['query_id'] is None else str(sanitized['query_id'])
-                            )
+                            sanitized['query_id'] = '' if sanitized['query_id'] is None else str(sanitized['query_id'])
                         except Exception:
                             sanitized['query_id'] = str(sanitized.get('query_id', ''))
 
