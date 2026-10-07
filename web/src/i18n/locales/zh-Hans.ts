@@ -2332,7 +2332,12 @@ const zhHans = {
         cancelled: '已取消',
         ignored: '已忽略',
       },
-      kind: { agent: 'Agent', pipeline: 'Pipeline', processor: '处理器' },
+      // prettier-ignore
+      kind: {
+        agent: 'Agent',
+        pipeline: 'Pipeline',
+        processor: '处理器',
+      },
       columns: {
         time: '时间',
         target: '处理器',

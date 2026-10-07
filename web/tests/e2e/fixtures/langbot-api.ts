@@ -270,7 +270,9 @@ function executionText(raw: unknown): string {
 
 /** Derive the unified execution list from a mocked monitoring payload. */
 function buildExecutionList(monitoringData: unknown) {
-  const payload = monitoringData as { messages?: RawMonitoringMessage[] } | undefined;
+  const payload = monitoringData as
+    | { messages?: RawMonitoringMessage[] }
+    | undefined;
   const items = (payload?.messages ?? [])
     .filter((message) => message.role !== 'assistant')
     .map((message) => {
@@ -331,7 +333,9 @@ function buildExecutionList(monitoringData: unknown) {
         ignored: byStatus.ignored ?? 0,
         waiting: 0,
         success_rate:
-          denominator > 0 ? Math.round((completed / denominator) * 10000) / 100 : null,
+          denominator > 0
+            ? Math.round((completed / denominator) * 10000) / 100
+            : null,
         denominator,
         p50_duration_ms: null,
         p95_duration_ms: null,
@@ -1308,12 +1312,13 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
       (rows ?? []).filter((row) => row.message_id === executionId);
     return fulfillJson(route, {
       source: 'pipeline',
-      message:
-        (payload.messages ?? []).find((row) => row.id === executionId) ?? {
-          id: executionId,
-          status: 'success',
-          message_content: '',
-        },
+      message: (payload.messages ?? []).find(
+        (row) => row.id === executionId,
+      ) ?? {
+        id: executionId,
+        status: 'success',
+        message_content: '',
+      },
       llm_calls: relatedToExecution(payload.llmCalls),
       tool_calls: relatedToExecution(payload.toolCalls),
       errors: relatedToExecution(payload.errors),

@@ -20,7 +20,7 @@ test('local account login reaches the authenticated home shell', async ({
   await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
   await expect(page.getByText('Home').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
-  await expect(page.getByText('Total Messages').first()).toBeVisible();
+  await expect(page.getByText('Execution Success Rate').first()).toBeVisible();
   await expect(page.getByText('Unable to connect to server')).toHaveCount(0);
 });
 

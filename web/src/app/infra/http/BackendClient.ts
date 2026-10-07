@@ -2166,9 +2166,7 @@ export class BackendClient extends BaseHttpClient {
       queryParams.append('offset', params.offset.toString());
     }
 
-    return this.get(
-      `/api/v1/monitoring/executions?${queryParams.toString()}`,
-    );
+    return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
   }
 
   public getExecutionDetail(

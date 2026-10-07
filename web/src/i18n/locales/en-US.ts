@@ -2481,7 +2481,12 @@ const enUS = {
         cancelled: 'Cancelled',
         ignored: 'Ignored',
       },
-      kind: { agent: 'Agent', pipeline: 'Pipeline', processor: 'Processor' },
+      // prettier-ignore
+      kind: {
+        agent: 'Agent',
+        pipeline: 'Pipeline',
+        processor: 'Processor',
+      },
       columns: {
         time: 'Time',
         target: 'Processor',
