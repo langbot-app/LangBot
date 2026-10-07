@@ -931,6 +931,32 @@ class RuntimeBot:
             node=node,
         )
 
+    async def _persist_monitoring_ingress(self, event, adapter, execution_id, status='running', routes=None):
+        service = getattr(getattr(self, 'ap', None), 'monitoring_service', None)
+        if service is None or not execution_id:
+            return
+        try:
+            sender = getattr(event, 'sender', None)
+            await service.record_ingress_event(
+                self.execution_context,
+                event_id=execution_id,
+                event_type=getattr(event, 'type', None) or event.__class__.__name__,
+                bot_id=self.bot_entity.uuid,
+                bot_name=self.bot_entity.name,
+                platform=getattr(self.bot_entity, 'adapter', None) or adapter.__class__.__name__,
+                payload={
+                    key: value
+                    for key, value in self._safe_model_dump(event).items()
+                    if key != 'source_platform_object' and not key.startswith('_')
+                },
+                actor_id=self._get_entity_id(sender),
+                actor_name=self._get_entity_name(sender),
+                status=status,
+                routes=routes,
+            )
+        except Exception as exc:
+            await self.logger.warning(f'Failed to persist monitoring ingress: {exc}')
+
     async def _handle_platform_event_body(
         self,
         event: platform_events.EBAEvent,
@@ -941,6 +967,7 @@ class RuntimeBot:
         results: list[typing.Any] = []
         try:
             await self._record_adapter_event(event, adapter)
+            await self._persist_monitoring_ingress(event, adapter, execution_id)
 
             primary = (
                 self._handle_interaction_submission(event, adapter, execution_id)
@@ -961,6 +988,7 @@ class RuntimeBot:
             results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
             self._record_platform_event(event, adapter, 'failed', f'{type(exc).__name__}: {exc}', node)
+            await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
 
         # Recorded after handling so the inbound stage carries the real outcome
@@ -973,6 +1001,13 @@ class RuntimeBot:
                 except Exception:
                     pass
         self._record_platform_event(event, adapter, outcome, error_detail, node)
+        await self._persist_monitoring_ingress(
+            event,
+            adapter,
+            execution_id,
+            {'success': 'completed', 'skipped': 'ignored'}.get(outcome, 'failed'),
+            results,
+        )
 
     async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid, execution_id=None):
         event_type = event.type

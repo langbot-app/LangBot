@@ -86,7 +86,14 @@ class MonitoringRouterGroup(group.RouterGroup):
         async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
             """Full trace of a single execution (agent run or pipeline query)."""
             try:
-                detail = await self.ap.monitoring_service.get_execution_detail(request_context, source, execution_id)
+                detail = await self.ap.monitoring_service.get_execution_detail(
+                    request_context,
+                    source,
+                    execution_id,
+                    section=quart.request.args.get('section'),
+                    offset=quart.request.args.get('offset', 0),
+                    limit=quart.request.args.get('limit', 100),
+                )
             except ValueError as exc:
                 return self.fail(404, str(exc))
             return self.success(data=detail)
@@ -107,6 +114,8 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             stats = await self.ap.monitoring_service.get_token_statistics(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -368,6 +377,10 @@ class MonitoringRouterGroup(group.RouterGroup):
         @self.route('/data', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_all_data(request_context: RequestContext) -> str:
             """Get all monitoring data in a single request"""
+            execution_filters = {
+                'execution_statuses': quart.request.args.getlist('status') or None,
+                'mode': quart.request.args.get('mode', 'all'),
+            }
             # Parse query parameters
             bot_ids = quart.request.args.getlist('botId')
             pipeline_ids = quart.request.args.getlist('pipelineId')
@@ -382,6 +395,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get overview metrics
             overview = await self.ap.monitoring_service.get_overview_metrics(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -391,6 +405,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get messages
             messages, messages_total = await self.ap.monitoring_service.get_messages(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -402,6 +417,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get LLM calls
             llm_calls, llm_calls_total = await self.ap.monitoring_service.get_llm_calls(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -413,6 +429,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get tool calls
             tool_calls, tool_calls_total = await self.ap.monitoring_service.get_tool_calls(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -424,6 +441,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get sessions
             sessions, sessions_total = await self.ap.monitoring_service.get_sessions(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -436,6 +454,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get errors
             errors, errors_total = await self.ap.monitoring_service.get_errors(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -447,6 +466,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get embedding calls
             embedding_calls, embedding_calls_total = await self.ap.monitoring_service.get_embedding_calls(
                 request_context,
+                **execution_filters,
                 start_time=start_time,
                 end_time=end_time,
                 limit=limit,
@@ -458,6 +478,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'traffic': await get_traffic_series(
                         self.ap,
                         request_context,
+                        **execution_filters,
                         bot_ids=bot_ids or None,
                         pipeline_ids=pipeline_ids or None,
                         start_time=start_time,
@@ -725,6 +746,8 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             stats = await self.ap.monitoring_service.get_feedback_stats(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -754,6 +777,8 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             feedback_list, total = await self.ap.monitoring_service.get_feedback_list(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 feedback_type=feedback_type,

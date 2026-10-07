@@ -23,6 +23,73 @@ from langbot.pkg.entity.persistence.base import Base
 WORKSPACE = 'workspace-1'
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('has_log', [False, True])
+async def test_event_properties_survive_detail_snapshot_fallback(engine, service, has_log):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    data = {'member': {'id': 'u1', 'active': False}, 'count': 0, 'custom': {'reason': 'joined'}}
+    async with AsyncSession(engine) as session:
+        session.add(
+            persistence_agent_run.AgentRun(
+                run_id='custom-run',
+                event_id='custom-event',
+                workspace_id=WORKSPACE,
+                runner_id='runner',
+                status='completed',
+                created_at=_dt(10),
+                metadata_json=json.dumps(
+                    {
+                        'event_type': 'group.member_joined',
+                        'input_event': data,
+                        'input': {'text': '', 'contents': [], 'attachments': []},
+                    }
+                ),
+            )
+        )
+        if has_log:
+            session.add(
+                EventLog(
+                    event_id='custom-event',
+                    event_type='group.member_joined',
+                    source='webui',
+                    workspace_id=WORKSPACE,
+                    run_id='custom-run',
+                    input_json='{"text":"","contents":[]}',
+                    created_at=_dt(10),
+                )
+            )
+            session.add(
+                EventLog(
+                    event_id='later-event',
+                    event_type='message.received',
+                    source='webui',
+                    workspace_id=WORKSPACE,
+                    run_id='custom-run',
+                    input_json='{"text":"later"}',
+                    created_at=_dt(10, 1),
+                )
+            )
+        await session.commit()
+    detail = await service.get_execution_detail(WORKSPACE, 'agent', 'custom-run')
+    items = detail['pages']['inputs']['items']
+    assert items[0]['content']['member'] == data['member']
+    assert items[0]['content']['count'] == 0
+    assert items[0]['content']['custom'] == data['custom']
+    if has_log:
+        assert items[1]['content'] == {'text': 'later'}
+
+
+def test_event_content_preserves_conflicting_custom_input_fields():
+    from langbot.pkg.api.http.service.monitoring_execution_details import event_content
+
+    assert event_content({'text': 'normalized'}, {'text': {'custom': False}}) == {
+        'event': {'text': {'custom': False}},
+        'input': {'text': 'normalized'},
+    }
+
+
 class FakePersistenceManager:
     """Runs statements against a real in-memory SQLite engine."""
 
@@ -32,6 +99,11 @@ class FakePersistenceManager:
 
     def get_db_engine(self):
         return self._engine
+
+    def tenant_uow(self, workspace_uuid):
+        from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+        return TenantUnitOfWork(self._engine, workspace_uuid)
 
     async def execute_async(self, statement):
         # Match PersistenceManager's connection-level result shape.
@@ -348,3 +420,319 @@ async def test_execution_detail_for_agent_and_pipeline(engine, service):
 
     with pytest.raises(ValueError):
         await service.get_execution_detail(WORKSPACE, 'pipeline', 'missing-message')
+
+
+@pytest.mark.asyncio
+async def test_explicit_deliveries_context_and_tenant_isolation(engine, service):
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-assistant')
+            .values(parent_message_id='msg-user')
+        )
+        await session.commit()
+    detail = await service.get_execution_detail(WORKSPACE, 'auto', 'msg-assistant')
+    assert detail['row']['id'] == 'msg-user'
+    assert [m['id'] for m in detail['pages']['deliveries']['items']] == ['msg-assistant']
+    assert detail['pages']['inputs']['items'][0]['id'] == 'msg-user'
+    assert detail['pages']['conversation']['items']
+    with pytest.raises(ValueError, match='not found'):
+        await service.get_execution_detail('another-workspace', 'auto', 'msg-assistant')
+
+
+@pytest.mark.asyncio
+async def test_legacy_replies_are_context_not_guessed_deliveries(engine, service):
+    await _seed(engine)
+    detail = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user')
+    assert detail['legacy_context'] is True
+    assert detail['pages']['deliveries']['items'] == []
+    assert 'msg-assistant' in [m['id'] for m in detail['pages']['conversation']['items']]
+
+
+@pytest.mark.asyncio
+async def test_fanout_steering_orphans_and_paged_trace(engine, service):
+    import json
+    import sqlalchemy as sa
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from langbot.pkg.entity.persistence.transcript import Transcript
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_agent_run.AgentRun)
+            .where(persistence_agent_run.AgentRun.run_id == 'run-done')
+            .values(
+                conversation_id='shared',
+                thread_id='thread-1',
+                metadata_json=json.dumps({'processor_type': 'event_processor'}),
+            )
+        )
+        session.add_all(
+            [
+                EventLog(
+                    event_id='evt-1',
+                    event_type='message.received',
+                    source='platform',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    input_json='{"text":"original input"}',
+                    actor_name='Alice',
+                    created_at=_dt(10),
+                ),
+                EventLog(
+                    event_id='steer',
+                    event_type='message.received',
+                    source='platform',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    run_id='run-done',
+                    input_json='{"text":"additional input"}',
+                    created_at=_dt(10, 1),
+                ),
+                EventLog(
+                    event_id='unrouted',
+                    event_type='group.member.joined',
+                    source='platform',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    metadata_json='{"status":"ignored"}',
+                    created_at=_dt(10, 7),
+                ),
+                persistence_agent_run.AgentRun(
+                    run_id='sibling',
+                    event_id='evt-1',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    runner_id='plugin',
+                    status='completed',
+                    created_at=_dt(10),
+                ),
+                Transcript(
+                    transcript_id='output',
+                    event_id='generated',
+                    conversation_id='shared',
+                    thread_id='thread-1',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    role='assistant',
+                    content='generated only',
+                    run_id='run-done',
+                    seq=1,
+                ),
+                Transcript(
+                    transcript_id='other-thread',
+                    event_id='other',
+                    conversation_id='shared',
+                    thread_id='thread-2',
+                    workspace_id=WORKSPACE,
+                    bot_id='bot-1',
+                    role='user',
+                    content='private other thread',
+                    seq=2,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                persistence_agent_run.AgentRunEvent(run_id='run-done', sequence=i, type='message.delta', data_json='{}')
+                for i in range(2, 206)
+            ]
+        )
+        await session.commit()
+    result = await service.get_executions(WORKSPACE)
+    assert 'unrouted' in [r['id'] for r in result['items']]
+    assert 'steer' not in [r['id'] for r in result['items']]
+    ignored = await service.get_executions(WORKSPACE, statuses=['ignored'])
+    assert 'unrouted' in [r['id'] for r in ignored['items']]
+    detail = await service.get_execution_detail(WORKSPACE, 'agent', 'run-done')
+    assert detail['row']['target_kind'] == 'event_processor'
+    assert detail['row']['user_name'] == 'Alice'
+    assert [i['id'] for i in detail['pages']['inputs']['items']] == ['evt-1', 'steer']
+    assert detail['pages']['outputs']['items'][0]['content'] == 'generated only'
+    assert [i['id'] for i in detail['pages']['related']['items']] == ['sibling']
+    assert 'other-thread' not in [i['id'] for i in detail['pages']['conversation']['items']]
+    assert len(detail['pages']['events']['items']) == 100
+    assert detail['pages']['events']['has_more']
+    final = await service.get_execution_detail(WORKSPACE, 'agent', 'run-done', section='events', offset=200)
+    assert len(final['pages']['events']['items']) == 5
+    assert not final['pages']['events']['has_more']
+    orphan = await service.get_execution_detail(WORKSPACE, 'event', 'unrouted')
+    assert orphan['pages']['deliveries']['items'] == []
+    assert orphan['pages']['conversation']['items'] == []
+
+
+@pytest.mark.asyncio
+async def test_pipeline_runner_is_not_counted_twice(engine, service):
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-user')
+            .values(run_id='run-done')
+        )
+        await session.commit()
+    result = await service.get_executions(WORKSPACE)
+    assert result['total'] == 4
+    assert result['summary']['executions']['total'] == 4
+    assert 'run-done' not in [r['id'] for r in result['items']]
+    detail = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user')
+    assert detail['row']['duration_ms'] == 2000
+    assert detail['events'][0]['type'] == 'run.completed'
+
+
+@pytest.mark.asyncio
+async def test_event_log_fanout_is_idempotent_and_cannot_cross_tenants(engine):
+    from langbot.pkg.agent.runner.event_log_store import EventLogStore
+
+    store = EventLogStore(engine)
+    await store.append_event('event-id', 'message.received', 'platform', workspace_id=WORKSPACE, bot_id='bot')
+    await store.append_event(
+        'event-id',
+        'message.received',
+        'platform',
+        workspace_id=WORKSPACE,
+        bot_id='bot',
+        run_id='first-run',
+        input_json={'text': 'input', 'attachments': []},
+    )
+    await store.append_event(
+        'event-id', 'message.received', 'platform', workspace_id=WORKSPACE, bot_id='bot', run_id='second-run'
+    )
+    event = await store.get_event('event-id')
+    assert event['run_id'] == 'first-run'
+    assert event['input_json']['text'] == 'input'
+    with pytest.raises(Exception):
+        await store.append_event('event-id', 'message.received', 'platform', workspace_id='other', bot_id='bot')
+
+
+@pytest.mark.asyncio
+async def test_processor_filter_scopes_each_kind_and_legacy_calls(engine, service):
+    import json
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        session.add(
+            persistence_agent_run.AgentRun(
+                run_id='event-run',
+                workspace_id=WORKSPACE,
+                runner_id='event-runner',
+                status='completed',
+                created_at=_dt(11),
+                metadata_json=json.dumps({'processor_type': 'event_processor', 'processor_id': 'event-processor-1'}),
+            )
+        )
+        session.add(
+            persistence_monitoring.MonitoringLLMCall(
+                id='event-call',
+                bot_id='bot-1',
+                bot_name='Bot One',
+                pipeline_name='Event Processor',
+                session_id='session-event',
+                input_tokens=6,
+                output_tokens=6,
+                duration=1,
+                timestamp=_dt(11),
+                workspace_uuid=WORKSPACE,
+                model_name='model',
+                message_id='event-run',
+                pipeline_id='',
+                status='success',
+                total_tokens=12,
+            )
+        )
+        await session.commit()
+    for processor, expected in [
+        ('agent-1', {'run-done', 'run-debug'}),
+        ('pipeline-1', {'msg-user', 'msg-discarded'}),
+        ('event-processor-1', {'event-run'}),
+        ('missing', set()),
+    ]:
+        result = await service.get_executions(WORKSPACE, pipeline_ids=[processor])
+        assert {row['id'] for row in result['items']} == expected
+        assert result['total'] == result['summary']['executions']['total'] == len(expected)
+    calls, total = await service.get_llm_calls(WORKSPACE, pipeline_ids=['event-processor-1'])
+    assert total == 1
+    assert [row['id'] for row in calls] == ['event-call']
+    other = await service.get_executions('another-workspace', pipeline_ids=['event-processor-1'])
+    assert other['total'] == 0
+
+
+@pytest.mark.asyncio
+async def test_execution_filters_also_scope_cards_calls_and_traffic(engine, service):
+    import sqlalchemy as sa
+    from langbot.pkg.api.http.service.monitoring_traffic import get_traffic_series
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringLLMCall)
+            .where(persistence_monitoring.MonitoringLLMCall.id == 'llm-1')
+            .values(message_id='run-failed', pipeline_id='')
+        )
+        await session.commit()
+    failed = await service.get_executions(WORKSPACE, statuses=['failed'])
+    assert failed['total'] == failed['summary']['executions']['total'] == 1
+    assert failed['summary']['executions']['waiting'] == 0
+    calls, total = await service.get_llm_calls(WORKSPACE, execution_statuses=['failed'])
+    assert total == 1 and calls[0]['id'] == 'llm-1'
+    # A successful model call may belong to a failed execution.
+    assert calls[0]['status'] == 'success'
+    overview = await service.get_overview_metrics(WORKSPACE, execution_statuses=['failed'])
+    assert overview['llm_calls'] == 1 and overview['total_messages'] == 0
+    traffic = await get_traffic_series(service.ap, WORKSPACE, execution_statuses=['failed'])
+    assert sum(p['llm_calls'] for p in traffic['points']) == 1
+    assert sum(p['messages'] for p in traffic['points']) == 0
+
+    debug = await service.get_executions(WORKSPACE, mode='debug')
+    assert debug['total'] == debug['summary']['executions']['total'] == 1
+    real = await service.get_executions(WORKSPACE, mode='real')
+    assert real['total'] == real['summary']['executions']['total'] == 4
+    traffic = await get_traffic_series(service.ap, WORKSPACE, mode='debug')
+    assert sum(p['messages'] for p in traffic['points']) == 0
+
+
+@pytest.mark.asyncio
+async def test_pipeline_debug_is_consistent_across_rows_rollups_and_telemetry(engine, service):
+    import sqlalchemy as sa
+    from langbot.pkg.api.http.service.monitoring_traffic import get_traffic_series
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-user')
+            .values(bot_id='websocket-proxy-bot')
+        )
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringLLMCall)
+            .where(persistence_monitoring.MonitoringLLMCall.id == 'llm-1')
+            .values(message_id='msg-user', pipeline_id='pipeline-1')
+        )
+        await session.execute(
+            sa.update(persistence_agent_run.AgentRun)
+            .where(persistence_agent_run.AgentRun.run_id == 'run-done')
+            .values(bot_id='websocket-proxy-bot')
+        )
+        await session.commit()
+    debug = await service.get_executions(WORKSPACE, mode='debug')
+    ids = {r['id'] for r in debug['items']}
+    assert ids == {'msg-user', 'run-done', 'run-debug'}
+    assert all(r['debug'] for r in debug['items'])
+    assert debug['summary']['executions']['total'] == 3
+    assert debug['summary']['executions']['debug'] == 3
+    real = await service.get_executions(WORKSPACE, mode='real')
+    assert not ids.intersection(r['id'] for r in real['items'])
+    assert real['summary']['executions']['debug'] == 0
+    filtered = await service.get_executions(WORKSPACE, pipeline_ids=['pipeline-1'], mode='debug')
+    assert [r['id'] for r in filtered['items']] == ['msg-user']
+    calls, total = await service.get_llm_calls(WORKSPACE, pipeline_ids=['pipeline-1'], mode='debug')
+    assert total == 1 and calls[0]['id'] == 'llm-1'
+    real_rows, real_calls = await service.get_llm_calls(WORKSPACE, pipeline_ids=['pipeline-1'], mode='real')
+    assert real_calls == 1 and real_rows[0]['id'] == 'llm-2'
+    traffic = await get_traffic_series(service.ap, WORKSPACE, mode='debug', pipeline_ids=['pipeline-1'])
+    assert sum(p['llm_calls'] for p in traffic['points']) == 1

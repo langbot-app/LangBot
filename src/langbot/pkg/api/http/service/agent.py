@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import aclosing
+
 import datetime
 import copy
 import fnmatch
@@ -365,25 +367,28 @@ class AgentService:
             origin=origin,
             synthetic_event=event_type,
         ):
-            async for output in self.ap.agent_run_orchestrator.run(
-                event,
-                binding,
-                adapter_context={
-                    '_query': execution_query,
-                    '_execution_context': execution_context,
-                    '_result_observer': observe_result,
-                },
-            ):
-                output_text = self._provider_output_to_text(output)
-                if output_text:
-                    final_text = output_text
-                output_items.append(
-                    {
-                        'kind': output.__class__.__name__,
-                        'role': str(getattr(output, 'role', '') or ''),
-                        'text': output_text,
-                    }
+            async with aclosing(
+                self.ap.agent_run_orchestrator.run(
+                    event,
+                    binding,
+                    adapter_context={
+                        '_query': execution_query,
+                        '_execution_context': execution_context,
+                        '_result_observer': observe_result,
+                    },
                 )
+            ) as owned_stream:
+                async for output in owned_stream:
+                    output_text = self._provider_output_to_text(output)
+                    if output_text:
+                        final_text = output_text
+                    output_items.append(
+                        {
+                            'kind': output.__class__.__name__,
+                            'role': str(getattr(output, 'role', '') or ''),
+                            'text': output_text,
+                        }
+                    )
 
         return {
             'event_id': event_id,

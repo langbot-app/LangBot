@@ -16,7 +16,7 @@ import {
   ChevronDown,
   ExternalLink,
   RefreshCw,
-  MessageSquare,
+  RotateCcw,
   Sparkles,
   CheckCircle2,
   Activity,
@@ -30,20 +30,14 @@ import { ExportDropdown } from './components/ExportDropdown';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
 import { useFeedbackData } from './hooks/useFeedbackData';
-import { ConversationTurnList } from './components/ConversationTurnList';
 import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
 import ExecutionOverviewCards from './components/overview-cards/ExecutionOverviewCards';
 import ExecutionTable from './components/executions/ExecutionTable';
-import ExecutionDetailSheet from './components/executions/ExecutionDetailSheet';
+import ExecutionDetailSheet, {
+  type ExecutionSelection,
+} from './components/executions/ExecutionDetailSheet';
 import { useExecutions } from './hooks/useExecutions';
-import type {
-  ExecutionModeFilter,
-  ExecutionRow,
-  ExecutionSourceFilter,
-} from '@/app/infra/entities/api/monitoring-executions';
-import { buildConversationTurns } from './utils/conversationTurns';
-import { resolveCallTarget } from './utils/callLinks';
 import { cn } from '@/lib/utils';
 import { resolveMonitoringWindow } from './utils/dateUtils';
 import { LoadingPage } from '@/components/ui/loading-spinner';
@@ -54,20 +48,25 @@ function MonitoringPageContent() {
   const currentWorkspace = useCurrentWorkspace();
   const canExport =
     currentWorkspace?.permissions.includes('data.export') ?? false;
-  const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
-    useMonitoringFilters();
-  const { data, loading, error, refetch } = useMonitoringData(filterState);
-
-  // Unified execution view (agent runs + pipeline queries). Its filters are
-  // independent of the legacy message/model tabs.
-  const [executionSource, setExecutionSource] =
-    useState<ExecutionSourceFilter>('all');
-  const [executionMode, setExecutionMode] =
-    useState<ExecutionModeFilter>('all');
-  const [executionStatus, setExecutionStatus] = useState<string>('all');
+  const {
+    filterState,
+    setSelectedBots,
+    setSelectedPipelines,
+    setTimeRange,
+    setExecutionMode,
+    setExecutionStatus,
+    resetFilters,
+  } = useMonitoringFilters();
+  const executionMode = filterState.mode ?? 'all';
+  const executionStatus = filterState.statusGroup ?? 'all';
+  const { data, loading, error, refetch } = useMonitoringData({
+    ...filterState,
+    mode: executionMode,
+    statusGroup: executionStatus,
+  });
   const [executionOffset, setExecutionOffset] = useState(0);
   const [selectedExecution, setSelectedExecution] =
-    useState<ExecutionRow | null>(null);
+    useState<ExecutionSelection | null>(null);
   const EXECUTIONS_PAGE_SIZE = 50;
 
   const {
@@ -79,7 +78,7 @@ function MonitoringPageContent() {
     selectedBots: filterState.selectedBots,
     selectedPipelines: filterState.selectedPipelines,
     selectedAgents: [],
-    source: executionSource,
+    source: 'all',
     mode: executionMode,
     statusGroup: executionStatus,
     timeRange: filterState.timeRange,
@@ -92,7 +91,6 @@ function MonitoringPageContent() {
   useEffect(() => {
     setExecutionOffset(0);
   }, [
-    executionSource,
     executionMode,
     executionStatus,
     filterState.selectedBots,
@@ -121,6 +119,8 @@ function MonitoringPageContent() {
     stats: feedbackStats,
     loading: feedbackLoading,
   } = useFeedbackData({
+    mode: executionMode,
+    statusGroup: executionStatus,
     botIds:
       filterState.selectedBots.length > 0
         ? filterState.selectedBots
@@ -141,44 +141,16 @@ function MonitoringPageContent() {
     setFeedbackRefreshKey((k) => k + 1);
   }, [refetch, refetchExecutions]);
 
-  const conversationTurns = useMemo(
-    () =>
-      buildConversationTurns(
-        data?.messages || [],
-        data?.llmCalls || [],
-        data?.errors || [],
-        data?.toolCalls || [],
-      ),
-    [data?.messages, data?.llmCalls, data?.errors, data?.toolCalls],
-  );
-
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
-  const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
 
   // State for controlled tabs
   const [activeTab, setActiveTab] = useState<string>('executions');
 
-  // Ids the message list actually holds: a call may name a record that the
-  // current window does not contain, and a dead link is worse than no link.
-  const messageIds = useMemo(
-    () => new Set(data?.messages.map((message) => message.id) ?? []),
-    [data?.messages],
-  );
-
-  // Function to jump to a message record
-  const jumpToMessage = (messageId: string) => {
-    setActiveTab('messages');
-    setTimeout(() => {
-      const turn = conversationTurns.find((item) =>
-        item.messages.some((message) => message.id === messageId),
-      );
-      setExpandedTurnId(turn?.id ?? messageId);
-    }, 100);
-  };
-
-  const toggleTurnExpand = (turnId: string) => {
-    setExpandedTurnId((current) => (current === turnId ? null : turnId));
+  // Resolve the owning record server-side, including records outside this page.
+  const jumpToMessage = (identifier: string) => {
+    setActiveTab('executions');
+    setSelectedExecution({ source: 'auto', id: identifier });
   };
 
   const toggleErrorExpand = (errorId: string) => {
@@ -194,7 +166,7 @@ function MonitoringPageContent() {
       {/* Filters and Refresh Button - Sticky */}
       <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
         <div>
-          <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:p-4">
+          <Card className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end">
             <MonitoringFilters
               selectedBots={filterState.selectedBots}
               selectedPipelines={filterState.selectedPipelines}
@@ -202,20 +174,22 @@ function MonitoringPageContent() {
               onBotsChange={setSelectedBots}
               onPipelinesChange={setSelectedPipelines}
               onTimeRangeChange={setTimeRange}
-              source={executionSource}
-              onSourceChange={setExecutionSource}
               mode={executionMode}
               onModeChange={setExecutionMode}
               statusGroup={executionStatus}
               onStatusGroupChange={setExecutionStatus}
             />
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t pt-3 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0 [&_button]:h-9">
+              <Button variant="outline" size="sm" onClick={resetFilters}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {t('monitoring.filters.reset')}
+              </Button>
               {canExport && <ExportDropdown filterState={filterState} />}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
-                className="flex-1 shadow-sm sm:flex-shrink-0 sm:flex-none"
+                className="shadow-sm"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 {t('monitoring.refreshData')}
@@ -258,14 +232,6 @@ function MonitoringPageContent() {
               className="text-sm text-muted-foreground space-y-1"
               role="status"
             >
-              {data.totalCount.messages > data.messages.length && (
-                <p>
-                  {t('monitoring.partialMessages', {
-                    shown: data.messages.length,
-                    total: data.totalCount.messages,
-                  })}
-                </p>
-              )}
               {data.totalCount.llmCalls + data.totalCount.embeddingCalls >
                 data.modelCalls.length && (
                 <p>
@@ -308,9 +274,7 @@ function MonitoringPageContent() {
                   <TabsTrigger value="executions" className="px-3 py-2 sm:px-6">
                     {t('monitoring.execution.tabs.executions')}
                   </TabsTrigger>
-                  <TabsTrigger value="messages" className="px-3 py-2 sm:px-6">
-                    {t('monitoring.tabs.messages')}
-                  </TabsTrigger>
+
                   <TabsTrigger value="modelCalls" className="px-3 py-2 sm:px-6">
                     {t('monitoring.tabs.modelCalls')}
                   </TabsTrigger>
@@ -414,30 +378,6 @@ function MonitoringPageContent() {
               </TabsContent>
 
               <TabsContent
-                value="messages"
-                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
-              >
-                <div>
-                  {loading && <TabState loading rows={6} />}
-
-                  {!loading && data && conversationTurns.length > 0 && (
-                    <ConversationTurnList
-                      turns={conversationTurns}
-                      expandedTurnId={expandedTurnId}
-                      onToggleTurn={toggleTurnExpand}
-                    />
-                  )}
-
-                  {!loading && (!data || conversationTurns.length === 0) && (
-                    <TabState
-                      icon={<MessageSquare className="h-12 w-12" />}
-                      title={t('monitoring.messageList.noMessages')}
-                    />
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent
                 value="modelCalls"
                 className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
               >
@@ -453,19 +393,9 @@ function MonitoringPageContent() {
                           // A recorded call names the record it belongs to, so
                           // the whole card opens it; without a match the card
                           // stays static instead of pretending to be a link.
-                          const target = resolveCallTarget(
-                            call,
-                            executionResult?.items ?? [],
-                            messageIds,
-                          );
+                          const target = call.messageId;
                           const openTarget = () => {
-                            if (!target) return;
-                            if (target.kind === 'execution') {
-                              setActiveTab('executions');
-                              setSelectedExecution(target.row);
-                              return;
-                            }
-                            jumpToMessage(target.id);
+                            if (target) jumpToMessage(target);
                           };
                           return (
                             <Card
@@ -504,31 +434,30 @@ function MonitoringPageContent() {
                                   {/* The stored id is the owning record: a
                                       Pipeline's message, or an Agent run's id
                                       that the card itself opens. */}
-                                  {call.messageId &&
-                                    messageIds.has(call.messageId) && (
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs text-muted-foreground font-mono">
-                                          Query ID: {call.messageId}
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-5 px-1.5 text-xs"
-                                          onClick={(event) => {
-                                            // The card itself opens the call's
-                                            // record; this button is the more
-                                            // specific message target.
-                                            event.stopPropagation();
-                                            jumpToMessage(call.messageId!);
-                                          }}
-                                        >
-                                          <ExternalLink className="w-3 h-3 mr-1" />
-                                          {t(
-                                            'monitoring.messageList.viewConversation',
-                                          )}
-                                        </Button>
-                                      </div>
-                                    )}
+                                  {call.messageId && (
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-xs text-muted-foreground font-mono">
+                                        Query ID: {call.messageId}
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-5 px-1.5 text-xs"
+                                        onClick={(event) => {
+                                          // The card itself opens the call's
+                                          // record; this button is the more
+                                          // specific message target.
+                                          event.stopPropagation();
+                                          jumpToMessage(call.messageId!);
+                                        }}
+                                      >
+                                        <ExternalLink className="w-3 h-3 mr-1" />
+                                        {t(
+                                          'monitoring.messageList.viewConversation',
+                                        )}
+                                      </Button>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-2 mb-2">
                                     {/* Model Type Badge */}
                                     <Badge
@@ -715,6 +644,8 @@ function MonitoringPageContent() {
                 className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
               >
                 <TokenMonitoring
+                  mode={executionMode}
+                  statusGroup={executionStatus}
                   botIds={
                     filterState.selectedBots.length > 0
                       ? filterState.selectedBots
@@ -934,6 +865,7 @@ function MonitoringPageContent() {
       {/* Execution trace drawer */}
       <ExecutionDetailSheet
         row={selectedExecution}
+        onSelect={setSelectedExecution}
         onClose={() => setSelectedExecution(null)}
       />
     </div>
@@ -941,9 +873,10 @@ function MonitoringPageContent() {
 }
 
 export default function MonitoringPage() {
+  const workspace = useCurrentWorkspace()?.workspace.uuid;
   return (
     <Suspense fallback={<LoadingPage />}>
-      <MonitoringPageContent />
+      <MonitoringPageContent key={workspace ?? 'pending'} />
     </Suspense>
   );
 }

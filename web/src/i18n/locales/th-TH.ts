@@ -2407,6 +2407,29 @@ const thTH = {
     },
   },
   monitoring: {
+    unified: {
+      inputs: 'เหตุการณ์และข้อมูลเข้า',
+      outputs: 'ผลลัพธ์ที่สร้าง',
+      deliveries: 'บันทึกการส่ง',
+      conversation: 'บริบทการสนทนา',
+      related: 'การทำงานที่เกี่ยวข้อง',
+      events: 'เหตุการณ์การทำงาน',
+      llm_calls: 'การเรียกโมเดล',
+      tool_calls: 'การเรียกเครื่องมือ',
+      errors: 'ข้อผิดพลาด',
+      payload: 'รายละเอียด',
+      metadata: 'ข้อมูลทางเทคนิค',
+      loadMore: 'โหลดเพิ่มเติม',
+      noRecords: 'ไม่มีบันทึก',
+      contextHint: 'ข้อความอื่นอาจไม่ใช่ส่วนหนึ่งของการทำงานนี้',
+      unhandled: 'ไม่ได้เริ่มตัวประมวลผล',
+      roles: {
+        user: 'ผู้ใช้',
+        assistant: 'ผู้ช่วย',
+        system: 'ระบบ',
+        tool: 'เครื่องมือ',
+      },
+    },
     execution: {
       title: 'การทำงาน',
       subtitle:
@@ -2450,11 +2473,15 @@ const thTH = {
       loading: 'กำลังโหลดการทำงาน...',
       triggeredBy: 'เรียกใช้โดย {{trigger}}',
       cards: {
+        latencyHint:
+          'P50/P95: ประมาณ 50%/95% ทำงานเสร็จภายในเวลานี้ ใช้เฉพาะ Agent ที่เสร็จล่าสุด ไม่รวมเวลารอคิว',
+        tokensHint:
+          'รวมเฉพาะการใช้ที่บันทึกไว้ ผลรวมอาจไม่ครบหากโมเดลไม่ส่งข้อมูลการใช้กลับมา',
         totalExecutions: 'การทำงาน',
         bySource: 'เอเจนต์ {{agent}} · ไปป์ไลน์ {{pipeline}}',
         successRate: 'อัตราการทำงานสำเร็จ',
         successRateHint:
-          'เสร็จสิ้น ÷ (เสร็จสิ้น + ล้มเหลว) ไม่นับเหตุการณ์ที่ละเว้นและการทำงานที่ยังไม่สิ้นสุดในตัวหาร',
+          'สำเร็จ ÷ (สำเร็จ + ล้มเหลว) ไม่รวมงานที่กำลังทำงาน ถูกละเว้น หรือยกเลิก',
         denominator:
           'สำเร็จ {{completed}} จาก {{denominator}} รายการที่สิ้นสุดแล้ว',
         running: 'กำลังทำงาน',
@@ -2462,13 +2489,13 @@ const thTH = {
         waiting: 'รอการป้อนข้อมูล',
         failed: 'ล้มเหลว',
         ignored: 'ละเว้นแล้ว',
-        latency: 'ระยะเวลา P50 / P95',
+        latency: 'เวลาทำงาน',
         p50: 'P50',
         p95: 'P95',
         sample: 'ตัวอย่างการทำงาน {{count}} ครั้ง',
         tokens: 'โทเคน',
         coverage: 'มีข้อมูลการใช้งาน {{withUsage}}/{{calls}} ครั้ง',
-        hiddenDebug: 'ซ่อนการทำงานดีบัก {{count}} ครั้ง',
+        debugRuns: 'รวมการทำงานดีบัก {{count}} ครั้ง',
       },
       detail: {
         title: 'การทำงาน',
@@ -2505,6 +2532,9 @@ const thTH = {
       pipeline: 'Pipeline',
       allBots: 'Bot ทั้งหมด',
       selectBot: 'เลือก Bot',
+      processor: 'ตัวประมวลผล',
+      allProcessors: 'ตัวประมวลผลทั้งหมด',
+      selectProcessor: 'เลือกตัวประมวลผล',
       allPipelines: 'Pipeline ทั้งหมด',
       selectPipeline: 'เลือก Pipeline',
       loading: 'กำลังโหลด...',

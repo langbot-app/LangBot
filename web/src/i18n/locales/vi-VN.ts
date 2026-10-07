@@ -2442,6 +2442,29 @@ const viVN = {
     },
   },
   monitoring: {
+    unified: {
+      inputs: 'Sự kiện và đầu vào',
+      outputs: 'Kết quả tạo ra',
+      deliveries: 'Bản ghi gửi',
+      conversation: 'Ngữ cảnh hội thoại',
+      related: 'Lượt chạy liên quan',
+      events: 'Sự kiện thực thi',
+      llm_calls: 'Lần gọi mô hình',
+      tool_calls: 'Lần gọi công cụ',
+      errors: 'Lỗi',
+      payload: 'Chi tiết',
+      metadata: 'Thông tin kỹ thuật',
+      loadMore: 'Tải thêm',
+      noRecords: 'Chưa có bản ghi',
+      contextHint: 'Các tin nhắn khác không nhất thiết thuộc lượt chạy này.',
+      unhandled: 'Chưa chạy bộ xử lý',
+      roles: {
+        user: 'Người dùng',
+        assistant: 'Trợ lý',
+        system: 'Hệ thống',
+        tool: 'Công cụ',
+      },
+    },
     execution: {
       title: 'Lượt thực thi',
       subtitle:
@@ -2485,11 +2508,15 @@ const viVN = {
       loading: 'Đang tải lượt thực thi...',
       triggeredBy: 'Được kích hoạt bởi {{trigger}}',
       cards: {
+        latencyHint:
+          'P50/P95: khoảng 50%/95% lượt chạy hoàn tất trong thời gian này. Chỉ tính Agent đã hoàn tất gần đây, không gồm thời gian xếp hàng.',
+        tokensHint:
+          'Chỉ cộng mức dùng đã ghi. Tổng có thể thiếu nếu mô hình không trả về dữ liệu sử dụng.',
         totalExecutions: 'Lượt thực thi',
         bySource: 'Tác nhân {{agent}} · Pipeline {{pipeline}}',
         successRate: 'Tỷ lệ thực thi thành công',
         successRateHint:
-          'Hoàn thành ÷ (hoàn thành + thất bại). Không tính sự kiện bị bỏ qua và lượt chưa kết thúc vào mẫu số.',
+          'Thành công ÷ (thành công + thất bại). Không tính lượt đang chạy, bỏ qua hoặc đã hủy.',
         denominator:
           'Thành công {{completed}} trong {{denominator}} lượt đã kết thúc',
         running: 'Đang chạy',
@@ -2497,13 +2524,13 @@ const viVN = {
         waiting: 'Đang chờ nhập liệu',
         failed: 'Thất bại',
         ignored: 'Đã bỏ qua',
-        latency: 'Thời lượng P50 / P95',
+        latency: 'Thời gian thực thi',
         p50: 'P50',
         p95: 'P95',
         sample: 'Mẫu gồm {{count}} lượt thực thi',
         tokens: 'Token',
         coverage: 'Có dữ liệu sử dụng cho {{withUsage}}/{{calls}} lệnh gọi',
-        hiddenDebug: 'Đã ẩn {{count}} lượt gỡ lỗi',
+        debugRuns: 'Bao gồm {{count}} lượt gỡ lỗi',
       },
       detail: {
         title: 'Lượt thực thi',
@@ -2540,6 +2567,9 @@ const viVN = {
       pipeline: 'Pipeline',
       allBots: 'Tất cả Bot',
       selectBot: 'Chọn Bot',
+      processor: 'Bộ xử lý',
+      allProcessors: 'Tất cả bộ xử lý',
+      selectProcessor: 'Chọn bộ xử lý',
       allPipelines: 'Tất cả Pipeline',
       selectPipeline: 'Chọn Pipeline',
       loading: 'Đang tải...',

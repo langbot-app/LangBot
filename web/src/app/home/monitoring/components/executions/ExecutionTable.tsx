@@ -45,17 +45,26 @@ export function executionStatusVariant(
   return 'outline';
 }
 
-const KIND_GROUPS = ['agent', 'pipeline', 'processor'];
+const KIND_GROUPS = [
+  'agent',
+  'pipeline',
+  'processor',
+  'event_processor',
+  'event',
+];
 
 export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
   if (KIND_GROUPS.includes(row.target_kind)) {
+    if (row.target_kind === 'event_processor')
+      return t('monitoring.execution.kind.processor');
+    if (row.target_kind === 'event') return t('monitoring.unified.unhandled');
     return t(`monitoring.execution.kind.${row.target_kind}`);
   }
   return row.target_kind;
 }
 
 export function executionTargetLabel(row: ExecutionRow, t: TFunction): string {
-  if (row.target_kind === 'agent') {
+  if (row.source !== 'pipeline') {
     return eventPatternLabel(row.title, t);
   }
   const title = row.title ?? '';
@@ -85,6 +94,7 @@ export default function ExecutionTable({
           <TableRow>
             <TableHead>{t('monitoring.execution.columns.time')}</TableHead>
             <TableHead>{t('monitoring.execution.columns.target')}</TableHead>
+            <TableHead>{t('monitoring.unified.inputs')}</TableHead>
             <TableHead>{t('monitoring.execution.columns.status')}</TableHead>
             <TableHead className="text-right">
               {t('monitoring.execution.columns.duration')}
@@ -127,7 +137,9 @@ export default function ExecutionTable({
                         {executionKindLabel(row, t)}
                       </Badge>
                       <span className="truncate font-medium">
-                        {executionProcessorLabel(row)}
+                        {row.source === 'event'
+                          ? t('monitoring.unified.unhandled')
+                          : executionProcessorLabel(row)}
                       </span>
                     </div>
                     <span className="truncate text-xs text-muted-foreground">
@@ -135,6 +147,16 @@ export default function ExecutionTable({
                         trigger: executionTargetLabel(row, t),
                       })}
                     </span>
+                  </div>
+                </TableCell>
+                <TableCell className="max-w-xs">
+                  <div className="line-clamp-2 break-words text-sm">
+                    {row.input_preview || '—'}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
+                    {[row.bot_name, row.user_name || row.user_id]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </div>
                 </TableCell>
                 <TableCell>

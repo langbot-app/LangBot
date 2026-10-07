@@ -164,6 +164,8 @@ export interface OverviewMetrics {
 }
 
 export interface FilterState {
+  mode?: 'all' | 'real' | 'debug';
+  statusGroup?: string;
   selectedBots: string[];
   selectedPipelines: string[];
   timeRange: TimeRangeOption;

@@ -69,7 +69,7 @@ test.describe('authenticated app shell', () => {
     ).toBeVisible();
     await expect(
       page.getByRole('tab', { name: 'Message Records' }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole('tab', { name: 'Token Monitoring' }),
     ).toBeVisible();

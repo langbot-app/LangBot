@@ -8,12 +8,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { backendClient } from '@/app/infra/http';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import { TimeRangeOption } from '../../types/monitoring';
-import type {
-  ExecutionModeFilter,
-  ExecutionSourceFilter,
-} from '@/app/infra/entities/api/monitoring-executions';
+import type { ExecutionModeFilter } from '@/app/infra/entities/api/monitoring-executions';
 
 interface MonitoringFiltersProps {
   selectedBots: string[];
@@ -22,8 +19,6 @@ interface MonitoringFiltersProps {
   onBotsChange: (bots: string[]) => void;
   onPipelinesChange: (pipelines: string[]) => void;
   onTimeRangeChange: (timeRange: TimeRangeOption) => void;
-  source?: ExecutionSourceFilter;
-  onSourceChange?: (value: ExecutionSourceFilter) => void;
   mode?: ExecutionModeFilter;
   onModeChange?: (value: ExecutionModeFilter) => void;
   statusGroup?: string;
@@ -39,14 +34,25 @@ const STATUS_GROUP_OPTIONS = [
   'ignored',
 ];
 
+const STATUS_COLORS: Record<string, string> = {
+  completed: 'text-emerald-700 dark:text-emerald-400',
+  failed: 'text-red-600 dark:text-red-400',
+  running: 'text-blue-600 dark:text-blue-400',
+  queued: 'text-amber-700 dark:text-amber-400',
+  cancelled: 'text-slate-600 dark:text-slate-400',
+  ignored: 'text-muted-foreground',
+};
+
 interface Bot {
   uuid: string;
   name: string;
+  iconURL: string;
 }
 
-interface Pipeline {
+interface Processor {
   uuid: string;
   name: string;
+  emoji?: string;
 }
 
 export default function MonitoringFilters({
@@ -56,21 +62,22 @@ export default function MonitoringFilters({
   onBotsChange,
   onPipelinesChange,
   onTimeRangeChange,
-  source,
-  onSourceChange,
   mode,
   onModeChange,
   statusGroup,
   onStatusGroupChange,
 }: MonitoringFiltersProps) {
   const { t } = useTranslation();
+  const workspace = useCurrentWorkspace()?.workspace.uuid;
   const [bots, setBots] = useState<Bot[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [processors, setProcessors] = useState<Processor[]>([]);
   const [loadingBots, setLoadingBots] = useState(false);
-  const [loadingPipelines, setLoadingPipelines] = useState(false);
+  const [loadingProcessors, setLoadingProcessors] = useState(false);
 
   // Fetch bots list
   useEffect(() => {
+    let active = true;
+    setBots([]);
     const fetchBots = async () => {
       setLoadingBots(true);
       try {
@@ -78,41 +85,57 @@ export default function MonitoringFilters({
         // Filter out bots without uuid and map to local Bot interface
         const validBots = (response.bots || [])
           .filter((bot): bot is typeof bot & { uuid: string } => !!bot.uuid)
-          .map((bot) => ({ uuid: bot.uuid, name: bot.name }));
-        setBots(validBots);
+          .map((bot) => ({
+            uuid: bot.uuid,
+            name: bot.name,
+            iconURL: backendClient.getAdapterIconURL(bot.adapter),
+          }));
+        if (active) setBots(validBots);
       } catch (error) {
         console.error('Failed to fetch bots:', error);
       } finally {
-        setLoadingBots(false);
+        if (active) setLoadingBots(false);
       }
     };
 
     fetchBots();
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [workspace]);
 
-  // Fetch pipelines list
+  // Fetch all processor kinds from the same catalog as the sidebar
   useEffect(() => {
-    const fetchPipelines = async () => {
-      setLoadingPipelines(true);
+    let active = true;
+    setProcessors([]);
+    const fetchProcessors = async () => {
+      setLoadingProcessors(true);
       try {
-        const response = await backendClient.getPipelines();
-        // Filter out pipelines without uuid and map to local Pipeline interface
-        const validPipelines = (response.pipelines || [])
+        const response = await backendClient.getAgents();
+        // Preserve the custom icon displayed to the left of the sidebar name.
+        const validProcessors = (response.agents || [])
           .filter(
             (pipeline): pipeline is typeof pipeline & { uuid: string } =>
               !!pipeline.uuid,
           )
-          .map((pipeline) => ({ uuid: pipeline.uuid, name: pipeline.name }));
-        setPipelines(validPipelines);
+          .map((pipeline) => ({
+            uuid: pipeline.uuid,
+            name: pipeline.name,
+            emoji: pipeline.emoji,
+          }));
+        if (active) setProcessors(validProcessors);
       } catch (error) {
-        console.error('Failed to fetch pipelines:', error);
+        console.error('Failed to fetch processors:', error);
       } finally {
-        setLoadingPipelines(false);
+        if (active) setLoadingProcessors(false);
       }
     };
 
-    fetchPipelines();
-  }, []);
+    fetchProcessors();
+    return () => {
+      active = false;
+    };
+  }, [workspace]);
 
   const handleBotChange = (value: string) => {
     if (value === 'all') {
@@ -135,41 +158,104 @@ export default function MonitoringFilters({
   };
 
   return (
-    <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-      {/* Source Filter */}
-      {onSourceChange && (
-        <div className="flex items-center gap-2">
-          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
-            {t('monitoring.execution.filters.source')}
-          </Label>
-          <Select
-            value={source ?? 'all'}
-            onValueChange={(value) =>
-              onSourceChange(value as ExecutionSourceFilter)
-            }
+    <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {/* Bot Filter */}
+      <div className="min-w-0 space-y-1.5">
+        <Label
+          htmlFor="monitoring-filter-bot"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t('monitoring.filters.bot')}
+        </Label>
+        <Select
+          value={selectedBots.length === 0 ? 'all' : selectedBots[0]}
+          onValueChange={handleBotChange}
+          disabled={loadingBots}
+        >
+          <SelectTrigger
+            id="monitoring-filter-bot"
+            className="h-9 w-full min-w-0"
           >
-            <SelectTrigger className="h-9 w-full sm:w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">
-                {t('monitoring.execution.filters.sourceAll')}
+            <SelectValue
+              placeholder={
+                loadingBots
+                  ? t('monitoring.filters.loading')
+                  : t('monitoring.filters.selectBot')
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              {t('monitoring.filters.allBots')}
+            </SelectItem>
+            {bots.map((bot) => (
+              <SelectItem key={bot.uuid} value={bot.uuid}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <img
+                    src={bot.iconURL}
+                    alt=""
+                    className="size-4 shrink-0 rounded"
+                  />
+                  <span className="truncate">{bot.name}</span>
+                </span>
               </SelectItem>
-              <SelectItem value="agent">
-                {t('monitoring.execution.filters.sourceAgent')}
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Processor Filter */}
+      <div className="min-w-0 space-y-1.5">
+        <Label
+          htmlFor="monitoring-filter-processor"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t('monitoring.filters.processor')}
+        </Label>
+        <Select
+          value={selectedPipelines.length === 0 ? 'all' : selectedPipelines[0]}
+          onValueChange={handlePipelineChange}
+          disabled={loadingProcessors}
+        >
+          <SelectTrigger
+            id="monitoring-filter-processor"
+            className="h-9 w-full min-w-0"
+          >
+            <SelectValue
+              placeholder={
+                loadingProcessors
+                  ? t('monitoring.filters.loading')
+                  : t('monitoring.filters.selectProcessor')
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              {t('monitoring.filters.allProcessors')}
+            </SelectItem>
+            {processors.map((pipeline) => (
+              <SelectItem key={pipeline.uuid} value={pipeline.uuid}>
+                <span className="flex min-w-0 items-center gap-2">
+                  {pipeline.emoji && (
+                    <span className="shrink-0 text-sm" aria-hidden="true">
+                      {pipeline.emoji}
+                    </span>
+                  )}
+                  <span className="truncate">{pipeline.name}</span>
+                </span>
               </SelectItem>
-              <SelectItem value="pipeline">
-                {t('monitoring.execution.filters.sourcePipeline')}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Mode Filter */}
       {onModeChange && (
-        <div className="flex items-center gap-2">
-          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+        <div className="min-w-0 space-y-1.5">
+          <Label
+            htmlFor="monitoring-filter-mode"
+            className="text-xs font-medium text-muted-foreground"
+          >
             {t('monitoring.execution.filters.mode')}
           </Label>
           <Select
@@ -178,7 +264,10 @@ export default function MonitoringFilters({
               onModeChange(value as ExecutionModeFilter)
             }
           >
-            <SelectTrigger className="h-9 w-full sm:w-[140px]">
+            <SelectTrigger
+              id="monitoring-filter-mode"
+              className="h-9 w-full min-w-0"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -198,15 +287,21 @@ export default function MonitoringFilters({
 
       {/* Status Filter */}
       {onStatusGroupChange && (
-        <div className="flex items-center gap-2">
-          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+        <div className="min-w-0 space-y-1.5">
+          <Label
+            htmlFor="monitoring-filter-status"
+            className="text-xs font-medium text-muted-foreground"
+          >
             {t('monitoring.execution.filters.status')}
           </Label>
           <Select
             value={statusGroup ?? 'all'}
             onValueChange={(value) => onStatusGroupChange(value)}
           >
-            <SelectTrigger className="h-9 w-full sm:w-[140px]">
+            <SelectTrigger
+              id="monitoring-filter-status"
+              className="h-9 w-full min-w-0"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -215,7 +310,15 @@ export default function MonitoringFilters({
               </SelectItem>
               {STATUS_GROUP_OPTIONS.map((group) => (
                 <SelectItem key={group} value={group}>
-                  {t(`monitoring.execution.status.${group}`)}
+                  <span
+                    className={`flex items-center gap-2 ${STATUS_COLORS[group]}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="size-2 shrink-0 rounded-full bg-current"
+                    />
+                    {t(`monitoring.execution.status.${group}`)}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -223,77 +326,19 @@ export default function MonitoringFilters({
         </div>
       )}
 
-      {/* Bot Filter */}
-      <div className="flex items-center gap-2">
-        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
-          {t('monitoring.filters.bot')}
-        </Label>
-        <Select
-          value={selectedBots.length === 0 ? 'all' : selectedBots[0]}
-          onValueChange={handleBotChange}
-          disabled={loadingBots}
-        >
-          <SelectTrigger className="h-9 w-full sm:w-[140px]">
-            <SelectValue
-              placeholder={
-                loadingBots
-                  ? t('monitoring.filters.loading')
-                  : t('monitoring.filters.selectBot')
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              {t('monitoring.filters.allBots')}
-            </SelectItem>
-            {bots.map((bot) => (
-              <SelectItem key={bot.uuid} value={bot.uuid}>
-                {bot.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Pipeline Filter */}
-      <div className="flex items-center gap-2">
-        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
-          {t('monitoring.filters.pipeline')}
-        </Label>
-        <Select
-          value={selectedPipelines.length === 0 ? 'all' : selectedPipelines[0]}
-          onValueChange={handlePipelineChange}
-          disabled={loadingPipelines}
-        >
-          <SelectTrigger className="h-9 w-full sm:w-[140px]">
-            <SelectValue
-              placeholder={
-                loadingPipelines
-                  ? t('monitoring.filters.loading')
-                  : t('monitoring.filters.selectPipeline')
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              {t('monitoring.filters.allPipelines')}
-            </SelectItem>
-            {pipelines.map((pipeline) => (
-              <SelectItem key={pipeline.uuid} value={pipeline.uuid}>
-                {pipeline.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Time Range Filter */}
-      <div className="flex items-center gap-2">
-        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+      <div className="min-w-0 space-y-1.5">
+        <Label
+          htmlFor="monitoring-filter-time"
+          className="text-xs font-medium text-muted-foreground"
+        >
           {t('monitoring.filters.timeRange')}
         </Label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="h-9 w-full sm:w-[150px]">
+          <SelectTrigger
+            id="monitoring-filter-time"
+            className="h-9 w-full min-w-0"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

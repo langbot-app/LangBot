@@ -2508,6 +2508,30 @@ const esES = {
     },
   },
   monitoring: {
+    unified: {
+      inputs: 'Evento y entrada',
+      outputs: 'Resultados generados',
+      deliveries: 'Registros de envío',
+      conversation: 'Contexto de conversación',
+      related: 'Ejecuciones relacionadas',
+      events: 'Eventos de ejecución',
+      llm_calls: 'Llamadas al modelo',
+      tool_calls: 'Llamadas a herramientas',
+      errors: 'Errores',
+      payload: 'Detalles',
+      metadata: 'Información técnica',
+      loadMore: 'Cargar más',
+      noRecords: 'Sin registros',
+      contextHint:
+        'Otros mensajes no pertenecen necesariamente a esta ejecución.',
+      unhandled: 'Sin ejecución',
+      roles: {
+        user: 'Usuario',
+        assistant: 'Asistente',
+        system: 'Sistema',
+        tool: 'Herramienta',
+      },
+    },
     execution: {
       title: 'Ejecuciones',
       subtitle:
@@ -2551,24 +2575,28 @@ const esES = {
       loading: 'Cargando ejecuciones...',
       triggeredBy: 'Activada por {{trigger}}',
       cards: {
+        latencyHint:
+          'P50/P95: cerca del 50%/95% termina dentro de este tiempo. Solo ejecuciones recientes de Agent completadas, sin espera en cola.',
+        tokensHint:
+          'Solo se suma el uso registrado. El total puede estar incompleto si el modelo no devuelve el uso.',
         totalExecutions: 'Ejecuciones',
         bySource: '{{agent}} de agentes · {{pipeline}} de pipelines',
         successRate: 'Tasa de éxito de ejecución',
         successRateHint:
-          'Completadas ÷ (completadas + fallidas). Se excluyen del denominador los eventos ignorados y las ejecuciones en curso.',
+          'Éxitos ÷ (éxitos + fallos). Se excluyen ejecuciones en curso, ignoradas y canceladas.',
         denominator: '{{completed}} de {{denominator}} finalizadas',
         running: 'En curso',
         queued: 'En cola',
         waiting: 'Esperando entrada',
         failed: 'Fallida',
         ignored: 'Ignorada',
-        latency: 'Duración P50 / P95',
+        latency: 'Tiempo de ejecución',
         p50: 'P50',
         p95: 'P95',
         sample: 'muestra de {{count}} ejecuciones',
         tokens: 'Tokens',
         coverage: 'uso registrado en {{withUsage}}/{{calls}} llamadas',
-        hiddenDebug: '{{count}} ejecuciones de depuración ocultas',
+        debugRuns: 'Incluye {{count}} ejecuciones de depuración',
       },
       detail: {
         title: 'Ejecución',
@@ -2606,6 +2634,9 @@ const esES = {
       pipeline: 'Pipeline',
       allBots: 'Todos los Bots',
       selectBot: 'Seleccionar Bot',
+      processor: 'Procesador',
+      allProcessors: 'Todos los procesadores',
+      selectProcessor: 'Seleccionar procesador',
       allPipelines: 'Todos los Pipelines',
       selectPipeline: 'Seleccionar Pipeline',
       loading: 'Cargando...',

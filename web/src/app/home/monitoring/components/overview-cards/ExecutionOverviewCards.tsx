@@ -2,19 +2,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Activity,
   CheckCircle2,
-  Info,
   Timer,
   TriangleAlert,
   Users,
   Zap,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import type { ExecutionSummary } from '@/app/infra/entities/api/monitoring-executions';
 import { formatRunDuration } from '@/app/home/agents/components/processor-run-timing';
 import { MetricCard } from './MetricCard';
@@ -63,7 +56,7 @@ export default function ExecutionOverviewCards({
       >
         {!!overview?.debug && (
           <div className="text-xs text-muted-foreground">
-            {t('monitoring.execution.cards.hiddenDebug', {
+            {t('monitoring.execution.cards.debugRuns', {
               count: overview.debug,
             })}
           </div>
@@ -72,6 +65,7 @@ export default function ExecutionOverviewCards({
 
       <MetricCard
         label={t('monitoring.execution.cards.successRate')}
+        description={t('monitoring.execution.cards.successRateHint')}
         icon={<CheckCircle2 className="h-4 w-4" />}
         accent="#3b82f6"
         loading={loading}
@@ -82,24 +76,6 @@ export default function ExecutionOverviewCards({
           completed: (overview?.completed ?? 0).toLocaleString(),
           denominator: (overview?.denominator ?? 0).toLocaleString(),
         })}
-        action={
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                aria-label={t('monitoring.execution.cards.successRate')}
-              >
-                <Info className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              {t('monitoring.execution.cards.successRateHint')}
-            </TooltipContent>
-          </Tooltip>
-        }
       />
 
       <MetricCard
@@ -142,6 +118,7 @@ export default function ExecutionOverviewCards({
 
       <MetricCard
         label={t('monitoring.execution.cards.latency')}
+        description={t('monitoring.execution.cards.latencyHint')}
         icon={<Timer className="h-4 w-4" />}
         accent="#f59e0b"
         loading={loading}
@@ -175,6 +152,7 @@ export default function ExecutionOverviewCards({
 
       <MetricCard
         label={t('monitoring.execution.cards.tokens')}
+        description={t('monitoring.execution.cards.tokensHint')}
         icon={<Zap className="h-4 w-4" />}
         accent="#10b981"
         loading={loading}

@@ -980,6 +980,18 @@ async def test_scoped_sql_structure_allows_only_the_production_vocabulary(statem
     _validate_scoped_statement_call((statement,), {})
 
 
+async def test_monitoring_json_casts_are_limited_to_journal_metadata() -> None:
+    from langbot.pkg.entity.persistence.agent_run import AgentRun
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    for column in (AgentRun.metadata_json, EventLog.metadata_json):
+        statement = sa.select(sa.cast(column, sa.JSON)['status'].as_string())
+        _validate_scoped_statement_call((statement,), {})
+    for column in (AgentRun.authorization_json, EventLog.input_json, sa.literal('{}')):
+        with pytest.raises(ScopedSessionTransactionError, match='casts'):
+            _validate_scoped_statement_call((sa.select(sa.cast(column, sa.JSON)),), {})
+
+
 async def test_scoped_session_executes_sqlite_strftime() -> None:
     engine = create_async_engine('sqlite+aiosqlite:///:memory:')
     try:

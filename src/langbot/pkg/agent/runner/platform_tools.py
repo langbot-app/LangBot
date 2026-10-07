@@ -743,10 +743,43 @@ async def execute_platform_tool(
         from ...telemetry.platform import processing_mode
 
         token = processing_mode.set(authorization.get('processor_type', 'none'))
+        delivery_error = None
         try:
             return await api_func(**normalized)
+        except Exception as exc:
+            delivery_error = str(exc)
+            raise
         finally:
             processing_mode.reset(token)
+            if definition.api == 'send_message' and getattr(ap, 'monitoring_service', None) is not None:
+                try:
+                    import json
+
+                    chain = normalized.get('message')
+                    content = chain.model_dump(mode='json') if hasattr(chain, 'model_dump') else str(chain or '')
+                    await ap.monitoring_service.record_message(
+                        execution_context,
+                        bot_id=bot_id,
+                        bot_name=str(getattr(getattr(bot, 'bot_entity', None), 'name', bot_id)),
+                        pipeline_id=str(authorization.get('processor_id') or ''),
+                        pipeline_name=str(authorization.get('processor_id') or authorization.get('runner_id') or ''),
+                        message_content=json.dumps(content, ensure_ascii=False),
+                        session_id=str(authorization.get('conversation_id') or ''),
+                        role='assistant',
+                        status='error' if delivery_error else 'success',
+                        level='error' if delivery_error else 'info',
+                        run_id=execution_id,
+                        parent_message_id=execution_id,
+                        variables=json.dumps(
+                            {
+                                'delivery_error': delivery_error,
+                                'target_type': normalized.get('target_type'),
+                                'target_id': normalized.get('target_id'),
+                            }
+                        ),
+                    )
+                except Exception as exc:
+                    ap.logger.warning(f'Failed to record platform delivery: {exc}')
     finally:
         reset_execution_id(execution_token)
 

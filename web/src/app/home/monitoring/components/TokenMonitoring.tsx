@@ -77,6 +77,8 @@ interface TokenStatistics {
 }
 
 interface TokenMonitoringProps {
+  mode?: 'all' | 'real' | 'debug';
+  statusGroup?: string;
   botIds?: string[];
   pipelineIds?: string[];
   startTime?: string;
@@ -103,6 +105,8 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 export default function TokenMonitoring({
+  mode,
+  statusGroup,
   botIds,
   pipelineIds,
   startTime,
@@ -123,6 +127,9 @@ export default function TokenMonitoring({
     setError(null);
     try {
       const result = await httpClient.getTokenStatistics({
+        mode,
+        status:
+          statusGroup && statusGroup !== 'all' ? [statusGroup] : undefined,
         botId: botIds,
         pipelineId: pipelineIds,
         startTime,
@@ -136,7 +143,16 @@ export default function TokenMonitoring({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botIdsKey, pipelineIdsKey, startTime, endTime, bucket, refreshKey]);
+  }, [
+    mode,
+    statusGroup,
+    botIdsKey,
+    pipelineIdsKey,
+    startTime,
+    endTime,
+    bucket,
+    refreshKey,
+  ]);
 
   useEffect(() => {
     fetchStats();

@@ -174,3 +174,22 @@ Legacy EventListener plugins remain in the Pipeline lifecycle.
 `list_processor_runs` includes `created_at_ms`, `started_at_ms`, and
 `finished_at_ms`: Host lifecycle times in epoch milliseconds. Use the start and finish times for elapsed processing time; select a run and call `get_processor_run_events` for its
 logs and action results. These times are not internal plugin profiling data.
+
+## Unified execution monitoring
+
+Use `get_monitoring_executions` for the execution list and
+its legacy `pipeline_ids` parameter to filter any processor kind (Agent,
+Pipeline or event processor); the summary uses the same processor scope. Use
+`get_monitoring_execution_detail` with `source=auto` to resolve a run,
+message or event identifier outside the current list page. The detail exposes
+`inputs`, `outputs` (generated content), `deliveries` (recorded platform sends),
+`events`, `llm_calls`, `tool_calls`, `errors`, `related`, and `conversation` in
+`pages`. Follow each section's `has_more` and `next_offset` independently.
+Conversation history supplies context; historical messages without explicit
+links must not be asserted to belong to the selected execution. Events without
+a processor run use `source=event`. All lookups remain Workspace-scoped.
+
+Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
+`execution_statuses` (normalized execution statuses). These select the owning
+execution, not the individual model/tool call outcome. Calls without a recorded
+execution link are excluded when an execution filter is active.

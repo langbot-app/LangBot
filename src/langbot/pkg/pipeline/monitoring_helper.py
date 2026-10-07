@@ -296,6 +296,7 @@ class MonitoringHelper:
                 user_name=sender_name,
                 runner_name=runner_name,
                 role='assistant',
+                parent_message_id=(query.variables or {}).get('_monitoring_message_id'),
             )
         except Exception as e:
             ap.logger.error(f'Failed to record query response: {e}')

@@ -1,6 +1,4 @@
-import type { ProcessorRun, ProcessorRunEvent } from './index';
-
-export type ExecutionSource = 'agent' | 'pipeline';
+export type ExecutionSource = 'agent' | 'pipeline' | 'event';
 export type ExecutionSourceFilter = 'all' | ExecutionSource;
 export type ExecutionModeFilter = 'all' | 'real' | 'debug';
 
@@ -24,6 +22,9 @@ export interface ExecutionRow {
     | 'ignored'
     | string;
   title: string;
+  input_preview?: string;
+  event_type?: string;
+  status_reason?: string | null;
   target_kind: 'agent' | 'pipeline' | 'processor' | string;
   target_id: string | null;
   target_name: string | null;
@@ -117,20 +118,48 @@ export interface ExecutionCallRow {
   [key: string]: unknown;
 }
 
-export interface AgentExecutionDetail {
-  source: 'agent';
-  run: ProcessorRun;
-  events: ProcessorRunEvent[];
+export type ExecutionSection =
+  | 'inputs'
+  | 'outputs'
+  | 'deliveries'
+  | 'conversation'
+  | 'related'
+  | 'events'
+  | 'llm_calls'
+  | 'tool_calls'
+  | 'errors';
+
+export interface ExecutionDetailItem {
+  id: string | number;
+  timestamp_ms?: number | null;
+  role?: string;
+  origin?: string;
+  event_type?: string;
+  actor_name?: string;
+  actor_id?: string;
+  content?: unknown;
+  attachments?: unknown[];
+  status?: string;
+  type?: string;
+  sequence?: number;
+  data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  delivery?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ExecutionDetailPage {
+  items: ExecutionDetailItem[];
   has_more: boolean;
-  next_cursor: number | null;
+  next_offset: number;
 }
 
-export interface PipelineExecutionDetail {
-  source: 'pipeline';
-  message: PipelineMessageRow;
-  llm_calls: ExecutionCallRow[];
-  tool_calls: ExecutionCallRow[];
-  errors: ExecutionCallRow[];
+export interface ExecutionDetail {
+  source: ExecutionSource;
+  row: ExecutionRow;
+  pages: Partial<Record<ExecutionSection, ExecutionDetailPage>>;
+  legacy_context: boolean;
 }
 
-export type ExecutionDetail = AgentExecutionDetail | PipelineExecutionDetail;
+export type AgentExecutionDetail = ExecutionDetail & { source: 'agent' };
+export type PipelineExecutionDetail = ExecutionDetail & { source: 'pipeline' };

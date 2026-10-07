@@ -269,7 +269,7 @@ function executionText(raw: unknown): string {
 }
 
 /** Derive the unified execution list from a mocked monitoring payload. */
-function buildExecutionList(monitoringData: unknown) {
+export function buildExecutionList(monitoringData: unknown) {
   const payload = monitoringData as
     | { messages?: RawMonitoringMessage[] }
     | undefined;
@@ -284,6 +284,7 @@ function buildExecutionList(monitoringData: unknown) {
         status,
         status_group: executionStatusGroup(status, 'pipeline'),
         title: executionText(message.message_content),
+        input_preview: executionText(message.message_content),
         target_kind: 'pipeline' as const,
         target_id: (message.pipeline_id as string) ?? null,
         target_name: (message.pipeline_name as string) ?? null,
@@ -1289,39 +1290,68 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   }
 
   const executionDetail = path.match(
-    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline)\/(.+)$/,
+    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline|event|auto)\/(.+)$/,
   );
   if (executionDetail) {
-    const [, source, executionId] = executionDetail;
-    if (source === 'agent') {
-      return fulfillJson(route, {
-        source: 'agent',
-        run: { run_id: executionId, status: 'completed', created_at: 0 },
-        events: [],
-        has_more: false,
-        next_cursor: null,
-      });
-    }
+    const [, , executionId] = executionDetail;
     const payload = state.monitoringData as {
       messages?: RawMonitoringMessage[];
       llmCalls?: RawMonitoringMessage[];
       toolCalls?: RawMonitoringMessage[];
       errors?: RawMonitoringMessage[];
     };
-    const relatedToExecution = (rows: RawMonitoringMessage[] | undefined) =>
-      (rows ?? []).filter((row) => row.message_id === executionId);
+    const row = buildExecutionList(payload).items.find(
+      (item) => item.id === executionId,
+    );
+    if (!row)
+      return route.fulfill({
+        status: 404,
+        json: { code: 404, msg: 'Execution not found' },
+      });
+    const root = (payload.messages ?? []).find(
+      (item) => item.id === executionId,
+    )!;
+    const content = (item: RawMonitoringMessage) => ({
+      ...item,
+      content: item.message_content,
+      timestamp_ms: Date.parse(String(item.timestamp)),
+      origin: item.role === 'assistant' ? 'delivery' : 'input',
+    });
+    const pages = Object.fromEntries(
+      Object.entries({
+        inputs: [content(root)],
+        outputs: [],
+        deliveries: (payload.messages ?? [])
+          .filter((item) => item.parent_message_id === executionId)
+          .map(content),
+        conversation: (payload.messages ?? [])
+          .filter(
+            (item) =>
+              item.session_id === root.session_id &&
+              item.bot_id === root.bot_id,
+          )
+          .map(content),
+        related: [],
+        events: [],
+        llm_calls: (payload.llmCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        tool_calls: (payload.toolCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        errors: (payload.errors ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+      }).map(([key, items]) => [
+        key,
+        { items, next_offset: items.length, has_more: false },
+      ]),
+    );
     return fulfillJson(route, {
-      source: 'pipeline',
-      message: (payload.messages ?? []).find(
-        (row) => row.id === executionId,
-      ) ?? {
-        id: executionId,
-        status: 'success',
-        message_content: '',
-      },
-      llm_calls: relatedToExecution(payload.llmCalls),
-      tool_calls: relatedToExecution(payload.toolCalls),
-      errors: relatedToExecution(payload.errors),
+      source: row.source,
+      row,
+      pages,
+      legacy_context: true,
     });
   }
 

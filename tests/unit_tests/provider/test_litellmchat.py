@@ -53,6 +53,37 @@ class MockRuntimeRerankModel:
         self.provider.token_mgr.get_token = Mock(return_value=api_key)
 
 
+@pytest.mark.asyncio
+async def test_closing_consumer_closes_provider_http_stream():
+    import asyncio
+    from types import SimpleNamespace
+
+    app = Mock()
+    app.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+    requester = litellmchat.LiteLLMRequester(ap=app, config={})
+    closed = asyncio.Event()
+
+    async def provider():
+        try:
+            yield SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(model_dump=lambda: {'role': 'assistant', 'content': 'first'}),
+                        finish_reason=None,
+                    )
+                ]
+            )
+            await asyncio.Event().wait()
+        finally:
+            closed.set()
+
+    with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: provider())):
+        output = requester.invoke_llm_stream(query=None, model=MockRuntimeModel(), messages=[])
+        assert (await anext(output)).content == 'first'
+        await output.aclose()
+    assert closed.is_set()
+
+
 class TestBuildLiteLLMModelName:
     """Test _build_litellm_model_name method"""
 

@@ -165,7 +165,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -176,7 +176,7 @@ class LangBotMCPServer:
             import datetime
 
             context = _authorized(Permission.RESOURCE_VIEW)
-            allowed = {'start_time', 'end_time'}
+            allowed = {'start_time', 'end_time', 'mode', 'execution_statuses'}
             if kind != 'embedding_calls':
                 allowed |= {'bot_ids', 'pipeline_ids'}
             if kind in {'messages', 'tool_calls'}:
@@ -206,6 +206,52 @@ class LangBotMCPServer:
             if kind == 'message':
                 return _dump(await ap.monitoring_service.get_message_details(context, identifier))
             return _dump(await ap.monitoring_service.get_session_analysis(context, identifier))
+
+        @mcp.tool(
+            description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
+        )
+        async def get_monitoring_executions(
+            limit: int = 50,
+            offset: int = 0,
+            bot_ids: list[str] | None = None,
+            pipeline_ids: list[str] | None = None,
+            statuses: list[str] | None = None,
+            mode: typing.Literal['all', 'real', 'debug'] = 'all',
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.monitoring_service.get_executions(
+                    context,
+                    limit=limit,
+                    offset=offset,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    statuses=statuses,
+                    mode=mode,
+                )
+            )
+
+        @mcp.tool(
+            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
+        )
+        async def get_monitoring_execution_detail(
+            source: typing.Literal['auto', 'agent', 'pipeline', 'event'],
+            identifier: str,
+            section: str | None = None,
+            offset: int = 0,
+            limit: int = 100,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.monitoring_service.get_execution_detail(
+                    context,
+                    source,
+                    identifier,
+                    section=section,
+                    offset=offset,
+                    limit=limit,
+                )
+            )
 
         # ----- Bots ---------------------------------------------------- #
         @mcp.tool(description='List all messaging-platform bots. Secrets are redacted.')

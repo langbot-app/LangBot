@@ -4,10 +4,18 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export interface MetricCardProps {
   /** Small label, sitting next to the icon. */
   label: string;
+  description?: string;
   /** The card's headline value; a node so it can carry a badge. */
   value?: React.ReactNode;
   /** Icon of the tinted tile on the leading edge. */
@@ -32,6 +40,7 @@ export interface MetricCardProps {
  */
 export function MetricCard({
   label,
+  description,
   value,
   icon,
   hint,
@@ -56,9 +65,28 @@ export function MetricCard({
               {icon}
             </span>
           ) : null}
-          <span className="truncate text-sm text-muted-foreground">
-            {label}
-          </span>
+          <span className="text-sm text-muted-foreground">{label}</span>
+          {description && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label={label}
+                >
+                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                sideOffset={6}
+                className="max-w-[min(20rem,calc(100vw-2rem))] text-sm leading-relaxed"
+              >
+                {description}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         {action}
       </div>

@@ -54,6 +54,11 @@ export function useMonitoringData(filterState: FilterState) {
       );
 
       const response = await backendClient.getMonitoringData({
+        mode: filterState.mode,
+        status:
+          filterState.statusGroup && filterState.statusGroup !== 'all'
+            ? [filterState.statusGroup]
+            : undefined,
         botId:
           filterState.selectedBots.length > 0
             ? filterState.selectedBots
@@ -390,6 +395,8 @@ export function useMonitoringData(filterState: FilterState) {
       if (isCurrent()) setLoading(false);
     }
   }, [
+    filterState.mode,
+    filterState.statusGroup,
     filterState.timeRange,
     filterState.customDateRange,
     filterState.selectedBots,
@@ -408,6 +415,8 @@ export function useMonitoringData(filterState: FilterState) {
   }, [
     selectedBotsStr,
     selectedPipelinesStr,
+    filterState.mode,
+    filterState.statusGroup,
     filterState.timeRange,
     customDateRangeStr,
     workspaceUuid,

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import aclosing
+
 import abc
+import asyncio
 import typing
 import time
 
@@ -204,15 +207,18 @@ class RuntimeProvider:
 
         try:
             # Stream the response
-            async for chunk in self.requester.invoke_llm_stream(
-                query=query,
-                model=model,
-                messages=messages,
-                funcs=funcs,
-                extra_args=extra_args,
-                remove_think=remove_think,
-            ):
-                yield chunk
+            async with aclosing(
+                self.requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    funcs=funcs,
+                    extra_args=extra_args,
+                    remove_think=remove_think,
+                )
+            ) as owned_stream:
+                async for chunk in owned_stream:
+                    yield chunk
             # Extract usage from stream if available (stored by LiteLLM requester)
             if query:
                 if query.variables is None:
@@ -223,6 +229,10 @@ class RuntimeProvider:
                     input_tokens = usage_info.get('prompt_tokens', 0)
                     output_tokens = usage_info.get('completion_tokens', 0)
                     del query.variables[STREAM_USAGE_QUERY_VARIABLE]
+        except (asyncio.CancelledError, GeneratorExit):
+            status = 'error'
+            error_message = 'Streaming generation cancelled by consumer'
+            raise
         except Exception as e:
             status = 'error'
             error_message = str(e)

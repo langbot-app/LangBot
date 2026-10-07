@@ -1980,6 +1980,8 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ Monitoring API ============
   public getMonitoringData(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2103,6 +2105,8 @@ export class BackendClient extends BaseHttpClient {
     };
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }
@@ -2170,11 +2174,15 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getExecutionDetail(
-    source: ExecutionSource,
+    source: ExecutionSource | 'auto',
     executionId: string,
+    options: { section?: string; offset?: number; limit?: number } = {},
   ): Promise<ExecutionDetail> {
+    const params = new URLSearchParams(
+      Object.entries(options).map(([key, value]) => [key, String(value)]),
+    );
     return this.get(
-      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}`,
+      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}?${params}`,
     );
   }
 
@@ -2207,6 +2215,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getTokenStatistics(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2247,6 +2257,8 @@ export class BackendClient extends BaseHttpClient {
     bucket: string;
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }
