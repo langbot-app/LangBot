@@ -37,6 +37,7 @@ from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
+from ...telemetry import resources as telemetry_resources
 from ...telemetry import trace as trace_mod
 from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
@@ -142,6 +143,22 @@ class AgentRunOrchestrator:
             binding=binding,
             descriptor=descriptor,
         )
+        # Telemetry: report what this run was granted (never what it used). The
+        # materialized resource list is authoritative for tools/skills/models;
+        # the Runner's own config form is authoritative for its selectors.
+        try:
+            from . import config_schema as runner_config_schema
+
+            capabilities = getattr(descriptor, 'capabilities', None)
+            telemetry_resources.note_agent(
+                runner_id=descriptor.id,
+                resources=resources,
+                selectors=runner_config_schema.extract_selected_resources(descriptor, binding.runner_config),
+                capabilities=capabilities.model_dump() if hasattr(capabilities, 'model_dump') else None,
+                tools_all=getattr(binding.resource_policy, 'allow_all_tools', None),
+            )
+        except Exception:
+            pass
 
         context = await self.context_builder.build_context_from_event(
             event=execution_event,

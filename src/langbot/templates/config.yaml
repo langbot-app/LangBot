@@ -444,11 +444,13 @@ space:
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
     # Per-event execution traces: off | failures | sampled | all.
-    # 'sampled' keeps every failed run plus every N-th successful one
-    # (N is execution_trace_sample) and always keeps WebUI debug runs.
-    execution_trace: sampled
+    # Every execution is reported by default: one record per workflow node plus
+    # one terminal chain record. 'failures' keeps only broken chains, 'sampled'
+    # keeps broken chains plus every N-th successful one (N is
+    # execution_trace_sample), and 'off' reports no executions at all.
+    execution_trace: all
     execution_trace_sample: 20
     # How often buffered execution records are uploaded, in seconds.
-    # Records of complete executions are batched as {"records": [...]}; a
-    # still-running execution is never uploaded half-written.
+    # Complete execution records are batched as {"records": [...]}; records are
+    # removed from the buffer only once the sender accepted them.
     telemetry_flush_seconds: 180

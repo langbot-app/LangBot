@@ -1,4 +1,4 @@
-"""The Pipeline lane must land its failure on the owning execution trace."""
+"""The Pipeline lane must land its nodes on one v2 execution chain."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def build_pipeline(pipelinemgr, ap):
     return pipeline
 
 
-def test_lane_failure_marks_the_owned_trace_without_any_prior_stage():
+def test_lane_failure_marks_the_owned_chain_without_any_prior_stage():
     pipelinemgr, execution = get_modules()
     manager = FakeManager()
     counters = execution.ExecutionCounters(manager)
@@ -54,15 +54,16 @@ def test_lane_failure_marks_the_owned_trace_without_any_prior_stage():
     with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-7'):
         pipeline._record_lane_failure(query, 'sandbox exited 127')
 
-    assert len(counters.records) == 1
-    record = counters.records[0]
-    assert record['query_id'] == 'query-7'
-    assert record['error'] == 'sandbox exited 127'
-    assert record['features']['trace']['outcome'] == 'failed'
-    observations = record['features']['observations']
-    assert [(row['family'], row['operation'], row['outcome']) for row in observations] == [
-        ('runner', 'execute', 'failed')
-    ]
+    rows = [record for record in counters.records if record['event_type'] == 'execution_node']
+    assert len(rows) == 1
+    node = rows[0]
+    assert node['event_id'] == 'query-7'
+    assert node['error'] == 'sandbox exited 127'
+    assert (node['family'], node['operation'], node['outcome']) == ('runner', 'execute', 'failed')
+    chain = [record for record in counters.records if record['event_type'] == 'execution_chain'][0]
+    assert chain['event_id'] == 'query-7'
+    assert chain['outcome'] == 'failed'
+    assert chain['error'] == 'sandbox exited 127'
 
 
 def test_lane_failure_does_not_duplicate_the_runner_node_the_orchestrator_recorded():
@@ -87,13 +88,13 @@ def test_lane_failure_does_not_duplicate_the_runner_node_the_orchestrator_record
         )
         pipeline._record_lane_failure(query, 'No authorized model for local-agent')
 
-    observations = [
-        (row['family'], row['operation'], row['outcome'])
-        for record in counters.records
-        for row in record['features']['observations']
+    rows = [record for record in counters.records if record['event_type'] == 'execution_node']
+    assert [(record['family'], record['operation'], record['outcome']) for record in rows] == [
+        ('runner', 'execute', 'failed')
     ]
-    assert observations == [('runner', 'execute', 'failed')]
-    assert counters.records[-1]['features']['trace']['outcome'] == 'failed'
+    chain = [record for record in counters.records if record['event_type'] == 'execution_chain'][-1]
+    assert chain['outcome'] == 'failed'
+    assert chain['error'] == 'No authorized model for local-agent'
 
 
 def build_counters():
@@ -118,11 +119,14 @@ def build_query(**overrides):
     return query
 
 
+def lane_nodes(counters):
+    return [record for record in counters.records if record['event_type'] == 'execution_node']
+
+
 def lane_shapes(counters):
     return [
-        (row['family'], row['operation'], row.get('node'), row.get('parent'))
-        for record in counters.records
-        for row in record['features']['observations']
+        (record['family'], record['operation'], record['node_id'], record['parent_node_id'])
+        for record in lane_nodes(counters)
     ]
 
 
@@ -138,7 +142,7 @@ async def stop_counters(counters):
     counters.task = None
 
 
-def test_lane_step_owns_the_apis_and_runner_it_calls():
+async def test_lane_step_owns_the_apis_and_runner_it_calls():
     pipelinemgr, execution = get_modules()
     trace = get_trace()
     counters, ap = build_counters()
@@ -168,21 +172,28 @@ def test_lane_step_owns_the_apis_and_runner_it_calls():
         await lane.process_query(query)
         await stop_counters(counters)
 
-    asyncio.run(scenario())
+    await scenario()
 
     shapes = lane_shapes(counters)
-    lane_node = shapes[-1][2]
-    assert lane_node == 'n1'
-    assert shapes == [
-        ('platform_api', 'send_message', None, lane_node),
-        ('runner', 'execute', seen['run'], lane_node),
-        ('platform_api', 'reply_message', None, lane_node),
-        # The lane step is recorded last; a standalone lane is a root.
-        ('pipeline', 'run', lane_node, None),
+    # The synthetic inbound event roots the chain; the lane step hangs under it.
+    assert [shape[0:2] for shape in shapes] == [
+        ('platform_event', 'message.received'),
+        ('platform_api', 'send_message'),
+        ('runner', 'execute'),
+        ('platform_api', 'reply_message'),
+        ('pipeline', 'run'),
     ]
+    event_node = shapes[0][2]
+    lane_node = shapes[-1][2]
+    assert shapes[0][3] == ''
+    assert shapes[1][3] == lane_node
+    assert shapes[2] == ('runner', 'execute', seen['run'], lane_node)
+    assert shapes[3][3] == lane_node
+    # The lane step is recorded last and nests under the synthetic event node.
+    assert shapes[4] == ('pipeline', 'run', lane_node, event_node)
 
 
-def test_lane_node_nests_under_the_platform_route_that_called_it():
+async def test_lane_node_nests_under_the_platform_route_that_called_it():
     pipelinemgr, execution = get_modules()
     trace = get_trace()
     counters, ap = build_counters()
@@ -197,7 +208,7 @@ def test_lane_node_nests_under_the_platform_route_that_called_it():
     lane._process_query = fake_process
 
     async def scenario():
-        # A platform event owns the trace; the route step wraps the Pipeline lane.
+        # A platform event owns the chain; the route step wraps the Pipeline lane.
         with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-routed'):
             with trace.stage_scope() as event_node:
                 execution.record(
@@ -213,19 +224,21 @@ def test_lane_node_nests_under_the_platform_route_that_called_it():
         await stop_counters(counters)
         return event_node, route_node
 
-    event_node, route_node = asyncio.run(scenario())
+    event_node, route_node = await scenario()
 
-    assert (event_node, route_node) == ('n1', 'n2')
-    assert lane_shapes(counters) == [
-        ('platform_event', 'message.received', event_node, None),
-        ('event_route', 'message.received', route_node, event_node),
-        # The API is called by the lane, so it hangs on the lane node.
-        ('platform_api', 'send_message', None, 'n3'),
-        ('pipeline', 'run', 'n3', route_node),
-    ]
+    assert event_node != route_node
+    shapes = lane_shapes(counters)
+    assert shapes[0] == ('platform_event', 'message.received', event_node, '')
+    assert shapes[1] == ('event_route', 'message.received', route_node, event_node)
+    lane_node = shapes[-1][2]
+    # The API is called by the lane, so it hangs on the lane node.
+    assert shapes[2][0:2] == ('platform_api', 'send_message')
+    assert shapes[2][3] == lane_node and shapes[2][2] != lane_node
+    # The lane nests under the route step that called it.
+    assert shapes[3] == ('pipeline', 'run', lane_node, route_node)
 
 
-def test_broken_lane_records_a_failed_step_with_its_reason():
+async def test_broken_lane_records_a_failed_step_with_its_reason():
     pipelinemgr, execution = get_modules()
     counters, ap = build_counters()
     lane = build_lane(pipelinemgr, ap)
@@ -242,16 +255,19 @@ def test_broken_lane_records_a_failed_step_with_its_reason():
             await stop_counters(counters)
 
     with pytest.raises(RuntimeError, match='lane exploded'):
-        asyncio.run(scenario())
+        await scenario()
 
-    family, operation, node, parent = lane_shapes(counters)[-1]
-    row = counters.records[0]['features']['observations'][-1]
-    assert (family, operation, node, parent) == ('pipeline', 'run', 'n1', None)
+    shapes = lane_shapes(counters)
+    family, operation, node, parent = shapes[-1]
+    row = lane_nodes(counters)[-1]
+    # The lane step nests under the synthetic inbound event that roots the chain.
+    assert (family, operation) == ('pipeline', 'run')
+    assert shapes[0] == ('platform_event', 'message.received', parent, '')
     assert row['outcome'] == 'failed'
     assert row['error'] == 'lane exploded'
 
 
-def test_lane_reported_failure_marks_the_step_failed():
+async def test_lane_reported_failure_marks_the_step_failed():
     pipelinemgr, execution = get_modules()
     counters, ap = build_counters()
     lane = build_lane(pipelinemgr, ap)
@@ -266,7 +282,7 @@ def test_lane_reported_failure_marks_the_step_failed():
         await lane.process_query(query)
         await stop_counters(counters)
 
-    asyncio.run(scenario())
+    await scenario()
 
-    row = counters.records[0]['features']['observations'][-1]
+    row = lane_nodes(counters)[-1]
     assert (row['family'], row['operation'], row['outcome']) == ('pipeline', 'run', 'failed')

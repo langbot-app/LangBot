@@ -348,25 +348,42 @@ class AgentService:
                 execution_events.append(visible_result)
 
         final_text = ''
-        async for output in self.ap.agent_run_orchestrator.run(
-            event,
-            binding,
-            adapter_context={
-                '_query': execution_query,
-                '_execution_context': execution_context,
-                '_result_observer': observe_result,
-            },
+        # A debug run has no platform event: the synthetic event envelope is the
+        # execution's inbound boundary, so the chain is opened here with the real
+        # event id and marked as a debug WebUI/API execution. The Runner inside
+        # then joins this chain instead of becoming a trace origin of its own.
+        from ....telemetry.execution import ingress as execution_ingress
+
+        principal_type = str(getattr(getattr(context, 'principal', None), 'principal_type', '') or '')
+        origin = 'api' if principal_type == 'api_key' else 'webui'
+        with execution_ingress(
+            self.ap,
+            'event_done',
+            execution_context,
+            event_id,
+            debug=True,
+            origin=origin,
+            synthetic_event=event_type,
         ):
-            output_text = self._provider_output_to_text(output)
-            if output_text:
-                final_text = output_text
-            output_items.append(
-                {
-                    'kind': output.__class__.__name__,
-                    'role': str(getattr(output, 'role', '') or ''),
-                    'text': output_text,
-                }
-            )
+            async for output in self.ap.agent_run_orchestrator.run(
+                event,
+                binding,
+                adapter_context={
+                    '_query': execution_query,
+                    '_execution_context': execution_context,
+                    '_result_observer': observe_result,
+                },
+            ):
+                output_text = self._provider_output_to_text(output)
+                if output_text:
+                    final_text = output_text
+                output_items.append(
+                    {
+                        'kind': output.__class__.__name__,
+                        'role': str(getattr(output, 'role', '') or ''),
+                        'text': output_text,
+                    }
+                )
 
         return {
             'event_id': event_id,

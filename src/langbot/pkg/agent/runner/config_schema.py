@@ -16,6 +16,65 @@ KB_SELECTOR_TYPES = {'knowledge-base-multi-selector'}
 PROMPT_EDITOR_TYPES = {'prompt-editor'}
 NONE_SENTINELS = {'', '__none__', '__none'}
 
+# Selector field types that pick a Host resource. The Runner config form is
+# plugin-declared and open-ended (DynamicFormItemSchema allows extra types), so
+# this is a registry, not a fixed list: a new selector type is one line here and
+# is then reported by telemetry without touching the extraction call sites.
+RESOURCE_SELECTOR_TYPES: dict[str, str] = {
+    'knowledge-base-multi-selector': 'knowledge_bases',
+    'tool-multi-selector': 'tools',
+    'mcp-server-multi-selector': 'mcp_servers',
+    'skill-multi-selector': 'skills',
+}
+
+
+def declared_resource_selectors(descriptor: RunnerDescriptor | None) -> dict[str, list[str]]:
+    """Map each selected resource kind to the schema field names that select it.
+
+    Only the descriptor is read, so this reports what a Runner *can* select even
+    when the current configuration leaves the field empty.
+    """
+    declared: dict[str, list[str]] = {}
+    if descriptor is None:
+        return declared
+    for item in descriptor.config_schema or []:
+        if not isinstance(item, dict):
+            continue
+        kind = RESOURCE_SELECTOR_TYPES.get(normalize_schema_item_type(item.get('type')))
+        field_name = item.get('name')
+        if not kind or not isinstance(field_name, str) or not field_name:
+            continue
+        declared.setdefault(kind, [])
+        if field_name not in declared[kind]:
+            declared[kind].append(field_name)
+    return declared
+
+
+def extract_selected_resources(
+    descriptor: RunnerDescriptor | None,
+    runner_config: dict[str, typing.Any] | None,
+) -> dict[str, list[str]]:
+    """Extract the resource ids selected through schema-declared selector fields.
+
+    Field names are never hard-coded: they come from the Runner's own config
+    schema, so a form that renames or adds a selector keeps working.
+    """
+    selected: dict[str, list[str]] = {}
+    if not isinstance(runner_config, dict):
+        return selected
+    for kind, field_names in declared_resource_selectors(descriptor).items():
+        values: list[str] = []
+        for field_name in field_names:
+            value = runner_config.get(field_name)
+            if isinstance(value, str):
+                if value not in NONE_SENTINELS:
+                    values.append(value)
+            elif isinstance(value, (list, tuple)):
+                values.extend(item for item in value if isinstance(item, str) and item not in NONE_SENTINELS)
+        if values:
+            selected[kind] = list(dict.fromkeys(values))
+    return selected
+
 
 def normalize_schema_item_type(item_type: typing.Any) -> typing.Any:
     """Normalize legacy/frontend DynamicForm aliases to protocol field types."""

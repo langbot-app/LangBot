@@ -480,8 +480,6 @@ class ToolManager:
         query: pipeline_query.Query,
         source_ref: ToolSourceRef | None = None,
     ) -> typing.Any:
-        from langbot.pkg.telemetry import features as telemetry_features
-
         source_ref = source_ref or self.get_query_tool_source(query, name)
         if source_ref is not None:
             execution_context = get_query_execution_context(query)
@@ -534,7 +532,6 @@ class ToolManager:
                     return await loader.invoke_tool(name, parameters, query, source_id=source_id)
                 return await loader.invoke_tool(name, parameters, query)
 
-            telemetry_features.increment(query, 'tool_calls', telemetry_source)
             return await self._invoke_tool_with_monitoring(
                 source=telemetry_source,
                 name=name,
@@ -547,7 +544,6 @@ class ToolManager:
         await self._bind_plugin_workspace(execution_context)
         sandbox_available = await self._workspace_sandbox_available(execution_context)
         if sandbox_available and await self.native_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'native')
             return await self._invoke_tool_with_monitoring(
                 source='native',
                 name=name,
@@ -556,7 +552,6 @@ class ToolManager:
                 invoke=lambda: self.native_tool_loader.invoke_tool(name, parameters, query),
             )
         if await self.plugin_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'plugin')
             return await self._invoke_tool_with_monitoring(
                 source='plugin',
                 name=name,
@@ -565,7 +560,6 @@ class ToolManager:
                 invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
             )
         if await self.mcp_tool_loader.has_tool(execution_context, name):
-            telemetry_features.increment(query, 'tool_calls', 'mcp')
             return await self._invoke_tool_with_monitoring(
                 source='mcp',
                 name=name,
@@ -574,7 +568,6 @@ class ToolManager:
                 invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
             )
         if sandbox_available and await self.skill_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'skill')
             return await self._invoke_tool_with_monitoring(
                 source='skill',
                 name=name,

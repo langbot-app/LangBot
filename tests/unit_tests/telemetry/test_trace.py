@@ -1,4 +1,10 @@
-"""Unit tests for per-execution execution traces (pkg/telemetry/trace.py + execution.py)."""
+"""Unit tests for per-execution execution chains (pkg/telemetry/trace.py + execution.py).
+
+One execution is one chain of independent records: one ``execution_node`` per
+workflow node, emitted the moment the node completes, plus exactly one
+``execution_chain`` when the execution closes. Every record of a chain carries
+the same ``event_id``.
+"""
 
 from __future__ import annotations
 
@@ -31,8 +37,21 @@ class FakeManager:
         self.sent.append(payload)
         return True
 
-    def start_send_task(self, payload: dict) -> None:
+
+class RejectingManager(FakeManager):
+    """Stand-in whose sender refuses every batch until told to accept them."""
+
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.rejecting = True
+        self.attempts = 0
+
+    async def send(self, payload: dict) -> bool:
+        self.attempts += 1
+        if self.rejecting:
+            return False
         self.sent.append(payload)
+        return True
 
 
 def make_counters(config=None):
@@ -56,6 +75,14 @@ def records_sent(manager):
     return [record for payload in manager.sent for record in payload.get('records', [])]
 
 
+def nodes(counters):
+    return [record for record in counters.records if record.get('event_type') == 'execution_node']
+
+
+def chains(counters):
+    return [record for record in counters.records if record.get('event_type') == 'execution_chain']
+
+
 CONTEXT = types.SimpleNamespace(instance_uuid='instance-1', workspace_uuid='workspace-1')
 
 STAGE = {
@@ -64,6 +91,35 @@ STAGE = {
     'mode': 'none',
     'adapter': 'AiocqhttpAdapter',
     'outcome': 'success',
+}
+
+NODE_KEYS = {
+    'event_type',
+    'schema',
+    'event_id',
+    'instance_id',
+    'workspace_uuid',
+    'version',
+    'edition',
+    'timestamp',
+    'debug',
+    'sample',
+    'node_id',
+    'parent_node_id',
+    'root',
+    'seq',
+    'family',
+    'operation',
+    'mode',
+    'adapter',
+    'runner',
+    'outcome',
+    'error',
+    'route_ref',
+    'run_id',
+    'synthetic',
+    'started_at',
+    'ended_at',
 }
 
 
@@ -93,13 +149,12 @@ class TestTraceIdentity:
         # A repeated unbind of the same binding must never raise.
         assert trace.unbind_root(outer) is True
 
-    def test_trace_id_is_the_execution_id(self):
+    def test_event_id_is_the_execution_id(self):
         trace, _ = get_modules()
         binding = trace.bind('exec-1234')
         try:
             assert binding.created is True
-            assert binding.state.trace_id == 'exec-1234'
-            assert binding.state.execution_id == 'exec-1234'
+            assert binding.state.event_id == 'exec-1234'
         finally:
             trace.unbind_root(binding)
 
@@ -109,19 +164,20 @@ class TestTraceIdentity:
         inner = trace.bind('query-9')
         try:
             assert inner.created is False
-            assert inner.state.trace_id == 'event-1'
+            assert inner.state.event_id == 'event-1'
         finally:
             trace.unbind_root(inner)
             trace.unbind_root(outer)
 
     def test_route_and_run_are_only_pinned_inside_the_block(self):
         trace, _ = get_modules()
+        _, counters = make_counters(trace_config())
         binding = trace.bind()
         token = trace.set_run('run-1')
         try:
             with trace.scope(route_ref='agent:agent-1'):
-                inside = trace.current()
-                inside.append(
+                counters.record(
+                    CONTEXT,
                     family='runner',
                     operation='execute',
                     mode='agent',
@@ -130,8 +186,8 @@ class TestTraceIdentity:
                     outcome='success',
                     synthetic=False,
                 )
-            outside = trace.current()
-            outside.append(
+            counters.record(
+                CONTEXT,
                 family='platform_api',
                 operation='send_message',
                 mode='agent',
@@ -143,7 +199,7 @@ class TestTraceIdentity:
         finally:
             trace.reset_run(token)
             trace.unbind_root(binding)
-        assert [(s['route_ref'], s['run_id']) for s in binding.state.stages] == [
+        assert [(row['route_ref'], row['run_id']) for row in nodes(counters)] == [
             ('agent:agent-1', 'run-1'),
             ('', 'run-1'),
         ]
@@ -152,65 +208,42 @@ class TestTraceIdentity:
 class TestTraceRecording:
     def test_stage_carries_sequence_identity_and_timestamps(self):
         trace, _ = get_modules()
-        _, counters = make_counters()
+        _, counters = make_counters(trace_config())
         binding = trace.bind()
         try:
             counters.record(CONTEXT, **STAGE)
             counters.record(CONTEXT, **{**STAGE, 'family': 'runner', 'operation': 'execute', 'mode': 'pipeline'})
+            counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        stages = binding.state.stages
-        assert [stage['seq'] for stage in stages] == [0, 1]
-        assert stages[0]['first_seen'] == stages[0]['last_seen']
-        assert binding.state.identity == {'instance_id': 'instance-1', 'workspace_uuid': 'workspace-1'}
-        assert binding.state.outcome() == 'success'
-
-    def test_stage_buffer_is_bounded_and_counts_overflow(self):
-        trace, _ = get_modules()
-        _, counters = make_counters()
-        binding = trace.bind()
-        try:
-            for _ in range(trace.MAX_STAGES + 5):
-                counters.record(CONTEXT, **STAGE)
-        finally:
-            trace.unbind_root(binding)
-        assert len(binding.state.stages) == trace.MAX_STAGES
-        assert binding.state.dropped_stages == 5
+        rows = nodes(counters)
+        assert [row['seq'] for row in rows] == [0, 1]
+        # A plain observation starts and ends at the same instant.
+        assert rows[0]['started_at'] == rows[0]['ended_at']
+        assert {(row['instance_id'], row['workspace_uuid']) for row in rows} == {('instance-1', 'workspace-1')}
+        chain = chains(counters)[0]
+        assert chain['outcome'] == 'success'
+        assert chain['stage_count'] == 2
 
     def test_oversized_identifier_never_becomes_a_stage(self):
         trace, _ = get_modules()
-        _, counters = make_counters()
+        _, counters = make_counters(trace_config())
         binding = trace.bind()
         try:
             counters.record(CONTEXT, **{**STAGE, 'operation': 'x' * 200})
             counters.record(CONTEXT, **{**STAGE, 'family': 'not-a-family'})
         finally:
             trace.unbind_root(binding)
-        assert binding.state.stages == []
-
-    def test_trace_limit_abandons_further_traces(self):
-        trace, execution = get_modules()
-        _, counters = make_counters()
-        bindings = []
-        for _ in range(execution.MAX_TRACES + 1):
-            binding = trace.bind()
-            bindings.append(binding)
-            counters.record(CONTEXT, **STAGE)
-            trace.unbind_root(binding)
-        assert trace.current() is None
-        assert len(counters.traces) == execution.MAX_TRACES
-        assert counters.dropped == 1
-        assert bindings[-1].state.abandoned is True
-        assert bindings[-1].state.stages == []
+        assert nodes(counters) == []
 
     def test_observation_without_an_owning_execution_is_dropped(self):
-        trace, _ = get_modules()
+        _, _ = get_modules()
         _, counters = make_counters()
-        # Clustering is gone: an observation that belongs to no execution is
-        # discarded instead of being aggregated into a synthetic bucket.
+        # An observation that belongs to no execution is discarded instead of
+        # being aggregated into a synthetic bucket.
         counters.record(CONTEXT, **STAGE)
         assert counters.records == []
-        assert counters.traces == {}
+        assert counters.registry == {}
 
 
 class TestTraceNodeScope:
@@ -238,11 +271,13 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        step_row, api_row = binding.state.stages
-        assert step_row['node'] == step
-        assert 'parent' not in step_row  # a root step carries no parent
-        assert api_row['parent'] == step
-        assert 'node' not in api_row  # observations are not step nodes
+        step_row, api_row = nodes(counters)
+        assert step_row['node_id'] == step
+        assert step_row['parent_node_id'] == ''  # a root step carries no parent
+        assert step_row['root'] is True
+        assert api_row['parent_node_id'] == step
+        assert api_row['root'] is False
+        assert api_row['node_id'] != step  # observations are not step nodes
 
     def test_nested_step_records_its_enclosing_step_as_parent(self):
         trace, _ = get_modules()
@@ -257,11 +292,11 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        outer_row, inner_row, api_row = binding.state.stages
-        assert (outer_row['node'], outer_row.get('parent')) == (outer, None)
+        outer_row, inner_row, api_row = nodes(counters)
+        assert (outer_row['node_id'], outer_row['parent_node_id']) == (outer, '')
         # The step's own record sits under its enclosing step, never under itself.
-        assert (inner_row['node'], inner_row.get('parent')) == (inner, outer)
-        assert api_row.get('parent') == inner and 'node' not in api_row
+        assert (inner_row['node_id'], inner_row['parent_node_id']) == (inner, outer)
+        assert api_row['parent_node_id'] == inner and api_row['node_id'] != inner
 
     def test_sequential_steps_get_distinct_ids_and_roots_have_no_parent(self):
         trace, _ = get_modules()
@@ -275,13 +310,16 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        assert (first, second) == ('n1', 'n2')
-        assert [row['node'] for row in binding.state.stages] == [first, second]
-        assert all('parent' not in row for row in binding.state.stages)
+        assert first and second and first != second
+        rows = nodes(counters)
+        assert [row['node_id'] for row in rows] == [first, second]
+        assert [row['seq'] for row in rows] == [0, 1]
+        assert rows[0]['root'] is True
+        assert all(row['parent_node_id'] == '' for row in rows)
 
-    def test_cross_task_observation_attaches_to_the_open_step(self):
+    def test_cross_task_observation_joins_the_owning_execution(self):
         trace, execution = get_modules()
-        _, counters = make_counters()
+        _, counters = make_counters(trace_config())
         binding = execution.bind_trace(make_ap(counters), 'exec-cross')
         try:
             with trace.stage_scope() as lane:
@@ -290,7 +328,7 @@ class TestTraceNodeScope:
                 )
                 # A plugin/RPC observation arrives on a task that never had the
                 # trace context; it is resolved through the execution registry and
-                # must still hang off the step the owning task has open.
+                # still lands on the owning chain.
                 foreign = contextvars.Context()
                 foreign.run(execution.set_execution_id, 'exec-cross')
                 foreign.run(
@@ -304,13 +342,16 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        rows = binding.state.stages
-        assert rows[0]['node'] == lane and 'parent' not in rows[0]
-        assert rows[1].get('parent') == lane and 'node' not in rows[1]
+        lane_row, foreign_row = nodes(counters)
+        assert lane_row['node_id'] == lane and lane_row['parent_node_id'] == '' and lane_row['root'] is True
+        # The cross-task node joins the same execution, but never mirrors another
+        # task's open-step stack: it is a root of the chain.
+        assert foreign_row['event_id'] == 'exec-cross'
+        assert foreign_row['parent_node_id'] == ''
 
     def test_cross_task_observation_without_an_open_step_has_no_parent(self):
         trace, execution = get_modules()
-        _, counters = make_counters()
+        _, counters = make_counters(trace_config())
         binding = execution.bind_trace(make_ap(counters), 'exec-bare')
         try:
             foreign = contextvars.Context()
@@ -326,8 +367,8 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        row = binding.state.stages[0]
-        assert 'node' not in row and 'parent' not in row
+        row = nodes(counters)[0]
+        assert row['parent_node_id'] == '' and row['root'] is True
 
     def test_scope_outside_any_trace_is_inert(self):
         trace, _ = get_modules()
@@ -335,9 +376,9 @@ class TestTraceNodeScope:
             assert node == ''
             assert trace.current_parent() == ''
 
-    def test_records_outside_any_scope_serialize_without_node_keys(self):
-        trace, execution = get_modules()
-        manager, counters = make_counters(trace_config())
+    def test_records_outside_any_scope_are_root_nodes(self):
+        trace, _ = get_modules()
+        _, counters = make_counters(trace_config())
         binding = trace.bind('exec-legacy')
         try:
             counters.record(CONTEXT, **STAGE)
@@ -345,29 +386,16 @@ class TestTraceNodeScope:
         finally:
             trace.unbind_root(binding)
 
-        stage = binding.state.stages[0]
-        assert set(stage) == {
-            'family',
-            'operation',
-            'mode',
-            'adapter',
-            'runner',
-            'outcome',
-            'synthetic',
-            'seq',
-            'route_ref',
-            'run_id',
-            'first_seen',
-            'last_seen',
-            'error',
-        }
-        observation = counters.records[0]['features']['observations'][0]
-        assert 'node' not in json.dumps(observation, sort_keys=True)
-        assert 'parent' not in json.dumps(observation, sort_keys=True)
+        node = nodes(counters)[0]
+        assert set(node) == NODE_KEYS
+        assert node['node_id'] and node['parent_node_id'] == '' and node['root'] is True
+        assert node['seq'] == 0
+        # Node placement lives on node records only; the chain carries none.
+        assert 'node_id' not in json.dumps(chains(counters)[0], sort_keys=True)
 
 
 class TestTraceDelivery:
-    def test_close_buffers_one_record_per_trace(self):
+    def test_close_emits_one_terminal_chain_record_per_execution(self):
         trace, _ = get_modules()
         manager, counters = make_counters(trace_config())
         binding = trace.bind('exec-1')
@@ -383,49 +411,55 @@ class TestTraceDelivery:
 
         # Closing buffers; nothing is sent before the flush cadence.
         assert manager.sent == []
-        assert len(counters.records) == 1
-        assert counters.traces == {}
-
-        record = counters.records[0]
-        assert record['event_type'] == 'feature_execution'
-        assert record['query_id'] == 'exec-1'
+        assert len(nodes(counters)) == 2
+        chain_rows = chains(counters)
+        assert len(chain_rows) == 1
+        record = chain_rows[0]
+        assert record['schema'] == 2
+        assert record['event_id'] == 'exec-1'
         assert record['instance_id'] == 'instance-1'
         assert record['workspace_uuid'] == 'workspace-1'
-        assert record['trusted'] is True
-        features = record['features']
-        assert features['schema'] == 1
-        assert 'count' not in json.dumps(record)
-        assert [row['seq'] for row in features['observations']] == [0, 1]
-        assert [row['trace_id'] for row in features['observations']] == ['exec-1'] * 2
-        assert features['trace'] == {
-            'closed_by': 'event_done',
-            'started_at': binding.state.started_at,
-            'ended_at': features['trace']['ended_at'],
-            'route_ref': '',
-            'run_id': '',
-            'outcome': 'success',
-            'dropped_stages': 0,
-        }
+        assert record['closed_by'] == 'event_done'
+        assert record['outcome'] == 'success'
+        assert record['stage_count'] == 2
+        assert isinstance(record['duration_ms'], int) and record['duration_ms'] >= 0
+        assert 'query_id' not in record and 'features' not in record
 
     def test_sampling_decision_is_deterministic_and_keeps_failures(self):
         trace, _ = get_modules()
         _, counters = make_counters(trace_config(execution_trace='sampled', execution_trace_sample=2))
-        binding = trace.bind()
-        try:
-            binding.state.trace_id = '00000001-0000-4000-8000-000000000000'
-            counters.record(CONTEXT, **STAGE)
-            assert counters._trace_emitted(binding.state) is False
-            binding.state.trace_id = '00000000-0000-4000-8000-000000000000'
-            assert counters._trace_emitted(binding.state) is True
-            binding.state.trace_id = '00000001-0000-4000-8000-000000000001'
-            counters.record(CONTEXT, **{**STAGE, 'outcome': 'timeout'})
-            assert counters._trace_emitted(binding.state) is True
-        finally:
-            trace.unbind_root(binding)
+        in_id = next(i for i in (f'sample-{n}' for n in range(64)) if counters._sampling_decision(i)[2])
+        out_id = next(i for i in (f'sample-{n}' for n in range(64)) if not counters._sampling_decision(i)[2])
+        # Same id, same answer: the decision is a pure function of the identity.
+        assert counters._sampling_decision(in_id) == counters._sampling_decision(in_id)
 
-    def test_failures_mode_keeps_failed_and_debug_traces_only(self):
+        excluded = trace.bind(out_id)
+        counters.record(CONTEXT, **STAGE)
+        assert excluded.state.emit_nodes is False
+        assert counters._chain_emitted(excluded.state) is False
+        counters.close_trace(excluded.state, 'event_done')
+        trace.unbind_root(excluded)
+        assert counters.records == []
+
+        included = trace.bind(in_id)
+        counters.record(CONTEXT, **STAGE)
+        assert included.state.emit_nodes is True
+        counters.close_trace(included.state, 'event_done')
+        trace.unbind_root(included)
+        assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']
+
+        counters.records.clear()
+        broken = trace.bind(out_id)
+        counters.record(CONTEXT, **{**STAGE, 'outcome': 'timeout'})
+        assert counters._chain_emitted(broken.state) is True
+        counters.close_trace(broken.state, 'event_done')
+        trace.unbind_root(broken)
+        assert [record['event_type'] for record in counters.records] == ['execution_chain']
+        assert counters.records[0]['outcome'] == 'timeout'
+
+    def test_failures_mode_keeps_failed_and_debug_chains_only(self):
         trace, _ = get_modules()
-        _, counters = make_counters(trace_config(execution_trace='failures', execution_trace_sample=1000000))
+        _, counters = make_counters(trace_config(execution_trace='failures'))
 
         failed = trace.bind('exec-failed')
         counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
@@ -433,7 +467,8 @@ class TestTraceDelivery:
         trace.unbind_root(failed)
 
         debug = trace.bind('exec-debug')
-        counters.record(CONTEXT, **{**STAGE, 'synthetic': True})
+        counters.configure(debug.state, debug=True)
+        counters.record(CONTEXT, **STAGE)
         counters.close_trace(debug.state, 'event_done')
         trace.unbind_root(debug)
 
@@ -442,9 +477,12 @@ class TestTraceDelivery:
         counters.close_trace(sampled_out.state, 'event_done')
         trace.unbind_root(sampled_out)
 
-        assert [record['query_id'] for record in counters.records] == ['exec-failed', 'exec-debug']
-        assert counters.records[0]['features']['observations'][0]['outcome'] == 'failed'
-        assert counters.records[1]['features']['observations'][0]['synthetic'] is True
+        assert [record['event_id'] for record in chains(counters)] == ['exec-failed', 'exec-debug']
+        assert chains(counters)[0]['outcome'] == 'failed'
+        # Its node was sampled out, but the broken chain still explains itself.
+        assert chains(counters)[0]['dropped_nodes'] == 1
+        assert chains(counters)[1]['debug'] is True
+        assert [record['event_id'] for record in nodes(counters)] == ['exec-debug']
 
     def test_off_mode_and_opt_out_buffer_nothing(self):
         trace, _ = get_modules()
@@ -469,24 +507,9 @@ class TestTraceDelivery:
             trace.unbind_root(binding)
         assert disabled_manager.sent == []
         assert disabled.records == []
-        assert disabled.traces == {}
+        assert disabled.registry == {}
 
-    def test_ttl_sweep_closes_stale_trace(self):
-        trace, _ = get_modules()
-        manager, counters = make_counters(trace_config())
-        binding = trace.bind('exec-ttl')
-        try:
-            counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
-            counters.trace_deadlines[binding.state.trace_id] = 0
-            counters._sweep_traces(time.monotonic())
-        finally:
-            trace.unbind_root(binding)
-        assert counters.records[0]['features']['trace']['closed_by'] == 'ttl'
-        assert counters.traces == {}
-        assert counters.trace_deadlines == {}
-        assert manager.sent == []
-
-    async def test_shutdown_drops_open_traces(self):
+    async def test_shutdown_does_not_claim_an_unfinished_execution(self):
         trace, _ = get_modules()
         manager, counters = make_counters(trace_config())
         binding = trace.bind('exec-open')
@@ -495,26 +518,12 @@ class TestTraceDelivery:
             await counters.shutdown()
         finally:
             trace.unbind_root(binding)
-        # Shutdown must not claim a trace that never completed.
-        assert records_sent(manager) == []
+        # The already-emitted node is flushed, but shutdown never fabricates a
+        # terminal chain for an execution that never completed.
+        assert [record['event_type'] for record in records_sent(manager)] == ['execution_node']
         assert counters.records == []
-        assert counters.traces == {}
+        assert chains(counters) == []
         assert counters.registry == {}
-        assert counters.dropped_traces == 1
-
-    async def test_loop_sweeps_and_flushes_expired_trace(self):
-        trace, _ = get_modules()
-        manager, counters = make_counters(trace_config(telemetry_flush_seconds=1))
-        binding = trace.bind('exec-ttl-loop')
-        try:
-            counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
-            counters.trace_deadlines[binding.state.trace_id] = 0
-            await asyncio.sleep(1.3)
-            assert [record['features']['trace']['closed_by'] for record in records_sent(manager)] == ['ttl']
-            assert counters.traces == {}
-        finally:
-            await counters.shutdown()
-            trace.unbind_root(binding)
 
     async def test_flush_sends_one_batch_of_complete_records(self):
         _, execution = get_modules()
@@ -523,14 +532,20 @@ class TestTraceDelivery:
         for index in range(2):
             with execution.ingress(ap, 'event_done', CONTEXT, execution_id=f'exec-{index}'):
                 counters.record(CONTEXT, **STAGE)
-        assert len(counters.records) == 2
+        assert len(counters.records) == 4
 
         await counters.flush()
         assert len(manager.sent) == 1
         payload = manager.sent[0]
         assert set(payload) == {'records'}
-        assert [record['query_id'] for record in payload['records']] == ['exec-0', 'exec-1']
-        assert 'count' not in json.dumps(payload)
+        assert [record['event_type'] for record in payload['records']] == [
+            'execution_node',
+            'execution_chain',
+            'execution_node',
+            'execution_chain',
+        ]
+        assert [record['event_id'] for record in payload['records']] == ['exec-0', 'exec-0', 'exec-1', 'exec-1']
+        await counters.shutdown()
 
     async def test_flush_interval_is_honoured(self):
         _, execution = get_modules()
@@ -541,7 +556,9 @@ class TestTraceDelivery:
         assert counters.flush_seconds() == 1
         assert manager.sent == []
         await asyncio.sleep(1.3)
-        assert [record['query_id'] for record in records_sent(manager)] == ['exec-timed']
+        sent = records_sent(manager)
+        assert [record['event_type'] for record in sent] == ['execution_node', 'execution_chain']
+        assert {record['event_id'] for record in sent} == {'exec-timed'}
         await counters.shutdown()
 
     def test_flush_interval_config_is_bounded(self):
@@ -563,11 +580,10 @@ class TestTraceDelivery:
             for index in range(5):
                 binding = trace.bind(f'exec-{index}')
                 counters.record(CONTEXT, **STAGE)
-                counters.close_trace(binding.state, 'event_done')
                 trace.unbind_root(binding)
         finally:
             execution.MAX_BUFFERED_RECORDS = original
-        assert [record['query_id'] for record in counters.records] == ['exec-2', 'exec-3', 'exec-4']
+        assert [record['event_id'] for record in nodes(counters)] == ['exec-2', 'exec-3', 'exec-4']
         assert counters.dropped == 2
 
 
@@ -579,9 +595,9 @@ class TestIngress:
         with execution.ingress(ap, 'event_done', execution_id='exec-outer'):
             with execution.ingress(ap, 'pipeline_done', execution_id='exec-inner'):
                 counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
-        assert len(counters.records) == 1
-        assert counters.records[0]['query_id'] == 'exec-outer'
-        assert counters.records[0]['features']['trace']['closed_by'] == 'event_done'
+        assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']
+        assert all(record['event_id'] == 'exec-outer' for record in counters.records)
+        assert chains(counters)[0]['closed_by'] == 'event_done'
         assert manager.sent == []
 
     def test_ingress_without_telemetry_is_a_no_op(self):
@@ -602,7 +618,7 @@ class TestIngress:
 
 
 class TestCrossTaskAttribution:
-    def test_registry_joins_stages_from_a_task_without_a_trace(self):
+    def test_registry_joins_nodes_from_a_task_without_a_trace(self):
         trace, execution = get_modules()
         _, counters = make_counters(trace_config())
         ap = make_ap(counters)
@@ -615,23 +631,24 @@ class TestCrossTaskAttribution:
         counters.record(
             CONTEXT, **{**STAGE, 'family': 'platform_api', 'operation': 'send_message'}, execution_id='run-1'
         )
-        assert len(binding.state.stages) == 1
-        assert binding.state.stages[0]['operation'] == 'send_message'
+        rows = nodes(counters)
+        assert len(rows) == 1
+        assert rows[0]['operation'] == 'send_message' and rows[0]['event_id'] == 'run-1'
 
         counters.close_trace(binding.state, 'event_done')
-        assert counters.records[0]['query_id'] == 'run-1'
+        assert chains(counters)[0]['event_id'] == 'run-1'
 
     def test_registry_aliases_a_nested_execution(self):
         _, execution = get_modules()
         _, counters = make_counters(trace_config())
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='event-1') as binding:
+        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='event-1'):
             with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-1'):
                 pass
             assert set(counters.registry) == {'event-1', 'query-1'}
             counters.record(CONTEXT, **STAGE, execution_id='query-1')
-        assert counters.records[0]['query_id'] == 'event-1'
-        assert len(binding.state.stages) == 1
+        rows = nodes(counters)
+        assert len(rows) == 1 and rows[0]['event_id'] == 'event-1'
 
     def test_contextvar_execution_id_is_used_when_no_kwarg(self):
         trace, execution = get_modules()
@@ -644,7 +661,8 @@ class TestCrossTaskAttribution:
             counters.record(CONTEXT, **STAGE)
         finally:
             execution.reset_execution_id(token)
-        assert len(binding.state.stages) == 1
+        rows = nodes(counters)
+        assert len(rows) == 1 and rows[0]['event_id'] == 'run-2'
 
     def test_registry_alias_is_swept_when_never_closed(self):
         trace, execution = get_modules()
@@ -667,8 +685,10 @@ class TestTraceDispatch:
         with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-async'):
             counters.record(CONTEXT, **STAGE)
         await counters.flush()
-        assert [record['query_id'] for record in records_sent(manager)] == ['exec-async']
-        assert manager.sent[0]['records'][0]['event_type'] == 'feature_execution'
+        sent = records_sent(manager)
+        assert [record['event_type'] for record in sent] == ['execution_node', 'execution_chain']
+        assert all(record['event_id'] == 'exec-async' for record in sent)
+        await counters.shutdown()
 
 
 class AsyncSendManager(FakeManager):
@@ -689,9 +709,9 @@ class TestTraceFailureDetail:
             counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        record = counters.records[0]
-        assert record['error'] == 'boom: sandbox exited 127'
-        assert record['features']['observations'][0]['error'] == 'boom: sandbox exited 127'
+        assert nodes(counters)[0]['error'] == 'boom: sandbox exited 127'
+        # The detail lives on the node; the chain carries the terminal outcome.
+        assert chains(counters)[0]['outcome'] == 'failed'
 
     def test_successful_stage_reports_no_error(self):
         trace, _ = get_modules()
@@ -702,9 +722,8 @@ class TestTraceFailureDetail:
             counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        record = counters.records[0]
-        assert record['error'] == ''
-        assert record['features']['observations'][0]['error'] == ''
+        assert nodes(counters)[0]['error'] == ''
+        assert chains(counters)[0]['error'] == ''
 
     def test_error_detail_is_bounded_and_single_line(self):
         trace, _ = get_modules()
@@ -715,8 +734,8 @@ class TestTraceFailureDetail:
             counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        detail = counters.records[0]['error']
-        assert len(detail) <= 400
+        detail = chains(counters)[0]['error']
+        assert len(detail) <= 200
         assert '\n' not in detail and '\t' not in detail
 
 
@@ -733,10 +752,10 @@ class TestIngressFailureDetail:
         except RuntimeError:
             raised = True
         assert raised is True
-        record = counters.records[0]
-        assert record['error'].startswith('RuntimeError: dispatch exploded')
-        assert record['features']['trace']['outcome'] == 'failed'
-        assert record['features']['trace']['closed_by'] == 'event_done'
+        chain = chains(counters)[0]
+        assert chain['error'].startswith('RuntimeError: dispatch exploded')
+        assert chain['outcome'] == 'failed'
+        assert chain['closed_by'] == 'event_done'
 
     def test_successful_ingress_still_reports_success(self):
         _, execution = get_modules()
@@ -744,27 +763,29 @@ class TestIngressFailureDetail:
         ap = make_ap(counters)
         with execution.ingress(ap, 'event_done', execution_id='exec-fine'):
             counters.record(CONTEXT, **STAGE)
-        record = counters.records[0]
-        assert record['error'] == ''
-        assert record['features']['trace']['outcome'] == 'success'
+        chain = chains(counters)[0]
+        assert chain['error'] == ''
+        assert chain['outcome'] == 'success'
 
 
 class TestFailureOnlyTrace:
     def test_failure_without_stages_still_uploads(self):
         _, execution = get_modules()
-        # sampled-out config: only failures are guaranteed to be kept
-        _, counters = make_counters({'url': 'https://space.example.test', 'execution_trace_sample': 1})
+        # failures mode: nodes are not reported, but a broken chain always is.
+        _, counters = make_counters({'url': 'https://space.example.test', 'execution_trace': 'failures'})
         ap = make_ap(counters)
         try:
             with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='exec-empty'):
                 raise RuntimeError('pipeline exploded before any stage')
         except RuntimeError:
             pass
-        assert len(counters.records) == 1
-        record = counters.records[0]
+        rows = chains(counters)
+        assert len(rows) == 1
+        record = rows[0]
         assert record['error'].startswith('RuntimeError: pipeline exploded')
-        assert record['features']['trace']['outcome'] == 'failed'
-        assert record['features']['observations'] == []
+        assert record['outcome'] == 'failed'
+        assert record['stage_count'] == 0
+        assert nodes(counters) == []
 
     def test_cancelled_and_timeout_chains_report_their_outcome(self):
         trace, _ = get_modules()
@@ -776,15 +797,14 @@ class TestFailureOnlyTrace:
                 counters.close_trace(binding.state, 'runner_done')
             finally:
                 trace.unbind_root(binding)
-            assert len(counters.records) == 1
-            record = counters.records.pop(0)
-            assert record['query_id'] == f'exec-{outcome}'
-            assert record['features']['trace']['outcome'] == outcome
-            assert record['error'] == reason
+            record = chains(counters)[-1]
+            assert record['event_id'] == f'exec-{outcome}'
+            assert record['outcome'] == outcome
+            assert nodes(counters)[-1]['error'] == reason
 
 
 class TestLegacyRecordFields:
-    def test_record_carries_legacy_top_level_columns(self):
+    def test_chain_carries_execution_scoped_columns(self):
         trace, _ = get_modules()
         _, counters = make_counters(trace_config())
         binding = trace.bind('exec-legacy')
@@ -800,14 +820,13 @@ class TestLegacyRecordFields:
             counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        record = counters.records[0]
+        record = chains(counters)[0]
         assert record['model_name'] == 'gpt-4o'
         assert record['pipeline_plugins'] == ['plugin:a']
         assert record['runner_category'] == 'cloud'
         assert record['adapter'] == 'AiocqhttpAdapter'
         assert record['runner'] == 'runner-1'
         assert record['duration_ms'] >= 1000
-        assert record['timestamp'] == record['features']['trace']['ended_at']
 
     def test_legacy_string_fields_are_never_null(self):
         trace, _ = get_modules()
@@ -818,9 +837,135 @@ class TestLegacyRecordFields:
             counters.close_trace(binding.state, 'event_done')
         finally:
             trace.unbind_root(binding)
-        record = counters.records[0]
+        record = chains(counters)[0]
         assert record['model_name'] == ''
         assert record['runner'] == ''
         assert record['runner_category'] == ''
         assert isinstance(record['duration_ms'], int) and record['duration_ms'] >= 0
         assert record['pipeline_plugins'] is None
+
+
+class TestNoTraceTtl:
+    def test_nodes_more_than_two_minutes_apart_still_emit(self):
+        trace, _ = get_modules()
+        _, counters = make_counters(trace_config())
+        binding = trace.bind('exec-long')
+        try:
+            counters.record(CONTEXT, **STAGE)
+            # A gap far beyond the old 120s TTL must not sweep the chain: there is
+            # no local trace deadline any more, so both nodes and the terminal
+            # chain are still emitted.
+            binding.state.started_at = (datetime.now(timezone.utc) - timedelta(seconds=200)).isoformat()
+            counters.record(CONTEXT, **{**STAGE, 'operation': 'still.alive'})
+            counters.close_trace(binding.state, 'event_done')
+        finally:
+            trace.unbind_root(binding)
+        rows = nodes(counters)
+        assert [record['seq'] for record in rows] == [0, 1]
+        assert [record['operation'] for record in rows] == ['message.received', 'still.alive']
+        chain = chains(counters)[0]
+        assert chain['stage_count'] == 2
+        assert chain['duration_ms'] >= 120_000
+
+
+class TestFlushDelivery:
+    async def test_rejected_batch_stays_buffered_and_is_retried(self):
+        trace, execution = get_modules()
+        manager = RejectingManager(trace_config())
+        counters = execution.ExecutionCounters(manager)
+        binding = trace.bind('exec-retry')
+        try:
+            counters.record(CONTEXT, **STAGE)
+            assert await counters.flush() is False
+            assert manager.attempts == execution.MAX_FLUSH_ATTEMPTS
+            # The record was never lost: it is still buffered and unsent.
+            assert len(counters.records) == 1 and manager.sent == []
+            manager.rejecting = False
+            assert await counters.flush() is True
+        finally:
+            trace.unbind_root(binding)
+        assert counters.records == []
+        assert [record['event_id'] for record in records_sent(manager)] == ['exec-retry']
+        await counters.shutdown()
+
+    async def test_health_reports_buffered_sent_and_dropped(self):
+        trace, execution = get_modules()
+        _, counters = make_counters(trace_config())
+        ap = make_ap(counters)
+        binding = execution.bind_trace(ap, 'exec-health')
+        try:
+            counters.record(CONTEXT, **STAGE)
+            health = counters.health()
+            assert health['records_buffered'] == 1
+            assert health['records_sent'] == 0
+            assert health['records_dropped'] == 0
+            assert health['executions_in_flight'] == 1
+            await counters.flush()
+            health = counters.health()
+            assert health['records_buffered'] == 0
+            assert health['records_sent'] == 1
+        finally:
+            trace.unbind_root(binding)
+
+        # Overflowing the outbound buffer is surfaced as dropped records.
+        original = execution.MAX_BUFFERED_RECORDS
+        execution.MAX_BUFFERED_RECORDS = 1
+        try:
+            for index in range(3):
+                inner = trace.bind(f'exec-drop-{index}')
+                counters.record(CONTEXT, **STAGE)
+                trace.unbind_root(inner)
+        finally:
+            execution.MAX_BUFFERED_RECORDS = original
+        health = counters.health()
+        assert health['records_dropped'] == 2
+        assert health['records_buffered'] == 1
+        await counters.shutdown()
+
+
+class TestSiblingTaskIsolation:
+    async def test_sibling_stage_scopes_do_not_corrupt_parent_links(self):
+        trace, execution = get_modules()
+        _, counters = make_counters(trace_config())
+        ap = make_ap(counters)
+        opened = {}
+
+        async def work(name):
+            with trace.stage_scope() as node:
+                opened[name] = node
+                counters.record(CONTEXT, **{**STAGE, 'operation': name, 'node': node})
+
+        async def scenario():
+            with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-siblings'):
+                await asyncio.gather(work('alpha'), work('beta'))
+            snapshot = list(counters.records)
+            await counters.shutdown()
+            return snapshot
+
+        records = await scenario()
+        rows = {record['operation']: record for record in records if record['event_type'] == 'execution_node'}
+        assert opened['alpha'] != opened['beta']
+        # Each sibling's step is its own root: neither becomes the other's parent.
+        assert rows['alpha']['node_id'] == opened['alpha']
+        assert rows['beta']['node_id'] == opened['beta']
+        assert rows['alpha']['parent_node_id'] == ''
+        assert rows['beta']['parent_node_id'] == ''
+        assert [record['event_type'] for record in records].count('execution_chain') == 1
+
+
+class TestSamplingShape:
+    def test_platform_prefixed_event_id_is_emitted_at_default_config(self):
+        trace, _ = get_modules()
+        _, counters = make_counters()  # no execution_trace override -> default mode
+        assert counters.trace_mode() == 'all'
+        # The identity is hashed, not parsed: a platform-prefixed id samples the
+        # same way any other id shape does.
+        assert counters._sampling_decision('platform:bot-1:message-1') == ('all', 1, True)
+        binding = trace.bind('platform:bot-1:message-1')
+        try:
+            counters.record(CONTEXT, **STAGE)
+            counters.close_trace(binding.state, 'event_done')
+        finally:
+            trace.unbind_root(binding)
+        assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']
+        assert all(record['event_id'] == 'platform:bot-1:message-1' for record in counters.records)

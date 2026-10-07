@@ -1464,9 +1464,6 @@ class RuntimeMCPSession:
         if query is None:
             return
         try:
-            from langbot.pkg.telemetry import features as telemetry_features
-
-            telemetry_features.increment(query, 'mcp_resource_reads', envelope.get('source') or 'unknown')
             query.variables.setdefault(MCP_RESOURCE_TRACE_QUERY_KEY, []).append(
                 {
                     'server_name': envelope.get('server_name'),

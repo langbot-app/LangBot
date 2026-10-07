@@ -1,22 +1,22 @@
-"""Content-free per-execution traces.
+"""Per-execution telemetry context for the v2 execution chain.
 
-One trace identity is one execution identity: the id a Pipeline query, inbound
-platform event or Agent run is known by, so a stored chain can be joined with
-the Space view of that same execution. Stage records appended under it describe
-how that one execution was routed and processed, using only code-defined
-identifiers. Nothing here is aggregated: a trace is a bounded, ordered sequence
-for one execution.
+One execution identity (a Pipeline query, inbound platform event or Agent run)
+is one chain. The chain is not assembled here: every workflow node is emitted
+by ``telemetry.execution`` the moment it completes, carrying its own identity
+and the identity of the execution it belongs to. This module only holds the
+small execution-scoped context the emitter needs:
 
-Three bounds keep memory independent of traffic volume:
+* the execution state (identity, the once-per-event sampling decision, the
+  execution-scoped display fields);
+* the routing/run identity pinned around the block that produced a node;
+* the open-step stack, which lives in a ContextVar holding *one task's own
+  immutable tuple*. Child tasks inherit a snapshot at creation; no shared
+  mutable stack and no cross-task mirror exists, so sibling tasks can never
+  corrupt each other's parent links.
 
-* ``MAX_STAGES`` stages per trace (further stages are counted, not kept);
-* ``MAX_TRACES`` traces in flight, enforced by the sender that owns the buffer;
-* a wall-clock TTL, enforced by the sender's sweep.
-
-The identity itself lives in a ContextVar so that asynchronous work spawned
-while handling one execution inherits it, mirroring ``telemetry.platform``.
-Cross-task stages (plugin/RPC work with no inherited context) are resolved by
-the owner's execution-id registry instead.
+Cross-task callers (plugin/RPC work with no inherited context) resolve their
+execution through the owner's execution-id registry instead, which only
+carries the execution state - never node payloads.
 """
 
 from __future__ import annotations
@@ -27,64 +27,79 @@ import typing
 from datetime import datetime, timezone
 from uuid import uuid4
 
-MAX_STAGES = 32
-
 _current: contextvars.ContextVar['TraceState | None'] = contextvars.ContextVar('telemetry_trace', default=None)
 _route: contextvars.ContextVar[str] = contextvars.ContextVar('telemetry_trace_route', default='')
 _run: contextvars.ContextVar[str] = contextvars.ContextVar('telemetry_trace_run', default='')
-# Open workflow step nodes, innermost last. Records emitted inside a step carry
-# the innermost node as their ``parent``; the step's own record carries the one
-# below it (its enclosing step), never itself.
-_node: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar('telemetry_trace_node', default=())
+# Open workflow step frames of the current task, innermost last. The tuple is
+# never mutated in place: opening a step publishes a new tuple on this task's
+# context only, and closing it restores the previous one.
+_node: contextvars.ContextVar[tuple['NodeFrame', ...]] = contextvars.ContextVar('telemetry_trace_node', default=())
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class NodeFrame(typing.NamedTuple):
+    """One workflow step open in the task that opened it."""
+
+    node_id: str
+    seq: int
+    started_at: str
+
+
 class TraceState:
-    """Bounded stage buffer for exactly one execution."""
+    """The small per-execution context; node payloads never accumulate here."""
 
     __slots__ = (
-        'trace_id',
-        'execution_id',
-        'started_at',
-        'stages',
-        'dropped_stages',
-        'synthetic',
-        'sequence',
-        'node_sequence',
-        'open_nodes',
+        'event_id',
         'identity',
-        'abandoned',
+        'configured',
+        'mode',
+        'denominator',
+        'emit_nodes',
+        'debug',
+        'origin',
+        'started_at',
+        'node_seq',
+        'root_seen',
+        'stage_count',
+        'dropped_nodes',
+        'last_outcome',
+        'first_error',
         'failure_reason',
+        'runner_failed',
         'closed',
         'adapter',
         'runner',
         'runner_category',
         'model_name',
         'pipeline_plugins',
+        'node_adapter',
+        'node_runner',
     )
 
     def __init__(self, execution_id: str | None = None) -> None:
-        # The execution identity is the trace identity so a stored chain can be
-        # joined to the Space view of that same Pipeline query / event / run.
-        self.execution_id = str(execution_id).strip() if execution_id else ''
-        self.trace_id = self.execution_id or str(uuid4())
-        self.started_at = _now()
-        self.stages: list[dict[str, typing.Any]] = []
-        self.dropped_stages = 0
-        self.synthetic = False
-        self.sequence = 0
-        # Node ids number the workflow steps of this one execution ("n1", "n2"...).
-        self.node_sequence = 0
-        # Mirror of the open step stack, readable from any task: cross-task
-        # observations (plugin/RPC) resolve their parent through this.
-        self.open_nodes: tuple[str, ...] = ()
+        # The execution identity every record of this chain carries.
+        self.event_id = str(execution_id).strip() if execution_id else str(uuid4())
         self.identity: dict[str, str] = {}
-        # Set when the sender refused to buffer this trace: stop appending.
-        self.abandoned = False
+        self.configured = False
+        # Sampling, decided exactly once per event (at ingress or first touch).
+        self.mode = 'all'
+        self.denominator = 1
+        self.emit_nodes = False
+        self.debug = False
+        self.origin = 'platform'
+        self.started_at = _now()
+        self.node_seq = 0
+        self.root_seen = False
+        self.stage_count = 0
+        self.dropped_nodes = 0
+        self.last_outcome = ''
+        self.first_error = ''
         self.failure_reason = ''
+        # Set when a runner node already reported a non-success outcome.
+        self.runner_failed = False
         self.closed = False
         # Execution-scoped record fields attached by the owning lane when known.
         self.adapter = ''
@@ -92,54 +107,40 @@ class TraceState:
         self.runner_category = ''
         self.model_name = ''
         self.pipeline_plugins: typing.Any = None
+        # First adapter/runner seen on a node, used for the chain record.
+        self.node_adapter = ''
+        self.node_runner = ''
 
-    def append(
+    def allocate_seq(self) -> int:
+        """Mint the next chain-local node order."""
+        seq = self.node_seq
+        self.node_seq += 1
+        return seq
+
+    def note_node(
         self,
         *,
-        family: str,
-        operation: str,
-        mode: str,
-        adapter: str,
-        runner: str,
         outcome: str,
-        synthetic: bool,
+        adapter: str = '',
+        runner: str = '',
+        family: str = '',
         error: str = '',
-        node: str = '',
-        parent: str = '',
     ) -> None:
-        if len(self.stages) >= MAX_STAGES:
-            self.dropped_stages += 1
-            return
-        seen = _now()
-        entry = {
-            'family': family,
-            'operation': operation,
-            'mode': mode,
-            'adapter': adapter,
-            'runner': runner,
-            'outcome': outcome,
-            'synthetic': bool(synthetic),
-            'seq': self.sequence,
-            'route_ref': _route.get(),
-            'run_id': _run.get(),
-            'first_seen': seen,
-            'last_seen': seen,
-            'error': error,
-        }
-        # Only workflow steps carry these; legacy records stay byte-identical.
-        if node:
-            entry['node'] = node
-        if parent:
-            entry['parent'] = parent
-        self.stages.append(entry)
-        self.sequence += 1
-        if synthetic:
-            self.synthetic = True
-
-    def allocate_node(self) -> str:
-        """Mint the next step-node id for this execution ("n1", "n2", ...)."""
-        self.node_sequence += 1
-        return f'n{self.node_sequence}'
+        """Remember only what the terminal chain record needs from a node."""
+        self.stage_count += 1
+        self.last_outcome = outcome or 'unknown'
+        if adapter and not self.node_adapter:
+            self.node_adapter = adapter
+        if runner and not self.node_runner:
+            self.node_runner = runner
+        if family == 'runner' and outcome not in ('success', 'skipped'):
+            # The lane records its own failed runner step only when the runner
+            # orchestrator has not already landed one.
+            self.runner_failed = True
+        if outcome in ('failed', 'cancelled', 'timeout') and error and not self.first_error:
+            # The chain must explain itself even when the break was reported as
+            # a failed node rather than as an exception at the boundary.
+            self.first_error = error
 
     def mark_failure(self, reason: str) -> None:
         """Remember why this chain broke so the payload can explain itself."""
@@ -147,18 +148,10 @@ class TraceState:
             self.failure_reason = reason
 
     def outcome(self) -> str:
-        """Terminal outcome of this chain, for space-side display.
-
-        A chain that carries a failure reason never reports ``success``: the
-        reason is the point of the trace.
-        """
-        if self.stages:
-            last = self.stages[-1]['outcome']
-        else:
-            last = 'unknown'
-        if self.failure_reason and last in ('success', 'skipped', 'unknown'):
+        """Terminal outcome of this chain; a broken chain never reports success."""
+        if self.failure_reason and self.last_outcome in ('', 'success', 'skipped', 'unknown'):
             return 'failed'
-        return last
+        return self.last_outcome or 'unknown'
 
 
 class TraceBinding(typing.NamedTuple):
@@ -168,9 +161,9 @@ class TraceBinding(typing.NamedTuple):
 
 
 def bind(execution_id: str | None = None) -> TraceBinding:
-    """Start a trace unless one is already in flight in this context.
+    """Start a chain unless one is already in flight in this context.
 
-    The execution id becomes the trace id only when this call starts the trace;
+    The execution id becomes the chain identity only when this call starts it;
     a nested boundary keeps the enclosing execution's identity.
     """
     existing = _current.get()
@@ -181,7 +174,7 @@ def bind(execution_id: str | None = None) -> TraceBinding:
 
 
 def unbind(binding: TraceBinding) -> bool:
-    """Detach this binding. Returns True when this caller owns the trace."""
+    """Detach this binding. Returns True when this caller owns the chain."""
     if binding.token is not None:
         try:
             _current.reset(binding.token)
@@ -192,7 +185,7 @@ def unbind(binding: TraceBinding) -> bool:
 
 
 def unbind_root(binding: TraceBinding) -> bool:
-    """Detach only when this caller started the trace, else leave it in place."""
+    """Detach only when this caller started the chain, else leave it in place."""
     if not binding.created:
         return False
     return unbind(binding)
@@ -202,39 +195,64 @@ def current() -> TraceState | None:
     return _current.get()
 
 
+def node_stack() -> tuple[NodeFrame, ...]:
+    """This task's own open-step frames, innermost last."""
+    return _node.get()
+
+
 def current_parent() -> str:
     """The step node that records emitted right now attach to ('' when none)."""
     stack = _node.get()
-    return stack[-1] if stack else ''
+    return stack[-1].node_id if stack else ''
 
 
 def enclosing_parent() -> str:
     """The step enclosing the innermost open one; '' when it is a root step."""
     stack = _node.get()
-    return stack[-2] if len(stack) > 1 else ''
+    return stack[-2].node_id if len(stack) > 1 else ''
+
+
+def resolve_node(
+    state: TraceState,
+    node: str,
+    fallback_started_at: str,
+) -> tuple[str, int, str, str]:
+    """Resolve one record to ``(node_id, seq, started_at, parent_node_id)``.
+
+    A record stamped with a ``node`` the calling task has open reuses that
+    step's identity, order and start time; anything else (a plain observation,
+    or a node opened by another task) is a fresh node under this task's
+    innermost open step.
+    """
+    stack = _node.get()
+    if node:
+        for index in range(len(stack) - 1, -1, -1):
+            frame = stack[index]
+            if frame.node_id == node:
+                parent = stack[index - 1].node_id if index > 0 else ''
+                return frame.node_id, frame.seq, frame.started_at, parent
+    parent = stack[-1].node_id if stack else ''
+    return node or uuid4().hex, state.allocate_seq(), fallback_started_at, parent
 
 
 @contextlib.contextmanager
 def stage_scope() -> typing.Iterator[str]:
     """Open one workflow step node for the duration of the block.
 
-    Allocates a node id unique within the execution, publishes it as the current
-    parent so that nested observations recorded inside the block attach to it,
-    and yields that id so the step's own records can be stamped with ``node=``.
-    Outside any trace nothing is allocated and the empty id is yielded.
+    Allocates a globally unique node id and the chain-local order, publishes the
+    frame on this task's own stack so nested observations attach to it as their
+    parent, and yields the node id so the step's own record can be stamped with
+    ``node=``. Outside any execution nothing is allocated and '' is yielded.
     """
     state = _current.get()
     if state is None:
         yield ''
         return
-    node = state.allocate_node()
-    previous_open = state.open_nodes
-    state.open_nodes = previous_open + (node,)
-    token = _node.set(_node.get() + (node,))
+    frame = NodeFrame(uuid4().hex, state.allocate_seq(), _now())
+    token = _node.set(_node.get() + (frame,))
     try:
-        yield node
+        yield frame.node_id
     finally:
-        state.open_nodes = previous_open
         try:
             _node.reset(token)
         except (ValueError, RuntimeError):
@@ -258,7 +276,7 @@ def reset_run(token: typing.Any) -> None:
 
 @contextlib.contextmanager
 def scope(*, route_ref: str | None = None) -> typing.Iterator[None]:
-    """Pin routing identity for stages recorded inside this block."""
+    """Pin routing identity for nodes recorded inside this block."""
     if not route_ref:
         yield
         return
@@ -270,3 +288,11 @@ def scope(*, route_ref: str | None = None) -> typing.Iterator[None]:
             _route.reset(token)
         except (ValueError, RuntimeError):
             pass
+
+
+def current_route() -> str:
+    return _route.get()
+
+
+def current_run() -> str:
+    return _run.get()

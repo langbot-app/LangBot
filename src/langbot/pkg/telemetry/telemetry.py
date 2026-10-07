@@ -12,9 +12,6 @@ from ..utils import httpclient
 from .execution import ExecutionCounters
 
 
-_MAX_INFLIGHT_TELEMETRY_TASKS = 8
-
-
 class TelemetryManager:
     """TelemetryManager handles sending telemetry for a given application instance.
 
@@ -27,36 +24,18 @@ class TelemetryManager:
         self.ap = ap
 
         self.telemetry_config: dict[str, typing.Any] = {}
-        self.send_tasks: list[asyncio.Task] = []
         self._client: httpx.AsyncClient | None = None
         self.execution = ExecutionCounters(self)
 
     async def initialize(self):
         self.telemetry_config = self.ap.instance_config.data.get('space', {})
 
-    async def start_send_task(self, payload: dict):
-        self.send_tasks = [task for task in self.send_tasks if not task.done()]
-        if len(self.send_tasks) >= _MAX_INFLIGHT_TELEMETRY_TASKS:
-            self.ap.logger.debug('Telemetry queue is full; dropping best-effort event')
-            return
-        task = asyncio.create_task(self.send(payload))
-        self.send_tasks.append(task)
-        task.add_done_callback(self._send_task_done)
-
-    def _send_task_done(self, task: asyncio.Task) -> None:
-        try:
-            self.send_tasks.remove(task)
-        except ValueError:
-            pass
+    def health(self) -> dict:
+        """Telemetry health for the instance liveness snapshot."""
+        return self.execution.health()
 
     async def shutdown(self) -> None:
         await self.execution.shutdown()
-        tasks = list(self.send_tasks)
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        self.send_tasks.clear()
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -95,45 +74,53 @@ class TelemetryManager:
             url = server.rstrip('/') + '/api/v1/telemetry'
 
             try:
-                # Sanitize payload so string fields are strings and not nulls
+                # Sanitize payload so string fields are strings and not nulls.
+                # A record batch is an envelope of whole execution records; it
+                # carries no top-level record fields, so only a single-record
+                # payload gets the legacy defaults.
                 sanitized = dict(payload)
-                if 'query_id' in sanitized:
-                    try:
-                        sanitized['query_id'] = '' if sanitized['query_id'] is None else str(sanitized['query_id'])
-                    except Exception:
-                        sanitized['query_id'] = str(sanitized.get('query_id', ''))
+                if isinstance(sanitized.get('records'), list):
+                    sanitized['records'] = [item for item in sanitized['records'] if isinstance(item, dict)]
+                else:
+                    if 'query_id' in sanitized:
+                        try:
+                            sanitized['query_id'] = (
+                                '' if sanitized['query_id'] is None else str(sanitized['query_id'])
+                            )
+                        except Exception:
+                            sanitized['query_id'] = str(sanitized.get('query_id', ''))
 
-                for sfield in (
-                    'adapter',
-                    'runner',
-                    'runner_category',
-                    'model_name',
-                    'version',
-                    'edition',
-                    'error',
-                    'timestamp',
-                    'event_type',
-                ):
-                    if sfield not in sanitized:
-                        continue
-                    v = sanitized.get(sfield)
-                    sanitized[sfield] = '' if v is None else str(v)
+                    for sfield in (
+                        'adapter',
+                        'runner',
+                        'runner_category',
+                        'model_name',
+                        'version',
+                        'edition',
+                        'error',
+                        'timestamp',
+                        'event_type',
+                    ):
+                        if sfield not in sanitized:
+                            continue
+                        v = sanitized.get(sfield)
+                        sanitized[sfield] = '' if v is None else str(v)
 
-                # event_type defaults to 'query' for backward compatibility
-                if not sanitized.get('event_type'):
-                    sanitized['event_type'] = 'query'
+                    # event_type defaults to 'query' for backward compatibility
+                    if not sanitized.get('event_type'):
+                        sanitized['event_type'] = 'query'
 
-                # features must be a JSON object
-                if 'features' in sanitized and not isinstance(sanitized['features'], dict):
-                    sanitized['features'] = {}
+                    # features must be a JSON object
+                    if 'features' in sanitized and not isinstance(sanitized['features'], dict):
+                        sanitized['features'] = {}
 
-                if 'duration_ms' in sanitized:
-                    try:
-                        sanitized['duration_ms'] = (
-                            int(sanitized['duration_ms']) if sanitized['duration_ms'] is not None else 0
-                        )
-                    except Exception:
-                        sanitized['duration_ms'] = 0
+                    if 'duration_ms' in sanitized:
+                        try:
+                            sanitized['duration_ms'] = (
+                                int(sanitized['duration_ms']) if sanitized['duration_ms'] is not None else 0
+                            )
+                        except Exception:
+                            sanitized['duration_ms'] = 0
 
                 async with self._client_context() as client:
                     try:

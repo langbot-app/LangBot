@@ -13,6 +13,7 @@ credentials.
 from __future__ import annotations
 
 import asyncio
+import time
 import typing
 from datetime import datetime, timezone
 
@@ -36,8 +37,64 @@ class WorkspaceResourceSnapshot(typing.TypedDict):
     mcp_server_count: int
     extension_count: int
     skill_count: int
+    agent_count: int
+    event_processor_count: int
+    plugin_processor_count: int
+    event_binding_count: int
     adapters: list[str]
     execution_generation: int
+
+
+# Agent rows are configuration, not runtime registries, so a Workspace count
+# needs one scoped query. The heartbeat runs every five minutes on Cloud; a
+# one-hour cache keeps the cost at one bounded query per Workspace per hour
+# instead of one per cycle. Unavailable counts stay -1, never a fake zero.
+_AGENT_COUNT_CACHE_TTL_SECONDS = 3600
+_agent_count_cache: dict[str, tuple[float, dict[str, int]]] = {}
+
+
+async def _workspace_agent_kind_counts(ap: core_app.Application, workspace_uuid: str) -> dict[str, int]:
+    """Count one Workspace's Agents per ``kind``; empty when unavailable."""
+    if not workspace_uuid:
+        return {}
+    now = time.monotonic()
+    cached = _agent_count_cache.get(workspace_uuid)
+    if cached is not None and cached[0] > now:
+        return dict(cached[1])
+    counts: dict[str, int] = {}
+    try:
+        from ..entity.persistence import agent as persistence_agent
+
+        statement = sqlalchemy.select(persistence_agent.Agent.kind, sqlalchemy.func.count()).group_by(
+            persistence_agent.Agent.kind
+        )
+        tenant_uow = getattr(ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(workspace_uuid):
+                result = await ap.persistence_mgr.execute_async(statement)
+        else:
+            result = await ap.persistence_mgr.execute_async(statement)
+        for kind, count in result.all():
+            counts[str(kind or 'agent')] = int(count or 0)
+    except Exception:
+        counts = {}
+    _agent_count_cache[workspace_uuid] = (now + _AGENT_COUNT_CACHE_TTL_SECONDS, dict(counts))
+    return counts
+
+
+def _bot_processor_counts(bots) -> tuple[int, int]:
+    """Count plugin-processor subscriptions and event bindings across bots."""
+    processors = 0
+    bindings = 0
+    for bot in bots:
+        entity = getattr(bot, 'bot_entity', bot)
+        declared_processors = getattr(entity, 'plugin_processors', None)
+        if isinstance(declared_processors, list):
+            processors += len(declared_processors)
+        declared_bindings = getattr(entity, 'event_bindings', None)
+        if isinstance(declared_bindings, list):
+            bindings += len(declared_bindings)
+    return processors, bindings
 
 
 async def _count(
@@ -81,6 +138,10 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
             'mcp_server_count': 0,
             'extension_count': 0,
             'skill_count': 0,
+            'agent_count': -1,
+            'event_processor_count': -1,
+            'plugin_processor_count': 0,
+            'event_binding_count': 0,
             'adapters': [],
             'execution_generation': binding.placement_generation,
         }
@@ -91,6 +152,9 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     for key, bot in getattr(ap.platform_mgr, '_bots_by_key', {}).items():
         if len(key) >= 2 and key[1] in counts:
             counts[key[1]]['bot_count'] += 1
+            processors, bindings = _bot_processor_counts([bot])
+            counts[key[1]]['plugin_processor_count'] += processors
+            counts[key[1]]['event_binding_count'] += bindings
             adapter = getattr(bot, 'adapter', None)
             if adapter is not None and getattr(bot, 'enable', False):
                 adapter_sets[key[1]].add(adapter.__class__.__name__)
@@ -113,6 +177,10 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     for workspace_uuid, resource in counts.items():
         resource['extension_count'] = resource['plugin_count'] + resource['mcp_server_count']
         resource['adapters'] = sorted(adapter_sets[workspace_uuid])
+        agent_counts = await _workspace_agent_kind_counts(ap, workspace_uuid)
+        if agent_counts:
+            resource['agent_count'] = int(agent_counts.get('agent', 0))
+            resource['event_processor_count'] = int(agent_counts.get('event_processor', 0))
     return list(counts.values())
 
 
@@ -163,6 +231,9 @@ async def build_heartbeat_payload(
             features['bot_count'] = len(platform_mgr.bots)
             adapters = sorted({bot.adapter.__class__.__name__ for bot in enabled_bots if getattr(bot, 'adapter', None)})
             features['adapters'] = adapters
+            processors, bindings = _bot_processor_counts(platform_mgr.bots)
+            features['plugin_processor_count'] = processors
+            features['event_binding_count'] = bindings
     except Exception:
         pass
 
@@ -205,6 +276,13 @@ async def build_heartbeat_payload(
             features['skill_count'] = skill_mgr.total_cached_skill_count()
     except Exception:
         pass
+
+    # Agent processors: configuration rows, so one scoped count per Workspace.
+    # The Cloud snapshot supplies these already and overrides below.
+    if workspace_resource is None:
+        agent_counts = await _workspace_agent_kind_counts(ap, workspace_uuid)
+        features['agent_count'] = int(agent_counts.get('agent', 0)) if agent_counts else -1
+        features['event_processor_count'] = int(agent_counts.get('event_processor', 0)) if agent_counts else -1
 
     if workspace_resource is not None:
         features.update({key: value for key, value in workspace_resource.items() if key != 'workspace_uuid'})

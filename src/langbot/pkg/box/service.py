@@ -20,7 +20,6 @@ from langbot_plugin.box.security import BOX_SHARED_WORKSPACE_PROBE_PREFIX
 from .admission import SandboxAdmissionController, require_cloud_admission_policy
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
-from ..telemetry import features as telemetry_features
 from ..utils import httpclient
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
@@ -636,7 +635,6 @@ class BoxService:
             f'query_id={query.query_id} '
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
-        telemetry_features.increment(query, 'sandbox', 'execs')
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
@@ -2011,7 +2009,6 @@ class BoxService:
     # ── Observability ─────────────────────────────────────────────────
 
     def _record_error(self, exc: Exception, query: pipeline_query.Query):
-        telemetry_features.increment(query, 'sandbox', 'errors')
         self._recent_errors.append(
             {
                 'timestamp': _dt.datetime.now(_UTC).isoformat(),

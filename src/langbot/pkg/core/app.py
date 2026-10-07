@@ -309,6 +309,14 @@ class Application:
         if runtime_ops_reporter is not None:
             runtime_ops_stats = runtime_ops_reporter.get_stats()
 
+        telemetry_stats = {}
+        telemetry_health = getattr(self.telemetry, 'health', None)
+        if callable(telemetry_health):
+            try:
+                telemetry_stats = telemetry_health()
+            except Exception:
+                telemetry_stats = {}
+
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
@@ -320,7 +328,7 @@ class Application:
             'models': model_stats,
             'runtimes': runtime_stats,
             'runtime_ops': runtime_ops_stats,
-            'telemetry_tasks': len(getattr(self.telemetry, 'send_tasks', ())),
+            'telemetry': telemetry_stats,
         }
 
     async def initialize(self):
