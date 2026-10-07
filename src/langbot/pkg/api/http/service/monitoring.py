@@ -10,7 +10,10 @@ from sqlalchemy.dialects import postgresql as postgresql_dialect
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 
 from ....core import app
+from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import monitoring as persistence_monitoring
+from ....entity.persistence import agent_run as persistence_agent_run
+from ....entity.persistence import agent_interaction as persistence_agent_interaction
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
@@ -28,6 +31,76 @@ _HARD_MAX_MONITORING_TIMESERIES_BUCKETS = 10000
 _HARD_MAX_MONITORING_OFFSET = 10000000
 _DEFAULT_CLEANUP_BATCHES_PER_TABLE = 4
 _HARD_MAX_CLEANUP_BATCHES_PER_TABLE = 100
+
+# Canonical execution status groups shared by the agent ledger and pipeline query
+# records so both object types can be summarised with one vocabulary.
+_AGENT_STATUS_GROUP = {
+    'completed': 'completed',
+    'failed': 'failed',
+    'timeout': 'failed',
+    'cancelled': 'cancelled',
+    'created': 'queued',
+    'queued': 'queued',
+    'claimed': 'running',
+    'running': 'running',
+}
+_PIPELINE_STATUS_GROUP = {
+    'success': 'completed',
+    'error': 'failed',
+    'pending': 'running',
+    'discarded': 'ignored',
+    'not_matched': 'ignored',
+}
+
+
+def _status_group(status: str, source: str) -> str:
+    table = _AGENT_STATUS_GROUP if source == 'agent' else _PIPELINE_STATUS_GROUP
+    return table.get(status, status)
+
+
+def _epoch_ms(value: datetime.datetime | None) -> int | None:
+    """Epoch milliseconds for a DB timestamp, treating naive values as UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=datetime.timezone.utc)
+    return int(round(value.timestamp() * 1000))
+
+
+def _percentile_ms(values: list[float], fraction: float) -> int | None:
+    """Nearest-rank percentile (ms) over a non-empty, prefix-sorted list."""
+    if not values:
+        return None
+    rank = max(1, min(len(values), int(round(fraction * len(values)))))
+    return int(round(values[rank - 1]))
+
+
+def _collect_text(node, out: list[str], depth: int = 0) -> None:
+    """Best-effort extraction of human text from a serialised message chain."""
+    if depth > 6:
+        return
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == 'text' and isinstance(value, str):
+                out.append(value)
+            elif isinstance(value, (dict, list)):
+                _collect_text(value, out, depth + 1)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_text(item, out, depth + 1)
+
+
+def _message_preview(raw: str | None, limit: int = 160) -> str:
+    if not raw:
+        return ''
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw[:limit]
+    parts: list[str] = []
+    _collect_text(parsed, parts)
+    text = ' '.join(part.strip() for part in parts if part.strip())
+    return (text or raw)[:limit]
 
 
 def _normalize_user_id(value: str | int | None) -> str | None:
@@ -885,6 +958,10 @@ class MonitoringService:
         active_sessions_result = await self.ap.persistence_mgr.execute_async(active_session_query)
         active_sessions = active_sessions_result.scalar() or 0
 
+        # Execution-first KPI values (runs + pipeline queries, latency, token
+        # coverage) are served by `get_executions`, which applies the execution
+        # view filters. This endpoint stays the message/traffic rollup so the
+        # dashboard does not compute the same rollup twice per page load.
         return {
             'total_messages': total_messages,
             'llm_calls': llm_calls,
@@ -893,6 +970,527 @@ class MonitoringService:
             'success_rate': round(success_rate, 2),
             'active_sessions': active_sessions,
         }
+
+    # ========== Execution view ==========
+
+    def _agent_run_conditions(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        debug: bool | None = None,
+    ) -> list:
+        AgentRun = persistence_agent_run.AgentRun
+        conditions = [AgentRun.workspace_id == workspace_uuid]
+        if bot_ids:
+            conditions.append(AgentRun.bot_id.in_(bot_ids))
+        if agent_ids:
+            conditions.append(AgentRun.agent_id.in_(agent_ids))
+        if statuses is not None:
+            conditions.append(AgentRun.status.in_(statuses) if statuses else sqlalchemy.false())
+        if start_time:
+            conditions.append(AgentRun.created_at >= start_time)
+        if end_time:
+            conditions.append(AgentRun.created_at <= end_time)
+        if debug is not None:
+            debug_condition = sqlalchemy.or_(
+                AgentRun.binding_id.like('debug:%'),
+                AgentRun.conversation_id.like('debug:%'),
+            )
+            conditions.append(debug_condition if debug else sqlalchemy.not_(debug_condition))
+        return conditions
+
+    def _pipeline_execution_conditions(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+    ) -> list:
+        MonitoringMessage = persistence_monitoring.MonitoringMessage
+        conditions = [
+            MonitoringMessage.workspace_uuid == workspace_uuid,
+            # Assistant replies are outputs of a query, not an execution of their own.
+            sqlalchemy.or_(MonitoringMessage.role.is_(None), MonitoringMessage.role != 'assistant'),
+        ]
+        if bot_ids:
+            conditions.append(MonitoringMessage.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(MonitoringMessage.pipeline_id.in_(pipeline_ids))
+        if statuses is not None:
+            conditions.append(MonitoringMessage.status.in_(statuses) if statuses else sqlalchemy.false())
+        if start_time:
+            conditions.append(MonitoringMessage.timestamp >= start_time)
+        if end_time:
+            conditions.append(MonitoringMessage.timestamp <= end_time)
+        return conditions
+
+    @staticmethod
+    def _raw_agent_statuses(groups: list[str] | None) -> list[str] | None:
+        """Raw agent statuses for a group filter; empty means "no group applies"."""
+        if not groups:
+            return None
+        raw: list[str] = []
+        for group in groups:
+            raw.extend(status for status, mapped in _AGENT_STATUS_GROUP.items() if mapped == group)
+        return raw
+
+    @staticmethod
+    def _raw_pipeline_statuses(groups: list[str] | None) -> list[str] | None:
+        """Raw pipeline statuses for a group filter; empty means "no group applies"."""
+        if not groups:
+            return None
+        raw: list[str] = []
+        for group in groups:
+            raw.extend(status for status, mapped in _PIPELINE_STATUS_GROUP.items() if mapped == group)
+        return raw
+
+    @staticmethod
+    def _model_rows(result) -> list:
+        """Rows of one ``select(Model)`` executed through ``execute_async``.
+
+        The Core keeps the connection result contract, where ``select(Model)``
+        yields a *flat* row of the model's columns (``row.uuid``, ``row.status``)
+        rather than a one-item ORM row. ``.scalars()`` would therefore return the
+        first column - the id - instead of the row, so the rows are taken as-is.
+        """
+        return list(result.all())
+
+    @staticmethod
+    def _deserialize_json(raw: str | None) -> dict:
+        if not raw:
+            return {}
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    async def _agent_names(self, workspace_uuid: str, rows: list) -> dict[str, str]:
+        """The processor name of every Agent run in one page, in one query.
+
+        A run stores the Agent it executed as a uuid; the list has to name the
+        processor, so the names are resolved for the whole page at once.
+        """
+        agent_ids = {row.agent_id for row in rows if row.agent_id}
+        if not agent_ids:
+            return {}
+        Agent = persistence_agent.Agent
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Agent.uuid, Agent.name).where(
+                sqlalchemy.and_(
+                    Agent.workspace_uuid == workspace_uuid,
+                    Agent.uuid.in_(agent_ids),
+                )
+            )
+        )
+        return {row.uuid: row.name for row in self._model_rows(result)}
+
+    def _serialize_agent_execution(self, row, agent_names: dict[str, str] | None = None) -> dict:
+        metadata = self._deserialize_json(row.metadata_json)
+        duration_ms = None
+        if row.started_at and row.finished_at:
+            duration_ms = int(round((row.finished_at - row.started_at).total_seconds() * 1000))
+        created_at_ms = _epoch_ms(row.created_at)
+        started_at_ms = _epoch_ms(row.started_at)
+        finished_at_ms = _epoch_ms(row.finished_at)
+        is_debug = str(row.binding_id or '').startswith('debug:') or str(row.conversation_id or '').startswith('debug:')
+        return {
+            'source': 'agent',
+            'id': row.run_id,
+            'event_id': row.event_id,
+            'status': row.status,
+            'status_group': _status_group(row.status, 'agent'),
+            'title': metadata.get('event_type') or row.queue_name or row.runner_id,
+            'target_kind': 'agent' if row.agent_id else 'processor',
+            'target_id': row.agent_id or row.binding_id,
+            'target_name': metadata.get('agent_name')
+            or metadata.get('target_name')
+            or (agent_names or {}).get(row.agent_id or ''),
+            'bot_id': row.bot_id,
+            'bot_name': metadata.get('bot_name'),
+            'pipeline_id': None,
+            'pipeline_name': None,
+            'runner_id': row.runner_id,
+            'conversation_id': row.conversation_id,
+            'session_id': row.conversation_id,
+            'created_at_ms': created_at_ms,
+            'started_at_ms': started_at_ms,
+            'finished_at_ms': finished_at_ms,
+            'duration_ms': duration_ms,
+            'usage': self._deserialize_json(row.usage_json) or None,
+            'cost': self._deserialize_json(row.cost_json) or None,
+            'queue_name': row.queue_name,
+            'debug': is_debug,
+            'has_error': row.status in {'failed', 'timeout'},
+        }
+
+    def _serialize_pipeline_execution(self, row) -> dict:
+        created_at_ms = _epoch_ms(row.timestamp)
+        return {
+            'source': 'pipeline',
+            'id': row.id,
+            'event_id': None,
+            'status': row.status,
+            'status_group': _status_group(row.status, 'pipeline'),
+            'title': _message_preview(row.message_content),
+            'target_kind': 'pipeline',
+            'target_id': row.pipeline_id,
+            'target_name': row.pipeline_name,
+            'bot_id': row.bot_id,
+            'bot_name': row.bot_name,
+            'pipeline_id': row.pipeline_id,
+            'pipeline_name': row.pipeline_name,
+            'runner_id': row.runner_name,
+            'conversation_id': None,
+            'session_id': row.session_id,
+            'created_at_ms': created_at_ms,
+            'started_at_ms': None,
+            'finished_at_ms': None,
+            'duration_ms': None,
+            'usage': None,
+            'cost': None,
+            'queue_name': None,
+            'debug': False,
+            'has_error': row.status == 'error',
+            'platform': row.platform,
+            'user_id': row.user_id,
+            'user_name': row.user_name,
+        }
+
+    async def _get_token_coverage(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+    ) -> dict:
+        LLMCall = persistence_monitoring.MonitoringLLMCall
+        conditions = [LLMCall.workspace_uuid == workspace_uuid]
+        if bot_ids:
+            conditions.append(LLMCall.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(LLMCall.pipeline_id.in_(pipeline_ids))
+        if start_time:
+            conditions.append(LLMCall.timestamp >= start_time)
+        if end_time:
+            conditions.append(LLMCall.timestamp <= end_time)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(LLMCall.id),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.total_tokens > 0, 1), else_=0)),
+            ).where(sqlalchemy.and_(*conditions))
+        )
+        row = result.first()
+        calls, total, calls_with_usage = row if row else (0, 0, 0)
+        return {
+            'total_tokens': int(total or 0),
+            'calls': calls or 0,
+            'calls_with_usage': calls_with_usage or 0,
+        }
+
+    async def _get_execution_summary(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+    ) -> dict:
+        AgentRun = persistence_agent_run.AgentRun
+        run_conditions = self._agent_run_conditions(
+            workspace_uuid, bot_ids=bot_ids, start_time=start_time, end_time=end_time
+        )
+        run_status_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.status, sqlalchemy.func.count(AgentRun.id))
+            .where(sqlalchemy.and_(*run_conditions))
+            .group_by(AgentRun.status)
+        )
+        agent_counts = {row[0]: row[1] for row in run_status_result.all()}
+        agent_total = sum(agent_counts.values())
+
+        debug_count_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count(AgentRun.id)).where(
+                sqlalchemy.and_(
+                    *run_conditions,
+                    sqlalchemy.or_(
+                        AgentRun.binding_id.like('debug:%'),
+                        AgentRun.conversation_id.like('debug:%'),
+                    ),
+                )
+            )
+        )
+        debug_count = debug_count_result.scalar() or 0
+
+        # Percentiles are computed in Python, so the sample must stay bounded:
+        # take the most recent completed runs of the window and label the count
+        # so the UI can state how many runs the numbers rest on.
+        timing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.started_at, AgentRun.finished_at)
+            .where(
+                sqlalchemy.and_(
+                    *run_conditions,
+                    AgentRun.status == 'completed',
+                    AgentRun.started_at.is_not(None),
+                    AgentRun.finished_at.is_not(None),
+                )
+            )
+            .order_by(AgentRun.created_at.desc())
+            .limit(self._detail_limit())
+        )
+        durations = sorted((row[1] - row[0]).total_seconds() * 1000 for row in timing_result.all() if row[0] and row[1])
+
+        pipeline_conditions = self._pipeline_execution_conditions(
+            workspace_uuid, bot_ids=bot_ids, pipeline_ids=pipeline_ids, start_time=start_time, end_time=end_time
+        )
+        pipeline_status_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                persistence_monitoring.MonitoringMessage.status,
+                sqlalchemy.func.count(persistence_monitoring.MonitoringMessage.id),
+            )
+            .where(sqlalchemy.and_(*pipeline_conditions))
+            .group_by(persistence_monitoring.MonitoringMessage.status)
+        )
+        pipeline_counts = {row[0]: row[1] for row in pipeline_status_result.all()}
+        pipeline_total = sum(pipeline_counts.values())
+
+        # Pending interactions are gated by the same bot/window scope as the runs
+        # so "waiting input" cannot drift from the rest of the card.
+        waiting_conditions = [
+            persistence_agent_interaction.AgentInteraction.workspace_id == workspace_uuid,
+            persistence_agent_interaction.AgentInteraction.status == 'pending',
+        ]
+        if bot_ids:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.bot_id.in_(bot_ids))
+        if start_time:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.created_at >= start_time)
+        if end_time:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.created_at <= end_time)
+        waiting_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count(persistence_agent_interaction.AgentInteraction.id)).where(
+                sqlalchemy.and_(*waiting_conditions)
+            )
+        )
+        waiting = waiting_result.scalar() or 0
+
+        by_status: dict[str, int] = {}
+        for status, count in agent_counts.items():
+            group = _status_group(status, 'agent')
+            by_status[group] = by_status.get(group, 0) + count
+        for status, count in pipeline_counts.items():
+            group = _status_group(status, 'pipeline')
+            by_status[group] = by_status.get(group, 0) + count
+
+        completed = by_status.get('completed', 0)
+        failed = by_status.get('failed', 0)
+        denominator = completed + failed
+        total = agent_total + pipeline_total
+        return {
+            'total': total,
+            'by_source': {'agent': agent_total, 'pipeline': pipeline_total},
+            'by_status': by_status,
+            'completed': completed,
+            'failed': failed,
+            'running': by_status.get('running', 0),
+            'queued': by_status.get('queued', 0),
+            'cancelled': by_status.get('cancelled', 0),
+            'ignored': by_status.get('ignored', 0),
+            'waiting': waiting,
+            'success_rate': round(completed / denominator * 100, 2) if denominator > 0 else None,
+            'denominator': denominator,
+            'p50_duration_ms': _percentile_ms(durations, 0.5),
+            'p95_duration_ms': _percentile_ms(durations, 0.95),
+            'duration_sample': len(durations),
+            'debug': debug_count,
+            'real': total - debug_count,
+        }
+
+    async def get_executions(
+        self,
+        context: TenantContext,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        source: str = 'all',
+        mode: str = 'all',
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """List executions from both object types (agent runs and pipeline queries)."""
+        workspace_uuid = require_workspace_uuid(context)
+        limit, offset = self.normalize_page_window(limit, offset)
+        fetch_limit = min(limit + offset, self._configured_query_limit('page_rows', 1000, 5000))
+        if source not in {'all', 'agent', 'pipeline'}:
+            source = 'all'
+        if mode not in {'all', 'real', 'debug'}:
+            mode = 'all'
+        debug = None if mode == 'all' else (mode == 'debug')
+
+        include_agent = source in {'all', 'agent'} and (not pipeline_ids or bool(agent_ids))
+        include_pipeline = source in {'all', 'pipeline'} and (not agent_ids or bool(pipeline_ids))
+
+        items: list[dict] = []
+        total = 0
+
+        if include_agent:
+            run_conditions = self._agent_run_conditions(
+                workspace_uuid,
+                bot_ids=bot_ids,
+                agent_ids=agent_ids,
+                statuses=self._raw_agent_statuses(statuses),
+                start_time=start_time,
+                end_time=end_time,
+                debug=debug,
+            )
+            AgentRun = persistence_agent_run.AgentRun
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(AgentRun)
+                .where(sqlalchemy.and_(*run_conditions))
+                .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+                .limit(fetch_limit)
+            )
+            rows = self._model_rows(result)
+            count_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count(AgentRun.id)).where(sqlalchemy.and_(*run_conditions))
+            )
+            total += count_result.scalar() or 0
+            agent_names = await self._agent_names(workspace_uuid, rows)
+            items.extend(self._serialize_agent_execution(row, agent_names=agent_names) for row in rows)
+
+        if include_pipeline and (debug is None or debug is False):
+            message_conditions = self._pipeline_execution_conditions(
+                workspace_uuid,
+                bot_ids=bot_ids,
+                pipeline_ids=pipeline_ids,
+                statuses=self._raw_pipeline_statuses(statuses),
+                start_time=start_time,
+                end_time=end_time,
+            )
+            MonitoringMessage = persistence_monitoring.MonitoringMessage
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(MonitoringMessage)
+                .where(sqlalchemy.and_(*message_conditions))
+                .order_by(MonitoringMessage.timestamp.desc())
+                .limit(fetch_limit)
+            )
+            rows = self._model_rows(result)
+            count_result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count(MonitoringMessage.id)).where(
+                    sqlalchemy.and_(*message_conditions)
+                )
+            )
+            total += count_result.scalar() or 0
+            items.extend(self._serialize_pipeline_execution(row) for row in rows)
+
+        items.sort(key=lambda item: item.get('created_at_ms') or 0, reverse=True)
+        page = items[offset : offset + limit]
+        return {
+            'items': page,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': total > offset + len(page),
+            'summary': {
+                'executions': await self._get_execution_summary(
+                    workspace_uuid,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    start_time=start_time,
+                    end_time=end_time,
+                ),
+                'tokens': await self._get_token_coverage(
+                    workspace_uuid,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    start_time=start_time,
+                    end_time=end_time,
+                ),
+            },
+        }
+
+    async def get_execution_detail(
+        self,
+        context: TenantContext,
+        source: str,
+        execution_id: str,
+    ) -> dict:
+        """Full trace of a single execution, keyed by object type."""
+        workspace_uuid = require_workspace_uuid(context)
+
+        if source == 'agent':
+            from ....agent.runner.run_ledger_store import RunLedgerStore
+
+            store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+            run = await store.get_run(execution_id)
+            if run is None or run.get('workspace_id') != workspace_uuid:
+                raise ValueError('Execution not found')
+            items, next_cursor, _, has_more = await store.page_run_events(run_id=execution_id, limit=200)
+            return {
+                'source': 'agent',
+                'run': run,
+                'events': items,
+                'has_more': has_more,
+                'next_cursor': next_cursor,
+            }
+
+        if source == 'pipeline':
+            MonitoringMessage = persistence_monitoring.MonitoringMessage
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(MonitoringMessage).where(
+                    sqlalchemy.and_(
+                        MonitoringMessage.id == execution_id,
+                        MonitoringMessage.workspace_uuid == workspace_uuid,
+                    )
+                )
+            )
+            rows = self._model_rows(result)
+            if not rows:
+                raise ValueError('Execution not found')
+            serialized = self.ap.persistence_mgr.serialize_model(MonitoringMessage, rows[0])
+
+            async def _related(model, order_column):
+                related = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(model)
+                    .where(
+                        sqlalchemy.and_(
+                            model.workspace_uuid == workspace_uuid,
+                            model.message_id == execution_id,
+                        )
+                    )
+                    .order_by(order_column.asc())
+                )
+                return [self.ap.persistence_mgr.serialize_model(model, row) for row in self._model_rows(related)]
+
+            return {
+                'source': 'pipeline',
+                'message': serialized,
+                'llm_calls': await _related(
+                    persistence_monitoring.MonitoringLLMCall, persistence_monitoring.MonitoringLLMCall.timestamp
+                ),
+                'tool_calls': await _related(
+                    persistence_monitoring.MonitoringToolCall, persistence_monitoring.MonitoringToolCall.timestamp
+                ),
+                'errors': await _related(
+                    persistence_monitoring.MonitoringError, persistence_monitoring.MonitoringError.timestamp
+                ),
+            }
+
+        raise ValueError('Unknown execution source')
 
     async def get_token_statistics(
         self,

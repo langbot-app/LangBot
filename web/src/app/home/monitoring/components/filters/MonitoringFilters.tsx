@@ -7,8 +7,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { backendClient } from '@/app/infra/http';
 import { TimeRangeOption } from '../../types/monitoring';
+import type {
+  ExecutionModeFilter,
+  ExecutionSourceFilter,
+} from '@/app/infra/entities/api/monitoring-executions';
 
 interface MonitoringFiltersProps {
   selectedBots: string[];
@@ -17,7 +22,22 @@ interface MonitoringFiltersProps {
   onBotsChange: (bots: string[]) => void;
   onPipelinesChange: (pipelines: string[]) => void;
   onTimeRangeChange: (timeRange: TimeRangeOption) => void;
+  source?: ExecutionSourceFilter;
+  onSourceChange?: (value: ExecutionSourceFilter) => void;
+  mode?: ExecutionModeFilter;
+  onModeChange?: (value: ExecutionModeFilter) => void;
+  statusGroup?: string;
+  onStatusGroupChange?: (value: string) => void;
 }
+
+const STATUS_GROUP_OPTIONS = [
+  'completed',
+  'failed',
+  'running',
+  'queued',
+  'cancelled',
+  'ignored',
+];
 
 interface Bot {
   uuid: string;
@@ -36,6 +56,12 @@ export default function MonitoringFilters({
   onBotsChange,
   onPipelinesChange,
   onTimeRangeChange,
+  source,
+  onSourceChange,
+  mode,
+  onModeChange,
+  statusGroup,
+  onStatusGroupChange,
 }: MonitoringFiltersProps) {
   const { t } = useTranslation();
   const [bots, setBots] = useState<Bot[]>([]);
@@ -110,11 +136,98 @@ export default function MonitoringFilters({
 
   return (
     <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+      {/* Source Filter */}
+      {onSourceChange && (
+        <div className="flex items-center gap-2">
+          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+            {t('monitoring.execution.filters.source')}
+          </Label>
+          <Select
+            value={source ?? 'all'}
+            onValueChange={(value) =>
+              onSourceChange(value as ExecutionSourceFilter)
+            }
+          >
+            <SelectTrigger className="h-9 w-full sm:w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t('monitoring.execution.filters.sourceAll')}
+              </SelectItem>
+              <SelectItem value="agent">
+                {t('monitoring.execution.filters.sourceAgent')}
+              </SelectItem>
+              <SelectItem value="pipeline">
+                {t('monitoring.execution.filters.sourcePipeline')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Mode Filter */}
+      {onModeChange && (
+        <div className="flex items-center gap-2">
+          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+            {t('monitoring.execution.filters.mode')}
+          </Label>
+          <Select
+            value={mode ?? 'all'}
+            onValueChange={(value) =>
+              onModeChange(value as ExecutionModeFilter)
+            }
+          >
+            <SelectTrigger className="h-9 w-full sm:w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t('monitoring.execution.filters.modeAll')}
+              </SelectItem>
+              <SelectItem value="real">
+                {t('monitoring.execution.filters.modeLive')}
+              </SelectItem>
+              <SelectItem value="debug">
+                {t('monitoring.execution.filters.modeDebug')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Status Filter */}
+      {onStatusGroupChange && (
+        <div className="flex items-center gap-2">
+          <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
+            {t('monitoring.execution.filters.status')}
+          </Label>
+          <Select
+            value={statusGroup ?? 'all'}
+            onValueChange={(value) => onStatusGroupChange(value)}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t('monitoring.execution.filters.statusAll')}
+              </SelectItem>
+              {STATUS_GROUP_OPTIONS.map((group) => (
+                <SelectItem key={group} value={group}>
+                  {t(`monitoring.execution.status.${group}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Bot Filter */}
       <div className="flex items-center gap-2">
-        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
+        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.bot')}
-        </label>
+        </Label>
         <Select
           value={selectedBots.length === 0 ? 'all' : selectedBots[0]}
           onValueChange={handleBotChange}
@@ -144,9 +257,9 @@ export default function MonitoringFilters({
 
       {/* Pipeline Filter */}
       <div className="flex items-center gap-2">
-        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
+        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.pipeline')}
-        </label>
+        </Label>
         <Select
           value={selectedPipelines.length === 0 ? 'all' : selectedPipelines[0]}
           onValueChange={handlePipelineChange}
@@ -176,9 +289,9 @@ export default function MonitoringFilters({
 
       {/* Time Range Filter */}
       <div className="flex items-center gap-2">
-        <label className="w-20 shrink-0 text-sm font-medium text-foreground sm:w-auto sm:whitespace-nowrap">
+        <Label className="w-20 shrink-0 text-sm font-medium sm:w-auto sm:whitespace-nowrap">
           {t('monitoring.filters.timeRange')}
-        </label>
+        </Label>
         <Select value={timeRange} onValueChange={handleTimeRangeChange}>
           <SelectTrigger className="h-9 w-full sm:w-[150px]">
             <SelectValue />

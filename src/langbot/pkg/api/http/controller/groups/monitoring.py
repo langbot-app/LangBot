@@ -50,6 +50,47 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=metrics)
 
+        @self.route('/executions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def get_executions(request_context: RequestContext) -> str:
+            """Unified execution list across agent runs and pipeline queries."""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            agent_ids = quart.request.args.getlist('agentId')
+            statuses = quart.request.args.getlist('status')
+            source = quart.request.args.get('source', 'all')
+            mode = quart.request.args.get('mode', 'all')
+            start_time = parse_iso_datetime(quart.request.args.get('startTime'))
+            end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+
+            result = await self.ap.monitoring_service.get_executions(
+                request_context,
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                agent_ids=agent_ids if agent_ids else None,
+                statuses=statuses if statuses else None,
+                source=source,
+                mode=mode,
+                start_time=start_time,
+                end_time=end_time,
+                limit=quart.request.args.get('limit', 50),
+                offset=quart.request.args.get('offset', 0),
+            )
+
+            return self.success(data=result)
+
+        @self.route(
+            '/executions/<source>/<execution_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
+            """Full trace of a single execution (agent run or pipeline query)."""
+            try:
+                detail = await self.ap.monitoring_service.get_execution_detail(request_context, source, execution_id)
+            except ValueError as exc:
+                return self.fail(404, str(exc))
+            return self.success(data=detail)
+
         @self.route('/token-statistics', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_token_statistics(request_context: RequestContext) -> str:
             """Get detailed token usage statistics (summary, per-model, timeseries)."""
@@ -639,7 +680,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'platform',
                 ]
             else:
-                return self.error(message=f'Invalid export type: {export_type}', code=400)
+                return self.fail(400, f'Invalid export type: {export_type}')
 
             # Generate CSV content with UTF-8 BOM for Excel compatibility
             import io

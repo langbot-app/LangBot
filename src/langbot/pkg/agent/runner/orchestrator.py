@@ -194,6 +194,21 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
+
+        # Monitoring attributes every call to the processor that ran it and to the
+        # record that owns it; a Runner has to claim both itself, since no
+        # Pipeline did. Runs before the Runner is invoked and before the run
+        # context is handed to it, so its own variables stay private.
+        from ...pipeline import monitoring_helper
+
+        await monitoring_helper.prepare_monitoring_identity(
+            self.ap,
+            execution_query,
+            processor_type=binding.processor_type,
+            processor_id=binding.processor_id,
+            runner_id=binding.runner_id,
+            execution_record_id=run_id,
+        )
         context['context']['available_apis']['reply_stream'] = hasattr(PluginToRuntimeAction, 'REPLY_STREAM') and any(
             tool.get('tool_name') == 'event_reply' and tool.get('tool_type') == 'platform'
             for tool in resources.get('tools', [])

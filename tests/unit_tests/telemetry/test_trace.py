@@ -344,10 +344,53 @@ class TestTraceNodeScope:
 
         lane_row, foreign_row = nodes(counters)
         assert lane_row['node_id'] == lane and lane_row['parent_node_id'] == '' and lane_row['root'] is True
-        # The cross-task node joins the same execution, but never mirrors another
-        # task's open-step stack: it is a root of the chain.
+        # The cross-task node joins the same execution and hangs off the step the
+        # chain had open - the step that caused the work - instead of mirroring
+        # any task's own stack.
         assert foreign_row['event_id'] == 'exec-cross'
-        assert foreign_row['parent_node_id'] == ''
+        assert foreign_row['parent_node_id'] == lane
+        assert foreign_row['root'] is False
+
+    def test_cross_task_observation_attaches_to_the_innermost_open_step(self):
+        trace, execution = get_modules()
+        _, counters = make_counters(trace_config())
+        binding = execution.bind_trace(make_ap(counters), 'exec-nested')
+        try:
+            with trace.stage_scope() as outer:
+                counters.record(CONTEXT, **{**STAGE, 'node': outer})
+                with trace.stage_scope() as inner:
+                    counters.record(CONTEXT, **{**STAGE, 'node': inner})
+                    foreign = contextvars.Context()
+                    foreign.run(execution.set_execution_id, 'exec-nested')
+                    foreign.run(counters.record, CONTEXT, **{**STAGE, 'family': 'tool', 'operation': 'exec'})
+        finally:
+            trace.unbind_root(binding)
+
+        outer_row, inner_row, tool_row = nodes(counters)
+        assert outer_row['parent_node_id'] == ''
+        assert inner_row['parent_node_id'] == outer
+        # The lane that caused the cross-task work is the innermost one open.
+        assert tool_row['parent_node_id'] == inner
+
+    def test_cross_task_observation_after_the_lane_closed_is_a_root(self):
+        trace, execution = get_modules()
+        _, counters = make_counters(trace_config())
+        binding = execution.bind_trace(make_ap(counters), 'exec-late')
+        try:
+            with trace.stage_scope() as lane:
+                counters.record(CONTEXT, **{**STAGE, 'node': lane})
+            # A late callback arrives after the owning step returned: nothing is
+            # open anymore, so the node is a root of the chain rather than a
+            # child of a finished step.
+            foreign = contextvars.Context()
+            foreign.run(execution.set_execution_id, 'exec-late')
+            foreign.run(counters.record, CONTEXT, family='platform_api', operation='reply', mode='pipeline')
+        finally:
+            trace.unbind_root(binding)
+
+        lane_row, late_row = nodes(counters)
+        assert late_row['parent_node_id'] == '' and late_row['root'] is False
+        assert lane_row['root'] is True
 
     def test_cross_task_observation_without_an_open_step_has_no_parent(self):
         trace, execution = get_modules()

@@ -59,7 +59,14 @@ test.describe('authenticated app shell', () => {
     await page.goto('/home/monitoring');
 
     await expect(page).toHaveURL(/\/home\/monitoring$/);
-    await expect(page.getByText('Total Messages').first()).toBeVisible();
+    // The unified execution view is the default entry point.
+    await expect(page.getByRole('tab', { name: 'Executions' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+    await expect(
+      page.getByText('Execution Success Rate').first(),
+    ).toBeVisible();
     await expect(
       page.getByRole('tab', { name: 'Message Records' }),
     ).toBeVisible();

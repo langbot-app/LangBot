@@ -11,12 +11,17 @@ small execution-scoped context the emitter needs:
 * the routing/run identity pinned around the block that produced a node;
 * the open-step stack, which lives in a ContextVar holding *one task's own
   immutable tuple*. Child tasks inherit a snapshot at creation; no shared
-  mutable stack and no cross-task mirror exists, so sibling tasks can never
-  corrupt each other's parent links.
+  mutable stack exists, so sibling tasks can never corrupt each other's parent
+  links.
 
 Cross-task callers (plugin/RPC work with no inherited context) resolve their
 execution through the owner's execution-id registry instead, which only
-carries the execution state - never node payloads.
+carries the execution state - never node payloads. Such a caller owns no step
+of its own, yet its work is still caused by a step of the chain: the sandbox
+tool a Runner invoked, the platform API a plugin called back over RPC. The
+execution state therefore also keeps the ordered set of steps any task
+currently has open, and a record emitted with no open step of its own attaches
+to the innermost one of those instead of becoming a root of the chain.
 """
 
 from __future__ import annotations
@@ -77,6 +82,7 @@ class TraceState:
         'pipeline_plugins',
         'node_adapter',
         'node_runner',
+        'open_frames',
     )
 
     def __init__(self, execution_id: str | None = None) -> None:
@@ -110,12 +116,27 @@ class TraceState:
         # First adapter/runner seen on a node, used for the chain record.
         self.node_adapter = ''
         self.node_runner = ''
+        # Steps currently open anywhere in this chain, in the order they were
+        # opened. A record emitted by a task that owns no step of its own
+        # attaches to the innermost entry here.
+        self.open_frames: dict[str, NodeFrame] = {}
 
     def allocate_seq(self) -> int:
         """Mint the next chain-local node order."""
         seq = self.node_seq
         self.node_seq += 1
         return seq
+
+    def open_lane(self) -> str:
+        """The innermost step open in this chain, whichever task opened it."""
+        frames = list(self.open_frames)
+        return frames[-1] if frames else ''
+
+    def open_step(self, frame: NodeFrame) -> None:
+        self.open_frames[frame.node_id] = frame
+
+    def close_step(self, frame: NodeFrame) -> None:
+        self.open_frames.pop(frame.node_id, None)
 
     def note_node(
         self,
@@ -221,8 +242,10 @@ def resolve_node(
 
     A record stamped with a ``node`` the calling task has open reuses that
     step's identity, order and start time; anything else (a plain observation,
-    or a node opened by another task) is a fresh node under this task's
-    innermost open step.
+    or a node opened by another task) is a fresh node under the innermost step
+    open in this task. A task that inherited no step at all - plugin/RPC work
+    that only knows the execution - attaches to the innermost step the chain
+    has open, which is the step that caused the work.
     """
     stack = _node.get()
     if node:
@@ -231,7 +254,7 @@ def resolve_node(
             if frame.node_id == node:
                 parent = stack[index - 1].node_id if index > 0 else ''
                 return frame.node_id, frame.seq, frame.started_at, parent
-    parent = stack[-1].node_id if stack else ''
+    parent = stack[-1].node_id if stack else state.open_lane()
     return node or uuid4().hex, state.allocate_seq(), fallback_started_at, parent
 
 
@@ -250,9 +273,11 @@ def stage_scope() -> typing.Iterator[str]:
         return
     frame = NodeFrame(uuid4().hex, state.allocate_seq(), _now())
     token = _node.set(_node.get() + (frame,))
+    state.open_step(frame)
     try:
         yield frame.node_id
     finally:
+        state.close_step(frame)
         try:
             _node.reset(token)
         except (ValueError, RuntimeError):

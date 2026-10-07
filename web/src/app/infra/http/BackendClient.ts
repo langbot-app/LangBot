@@ -5,6 +5,13 @@ import type {
 } from '@/app/infra/entities/api/pipeline-migration';
 import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
 import type {
+  ExecutionDetail,
+  ExecutionListResult,
+  ExecutionModeFilter,
+  ExecutionSource,
+  ExecutionSourceFilter,
+} from '../entities/api/monitoring-executions';
+import type {
   CodexAuthStatus,
   CodexDeviceAuthorization,
   CodexDevicePoll,
@@ -2113,6 +2120,64 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public getExecutions(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    agentId?: string[];
+    status?: string[];
+    source?: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ExecutionListResult> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.agentId) {
+      params.agentId.forEach((id) => queryParams.append('agentId', id));
+    }
+    if (params.status) {
+      params.status.forEach((status) => queryParams.append('status', status));
+    }
+    if (params.source) {
+      queryParams.append('source', params.source);
+    }
+    if (params.mode) {
+      queryParams.append('mode', params.mode);
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params.offset) {
+      queryParams.append('offset', params.offset.toString());
+    }
+
+    return this.get(
+      `/api/v1/monitoring/executions?${queryParams.toString()}`,
+    );
+  }
+
+  public getExecutionDetail(
+    source: ExecutionSource,
+    executionId: string,
+  ): Promise<ExecutionDetail> {
+    return this.get(
+      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}`,
+    );
   }
 
   public getMonitoringOverview(params: {

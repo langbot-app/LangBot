@@ -12,6 +12,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { MessageContentRenderer } from './MessageContentRenderer';
 import {
   ConversationTurn,
@@ -507,10 +508,11 @@ export function ConversationTurnList({
                               key={call.id}
                               className="border-t border-border/70 py-2 first:border-t-0 first:pt-0 last:pb-0"
                             >
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
                                 className={cn(
-                                  'flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left outline-none transition-colors',
+                                  'flex h-auto w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left',
                                   hasToolDetails &&
                                     'cursor-pointer hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring',
                                 )}
@@ -556,7 +558,7 @@ export function ConversationTurnList({
                                 <span className="shrink-0 text-xs text-muted-foreground">
                                   {formatDuration(call.duration)}
                                 </span>
-                              </button>
+                              </Button>
 
                               {hasToolDetails && expandedToolCall && (
                                 <div

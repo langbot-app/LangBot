@@ -18,6 +18,103 @@ if typing.TYPE_CHECKING:
 from .pool import get_query_execution_context
 
 
+async def resolve_processor_name(
+    ap: app.Application,
+    workspace_uuid: str,
+    processor_type: str,
+    processor_id: str | None,
+    runner_id: str = '',
+) -> str:
+    """Display name of the processor kind that handled a run.
+
+    Monitoring attributed every call to a Pipeline, so an Agent or a plugin event
+    processor recorded "Unknown" for the entity that actually ran. Each kind is
+    resolved from the table that owns it, falling back to the identity the
+    binding carried.
+    """
+    import sqlalchemy
+
+    from ..entity.persistence import agent as persistence_agent
+    from ..entity.persistence import pipeline as persistence_pipeline
+
+    identifier = str(processor_id or '').strip()
+    if identifier:
+        try:
+            model = persistence_pipeline.LegacyPipeline if processor_type == 'pipeline' else persistence_agent.Agent
+            result = await ap.persistence_mgr.execute_async(
+                sqlalchemy.select(model.name).where(
+                    sqlalchemy.and_(
+                        model.uuid == identifier,
+                        model.workspace_uuid == workspace_uuid,
+                    )
+                )
+            )
+            name = str(result.scalar() or '').strip()
+            if name:
+                return name
+        except Exception as e:
+            ap.logger.warning(f'Failed to resolve monitoring processor name: {e}')
+    # A deleted Agent or an unregistered plugin processor still names the
+    # component that ran, never a bare "Unknown".
+    return identifier or runner_id or processor_type
+
+
+async def prepare_monitoring_identity(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    *,
+    processor_type: str,
+    processor_id: str | None,
+    runner_id: str = '',
+    execution_record_id: str = '',
+) -> None:
+    """Pin the monitoring identity of a runner-owned execution.
+
+    A Pipeline pins these variables when it starts a query; a Runner started by
+    an Agent or a plugin event processor has to pin them itself, otherwise every
+    LLM/tool call it makes is attributed to "Unknown". An enclosing Pipeline
+    already named the run, so its label is never overwritten.
+
+    ``_monitoring_message_id`` is the execution record the calls belong to: the
+    Pipeline's message, or the Agent run's id. Both are the id the executions
+    list shows, which is what lets a call jump back to its record.
+    """
+    try:
+        variables = getattr(query, 'variables', None)
+        if not isinstance(variables, dict):
+            return
+        if variables.get('_monitoring_pipeline_name'):
+            return
+
+        bot_name = 'WebChat'
+        bot_uuid = str(getattr(query, 'bot_uuid', '') or '')
+        workspace_uuid = str(getattr(query, 'workspace_uuid', '') or '')
+        if bot_uuid and workspace_uuid:
+            try:
+                bot = await ap.bot_service.get_bot(
+                    workspace_uuid,
+                    bot_uuid,
+                    include_secret=False,
+                )
+                if bot:
+                    bot_name = bot.get('name', bot_name)
+            except Exception as e:
+                ap.logger.warning(f'Failed to resolve monitoring bot name: {e}')
+
+        variables['_monitoring_bot_name'] = bot_name
+        variables['_monitoring_pipeline_name'] = await resolve_processor_name(
+            ap,
+            workspace_uuid,
+            processor_type,
+            processor_id,
+            runner_id,
+        )
+        if execution_record_id:
+            variables['_monitoring_message_id'] = execution_record_id
+    except Exception as e:
+        ap.logger.error(f'Failed to prepare monitoring identity: {e}')
+
+
 class MonitoringHelper:
     """Helper class for monitoring operations"""
 

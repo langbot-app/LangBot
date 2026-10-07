@@ -19,6 +19,19 @@ import {
   AlertTriangle,
   TrendingUp,
 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Card } from '@/components/ui/card';
+import { MetricCard } from './overview-cards/MetricCard';
+import { Alert, AlertTitle } from '@/components/ui/alert';
+import { TabState } from './TabState';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getErrorMessage } from '../utils';
 
@@ -89,41 +102,6 @@ const TOOLTIP_STYLE: React.CSSProperties = {
   color: 'var(--foreground)',
 };
 
-function MetricTile({
-  icon,
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: string;
-}) {
-  return (
-    <div className="bg-card rounded-xl border p-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-        <span
-          className="flex items-center justify-center h-7 w-7 rounded-lg"
-          style={{
-            backgroundColor: accent ? `${accent}1a` : 'var(--muted)',
-            color: accent || 'var(--foreground)',
-          }}
-        >
-          {icon}
-        </span>
-        {label}
-      </div>
-      <div className="text-2xl font-semibold text-foreground tabular-nums">
-        {value}
-      </div>
-      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-    </div>
-  );
-}
-
 export default function TokenMonitoring({
   botIds,
   pipelineIds,
@@ -175,38 +153,23 @@ export default function TokenMonitoring({
   }, [stats]);
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="bg-card rounded-xl border p-4 h-24 animate-pulse"
-            />
-          ))}
-        </div>
-        <div className="bg-card rounded-xl border p-6 h-[320px] animate-pulse" />
-      </div>
-    );
+    return <TabState loading rows={6} />;
   }
 
   if (error) {
     return (
-      <div className="bg-card rounded-xl border p-6 text-sm text-destructive flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4" />
-        {t('monitoring.tokens.loadError', { error })}
-      </div>
+      <Alert variant="destructive">
+        <AlertTitle>{t('monitoring.tokens.loadError', { error })}</AlertTitle>
+      </Alert>
     );
   }
 
   if (!stats || !stats.summary || stats.summary.total_calls === 0) {
     return (
-      <div className="bg-card rounded-xl border p-6">
-        <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground gap-2">
-          <Coins className="h-[3rem] w-[3rem]" />
-          <div className="text-sm">{t('monitoring.tokens.noData')}</div>
-        </div>
-      </div>
+      <TabState
+        icon={<Coins className="h-12 w-12" />}
+        title={t('monitoring.tokens.noData')}
+      />
     );
   }
 
@@ -229,70 +192,69 @@ export default function TokenMonitoring({
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <MetricTile
+        <MetricCard
           icon={<Coins className="h-4 w-4" />}
           label={t('monitoring.tokens.totalTokens')}
           value={formatNumber(summary.total_tokens)}
-          sub={t('monitoring.tokens.acrossCalls', {
+          hint={t('monitoring.tokens.acrossCalls', {
             count: summary.total_calls,
           })}
           accent="#8b5cf6"
         />
-        <MetricTile
+        <MetricCard
           icon={<ArrowDownToLine className="h-4 w-4" />}
           label={t('monitoring.tokens.inputTokens')}
           value={formatNumber(summary.total_input_tokens)}
           accent="#3b82f6"
         />
-        <MetricTile
+        <MetricCard
           icon={<ArrowUpFromLine className="h-4 w-4" />}
           label={t('monitoring.tokens.outputTokens')}
           value={formatNumber(summary.total_output_tokens)}
           accent="#10b981"
         />
-        <MetricTile
+        <MetricCard
           icon={<TrendingUp className="h-4 w-4" />}
           label={t('monitoring.tokens.avgPerCall')}
           value={formatNumber(summary.avg_tokens_per_call)}
           accent="#f59e0b"
         />
-        <MetricTile
+        <MetricCard
           icon={<Gauge className="h-4 w-4" />}
           label={t('monitoring.tokens.throughput')}
           value={`${summary.avg_tokens_per_second}`}
-          sub={t('monitoring.tokens.tokensPerSec')}
+          hint={t('monitoring.tokens.tokensPerSec')}
           accent="#06b6d4"
         />
-        <MetricTile
+        <MetricCard
           icon={<AlertTriangle className="h-4 w-4" />}
           label={t('monitoring.tokens.errorCalls')}
           value={`${summary.error_calls}`}
-          sub={t('monitoring.tokens.ofTotal', { count: summary.total_calls })}
+          hint={t('monitoring.tokens.ofTotal', { count: summary.total_calls })}
           accent="#ef4444"
         />
       </div>
 
       {/* Token usage over time */}
-      <div className="bg-card rounded-xl border p-6">
+      <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-base font-semibold text-foreground">
             {t('monitoring.tokens.usageOverTime')}
           </h3>
-          <div className="inline-flex rounded-lg border p-0.5 text-sm">
-            {(['hour', 'day'] as const).map((b) => (
-              <button
-                key={b}
-                onClick={() => setBucket(b)}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  bucket === b
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {t(`monitoring.tokens.bucket.${b}`)}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            value={bucket}
+            onValueChange={(value) => {
+              if (value === 'hour' || value === 'day') setBucket(value);
+            }}
+          >
+            <TabsList className="h-8">
+              {(['hour', 'day'] as const).map((b) => (
+                <TabsTrigger key={b} value={b} className="text-xs">
+                  {t(`monitoring.tokens.bucket.${b}`)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         </div>
         <div className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -372,93 +334,86 @@ export default function TokenMonitoring({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Card>
 
       {/* Per-model breakdown */}
-      <div className="bg-card rounded-xl border p-6">
+      <Card className="p-6">
         <h3 className="text-base font-semibold text-foreground mb-4">
           {t('monitoring.tokens.byModel')}
         </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground border-b">
-                <th className="py-2 pr-4 font-medium">
-                  {t('monitoring.tokens.model')}
-                </th>
-                <th className="py-2 px-4 font-medium text-right">
-                  {t('monitoring.tokens.calls')}
-                </th>
-                <th className="py-2 px-4 font-medium text-right">
-                  {t('monitoring.tokens.inputTokens')}
-                </th>
-                <th className="py-2 px-4 font-medium text-right">
-                  {t('monitoring.tokens.outputTokens')}
-                </th>
-                <th className="py-2 px-4 font-medium text-right">
-                  {t('monitoring.tokens.totalTokens')}
-                </th>
-                <th className="py-2 px-4 font-medium text-right">
-                  {t('monitoring.tokens.avgPerCall')}
-                </th>
-                <th className="py-2 pl-4 font-medium text-right">
-                  {t('monitoring.tokens.avgLatency')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {by_model.map((m) => {
-                const share =
-                  summary.total_tokens > 0
-                    ? (m.total_tokens / summary.total_tokens) * 100
-                    : 0;
-                return (
-                  <tr
-                    key={m.model_name}
-                    className="border-b last:border-0 hover:bg-muted/40 transition-colors"
-                  >
-                    <td className="py-2.5 pr-4">
-                      <div className="font-medium text-foreground">
-                        {m.model_name}
-                      </div>
-                      <div className="mt-1 h-1.5 w-32 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-violet-500"
-                          style={{ width: `${share}%` }}
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right tabular-nums">
-                      {m.calls}
-                      {m.error_calls > 0 && (
-                        <span className="text-destructive">
-                          {' '}
-                          ({m.error_calls}✕)
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-4 text-right tabular-nums">
-                      {formatNumber(m.input_tokens)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right tabular-nums">
-                      {formatNumber(m.output_tokens)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right tabular-nums font-medium">
-                      {formatNumber(m.total_tokens)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right tabular-nums">
-                      {formatNumber(m.avg_tokens_per_call)}
-                    </td>
-                    <td className="py-2.5 pl-4 text-right tabular-nums">
-                      {m.avg_duration_ms}ms
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('monitoring.tokens.model')}</TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.calls')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.inputTokens')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.outputTokens')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.totalTokens')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.avgPerCall')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('monitoring.tokens.avgLatency')}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {by_model.map((m) => {
+              const share =
+                summary.total_tokens > 0
+                  ? (m.total_tokens / summary.total_tokens) * 100
+                  : 0;
+              return (
+                <TableRow key={m.model_name}>
+                  <TableCell>
+                    <div className="font-medium text-foreground">
+                      {m.model_name}
+                    </div>
+                    <div className="mt-1 h-1.5 w-32 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-violet-500"
+                        style={{ width: `${share}%` }}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {m.calls}
+                    {m.error_calls > 0 && (
+                      <span className="text-destructive">
+                        {' '}
+                        ({m.error_calls}✕)
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatNumber(m.input_tokens)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatNumber(m.output_tokens)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {formatNumber(m.total_tokens)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatNumber(m.avg_tokens_per_call)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {m.avg_duration_ms}ms
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

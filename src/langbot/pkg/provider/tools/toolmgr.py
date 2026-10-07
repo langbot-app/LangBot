@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import time
+import asyncio
 import inspect
 from typing import TYPE_CHECKING
 
@@ -448,6 +449,19 @@ class ToolManager:
         start_time = time.perf_counter()
         try:
             result = await invoke()
+        except asyncio.CancelledError:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            await self._record_tool_call(
+                name=name,
+                source=source,
+                parameters=parameters,
+                query=query,
+                duration_ms=duration_ms,
+                status='error',
+                error_message='cancelled',
+            )
+            self._trace_tool_call(source=source, name=name, query=query, outcome='cancelled', error='cancelled')
+            raise
         except Exception as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             await self._record_tool_call(
@@ -458,6 +472,14 @@ class ToolManager:
                 duration_ms=duration_ms,
                 status='error',
                 error_message=str(e),
+            )
+            outcome = 'timeout' if isinstance(e, TimeoutError) else 'failed'
+            self._trace_tool_call(
+                source=source,
+                name=name,
+                query=query,
+                outcome=outcome,
+                error=str(e) or type(e).__name__,
             )
             raise
 
@@ -471,7 +493,59 @@ class ToolManager:
             status='success',
             result=result,
         )
+        self._trace_tool_call(source=source, name=name, query=query, outcome='success')
         return result
+
+    def _trace_tool_call(
+        self,
+        *,
+        source: str,
+        name: str,
+        query: pipeline_query.Query,
+        outcome: str,
+        error: str = '',
+    ) -> None:
+        """Report one tool invocation as its own step of the execution chain.
+
+        Every tool call a Run makes - sandbox, skill, plugin or MCP - is the
+        observable action of that Run, so the chain shows it under the step that
+        issued it instead of collapsing the Run into a single opaque node.
+
+        An Agent's tool call is executed for the Runtime's RPC task, which never
+        inherited the chain context. The Run id the caller already carries is the
+        alias that task's record resolves the owning execution through.
+        """
+        # Imported here: telemetry pulls the application, and the tool manager is
+        # constructed while the application is still assembling.
+        from ...telemetry.execution import record as record_execution
+        from ...telemetry.platform import processing_mode
+
+        try:
+            record_execution(
+                self.ap,
+                get_query_execution_context(query),
+                execution_id=self._trace_execution_id(query),
+                family='tool',
+                operation=name,
+                adapter=source,
+                mode=processing_mode.get(),
+                outcome=outcome,
+                error=error,
+            )
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to record tool call trace: {e}')
+
+    @staticmethod
+    def _trace_execution_id(query: pipeline_query.Query) -> str:
+        """The execution chain this call belongs to, when the caller knows it.
+
+        ``''`` lets the emitter fall back to the task's own trace context, which
+        is what a Pipeline-lane tool call has.
+        """
+        session = getattr(query, '_agent_run_session', None)
+        if not isinstance(session, dict):
+            return ''
+        return str(session.get('run_id') or '').strip()
 
     async def execute_func_call(
         self,

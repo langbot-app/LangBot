@@ -304,6 +304,7 @@ test.describe('monitoring request contracts', () => {
     await expect(page.getByText('No message records')).toHaveCount(0);
     failing = false;
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await page.getByRole('tab', { name: 'Message Records' }).click();
     await expect(
       page.getByText('Recovered monitoring', { exact: true }),
     ).toBeVisible();
@@ -324,6 +325,8 @@ test.describe('monitoring request contracts', () => {
     await page.getByRole('option', { name: /Last 7 days/i }).click();
     await expect.poll(() => pending.length).toBe(3);
     await respond(pending[2], 'Latest filter data');
+    // The message-turn view now lives behind its own tab.
+    await page.getByRole('tab', { name: 'Message Records' }).click();
     await expect(
       page.getByText('Latest filter data', { exact: true }),
     ).toBeVisible();
@@ -598,6 +601,7 @@ test.describe('monitoring conversation turn grouping', () => {
     });
 
     await page.goto('/home/monitoring');
+    await page.getByRole('tab', { name: 'Message Records' }).click();
 
     await expect(page.getByText('3 conversation turns')).toBeVisible();
     await expect(

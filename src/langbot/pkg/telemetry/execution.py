@@ -33,7 +33,7 @@ from .trace import TraceState
 
 MODES = frozenset({'pipeline', 'agent', 'event_processor', 'none'})
 OUTCOMES = frozenset({'success', 'failed', 'cancelled', 'timeout', 'skipped', 'unknown'})
-FAMILIES = frozenset({'platform_event', 'event_route', 'pipeline', 'runner', 'platform_api'})
+FAMILIES = frozenset({'platform_event', 'event_route', 'pipeline', 'runner', 'platform_api', 'tool'})
 ORIGINS = frozenset({'platform', 'webui', 'api'})
 CLOSED_BY = frozenset({'event_done', 'pipeline_done', 'runner_done', 'timeout'})
 CHAIN_FAILURES = frozenset({'failed', 'cancelled', 'timeout'})
@@ -255,9 +255,9 @@ class ExecutionCounters:
             state = trace_mod.current()
             if state is None:
                 # Cross-task work has no inherited context; resolve the owning
-                # execution through the registry. It has no open step here, so
-                # its node becomes a root of that execution instead of being
-                # mirrored from another task's stack.
+                # execution through the registry. It owns no step here, so the
+                # record attaches to the innermost step the chain has open -
+                # the step that caused this work.
                 lookup = str(execution_id or '').strip() or current_execution_id()
                 if lookup:
                     state = self._resolve(lookup)

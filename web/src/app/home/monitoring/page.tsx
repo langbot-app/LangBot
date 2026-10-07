@@ -1,7 +1,16 @@
-import React, { Suspense, useState, useMemo, useCallback } from 'react';
+import React, {
+  Suspense,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   ChevronRight,
   ChevronDown,
@@ -10,8 +19,11 @@ import {
   MessageSquare,
   Sparkles,
   CheckCircle2,
+  Activity,
 } from 'lucide-react';
-import OverviewCards from './components/overview-cards/OverviewCards';
+import { TabState } from './components/TabState';
+import SystemStatusCard from './components/overview-cards/SystemStatusCards';
+import TrafficChart from './components/overview-cards/TrafficChart';
 import MonitoringFilters from './components/filters/MonitoringFilters';
 import TokenMonitoring from './components/TokenMonitoring';
 import { ExportDropdown } from './components/ExportDropdown';
@@ -21,8 +33,20 @@ import { useFeedbackData } from './hooks/useFeedbackData';
 import { ConversationTurnList } from './components/ConversationTurnList';
 import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
+import ExecutionOverviewCards from './components/overview-cards/ExecutionOverviewCards';
+import ExecutionTable from './components/executions/ExecutionTable';
+import ExecutionDetailSheet from './components/executions/ExecutionDetailSheet';
+import { useExecutions } from './hooks/useExecutions';
+import type {
+  ExecutionModeFilter,
+  ExecutionRow,
+  ExecutionSourceFilter,
+} from '@/app/infra/entities/api/monitoring-executions';
 import { buildConversationTurns } from './utils/conversationTurns';
-import { LoadingSpinner, LoadingPage } from '@/components/ui/loading-spinner';
+import { resolveCallTarget } from './utils/callLinks';
+import { cn } from '@/lib/utils';
+import { resolveMonitoringWindow } from './utils/dateUtils';
+import { LoadingPage } from '@/components/ui/loading-spinner';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
 function MonitoringPageContent() {
@@ -34,48 +58,62 @@ function MonitoringPageContent() {
     useMonitoringFilters();
   const { data, loading, error, refetch } = useMonitoringData(filterState);
 
+  // Unified execution view (agent runs + pipeline queries). Its filters are
+  // independent of the legacy message/model tabs.
+  const [executionSource, setExecutionSource] =
+    useState<ExecutionSourceFilter>('all');
+  const [executionMode, setExecutionMode] =
+    useState<ExecutionModeFilter>('all');
+  const [executionStatus, setExecutionStatus] = useState<string>('all');
+  const [executionOffset, setExecutionOffset] = useState(0);
+  const [selectedExecution, setSelectedExecution] =
+    useState<ExecutionRow | null>(null);
+  const EXECUTIONS_PAGE_SIZE = 50;
+
+  const {
+    result: executionResult,
+    loading: executionLoading,
+    error: executionError,
+    refetch: refetchExecutions,
+  } = useExecutions({
+    selectedBots: filterState.selectedBots,
+    selectedPipelines: filterState.selectedPipelines,
+    selectedAgents: [],
+    source: executionSource,
+    mode: executionMode,
+    statusGroup: executionStatus,
+    timeRange: filterState.timeRange,
+    customDateRange: filterState.customDateRange,
+    limit: EXECUTIONS_PAGE_SIZE,
+    offset: executionOffset,
+  });
+
+  // Reset paging whenever the execution filters narrow the result set.
+  useEffect(() => {
+    setExecutionOffset(0);
+  }, [
+    executionSource,
+    executionMode,
+    executionStatus,
+    filterState.selectedBots,
+    filterState.selectedPipelines,
+    filterState.timeRange,
+    filterState.customDateRange,
+  ]);
+
   // Counter to force feedbackTimeRange recomputation on manual refresh
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
 
   // Get time range for feedback data
-  const feedbackTimeRange = useMemo(() => {
-    const now = new Date();
-    let startTime: Date | null = null;
-
-    switch (filterState.timeRange) {
-      case 'lastHour':
-        startTime = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'last6Hours':
-        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case 'last24Hours':
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case 'last7Days':
-        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'last30Days':
-        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case 'custom':
-        if (filterState.customDateRange) {
-          startTime = filterState.customDateRange.from;
-        }
-        break;
-    }
-
-    const endTime =
-      filterState.timeRange === 'custom' && filterState.customDateRange
-        ? filterState.customDateRange.to
-        : now;
-
-    return {
-      startTime: startTime?.toISOString(),
-      endTime: endTime.toISOString(),
-    };
+  const feedbackTimeRange = useMemo(
+    () =>
+      resolveMonitoringWindow(
+        filterState.timeRange,
+        filterState.customDateRange,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterState.timeRange, filterState.customDateRange, feedbackRefreshKey]);
+    [filterState.timeRange, filterState.customDateRange, feedbackRefreshKey],
+  );
 
   // Feedback data hook
   const {
@@ -99,8 +137,9 @@ function MonitoringPageContent() {
   // Combined refresh handler for both monitoring and feedback data
   const handleRefresh = useCallback(() => {
     refetch();
+    refetchExecutions();
     setFeedbackRefreshKey((k) => k + 1);
-  }, [refetch]);
+  }, [refetch, refetchExecutions]);
 
   const conversationTurns = useMemo(
     () =>
@@ -118,7 +157,14 @@ function MonitoringPageContent() {
   const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
 
   // State for controlled tabs
-  const [activeTab, setActiveTab] = useState<string>('messages');
+  const [activeTab, setActiveTab] = useState<string>('executions');
+
+  // Ids the message list actually holds: a call may name a record that the
+  // current window does not contain, and a dead link is worse than no link.
+  const messageIds = useMemo(
+    () => new Set(data?.messages.map((message) => message.id) ?? []),
+    [data?.messages],
+  );
 
   // Function to jump to a message record
   const jumpToMessage = (messageId: string) => {
@@ -148,7 +194,7 @@ function MonitoringPageContent() {
       {/* Filters and Refresh Button - Sticky */}
       <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
         <div>
-          <div className="flex flex-col gap-3 p-3 bg-card rounded-xl border sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:p-4">
+          <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:p-4">
             <MonitoringFilters
               selectedBots={filterState.selectedBots}
               selectedPipelines={filterState.selectedPipelines}
@@ -156,6 +202,12 @@ function MonitoringPageContent() {
               onBotsChange={setSelectedBots}
               onPipelinesChange={setSelectedPipelines}
               onTimeRangeChange={setTimeRange}
+              source={executionSource}
+              onSourceChange={setExecutionSource}
+              mode={executionMode}
+              onModeChange={setExecutionMode}
+              statusGroup={executionStatus}
+              onStatusGroupChange={setExecutionStatus}
             />
             <div className="flex items-center gap-2">
               {canExport && <ExportDropdown filterState={filterState} />}
@@ -169,29 +221,36 @@ function MonitoringPageContent() {
                 {t('monitoring.refreshData')}
               </Button>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
 
       {/* Content Area */}
       {error ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-destructive p-6 space-y-3"
-        >
-          <p>{t('monitoring.loadError')}</p>
-          <Button variant="outline" onClick={handleRefresh}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <Alert variant="destructive">
+          <AlertTitle>{t('monitoring.loadError')}</AlertTitle>
+          <AlertDescription className="mt-2">
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              {t('common.retry')}
+            </Button>
+          </AlertDescription>
+        </Alert>
       ) : (
         <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
-          {/* Overview Section */}
-          <OverviewCards
-            metrics={data?.overview || null}
-            traffic={data?.traffic}
-            loading={loading}
-          />
+          {/* Overview Section: the execution metrics and the runtime status share
+              one grid, so a card always lands in the same row regardless of how
+              many metrics reported. */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+            <ExecutionOverviewCards
+              summary={executionResult?.summary ?? null}
+              loading={executionLoading}
+              activeSessions={data?.overview?.activeSessions ?? null}
+            />
+            <SystemStatusCard refreshKey={feedbackRefreshKey} />
+          </div>
+
+          {/* Traffic Chart */}
+          <TrafficChart traffic={data?.traffic} loading={loading} />
 
           {/* Tabs Section */}
           {!loading && data && (
@@ -235,14 +294,20 @@ function MonitoringPageContent() {
               )}
             </div>
           )}
-          <div className="bg-card rounded-xl border overflow-hidden">
+          {/* Detail records region: one fixed-height surface for every tab. Tab
+              switches and expanded records scroll inside it, so the page never
+              resizes and nothing below the fold is pushed out of view. */}
+          <div className="bg-card flex h-[min(72vh,48rem)] min-h-[24rem] flex-col overflow-hidden rounded-xl border">
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
-              className="w-full"
+              className="flex h-full min-h-0 w-full flex-col gap-0"
             >
-              <div className="px-3 pt-4 sm:px-6">
+              <div className="border-b px-3 pt-4 pb-3 sm:px-6">
                 <TabsList className="h-12 w-full justify-start gap-1 overflow-x-auto p-1 sm:w-auto">
+                  <TabsTrigger value="executions" className="px-3 py-2 sm:px-6">
+                    {t('monitoring.execution.tabs.executions')}
+                  </TabsTrigger>
                   <TabsTrigger value="messages" className="px-3 py-2 sm:px-6">
                     {t('monitoring.tabs.messages')}
                   </TabsTrigger>
@@ -261,15 +326,99 @@ function MonitoringPageContent() {
                 </TabsList>
               </div>
 
-              <TabsContent value="messages" className="p-3 m-0 sm:p-6">
-                <div>
-                  {loading && (
-                    <div className="py-12 flex justify-center">
-                      <LoadingSpinner
-                        text={t('monitoring.messageList.loading')}
-                      />
+              <TabsContent
+                value="executions"
+                className="m-0 flex min-h-0 flex-1 flex-col"
+              >
+                <p className="px-3 pt-4 text-sm text-muted-foreground sm:px-6">
+                  {t('monitoring.execution.subtitle')}
+                </p>
+
+                {executionError ? (
+                  <div className="px-3 pt-4 sm:px-6">
+                    <Alert variant="destructive">
+                      <AlertTitle>
+                        {t('monitoring.execution.detail.loadError')}
+                      </AlertTitle>
+                      <AlertDescription className="mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleRefresh}
+                        >
+                          {t('common.retry')}
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-h-0 flex-1 overflow-hidden px-3 pt-4 pb-4 sm:px-6">
+                      {executionLoading ? (
+                        <TabState loading rows={6} />
+                      ) : (executionResult?.items.length ?? 0) === 0 ? (
+                        <TabState
+                          icon={<Activity className="h-12 w-12" />}
+                          title={t('monitoring.execution.empty')}
+                        />
+                      ) : (
+                        <ExecutionTable
+                          rows={executionResult?.items ?? []}
+                          selectedId={selectedExecution?.id}
+                          onSelect={setSelectedExecution}
+                        />
+                      )}
                     </div>
-                  )}
+                    {executionResult &&
+                      executionResult.total > EXECUTIONS_PAGE_SIZE && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-3 sm:px-6">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={executionOffset === 0}
+                            onClick={() =>
+                              setExecutionOffset(
+                                Math.max(
+                                  0,
+                                  executionOffset - EXECUTIONS_PAGE_SIZE,
+                                ),
+                              )
+                            }
+                          >
+                            {t('common.previous')}
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            {executionOffset + 1}–
+                            {Math.min(
+                              executionOffset + EXECUTIONS_PAGE_SIZE,
+                              executionResult.total,
+                            )}{' '}
+                            / {executionResult.total}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!executionResult.has_more}
+                            onClick={() =>
+                              setExecutionOffset(
+                                executionOffset + EXECUTIONS_PAGE_SIZE,
+                              )
+                            }
+                          >
+                            {t('common.next')}
+                          </Button>
+                        </div>
+                      )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent
+                value="messages"
+                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+              >
+                <div>
+                  {loading && <TabState loading rows={6} />}
 
                   {!loading && data && conversationTurns.length > 0 && (
                     <ConversationTurnList
@@ -280,214 +429,272 @@ function MonitoringPageContent() {
                   )}
 
                   {!loading && (!data || conversationTurns.length === 0) && (
-                    <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                      <MessageSquare className="h-[3rem] w-[3rem]" />
-                      <div className="text-sm">
-                        {t('monitoring.messageList.noMessages')}
-                      </div>
-                    </div>
+                    <TabState
+                      icon={<MessageSquare className="h-12 w-12" />}
+                      title={t('monitoring.messageList.noMessages')}
+                    />
                   )}
                 </div>
               </TabsContent>
 
-              <TabsContent value="modelCalls" className="p-3 m-0 sm:p-6">
+              <TabsContent
+                value="modelCalls"
+                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+              >
                 <div>
-                  {loading && (
-                    <div className="py-12 flex justify-center">
-                      <LoadingSpinner text={t('common.loading')} />
-                    </div>
-                  )}
+                  {loading && <TabState loading rows={6} />}
 
                   {!loading &&
                     data &&
                     data.modelCalls &&
                     data.modelCalls.length > 0 && (
                       <div className="space-y-4">
-                        {data.modelCalls.map((call) => (
-                          <div
-                            key={call.id}
-                            className="border rounded-xl p-3 transition-all duration-200 sm:p-5"
-                          >
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex-1">
-                                {/* Query ID - only show if messageId exists */}
-                                {call.messageId && (
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      Query ID: {call.messageId}
-                                    </span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-5 px-1.5 text-xs"
-                                      onClick={() =>
-                                        jumpToMessage(call.messageId!)
+                        {data.modelCalls.map((call) => {
+                          // A recorded call names the record it belongs to, so
+                          // the whole card opens it; without a match the card
+                          // stays static instead of pretending to be a link.
+                          const target = resolveCallTarget(
+                            call,
+                            executionResult?.items ?? [],
+                            messageIds,
+                          );
+                          const openTarget = () => {
+                            if (!target) return;
+                            if (target.kind === 'execution') {
+                              setActiveTab('executions');
+                              setSelectedExecution(target.row);
+                              return;
+                            }
+                            jumpToMessage(target.id);
+                          };
+                          return (
+                            <Card
+                              key={call.id}
+                              role={target ? 'button' : undefined}
+                              tabIndex={target ? 0 : undefined}
+                              aria-label={
+                                target
+                                  ? t('monitoring.execution.detail.openObject')
+                                  : undefined
+                              }
+                              onClick={target ? openTarget : undefined}
+                              onKeyDown={
+                                target
+                                  ? (
+                                      event: React.KeyboardEvent<HTMLDivElement>,
+                                    ) => {
+                                      if (
+                                        event.key === 'Enter' ||
+                                        event.key === ' '
+                                      ) {
+                                        event.preventDefault();
+                                        openTarget();
+                                      }
+                                    }
+                                  : undefined
+                              }
+                              className={cn(
+                                'gap-0 px-4 py-4 transition-all duration-200 sm:px-5 sm:py-5',
+                                target &&
+                                  'cursor-pointer hover:bg-muted/40 focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none',
+                              )}
+                            >
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex-1">
+                                  {/* The stored id is the owning record: a
+                                      Pipeline's message, or an Agent run's id
+                                      that the card itself opens. */}
+                                  {call.messageId &&
+                                    messageIds.has(call.messageId) && (
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-xs text-muted-foreground font-mono">
+                                          Query ID: {call.messageId}
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 px-1.5 text-xs"
+                                          onClick={(event) => {
+                                            // The card itself opens the call's
+                                            // record; this button is the more
+                                            // specific message target.
+                                            event.stopPropagation();
+                                            jumpToMessage(call.messageId!);
+                                          }}
+                                        >
+                                          <ExternalLink className="w-3 h-3 mr-1" />
+                                          {t(
+                                            'monitoring.messageList.viewConversation',
+                                          )}
+                                        </Button>
+                                      </div>
+                                    )}
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {/* Model Type Badge */}
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        call.modelType === 'llm'
+                                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                          : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                                       }
                                     >
-                                      <ExternalLink className="w-3 h-3 mr-1" />
-                                      {t(
-                                        'monitoring.messageList.viewConversation',
+                                      {call.modelType === 'llm'
+                                        ? t('monitoring.modelCalls.llmModel')
+                                        : t(
+                                            'monitoring.modelCalls.embeddingModel',
+                                          )}
+                                    </Badge>
+                                    {/* Call Type Badge for Embedding */}
+                                    {call.modelType === 'embedding' &&
+                                      call.callType && (
+                                        <Badge
+                                          variant="outline"
+                                          className={
+                                            call.callType === 'retrieve'
+                                              ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
+                                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                                          }
+                                        >
+                                          {call.callType === 'retrieve'
+                                            ? t(
+                                                'monitoring.modelCalls.retrieveCall',
+                                              )
+                                            : t(
+                                                'monitoring.modelCalls.embeddingCall',
+                                              )}
+                                        </Badge>
                                       )}
-                                    </Button>
+                                    {/* Status Badge */}
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        call.status === 'success'
+                                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                      }
+                                    >
+                                      {call.status}
+                                    </Badge>
                                   </div>
-                                )}
-                                <div className="flex items-center gap-2 mb-2">
-                                  {/* Model Type Badge */}
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded ${
-                                      call.modelType === 'llm'
-                                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                                        : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                                    }`}
-                                  >
-                                    {call.modelType === 'llm'
-                                      ? t('monitoring.modelCalls.llmModel')
-                                      : t(
-                                          'monitoring.modelCalls.embeddingModel',
-                                        )}
-                                  </span>
-                                  {/* Call Type Badge for Embedding */}
-                                  {call.modelType === 'embedding' &&
-                                    call.callType && (
-                                      <span
-                                        className={`text-xs px-2 py-1 rounded ${
-                                          call.callType === 'retrieve'
-                                            ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
-                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
-                                        }`}
-                                      >
-                                        {call.callType === 'retrieve'
-                                          ? t(
-                                              'monitoring.modelCalls.retrieveCall',
-                                            )
-                                          : t(
-                                              'monitoring.modelCalls.embeddingCall',
-                                            )}
-                                      </span>
+                                  {/* Model Name */}
+                                  <div className="font-medium text-sm text-foreground mb-2">
+                                    {call.modelName}
+                                  </div>
+                                  {/* Context Info - only for LLM calls */}
+                                  {call.modelType === 'llm' &&
+                                    call.botName &&
+                                    call.pipelineName && (
+                                      <div className="text-xs text-muted-foreground mb-1">
+                                        {call.botName} → {call.pipelineName}
+                                      </div>
                                     )}
-                                  {/* Status Badge */}
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded ${
-                                      call.status === 'success'
-                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                    }`}
-                                  >
-                                    {call.status}
-                                  </span>
-                                </div>
-                                {/* Model Name */}
-                                <div className="font-medium text-sm text-foreground mb-2">
-                                  {call.modelName}
-                                </div>
-                                {/* Context Info - only for LLM calls */}
-                                {call.modelType === 'llm' &&
-                                  call.botName &&
-                                  call.pipelineName && (
-                                    <div className="text-xs text-muted-foreground mb-1">
-                                      {call.botName} → {call.pipelineName}
-                                    </div>
-                                  )}
-                                {/* Token Info */}
-                                <div className="text-xs text-muted-foreground space-y-1">
-                                  <div className="flex flex-wrap gap-4">
-                                    {call.modelType === 'llm' &&
-                                      call.tokens && (
+                                  {/* Token Info */}
+                                  <div className="text-xs text-muted-foreground space-y-1">
+                                    <div className="flex flex-wrap gap-4">
+                                      {call.modelType === 'llm' &&
+                                        call.tokens && (
+                                          <>
+                                            <span>
+                                              {t(
+                                                'monitoring.llmCalls.inputTokens',
+                                              )}
+                                              : {call.tokens.input}
+                                            </span>
+                                            <span>
+                                              {t(
+                                                'monitoring.llmCalls.outputTokens',
+                                              )}
+                                              : {call.tokens.output}
+                                            </span>
+                                            <span>
+                                              {t(
+                                                'monitoring.llmCalls.totalTokens',
+                                              )}
+                                              : {call.tokens.total}
+                                            </span>
+                                          </>
+                                        )}
+                                      {call.modelType === 'embedding' && (
                                         <>
                                           <span>
                                             {t(
-                                              'monitoring.llmCalls.inputTokens',
+                                              'monitoring.embeddingCalls.promptTokens',
                                             )}
-                                            : {call.tokens.input}
+                                            : {call.promptTokens}
                                           </span>
                                           <span>
                                             {t(
-                                              'monitoring.llmCalls.outputTokens',
+                                              'monitoring.embeddingCalls.totalTokens',
                                             )}
-                                            : {call.tokens.output}
+                                            : {call.totalTokens}
                                           </span>
                                           <span>
                                             {t(
-                                              'monitoring.llmCalls.totalTokens',
+                                              'monitoring.embeddingCalls.inputCount',
                                             )}
-                                            : {call.tokens.total}
+                                            : {call.inputCount}
                                           </span>
                                         </>
                                       )}
-                                    {call.modelType === 'embedding' && (
-                                      <>
-                                        <span>
-                                          {t(
-                                            'monitoring.embeddingCalls.promptTokens',
-                                          )}
-                                          : {call.promptTokens}
-                                        </span>
-                                        <span>
-                                          {t(
-                                            'monitoring.embeddingCalls.totalTokens',
-                                          )}
-                                          : {call.totalTokens}
-                                        </span>
-                                        <span>
-                                          {t(
-                                            'monitoring.embeddingCalls.inputCount',
-                                          )}
-                                          : {call.inputCount}
-                                        </span>
-                                      </>
-                                    )}
-                                    <span>
-                                      {t('monitoring.llmCalls.duration')}:{' '}
-                                      {call.duration}ms
-                                    </span>
-                                    {call.cost && (
                                       <span>
-                                        {t('monitoring.llmCalls.cost')}: $
-                                        {call.cost.toFixed(4)}
+                                        {t('monitoring.llmCalls.duration')}:{' '}
+                                        {call.duration}ms
                                       </span>
-                                    )}
-                                  </div>
-                                  {/* Knowledge Base Info for Embedding */}
-                                  {call.modelType === 'embedding' &&
-                                    call.knowledgeBaseId && (
-                                      <div>
-                                        {t(
-                                          'monitoring.embeddingCalls.knowledgeBase',
-                                        )}
-                                        : {call.knowledgeBaseId}
-                                      </div>
-                                    )}
-                                  {/* Query Text for Embedding Retrieve */}
-                                  {call.modelType === 'embedding' &&
-                                    call.queryText && (
-                                      <div className="mt-2 p-2 bg-muted rounded text-sm">
-                                        <span className="text-muted-foreground">
+                                      {call.cost && (
+                                        <span>
+                                          {t('monitoring.llmCalls.cost')}: $
+                                          {call.cost.toFixed(4)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Knowledge Base Info for Embedding */}
+                                    {call.modelType === 'embedding' &&
+                                      call.knowledgeBaseId && (
+                                        <div>
                                           {t(
-                                            'monitoring.embeddingCalls.queryText',
+                                            'monitoring.embeddingCalls.knowledgeBase',
                                           )}
-                                          :{' '}
-                                        </span>
-                                        <span className="text-foreground">
-                                          {call.queryText.length > 100
-                                            ? call.queryText.substring(0, 100) +
-                                              '...'
-                                            : call.queryText}
-                                        </span>
-                                      </div>
-                                    )}
-                                </div>
-                                {call.errorMessage && (
-                                  <div className="mt-2 text-xs text-red-600 dark:text-red-400">
-                                    Error: {call.errorMessage}
+                                          : {call.knowledgeBaseId}
+                                        </div>
+                                      )}
+                                    {/* Query Text for Embedding Retrieve */}
+                                    {call.modelType === 'embedding' &&
+                                      call.queryText && (
+                                        <div className="mt-2 p-2 bg-muted rounded text-sm">
+                                          <span className="text-muted-foreground">
+                                            {t(
+                                              'monitoring.embeddingCalls.queryText',
+                                            )}
+                                            :{' '}
+                                          </span>
+                                          <span className="text-foreground">
+                                            {call.queryText.length > 100
+                                              ? call.queryText.substring(
+                                                  0,
+                                                  100,
+                                                ) + '...'
+                                              : call.queryText}
+                                          </span>
+                                        </div>
+                                      )}
                                   </div>
-                                )}
+                                  {call.errorMessage && (
+                                    <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                                      Error: {call.errorMessage}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="ml-4 flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                                  {call.timestamp.toLocaleString()}
+                                  {target && (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </span>
                               </div>
-                              <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">
-                                {call.timestamp.toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                            </Card>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -495,17 +702,18 @@ function MonitoringPageContent() {
                     (!data ||
                       !data.modelCalls ||
                       data.modelCalls.length === 0) && (
-                      <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                        <Sparkles className="h-[3rem] w-[3rem]" />
-                        <div className="text-sm">
-                          {t('monitoring.modelCalls.noData')}
-                        </div>
-                      </div>
+                      <TabState
+                        icon={<Sparkles className="h-12 w-12" />}
+                        title={t('monitoring.modelCalls.noData')}
+                      />
                     )}
                 </div>
               </TabsContent>
 
-              <TabsContent value="tokens" className="p-3 m-0 sm:p-6">
+              <TabsContent
+                value="tokens"
+                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+              >
                 <TokenMonitoring
                   botIds={
                     filterState.selectedBots.length > 0
@@ -523,13 +731,12 @@ function MonitoringPageContent() {
                 />
               </TabsContent>
 
-              <TabsContent value="feedback" className="p-3 m-0 sm:p-6">
+              <TabsContent
+                value="feedback"
+                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+              >
                 <div>
-                  {loading && (
-                    <div className="py-12 flex justify-center">
-                      <LoadingSpinner text={t('common.loading')} />
-                    </div>
-                  )}
+                  {loading && <TabState loading rows={6} />}
 
                   {!loading && (
                     <>
@@ -542,7 +749,7 @@ function MonitoringPageContent() {
                       </div>
 
                       {/* Feedback List */}
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      <h3 className="text-lg font-semibold text-foreground mb-4">
                         {t('monitoring.feedback.feedbackList')}
                       </h3>
                       <FeedbackList
@@ -555,13 +762,12 @@ function MonitoringPageContent() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="errors" className="p-3 m-0 sm:p-6">
+              <TabsContent
+                value="errors"
+                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+              >
                 <div>
-                  {loading && (
-                    <div className="py-12 flex justify-center">
-                      <LoadingSpinner text={t('common.loading')} />
-                    </div>
-                  )}
+                  {loading && <TabState loading rows={6} />}
 
                   {!loading &&
                     data &&
@@ -569,9 +775,9 @@ function MonitoringPageContent() {
                     data.errors.length > 0 && (
                       <div className="space-y-4">
                         {data.errors.map((error) => (
-                          <div
+                          <Card
                             key={error.id}
-                            className="border border-red-200 dark:border-red-900 rounded-xl overflow-hidden transition-all duration-200"
+                            className="gap-0 overflow-hidden border-red-200 py-0 transition-all duration-200 dark:border-red-900"
                           >
                             {/* Error Header - Always Visible */}
                             <div
@@ -704,19 +910,19 @@ function MonitoringPageContent() {
                                 </div>
                               </div>
                             )}
-                          </div>
+                          </Card>
                         ))}
                       </div>
                     )}
 
                   {!loading &&
                     (!data || !data.errors || data.errors.length === 0) && (
-                      <div className="flex flex-col items-center justify-center text-muted-foreground py-16 gap-2">
-                        <CheckCircle2 className="h-[3rem] w-[3rem] text-green-500 dark:text-green-600" />
-                        <div className="text-sm text-green-600 dark:text-green-400">
-                          {t('monitoring.errors.noErrors')}
-                        </div>
-                      </div>
+                      <TabState
+                        icon={
+                          <CheckCircle2 className="h-12 w-12 text-green-500 dark:text-green-600" />
+                        }
+                        title={t('monitoring.errors.noErrors')}
+                      />
                     )}
                 </div>
               </TabsContent>
@@ -724,6 +930,12 @@ function MonitoringPageContent() {
           </div>
         </div>
       )}
+
+      {/* Execution trace drawer */}
+      <ExecutionDetailSheet
+        row={selectedExecution}
+        onClose={() => setSelectedExecution(null)}
+      />
     </div>
   );
 }

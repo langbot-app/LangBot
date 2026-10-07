@@ -1,80 +1,88 @@
-import React from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+'use client';
 
-interface MetricCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  trend?: {
-    value: number;
-    direction: 'up' | 'down';
-  };
+import React from 'react';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+
+export interface MetricCardProps {
+  /** Small label, sitting next to the icon. */
+  label: string;
+  /** The card's headline value; a node so it can carry a badge. */
+  value?: React.ReactNode;
+  /** Icon of the tinted tile on the leading edge. */
+  icon?: React.ReactNode;
+  /** Muted line under the value. */
+  hint?: React.ReactNode;
+  /** Tile colour as a hex value; defaults to the muted token. */
+  accent?: string;
+  /** Rendered at the card's top-right (tooltip trigger, help dialog, badge). */
+  action?: React.ReactNode;
+  /** Extra body under the value, for composite cards (stat grids, status rows). */
+  children?: React.ReactNode;
   loading?: boolean;
+  className?: string;
 }
 
-export default function MetricCard({
-  title,
+/**
+ * The dashboard's one metric card: tinted icon tile and label on the leading
+ * edge, value, then a muted hint. Token, execution, feedback and runtime
+ * counters all render through it, so their rows and internal spacing match
+ * instead of each surface inventing its own card.
+ */
+export function MetricCard({
+  label,
   value,
   icon,
-  trend,
+  hint,
+  accent,
+  action,
+  children,
   loading,
+  className,
 }: MetricCardProps) {
-  if (loading) {
-    return (
-      <Card className="transition-all duration-300">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {title}
-          </CardTitle>
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center">
-            <div className="h-5 w-5 text-blue-600 dark:text-blue-400">
-              {icon}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-9 w-28 bg-muted animate-pulse rounded"></div>
-          <div className="h-4 w-20 bg-muted animate-pulse rounded mt-2"></div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <Card className="transition-all duration-300 group">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-          <div className="h-5 w-5 text-blue-600 dark:text-blue-400">{icon}</div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold text-foreground mb-2">{value}</div>
-        {trend && (
-          <div className="flex items-center gap-1.5">
+    <Card className={cn('gap-3 p-4', className)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {icon ? (
             <span
-              className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                trend.direction === 'up'
-                  ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-              }`}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: accent ? `${accent}1a` : 'var(--muted)',
+                color: accent || 'var(--muted-foreground)',
+              }}
             >
-              {trend.direction === 'up' ? (
-                <TrendingUp className="w-3 h-3" />
-              ) : (
-                <TrendingDown className="w-3 h-3" />
-              )}
-              {Math.abs(trend.value)}%
+              {icon}
             </span>
-            <span className="text-xs text-muted-foreground">
-              vs previous period
-            </span>
-          </div>
-        )}
-      </CardContent>
+          ) : null}
+          <span className="truncate text-sm text-muted-foreground">
+            {label}
+          </span>
+        </div>
+        {action}
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      ) : (
+        <>
+          {value != null && value !== '' && (
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
+              {value}
+            </div>
+          )}
+          {hint != null && hint !== '' && (
+            <div className="text-xs text-muted-foreground">{hint}</div>
+          )}
+          {children}
+        </>
+      )}
     </Card>
   );
 }
+
+export default MetricCard;

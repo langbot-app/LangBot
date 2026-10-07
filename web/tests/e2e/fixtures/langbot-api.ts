@@ -227,6 +227,123 @@ function emptyMonitoringData() {
   };
 }
 
+type RawMonitoringMessage = Record<string, unknown>;
+
+/** Mirror of the backend execution status groups so fixtures stay realistic. */
+function executionStatusGroup(status: string, source: 'agent' | 'pipeline') {
+  if (source === 'agent') {
+    if (status === 'failed' || status === 'timeout') return 'failed';
+    if (status === 'created' || status === 'queued') return 'queued';
+    if (status === 'claimed' || status === 'running') return 'running';
+    if (status === 'cancelled') return 'cancelled';
+    return status;
+  }
+  if (status === 'success') return 'completed';
+  if (status === 'error') return 'failed';
+  if (status === 'pending') return 'running';
+  if (status === 'discarded' || status === 'not_matched') return 'ignored';
+  return status;
+}
+
+/** Best-effort text extraction from a serialized message chain (mirrors backend). */
+function executionText(raw: unknown): string {
+  const source = String(raw ?? '');
+  try {
+    const parts: string[] = [];
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6) return;
+      if (Array.isArray(node)) {
+        node.forEach((item) => walk(item, depth + 1));
+      } else if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          if (key === 'text' && typeof value === 'string') parts.push(value);
+          else walk(value, depth + 1);
+        }
+      }
+    };
+    walk(JSON.parse(source));
+    return parts.join(' ').trim() || source;
+  } catch {
+    return source;
+  }
+}
+
+/** Derive the unified execution list from a mocked monitoring payload. */
+function buildExecutionList(monitoringData: unknown) {
+  const payload = monitoringData as { messages?: RawMonitoringMessage[] } | undefined;
+  const items = (payload?.messages ?? [])
+    .filter((message) => message.role !== 'assistant')
+    .map((message) => {
+      const status = String(message.status ?? 'success');
+      return {
+        source: 'pipeline' as const,
+        id: String(message.id),
+        event_id: null,
+        status,
+        status_group: executionStatusGroup(status, 'pipeline'),
+        title: executionText(message.message_content),
+        target_kind: 'pipeline' as const,
+        target_id: (message.pipeline_id as string) ?? null,
+        target_name: (message.pipeline_name as string) ?? null,
+        bot_id: (message.bot_id as string) ?? null,
+        bot_name: (message.bot_name as string) ?? null,
+        pipeline_id: (message.pipeline_id as string) ?? null,
+        pipeline_name: (message.pipeline_name as string) ?? null,
+        runner_id: (message.runner_name as string) ?? null,
+        conversation_id: null,
+        session_id: (message.session_id as string) ?? null,
+        created_at_ms: Date.parse(String(message.timestamp ?? '')) || null,
+        started_at_ms: null,
+        finished_at_ms: null,
+        duration_ms: null,
+        usage: null,
+        cost: null,
+        queue_name: null,
+        debug: false,
+        has_error: status === 'error',
+      };
+    });
+
+  const byStatus: Record<string, number> = {};
+  for (const item of items) {
+    byStatus[item.status_group] = (byStatus[item.status_group] ?? 0) + 1;
+  }
+  const completed = byStatus.completed ?? 0;
+  const failed = byStatus.failed ?? 0;
+  const denominator = completed + failed;
+
+  return {
+    items,
+    total: items.length,
+    limit: items.length,
+    offset: 0,
+    has_more: false,
+    summary: {
+      executions: {
+        total: items.length,
+        by_source: { agent: 0, pipeline: items.length },
+        by_status: byStatus,
+        completed,
+        failed,
+        running: byStatus.running ?? 0,
+        queued: byStatus.queued ?? 0,
+        cancelled: byStatus.cancelled ?? 0,
+        ignored: byStatus.ignored ?? 0,
+        waiting: 0,
+        success_rate:
+          denominator > 0 ? Math.round((completed / denominator) * 10000) / 100 : null,
+        denominator,
+        p50_duration_ms: null,
+        p95_duration_ms: null,
+        duration_sample: 0,
+        debug: 0,
+        real: items.length,
+      },
+      tokens: { total_tokens: 0, calls: 0, calls_with_usage: 0 },
+    },
+  };
+}
+
 function emptyTokenStatistics() {
   return {
     summary: {
@@ -1161,6 +1278,46 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   if (path === '/api/v1/monitoring/overview') {
     const data = state.monitoringData as { overview?: unknown };
     return fulfillJson(route, data.overview || emptyMonitoringData().overview);
+  }
+
+  if (path === '/api/v1/monitoring/executions') {
+    return fulfillJson(route, buildExecutionList(state.monitoringData));
+  }
+
+  const executionDetail = path.match(
+    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline)\/(.+)$/,
+  );
+  if (executionDetail) {
+    const [, source, executionId] = executionDetail;
+    if (source === 'agent') {
+      return fulfillJson(route, {
+        source: 'agent',
+        run: { run_id: executionId, status: 'completed', created_at: 0 },
+        events: [],
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+    const payload = state.monitoringData as {
+      messages?: RawMonitoringMessage[];
+      llmCalls?: RawMonitoringMessage[];
+      toolCalls?: RawMonitoringMessage[];
+      errors?: RawMonitoringMessage[];
+    };
+    const relatedToExecution = (rows: RawMonitoringMessage[] | undefined) =>
+      (rows ?? []).filter((row) => row.message_id === executionId);
+    return fulfillJson(route, {
+      source: 'pipeline',
+      message:
+        (payload.messages ?? []).find((row) => row.id === executionId) ?? {
+          id: executionId,
+          status: 'success',
+          message_content: '',
+        },
+      llm_calls: relatedToExecution(payload.llmCalls),
+      tool_calls: relatedToExecution(payload.toolCalls),
+      errors: relatedToExecution(payload.errors),
+    });
   }
 
   if (path === '/api/v1/monitoring/token-statistics') {
