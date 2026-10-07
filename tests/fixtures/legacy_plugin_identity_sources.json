@@ -1,0 +1,23 @@
+{
+  "repository": "langbot-app/langbot-plugins",
+  "revision": "7ad54b1a139d88113bc55128326800ed29779737",
+  "contract": "Current dedicated-workspace and trusted shared-installation identity; see each plugin SHARED_RUNTIME.md.",
+  "files": {
+    "Runner/dify-agent/components/runner/default.py": "0bcaff74c64c89be2bddb4be5871ce148a814676b50987a65f95228ecb7da8fa",
+    "Runner/dify-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/dify-agent/pkg/dify_client.py": "607ed8d610d916e5b64ed20699e3de6e2216b238a5fecc9cabcdb75533b8dc56",
+    "Runner/dify-agent/manifest.yaml": "3037d16981b697d40252a62d2a6854a5b9b94b24ba473e798a97f5338b691ac5",
+    "Runner/n8n-agent/components/runner/default.py": "2719ec0a8ff779e90e61bd0209653fb9a1eab4b552877cfcbd4d3c9ce803fcf1",
+    "Runner/n8n-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/n8n-agent/pkg/n8n_client.py": "15149b2d4162b51a3a7427d639908130ea4179014067f04a459a8a71ca105c15",
+    "Runner/n8n-agent/manifest.yaml": "20a6799e946ba037cd83c4ac1db3b5f3a99e92b3471ca93d6245cf6b35272161",
+    "Runner/coze-agent/components/runner/default.py": "23f222bd1bf94682d44df021d56e6e69801fbe8ea5bac99693d0f1e2bce8f5e8",
+    "Runner/coze-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/coze-agent/pkg/coze_client.py": "379cb7f07f9931cc9de4cc40f8ebddea171c2a05383e662f6bd88ecdc5b3c317",
+    "Runner/coze-agent/manifest.yaml": "73a66049c4504a47c5a0cb069912bc0a2d53fa125762956e8cb46c0df815f39d",
+    "Runner/tbox-agent/components/runner/default.py": "4c9fdf8cc10c916915036112ded8768a619a827ca4b5e6a3f05881a7d0e4492f",
+    "Runner/tbox-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/tbox-agent/pkg/tbox_client.py": "0f09a3c70f773bc6377fd5b55a41d186dd15487d46aab3e61b837c08e15100a0",
+    "Runner/tbox-agent/manifest.yaml": "e0d5250136a6c015c6f32734ea4bd6a3146473eb003168eaa9f89bf2140d8bf4"
+  }
+}

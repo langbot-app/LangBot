@@ -1,0 +1,215 @@
+name: Dependency Contracts
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    paths:
+      - 'src/langbot/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+      - 'uv.lock'
+      - 'scripts/assert-required-tests.py'
+      - '.github/workflows/optional-contracts.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'src/langbot/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+      - 'uv.lock'
+      - 'scripts/assert-required-tests.py'
+      - '.github/workflows/optional-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiled-cli:
+    name: Compiled CLI HTTP Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '0'
+
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout official CLI source
+        uses: actions/checkout@v4
+        with:
+          repository: langbot-app/langbot-cli
+          # lbctl v0.2.0; advance only after verifying the Core HTTP contract.
+          ref: 3bd20eecd4771b1fe5d0dca61d8b5523182e7bd9
+          path: .contract-sources/langbot-cli
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Match the pinned CLI's release toolchain.
+          go-version: '1.26.8'
+          cache-dependency-path: .contract-sources/langbot-cli/go.sum
+
+      - name: Build pinned CLI
+        working-directory: .contract-sources/langbot-cli
+        env:
+          LANGBOT_CLI_BIN: ${{ runner.temp }}/langbot-cli/lbctl
+        run: |
+          test "$(git rev-parse HEAD)" = 3bd20eecd4771b1fe5d0dca61d8b5523182e7bd9
+          go mod download
+          go mod verify
+          mkdir -p "$(dirname "$LANGBOT_CLI_BIN")"
+          go build -mod=readonly -trimpath -o "$LANGBOT_CLI_BIN" ./cmd/lbctl
+          test -x "$LANGBOT_CLI_BIN"
+          go version -m "$LANGBOT_CLI_BIN"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Core dependencies
+        run: uv sync --dev --frozen
+
+      - name: Run required compiled CLI contract
+        env:
+          LANGBOT_CLI_BIN: ${{ runner.temp }}/langbot-cli/lbctl
+        run: |
+          uv run --no-sync pytest \
+            tests/unit_tests/api/service/test_cli_diagnostics.py::test_compiled_cli_against_core_http \
+            -q --tb=short -rs --junitxml=compiled-cli-results.xml
+          python scripts/assert-required-tests.py compiled-cli-results.xml \
+            --module tests.unit_tests.api.service.test_cli_diagnostics \
+            --name-prefix test_compiled_cli_against_core_http --expected-tests 1
+
+      - name: Upload compiled CLI contract result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-cli-contract-result
+          path: compiled-cli-results.xml
+          if-no-files-found: ignore
+
+  plugin-identity:
+    name: Official Plugin Identity Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read official source pin
+        id: plugin-source
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          lock = json.loads(Path('tests/fixtures/legacy_plugin_identity_sources.json').read_text())
+          assert lock['repository'] == 'langbot-app/langbot-plugins'
+          assert re.fullmatch(r'[0-9a-f]{40}', lock['revision'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"revision={lock['revision']}\n")
+          PY
+
+      - name: Checkout pinned official plugin sources
+        uses: actions/checkout@v4
+        with:
+          repository: langbot-app/langbot-plugins
+          ref: ${{ steps.plugin-source.outputs.revision }}
+          path: .contract-sources/langbot-plugins
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Core dependencies
+        run: uv sync --dev --frozen
+
+      - name: Run required identity consumer contracts
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/.contract-sources/langbot-plugins
+        run: |
+          uv run --no-sync pytest \
+            tests/unit_tests/agent/test_legacy_identity_boundary.py::test_real_plugin_identity_helper_with_host_payload \
+            -q --tb=short -rs --junitxml=plugin-identity-results.xml
+          python scripts/assert-required-tests.py plugin-identity-results.xml \
+            --module tests.unit_tests.agent.test_legacy_identity_boundary \
+            --name-prefix test_real_plugin_identity_helper_with_host_payload --expected-tests 16
+
+      - name: Upload plugin identity results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-identity-contract-results
+          path: plugin-identity-results.xml
+          if-no-files-found: ignore
+
+  seekdb:
+    name: Embedded SeekDB Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install locked SeekDB extra
+        run: uv sync --dev --extra seekdb --frozen
+
+      - name: Run required embedded SeekDB contracts
+        env:
+          SEEKDB_TEST_TMP: ${{ runner.temp }}/langbot-seekdb-contract
+        run: |
+          uv run --no-sync python - <<'PY'
+          from importlib.metadata import version
+          import pyseekdb
+          import pylibseekdb
+
+          print(f"pyseekdb={version('pyseekdb')}, pylibseekdb={version('pylibseekdb')}")
+          PY
+          uv run --no-sync pytest tests/integration/vector/test_seekdb.py \
+            -m slow -q --tb=short -rs --durations=5 \
+            --basetemp="$SEEKDB_TEST_TMP" --junitxml=seekdb-contract-results.xml
+          python scripts/assert-required-tests.py seekdb-contract-results.xml \
+            --module tests.integration.vector.test_seekdb --name-prefix test_ --expected-tests 2
+
+      - name: Upload SeekDB results and startup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seekdb-contract-results
+          path: |
+            seekdb-contract-results.xml
+            ${{ runner.temp }}/langbot-seekdb-contract/**/log/*.log
+          if-no-files-found: ignore
