@@ -21,6 +21,93 @@ LangBot uses a layered quality gate system for developers and CI:
 gates. They run in separate CI workflows. Frontend Playwright tests live under
 `web/tests/e2e` and are documented in `web/README.md`.
 
+### Core handler contracts and the LocalAgent fixture
+
+The handler unit tests execute Core's real `ChatMessageHandler` with SDK
+messages/queries and a fake orchestrator. They check plugin-altered input,
+stream output snapshots, completion, response IDs, and query isolation. They
+do not require LocalAgent to be installed and do not test its internal agent
+loop. Assertions on a hand-written UUID/list simulation are not a substitute
+for exercising the handler.
+
+`test_local_runner_fake_provider.py` is a separate cross-repository contract
+test: real Core, real SDK Plugin Runtime, and the official LocalAgent plugin,
+with deterministic Host-side model/tool/RAG resources. It checks installation,
+Host action routing, ledger/transcript persistence, and selected plugin journeys
+without a paid model provider. LocalAgent's own unit tests still belong with the
+plugin. The Box/file-transfer probe additionally needs Docker.
+
+CI's **Local Agent Contract E2E** job resolves the latest LocalAgent from the
+public Space version API on every run, matching Core's version selection.
+It saves `local-agent-resolution.json` with the resolved version, exact download
+URL, archive SHA256, and resolution time. Only the version/checksum-addressed
+archive is cached; latest metadata is always fetched anew. The script checks
+every cache hit and preserves the signed archive for normal Runtime admission.
+Space's `checksum` is the original archive SHA256; its normalized
+`artifact_digest` is different and must not be substituted. No Space token or
+model API key is needed.
+
+Run the same path locally:
+
+```bash
+export LANGBOT_E2E_LOCAL_AGENT_PACKAGE="$PWD/.pytest_cache/local-agent/LocalAgent.lbpkg"
+uv run python scripts/test-local-agent-fixture.py resolve .pytest_cache/local-agent-resolution.json
+uv run python scripts/test-local-agent-fixture.py fetch .pytest_cache/local-agent-resolution.json "$LANGBOT_E2E_LOCAL_AGENT_PACKAGE"
+LANGBOT_E2E_REQUIRE_LOCAL_AGENT=1 uv run pytest tests/e2e/test_local_runner_fake_provider.py -q -rs --durations=10
+```
+
+A missing explicitly configured package always fails. Without the environment
+variables, local runs may package a sibling
+`langbot-plugin-demo/Runner/LocalAgent` checkout or skip if it is absent. CI
+requires the resolved package, checks Docker, and rejects any skipped tests; it
+never relies on that sibling checkout. A metadata/download/checksum failure
+appears in provisioning separately from a Core/Runtime test failure. Do not
+silently fall back to an older release when latest is unavailable or incompatible.
+
+Because this tracks latest, an upstream plugin release can break an unchanged
+Core commit. Compare the saved resolution artifacts, and replay a failed run
+using its `local-agent-resolution.json` with the `fetch` command before assigning
+the regression to Core. Replay still validates the saved checksum and therefore
+fails clearly if Space replaces or removes that artifact. Plugin internals and
+new SDK compatibility requirements belong to their owning repositories.
+
+The Python 3.12 unit/smoke matrix job also collects line and branch coverage and
+enforces the unchanged 18% **line** threshold. The pytest-cov total with
+`--cov-branch` combines lines and branches; it is not either individual metric.
+Python 3.11 and 3.13 retain their compatibility runs.
+The existing **Coverage Gate** check aggregates these results without rerunning
+the suite. The new LocalAgent job is mandatory within this workflow; making its
+check branch-protection-required remains a repository setting.
+
+### Source complexity and coverage reports
+
+The 3.12 job uploads `coverage.json`, `coverage.xml`, `complexity.json`, and
+`complexity.md`, and shows the summary in the Actions job summary. The complexity
+report uses the already-installed Ruff C901 McCabe rule with a threshold of zero
+to measure every function, without adding dependencies or a new complexity gate.
+It covers `src/langbot/**/*.py`, including vendored `libs`, migrations, and
+templates. It records the Ruff version so comparisons have an explicit analyzer.
+
+```bash
+uv run pytest tests/unit_tests tests/smoke --cov=langbot --cov-branch --cov-report=json
+uv run python scripts/test-complexity.py --json complexity.json --summary complexity.md \
+  --coverage-json coverage.json --base-ref origin/master
+```
+
+The report includes function counts/distribution, hotspots, separate line/branch
+coverage, and function changes against the PR base (or previous push). It matches
+qualified names and Git-detected file renames; function renames appear as
+additions/deletions. Function-range coverage overlaps for nested functions and
+is a navigation aid, not a sum of independent coverage totals. Missing coverage
+is unknown, not zero.
+
+Use these to identify changed, complex functions needing stronger tests. Coverage
+shows execution and complexity estimates branching, but neither proves assertions
+would detect defects. Keep real behavior assertions, targeted mutation probes,
+integration contracts, skip reasons, and timings alongside these reports. Do not
+combine the metrics into a single quality score or gate existing complexity debt
+with an arbitrary threshold.
+
 ### Developer Workflow
 
 ```bash
