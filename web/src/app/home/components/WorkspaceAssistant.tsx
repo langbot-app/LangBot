@@ -632,10 +632,14 @@ function AssistantPanel({
             }}
             onScroll={(event) => {
               const list = event.currentTarget;
-              const movingUp = list.scrollTop < scrollPosition.current - 1;
-              followLatest.current =
-                !movingUp &&
-                list.scrollHeight - list.clientHeight - list.scrollTop < 32;
+              const delta = list.scrollTop - scrollPosition.current;
+              if (delta < -1) followLatest.current = false;
+              else if (delta > 1) {
+                followLatest.current =
+                  list.scrollHeight - list.clientHeight - list.scrollTop < 32;
+              }
+              // Delayed events from our own scroll have zero delta. Content may
+              // have grown since then, so they must not disable following.
               scrollPosition.current = list.scrollTop;
             }}
             aria-live="polite"
