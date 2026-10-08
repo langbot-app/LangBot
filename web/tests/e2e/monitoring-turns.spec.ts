@@ -633,7 +633,9 @@ test.describe('monitoring conversation turn grouping', () => {
     await sheet.getByText('Model calls (3)', { exact: true }).click();
     await expect(sheet.getByText('gpt-5.5').first()).toBeVisible();
     await sheet.getByText('Tool calls (2)', { exact: true }).click();
-    await expect(sheet.getByText('repo_search', { exact: true })).toBeVisible();
+    await expect(
+      sheet.locator('span.break-all').filter({ hasText: /^repo_search$/ }),
+    ).toBeVisible();
     await sheet.getByText('Errors (1)', { exact: true }).click();
     await expect(sheet.getByText('Tool retry failed').first()).toBeVisible();
     await sheet.getByText('Conversation context (6)', { exact: true }).click();
