@@ -12,6 +12,161 @@ const chat = {
   model_name: null,
 };
 
+test('resizes from the top handle, keeps height on reopen, and fits small viewports', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
+  await page.route('**/api/v1/provider/providers', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
+    }),
+  );
+  await page.route('**/api/v1/assistant/recommended-model', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { uuid: 'llm-valid', name: 'Model' } },
+    }),
+  );
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/home/bots');
+  const panel = page.getByRole('dialog', { name: 'Workspace assistant' });
+  const handle = panel.getByRole('separator', {
+    name: 'Resize assistant height',
+  });
+  await expect(handle).toBeVisible();
+  const initial = (await panel.boundingBox())!;
+  const grip = (await handle.boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    grip.x + grip.width / 2,
+    grip.y + grip.height / 2 - 140,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBeCloseTo(initial.height + 140, 0);
+  const expanded = (await panel.boundingBox())!;
+  expect(expanded.y + expanded.height).toBeCloseTo(
+    initial.y + initial.height,
+    0,
+  );
+  await panel
+    .getByRole('button', { name: 'Collapse workspace assistant', exact: true })
+    .click();
+  const dock = page.getByRole('button', {
+    name: 'Expand workspace assistant',
+    exact: true,
+  });
+  await expect(dock).toBeVisible();
+  expect((await dock.boundingBox())!.height).toBe(21);
+  await dock.click();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBeCloseTo(expanded.height, 0);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBeCloseTo(expanded.height, 0);
+  await handle.focus();
+  await page.keyboard.press('Home');
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(280);
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(304);
+  await page.keyboard.press('End');
+  const preferredHeight = page.viewportSize()!.height - 48;
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBe(page.viewportSize()!.height - 48);
+  await page.setViewportSize({ width: 375, height: 580 });
+  await expect
+    .poll(async () => (await panel.boundingBox())!.y)
+    .toBeGreaterThanOrEqual(48);
+  await expect(panel.getByRole('textbox')).toBeVisible();
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(532);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(532);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('langbot-assistant-panel-height'),
+    ),
+  ).toBe(String(preferredHeight));
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBe(preferredHeight);
+  const moveHandle = panel.getByRole('slider', {
+    name: 'Move assistant horizontally',
+  });
+  const beforeMove = (await panel.boundingBox())!;
+  const title = (await moveHandle.boundingBox())!;
+  await page.mouse.move(title.x + title.width / 2, title.y + title.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    title.x + title.width / 2 + 180,
+    title.y + title.height / 2,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.x)
+    .toBeCloseTo(beforeMove.x + 180, 0);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.x)
+    .toBeCloseTo(beforeMove.x + 180, 0);
+  await moveHandle.focus();
+  await page.keyboard.press('End');
+  await expect
+    .poll(async () => {
+      const box = (await panel.boundingBox())!;
+      return box.x + box.width;
+    })
+    .toBe(1268);
+  await page.keyboard.press('Home');
+  await expect.poll(async () => (await panel.boundingBox())!.x).toBe(12);
+  await page.setViewportSize({ width: 375, height: 580 });
+  await expect.poll(async () => (await panel.boundingBox())!.x).toBe(12);
+  expect((await panel.boundingBox())!.width).toBe(351);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => (await panel.boundingBox())!.x).toBe(12);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect.poll(async () => (await panel.boundingBox())!.x).toBe(12);
+  await panel
+    .getByRole('button', { name: 'Collapse workspace assistant', exact: true })
+    .click();
+  await expect(dock).toBeVisible();
+  const dockBox = (await dock.boundingBox())!;
+  const startX = dockBox.x + dockBox.width / 2;
+  const startY = dockBox.y + dockBox.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 150, startY, { steps: 8 });
+  await page.mouse.up();
+  await expect(dock).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect
+    .poll(async () => (await dock.boundingBox())!.x)
+    .toBeCloseTo(dockBox.x + 150, 0);
+  await dock.click();
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.x)
+    .toBeCloseTo(162, 0);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.x)
+    .toBeCloseTo(162, 0);
+});
+
 test('sending survives model labels appearing and disappearing in stream snapshots', async ({
   page,
 }) => {

@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
   assistant: {
+    movePosition: 'Di chuyển trợ lý theo chiều ngang',
+    resizeHeight: 'Điều chỉnh chiều cao trợ lý',
     sessions: 'Cuộc trò chuyện',
     currentChat: 'Cuộc trò chuyện hiện tại',
     stop: 'Dừng tác vụ',

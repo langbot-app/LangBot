@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
   assistant: {
+    movePosition: 'Move assistant horizontally',
+    resizeHeight: 'Resize assistant height',
     sessions: 'Conversations',
     currentChat: 'Current conversation',
     stop: 'Stop task',

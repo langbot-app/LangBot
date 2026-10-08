@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
   assistant: {
+    movePosition: 'アシスタントを左右に移動',
+    resizeHeight: 'アシスタントの高さを調整',
     sessions: '会話を切り替え',
     currentChat: '現在の会話',
     stop: 'タスクを停止',

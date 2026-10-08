@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/zh-Hans';
 const zhHans = {
   assistant: {
+    movePosition: '左右移动助手',
+    resizeHeight: '调整助手高度',
     sessions: '切换会话',
     currentChat: '当前会话',
     stop: '停止任务',

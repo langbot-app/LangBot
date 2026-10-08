@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 const ruRU = {
   assistant: {
+    movePosition: 'Переместить помощника по горизонтали',
+    resizeHeight: 'Изменить высоту помощника',
     sessions: 'Диалоги',
     currentChat: 'Текущий диалог',
     stop: 'Остановить задачу',

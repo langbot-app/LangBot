@@ -189,6 +189,9 @@ function AssistantSessions({ storageKey }: { storageKey: string }) {
   );
 }
 
+const ASSISTANT_HEIGHT_STORAGE_KEY = 'langbot-assistant-panel-height';
+const ASSISTANT_POSITION_STORAGE_KEY = 'langbot-assistant-panel-position';
+
 function AssistantPanel({
   storageKey,
   onSelect,
@@ -199,6 +202,61 @@ function AssistantPanel({
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [horizontalPosition, setHorizontalPosition] = useState(() => {
+    try {
+      const saved = Number(
+        localStorage.getItem(ASSISTANT_POSITION_STORAGE_KEY),
+      );
+      return Number.isFinite(saved) ? Math.max(-1, Math.min(1, saved)) : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const updateWidth = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ASSISTANT_POSITION_STORAGE_KEY,
+        String(horizontalPosition),
+      );
+    } catch {
+      // Positioning remains available when storage is blocked.
+    }
+  }, [horizontalPosition]);
+  // Store a relative position so it follows screen changes while keeping a
+  // 12px margin. The collapsed dock remains aligned with the expanded panel.
+  const horizontalRange = Math.max(0, (viewportWidth - 480 - 24) / 2);
+  const moveStart = useRef<{ x: number; offset: number } | null>(null);
+  const dockWasDragged = useRef(false);
+  const [panelHeight, setPanelHeight] = useState<number | undefined>(() => {
+    try {
+      const saved = Number(localStorage.getItem(ASSISTANT_HEIGHT_STORAGE_KEY));
+      return Number.isFinite(saved) && saved > 0
+        ? Math.max(280, saved)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  useEffect(() => {
+    if (panelHeight === undefined) return;
+    try {
+      localStorage.setItem(ASSISTANT_HEIGHT_STORAGE_KEY, String(panelHeight));
+    } catch {
+      // Resizing still works when browser storage is unavailable.
+    }
+  }, [panelHeight]);
+  const panelRef = useRef<HTMLElement>(null);
+  const resizeStart = useRef<{ y: number; height: number } | null>(null);
+  const resizeHeight = (height: number) => {
+    const maximum = Math.max(160, window.innerHeight - 48);
+    setPanelHeight(Math.min(maximum, Math.max(Math.min(280, maximum), height)));
+  };
   const closeTimer = useRef<number | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState('');
@@ -376,7 +434,7 @@ function AssistantPanel({
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open, conversation, busy, pendingText, liveText, liveTool]);
+  }, [open, conversation, busy, pendingText, liveText, liveTool, panelHeight]);
 
   async function submit(approved?: boolean) {
     if (
@@ -510,410 +568,592 @@ function AssistantPanel({
 
   return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3">
-      {!open && (
-        <Button
-          ref={expandButton}
-          className={`pointer-events-auto h-[calc(18px+env(safe-area-inset-bottom))] min-h-0 w-24 gap-2 rounded-b-none rounded-t-md border-0 bg-[#2288ee] px-3 py-0 pb-[env(safe-area-inset-bottom)] text-white shadow-lg hover:bg-[#2277e0] ${styles.dock}`}
-          title={t('assistant.expand')}
-          aria-label={t('assistant.expand')}
-          aria-expanded={false}
-          aria-controls={panelId}
-          onClick={expand}
-        >
-          <RiMagicLine
-            aria-hidden="true"
-            className={`size-3.5 ${styles.magic}`}
-          />
-          <RiSparkling2Line
-            aria-hidden="true"
-            className={`size-3 ${styles.sparkle}`}
-          />
-          <RiArrowUpSLine aria-hidden="true" className="size-3" />
-        </Button>
-      )}
-      {open && (
-        <section
-          id={panelId}
-          inert={closing}
-          role="dialog"
-          aria-modal={false}
-          aria-labelledby={`${panelId}-title`}
-          className={`pointer-events-auto flex max-h-[calc(100dvh-48px)] w-full max-w-[480px] flex-col overflow-hidden rounded-t-2xl border border-b-0 bg-background ${styles.panel} ${closing ? styles.closing : ''} ${conversation?.messages.length || pendingText ? styles.conversationPanel : ''}`}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.defaultPrevented) {
-              event.preventDefault();
-              event.stopPropagation();
-              collapse();
+      <div
+        className="flex w-full max-w-[480px] justify-center"
+        style={{
+          transform: `translateX(${horizontalPosition * horizontalRange}px)`,
+        }}
+      >
+        {!open && (
+          <Button
+            ref={expandButton}
+            className={`pointer-events-auto touch-none select-none active:cursor-grabbing h-[calc(21px+env(safe-area-inset-bottom))] min-h-0 w-24 gap-2 rounded-b-none rounded-t-md border-0 bg-[#2288ee] px-3 py-0 pb-[env(safe-area-inset-bottom)] text-white shadow-lg hover:bg-[#2277e0] ${styles.dock}`}
+            title={t('assistant.expand')}
+            aria-label={t('assistant.expand')}
+            aria-expanded={false}
+            aria-controls={panelId}
+            onPointerDown={(event) => {
+              if (event.button !== 0 || !event.isPrimary) return;
+              dockWasDragged.current = false;
+              moveStart.current = {
+                x: event.clientX,
+                offset: horizontalPosition * horizontalRange,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!moveStart.current) return;
+              const delta = event.clientX - moveStart.current.x;
+              if (Math.abs(delta) >= 5) dockWasDragged.current = true;
+              if (!dockWasDragged.current || horizontalRange === 0) return;
+              setHorizontalPosition(
+                Math.max(
+                  -1,
+                  Math.min(
+                    1,
+                    (moveStart.current.offset + delta) / horizontalRange,
+                  ),
+                ),
+              );
+            }}
+            onPointerUp={(event) => {
+              moveStart.current = null;
+              if (event.currentTarget.hasPointerCapture(event.pointerId))
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onPointerCancel={() => {
+              moveStart.current = null;
+              dockWasDragged.current = true;
+            }}
+            onLostPointerCapture={() => {
+              moveStart.current = null;
+            }}
+            onClick={(event) => {
+              if (dockWasDragged.current && event.detail !== 0) {
+                event.preventDefault();
+                dockWasDragged.current = false;
+                return;
+              }
+              expand();
+            }}
+          >
+            <RiMagicLine
+              aria-hidden="true"
+              className={`size-3.5 ${styles.magic}`}
+            />
+            <RiSparkling2Line
+              aria-hidden="true"
+              className={`size-3 ${styles.sparkle}`}
+            />
+            <RiArrowUpSLine aria-hidden="true" className="size-3" />
+          </Button>
+        )}
+        {open && (
+          <section
+            ref={panelRef}
+            // CSS max-height adapts to the current viewport without overwriting
+            // the saved preference, so a larger screen restores the chosen size.
+            style={
+              panelHeight === undefined ? undefined : { height: panelHeight }
             }
-          }}
-        >
-          <header
-            className={`flex shrink-0 items-center gap-2 px-3 pb-1 pt-2 ${styles.header}`}
-          >
-            <span className={styles.avatar} aria-hidden="true">
-              <RiMagicLine className={`size-4 ${styles.magic}`} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <h2
-                id={`${panelId}-title`}
-                className="truncate text-sm font-medium"
-              >
-                {t('assistant.title')}
-              </h2>
-            </div>
-            <Select
-              value={conversation?.uuid ?? 'new'}
-              onValueChange={(value) =>
-                onSelect(value === 'new' ? null : value)
+            id={panelId}
+            inert={closing}
+            role="dialog"
+            aria-modal={false}
+            aria-labelledby={`${panelId}-title`}
+            className={`pointer-events-auto flex max-h-[calc(100dvh-48px)] w-full max-w-[480px] flex-col overflow-hidden rounded-t-2xl border border-b-0 bg-background ${styles.panel} ${closing ? styles.closing : ''} ${conversation?.messages.length || pendingText ? styles.conversationPanel : ''}`}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !event.defaultPrevented) {
+                event.preventDefault();
+                event.stopPropagation();
+                collapse();
               }
-            >
-              <SelectTrigger
-                aria-label={t('assistant.sessions')}
-                className="w-32 min-w-0 bg-background px-2 text-xs data-[size=default]:h-7"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-w-[min(20rem,calc(100vw-24px))]">
-                <SelectItem value="new" className="text-xs">
-                  {t('assistant.newChat')}
-                </SelectItem>
-                {conversation &&
-                  !sessions.some(
-                    (session) => session.uuid === conversation.uuid,
-                  ) && (
-                    <SelectItem value={conversation.uuid} className="text-xs">
-                      {t('assistant.currentChat')}
-                    </SelectItem>
-                  )}
-                {sessions.map((session) => (
-                  <SelectItem
-                    key={session.uuid}
-                    value={session.uuid}
-                    className="text-xs [&_[data-slot=select-item-text]]:min-w-0"
-                  >
-                    <span className="block truncate">
-                      {session.status === 'running'
-                        ? '◌ '
-                        : session.status === 'approval'
-                          ? '… '
-                          : ''}
-                      {session.title || t('assistant.newChat')}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              onClick={reset}
-              aria-label={t('assistant.newChat')}
-            >
-              <Plus />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              onClick={collapse}
-              aria-label={t('assistant.collapse')}
-              aria-expanded={true}
+            }}
+          >
+            <div
+              role="separator"
+              tabIndex={0}
+              aria-label={t('assistant.resizeHeight')}
+              aria-orientation="horizontal"
               aria-controls={panelId}
-            >
-              <ChevronDown />
-            </Button>
-          </header>
-          <div
-            ref={messageList}
-            className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-2"
-            onWheel={(event) => {
-              if (event.deltaY < 0) followLatest.current = false;
-            }}
-            onScroll={(event) => {
-              const list = event.currentTarget;
-              const delta = list.scrollTop - scrollPosition.current;
-              if (delta < -1) followLatest.current = false;
-              else if (delta > 1) {
-                followLatest.current =
-                  list.scrollHeight - list.clientHeight - list.scrollTop < 32;
-              }
-              // Delayed events from our own scroll have zero delta. Content may
-              // have grown since then, so they must not disable following.
-              scrollPosition.current = list.scrollTop;
-            }}
-            aria-live="polite"
-          >
-            {!conversation?.messages.length && !pendingText && (
-              <div className={styles.welcome}>
-                <h3 className="text-base font-medium tracking-tight">
-                  {t('assistant.subtitle')}
-                </h3>
-                <p className="max-w-lg text-[13px] leading-relaxed text-muted-foreground">
-                  {t('assistant.welcome')}
-                </p>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {(['discover', 'build'] as const).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={busy}
-                      className={styles.prompt}
-                      onClick={() => {
-                        setText(t(`assistant.${key}`));
-                        input.current?.focus();
-                      }}
-                    >
-                      <span className={styles.promptIcon} aria-hidden="true">
-                        {key === 'discover' ? (
-                          <RiCompass3Line className="size-4" />
-                        ) : (
-                          <RiMagicLine className="size-4" />
-                        )}
-                      </span>
-                      <span className="flex-1">{t(`assistant.${key}`)}</span>
-                      <RiArrowRightUpLine
-                        className="size-4 shrink-0 opacity-60"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {messageGroups.map((group) => (
-              <div
-                key={group.key}
-                className={`flex min-w-0 ${group.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`min-w-0 max-w-[94%] space-y-2 rounded-2xl px-3 py-2 text-sm ${group.role === 'user' ? styles.userMessage : styles.assistantMessage}`}
-                >
-                  {group.messages.map((message, index) =>
-                    message.role === 'tool' ? (
-                      <AssistantToolResult
-                        key={index}
-                        tool={message.tool}
-                        content={message.content}
-                        defaultCollapsed
-                      />
-                    ) : message.role === 'user' ? (
-                      <p
-                        key={index}
-                        className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed"
-                      >
-                        {message.content}
-                      </p>
-                    ) : (
-                      <div
-                        key={index}
-                        className={`markdown-body ${styles.messageContent}`}
-                      >
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight]}
-                          components={{
-                            ul: ({ children }) => (
-                              <ul className="list-disc">{children}</ul>
-                            ),
-                            ol: ({ children }) => (
-                              <ol className="list-decimal">{children}</ol>
-                            ),
-                            img: () => null,
-                            a: ({ href, children }) => (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {children}
-                              </a>
-                            ),
-                          }}
-                        >
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
-                    ),
-                  )}
-                </div>
-              </div>
-            ))}
-            {pendingText && (
-              <div
-                className={`ml-auto w-fit max-w-[94%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${styles.userMessage}`}
-              >
-                {pendingText}
-                {error && (
-                  <p className="mt-1 text-xs text-destructive">
-                    {t('assistant.sendUnconfirmed')}
-                  </p>
-                )}
-              </div>
-            )}
-            {conversation?.status === 'approval' && (
-              <div className="space-y-3 rounded-xl border border-primary/30 p-3">
-                <p className="text-sm font-medium">{t('assistant.review')}</p>
-                {conversation.pending.map((call, index) => (
-                  <div key={index}>
-                    <p className="text-sm font-medium">{call.name}</p>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
-                      {JSON.stringify(call.arguments, null, 2)}
-                    </pre>
-                  </div>
-                ))}
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => submit(true)}
-                  >
-                    {t('assistant.confirm')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => submit(false)}
-                  >
-                    {t('assistant.decline')}
-                  </Button>
-                </div>
-              </div>
-            )}
-            {busy && (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderCircle className="size-4 animate-spin" />
-                {loading
-                  ? t('assistant.preparing')
-                  : t(
-                      phase === 'tool'
-                        ? 'assistant.executing'
-                        : 'assistant.thinking',
-                      { round },
-                    )}
-              </p>
-            )}
-            {modelError && !modelUuid && (
-              <p role="alert" className="text-xs text-destructive">
-                {t('assistant.recommendationFailed')}
-              </p>
-            )}
-            {(error || conversation?.status === 'failed') && (
-              <p role="alert" className="text-sm text-destructive">
-                {conversation?.error === 'stopped'
-                  ? t('assistant.stopped')
-                  : conversation?.error === 'model_unavailable'
-                    ? t('assistant.modelUnavailable')
-                    : t('assistant.error')}
-              </p>
-            )}
-            {!busy && conversation?.status === 'running' && (
-              <p className="text-sm text-muted-foreground">
-                {t('assistant.running')}
-              </p>
-            )}
-          </div>
-          <form
-            className={`mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col gap-1 rounded-xl p-1.5 ${styles.composer}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            <textarea
-              ref={input}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              maxLength={8000}
-              rows={2}
-              aria-label={t('assistant.placeholder')}
-              placeholder={t(
-                busy ? 'assistant.draftPlaceholder' : 'assistant.placeholder',
-              )}
+              className="group flex h-5 shrink-0 touch-none select-none items-center justify-center cursor-ns-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              onPointerDown={(event) => {
+                if (event.button !== 0 || !event.isPrimary) return;
+                event.preventDefault();
+                resizeStart.current = {
+                  y: event.clientY,
+                  height: panelRef.current!.getBoundingClientRect().height,
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (resizeStart.current)
+                  resizeHeight(
+                    resizeStart.current.height +
+                      resizeStart.current.y -
+                      event.clientY,
+                  );
+              }}
+              onPointerUp={(event) => {
+                resizeStart.current = null;
+                if (event.currentTarget.hasPointerCapture(event.pointerId))
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onLostPointerCapture={() => {
+                resizeStart.current = null;
+              }}
+              onPointerCancel={() => {
+                resizeStart.current = null;
+              }}
               onKeyDown={(event) => {
                 if (
-                  event.key === 'Enter' &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  void submit();
-                }
+                  !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)
+                )
+                  return;
+                event.preventDefault();
+                const height = panelRef.current!.getBoundingClientRect().height;
+                resizeHeight(
+                  event.key === 'Home'
+                    ? 280
+                    : event.key === 'End'
+                      ? window.innerHeight - 48
+                      : height + (event.key === 'ArrowUp' ? 24 : -24),
+                );
               }}
-              className={`w-full min-w-0 resize-none rounded-lg bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:outline-none ${styles.input}`}
-            />
-            <div className="flex w-full items-center justify-between gap-3">
-              {open && (
-                <div
-                  className="w-28 min-w-0 shrink-0"
-                  title={t('assistant.modelHint')}
+            >
+              <span
+                aria-hidden="true"
+                className="h-1 w-9 rounded-full bg-muted-foreground/30 transition-colors group-hover:bg-muted-foreground/60 group-focus-visible:bg-muted-foreground/60"
+              />
+            </div>
+            <header
+              className={`flex shrink-0 items-center gap-2 px-3 pb-1 pt-2 ${styles.header}`}
+            >
+              <span className={styles.avatar} aria-hidden="true">
+                <RiMagicLine className={`size-4 ${styles.magic}`} />
+              </span>
+              <div
+                className="min-w-0 flex-1 cursor-grab touch-none select-none active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                role="slider"
+                tabIndex={0}
+                aria-label={t('assistant.movePosition')}
+                aria-orientation="horizontal"
+                aria-valuemin={-100}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(horizontalPosition * 100)}
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || !event.isPrimary) return;
+                  event.preventDefault();
+                  moveStart.current = {
+                    x: event.clientX,
+                    offset: horizontalPosition * horizontalRange,
+                  };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (!moveStart.current || horizontalRange === 0) return;
+                  setHorizontalPosition(
+                    Math.max(
+                      -1,
+                      Math.min(
+                        1,
+                        (moveStart.current.offset +
+                          event.clientX -
+                          moveStart.current.x) /
+                          horizontalRange,
+                      ),
+                    ),
+                  );
+                }}
+                onPointerUp={(event) => {
+                  moveStart.current = null;
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                }}
+                onPointerCancel={() => {
+                  moveStart.current = null;
+                }}
+                onLostPointerCapture={() => {
+                  moveStart.current = null;
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  setHorizontalPosition(
+                    event.key === 'Home'
+                      ? -1
+                      : event.key === 'End'
+                        ? 1
+                        : Math.max(
+                            -1,
+                            Math.min(
+                              1,
+                              horizontalPosition +
+                                (event.key === 'ArrowLeft' ? -0.1 : 0.1),
+                            ),
+                          ),
+                  );
+                }}
+              >
+                <h2
+                  id={`${panelId}-title`}
+                  className="truncate text-sm font-medium"
                 >
-                  <DynamicFormItemComponent
-                    config={{
-                      id: 'assistant-model',
-                      name: 'assistant-model',
-                      type: DynamicFormItemType.LLM_MODEL_SELECTOR,
-                      default: '',
-                      required: false,
-                      label: { en_US: 'Assistant model', zh_Hans: '助手模型' },
-                    }}
-                    field={{
-                      name: 'assistant-model',
-                      value: modelUuid,
-                      onChange: (value: string) => {
-                        // Radix's native form bridge can emit an empty value while
-                        // async options mount. It is not a user model selection.
-                        if (!value) return;
-                        manualModel.current = true;
-                        setModelUuid(value);
-                        setModelName(undefined);
-                        setModelError(false);
-                      },
-                      onBlur: () => {},
-                      ref: () => {},
-                      disabled:
-                        sending ||
-                        (!!conversation && conversation.status !== 'ready'),
-                    }}
-                    requiredModelAbility="func_call"
-                    compactModelSelector
-                    selectedModelLabel={modelName}
-                  />
+                  {t('assistant.title')}
+                </h2>
+              </div>
+              <Select
+                value={conversation?.uuid ?? 'new'}
+                onValueChange={(value) =>
+                  onSelect(value === 'new' ? null : value)
+                }
+              >
+                <SelectTrigger
+                  aria-label={t('assistant.sessions')}
+                  className="w-32 min-w-0 bg-background px-2 text-xs data-[size=default]:h-7"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(20rem,calc(100vw-24px))]">
+                  <SelectItem value="new" className="text-xs">
+                    {t('assistant.newChat')}
+                  </SelectItem>
+                  {conversation &&
+                    !sessions.some(
+                      (session) => session.uuid === conversation.uuid,
+                    ) && (
+                      <SelectItem value={conversation.uuid} className="text-xs">
+                        {t('assistant.currentChat')}
+                      </SelectItem>
+                    )}
+                  {sessions.map((session) => (
+                    <SelectItem
+                      key={session.uuid}
+                      value={session.uuid}
+                      className="text-xs [&_[data-slot=select-item-text]]:min-w-0"
+                    >
+                      <span className="block truncate">
+                        {session.status === 'running'
+                          ? '◌ '
+                          : session.status === 'approval'
+                            ? '… '
+                            : ''}
+                        {session.title || t('assistant.newChat')}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                onClick={reset}
+                aria-label={t('assistant.newChat')}
+              >
+                <Plus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                onClick={collapse}
+                aria-label={t('assistant.collapse')}
+                aria-expanded={true}
+                aria-controls={panelId}
+              >
+                <ChevronDown />
+              </Button>
+            </header>
+            <div
+              ref={messageList}
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-2"
+              onWheel={(event) => {
+                if (event.deltaY < 0) followLatest.current = false;
+              }}
+              onScroll={(event) => {
+                const list = event.currentTarget;
+                const delta = list.scrollTop - scrollPosition.current;
+                if (delta < -1) followLatest.current = false;
+                else if (delta > 1) {
+                  followLatest.current =
+                    list.scrollHeight - list.clientHeight - list.scrollTop < 32;
+                }
+                // Delayed events from our own scroll have zero delta. Content may
+                // have grown since then, so they must not disable following.
+                scrollPosition.current = list.scrollTop;
+              }}
+              aria-live="polite"
+            >
+              {!conversation?.messages.length && !pendingText && (
+                <div className={styles.welcome}>
+                  <h3 className="text-base font-medium tracking-tight">
+                    {t('assistant.subtitle')}
+                  </h3>
+                  <p className="max-w-lg text-[13px] leading-relaxed text-muted-foreground">
+                    {t('assistant.welcome')}
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {(['discover', 'build'] as const).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={busy}
+                        className={styles.prompt}
+                        onClick={() => {
+                          setText(t(`assistant.${key}`));
+                          input.current?.focus();
+                        }}
+                      >
+                        <span className={styles.promptIcon} aria-hidden="true">
+                          {key === 'discover' ? (
+                            <RiCompass3Line className="size-4" />
+                          ) : (
+                            <RiMagicLine className="size-4" />
+                          )}
+                        </span>
+                        <span className="flex-1">{t(`assistant.${key}`)}</span>
+                        <RiArrowRightUpLine
+                          className="size-4 shrink-0 opacity-60"
+                          aria-hidden="true"
+                        />
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-              {conversation?.status === 'running' ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  className="size-7 rounded-lg"
-                  aria-label={t('assistant.stop')}
-                  disabled={stopping}
-                  onClick={() => void stop()}
+              {messageGroups.map((group) => (
+                <div
+                  key={group.key}
+                  className={`flex min-w-0 ${group.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <Square className="size-3 fill-current" />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  className={`size-7 rounded-lg ${styles.send}`}
-                  aria-label={t('assistant.send')}
-                  disabled={
-                    busy ||
-                    !text.trim() ||
-                    !modelUuid ||
-                    (!!conversation && conversation.status !== 'ready')
-                  }
+                  <div
+                    className={`min-w-0 max-w-[94%] space-y-2 rounded-2xl px-3 py-2 text-sm ${group.role === 'user' ? styles.userMessage : styles.assistantMessage}`}
+                  >
+                    {group.messages.map((message, index) =>
+                      message.role === 'tool' ? (
+                        <AssistantToolResult
+                          key={index}
+                          tool={message.tool}
+                          content={message.content}
+                          defaultCollapsed
+                        />
+                      ) : message.role === 'user' ? (
+                        <p
+                          key={index}
+                          className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed"
+                        >
+                          {message.content}
+                        </p>
+                      ) : (
+                        <div
+                          key={index}
+                          className={`markdown-body ${styles.messageContent}`}
+                        >
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[rehypeHighlight]}
+                            components={{
+                              ul: ({ children }) => (
+                                <ul className="list-disc">{children}</ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="list-decimal">{children}</ol>
+                              ),
+                              img: () => null,
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              ))}
+              {pendingText && (
+                <div
+                  className={`ml-auto w-fit max-w-[94%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${styles.userMessage}`}
                 >
-                  <Send className="size-4" />
-                </Button>
+                  {pendingText}
+                  {error && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {t('assistant.sendUnconfirmed')}
+                    </p>
+                  )}
+                </div>
+              )}
+              {conversation?.status === 'approval' && (
+                <div className="space-y-3 rounded-xl border border-primary/30 p-3">
+                  <p className="text-sm font-medium">{t('assistant.review')}</p>
+                  {conversation.pending.map((call, index) => (
+                    <div key={index}>
+                      <p className="text-sm font-medium">{call.name}</p>
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
+                        {JSON.stringify(call.arguments, null, 2)}
+                      </pre>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => submit(true)}
+                    >
+                      {t('assistant.confirm')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => submit(false)}
+                    >
+                      {t('assistant.decline')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {busy && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" />
+                  {loading
+                    ? t('assistant.preparing')
+                    : t(
+                        phase === 'tool'
+                          ? 'assistant.executing'
+                          : 'assistant.thinking',
+                        { round },
+                      )}
+                </p>
+              )}
+              {modelError && !modelUuid && (
+                <p role="alert" className="text-xs text-destructive">
+                  {t('assistant.recommendationFailed')}
+                </p>
+              )}
+              {(error || conversation?.status === 'failed') && (
+                <p role="alert" className="text-sm text-destructive">
+                  {conversation?.error === 'stopped'
+                    ? t('assistant.stopped')
+                    : conversation?.error === 'model_unavailable'
+                      ? t('assistant.modelUnavailable')
+                      : t('assistant.error')}
+                </p>
+              )}
+              {!busy && conversation?.status === 'running' && (
+                <p className="text-sm text-muted-foreground">
+                  {t('assistant.running')}
+                </p>
               )}
             </div>
-          </form>
-        </section>
-      )}
+            <form
+              className={`mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col gap-1 rounded-xl p-1.5 ${styles.composer}`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
+              }}
+            >
+              <textarea
+                ref={input}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                maxLength={8000}
+                rows={2}
+                aria-label={t('assistant.placeholder')}
+                placeholder={t(
+                  busy ? 'assistant.draftPlaceholder' : 'assistant.placeholder',
+                )}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault();
+                    void submit();
+                  }
+                }}
+                className={`w-full min-w-0 resize-none rounded-lg bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:outline-none ${styles.input}`}
+              />
+              <div className="flex w-full items-center justify-between gap-3">
+                {open && (
+                  <div
+                    className="w-28 min-w-0 shrink-0"
+                    title={t('assistant.modelHint')}
+                  >
+                    <DynamicFormItemComponent
+                      config={{
+                        id: 'assistant-model',
+                        name: 'assistant-model',
+                        type: DynamicFormItemType.LLM_MODEL_SELECTOR,
+                        default: '',
+                        required: false,
+                        label: {
+                          en_US: 'Assistant model',
+                          zh_Hans: '助手模型',
+                        },
+                      }}
+                      field={{
+                        name: 'assistant-model',
+                        value: modelUuid,
+                        onChange: (value: string) => {
+                          // Radix's native form bridge can emit an empty value while
+                          // async options mount. It is not a user model selection.
+                          if (!value) return;
+                          manualModel.current = true;
+                          setModelUuid(value);
+                          setModelName(undefined);
+                          setModelError(false);
+                        },
+                        onBlur: () => {},
+                        ref: () => {},
+                        disabled:
+                          sending ||
+                          (!!conversation && conversation.status !== 'ready'),
+                      }}
+                      requiredModelAbility="func_call"
+                      compactModelSelector
+                      selectedModelLabel={modelName}
+                    />
+                  </div>
+                )}
+                {conversation?.status === 'running' ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="size-7 rounded-lg"
+                    aria-label={t('assistant.stop')}
+                    disabled={stopping}
+                    onClick={() => void stop()}
+                  >
+                    <Square className="size-3 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className={`size-7 rounded-lg ${styles.send}`}
+                    aria-label={t('assistant.send')}
+                    disabled={
+                      busy ||
+                      !text.trim() ||
+                      !modelUuid ||
+                      (!!conversation && conversation.status !== 'ready')
+                    }
+                  >
+                    <Send className="size-4" />
+                  </Button>
+                )}
+              </div>
+            </form>
+          </section>
+        )}
+      </div>
     </div>,
     document.body,
   );

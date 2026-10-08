@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
   assistant: {
+    movePosition: '左右移動助手',
+    resizeHeight: '調整助手高度',
     sessions: '切換對話',
     currentChat: '目前對話',
     stop: '停止任務',

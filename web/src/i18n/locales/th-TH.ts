@@ -1,6 +1,8 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
   assistant: {
+    movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
+    resizeHeight: 'ปรับความสูงของผู้ช่วย',
     sessions: 'การสนทนา',
     currentChat: 'การสนทนาปัจจุบัน',
     stop: 'หยุดงาน',
