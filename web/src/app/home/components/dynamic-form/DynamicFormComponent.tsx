@@ -441,6 +441,7 @@ export default function DynamicFormComponent({
   systemContext,
   onValidate,
   renderItem,
+  hiddenItemNames,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -463,6 +464,8 @@ export default function DynamicFormComponent({
     formValues: Record<string, unknown>;
     setFormValue: (name: string, value: unknown) => void;
   }) => ReactNode | undefined;
+  /** Fields retained in form state but omitted from the rendered form. */
+  hiddenItemNames?: readonly string[];
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -628,6 +631,7 @@ export default function DynamicFormComponent({
       externalDependentValues={externalDependentValues}
       systemContext={systemContext}
       renderItem={renderItem}
+      hiddenItemNames={hiddenItemNames}
     />
   );
 }
@@ -661,6 +665,7 @@ function DynamicFormFieldList({
   externalDependentValues,
   systemContext,
   renderItem,
+  hiddenItemNames,
 }: DynamicFormFieldsProps) {
   type FormValues = Record<string, any>;
   const { t, i18n } = useTranslation();
@@ -725,6 +730,8 @@ function DynamicFormFieldList({
       />
 
       {itemConfigList.map((config, index) => {
+        if (hiddenItemNames?.includes(config.name)) return null;
+
         // Create a normalized config with type converted to frontend format
         const normalizedConfig = {
           ...config,

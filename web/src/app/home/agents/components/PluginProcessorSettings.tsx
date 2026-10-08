@@ -31,7 +31,10 @@ export default function PluginProcessorSettings({
       },
     });
   return (
-    <div className="w-[20rem] max-w-[calc(100vw-8rem)]">
+    <div
+      id="event-processor-component"
+      className="w-[20rem] max-w-[calc(100vw-8rem)]"
+    >
       <RunnerSelect
         usage="event"
         options={options}
