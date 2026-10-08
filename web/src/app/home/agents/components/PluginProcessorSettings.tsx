@@ -1,139 +1,47 @@
-import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import type { RunnerDescriptor } from '@/app/infra/entities/api';
-import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
-import { extractI18nObject } from '@/i18n/I18nProvider';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-
-function ProcessorComponentContent({
-  component,
-  option = false,
-}: {
-  component: RunnerDescriptor;
-  option?: boolean;
-}) {
-  const label = extractI18nObject({
-    en_US: component.id,
-    zh_Hans: component.id,
-    ...component.label,
-  });
-  const pluginId = `${component.plugin_author}/${component.plugin_name}`;
-  const iconURL = useInstalledPluginIcon(
-    component.plugin_author,
-    component.plugin_name,
-  );
-  return (
-    <span
-      className={
-        option
-          ? 'grid w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-x-2 text-left'
-          : 'flex min-w-0 items-center gap-2'
-      }
-    >
-      {iconURL ? (
-        <img
-          src={iconURL}
-          alt=""
-          className={
-            option
-              ? 'row-span-2 size-7 shrink-0 rounded-md object-cover'
-              : 'size-5 shrink-0 rounded object-cover'
-          }
-        />
-      ) : (
-        <Puzzle
-          className={
-            option
-              ? 'row-span-2 size-5 shrink-0 justify-self-center text-muted-foreground'
-              : 'size-4 shrink-0 text-muted-foreground'
-          }
-        />
-      )}
-      <span className={option ? 'truncate font-medium leading-5' : 'truncate'}>
-        {label}
-      </span>
-      {option && (
-        <span
-          className="truncate text-xs leading-4 text-muted-foreground"
-          title={pluginId}
-        >
-          {pluginId}
-        </span>
-      )}
-    </span>
-  );
-}
+import RunnerSelect from './RunnerSelect';
 
 export default function PluginProcessorSettings({
   components,
   value,
   onChange,
   disabled = false,
+  installScope,
+  onInstalled,
 }: {
   components: RunnerDescriptor[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  installScope: string;
+  onInstalled: (component: RunnerDescriptor) => void;
 }) {
   const { t } = useTranslation();
-  const selected = components.find((item) => item.id === value);
+  const options = components.map((component) => ({
+    name: component.id,
+    label: { en_US: component.id, zh_Hans: component.id, ...component.label },
+  }));
+  if (value && !components.some((component) => component.id === value))
+    options.push({
+      name: value,
+      label: {
+        en_US: t('agents.eventProcessor.unavailable'),
+        zh_Hans: t('agents.eventProcessor.unavailable'),
+      },
+    });
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <Label className="sr-only" htmlFor="event-processor-component">
-        {t('agents.eventProcessor.component')}
-      </Label>
-      <Select value={value} disabled={disabled} onValueChange={onChange}>
-        <SelectTrigger
-          id="event-processor-component"
-          className="w-[13.2rem] max-w-[calc(100vw-8rem)] bg-[#ffffff] dark:bg-[#2a2a2e]"
-        >
-          {selected ? (
-            <ProcessorComponentContent component={selected} />
-          ) : (
-            <span className="flex min-w-0 items-center gap-2">
-              <Puzzle className="size-4 shrink-0 text-muted-foreground" />
-              <SelectValue
-                placeholder={t('agents.eventProcessor.selectComponent')}
-              />
-            </span>
-          )}
-        </SelectTrigger>
-        <SelectContent className="max-h-72 w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
-          {value && !selected && (
-            <SelectItem value={value}>
-              {t('agents.eventProcessor.unavailable')}
-            </SelectItem>
-          )}
-          {components.map((component) => (
-            <SelectItem
-              key={component.id}
-              value={component.id}
-              className="py-1.5 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1"
-            >
-              <ProcessorComponentContent component={component} option />
-            </SelectItem>
-          ))}
-          {components.length === 0 && (
-            <div className="p-2 text-sm text-muted-foreground">
-              {t('agents.eventProcessor.noComponents')}
-              <Button asChild variant="link" className="h-auto px-0">
-                <Link to="/home/add-extension?type=plugin&component=Runner&runner_usage=event">
-                  {t('agents.eventProcessor.installPlugin')}
-                </Link>
-              </Button>
-            </div>
-          )}
-        </SelectContent>
-      </Select>
+    <div className="w-[20rem] max-w-[calc(100vw-8rem)]">
+      <RunnerSelect
+        usage="event"
+        options={options}
+        value={value}
+        label={t('agents.eventProcessor.component')}
+        disabled={disabled}
+        installScope={installScope}
+        onValueChange={onChange}
+        onEventProcessorInstalled={onInstalled}
+      />
     </div>
   );
 }
