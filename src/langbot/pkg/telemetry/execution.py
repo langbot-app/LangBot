@@ -7,6 +7,11 @@ execution closes. The sender never assembles a trace locally, so there is no
 per-trace buffer, no TTL and no per-process trace cap; memory is bounded by the
 outbound record buffer, the flush batch size and the small cross-task registry.
 
+Platform events are reportable only after a business route, matching plugin
+subscription or validated interaction callback admits the execution. Pending
+events enqueue neither nodes nor closures, even on failure or in Cloud mode.
+Independent API/WebUI executions remain eligible without a Bot route.
+
 Sampling is decided exactly once per event, at ingress, from a stable hash of
 the execution identity, so every record of one execution carries the same
 decision. A chain that broke is always emitted even when sampling excluded it,
@@ -245,7 +250,7 @@ class ExecutionCounters:
         node: str = '',
     ):
         try:
-            if not self._enabled():
+            if not self._enabled() or trace_mod.reporting_suppressed():
                 return
             if family not in FAMILIES or mode not in MODES or outcome not in OUTCOMES:
                 return
@@ -261,7 +266,7 @@ class ExecutionCounters:
                 lookup = str(execution_id or '').strip() or current_execution_id()
                 if lookup:
                     state = self._resolve(lookup)
-            if state is None or state.closed:
+            if state is None or state.closed or not state.reportable:
                 # Every observation belongs to exactly one execution chain.
                 return
             self.configure(state)
@@ -400,7 +405,7 @@ class ExecutionCounters:
             resources_end()
 
     def _chain_emitted(self, state: TraceState) -> bool:
-        if state.mode == 'off':
+        if not state.reportable or state.mode == 'off':
             return False
         if state.emit_nodes or state.debug:
             return True
@@ -562,8 +567,13 @@ def ingress(
     debug: bool = False,
     origin: str = 'platform',
     synthetic_event: str = '',
+    require_route: bool = False,
 ):
     """Open one execution boundary; only the owner of the chain closes it.
+
+    ``require_route`` starts a platform event without reporting permission;
+    dispatch calls ``trace.admit`` when a delivery matches. Nested entrypoints
+    must reuse that decision instead of implicitly admitting the parent.
 
     Nested boundaries (an event routed into a Pipeline, a Runner invoked from a
     dispatch) reuse the in-flight chain instead of starting a second one, and
@@ -575,6 +585,8 @@ def ingress(
     binding = trace_mod.bind(execution_id)
     state = binding.state
     if binding.created:
+        if require_route:
+            state.reportable = False
         resources_begin()
     counters = _execution_counters(ap)
     if counters is not None:

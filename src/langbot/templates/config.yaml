@@ -444,10 +444,14 @@ space:
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
     # Per-event execution traces: off | failures | sampled | all.
-    # Every execution is reported by default: one record per workflow node plus
-    # one terminal chain record. 'failures' keeps only broken chains, 'sampled'
-    # keeps broken chains plus every N-th successful one (N is
-    # execution_trace_sample), and 'off' reports no executions at all.
+    # Every eligible execution is reported by default: one record per workflow
+    # node plus one terminal chain record. 'failures' keeps only broken chains;
+    # 'sampled' keeps broken chains plus about 1/N of successful ones, selected
+    # by event hash (N is execution_trace_sample); 'off' reports no executions.
+    # Unmatched/discarded platform events are never reported unless a plugin
+    # subscription matches. Matched delivery failures and valid interaction
+    # resumptions remain eligible, as do independent API/WebUI executions.
+    # Cloud uses 'all' but still applies this route eligibility filter.
     execution_trace: all
     execution_trace_sample: 20
     # How often buffered execution records are uploaded, in seconds.

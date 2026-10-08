@@ -35,6 +35,9 @@ from uuid import uuid4
 _current: contextvars.ContextVar['TraceState | None'] = contextvars.ContextVar('telemetry_trace', default=None)
 _route: contextvars.ContextVar[str] = contextvars.ContextVar('telemetry_trace_route', default='')
 _run: contextvars.ContextVar[str] = contextvars.ContextVar('telemetry_trace_run', default='')
+_reporting_suppressed: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    'telemetry_reporting_suppressed', default=False
+)
 # Open workflow step frames of the current task, innermost last. The tuple is
 # never mutated in place: opening a step publishes a new tuple on this task's
 # context only, and closing it restores the previous one.
@@ -60,6 +63,7 @@ class TraceState:
         'event_id',
         'identity',
         'configured',
+        'reportable',
         'mode',
         'denominator',
         'emit_nodes',
@@ -90,6 +94,9 @@ class TraceState:
         self.event_id = str(execution_id).strip() if execution_id else str(uuid4())
         self.identity: dict[str, str] = {}
         self.configured = False
+        # Platform ingress starts pending; an actual route admits the shared
+        # execution before work starts. Independent API/debug runs are eligible.
+        self.reportable = not reporting_suppressed()
         # Sampling, decided exactly once per event (at ingress or first touch).
         self.mode = 'all'
         self.denominator = 1
@@ -214,6 +221,27 @@ def unbind_root(binding: TraceBinding) -> bool:
 
 def current() -> TraceState | None:
     return _current.get()
+
+
+def reporting_suppressed() -> bool:
+    return _reporting_suppressed.get()
+
+
+def admit() -> None:
+    """Admit a matched delivery without revoking any concurrent sibling's choice."""
+    state = current()
+    if state is not None and not state.closed and not reporting_suppressed():
+        state.reportable = True
+
+
+@contextlib.contextmanager
+def suppress_reporting():
+    """Keep discarded branch side effects local even if a sibling is admitted."""
+    token = _reporting_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _reporting_suppressed.reset(token)
 
 
 def node_stack() -> tuple[NodeFrame, ...]:

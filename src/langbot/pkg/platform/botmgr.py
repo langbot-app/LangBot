@@ -396,10 +396,15 @@ class RuntimeBot:
         }
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
-        if status in {'delivered', 'failed', 'discarded', 'not_matched'}:
+        if status in {'delivered', 'failed'}:
             from ..telemetry import trace as trace_mod
             from ..telemetry.execution import record
 
+            state = trace_mod.current()
+            if status == 'failed' and state is not None and state.reportable and not trace_mod.reporting_suppressed():
+                # The root event can finish successfully after a delivery failed.
+                # Preserve that failure for closure reporting in failures mode.
+                state.mark_failure(failure_code or 'route_failed')
             with trace_mod.scope(route_ref=self._route_ref(binding, target_type, target_uuid)):
                 # The routing decision is its own workflow step; the Pipeline or
                 # processor it delivers to hangs under this node.
@@ -901,7 +906,13 @@ class RuntimeBot:
 
         event.bot_uuid = self.bot_entity.uuid
         execution_id = self._platform_event_execution_id(event)
-        with ingress(getattr(self, 'ap', None), 'event_done', getattr(self, 'execution_context', None), execution_id):
+        with ingress(
+            getattr(self, 'ap', None),
+            'event_done',
+            getattr(self, 'execution_context', None),
+            execution_id,
+            require_route=True,
+        ):
             # The inbound event is the root workflow step: everything recorded
             # while handling it hangs under this node.
             with trace_mod.stage_scope() as node:
@@ -969,20 +980,24 @@ class RuntimeBot:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
-            primary = (
-                self._handle_interaction_submission(event, adapter, execution_id)
+            primary_handler = (
+                self._handle_interaction_submission
                 if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
-                else self._dispatch_eba_event_to_processor(event, adapter, execution_id=execution_id)
+                else self._dispatch_eba_event_to_processor
             )
             subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
             seen = set()
-            tasks = [primary]
+            tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
             for subscription in subscriptions:
                 processor_uuid = subscription.get('processor_uuid')
                 if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
                     continue
                 seen.add(processor_uuid)
-                tasks.append(self._dispatch_plugin_subscription(event, adapter, processor_uuid, execution_id))
+                tasks.append(
+                    self._run_event_delivery(
+                        self._dispatch_plugin_subscription, event, adapter, processor_uuid, execution_id
+                    )
+                )
             # Start all deliveries together. A slow or failed subscriber cannot block
             # another subscriber or the primary route from receiving the event.
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1009,6 +1024,18 @@ class RuntimeBot:
             results,
         )
 
+    async def _run_event_delivery(self, handler, *args, **kwargs):
+        # gather creates child tasks. Each delivery needs its own database scope;
+        # copying the listener's ContextVar does not transfer task ownership.
+        persistence = getattr(getattr(self, 'ap', None), 'persistence_mgr', None)
+        if getattr(getattr(persistence, 'mode', None), 'value', None) == 'cloud_runtime':
+            tenant_scope = getattr(persistence, 'tenant_scope', None)
+            if not callable(tenant_scope):
+                raise RuntimeError('Cloud event deliveries require a tenant scope')
+            async with tenant_scope(self.workspace_uuid):
+                return await handler(*args, **kwargs)
+        return await handler(*args, **kwargs)
+
     async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid, execution_id=None):
         event_type = event.type
         event_binding = {
@@ -1028,22 +1055,27 @@ class RuntimeBot:
             patterns = descriptor.supported_event_patterns
             if not patterns or not self._agent_supports_event_type(patterns, event_type):
                 return
-            agent = {**agent, 'supported_event_patterns': patterns}
-            return await self._dispatch_eba_event_to_processor(
-                event, adapter, event_binding, agent, execution_id=execution_id
-            )
         except Exception as exc:
-            return await self._record_event_route_trace(
-                event_type=event_type,
-                status='failed',
-                level='error',
-                binding=event_binding,
-                target_type='event_processor',
-                target_uuid=processor_uuid,
-                failure_code='runner_failed',
-                reason=str(exc),
-                text=f'Plugin processor {processor_uuid} failed: {exc}',
-            )
+            from ..telemetry import trace as trace_mod
+
+            # No matching declaration was resolved: log locally without
+            # reporting a failed delivery for every unrelated incoming event.
+            with trace_mod.suppress_reporting():
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='error',
+                    binding=event_binding,
+                    target_type='event_processor',
+                    target_uuid=processor_uuid,
+                    failure_code='runner_failed',
+                    reason=str(exc),
+                    text=f'Plugin processor {processor_uuid} failed: {exc}',
+                )
+        agent = {**agent, 'supported_event_patterns': patterns}
+        return await self._dispatch_eba_event_to_processor(
+            event, adapter, event_binding, agent, execution_id=execution_id
+        )
 
     async def _dispatch_eba_event_to_processor(
         self,
@@ -1067,6 +1099,12 @@ class RuntimeBot:
             )
 
         target_type = event_binding.get('target_type')
+        from ..telemetry import trace as trace_mod
+
+        if target_type != 'discard':
+            # Matching precedes target lookup/execution, so genuine delivery
+            # failures remain observable even when the target is unavailable.
+            trace_mod.admit()
         await self._record_event_route_trace(
             event_type=event_type,
             status='matched',
@@ -1079,7 +1117,7 @@ class RuntimeBot:
             if isinstance(event, platform_events.MessageReceivedEvent):
                 from ..telemetry import trace as trace_mod
 
-                with trace_mod.scope(route_ref=self._route_ref(event_binding)):
+                with trace_mod.suppress_reporting(), trace_mod.scope(route_ref=self._route_ref(event_binding)):
                     await self._dispatch_eba_message_to_pipeline(
                         event,
                         adapter,
@@ -1202,6 +1240,10 @@ class RuntimeBot:
         envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
+            if isinstance(event, platform_events.MessageReceivedEvent):
+                # Use the SDK wire format for Source timestamps and nested chains.
+                # Pydantic's enclosing event serializer bypasses model_dump overrides.
+                envelope.data['message_chain'] = event.message_chain.model_dump()
         from ..telemetry import trace as trace_mod
 
         try:
@@ -1442,13 +1484,18 @@ class RuntimeBot:
             conversation_id=conversation_id,
             actor_id=actor_id,
         )
+        if record['processor_type'] not in {'agent', 'pipeline'}:
+            raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
+        from ..telemetry import trace as trace_mod
+
+        # Only a validated callback resolving an original processor is eligible.
+        # Admit before acknowledgement and target lookup to preserve failures.
+        trace_mod.admit()
         await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
 
         if record['processor_type'] == 'agent':
             await self._resume_agent_interaction(record, event, adapter, actor_id, execution_id)
             return
-        if record['processor_type'] != 'pipeline':
-            raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
 
         pipeline = await self.ap.pipeline_service.get_pipeline(
             self.execution_context,
