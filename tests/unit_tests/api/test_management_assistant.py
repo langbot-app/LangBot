@@ -74,7 +74,7 @@ async def assistant(tmp_path):
     ap = SimpleNamespace(
         persistence_mgr=SimpleNamespace(execute_async=execute),
         logger=logging.getLogger('assistant-test'),
-        space_service=SimpleNamespace(get_recommended_chat_model=AsyncMock(return_value={'uuid': 'model'})),
+        space_service=SimpleNamespace(get_recommended_assistant_model=AsyncMock(return_value={'uuid': 'model'})),
         model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
         pipeline_service=SimpleNamespace(create_pipeline=AsyncMock(return_value='created-pipeline')),
     )
@@ -234,3 +234,250 @@ async def test_model_switch_preserves_history_and_rejects_invalid_selection(assi
     ap.model_mgr.get_model_by_uuid.assert_awaited_with(
         next_provider.invoke_llm.call_args.kwargs['execution_context'], 'second'
     )
+
+
+@pytest.mark.asyncio
+async def test_recommendation_resolved_before_any_turn(assistant):
+    service, ap, provider = assistant
+    assert await service.recommended_model(context()) == {'uuid': 'model', 'name': 'test-model'}
+    provider.invoke_llm.assert_not_awaited()
+    model = ap.model_mgr.get_model_by_uuid.return_value
+    model.model_entity.abilities = []
+    with pytest.raises(AssistantError, match='model_unavailable'):
+        await service.recommended_model(context())
+
+
+@pytest.mark.asyncio
+async def test_stream_selected_model_deltas_tools_and_approval(assistant):
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    import copy
+
+    service, ap, old_provider = assistant
+    events = []
+    inputs = []
+
+    async def stream(**kwargs):
+        inputs.append(kwargs)
+        if len(inputs) == 1:
+            yield MessageChunk(role='assistant', content='Create ')
+            yield MessageChunk(role='assistant', content='this?')
+            call = proposal().tool_calls[0].model_dump()
+            call['function']['arguments'] = '{"name":"Demo",'
+            yield MessageChunk(role='assistant', tool_calls=[call])
+            call['function']['arguments'] = '"description":"Test draft"}'
+            yield MessageChunk(
+                role='assistant', tool_calls=[call], is_final=True, provider_specific_fields={'signature': 'kept'}
+            )
+        else:
+            yield MessageChunk(role='assistant', content='Done')
+            yield MessageChunk(role='assistant', content='', all_content='Done', is_final=True)
+
+    chosen = SimpleNamespace(
+        provider=SimpleNamespace(invoke_llm_stream=stream),
+        model_entity=SimpleNamespace(name='manual-model', abilities=['func_call'], extra_args={}),
+    )
+    ap.model_mgr.get_model_by_uuid.return_value = chosen
+
+    async def emit(event):
+        events.append(copy.deepcopy(event))
+
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    pending = await service.turn(ctx, cid, 0, text='Create', model_uuid='manual', on_event=emit)
+    assert pending['status'] == 'approval'
+    assert pending['model_uuid'] == 'manual'
+    assert inputs[0]['model'] is chosen
+    ap.space_service.get_recommended_assistant_model.assert_not_awaited()
+    old_provider.invoke_llm.assert_not_awaited()
+    assert [e['data']['text'] for e in events if e['kind'] == 'text'] == ['Create ', 'Create this?']
+    ap.pipeline_service.create_pipeline.assert_not_awaited()
+    events.clear()
+    complete = await service.turn(ctx, cid, 1, approved=True, on_event=emit)
+    assert complete['status'] == 'ready'
+    assert complete['messages'][-1]['content'] == 'Done'
+    ap.pipeline_service.create_pipeline.assert_awaited_once()
+    assert inputs[1]['messages'][2].provider_specific_fields == {'signature': 'kept'}
+    tool_start = next(i for i, e in enumerate(events) if e['kind'] == 'phase' and e['data']['phase'] == 'tool')
+    result = next(
+        i
+        for i, e in enumerate(events)
+        if e['kind'] == 'snapshot' and any(m['role'] == 'tool' for m in e['data']['messages'])
+    )
+    assert tool_start < result
+    with pytest.raises(AssistantError, match='stale_turn'):
+        await service.turn(ctx, cid, 1, approved=True, on_event=emit)
+
+
+@pytest.mark.asyncio
+async def test_truncated_stream_never_executes_proposed_write(assistant):
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+    service, ap, provider = assistant
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', tool_calls=proposal().tool_calls)
+
+    provider.invoke_llm_stream = stream
+    cid = (await service.create(context()))['uuid']
+    result = await service.turn(context(), cid, 0, text='Create', on_event=AsyncMock())
+    assert result['status'] == 'failed'
+    assert result['error'] == 'stream_interrupted'
+    ap.pipeline_service.create_pipeline.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_stream_persists_non_replayable_state(assistant):
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+    service, ap, provider = assistant
+    started = asyncio.Event()
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', content='Hello')
+        started.set()
+        await asyncio.Event().wait()
+
+    provider.invoke_llm_stream = stream
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    task = asyncio.create_task(service.turn(ctx, cid, 0, text='Hello', on_event=AsyncMock()))
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    saved = await service.get(ctx, cid)
+    assert saved['status'] == 'failed'
+    assert saved['error'] == 'result_unknown'
+    with pytest.raises(AssistantError, match='stale_turn'):
+        await service.turn(ctx, cid, 0, text='Hello')
+
+
+@pytest.mark.asyncio
+async def test_http_stream_emits_before_provider_completion_and_restores_tenant(assistant):
+    import contextlib
+    import json
+    import quart
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response, TurnInput
+
+    service, ap, provider = assistant
+    released = asyncio.Event()
+    scoped = []
+
+    @contextlib.asynccontextmanager
+    async def tenant_scope(workspace):
+        scoped.append(workspace)
+        try:
+            yield
+        finally:
+            scoped.pop()
+
+    async def stream(**kwargs):
+        assert scoped == ['workspace-a']
+        yield MessageChunk(role='assistant', content='First')
+        await released.wait()
+        yield MessageChunk(role='assistant', content=' second', is_final=True)
+
+    ap.persistence_mgr.tenant_scope = tenant_scope
+    provider.invoke_llm_stream = stream
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    app = quart.Quart(__name__)
+
+    @app.post('/stream')
+    async def route():
+        return assistant_stream_response(service, ctx, cid, TurnInput(revision=0, text='Hi'))
+
+    frames = []
+    async with app.test_client().request('/stream', method='POST') as connection:
+        while not any(frame['kind'] == 'text' for frame in frames):
+            chunk = await asyncio.wait_for(connection.receive(), 5)
+            frames.extend(json.loads(line) for line in chunk.decode().splitlines() if line.strip())
+        assert frames[-1]['data']['text'] == 'First'
+        assert not released.is_set()
+        released.set()
+        while not any(frame['kind'] == 'completed' for frame in frames):
+            chunk = await asyncio.wait_for(connection.receive(), 5)
+            frames.extend(json.loads(line) for line in chunk.decode().splitlines() if line.strip())
+    assert frames[-1]['data']['messages'][-1]['content'] == 'First second'
+    assert scoped == []
+
+
+@pytest.mark.asyncio
+async def test_background_run_survives_http_disconnect_and_finishes(assistant):
+    import json
+    import quart
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response, TurnInput
+
+    service, ap, provider = assistant
+    released = asyncio.Event()
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', content='Background')
+        await released.wait()
+        yield MessageChunk(role='assistant', content=' done', is_final=True)
+
+    provider.invoke_llm_stream = stream
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    app = quart.Quart(__name__)
+
+    @app.post('/stream')
+    async def route():
+        return assistant_stream_response(service, ctx, cid, TurnInput(revision=0, text='Hi'))
+
+    async with app.test_client().request('/stream', method='POST') as connection:
+        while True:
+            chunk = await asyncio.wait_for(connection.receive(), 5)
+            if any(json.loads(line)['kind'] == 'text' for line in chunk.decode().splitlines() if line.strip()):
+                break
+        task = service._runs[cid]['task']
+        await connection.disconnect()
+    assert not task.done()
+    assert (await service.progress(ctx, cid))['progress']['text'] == 'Background'
+    released.set()
+    await asyncio.wait_for(task, 5)
+    completed = await service.get(ctx, cid)
+    assert completed['status'] == 'ready'
+    assert completed['messages'][-1]['content'] == 'Background done'
+
+
+@pytest.mark.asyncio
+async def test_stop_is_private_revision_scoped_and_does_not_stop_other_chat(assistant):
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    from langbot.pkg.api.http.controller.groups.assistant import TurnInput
+
+    service, ap, provider = assistant
+    released = asyncio.Event()
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', content='Partial')
+        await released.wait()
+        yield MessageChunk(role='assistant', content=' done', is_final=True)
+
+    provider.invoke_llm_stream = stream
+    ctx = context()
+    ids = [(await service.create(ctx))['uuid'] for _ in range(2)]
+    tasks = []
+    for cid in ids:
+        queue = service.start_run(ctx, cid, TurnInput(revision=0, text='Background task'))
+        tasks.append(service._runs[cid]['task'])
+        while (await asyncio.wait_for(queue.get(), 5))['kind'] != 'text':
+            pass
+    for other in (context(account='bob'), context(workspace='workspace-b')):
+        assert await service.list_conversations(other) == []
+        with pytest.raises(AssistantError, match='conversation_not_found'):
+            await service.stop(other, ids[0], 1)
+    with pytest.raises(AssistantError, match='stale_turn'):
+        await service.stop(ctx, ids[0], 0)
+    result = await service.stop(ctx, ids[0], 1)
+    assert result['status'] == 'failed'
+    assert result['error'] == 'stopped'
+    assert result['messages'][-1]['content'] == 'Partial'
+    assert not tasks[1].done()
+    assert len(await service.list_conversations(ctx)) == 2
+    assert (await service.stop(ctx, ids[0], 1))['error'] == 'stopped'
+    released.set()
+    await asyncio.wait_for(tasks[1], 5)
+    assert (await service.get(ctx, ids[1]))['status'] == 'ready'

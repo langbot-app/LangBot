@@ -1,6 +1,23 @@
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
   assistant: {
+    sessions: '切換對話',
+    currentChat: '目前對話',
+    stop: '停止任務',
+    stopped: '已停止。執行中的工具可能已經生效，請檢查相關資源後再嘗試。',
+    setupRequired:
+      '登入 LangBot Account 使用 LangBot Models，或先設定自己的模型供應商，即可開始對話。',
+    loginAccount: '登入 LangBot Account',
+    configureModels: '設定模型',
+    providerCheckFailed: '無法檢查模型供應商，請重試。',
+    retrySetup: '重試',
+    preparing: '正在準備助手…',
+    thinking: '模型回應中 · 第 {{round}} 輪',
+    executing: '正在執行工具…',
+    toolRunning: '執行中',
+    recommendationFailed: '推薦模型載入失敗，請手動選擇模型。',
+    expand: '展開工作區助手',
+    collapse: '收起工作區助手',
     modelHint: '切換助手模型，從下一條訊息生效',
     details: '檢視原始資料',
     found: '找到 {{count}} 項',
@@ -33,7 +50,7 @@ const zhHant = {
     newChat: '新對話',
     close: '關閉',
     welcome:
-      '告訴我你想建構什麼應用。我可以查看目前工作區，並提出知識庫和 Pipeline 設定方案，由你確認後執行。',
+      '告訴我你想建構什麼應用。我可以查看目前工作區，為機器人、Agent、知識庫和 Pipeline 等提供設定方案，由你確認後執行。',
     discover: '目前有哪些可用的模型、知識庫和 Pipeline？',
     build: '幫我建立一個知識庫問答應用。',
     toolResult: '操作結果',

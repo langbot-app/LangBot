@@ -1,6 +1,25 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
   assistant: {
+    sessions: 'Cuộc trò chuyện',
+    currentChat: 'Cuộc trò chuyện hiện tại',
+    stop: 'Dừng tác vụ',
+    stopped:
+      'Đã dừng. Công cụ có thể đã thực hiện thay đổi. Kiểm tra tài nguyên trước khi thử lại.',
+    setupRequired:
+      'Đăng nhập LangBot Account để dùng LangBot Models hoặc cấu hình nhà cung cấp mô hình riêng để bắt đầu trò chuyện.',
+    loginAccount: 'Đăng nhập LangBot Account',
+    configureModels: 'Cấu hình mô hình',
+    providerCheckFailed: 'Không thể kiểm tra nhà cung cấp. Vui lòng thử lại.',
+    retrySetup: 'Thử lại',
+    preparing: 'Đang chuẩn bị trợ lý…',
+    thinking: 'Mô hình đang trả lời · Vòng {{round}}',
+    executing: 'Đang chạy công cụ…',
+    toolRunning: 'Đang chạy',
+    recommendationFailed:
+      'Không tải được mô hình đề xuất. Vui lòng chọn mô hình.',
+    expand: 'Mở rộng trợ lý không gian làm việc',
+    collapse: 'Thu gọn trợ lý không gian làm việc',
     modelHint: 'Đổi mô hình trợ lý cho tin nhắn tiếp theo',
     details: 'Xem dữ liệu thô',
     found: 'Tìm thấy {{count}} mục',
@@ -36,7 +55,7 @@ const viVN = {
     newChat: 'Cuộc trò chuyện mới',
     close: 'Đóng',
     welcome:
-      'Hãy cho tôi biết bạn muốn xây dựng gì. Tôi có thể xem không gian làm việc này và đề xuất cấu hình cơ sở tri thức cùng Pipeline để bạn xác nhận.',
+      'Hãy cho tôi biết bạn muốn xây dựng gì. Tôi có thể xem không gian làm việc này, đề xuất cấu hình cho bot, Agent, cơ sở tri thức, Pipeline và các tài nguyên khác, rồi áp dụng sau khi bạn xác nhận.',
     discover: 'Có những mô hình, cơ sở tri thức và Pipeline nào khả dụng?',
     build: 'Giúp tôi tạo ứng dụng hỏi đáp dựa trên cơ sở tri thức.',
     toolResult: 'Kết quả thao tác',

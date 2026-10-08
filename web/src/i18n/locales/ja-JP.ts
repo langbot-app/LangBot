@@ -1,6 +1,26 @@
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
   assistant: {
+    sessions: '会話を切り替え',
+    currentChat: '現在の会話',
+    stop: 'タスクを停止',
+    stopped:
+      '停止しました。実行中のツールが反映済みの場合があります。再試行前にリソースを確認してください。',
+    setupRequired:
+      'LangBot Account にログインして LangBot Models を使うか、モデルプロバイダーを設定すると会話を始められます。',
+    loginAccount: 'LangBot Account にログイン',
+    configureModels: 'モデルを設定',
+    providerCheckFailed:
+      'モデルプロバイダーを確認できません。再試行してください。',
+    retrySetup: '再試行',
+    preparing: '準備中…',
+    thinking: 'モデル応答中 · {{round}} 回目',
+    executing: 'ツール実行中…',
+    toolRunning: '実行中',
+    recommendationFailed:
+      '推奨モデルを取得できません。モデルを選択してください。',
+    expand: 'ワークスペースアシスタントを展開',
+    collapse: 'ワークスペースアシスタントを折りたたむ',
     modelHint: '次のメッセージからモデルを切り替え',
     details: '元のデータを見る',
     found: '{{count}} 件見つかりました',
@@ -35,7 +55,7 @@ const jaJP = {
     newChat: '新しい会話',
     close: '閉じる',
     welcome:
-      '作りたいアプリを教えてください。現在のリソースを確認し、承認後にナレッジベースや Pipeline を設定します。',
+      '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、Pipeline などの設定を提案し、承認後に適用します。',
     discover: '利用できるモデル、ナレッジベース、Pipeline は？',
     build: 'ナレッジベースを使う質問応答アプリを作りたい。',
     toolResult: '操作結果',

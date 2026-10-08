@@ -290,7 +290,23 @@ class SpaceService:
         selection = await self.get_model_selection('chat')
         if not selection:
             raise ValueError('No recommended chat model is available')
-        recommended = selection[0]
+        return await self._resolve_recommended_model(context, selection[0])
+
+    async def get_recommended_assistant_model(self, context: typing.Any) -> dict:
+        """Resolve the dedicated, health-filtered assistant recommendation without fallback."""
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        async with session.get(f'{space_url}/api/v1/models/assistant/recommendation') as response:
+            if response.status != 200:
+                raise ValueError('No recommended assistant model is available')
+            payload = await httpclient.read_json_limited(response)
+            if payload.get('code') != 0:
+                raise ValueError('No recommended assistant model is available')
+            recommended = SpaceModel.model_validate(payload['data']['model'])
+        return await self._resolve_recommended_model(context, recommended)
+
+    async def _resolve_recommended_model(self, context: typing.Any, recommended: SpaceModel) -> dict:
+        """Map a public catalog model to this Workspace, refreshing the catalog once."""
 
         async def find_local_model():
             result = await self.ap.persistence_mgr.execute_async(

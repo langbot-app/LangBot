@@ -439,6 +439,58 @@ export class BackendClient extends BaseHttpClient {
     return result;
   }
 
+  public async streamAssistant<T>(
+    uuid: string,
+    payload: {
+      revision: number;
+      text?: string;
+      approved?: boolean;
+      model_uuid?: string;
+    },
+    onEvent: (event: { kind: string; data: unknown }) => void,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let offset = 0;
+    let result: T | undefined;
+    let failure: { code: string; msg: string } | undefined;
+    const consume = (text: string) => {
+      let end: number;
+      while ((end = text.indexOf('\n', offset)) !== -1) {
+        const line = text.slice(offset, end).trim();
+        offset = end + 1;
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        if (frame.kind === 'completed') result = frame.data;
+        else if (frame.kind === 'error') failure = frame;
+        else onEvent(frame);
+      }
+    };
+    const response = await this.instance.post<string>(
+      `/api/v1/assistant/conversations/${encodeURIComponent(uuid)}/turn/stream`,
+      payload,
+      {
+        adapter: 'xhr',
+        responseType: 'text',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'application/x-ndjson' },
+        transformResponse: [(data) => data],
+        onDownloadProgress: (progress) => {
+          const xhr = progress.event?.target as XMLHttpRequest | undefined;
+          if (xhr?.status === 200) consume(xhr.responseText);
+        },
+      },
+    );
+    consume(response.data);
+    if (failure) throw failure;
+    if (!result)
+      throw {
+        code: 'assistant_protocol_error',
+        msg: 'Assistant stream ended before completion',
+      };
+    return result;
+  }
+
   public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
     // as designed, this method will be deprecated, and only for developer to check the prefered config schema
     return this.get('/api/v1/pipelines/_/metadata');

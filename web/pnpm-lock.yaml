@@ -93,6 +93,9 @@ dependencies:
   '@radix-ui/react-tooltip':
     specifier: ^1.2.7
     version: 1.2.8(@types/react-dom@19.2.3)(@types/react@19.2.10)(react-dom@19.2.1)(react@19.2.1)
+  '@remixicon/react':
+    specifier: ^4.9.0
+    version: 4.9.0(react@19.2.1)
   '@simplewebauthn/browser':
     specifier: ^14.0.0
     version: 14.0.0
@@ -2919,6 +2922,14 @@ packages:
 
   /@radix-ui/rect@1.1.3:
     resolution: {integrity: sha512-JtyZR+mqgBibTo8xea3B6ZRmzZiM/YeVBtUkas6zMuXjAlfIFIW2FgqeM9eLyvEaYX66vr6DJMK+4U6LV0KhNw==}
+    dev: false
+
+  /@remixicon/react@4.9.0(react@19.2.1):
+    resolution: {integrity: sha512-5/jLDD4DtKxH2B4QVXTobvV1C2uL8ab9D5yAYNtFt+w80O0Ys1xFOrspqROL3fjrZi+7ElFUWE37hBfaAl6U+Q==}
+    peerDependencies:
+      react: '>=18.2.0'
+    dependencies:
+      react: 19.2.1
     dev: false
 
   /@rolldown/binding-android-arm64@1.0.3:

@@ -132,6 +132,7 @@ export default function DynamicFormItemComponent({
   systemContext,
   requiredModelAbility,
   compactModelSelector = false,
+  selectedModelLabel,
 }: {
   config: IDynamicFormItemSchema;
   field: ControllerRenderProps<any, any>;
@@ -141,6 +142,7 @@ export default function DynamicFormItemComponent({
   systemContext?: Record<string, unknown>;
   requiredModelAbility?: string;
   compactModelSelector?: boolean;
+  selectedModelLabel?: string;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
@@ -639,11 +641,15 @@ export default function DynamicFormItemComponent({
                 aria-label={t('models.selectModel')}
                 className={
                   compactModelSelector
-                    ? 'w-full min-w-0 gap-1 border-0 bg-transparent px-1 text-xs text-muted-foreground shadow-none hover:bg-muted data-[size=default]:h-7 [&_[data-slot=select-value]_svg]:hidden'
+                    ? 'w-full min-w-0 gap-1 rounded-lg border border-border bg-background px-2 text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-muted-foreground/40 hover:bg-background dark:bg-background dark:hover:bg-background data-[state=open]:border-muted-foreground/50 focus-visible:border-muted-foreground/50 focus-visible:ring-1 focus-visible:ring-muted-foreground/20 data-[size=default]:h-7 [&_[data-slot=select-value]_svg]:hidden'
                     : MODEL_SELECT_TRIGGER_CLASS
                 }
               >
-                <SelectValue placeholder={t('models.selectModel')} />
+                <SelectValue placeholder={t('models.selectModel')}>
+                  {compactModelSelector && selectedModelLabel
+                    ? selectedModelLabel
+                    : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(groupedModels).map(([providerName, models]) => (

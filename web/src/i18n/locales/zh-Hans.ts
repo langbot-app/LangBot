@@ -1,6 +1,23 @@
 import pipelineMigration from './pipeline-migration/zh-Hans';
 const zhHans = {
   assistant: {
+    sessions: '切换会话',
+    currentChat: '当前会话',
+    stop: '停止任务',
+    stopped: '已停止。执行中的工具可能已经生效，请检查相关资源后再尝试。',
+    setupRequired:
+      '登录 LangBot Account 使用 LangBot Models，或先配置自己的模型供应商，即可开始对话。',
+    loginAccount: '登录 LangBot Account',
+    configureModels: '配置模型',
+    providerCheckFailed: '无法检查模型供应商，请重试。',
+    retrySetup: '重试',
+    preparing: '正在准备助手…',
+    thinking: '模型响应中 · 第 {{round}} 轮',
+    executing: '正在执行工具…',
+    toolRunning: '执行中',
+    recommendationFailed: '推荐模型加载失败，请手动选择模型。',
+    expand: '展开工作区助手',
+    collapse: '收起工作区助手',
     modelHint: '切换助手模型，从下一条消息生效',
     details: '查看原始数据',
     found: '找到 {{count}} 项',
@@ -33,7 +50,7 @@ const zhHans = {
     newChat: '新对话',
     close: '关闭',
     welcome:
-      '告诉我你想构建什么应用。我可以查看当前工作区，并提出知识库和 Pipeline 配置方案，由你确认后执行。',
+      '告诉我你想构建什么应用。我可以查看当前工作区，为机器人、Agent、知识库和 Pipeline 等提供配置方案，由你确认后执行。',
     discover: '当前有哪些可用的模型、知识库和 Pipeline？',
     build: '帮我创建一个知识库问答应用。',
     toolResult: '操作结果',

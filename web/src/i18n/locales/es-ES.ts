@@ -1,6 +1,26 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
   assistant: {
+    sessions: 'Conversaciones',
+    currentChat: 'Conversación actual',
+    stop: 'Detener tarea',
+    stopped:
+      'Detenido. Una herramienta en curso puede haber surtido efecto. Comprueba el recurso antes de reintentar.',
+    setupRequired:
+      'Inicia sesión en LangBot Account para usar LangBot Models o configura tu proveedor de modelos para empezar a conversar.',
+    loginAccount: 'Iniciar sesión en LangBot Account',
+    configureModels: 'Configurar modelos',
+    providerCheckFailed:
+      'No se pudieron comprobar los proveedores. Inténtalo de nuevo.',
+    retrySetup: 'Reintentar',
+    preparing: 'Preparando asistente…',
+    thinking: 'Modelo respondiendo · Ronda {{round}}',
+    executing: 'Ejecutando herramienta…',
+    toolRunning: 'En ejecución',
+    recommendationFailed:
+      'No se pudo cargar el modelo recomendado. Selecciona un modelo.',
+    expand: 'Expandir asistente del espacio de trabajo',
+    collapse: 'Contraer asistente del espacio de trabajo',
     modelHint: 'Cambia el modelo del asistente para el próximo mensaje',
     details: 'Ver datos sin procesar',
     found: 'Se encontraron {{count}} elementos',
@@ -35,7 +55,7 @@ const esES = {
     newChat: 'Nueva conversación',
     close: 'Cerrar',
     welcome:
-      'Dime qué quieres crear. Puedo inspeccionar este espacio de trabajo y proponer cambios en la base de conocimiento y el Pipeline para que los confirmes.',
+      'Dime qué quieres crear. Puedo revisar este espacio de trabajo y proponer configuraciones para bots, Agents, bases de conocimiento, Pipelines y más, y aplicarlas tras tu confirmación.',
     discover:
       '¿Qué modelos, bases de conocimiento y Pipelines hay disponibles?',
     build:

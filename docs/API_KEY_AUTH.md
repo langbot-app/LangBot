@@ -360,3 +360,42 @@ curl -X POST \
 - API-key-enabled endpoints use the same resource shapes as the web UI
 - No need to learn different API paths - use the existing API documentation with API key authentication
 - API keys never select a Workspace from a request header; their persisted binding is authoritative
+
+## Workspace assistant browser session
+
+The Workspace assistant endpoints under `/api/v1/assistant` are account-session
+features, not API-key/MCP automation tools. They require a Workspace-scoped user
+token and `runtime.operate` for recommendation and turns. Conversation reads
+also enforce account ownership.
+
+- `GET /recommended-model` resolves and validates the recommended tool-capable
+  model when the panel opens. An explicit `model_uuid` in a turn always takes
+  precedence; it never silently falls back if unavailable.
+- `POST /conversations/{id}/turn/stream` accepts the same revision, text/model,
+  or approval decision as `/turn`, and returns NDJSON. `snapshot` frames contain
+  the public conversation; `text` frames contain the cumulative text for the
+  current model invocation; `phase` frames identify the model round or running
+  tool. A snapshot replaces transient text/tool progress. `completed` contains
+  the final conversation (including approval or failed states); `error` is a
+  transport/admission failure. Blank lines are heartbeats.
+- `GET /conversations` lists the latest 100 conversations owned by the current
+  account in this Workspace. `GET /conversations/{id}` includes transient
+  `progress` (cumulative text, round and running tool) while execution is active.
+- Disconnecting a streaming response only detaches the browser. The backend owns
+  the task until completion, approval, timeout or explicit stop. Slow or absent
+  consumers never block execution; reconnect using the conversation snapshot.
+- `POST /conversations/{id}/stop` accepts `{ "revision": N }` for the active turn.
+  It enforces ownership and revision, cancels execution and records `stopped`.
+  Stopping cannot roll back tool effects and clients must never replay a write
+  automatically. Writes still require confirmation of saved arguments.
+- Background execution lives in the current backend process, with at most four
+  simultaneous turns and the existing 120-second turn limit. This is not a durable
+  job queue: backend restarts do not resume interrupted tasks.
+
+The original JSON `/turn` endpoint remains compatible for existing callers.
+
+The assistant recommendation uses Space `/api/v1/models/assistant/recommendation`,
+which selects only from the assistant pool using fresh successful health checks.
+An unavailable recommendation returns 503 without falling back to general chat rankings.
+The browser checks Workspace model providers before mounting the assistant; an empty
+provider list shows Account sign-in and model settings actions instead of a composer.

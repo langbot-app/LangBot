@@ -1,6 +1,25 @@
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
   assistant: {
+    sessions: 'Conversations',
+    currentChat: 'Current conversation',
+    stop: 'Stop task',
+    stopped:
+      'Stopped. An in-progress tool may already have taken effect. Check its resource before retrying.',
+    setupRequired:
+      'Sign in to LangBot Account to use LangBot Models, or configure your own model provider to start chatting.',
+    loginAccount: 'Sign in to LangBot Account',
+    configureModels: 'Configure models',
+    providerCheckFailed: 'Could not check model providers. Please try again.',
+    retrySetup: 'Retry',
+    preparing: 'Preparing assistant…',
+    thinking: 'Model responding · Round {{round}}',
+    executing: 'Executing tool…',
+    toolRunning: 'Running',
+    recommendationFailed:
+      'Could not load a recommended model. Please select a model.',
+    expand: 'Expand workspace assistant',
+    collapse: 'Collapse workspace assistant',
     modelHint: 'Switch assistant model for your next message',
     details: 'View raw data',
     found: 'Found {{count}} items',
@@ -35,7 +54,7 @@ const enUS = {
     newChat: 'New conversation',
     close: 'Close',
     welcome:
-      'Tell me what you want to build. I can inspect this Workspace and propose knowledge-base and Pipeline changes for you to confirm.',
+      'Tell me what you want to build. I can inspect this Workspace and propose configurations for bots, Agents, knowledge bases, Pipelines and more, then apply them after your confirmation.',
     discover: 'What models, knowledge bases and Pipelines are available?',
     build: 'Help me create a knowledge-base question-answering application.',
     toolResult: 'Operation result',
