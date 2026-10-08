@@ -1,3 +1,4 @@
+import { useSnapshotDirty } from '@/app/infra/hooks/useSnapshotDirty';
 import EntityLoadState from '@/components/EntityLoadState';
 import {
   forwardRef,
@@ -9,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
@@ -157,7 +158,6 @@ function AgentFormComponent(
   const [activeSection, setActiveSection] =
     useState<AgentConfigSection>('runner');
   const isSavingRef = useRef(false);
-  const hasUnsavedChangesRef = useRef(false);
   const loadedHostToolPolicyRef = useRef<string[] | undefined>(undefined);
 
   const formSchema = z.object({
@@ -197,18 +197,20 @@ function AgentFormComponent(
 
   const savedSnapshotRef = useRef('');
   const initializedStagesRef = useRef<Set<string>>(new Set());
-  const watchedValues = form.watch();
-  const hasUnsavedChanges = (() => {
-    if (!savedSnapshotRef.current) return false;
-    return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
-  })();
-  hasUnsavedChangesRef.current = hasUnsavedChanges;
+  const {
+    isDirty: hasUnsavedChanges,
+    dirtyRef: hasUnsavedChangesRef,
+    refreshDirty,
+  } = useSnapshotDirty(form, savedSnapshotRef);
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
 
-  const supportedEventPatterns = form.watch('supported_event_patterns');
+  const supportedEventPatterns = useWatch({
+    control: form.control,
+    name: 'supported_event_patterns',
+  });
   useEffect(() => {
     onSupportedEventPatternsChange?.(supportedEventPatterns);
   }, [onSupportedEventPatternsChange, supportedEventPatterns]);
@@ -279,6 +281,7 @@ function AgentFormComponent(
         };
         form.reset(loadedValues);
         savedSnapshotRef.current = JSON.stringify(loadedValues);
+        refreshDirty();
         initializedStagesRef.current.clear();
         setInitialDataLoaded(true);
       })
@@ -290,7 +293,7 @@ function AgentFormComponent(
     return () => {
       cancelled = true;
     };
-  }, [agentId, form, t, loadAttempt]);
+  }, [agentId, form, t, loadAttempt, refreshDirty]);
 
   useEffect(() => {
     if (!initialDataLoaded || !readPendingRunnerInstall(runnerInstallScope)) {
@@ -340,7 +343,11 @@ function AgentFormComponent(
     void loadPluginSystemStatus();
   }, [loadPluginSystemStatus]);
 
-  const currentRunner = (form.watch('runner') as Record<string, any>)?.id;
+  const currentRunner = useWatch({
+    control: form.control,
+    name: 'runner',
+    compute: (runner) => runner?.id,
+  });
   const runnerOptions = useMemo(() => {
     const runnerStage = runnerConfigSchema?.stages.find(
       (stage) => stage.name === 'runner',
@@ -358,24 +365,38 @@ function AgentFormComponent(
   const activeRunnerStage = runnerConfigSchema?.stages.find(
     (stage) => stage.name === currentRunner,
   );
-  const runnerConfigValues = form.watch('runner_config') as Record<
+  const runnerConfigValues = form.getValues('runner_config') as Record<
     string,
     Record<string, unknown>
   >;
-  const activeRunnerValues = useMemo(
-    () => runnerConfigValues?.[currentRunner] ?? {},
-    [currentRunner, runnerConfigValues],
+  useWatch({
+    control: form.control,
+    compute: (values) =>
+      (activeRunnerStage?.config ?? [])
+        .filter(
+          (field) =>
+            field.required &&
+            isRunnerFieldVisible(
+              field,
+              values.runner_config?.[currentRunner] ?? {},
+            ) &&
+            isRequiredRunnerValueMissing(
+              values.runner_config?.[currentRunner]?.[field.name],
+            ),
+        )
+        .map((field) => field.name)
+        .join('\n'),
+  });
+  const activeRunnerValues = runnerConfigValues?.[currentRunner] ?? {};
+  const missingRunnerFields = (activeRunnerStage?.config ?? []).filter(
+    (field) =>
+      field.required &&
+      isRunnerFieldVisible(field, activeRunnerValues) &&
+      isRequiredRunnerValueMissing(activeRunnerValues[field.name]),
   );
-  const missingRunnerFields = useMemo(
-    () =>
-      (activeRunnerStage?.config ?? []).filter(
-        (field) =>
-          field.required &&
-          isRunnerFieldVisible(field, activeRunnerValues) &&
-          isRequiredRunnerValueMissing(activeRunnerValues[field.name]),
-      ),
-    [activeRunnerStage, activeRunnerValues],
-  );
+  const missingRunnerFieldNames = missingRunnerFields
+    .map((field) => extractI18nObject(field.label))
+    .join(', ');
   const primarySections: Array<{
     name: AgentConfigSection;
     label: string;
@@ -448,9 +469,7 @@ function AgentFormComponent(
       return {
         label: t('agents.runnerConfigIncomplete'),
         description: t('agents.runnerConfigIncompleteDescription', {
-          fields: missingRunnerFields
-            .map((field) => extractI18nObject(field.label))
-            .join(', '),
+          fields: missingRunnerFieldNames,
         }),
         tone: 'warning',
       };
@@ -471,7 +490,8 @@ function AgentFormComponent(
     pluginStatusLoading,
     pluginSystemStatus,
     runnerOptions.length,
-    missingRunnerFields,
+    missingRunnerFieldNames,
+    missingRunnerFields.length,
     selectedRunnerOption,
     t,
   ]);
@@ -520,11 +540,12 @@ function AgentFormComponent(
     onRunnerStatusChange?.(runnerStatus);
   }, [onRunnerStatusChange, runnerStatus]);
 
-  function updateSnapshotIfInitial(stageKey: string) {
+  function updateSnapshotIfInitial(stageKey: string, wasDirty: boolean) {
     if (!initializedStagesRef.current.has(stageKey)) {
       initializedStagesRef.current.add(stageKey);
-      if (!hasUnsavedChanges) {
+      if (!wasDirty) {
         savedSnapshotRef.current = JSON.stringify(form.getValues());
+        refreshDirty();
       }
     }
   }
@@ -534,9 +555,10 @@ function AgentFormComponent(
     stageName: string,
     values: object,
   ) {
+    const wasDirty = hasUnsavedChangesRef.current;
     if (formName === 'runner') {
       form.setValue('runner', values, { shouldDirty: true });
-      updateSnapshotIfInitial(`runner.${stageName}`);
+      updateSnapshotIfInitial(`runner.${stageName}`, wasDirty);
       return;
     }
 
@@ -550,7 +572,7 @@ function AgentFormComponent(
       },
       { shouldDirty: true },
     );
-    updateSnapshotIfInitial(`runner_config.${stageName}`);
+    updateSnapshotIfInitial(`runner_config.${stageName}`, wasDirty);
   }
 
   function renderDynamicStage(stage: PipelineConfigStage) {
@@ -558,8 +580,8 @@ function AgentFormComponent(
     if (!isRunnerSelector && stage.name !== currentRunner) return null;
 
     const initialValues = isRunnerSelector
-      ? (form.watch('runner') as Record<string, unknown>) || {}
-      : ((form.watch('runner_config') as Record<string, any>) || {})[
+      ? (form.getValues('runner') as Record<string, unknown>) || {}
+      : ((form.getValues('runner_config') as Record<string, any>) || {})[
           stage.name
         ] || {};
 
@@ -640,6 +662,7 @@ function AgentFormComponent(
           loadedHostToolPolicyRef.current = [...values.allowed_tools];
         }
         savedSnapshotRef.current = submittedSnapshot;
+        refreshDirty();
         onFinish(agent);
         toast.success(t('agents.saveSuccess'));
         return true;
@@ -655,7 +678,14 @@ function AgentFormComponent(
         onSavingChange?.(false);
       }
     },
-    [agentId, hostToolCatalogAvailable, onFinish, onSavingChange, t],
+    [
+      agentId,
+      hostToolCatalogAvailable,
+      onFinish,
+      onSavingChange,
+      refreshDirty,
+      t,
+    ],
   );
 
   function handleSubmit(values: FormValues) {
@@ -682,6 +712,7 @@ function AgentFormComponent(
             emoji: values.emoji || '🤖',
           };
           savedSnapshotRef.current = JSON.stringify(snapshot);
+          refreshDirty();
         }
       },
       async save() {
@@ -693,7 +724,14 @@ function AgentFormComponent(
         return (await saveValues(form.getValues())) ?? false;
       },
     }),
-    [form, initialDataLoaded, loadFailed, saveValues],
+    [
+      form,
+      initialDataLoaded,
+      loadFailed,
+      saveValues,
+      hasUnsavedChangesRef,
+      refreshDirty,
+    ],
   );
 
   if (loadFailed)

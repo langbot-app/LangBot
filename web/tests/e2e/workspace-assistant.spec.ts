@@ -12,10 +12,92 @@ const chat = {
   model_name: null,
 };
 
+test('sending survives model labels appearing and disappearing in stream snapshots', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (/createPortal|removeChild|createRoot/.test(message.text()))
+      errors.push(message.text());
+  });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
+  await page.route('**/api/v1/provider/providers', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
+    }),
+  );
+  await page.route('**/api/v1/assistant/recommended-model', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { uuid: 'llm-valid', name: 'Recommended model' } },
+    }),
+  );
+  let current: Record<string, unknown> = chat;
+  await page.route('**/api/v1/assistant/conversations', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data:
+          route.request().method() === 'POST' ? chat : { conversations: [] },
+      },
+    }),
+  );
+  await page.route(
+    '**/api/v1/assistant/conversations/assistant-test',
+    (route) =>
+      route.fulfill({
+        json: { code: 0, data: current },
+      }),
+  );
+  let turn = 0;
+  await page.route(
+    '**/api/v1/assistant/conversations/*/turn/stream',
+    async (route) => {
+      turn += 1;
+      current = {
+        ...chat,
+        revision: turn,
+        model_uuid: 'llm-valid',
+        model_name: turn === 2 ? 'Snapshot model' : null,
+        messages: [{ role: 'assistant', content: `Reply ${turn}` }],
+      };
+      await route.fulfill({
+        contentType: 'application/x-ndjson',
+        body:
+          JSON.stringify({ kind: 'snapshot', data: current }) +
+          '\n' +
+          JSON.stringify({ kind: 'completed', data: current }) +
+          '\n',
+      });
+    },
+  );
+  await page.goto('/home/bots');
+  const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
+  const model = assistant.getByRole('combobox', { name: 'Select Model' });
+  await expect(model).toContainText('Recommended model');
+  for (let i = 1; i <= 3; i++) {
+    await assistant.getByRole('textbox').fill(`Hello ${i}`);
+    await assistant.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(
+      assistant.getByText(`Reply ${i}`, { exact: true }),
+    ).toBeVisible();
+    await expect(model).toContainText(
+      i === 2 ? 'Snapshot model' : 'Valid Mock Model',
+    );
+  }
+  expect(errors).toEqual([]);
+});
+
 test('selects the recommendation on entry and submits the visible model', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
@@ -64,7 +146,10 @@ test('selects the recommendation on entry and submits the visible model', async 
 test('late recommendation cannot overwrite manual selection, including request payload', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
@@ -138,6 +223,7 @@ test('renders streaming text and tool progress before completion', async ({
     model_name: 'Recommended model',
     messages: [{ role: 'user', content: 'Inspect resources' }],
   };
+  let currentConversation: Record<string, unknown> = started;
   const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -160,7 +246,7 @@ test('renders streaming text and tool progress before completion', async ({
       tool: { name: 'list_resources', arguments: { kind: 'models' } },
     });
     await gate;
-    emit('completed', {
+    currentConversation = {
       ...started,
       status: 'ready',
       messages: [
@@ -176,13 +262,24 @@ test('renders streaming text and tool progress before completion', async ({
         },
         { role: 'assistant', content: 'Found your model' },
       ],
-    });
+    };
+    emit('completed', currentConversation);
     res.end();
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as { port: number };
   try {
-    await installLangBotApiMocks(page, { authenticated: true });
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAssistant: true,
+    });
+    // The panel refreshes the persisted conversation after streaming finishes.
+    // Return the same snapshot as the stream instead of the generic API fallback.
+    await page.route(
+      '**/api/v1/assistant/conversations/assistant-test',
+      (route) =>
+        route.fulfill({ json: { code: 0, data: currentConversation } }),
+    );
     await page.route('**/api/v1/provider/providers', (route) =>
       route.fulfill({
         json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
@@ -243,7 +340,10 @@ test('renders streaming text and tool progress before completion', async ({
 test('without providers shows setup only and rechecks after model settings close', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/requesters', (route) =>
     route.fulfill({ json: { code: 0, data: { requesters: [] } } }),
   );
@@ -299,7 +399,10 @@ test('without providers shows setup only and rechecks after model settings close
 test('setup login starts the existing LangBot Account authorization flow', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: { code: 0, data: { providers: [] } },
@@ -320,7 +423,10 @@ test('setup login starts the existing LangBot Account authorization flow', async
 test('switches conversations, restores background progress after reload and stops only the selected task', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },
@@ -452,7 +558,10 @@ test('switches conversations, restores background progress after reload and stop
 test('keeps the reading position through background updates and resumes following at the bottom', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: true });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: { code: 0, data: { providers: [{ uuid: 'provider' }] } },

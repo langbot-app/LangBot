@@ -98,6 +98,7 @@ export interface WorkspaceEntryMock {
 
 interface LangBotApiMockState {
   authenticated: boolean;
+  withAssistant: boolean;
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
@@ -732,7 +733,9 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   if (path === '/api/v1/user/info') {
     return fulfillJson(route, {
-      account_uuid: 'account-playwright',
+      // Most tests exercise an unlinked local user. Assistant tests opt into
+      // an account identity and mock its additional provider/conversation APIs.
+      account_uuid: state.withAssistant ? 'account-playwright' : null,
       user: 'admin@example.com',
       account_type: 'local',
       has_password: true,
@@ -1459,6 +1462,7 @@ export async function installLangBotApiMocks(
   page: Page,
   options: {
     authenticated?: boolean;
+    withAssistant?: boolean;
     language?: string;
     monitoringData?: unknown;
     monitoringSessions?: unknown[];
@@ -1472,6 +1476,7 @@ export async function installLangBotApiMocks(
 ) {
   const {
     authenticated = false,
+    withAssistant = false,
     language = 'en-US',
     monitoringData,
     monitoringSessions,
@@ -1484,6 +1489,7 @@ export async function installLangBotApiMocks(
   } = options;
   const state: LangBotApiMockState = {
     authenticated,
+    withAssistant,
     bots: [],
     counters: {},
     knowledgeBases: [],

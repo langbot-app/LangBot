@@ -646,9 +646,19 @@ export default function DynamicFormItemComponent({
                 }
               >
                 <SelectValue placeholder={t('models.selectModel')}>
-                  {compactModelSelector && selectedModelLabel
-                    ? selectedModelLabel
-                    : undefined}
+                  {/* Keep compact labels explicitly rendered even when a stream
+                      omits the model name. Switching to Radix's ItemText portal
+                      would give two renderers ownership of the same DOM node. */}
+                  {compactModelSelector ? (
+                    <span className="truncate">
+                      {selectedModelLabel ||
+                        selectableModels.find(
+                          (model) => model.uuid === field.value,
+                        )?.name ||
+                        field.value ||
+                        t('models.selectModel')}
+                    </span>
+                  ) : undefined}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
