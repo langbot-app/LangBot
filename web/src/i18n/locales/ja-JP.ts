@@ -9,7 +9,7 @@ const jaJP = {
     stopped:
       '停止しました。実行中のツールが反映済みの場合があります。再試行前にリソースを確認してください。',
     setupRequired:
-      'LangBot Account にログインするか、モデルを設定してください。',
+      'LangBot アカウントにログインするか、モデルを設定すると、ワークスペースアシスタントを利用できます。',
     loginAccount: 'LangBot Account にログイン',
     configureModels: 'モデルを設定',
     providerCheckFailed:

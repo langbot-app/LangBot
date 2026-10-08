@@ -22,6 +22,7 @@ import {
 } from '@/app/infra/http';
 import { toast } from 'sonner';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { MODEL_CONFIGURATION_CHANGED } from '@/app/infra/http/modelConfigEvents';
 import SettingsDialog, {
   SettingsSection,
 } from './settings-dialog/SettingsDialog';
@@ -85,10 +86,12 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
 
   useEffect(() => {
     let active = true;
+    let latestCheck = 0;
     async function check() {
+      const currentCheck = ++latestCheck;
       try {
         const { models } = await backendClient.getProviderLLMModels();
-        if (active) {
+        if (active && currentCheck === latestCheck) {
           const usableModels = models.filter(
             (model) =>
               !!model.uuid?.trim() &&
@@ -109,14 +112,16 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
           setFailed(false);
         }
       } catch {
-        if (active) setFailed(true);
+        if (active && currentCheck === latestCheck) setFailed(true);
       }
     }
     if (!settingsOpen) void check();
     window.addEventListener('focus', check);
+    window.addEventListener(MODEL_CONFIGURATION_CHANGED, check);
     return () => {
       active = false;
       window.removeEventListener('focus', check);
+      window.removeEventListener(MODEL_CONFIGURATION_CHANGED, check);
     };
   }, [settingsOpen, retry]);
 

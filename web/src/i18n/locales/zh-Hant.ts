@@ -8,7 +8,7 @@ const zhHant = {
     stop: '停止任務',
     stopped: '已停止。執行中的工具可能已經生效，請檢查相關資源後再嘗試。',
     setupRequired:
-      '登入 LangBot Account 使用 LangBot Models，或先設定自己的模型供應商，即可開始對話。',
+      '登入 LangBot 帳戶或設定模型，即可開始使用工作區助手。',
     loginAccount: '登入 LangBot Account',
     configureModels: '設定模型',
     providerCheckFailed: '無法檢查模型供應商，請重試。',

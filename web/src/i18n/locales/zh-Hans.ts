@@ -7,7 +7,7 @@ const zhHans = {
     currentChat: '当前会话',
     stop: '停止任务',
     stopped: '已停止。执行中的工具可能已经生效，请检查相关资源后再尝试。',
-    setupRequired: '请使用 LangBot 账户登录或配置模型',
+    setupRequired: '登录 LangBot 账户或配置模型，即可开始使用工作区助手。',
     loginAccount: '登录 LangBot 账户',
     configureModels: '配置模型',
     providerCheckFailed: '无法检查模型供应商，请重试。',

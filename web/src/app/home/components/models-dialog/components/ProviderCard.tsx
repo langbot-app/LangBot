@@ -367,7 +367,7 @@ export default function ProviderCard({
                       }}
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      {t('models.addModel')}
+                      {t('common.add')}
                     </Button>
                   }
                   onOpen={() => {
@@ -394,14 +394,15 @@ export default function ProviderCard({
                   trigger={
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                      size="sm"
+                      className="h-6 text-xs"
                       onClick={(e) => {
                         e.stopPropagation();
                         setAddModelMode('scan');
                       }}
                     >
-                      <Radar className="h-3 w-3" />
+                      <Radar className="h-3 w-3 mr-1" />
+                      {t('models.scanModels')}
                     </Button>
                   }
                   onOpen={() => {

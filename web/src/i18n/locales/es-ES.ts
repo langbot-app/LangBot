@@ -9,7 +9,7 @@ const esES = {
     stopped:
       'Detenido. Una herramienta en curso puede haber surtido efecto. Comprueba el recurso antes de reintentar.',
     setupRequired:
-      'Inicia sesión en LangBot Account para usar LangBot Models o configura tu proveedor de modelos para empezar a conversar.',
+      'Inicia sesión con tu cuenta de LangBot o configura un modelo para empezar a usar el asistente del espacio de trabajo.',
     loginAccount: 'Iniciar sesión en LangBot Account',
     configureModels: 'Configurar modelos',
     providerCheckFailed:

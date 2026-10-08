@@ -9,7 +9,7 @@ const viVN = {
     stopped:
       'Đã dừng. Công cụ có thể đã thực hiện thay đổi. Kiểm tra tài nguyên trước khi thử lại.',
     setupRequired:
-      'Đăng nhập LangBot Account để dùng LangBot Models hoặc cấu hình nhà cung cấp mô hình riêng để bắt đầu trò chuyện.',
+      'Đăng nhập bằng tài khoản LangBot hoặc cấu hình mô hình để bắt đầu sử dụng trợ lý không gian làm việc.',
     loginAccount: 'Đăng nhập LangBot Account',
     configureModels: 'Cấu hình mô hình',
     providerCheckFailed: 'Không thể kiểm tra nhà cung cấp. Vui lòng thử lại.',

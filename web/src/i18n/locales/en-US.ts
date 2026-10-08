@@ -8,7 +8,8 @@ const enUS = {
     stop: 'Stop task',
     stopped:
       'Stopped. An in-progress tool may already have taken effect. Check its resource before retrying.',
-    setupRequired: 'Sign in to LangBot Account or configure a model.',
+    setupRequired:
+      'Sign in to LangBot Account or configure a model to start using the workspace assistant.',
     loginAccount: 'Sign in to LangBot Account',
     configureModels: 'Configure models',
     providerCheckFailed: 'Could not check model providers. Please try again.',
