@@ -8,7 +8,7 @@ import {
 } from '../types/monitoring';
 import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import { getCurrentWorkspaceSnapshot } from '@/app/infra/http/currentWorkspaceStore';
-import { parseUTCTimestamp } from '../utils/dateUtils';
+import { parseUTCTimestamp, resolveMonitoringWindow } from '../utils/dateUtils';
 
 /**
  * Custom hook for fetching and managing monitoring data
@@ -36,45 +36,6 @@ export function useMonitoringData(filterState: FilterState) {
     [filterState.customDateRange],
   );
 
-  // Convert time range to datetime strings
-  const getTimeRange = useCallback(() => {
-    const now = new Date();
-    let startTime: Date | null = null;
-
-    switch (filterState.timeRange) {
-      case 'lastHour':
-        startTime = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'last6Hours':
-        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case 'last24Hours':
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case 'last7Days':
-        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'last30Days':
-        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case 'custom':
-        if (filterState.customDateRange) {
-          startTime = filterState.customDateRange.from;
-        }
-        break;
-    }
-
-    const endTime =
-      filterState.timeRange === 'custom' && filterState.customDateRange
-        ? filterState.customDateRange.to
-        : now;
-
-    return {
-      startTime: startTime?.toISOString(),
-      endTime: endTime.toISOString(),
-    };
-  }, [filterState.timeRange, filterState.customDateRange]);
-
   // Fetch data based on filters
   const fetchData = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -87,9 +48,17 @@ export function useMonitoringData(filterState: FilterState) {
     setError(null);
 
     try {
-      const { startTime, endTime } = getTimeRange();
+      const { startTime, endTime } = resolveMonitoringWindow(
+        filterState.timeRange,
+        filterState.customDateRange,
+      );
 
       const response = await backendClient.getMonitoringData({
+        mode: filterState.mode,
+        status:
+          filterState.statusGroup && filterState.statusGroup !== 'all'
+            ? [filterState.statusGroup]
+            : undefined,
         botId:
           filterState.selectedBots.length > 0
             ? filterState.selectedBots
@@ -426,7 +395,10 @@ export function useMonitoringData(filterState: FilterState) {
       if (isCurrent()) setLoading(false);
     }
   }, [
-    getTimeRange,
+    filterState.mode,
+    filterState.statusGroup,
+    filterState.timeRange,
+    filterState.customDateRange,
     filterState.selectedBots,
     filterState.selectedPipelines,
     scope,
@@ -443,6 +415,8 @@ export function useMonitoringData(filterState: FilterState) {
   }, [
     selectedBotsStr,
     selectedPipelinesStr,
+    filterState.mode,
+    filterState.statusGroup,
     filterState.timeRange,
     customDateRangeStr,
     workspaceUuid,

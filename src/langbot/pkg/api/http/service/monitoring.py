@@ -10,10 +10,15 @@ from sqlalchemy.dialects import postgresql as postgresql_dialect
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 
 from ....core import app
+from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import monitoring as persistence_monitoring
+from ....entity.persistence import agent_run as persistence_agent_run
+from ....entity.persistence import agent_interaction as persistence_agent_interaction
+from ....entity.persistence.event_log import EventLog
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
+from .monitoring_execution_details import ExecutionDetailsMixin
 
 
 _DEFAULT_MONITORING_PAGE_ROWS = 1000
@@ -28,6 +33,76 @@ _HARD_MAX_MONITORING_TIMESERIES_BUCKETS = 10000
 _HARD_MAX_MONITORING_OFFSET = 10000000
 _DEFAULT_CLEANUP_BATCHES_PER_TABLE = 4
 _HARD_MAX_CLEANUP_BATCHES_PER_TABLE = 100
+
+# Canonical execution status groups shared by the agent ledger and pipeline query
+# records so both object types can be summarised with one vocabulary.
+_AGENT_STATUS_GROUP = {
+    'completed': 'completed',
+    'failed': 'failed',
+    'timeout': 'failed',
+    'cancelled': 'cancelled',
+    'created': 'queued',
+    'queued': 'queued',
+    'claimed': 'running',
+    'running': 'running',
+}
+_PIPELINE_STATUS_GROUP = {
+    'success': 'completed',
+    'error': 'failed',
+    'pending': 'running',
+    'discarded': 'ignored',
+    'not_matched': 'ignored',
+}
+
+
+def _status_group(status: str, source: str) -> str:
+    table = _AGENT_STATUS_GROUP if source == 'agent' else _PIPELINE_STATUS_GROUP
+    return table.get(status, status)
+
+
+def _epoch_ms(value: datetime.datetime | None) -> int | None:
+    """Epoch milliseconds for a DB timestamp, treating naive values as UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=datetime.timezone.utc)
+    return int(round(value.timestamp() * 1000))
+
+
+def _percentile_ms(values: list[float], fraction: float) -> int | None:
+    """Nearest-rank percentile (ms) over a non-empty, prefix-sorted list."""
+    if not values:
+        return None
+    rank = max(1, min(len(values), int(round(fraction * len(values)))))
+    return int(round(values[rank - 1]))
+
+
+def _collect_text(node, out: list[str], depth: int = 0) -> None:
+    """Best-effort extraction of human text from a serialised message chain."""
+    if depth > 6:
+        return
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == 'text' and isinstance(value, str):
+                out.append(value)
+            elif isinstance(value, (dict, list)):
+                _collect_text(value, out, depth + 1)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_text(item, out, depth + 1)
+
+
+def _message_preview(raw: str | None, limit: int = 160) -> str:
+    if not raw:
+        return ''
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw[:limit]
+    parts: list[str] = []
+    _collect_text(parsed, parts)
+    text = ' '.join(part.strip() for part in parts if part.strip())
+    return (text or raw)[:limit]
 
 
 def _normalize_user_id(value: str | int | None) -> str | None:
@@ -58,7 +133,7 @@ def _workspace_transaction(method):
     return wrapped
 
 
-class MonitoringService:
+class MonitoringService(ExecutionDetailsMixin):
     """Monitoring service"""
 
     ap: app.Application
@@ -462,9 +537,17 @@ class MonitoringService:
         runner_name: str | None = None,
         variables: str | None = None,
         role: str = 'user',
+        event_id: str | None = None,
+        run_id: str | None = None,
+        parent_message_id: str | None = None,
     ) -> str:
         """Record a message"""
         workspace_uuid = self._require_write_context(context)
+        from ....telemetry import trace
+
+        trace_state = trace.current()
+        event_id = event_id or (trace_state.event_id if trace_state else None)
+        run_id = run_id or trace.current_run() or None
         message_id = str(uuid.uuid4())
         message_content = self._sanitize_message_content(message_content)
         message_data = {
@@ -485,6 +568,9 @@ class MonitoringService:
             'runner_name': runner_name,
             'variables': variables,
             'role': role,
+            'event_id': event_id,
+            'run_id': run_id,
+            'parent_message_id': parent_message_id,
         }
 
         await self.ap.persistence_mgr.execute_async(
@@ -806,6 +892,8 @@ class MonitoringService:
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> dict:
         """Get overview metrics"""
         workspace_uuid = require_workspace_uuid(context)
@@ -815,15 +903,47 @@ class MonitoringService:
         embedding_conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
         session_conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
+        message_conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringMessage, workspace_uuid, execution_statuses, mode
+            )
+        )
+        llm_conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringLLMCall, workspace_uuid, execution_statuses, mode
+            )
+        )
+        session_conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringSession, workspace_uuid, execution_statuses, mode
+            )
+        )
+        embedding_conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringEmbeddingCall, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             message_conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
             llm_conditions.append(persistence_monitoring.MonitoringLLMCall.bot_id.in_(bot_ids))
             session_conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
 
         if pipeline_ids:
-            message_conditions.append(persistence_monitoring.MonitoringMessage.pipeline_id.in_(pipeline_ids))
-            llm_conditions.append(persistence_monitoring.MonitoringLLMCall.pipeline_id.in_(pipeline_ids))
-            session_conditions.append(persistence_monitoring.MonitoringSession.pipeline_id.in_(pipeline_ids))
+            message_conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringMessage, workspace_uuid, pipeline_ids
+                )
+            )
+            llm_conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringLLMCall, workspace_uuid, pipeline_ids
+                )
+            )
+            session_conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringSession, workspace_uuid, pipeline_ids
+                )
+            )
 
         if start_time:
             message_conditions.append(persistence_monitoring.MonitoringMessage.timestamp >= start_time)
@@ -885,6 +1005,10 @@ class MonitoringService:
         active_sessions_result = await self.ap.persistence_mgr.execute_async(active_session_query)
         active_sessions = active_sessions_result.scalar() or 0
 
+        # Execution-first KPI values (runs + pipeline queries, latency, token
+        # coverage) are served by `get_executions`, which applies the execution
+        # view filters. This endpoint stays the message/traffic rollup so the
+        # dashboard does not compute the same rollup twice per page load.
         return {
             'total_messages': total_messages,
             'llm_calls': llm_calls,
@@ -892,6 +1016,627 @@ class MonitoringService:
             'model_calls': model_calls,
             'success_rate': round(success_rate, 2),
             'active_sessions': active_sessions,
+        }
+
+    # ========== Execution view ==========
+
+    @staticmethod
+    def _debug_run_condition(model):
+        return sqlalchemy.or_(
+            model.binding_id.like('debug:%'),
+            model.conversation_id.like('debug:%'),
+            model.bot_id == 'websocket-proxy-bot',
+        )
+
+    @staticmethod
+    def _debug_pipeline_condition(model):
+        # Dashboard/API pipeline debug uses this reserved proxy identity.
+        # Real Web Page bots have their own bot UUID, even on the same adapter.
+        return sqlalchemy.func.coalesce(model.bot_id == 'websocket-proxy-bot', False)
+
+    def _monitoring_execution_condition(self, model, workspace_uuid, statuses=None, mode='all'):
+        """Filter telemetry by its owning execution, not by the call's outcome."""
+        if not statuses and mode == 'all':
+            return sqlalchemy.true()
+        Run = persistence_agent_run.AgentRun
+        Message = persistence_monitoring.MonitoringMessage
+        roots = sqlalchemy.orm.aliased(Message)
+        run_conditions = [Run.workspace_id == workspace_uuid]
+        if statuses:
+            run_conditions.append(Run.status.in_(self._raw_agent_statuses(statuses)))
+        debug = self._debug_run_condition(Run)
+        if mode != 'all':
+            run_conditions.append(debug if mode == 'debug' else sqlalchemy.not_(sqlalchemy.func.coalesce(debug, False)))
+        runs = sqlalchemy.select(Run.run_id).where(*run_conditions)
+        root_conditions = [roots.workspace_uuid == workspace_uuid, roots.role != 'assistant']
+        if statuses:
+            root_conditions.append(roots.status.in_(self._raw_pipeline_statuses(statuses)))
+        if mode != 'all':
+            root_debug = self._debug_pipeline_condition(roots)
+            root_conditions.append(root_debug if mode == 'debug' else sqlalchemy.not_(root_debug))
+        root_ids = sqlalchemy.select(roots.id).where(*root_conditions)
+        linked = sqlalchemy.or_(
+            Message.id.in_(root_ids), Message.parent_message_id.in_(root_ids), Message.run_id.in_(runs)
+        )
+        message_ids = sqlalchemy.select(Message.id).where(Message.workspace_uuid == workspace_uuid, linked)
+        if model is Message:
+            return linked
+        if hasattr(model, 'message_id'):
+            return sqlalchemy.or_(model.message_id.in_(runs), model.message_id.in_(message_ids))
+        if model is persistence_monitoring.MonitoringSession:
+            return sqlalchemy.or_(
+                model.session_id.in_(sqlalchemy.select(roots.session_id).where(*root_conditions)),
+                model.session_id.in_(sqlalchemy.select(Run.conversation_id).where(*run_conditions)),
+            )
+        return sqlalchemy.false()
+
+    def _processor_runs(self, workspace_uuid, processor_ids):
+        Run = persistence_agent_run.AgentRun
+        return sqlalchemy.select(Run.run_id).where(
+            Run.workspace_id == workspace_uuid,
+            sqlalchemy.func.coalesce(self._execution_json_text(Run.metadata_json, 'processor_id'), Run.agent_id).in_(
+                processor_ids
+            ),
+        )
+
+    def _monitoring_processor_condition(self, model, workspace_uuid, processor_ids):
+        direct = model.pipeline_id.in_(processor_ids)
+        if hasattr(model, 'message_id'):
+            Message = persistence_monitoring.MonitoringMessage
+            return sqlalchemy.or_(
+                direct,
+                model.message_id.in_(self._processor_runs(workspace_uuid, processor_ids)),
+                model.message_id.in_(
+                    sqlalchemy.select(Message.id).where(
+                        Message.workspace_uuid == workspace_uuid, Message.pipeline_id.in_(processor_ids)
+                    )
+                ),
+            )
+        return direct
+
+    def _agent_run_conditions(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        processor_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        debug: bool | None = None,
+    ) -> list:
+        AgentRun = persistence_agent_run.AgentRun
+        conditions = [
+            AgentRun.workspace_id == workspace_uuid,
+            ~sqlalchemy.exists(
+                sqlalchemy.select(persistence_monitoring.MonitoringMessage.id).where(
+                    persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+                    persistence_monitoring.MonitoringMessage.run_id == AgentRun.run_id,
+                    persistence_monitoring.MonitoringMessage.role != 'assistant',
+                )
+            ),
+        ]
+        if bot_ids:
+            conditions.append(AgentRun.bot_id.in_(bot_ids))
+        if agent_ids:
+            conditions.append(AgentRun.agent_id.in_(agent_ids))
+        if processor_ids:
+            conditions.append(AgentRun.run_id.in_(self._processor_runs(workspace_uuid, processor_ids)))
+        if statuses is not None:
+            conditions.append(AgentRun.status.in_(statuses) if statuses else sqlalchemy.false())
+        if start_time:
+            conditions.append(AgentRun.created_at >= start_time)
+        if end_time:
+            conditions.append(AgentRun.created_at <= end_time)
+        if debug is not None:
+            debug_condition = self._debug_run_condition(AgentRun)
+            conditions.append(
+                debug_condition if debug else sqlalchemy.not_(sqlalchemy.func.coalesce(debug_condition, False))
+            )
+        return conditions
+
+    def _pipeline_execution_conditions(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        debug: bool | None = None,
+    ) -> list:
+        MonitoringMessage = persistence_monitoring.MonitoringMessage
+        conditions = [
+            MonitoringMessage.workspace_uuid == workspace_uuid,
+            # Assistant replies are outputs of a query, not an execution of their own.
+            sqlalchemy.or_(MonitoringMessage.role.is_(None), MonitoringMessage.role != 'assistant'),
+        ]
+        if bot_ids:
+            conditions.append(MonitoringMessage.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(self._monitoring_processor_condition(MonitoringMessage, workspace_uuid, pipeline_ids))
+        if statuses is not None:
+            conditions.append(MonitoringMessage.status.in_(statuses) if statuses else sqlalchemy.false())
+        if start_time:
+            conditions.append(MonitoringMessage.timestamp >= start_time)
+        if end_time:
+            conditions.append(MonitoringMessage.timestamp <= end_time)
+        if debug is not None:
+            debug_condition = self._debug_pipeline_condition(MonitoringMessage)
+            conditions.append(debug_condition if debug else sqlalchemy.not_(debug_condition))
+        return conditions
+
+    @staticmethod
+    def _raw_agent_statuses(groups: list[str] | None) -> list[str] | None:
+        """Raw agent statuses for a group filter; empty means "no group applies"."""
+        if not groups:
+            return None
+        raw: list[str] = []
+        for group in groups:
+            raw.extend(status for status, mapped in _AGENT_STATUS_GROUP.items() if mapped == group)
+        return raw
+
+    @staticmethod
+    def _raw_pipeline_statuses(groups: list[str] | None) -> list[str] | None:
+        """Raw pipeline statuses for a group filter; empty means "no group applies"."""
+        if not groups:
+            return None
+        raw: list[str] = []
+        for group in groups:
+            raw.extend(status for status, mapped in _PIPELINE_STATUS_GROUP.items() if mapped == group)
+        return raw
+
+    @staticmethod
+    def _model_rows(result) -> list:
+        """Rows of one ``select(Model)`` executed through ``execute_async``.
+
+        The Core keeps the connection result contract, where ``select(Model)``
+        yields a *flat* row of the model's columns (``row.uuid``, ``row.status``)
+        rather than a one-item ORM row. ``.scalars()`` would therefore return the
+        first column - the id - instead of the row, so the rows are taken as-is.
+        """
+        return list(result.all())
+
+    @staticmethod
+    def _deserialize_json(raw: str | None) -> dict:
+        if not raw:
+            return {}
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    async def _agent_names(self, workspace_uuid: str, rows: list) -> dict[str, str]:
+        """The processor name of every Agent run in one page, in one query.
+
+        A run stores the Agent it executed as a uuid; the list has to name the
+        processor, so the names are resolved for the whole page at once.
+        """
+        agent_ids = {self._deserialize_json(row.metadata_json).get('processor_id') or row.agent_id for row in rows} - {
+            None,
+            '',
+        }
+        if not agent_ids:
+            return {}
+        Agent = persistence_agent.Agent
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Agent.uuid, Agent.name).where(
+                sqlalchemy.and_(
+                    Agent.workspace_uuid == workspace_uuid,
+                    Agent.uuid.in_(agent_ids),
+                )
+            )
+        )
+        return {row.uuid: row.name for row in self._model_rows(result)}
+
+    def _serialize_agent_execution(self, row, agent_names: dict[str, str] | None = None) -> dict:
+        metadata = self._deserialize_json(row.metadata_json)
+        duration_ms = None
+        if row.started_at and row.finished_at:
+            duration_ms = int(round((row.finished_at - row.started_at).total_seconds() * 1000))
+        created_at_ms = _epoch_ms(row.created_at)
+        started_at_ms = _epoch_ms(row.started_at)
+        finished_at_ms = _epoch_ms(row.finished_at)
+        is_debug = (
+            str(row.binding_id or '').startswith('debug:')
+            or str(row.conversation_id or '').startswith('debug:')
+            or row.bot_id == 'websocket-proxy-bot'
+        )
+        return {
+            'source': 'agent',
+            'id': row.run_id,
+            'event_id': row.event_id,
+            'status': row.status,
+            'status_group': _status_group(row.status, 'agent'),
+            'title': metadata.get('event_type') or row.queue_name or row.runner_id,
+            'target_kind': metadata.get('processor_type') or ('agent' if row.agent_id else 'processor'),
+            'target_id': metadata.get('processor_id') or row.agent_id or row.binding_id,
+            'target_name': metadata.get('agent_name')
+            or metadata.get('target_name')
+            or (agent_names or {}).get(metadata.get('processor_id') or row.agent_id or ''),
+            'bot_id': row.bot_id,
+            'bot_name': metadata.get('bot_name'),
+            'pipeline_id': None,
+            'pipeline_name': None,
+            'runner_id': row.runner_id,
+            'conversation_id': row.conversation_id,
+            'session_id': row.conversation_id,
+            'created_at_ms': created_at_ms,
+            'started_at_ms': started_at_ms,
+            'finished_at_ms': finished_at_ms,
+            'duration_ms': duration_ms,
+            'usage': self._deserialize_json(row.usage_json) or None,
+            'cost': self._deserialize_json(row.cost_json) or None,
+            'queue_name': row.queue_name,
+            'debug': is_debug,
+            'has_error': row.status in {'failed', 'timeout'},
+            'status_reason': row.status_reason,
+            'input_preview': _message_preview(json.dumps(metadata.get('input') or {}, ensure_ascii=False), 200),
+        }
+
+    def _serialize_pipeline_execution(self, row) -> dict:
+        created_at_ms = _epoch_ms(row.timestamp)
+        return {
+            'source': 'pipeline',
+            'id': row.id,
+            'event_id': row.event_id,
+            'status': row.status,
+            'status_group': _status_group(row.status, 'pipeline'),
+            'title': _message_preview(row.message_content),
+            'target_kind': 'pipeline',
+            'target_id': row.pipeline_id,
+            'target_name': row.pipeline_name,
+            'bot_id': row.bot_id,
+            'bot_name': row.bot_name,
+            'pipeline_id': row.pipeline_id,
+            'pipeline_name': row.pipeline_name,
+            'runner_id': row.runner_name,
+            'conversation_id': None,
+            'session_id': row.session_id,
+            'created_at_ms': created_at_ms,
+            'started_at_ms': None,
+            'finished_at_ms': None,
+            'duration_ms': None,
+            'usage': None,
+            'cost': None,
+            'queue_name': None,
+            'debug': row.bot_id == 'websocket-proxy-bot',
+            'has_error': row.status == 'error',
+            'input_preview': _message_preview(row.message_content),
+            'platform': row.platform,
+            'user_id': row.user_id,
+            'user_name': row.user_name,
+        }
+
+    async def _get_token_coverage(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
+    ) -> dict:
+        LLMCall = persistence_monitoring.MonitoringLLMCall
+        conditions = [LLMCall.workspace_uuid == workspace_uuid]
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringLLMCall, workspace_uuid, execution_statuses, mode
+            )
+        )
+        if bot_ids:
+            conditions.append(LLMCall.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            conditions.append(self._monitoring_processor_condition(LLMCall, workspace_uuid, pipeline_ids))
+        if start_time:
+            conditions.append(LLMCall.timestamp >= start_time)
+        if end_time:
+            conditions.append(LLMCall.timestamp <= end_time)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(LLMCall.id),
+                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
+                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.total_tokens > 0, 1), else_=0)),
+            ).where(sqlalchemy.and_(*conditions))
+        )
+        row = result.first()
+        calls, total, calls_with_usage = row if row else (0, 0, 0)
+        return {
+            'total_tokens': int(total or 0),
+            'calls': calls or 0,
+            'calls_with_usage': calls_with_usage or 0,
+        }
+
+    async def _get_execution_summary(
+        self,
+        workspace_uuid: str,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        statuses: list[str] | None = None,
+        mode: str = 'all',
+    ) -> dict:
+        AgentRun = persistence_agent_run.AgentRun
+        run_conditions = self._agent_run_conditions(
+            workspace_uuid,
+            bot_ids=bot_ids,
+            processor_ids=pipeline_ids,
+            start_time=start_time,
+            end_time=end_time,
+            statuses=self._raw_agent_statuses(statuses),
+            debug=True if mode == 'debug' else False if mode == 'real' else None,
+        )
+        run_status_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.status, sqlalchemy.func.count(AgentRun.id))
+            .where(sqlalchemy.and_(*run_conditions))
+            .group_by(AgentRun.status)
+        )
+        agent_counts = {row[0]: row[1] for row in run_status_result.all()}
+        agent_total = sum(agent_counts.values())
+
+        debug_count_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count(AgentRun.id)).where(
+                sqlalchemy.and_(
+                    *run_conditions,
+                    self._debug_run_condition(AgentRun),
+                )
+            )
+        )
+        debug_count = debug_count_result.scalar() or 0
+
+        # Percentiles are computed in Python, so the sample must stay bounded:
+        # take the most recent completed runs of the window and label the count
+        # so the UI can state how many runs the numbers rest on.
+        timing_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.started_at, AgentRun.finished_at)
+            .where(
+                sqlalchemy.and_(
+                    *run_conditions,
+                    AgentRun.status == 'completed',
+                    AgentRun.started_at.is_not(None),
+                    AgentRun.finished_at.is_not(None),
+                )
+            )
+            .order_by(AgentRun.created_at.desc())
+            .limit(self._detail_limit())
+        )
+        durations = sorted((row[1] - row[0]).total_seconds() * 1000 for row in timing_result.all() if row[0] and row[1])
+
+        pipeline_conditions = self._pipeline_execution_conditions(
+            workspace_uuid,
+            bot_ids=bot_ids,
+            pipeline_ids=pipeline_ids,
+            statuses=self._raw_pipeline_statuses(statuses),
+            start_time=start_time,
+            end_time=end_time,
+            debug=True if mode == 'debug' else False if mode == 'real' else None,
+        )
+        pipeline_status_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                persistence_monitoring.MonitoringMessage.status,
+                sqlalchemy.func.count(persistence_monitoring.MonitoringMessage.id),
+            )
+            .where(sqlalchemy.and_(*pipeline_conditions))
+            .group_by(persistence_monitoring.MonitoringMessage.status)
+        )
+        pipeline_counts = {row[0]: row[1] for row in pipeline_status_result.all()}
+        pipeline_total = sum(pipeline_counts.values())
+        pipeline_debug_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringMessage.id)).where(
+                *pipeline_conditions, self._debug_pipeline_condition(persistence_monitoring.MonitoringMessage)
+            )
+        )
+        debug_count += pipeline_debug_result.scalar() or 0
+
+        # Pending interactions are gated by the same bot/window scope as the runs
+        # so "waiting input" cannot drift from the rest of the card.
+        waiting_conditions = [
+            persistence_agent_interaction.AgentInteraction.workspace_id == workspace_uuid,
+            persistence_agent_interaction.AgentInteraction.status == 'pending',
+        ]
+        if bot_ids:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.bot_id.in_(bot_ids))
+        if pipeline_ids:
+            waiting_conditions.append(
+                persistence_agent_interaction.AgentInteraction.run_id.in_(
+                    self._processor_runs(workspace_uuid, pipeline_ids)
+                )
+            )
+        if start_time:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.created_at >= start_time)
+        if end_time:
+            waiting_conditions.append(persistence_agent_interaction.AgentInteraction.created_at <= end_time)
+        waiting_conditions.append(
+            persistence_agent_interaction.AgentInteraction.run_id.in_(
+                sqlalchemy.select(AgentRun.run_id).where(*run_conditions)
+            )
+        )
+        waiting_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count(persistence_agent_interaction.AgentInteraction.id)).where(
+                sqlalchemy.and_(*waiting_conditions)
+            )
+        )
+        waiting = waiting_result.scalar() or 0
+
+        by_status: dict[str, int] = {}
+        for status, count in agent_counts.items():
+            group = _status_group(status, 'agent')
+            by_status[group] = by_status.get(group, 0) + count
+        for status, count in pipeline_counts.items():
+            group = _status_group(status, 'pipeline')
+            by_status[group] = by_status.get(group, 0) + count
+
+        completed = by_status.get('completed', 0)
+        failed = by_status.get('failed', 0)
+        denominator = completed + failed
+        total = agent_total + pipeline_total
+        return {
+            'total': total,
+            'by_source': {'agent': agent_total, 'pipeline': pipeline_total},
+            'by_status': by_status,
+            'completed': completed,
+            'failed': failed,
+            'running': by_status.get('running', 0),
+            'queued': by_status.get('queued', 0),
+            'cancelled': by_status.get('cancelled', 0),
+            'ignored': by_status.get('ignored', 0),
+            'waiting': waiting,
+            'success_rate': round(completed / denominator * 100, 2) if denominator > 0 else None,
+            'denominator': denominator,
+            'p50_duration_ms': _percentile_ms(durations, 0.5),
+            'p95_duration_ms': _percentile_ms(durations, 0.95),
+            'duration_sample': len(durations),
+            'debug': debug_count,
+            'real': total - debug_count,
+        }
+
+    async def get_executions(
+        self,
+        context: TenantContext,
+        *,
+        bot_ids: list[str] | None = None,
+        pipeline_ids: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        statuses: list[str] | None = None,
+        source: str = 'all',
+        mode: str = 'all',
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """List executions from both object types (agent runs and pipeline queries)."""
+        workspace_uuid = require_workspace_uuid(context)
+        limit, offset = self.normalize_page_window(limit, offset)
+        if source not in {'all', 'agent', 'pipeline', 'event'}:
+            source = 'all'
+        if mode not in {'all', 'real', 'debug'}:
+            mode = 'all'
+        debug = None if mode == 'all' else mode == 'debug'
+        branches = []
+        AgentRun = persistence_agent_run.AgentRun
+        Message = persistence_monitoring.MonitoringMessage
+        if source in {'all', 'agent'}:
+            conditions = self._agent_run_conditions(
+                workspace_uuid,
+                bot_ids=bot_ids,
+                agent_ids=agent_ids,
+                processor_ids=pipeline_ids,
+                statuses=self._raw_agent_statuses(statuses),
+                start_time=start_time,
+                end_time=end_time,
+                debug=debug,
+            )
+            branches.append(
+                sqlalchemy.select(
+                    sqlalchemy.literal('agent').label('source'),
+                    AgentRun.run_id.label('id'),
+                    AgentRun.created_at.label('time'),
+                ).where(*conditions)
+            )
+        if source in {'all', 'pipeline'} and (not agent_ids or pipeline_ids):
+            conditions = self._pipeline_execution_conditions(
+                workspace_uuid,
+                bot_ids=bot_ids,
+                pipeline_ids=pipeline_ids,
+                statuses=self._raw_pipeline_statuses(statuses),
+                start_time=start_time,
+                end_time=end_time,
+                debug=debug,
+            )
+            branches.append(
+                sqlalchemy.select(
+                    sqlalchemy.literal('pipeline').label('source'),
+                    Message.id.label('id'),
+                    Message.timestamp.label('time'),
+                ).where(*conditions)
+            )
+        if source in {'all', 'event'} and mode != 'debug' and not pipeline_ids and not agent_ids:
+            conditions = self._unhandled_event_conditions(workspace_uuid, bot_ids, start_time, end_time)
+            if statuses:
+                conditions.append(self._execution_json_text(EventLog.metadata_json, 'status').in_(statuses))
+            branches.append(
+                sqlalchemy.select(
+                    sqlalchemy.literal('event').label('source'),
+                    EventLog.event_id.label('id'),
+                    EventLog.created_at.label('time'),
+                ).where(*conditions)
+            )
+        total = 0
+        page = []
+        if branches:
+            combined = sqlalchemy.union_all(*branches).subquery()
+            count = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count()).select_from(combined)
+            )
+            total = count.scalar() or 0
+            refs = (
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(combined)
+                    .order_by(combined.c.time.desc(), combined.c.source, combined.c.id)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
+            by_key = {}
+            for kind, model, identity_column in [
+                ('agent', AgentRun, AgentRun.run_id),
+                ('pipeline', Message, Message.id),
+                ('event', EventLog, EventLog.event_id),
+            ]:
+                ids = [r.id for r in refs if r.source == kind]
+                if not ids:
+                    continue
+                workspace_column = model.workspace_uuid if kind == 'pipeline' else model.workspace_id
+                records = await self._execution_rows(
+                    workspace_uuid,
+                    sqlalchemy.select(model).where(workspace_column == workspace_uuid, identity_column.in_(ids)),
+                )
+                names = await self._agent_names(workspace_uuid, records) if kind == 'agent' else {}
+                for record in records:
+                    item = (
+                        self._serialize_agent_execution(record, names)
+                        if kind == 'agent'
+                        else self._serialize_pipeline_execution(record)
+                        if kind == 'pipeline'
+                        else self._serialize_event_execution(record)
+                    )
+                    by_key[(kind, item['id'])] = item
+            page = [by_key[(ref.source, ref.id)] for ref in refs if (ref.source, ref.id) in by_key]
+            await self.enrich_execution_rows(workspace_uuid, page)
+        return {
+            'items': page,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': total > offset + len(page),
+            'summary': {
+                'executions': await self._get_execution_summary(
+                    workspace_uuid,
+                    statuses=statuses,
+                    mode=mode,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    start_time=start_time,
+                    end_time=end_time,
+                ),
+                'tokens': await self._get_token_coverage(
+                    workspace_uuid,
+                    execution_statuses=statuses,
+                    mode=mode,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    start_time=start_time,
+                    end_time=end_time,
+                ),
+            },
         }
 
     async def get_token_statistics(
@@ -902,6 +1647,8 @@ class MonitoringService:
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         bucket: str = 'hour',
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> dict:
         """Get detailed token usage statistics for production observability.
 
@@ -920,10 +1667,15 @@ class MonitoringService:
             bucket = 'hour'
 
         conditions = [LLMCall.workspace_uuid == workspace_uuid]
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringLLMCall, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(LLMCall.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(LLMCall.pipeline_id.in_(pipeline_ids))
+            conditions.append(self._monitoring_processor_condition(LLMCall, workspace_uuid, pipeline_ids))
         if start_time:
             conditions.append(LLMCall.timestamp >= start_time)
         if end_time:
@@ -1104,16 +1856,27 @@ class MonitoringService:
         end_time: datetime.datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get messages with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringMessage, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringMessage.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringMessage, workspace_uuid, pipeline_ids
+                )
+            )
         if session_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.session_id.in_(session_ids))
         if start_time:
@@ -1159,16 +1922,27 @@ class MonitoringService:
         end_time: datetime.datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get LLM calls with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringLLMCall, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringLLMCall.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringLLMCall.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringLLMCall, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringLLMCall.timestamp >= start_time)
         if end_time:
@@ -1214,16 +1988,27 @@ class MonitoringService:
         end_time: datetime.datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get tool calls with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringToolCall, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringToolCall.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringToolCall.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringToolCall, workspace_uuid, pipeline_ids
+                )
+            )
         if session_ids:
             conditions.append(persistence_monitoring.MonitoringToolCall.session_id.in_(session_ids))
         if start_time:
@@ -1267,12 +2052,19 @@ class MonitoringService:
         knowledge_base_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get embedding calls with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringEmbeddingCall, workspace_uuid, execution_statuses, mode
+            )
+        )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp >= start_time)
         if end_time:
@@ -1321,16 +2113,27 @@ class MonitoringService:
         is_active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get sessions with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringSession, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringSession.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringSession, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringSession.last_activity >= start_time)
         if end_time:
@@ -1385,16 +2188,27 @@ class MonitoringService:
         end_time: datetime.datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get errors with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringError, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringError.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringError.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringError, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringError.timestamp >= start_time)
         if end_time:
@@ -1860,7 +2674,11 @@ class MonitoringService:
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringMessage.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringMessage, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringMessage.timestamp >= start_time)
         if end_time:
@@ -1916,7 +2734,11 @@ class MonitoringService:
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringLLMCall.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringLLMCall.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringLLMCall, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringLLMCall.timestamp >= start_time)
         if end_time:
@@ -2023,7 +2845,11 @@ class MonitoringService:
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringError.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringError.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringError, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringError.timestamp >= start_time)
         if end_time:
@@ -2074,7 +2900,11 @@ class MonitoringService:
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringSession.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringSession, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringSession.last_activity >= start_time)
         if end_time:
@@ -2227,6 +3057,8 @@ class MonitoringService:
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> dict:
         """Get feedback statistics.
 
@@ -2236,10 +3068,19 @@ class MonitoringService:
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringFeedback, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringFeedback, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringFeedback.timestamp >= start_time)
         if end_time:
@@ -2320,16 +3161,27 @@ class MonitoringService:
         end_time: datetime.datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        execution_statuses: list[str] | None = None,
+        mode: str = 'all',
     ) -> tuple[list[dict], int]:
         """Get feedback list with filters."""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
+        conditions.append(
+            self._monitoring_execution_condition(
+                persistence_monitoring.MonitoringFeedback, workspace_uuid, execution_statuses, mode
+            )
+        )
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringFeedback, workspace_uuid, pipeline_ids
+                )
+            )
         if feedback_type is not None:
             conditions.append(persistence_monitoring.MonitoringFeedback.feedback_type == feedback_type)
         if start_time:
@@ -2382,7 +3234,11 @@ class MonitoringService:
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(persistence_monitoring.MonitoringFeedback.pipeline_id.in_(pipeline_ids))
+            conditions.append(
+                self._monitoring_processor_condition(
+                    persistence_monitoring.MonitoringFeedback, workspace_uuid, pipeline_ids
+                )
+            )
         if start_time:
             conditions.append(persistence_monitoring.MonitoringFeedback.timestamp >= start_time)
         if end_time:

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CircleAlert,
   MinusCircle,
+  LoaderCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -16,11 +17,11 @@ export type AssistantTool = {
 export default function AssistantToolResult({
   tool,
   content,
-  defaultCollapsed = false,
+  defaultCollapsed = true,
 }: {
   tool?: AssistantTool;
   content: string;
-  /** Turn finished: collapse to one line until the user expands it again. */
+  /** Keep tool steps quiet until the user requests details. */
   defaultCollapsed?: boolean;
 }) {
   const { t } = useTranslation();
@@ -36,11 +37,17 @@ export default function AssistantToolResult({
     result && typeof result === 'object' && !Array.isArray(result)
       ? (result as Record<string, unknown>)
       : {};
+  const running = data.status === 'running';
   const failed = !!data.error;
   const denied = data.status === 'denied';
   const partial = !!data.truncated;
-  const Icon =
-    failed || partial ? CircleAlert : denied ? MinusCircle : CheckCircle2;
+  const Icon = running
+    ? LoaderCircle
+    : failed || partial
+      ? CircleAlert
+      : denied
+        ? MinusCircle
+        : CheckCircle2;
   const items = Array.isArray(result)
     ? result
     : Array.isArray(data.items)
@@ -56,13 +63,15 @@ export default function AssistantToolResult({
       : t(`assistant.operations.${tool?.name}`, {
           defaultValue: t('assistant.toolResult'),
         });
-  const status = failed
-    ? 'failed'
-    : denied
-      ? 'denied'
-      : partial
-        ? 'partial'
-        : 'completed';
+  const status = running
+    ? 'toolRunning'
+    : failed
+      ? 'failed'
+      : denied
+        ? 'denied'
+        : partial
+          ? 'partial'
+          : 'completed';
   const url =
     typeof data.url === 'string' &&
     /^\/home\/(pipelines|knowledge)\?id=[\w-]+$/.test(data.url)
@@ -79,7 +88,7 @@ export default function AssistantToolResult({
     return (
       <button
         type="button"
-        className="flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-left text-xs hover:bg-muted"
+        className="flex w-full items-center gap-1.5 rounded-md px-0.5 py-1 text-left text-[11px] leading-4 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
         aria-expanded={false}
         onClick={() => {
           setManual(true);
@@ -87,25 +96,25 @@ export default function AssistantToolResult({
         }}
       >
         <Icon
-          className={`size-3.5 shrink-0 ${failed ? 'text-destructive' : 'text-muted-foreground'}`}
+          className={`size-3 shrink-0 ${running ? 'animate-spin motion-reduce:animate-none' : ''} ${failed ? 'text-destructive' : 'text-muted-foreground'}`}
         />
-        <span className="truncate font-medium">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <span className="ml-auto shrink-0 text-muted-foreground">
           {tool && t(`assistant.${status}`)}
         </span>
-        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
       </button>
     );
   }
 
   return (
-    <section className="space-y-2 rounded-xl border bg-background p-3 text-sm">
-      <div className="flex items-center gap-2">
+    <section className="min-w-0 space-y-1.5 px-0.5 py-1 text-[11px] leading-4 text-muted-foreground">
+      <div className="flex items-center gap-1.5">
         <Icon
-          className={`size-4 shrink-0 ${failed ? 'text-destructive' : 'text-muted-foreground'}`}
+          className={`size-3 shrink-0 ${running ? 'animate-spin motion-reduce:animate-none' : ''} ${failed ? 'text-destructive' : 'text-muted-foreground'}`}
         />
-        <span className="font-medium">{label}</span>
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1 break-words">{label}</span>
+        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
           {tool && t(`assistant.${status}`)}
         </span>
         <button
@@ -118,10 +127,12 @@ export default function AssistantToolResult({
             setCollapsed(true);
           }}
         >
-          <ChevronDown className="size-3.5 rotate-180" />
+          <ChevronDown className="size-3 rotate-180" />
         </button>
       </div>
-      {failed ? (
+      {running ? (
+        <p>{t('assistant.toolRunning')}</p>
+      ) : failed ? (
         <p className="text-destructive">{t('assistant.operationFailed')}</p>
       ) : denied ? (
         <p className="text-muted-foreground">
@@ -136,7 +147,7 @@ export default function AssistantToolResult({
           )}
           {name && <p className="break-words">{name}</p>}
           {items && (
-            <ul className="space-y-1 text-xs text-muted-foreground">
+            <ul className="space-y-0.5 text-[11px] text-muted-foreground">
               {items.slice(0, 6).map((item: unknown, index: number) => {
                 const entry =
                   item && typeof item === 'object'
@@ -168,9 +179,9 @@ export default function AssistantToolResult({
           )}
         </>
       )}
-      <details className="text-xs text-muted-foreground">
+      <details className="text-[11px] text-muted-foreground">
         <summary className="cursor-pointer">{t('assistant.details')}</summary>
-        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+        <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-all">
           {tool ? JSON.stringify(tool.result, null, 2) : content}
         </pre>
       </details>

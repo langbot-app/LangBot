@@ -483,9 +483,16 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 and getattr(getattr(source, 'table', None), 'name', None) == 'legacy_pipelines'
                 and source.name in {'config', 'stages', 'extensions_preferences'}
             )
-            if not pipeline_json_cas:
+            monitoring_metadata = (
+                type(element.type) is sqlalchemy.JSON
+                and isinstance(source, sqlalchemy.Column)
+                and type(source.type) is sqlalchemy.Text
+                and getattr(getattr(source, 'table', None), 'name', None) in {'event_log', 'agent_run'}
+                and source.name == 'metadata_json'
+            )
+            if not (pipeline_json_cas or monitoring_metadata):
                 raise ScopedSessionTransactionError(
-                    'TenantUnitOfWork only allows trusted pgvector and Pipeline JSON CAS casts'
+                    'TenantUnitOfWork only allows trusted pgvector, Pipeline JSON CAS and monitoring metadata casts'
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):

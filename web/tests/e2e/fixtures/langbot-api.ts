@@ -98,6 +98,7 @@ export interface WorkspaceEntryMock {
 
 interface LangBotApiMockState {
   authenticated: boolean;
+  withAssistant: boolean;
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
@@ -223,6 +224,128 @@ function emptyMonitoringData() {
       embeddingCalls: 0,
       sessions: 0,
       errors: 0,
+    },
+  };
+}
+
+type RawMonitoringMessage = Record<string, unknown>;
+
+/** Mirror of the backend execution status groups so fixtures stay realistic. */
+function executionStatusGroup(status: string, source: 'agent' | 'pipeline') {
+  if (source === 'agent') {
+    if (status === 'failed' || status === 'timeout') return 'failed';
+    if (status === 'created' || status === 'queued') return 'queued';
+    if (status === 'claimed' || status === 'running') return 'running';
+    if (status === 'cancelled') return 'cancelled';
+    return status;
+  }
+  if (status === 'success') return 'completed';
+  if (status === 'error') return 'failed';
+  if (status === 'pending') return 'running';
+  if (status === 'discarded' || status === 'not_matched') return 'ignored';
+  return status;
+}
+
+/** Best-effort text extraction from a serialized message chain (mirrors backend). */
+function executionText(raw: unknown): string {
+  const source = String(raw ?? '');
+  try {
+    const parts: string[] = [];
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6) return;
+      if (Array.isArray(node)) {
+        node.forEach((item) => walk(item, depth + 1));
+      } else if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          if (key === 'text' && typeof value === 'string') parts.push(value);
+          else walk(value, depth + 1);
+        }
+      }
+    };
+    walk(JSON.parse(source));
+    return parts.join(' ').trim() || source;
+  } catch {
+    return source;
+  }
+}
+
+/** Derive the unified execution list from a mocked monitoring payload. */
+export function buildExecutionList(monitoringData: unknown) {
+  const payload = monitoringData as
+    | { messages?: RawMonitoringMessage[] }
+    | undefined;
+  const items = (payload?.messages ?? [])
+    .filter((message) => message.role !== 'assistant')
+    .map((message) => {
+      const status = String(message.status ?? 'success');
+      return {
+        source: 'pipeline' as const,
+        id: String(message.id),
+        event_id: null,
+        status,
+        status_group: executionStatusGroup(status, 'pipeline'),
+        title: executionText(message.message_content),
+        input_preview: executionText(message.message_content),
+        target_kind: 'pipeline' as const,
+        target_id: (message.pipeline_id as string) ?? null,
+        target_name: (message.pipeline_name as string) ?? null,
+        bot_id: (message.bot_id as string) ?? null,
+        bot_name: (message.bot_name as string) ?? null,
+        pipeline_id: (message.pipeline_id as string) ?? null,
+        pipeline_name: (message.pipeline_name as string) ?? null,
+        runner_id: (message.runner_name as string) ?? null,
+        conversation_id: null,
+        session_id: (message.session_id as string) ?? null,
+        created_at_ms: Date.parse(String(message.timestamp ?? '')) || null,
+        started_at_ms: null,
+        finished_at_ms: null,
+        duration_ms: null,
+        usage: null,
+        cost: null,
+        queue_name: null,
+        debug: false,
+        has_error: status === 'error',
+      };
+    });
+
+  const byStatus: Record<string, number> = {};
+  for (const item of items) {
+    byStatus[item.status_group] = (byStatus[item.status_group] ?? 0) + 1;
+  }
+  const completed = byStatus.completed ?? 0;
+  const failed = byStatus.failed ?? 0;
+  const denominator = completed + failed;
+
+  return {
+    items,
+    total: items.length,
+    limit: items.length,
+    offset: 0,
+    has_more: false,
+    summary: {
+      executions: {
+        total: items.length,
+        by_source: { agent: 0, pipeline: items.length },
+        by_status: byStatus,
+        completed,
+        failed,
+        running: byStatus.running ?? 0,
+        queued: byStatus.queued ?? 0,
+        cancelled: byStatus.cancelled ?? 0,
+        ignored: byStatus.ignored ?? 0,
+        waiting: 0,
+        success_rate:
+          denominator > 0
+            ? Math.round((completed / denominator) * 10000) / 100
+            : null,
+        denominator,
+        p50_duration_ms: null,
+        p95_duration_ms: null,
+        duration_sample: 0,
+        debug: 0,
+        real: items.length,
+      },
+      tokens: { total_tokens: 0, calls: 0, calls_with_usage: 0 },
     },
   };
 }
@@ -610,7 +733,9 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   if (path === '/api/v1/user/info') {
     return fulfillJson(route, {
-      account_uuid: 'account-playwright',
+      // Most tests exercise an unlinked local user. Assistant tests opt into
+      // an account identity and mock its additional provider/conversation APIs.
+      account_uuid: state.withAssistant ? 'account-playwright' : null,
       user: 'admin@example.com',
       account_type: 'local',
       has_password: true,
@@ -1163,6 +1288,76 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, data.overview || emptyMonitoringData().overview);
   }
 
+  if (path === '/api/v1/monitoring/executions') {
+    return fulfillJson(route, buildExecutionList(state.monitoringData));
+  }
+
+  const executionDetail = path.match(
+    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline|event|auto)\/(.+)$/,
+  );
+  if (executionDetail) {
+    const [, , executionId] = executionDetail;
+    const payload = state.monitoringData as {
+      messages?: RawMonitoringMessage[];
+      llmCalls?: RawMonitoringMessage[];
+      toolCalls?: RawMonitoringMessage[];
+      errors?: RawMonitoringMessage[];
+    };
+    const row = buildExecutionList(payload).items.find(
+      (item) => item.id === executionId,
+    );
+    if (!row)
+      return route.fulfill({
+        status: 404,
+        json: { code: 404, msg: 'Execution not found' },
+      });
+    const root = (payload.messages ?? []).find(
+      (item) => item.id === executionId,
+    )!;
+    const content = (item: RawMonitoringMessage) => ({
+      ...item,
+      content: item.message_content,
+      timestamp_ms: Date.parse(String(item.timestamp)),
+      origin: item.role === 'assistant' ? 'delivery' : 'input',
+    });
+    const pages = Object.fromEntries(
+      Object.entries({
+        inputs: [content(root)],
+        outputs: [],
+        deliveries: (payload.messages ?? [])
+          .filter((item) => item.parent_message_id === executionId)
+          .map(content),
+        conversation: (payload.messages ?? [])
+          .filter(
+            (item) =>
+              item.session_id === root.session_id &&
+              item.bot_id === root.bot_id,
+          )
+          .map(content),
+        related: [],
+        events: [],
+        llm_calls: (payload.llmCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        tool_calls: (payload.toolCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        errors: (payload.errors ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+      }).map(([key, items]) => [
+        key,
+        { items, next_offset: items.length, has_more: false },
+      ]),
+    );
+    return fulfillJson(route, {
+      source: row.source,
+      row,
+      pages,
+      legacy_context: true,
+    });
+  }
+
   if (path === '/api/v1/monitoring/token-statistics') {
     return fulfillJson(route, emptyTokenStatistics());
   }
@@ -1267,6 +1462,7 @@ export async function installLangBotApiMocks(
   page: Page,
   options: {
     authenticated?: boolean;
+    withAssistant?: boolean;
     language?: string;
     monitoringData?: unknown;
     monitoringSessions?: unknown[];
@@ -1280,6 +1476,7 @@ export async function installLangBotApiMocks(
 ) {
   const {
     authenticated = false,
+    withAssistant = false,
     language = 'en-US',
     monitoringData,
     monitoringSessions,
@@ -1292,6 +1489,7 @@ export async function installLangBotApiMocks(
   } = options;
   const state: LangBotApiMockState = {
     authenticated,
+    withAssistant,
     bots: [],
     counters: {},
     knowledgeBases: [],

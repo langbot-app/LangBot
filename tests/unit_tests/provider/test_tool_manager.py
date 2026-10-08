@@ -7,6 +7,8 @@ Tests cover:
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -378,6 +380,127 @@ class TestToolManagerExecuteFuncCall:
         assert record.await_args.kwargs['status'] == 'error'
         assert record.await_args.kwargs['tool_source'] == 'mcp'
         assert 'MCP resource agent reads are disabled' in record.await_args.kwargs['error_message']
+
+
+class _RecordingTelemetrySender:
+    """Telemetry sender stand-in that keeps every payload it was handed."""
+
+    def __init__(self):
+        self.telemetry_config = {'url': 'https://space.example.test', 'execution_trace': 'all'}
+        self.sent: list[dict] = []
+
+    async def send(self, payload: dict) -> bool:
+        self.sent.append(payload)
+        return True
+
+
+class TestToolCallTracing:
+    """Every tool call a Run makes is its own step of the execution chain."""
+
+    @pytest.fixture
+    def traced_app(self):
+        execution = import_module('langbot.pkg.telemetry.execution')
+        counters = execution.ExecutionCounters(_RecordingTelemetrySender())
+        app = Mock()
+        app.logger = Mock()
+        app.telemetry = SimpleNamespace(execution=counters)
+        # Tool-call monitoring is asserted by the tests above; this path only
+        # needs the execution chain.
+        app.monitoring_service = None
+
+        def _inert_loader():
+            loader = Mock()
+            loader.has_tool = AsyncMock(return_value=False)
+            loader.invoke_tool = AsyncMock(return_value=None)
+            return loader
+
+        app._native_loader = _inert_loader()
+        app._plugin_loader = _inert_loader()
+        app._mcp_loader = _inert_loader()
+        app._skill_loader = _inert_loader()
+        return app, counters
+
+    @pytest.fixture
+    def sample_query(self):
+        query = Mock(spec=pipeline_query.Query)
+        query._execution_context = _CONTEXT
+        return query
+
+    @staticmethod
+    def _manager(app):
+        """ToolManager wired to app-local inert loaders."""
+        manager = get_toolmgr_module().ToolManager(app)
+        manager.native_tool_loader = app._native_loader
+        manager.plugin_tool_loader = app._plugin_loader
+        manager.mcp_tool_loader = app._mcp_loader
+        manager.skill_tool_loader = app._skill_loader
+        return manager
+
+    @staticmethod
+    def _tool_nodes(counters):
+        return [record for record in counters.records if record['event_type'] == 'execution_node']
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_becomes_a_node_under_the_step_that_issued_it(self, traced_app, sample_query):
+        trace = import_module('langbot.pkg.telemetry.trace')
+        execution = import_module('langbot.pkg.telemetry.execution')
+        app, counters = traced_app
+        manager = self._manager(app)
+
+        binding = execution.bind_trace(app, 'exec-tool')
+        # The Runtime's RPC task executes the call with no inherited trace
+        # context; the Run id on the query is what resolves the owning chain.
+        sample_query._agent_run_session = {'run_id': 'exec-tool'}
+        try:
+            with trace.stage_scope() as lane:
+                foreign = contextvars.Context()
+                task = asyncio.get_running_loop().create_task(
+                    manager._invoke_tool_with_monitoring(
+                        source='native',
+                        name='exec',
+                        parameters={'command': 'ls'},
+                        query=sample_query,
+                        invoke=AsyncMock(return_value='sandbox output'),
+                    ),
+                    context=foreign,
+                )
+                assert await task == 'sandbox output'
+        finally:
+            trace.unbind_root(binding)
+
+        rows = self._tool_nodes(counters)
+        assert len(rows) == 1
+        assert rows[0]['family'] == 'tool'
+        assert rows[0]['operation'] == 'exec'
+        assert rows[0]['adapter'] == 'native'
+        assert rows[0]['outcome'] == 'success'
+        assert rows[0]['parent_node_id'] == lane
+
+    @pytest.mark.asyncio
+    async def test_a_failed_tool_call_carries_its_reason(self, traced_app, sample_query):
+        execution = import_module('langbot.pkg.telemetry.execution')
+        trace = import_module('langbot.pkg.telemetry.trace')
+        app, counters = traced_app
+        manager = self._manager(app)
+
+        binding = execution.bind_trace(app, 'exec-tool-failed')
+        try:
+            with pytest.raises(RuntimeError):
+                await manager._invoke_tool_with_monitoring(
+                    source='mcp',
+                    name='read_resource',
+                    parameters={},
+                    query=sample_query,
+                    invoke=AsyncMock(side_effect=RuntimeError('server unreachable')),
+                )
+        finally:
+            trace.unbind_root(binding)
+
+        rows = self._tool_nodes(counters)
+        assert len(rows) == 1
+        assert rows[0]['family'] == 'tool'
+        assert rows[0]['outcome'] == 'failed'
+        assert rows[0]['error'] == 'server unreachable'
 
 
 class TestToolManagerSourceResolution:

@@ -157,7 +157,9 @@ const PluginInstalledComponent = forwardRef<
               version: meta.version ?? '',
               enabled: plugin.enabled,
               type: marketplacePlugin?.type || 'plugin',
-              iconURL: httpClient.getPluginIconURL(author, name),
+              // Icon is resolved by ExtensionCardComponent through the shared
+              // installed-plugin hook (authenticated fetch in multi-Workspace
+              // deployments); the public /icon route 404s there.
               install_source: plugin.install_source,
               install_info: plugin.install_info,
               status: plugin.status,

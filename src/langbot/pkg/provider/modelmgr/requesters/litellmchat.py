@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+import asyncio
 
 import litellm
 from litellm import acompletion, aembedding, arerank
@@ -1245,6 +1246,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         reasoning_started = False
         reasoning_closed = False
         thinking_blocks_state: list[dict[str, typing.Any]] = []
+        response = None
 
         try:
             response = await acompletion(**args)
@@ -1371,6 +1373,16 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         except Exception as e:
             self._handle_litellm_error(e)
+
+        finally:
+            # Closing a downstream async generator must release the provider's
+            # HTTP stream immediately, including cancellation while at yield.
+            close = getattr(response, 'aclose', None)
+            if callable(close):
+                try:
+                    await asyncio.wait_for(close(), timeout=5.0)
+                except Exception as exc:
+                    self.ap.logger.debug(f'Failed to close LLM stream: {type(exc).__name__}')
 
     async def invoke_embedding(
         self,

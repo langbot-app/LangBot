@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import aclosing
+
 import asyncio
 import inspect
 import typing
@@ -1582,22 +1584,25 @@ class RuntimeConnectionHandler(handler.Handler):
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
-            async for chunk in llm_model.provider.invoke_llm_stream(
-                query=query,
-                model=llm_model,
-                messages=messages_obj,
-                funcs=effective_funcs,
-                extra_args=effective_extra_args,
-                remove_think=remove_think,
-                execution_context=execution_context,
-            ):
-                if chunk is None:
-                    continue
-                yield handler.ActionResponse.success(
-                    data={
-                        'chunk': chunk.model_dump(),
-                    },
+            async with aclosing(
+                llm_model.provider.invoke_llm_stream(
+                    query=query,
+                    model=llm_model,
+                    messages=messages_obj,
+                    funcs=effective_funcs,
+                    extra_args=effective_extra_args,
+                    remove_think=remove_think,
+                    execution_context=execution_context,
                 )
+            ) as owned_stream:
+                async for chunk in owned_stream:
+                    if chunk is None:
+                        continue
+                    yield handler.ActionResponse.success(
+                        data={
+                            'chunk': chunk.model_dump(),
+                        },
+                    )
             usage = _pop_query_llm_usage(query)
             if usage is not None:
                 yield handler.ActionResponse.success(

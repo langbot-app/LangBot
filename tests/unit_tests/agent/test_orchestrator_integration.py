@@ -80,6 +80,7 @@ class FakePluginConnector:
         self.results = results or []
         self.error = error
         self.delay = delay
+        self.delay_entered = asyncio.Event()
         self.calls: list[dict] = []
         self.contexts: list[dict] = []
         self.sessions_during_run: list[dict | None] = []
@@ -100,6 +101,7 @@ class FakePluginConnector:
 
         for result in self.results:
             if self.delay:
+                self.delay_entered.set()
                 await asyncio.sleep(self.delay)
             yield result
 
@@ -598,6 +600,35 @@ async def test_orchestrator_stops_after_cancel_request(clean_agent_state):
     assert run is not None
     assert run['status'] == 'cancelled'
     assert run['status_reason'] == 'user stopped'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_while_waiting', [False, True])
+async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting):
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'first'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
+    await anext(stream)
+    if cancel_while_waiting:
+        connector.delay = 10
+        pending = asyncio.create_task(anext(stream))
+        # Cancel the provider wait, not an arbitrary journal DB operation.
+        await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+    else:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'cancelled'
+    assert run['status_reason'] == 'consumer_cancelled'
+    assert await get_session_registry().list_active_runs() == []
 
 
 @pytest.mark.asyncio

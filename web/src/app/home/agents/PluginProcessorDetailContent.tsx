@@ -152,6 +152,23 @@ export default function PluginProcessorDetailContent({
     [t, available, hasParameters, canOperate],
   );
 
+  const applyInstalledProcessor = useCallback((component: RunnerDescriptor) => {
+    setComponents((current) => [
+      ...current.filter((item) => item.id !== component.id),
+      component,
+    ]);
+    setComponentRef(component.id);
+    setParameters(
+      Object.fromEntries(
+        (component.config_schema ?? [])
+          .filter((field) => field.default !== undefined)
+          .map((field) => [field.name, field.default]),
+      ),
+    );
+    setActiveTab('config');
+    validate.current = null;
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setFailed(false);
@@ -469,6 +486,8 @@ export default function PluginProcessorDetailContent({
         }
         titleControls={
           <PluginProcessorSettings
+            installScope={`event-processor:${id}`}
+            onInstalled={applyInstalledProcessor}
             components={components}
             value={componentRef}
             disabled={!canManage || saving || loading}

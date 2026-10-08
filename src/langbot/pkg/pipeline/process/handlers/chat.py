@@ -3,8 +3,6 @@ from __future__ import annotations
 import uuid
 import typing
 import traceback
-import time
-from datetime import datetime
 
 
 from .. import handler
@@ -14,9 +12,7 @@ from ... import plugin_diagnostics
 import langbot_plugin.api.entities.events as events
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
-from ....utils import constants, runner as runner_utils
-from ....telemetry import features as telemetry_features
-from ....telemetry.identity import workspace_identity
+from ....utils import runner as runner_utils
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -115,9 +111,6 @@ class ChatMessageHandler(handler.MessageHandler):
             text_length = 0
             runner = None
             try:
-                # Mark start time for telemetry
-                start_ts = time.time()
-
                 try_claim_steering = getattr(
                     self.ap.agent_run_orchestrator,
                     'try_claim_steering_from_query',
@@ -258,69 +251,48 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc(),
                 )
             finally:
-                # Telemetry reporting
+                # Telemetry: the per-execution record is built when the owning
+                # trace closes, so only attach the execution-scoped fields this
+                # lane knows here.
                 try:
-                    end_ts = time.time()
-                    duration_ms = None
-                    if 'start_ts' in locals():
-                        duration_ms = int((end_ts - start_ts) * 1000)
+                    from ....telemetry.trace import current as current_trace
 
+                    state = current_trace()
+                    if state is not None:
+                        adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else ''
+                        runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
+                        state.adapter = state.adapter or adapter_name
+                        state.runner = state.runner or (runner_name or '')
+                        state.runner_category = state.runner_category or runner_utils.get_runner_category_from_runner(
+                            runner_name, None, query.pipeline_config
+                        )
+                        model_name = ''
+                        try:
+                            if getattr(query, 'use_llm_model_uuid', None):
+                                m = await self.ap.model_mgr.get_model_by_uuid(
+                                    get_query_execution_context(query),
+                                    query.use_llm_model_uuid,
+                                )
+                                if m and getattr(m, 'model_entity', None):
+                                    model_name = getattr(m.model_entity, 'name', '') or ''
+                        except Exception:
+                            model_name = ''
+                        state.model_name = state.model_name or model_name
+                        if state.pipeline_plugins is None:
+                            state.pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                except Exception as ex:
+                    self.ap.logger.warning(f'Failed to attach execution telemetry fields: {ex}')
+
+                # Trigger survey events on successful non-WebSocket responses
+                try:
                     adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else None
-
-                    # Use orchestrator to resolve runner ID for telemetry
-                    runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
-
-                    # Model name if available
-                    model_name = None
-                    try:
-                        if getattr(query, 'use_llm_model_uuid', None):
-                            m = await self.ap.model_mgr.get_model_by_uuid(
-                                get_query_execution_context(query),
-                                query.use_llm_model_uuid,
-                            )
-                            if m and getattr(m, 'model_entity', None):
-                                model_name = getattr(m.model_entity, 'name', None)
-                    except Exception:
-                        model_name = None
-
-                    pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
-
-                    runner_category = runner_utils.get_runner_category_from_runner(
-                        runner_name, None, query.pipeline_config
-                    )
-
-                    # Feature usage collected during query processing (tool calls,
-                    # knowledge base usage, sandbox executions, activated skills, ...)
-                    features = telemetry_features.collect_features(query)
-
-                    payload = {
-                        'event_type': 'query',
-                        'query_id': query.query_id,
-                        'adapter': adapter_name,
-                        'runner': runner_name,
-                        'runner_category': runner_category,
-                        'duration_ms': duration_ms,
-                        'model_name': model_name,
-                        'version': constants.semantic_version,
-                        **workspace_identity(get_query_execution_context(query)),
-                        'runtime_instance_id': constants.instance_id,
-                        'edition': constants.edition,
-                        'pipeline_plugins': pipeline_plugins,
-                        'features': features,
-                        'error': locals().get('error_info', None),
-                        'timestamp': datetime.utcnow().isoformat(),
-                    }
-
-                    await self.ap.telemetry.start_send_task(payload)
-
-                    # Trigger survey events on successful non-WebSocket responses
                     if not locals().get('error_info') and adapter_name and 'WebSocket' not in adapter_name:
                         if self.ap.survey:
                             await self.ap.survey.trigger_event('first_bot_response_success')
                             # Counts toward the bot_response_success_100 milestone event
                             await self.ap.survey.record_bot_response_success()
                 except Exception as ex:
-                    self.ap.logger.warning(f'Failed to send telemetry: {ex}')
+                    self.ap.logger.warning(f'Failed to trigger survey event: {ex}')
 
     async def _ensure_conversation_for_history(
         self,

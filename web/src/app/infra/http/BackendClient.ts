@@ -5,6 +5,13 @@ import type {
 } from '@/app/infra/entities/api/pipeline-migration';
 import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
 import type {
+  ExecutionDetail,
+  ExecutionListResult,
+  ExecutionModeFilter,
+  ExecutionSource,
+  ExecutionSourceFilter,
+} from '../entities/api/monitoring-executions';
+import type {
   CodexAuthStatus,
   CodexDeviceAuthorization,
   CodexDevicePoll,
@@ -428,6 +435,58 @@ export class BackendClient extends BaseHttpClient {
       throw {
         code: 'runner_protocol_error',
         msg: 'Debug stream ended before completion',
+      };
+    return result;
+  }
+
+  public async streamAssistant<T>(
+    uuid: string,
+    payload: {
+      revision: number;
+      text?: string;
+      approved?: boolean;
+      model_uuid?: string;
+    },
+    onEvent: (event: { kind: string; data: unknown }) => void,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let offset = 0;
+    let result: T | undefined;
+    let failure: { code: string; msg: string } | undefined;
+    const consume = (text: string) => {
+      let end: number;
+      while ((end = text.indexOf('\n', offset)) !== -1) {
+        const line = text.slice(offset, end).trim();
+        offset = end + 1;
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        if (frame.kind === 'completed') result = frame.data;
+        else if (frame.kind === 'error') failure = frame;
+        else onEvent(frame);
+      }
+    };
+    const response = await this.instance.post<string>(
+      `/api/v1/assistant/conversations/${encodeURIComponent(uuid)}/turn/stream`,
+      payload,
+      {
+        adapter: 'xhr',
+        responseType: 'text',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'application/x-ndjson' },
+        transformResponse: [(data) => data],
+        onDownloadProgress: (progress) => {
+          const xhr = progress.event?.target as XMLHttpRequest | undefined;
+          if (xhr?.status === 200) consume(xhr.responseText);
+        },
+      },
+    );
+    consume(response.data);
+    if (failure) throw failure;
+    if (!result)
+      throw {
+        code: 'assistant_protocol_error',
+        msg: 'Assistant stream ended before completion',
       };
     return result;
   }
@@ -1973,6 +2032,8 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ Monitoring API ============
   public getMonitoringData(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2096,6 +2157,8 @@ export class BackendClient extends BaseHttpClient {
     };
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }
@@ -2113,6 +2176,66 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public getExecutions(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    agentId?: string[];
+    status?: string[];
+    source?: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ExecutionListResult> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.agentId) {
+      params.agentId.forEach((id) => queryParams.append('agentId', id));
+    }
+    if (params.status) {
+      params.status.forEach((status) => queryParams.append('status', status));
+    }
+    if (params.source) {
+      queryParams.append('source', params.source);
+    }
+    if (params.mode) {
+      queryParams.append('mode', params.mode);
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params.offset) {
+      queryParams.append('offset', params.offset.toString());
+    }
+
+    return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
+  }
+
+  public getExecutionDetail(
+    source: ExecutionSource | 'auto',
+    executionId: string,
+    options: { section?: string; offset?: number; limit?: number } = {},
+  ): Promise<ExecutionDetail> {
+    const params = new URLSearchParams(
+      Object.entries(options).map(([key, value]) => [key, String(value)]),
+    );
+    return this.get(
+      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}?${params}`,
+    );
   }
 
   public getMonitoringOverview(params: {
@@ -2144,6 +2267,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getTokenStatistics(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2184,6 +2309,8 @@ export class BackendClient extends BaseHttpClient {
     bucket: string;
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }

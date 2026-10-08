@@ -22,6 +22,7 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import {
   LLMModel,
   Bot,
@@ -94,19 +95,6 @@ function hasUsableOptionName(option: { name?: string | null }): boolean {
   return typeof option.name === 'string' && option.name.trim().length > 0;
 }
 
-function getPluginComponentIconURL(value?: string): string | null {
-  if (!value?.startsWith('plugin:')) {
-    return null;
-  }
-
-  const match = value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
-  if (!match) {
-    return null;
-  }
-
-  return httpClient.getPluginIconURL(match[1], match[2]);
-}
-
 function SelectOptionContent({
   label,
   value,
@@ -114,7 +102,10 @@ function SelectOptionContent({
   label: string;
   value: string;
 }) {
-  const iconURL = getPluginComponentIconURL(value);
+  const match = value?.startsWith('plugin:')
+    ? value.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/)
+    : null;
+  const iconURL = useInstalledPluginIcon(match?.[1], match?.[2]);
 
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -141,6 +132,7 @@ export default function DynamicFormItemComponent({
   systemContext,
   requiredModelAbility,
   compactModelSelector = false,
+  selectedModelLabel,
 }: {
   config: IDynamicFormItemSchema;
   field: ControllerRenderProps<any, any>;
@@ -150,6 +142,7 @@ export default function DynamicFormItemComponent({
   systemContext?: Record<string, unknown>;
   requiredModelAbility?: string;
   compactModelSelector?: boolean;
+  selectedModelLabel?: string;
 }) {
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
@@ -648,11 +641,25 @@ export default function DynamicFormItemComponent({
                 aria-label={t('models.selectModel')}
                 className={
                   compactModelSelector
-                    ? 'w-full min-w-0 gap-1 border-0 bg-transparent px-1 text-xs text-muted-foreground shadow-none hover:bg-muted data-[size=default]:h-7 [&_[data-slot=select-value]_svg]:hidden'
+                    ? 'w-full min-w-0 gap-1 rounded-lg border border-border bg-background px-2 text-xs text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-muted-foreground/40 hover:bg-background dark:bg-background dark:hover:bg-background data-[state=open]:border-muted-foreground/50 focus-visible:border-muted-foreground/50 focus-visible:ring-1 focus-visible:ring-muted-foreground/20 data-[size=default]:h-7 [&_[data-slot=select-value]_svg]:hidden'
                     : MODEL_SELECT_TRIGGER_CLASS
                 }
               >
-                <SelectValue placeholder={t('models.selectModel')} />
+                <SelectValue placeholder={t('models.selectModel')}>
+                  {/* Keep compact labels explicitly rendered even when a stream
+                      omits the model name. Switching to Radix's ItemText portal
+                      would give two renderers ownership of the same DOM node. */}
+                  {compactModelSelector ? (
+                    <span className="truncate">
+                      {selectedModelLabel ||
+                        selectableModels.find(
+                          (model) => model.uuid === field.value,
+                        )?.name ||
+                        field.value ||
+                        t('models.selectModel')}
+                    </span>
+                  ) : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(groupedModels).map(([providerName, models]) => (

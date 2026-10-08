@@ -2059,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.11.0b3"
+version = "4.11.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -2185,7 +2185,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", url = "https://files.pythonhosted.org/packages/f5/de/4c73851c18e01e6dd1f39e3743a7811c4016e703797075491b2fdbd2530c/langbot_plugin-0.7.6-py3-none-any.whl" },
+    { name = "langbot-plugin", specifier = "==0.7.11rc1" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2255,8 +2255,8 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.6"
-source = { url = "https://files.pythonhosted.org/packages/f5/de/4c73851c18e01e6dd1f39e3743a7811c4016e703797075491b2fdbd2530c/langbot_plugin-0.7.6-py3-none-any.whl" }
+version = "0.7.11rc1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -2276,29 +2276,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/77/e4/882ed1fd15067e3ca778da2850833ad61716741a6f63d3328028496536b8/langbot_plugin-0.7.11rc1.tar.gz", hash = "sha256:2ef8ba6f1998da365c7ade53573b8cd65f1a660f772ed97385ca445f2b0faa58", size = 690128, upload-time = "2026-10-08T07:49:33.789Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/de/4c73851c18e01e6dd1f39e3743a7811c4016e703797075491b2fdbd2530c/langbot_plugin-0.7.6-py3-none-any.whl", hash = "sha256:b2f05302ca25b374ff8c094794573696b75a7d1a7731a0fe2eebbc71796e8e0d" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "aiohttp", specifier = ">=3.9.0" },
-    { name = "dotenv", specifier = ">=0.9.9" },
-    { name = "e2b", specifier = ">=2.15" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "packaging", specifier = ">=24.0" },
-    { name = "pip", specifier = ">=25.2" },
-    { name = "pydantic", specifier = ">=2.11.5" },
-    { name = "pydantic-settings", specifier = ">=2.10.1" },
-    { name = "pytest", specifier = ">=8.4.0" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "textual", specifier = ">=3.2.0" },
-    { name = "types-aiofiles", specifier = ">=24.1.0.20250516" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20250516" },
-    { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "websockets", specifier = ">=15.0.1" },
+    { url = "https://files.pythonhosted.org/packages/57/84/21f04d8441c47c910a345a90d5ca5ecc1222269bb951f015f404996b7a36/langbot_plugin-0.7.11rc1-py3-none-any.whl", hash = "sha256:73227613ef827cfcccb04c2535034139ce5315c54dcd32ac01fcbca2150b7d13", size = 442833, upload-time = "2026-10-08T07:49:32.305Z" },
 ]
 
 [[package]]

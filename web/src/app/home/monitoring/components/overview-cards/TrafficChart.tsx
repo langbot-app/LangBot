@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MonitoringData } from '../../types/monitoring';
 
 interface TrafficChartProps {
@@ -41,24 +43,24 @@ export default function TrafficChart({ traffic, loading }: TrafficChartProps) {
 
   if (loading) {
     return (
-      <div className="bg-card rounded-xl border p-6">
+      <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="h-5 w-32 bg-muted animate-pulse rounded"></div>
+          <Skeleton className="h-5 w-32 rounded" />
           <div className="flex gap-4">
-            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+            <Skeleton className="h-4 w-24 rounded" />
+            <Skeleton className="h-4 w-24 rounded" />
           </div>
         </div>
         <div className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse w-full h-full bg-muted rounded"></div>
+          <Skeleton className="w-full h-full rounded" />
         </div>
-      </div>
+      </Card>
     );
   }
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-card rounded-xl border p-6">
+      <Card className="p-6">
         <h3 className="text-base font-semibold text-foreground mb-4">
           {t('monitoring.trafficChart.title')}
         </h3>
@@ -72,12 +74,12 @@ export default function TrafficChart({ traffic, loading }: TrafficChartProps) {
             )}
           </div>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-card rounded-xl border p-6 transition-shadow duration-300">
+    <Card className="p-6 transition-shadow duration-300">
       <h3 className="text-base font-semibold text-foreground mb-6">
         {t('monitoring.trafficChart.title')}
       </h3>
@@ -173,6 +175,6 @@ export default function TrafficChart({ traffic, loading }: TrafficChartProps) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </Card>
   );
 }

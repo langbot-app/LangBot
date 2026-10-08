@@ -108,6 +108,12 @@ class PreProcessor(stage.PipelineStage):
         )
         catalog = ResourcePolicyProjector.filter_tools(catalog, policy)
         ToolManager.bind_query_tool_sources(query, catalog)
+        try:
+            from ...telemetry import resources as telemetry_resources
+
+            telemetry_resources.note_pipeline(tools=catalog, tools_all=policy.allow_all_tools)
+        except Exception:
+            pass
         return ToolManager.tools_from_catalog(catalog)
 
     def _runner_accepts_multimodal_input(self, descriptor: RunnerDescriptor | None) -> bool:
@@ -393,6 +399,18 @@ class PreProcessor(stage.PipelineStage):
             descriptor,
             runner_config,
         )
+        # Telemetry: the knowledge bases this lane may retrieve from, plus the
+        # schema-declared selector fields that selected them.
+        try:
+            from ...telemetry import resources as telemetry_resources
+
+            telemetry_resources.note_pipeline(
+                knowledge_bases=query.variables['_knowledge_base_uuids'],
+                runner_id=descriptor.id if descriptor is not None else '',
+                selectors=config_schema.extract_selected_resources(descriptor, runner_config),
+            )
+        except Exception:
+            pass
 
         # Emit PromptPreProcessing before the runner receives the query.
 
@@ -427,4 +445,10 @@ class PreProcessor(stage.PipelineStage):
                 bound_skills = extensions_prefs['skills']
 
             query.variables['_pipeline_bound_skills'] = bound_skills
+            try:
+                from ...telemetry import resources as telemetry_resources
+
+                telemetry_resources.note_pipeline(skills=bound_skills)
+            except Exception:
+                pass
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

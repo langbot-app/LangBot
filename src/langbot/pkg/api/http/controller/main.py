@@ -174,9 +174,21 @@ class HTTPController:
 
         frontend_path = paths.get_frontend_path()
 
+        async def frontend_index():
+            from .social_preview import cloud_preview_html
+
+            response = await quart.send_from_directory(
+                frontend_path, 'index.html', mimetype='text/html', conditional=False
+            )
+            if quart.request.host.split(':', 1)[0].lower() == 'cloud.langbot.app':
+                response.set_data(cloud_preview_html(await response.get_data(as_text=True), quart.request.host))
+                response.headers.pop('ETag', None)
+                response.headers.pop('Last-Modified', None)
+            return response
+
         @self.quart_app.route('/')
         async def index():
-            response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+            response = await frontend_index()
             response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
@@ -207,7 +219,7 @@ class HTTPController:
                                 return response
 
                     # Fallback to index.html for SPA client-side routing
-                    response = await quart.send_from_directory(frontend_path, 'index.html', mimetype='text/html')
+                    response = await frontend_index()
                     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                     response.headers['Pragma'] = 'no-cache'
                     response.headers['Expires'] = '0'

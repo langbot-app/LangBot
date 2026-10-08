@@ -1,6 +1,7 @@
 """In-process management assistant using the existing model and resource services."""
 
 import asyncio
+import contextlib
 import json
 import uuid
 
@@ -44,6 +45,187 @@ class AssistantService:
         self.ap = ap
         # ponytail: per-process admission; shared quotas if multiple workers need a global ceiling.
         self._slots = asyncio.Semaphore(4)
+        self._runs = {}
+
+    async def list_conversations(self, context):
+        self._scope(context, '')
+        result = await self.ap.persistence_mgr.execute_async(
+            sa.select(Conversation)
+            .where(
+                Conversation.workspace_uuid == context.workspace_uuid,
+                Conversation.account_uuid == context.account_uuid,
+            )
+            .order_by(Conversation.updated_at.desc(), Conversation.uuid)
+            .limit(100)
+        )
+        return [
+            dict(
+                uuid=row['uuid'],
+                status=row['status'],
+                revision=row['revision'],
+                title=next(
+                    (
+                        m.get('content', '')[:80]
+                        for m in row['messages']
+                        if m['role'] == 'user' and isinstance(m.get('content'), str)
+                    ),
+                    '',
+                ),
+            )
+            for row in result.mappings()
+        ]
+
+    async def progress(self, context, conversation_id):
+        conversation = await self.get(context, conversation_id)
+        run = self._runs.get(conversation_id)
+        if run:
+            return {**(run['snapshot'] or self.public_view(conversation)), 'progress': run['progress']}
+        return self.public_view(conversation)
+
+    def start_run(self, context, conversation_id, body):
+        """Own execution independently of any HTTP subscriber; never block on a slow browser."""
+        if conversation_id in self._runs:
+            raise AssistantError('stale_turn')
+        if len(self._runs) >= 4:
+            raise AssistantError('busy', 429)
+        queue = asyncio.Queue(maxsize=32)
+        run = {
+            'queue': queue,
+            'snapshot': None,
+            'progress': {},
+            'stopping': False,
+            'revision': body.revision + 1,
+            'started': asyncio.Event(),
+        }
+        self._runs[conversation_id] = run
+
+        async def emit(frame):
+            if frame['kind'] == 'snapshot':
+                run['snapshot'] = frame['data']
+                run['progress'] = {}
+            elif frame['kind'] == 'text':
+                run['progress']['text'] = frame['data']['text']
+            elif frame['kind'] == 'phase':
+                run['progress'].update(frame['data'])
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(frame)
+
+        async def execute():
+            run['started'].set()
+            tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+            scope = tenant_scope(context.workspace_uuid) if callable(tenant_scope) else contextlib.nullcontext()
+            try:
+                async with scope:
+                    try:
+                        conversation = await self.turn(
+                            context,
+                            conversation_id,
+                            body.revision,
+                            body.text,
+                            body.approved,
+                            str(body.model_uuid) if body.model_uuid else None,
+                            on_event=emit,
+                        )
+                    except asyncio.CancelledError:
+                        conversation = await self.get(context, conversation_id)
+                        # Preserve interrupted tool outcomes; stopping cannot undo an external write.
+                        if run['stopping'] and (
+                            conversation['error'] == 'result_unknown'
+                            or (conversation['status'] == 'running' and conversation['revision'] == run['revision'])
+                        ):
+                            await self._save(context, conversation, 'failed', 'stopped')
+                    await emit({'kind': 'completed', 'data': self.public_view(conversation)})
+            except AssistantError as exc:
+                await emit({'kind': 'error', 'code': exc.code})
+            except Exception:
+                self.ap.logger.exception('Assistant background run failed')
+                await emit({'kind': 'error', 'code': 'turn_failed'})
+            finally:
+                self._runs.pop(conversation_id, None)
+
+        run['task'] = asyncio.create_task(execute())
+        return queue
+
+    async def stop(self, context, conversation_id, revision):
+        require_permission(context, Permission.RUNTIME_OPERATE)
+        conversation = await self.get(context, conversation_id)
+        run = self._runs.get(conversation_id)
+        if run and run['revision'] != revision:
+            raise AssistantError('stale_turn')
+        if not run:
+            if conversation['revision'] != revision:
+                raise AssistantError('stale_turn')
+            return self.public_view(conversation)
+        await run['started'].wait()
+        if not run['stopping']:
+            run['stopping'] = True
+            run['task'].cancel()
+        await asyncio.shield(run['task'])
+        return self.public_view(await self.get(context, conversation_id))
+
+    async def recommended_model(self, context):
+        require_permission(context, Permission.RUNTIME_OPERATE)
+        try:
+            recommended = await self.ap.space_service.get_recommended_assistant_model(context)
+            model = await self.ap.model_mgr.get_model_by_uuid(
+                ExecutionContext.from_request(context), recommended['uuid']
+            )
+            if 'func_call' not in (model.model_entity.abilities or []):
+                raise ValueError('Recommended model does not support tools')
+            return {'uuid': recommended['uuid'], 'name': model.model_entity.name}
+        except Exception as exc:
+            raise AssistantError('model_unavailable', 503) from exc
+
+    async def _invoke(self, model, kwargs, on_event):
+        if on_event is None:
+            return await model.provider.invoke_llm(**kwargs)
+        message = {'role': 'assistant', 'content': ''}
+        calls = {}
+        finished = False
+        async for chunk in model.provider.invoke_llm_stream(**kwargs):
+            finished = finished or chunk.is_final
+            content = chunk.content or ''
+            if isinstance(content, list):
+                content = ''.join(item.text or '' for item in content if item.type == 'text')
+            if chunk.all_content is not None:
+                message['content'] = chunk.all_content
+            else:
+                message['content'] += content
+            for field in ('resp_message_id', 'provider_specific_fields'):
+                value = getattr(chunk, field, None)
+                if value is not None:
+                    if field == 'provider_specific_fields':
+                        message[field] = {**message.get(field, {}), **value}
+                    else:
+                        message[field] = value
+            for call in chunk.tool_calls or []:
+                value = call.model_dump(mode='json')
+                if call.id in calls:
+                    saved = calls[call.id]
+                    saved['function']['arguments'] += call.function.arguments or ''
+                    if call.function.name:
+                        saved['function']['name'] = call.function.name
+                    if value.get('provider_specific_fields'):
+                        saved['provider_specific_fields'] = {
+                            **(saved.get('provider_specific_fields') or {}),
+                            **value['provider_specific_fields'],
+                        }
+                else:
+                    calls[call.id] = value
+            if len(calls) > 8 or len(json.dumps(message, ensure_ascii=False)) + len(json.dumps(calls)) > 64000:
+                raise AssistantError('response_too_large')
+            if content or chunk.all_content is not None:
+                await on_event({'kind': 'text', 'data': {'text': message['content']}})
+        if not finished:
+            raise AssistantError('stream_interrupted')
+        if calls:
+            message['tool_calls'] = list(calls.values())
+        return Message.model_validate(message)
+
+    async def _snapshot(self, conversation, on_event):
+        if on_event is not None:
+            await on_event({'kind': 'snapshot', 'data': self.public_view(conversation)})
 
     @staticmethod
     def _scope(context, conversation_id):
@@ -150,7 +332,7 @@ class AssistantService:
             raise AssistantError('stale_turn')
         conversation.update(status=status, error=error)
 
-    async def turn(self, context, conversation_id, revision, text=None, approved=None, model_uuid=None):
+    async def turn(self, context, conversation_id, revision, text=None, approved=None, model_uuid=None, on_event=None):
         require_permission(context, Permission.RUNTIME_OPERATE)
         if model_uuid is not None and text is None:
             raise AssistantError('invalid_input', 400)
@@ -201,7 +383,7 @@ class AssistantService:
                     await self._save(context, conversation, 'running')
                     try:
                         if not conversation['model_uuid']:
-                            recommended = await self.ap.space_service.get_recommended_chat_model(context)
+                            recommended = await self.recommended_model(context)
                             conversation['model_uuid'] = recommended['uuid']
                         execution = ExecutionContext.from_request(context)
                         model = selected_model or await self.ap.model_mgr.get_model_by_uuid(
@@ -215,22 +397,30 @@ class AssistantService:
                         return conversation
                     if approved is not None:
                         calls = self._calls(conversation['messages'][-1])
-                        await self._execute(context, conversation, calls, approved)
-                    for _ in range(8):
-                        response = await model.provider.invoke_llm(
-                            query=None,
-                            model=model,
-                            messages=[Message(role='system', content=SYSTEM_PROMPT)]
-                            + [Message.model_validate(message) for message in conversation['messages']],
-                            funcs=tool_definitions(context),
-                            extra_args=model.model_entity.extra_args or {},
-                            remove_think=True,
-                            execution_context=execution,
+                        await self._execute(context, conversation, calls, approved, on_event)
+                    for round_index in range(8):
+                        await self._snapshot(conversation, on_event)
+                        if on_event is not None:
+                            await on_event({'kind': 'phase', 'data': {'phase': 'thinking', 'round': round_index + 1}})
+                        response = await self._invoke(
+                            model,
+                            dict(
+                                query=None,
+                                model=model,
+                                messages=[Message(role='system', content=SYSTEM_PROMPT)]
+                                + [Message.model_validate(message) for message in conversation['messages']],
+                                funcs=tool_definitions(context),
+                                extra_args=model.model_entity.extra_args or {},
+                                remove_think=True,
+                                execution_context=execution,
+                            ),
+                            on_event,
                         )
                         message = response.model_dump(mode='json')
                         if len(json.dumps(message, ensure_ascii=False)) > 64000:
                             raise AssistantError('response_too_large')
                         conversation['messages'].append(message)
+                        await self._snapshot(conversation, on_event)
                         calls = self._calls(message)
                         if not calls:
                             await self._save(context, conversation, 'ready')
@@ -249,9 +439,12 @@ class AssistantService:
                         if any(TOOLS[call['function']['name']][2] for call in calls):
                             await self._save(context, conversation, 'approval')
                             return conversation
-                        await self._execute(context, conversation, calls, True)
+                        await self._execute(context, conversation, calls, True, on_event)
                     await self._save(context, conversation, 'failed', 'round_limit')
             except asyncio.CancelledError:
+                partial = self._runs.get(conversation_id, {}).get('progress', {}).get('text')
+                if partial:
+                    conversation['messages'].append(Message(role='assistant', content=partial).model_dump(mode='json'))
                 await asyncio.shield(self._save(context, conversation, 'failed', 'result_unknown'))
                 raise
             except TimeoutError:
@@ -280,7 +473,7 @@ class AssistantService:
             ).model_dump(mode='json')
         )
 
-    async def _execute(self, context, conversation, calls, approved):
+    async def _execute(self, context, conversation, calls, approved, on_event=None):
         # Validate the complete saved batch before any write, including after approval.
         if approved:
             for call in calls:
@@ -293,6 +486,19 @@ class AssistantService:
             else:
                 # Persist before effects. A crash leaves a running/unknown operation, never a replayable approval.
                 await self._save(context, conversation, 'running')
+                if on_event is not None:
+                    await on_event(
+                        {
+                            'kind': 'phase',
+                            'data': {
+                                'phase': 'tool',
+                                'tool': {
+                                    'name': func['name'],
+                                    'arguments': redact_secrets(json.loads(func['arguments'] or '{}')),
+                                },
+                            },
+                        }
+                    )
                 try:
                     result = await execute_tool(self.ap, context, func['name'], json.loads(func['arguments'] or '{}'))
                 except Exception as exc:
@@ -308,3 +514,4 @@ class AssistantService:
                     raise AssistantError('tool_failed')
             self._append_result(conversation, call, result)
             await self._save(context, conversation, 'running')
+            await self._snapshot(conversation, on_event)

@@ -203,7 +203,8 @@ test('bot guide starts on the detail page after adapter-only creation', async ({
   const adapterCard = page.locator('[data-slot="card"]').filter({
     has: page.getByText('Adapter Configuration', { exact: true }),
   });
-  await expect(adapterCard.getByRole('switch')).toBeChecked();
+  await expect(adapterCard.getByRole('switch')).toHaveCount(0);
+  await expect(page.getByRole('radio', { name: /^Webhook/ })).toBeChecked();
   await guide.getByRole('button', { name: 'Next' }).click();
 
   await expect(

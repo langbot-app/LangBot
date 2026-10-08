@@ -38,7 +38,7 @@ import EventBindingsEditor from './EventBindingsEditor';
 import PluginProcessorBindings from './PluginProcessorBindings';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -273,7 +273,22 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   useEffect(() => {
     onAdapterLabelChange?.(adapterLabel);
   }, [adapterLabel, onAdapterLabelChange]);
-  const currentAdapterConfig = form.watch('adapter_config');
+  const currentAdapterConfig = form.getValues('adapter_config');
+  const embedTitle = useWatch({
+    control: form.control,
+    name: 'adapter_config',
+    compute: (config) => config?.title,
+  });
+  const dynamicFormSystemContext = useMemo(
+    () => ({
+      bot_uuid: initBotId,
+      webhook_url: webhookUrl,
+      extra_webhook_url: extraWebhookUrl,
+      adapter_config: { title: embedTitle },
+      outbound_ips: systemInfo.outbound_ips,
+    }),
+    [initBotId, webhookUrl, extraWebhookUrl, embedTitle],
+  );
 
   // Group adapters by category for the Select dropdown. Legacy adapters are
   // split out and shown in a collapsed group at the bottom so they're
@@ -1155,13 +1170,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                           shouldDirty: !isInitializing.current,
                         });
                       }}
-                      systemContext={{
-                        webhook_url: webhookUrl,
-                        extra_webhook_url: extraWebhookUrl,
-                        bot_uuid: initBotId || '',
-                        adapter_config: form.getValues('adapter_config') || {},
-                        outbound_ips: systemInfo.outbound_ips,
-                      }}
+                      systemContext={dynamicFormSystemContext}
                     />
                   </div>
                 )}

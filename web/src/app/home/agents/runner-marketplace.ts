@@ -8,7 +8,7 @@ import {
   type PluginV4,
   type RunnerUsage,
 } from '@/app/infra/entities/plugin';
-import type { AsyncTask } from '@/app/infra/entities/api';
+import type { AsyncTask, RunnerDescriptor } from '@/app/infra/entities/api';
 import type { I18nObject } from '@/app/infra/entities/common';
 
 export const RUNNER_COMPONENT_FILTER = 'Runner';
@@ -232,6 +232,14 @@ export async function installMarketplaceRunner(
   plugin: PluginV4,
   options: InstallRunnerOptions,
 ): Promise<InstalledRunner> {
+  const pending = await startRunnerInstall(plugin, options);
+  return finishRunnerInstall(pending, options.onProgress);
+}
+
+async function startRunnerInstall(
+  plugin: PluginV4,
+  options: InstallRunnerOptions,
+): Promise<PendingRunnerInstall> {
   if (!plugin.latest_version) {
     throw new RunnerMarketplaceError('version-unavailable');
   }
@@ -252,7 +260,7 @@ export async function installMarketplaceRunner(
   };
   writePendingRunnerInstall(pending);
   options.onTaskCreated?.(taskId);
-  return finishRunnerInstall(pending, options.onProgress);
+  return pending;
 }
 
 function extractPluginLabel(plugin: PluginV4) {
@@ -271,6 +279,14 @@ async function finishRunnerInstall(
   pending: PendingRunnerInstall,
   onProgress?: (task: AsyncTask) => void,
 ): Promise<InstalledRunner> {
+  await waitForRunnerInstall(pending, onProgress);
+  return waitForRunnerRegistration(pending);
+}
+
+async function waitForRunnerInstall(
+  pending: PendingRunnerInstall,
+  onProgress?: (task: AsyncTask) => void,
+) {
   // A refreshed page receives a fresh observation window. The backend task is
   // authoritative; `startedAt` is display metadata, not a reason to abandon a
   // still-running installation immediately after recovery.
@@ -293,7 +309,11 @@ async function finishRunnerInstall(
   if (!installCompleted) {
     throw new RunnerMarketplaceError('install-timeout');
   }
+}
 
+async function waitForRunnerRegistration(
+  pending: PendingRunnerInstall,
+): Promise<InstalledRunner> {
   const registrationDeadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
   const prefix = runnerPluginPrefix({
     author: pending.pluginAuthor,
@@ -332,4 +352,46 @@ export async function resumePendingRunnerInstall(
   const pending = readPendingRunnerInstall(scope);
   if (!pending) return null;
   return finishRunnerInstall(pending, onProgress);
+}
+
+export async function installMarketplaceEventProcessor(
+  plugin: PluginV4,
+  options: InstallRunnerOptions,
+): Promise<RunnerDescriptor> {
+  const pending = await startRunnerInstall(plugin, options);
+  return finishEventProcessorInstall(pending, options.onProgress);
+}
+
+export async function resumePendingEventProcessorInstall(
+  scope: string,
+): Promise<RunnerDescriptor | null> {
+  const pending = readPendingRunnerInstall(scope);
+  return pending ? finishEventProcessorInstall(pending) : null;
+}
+
+async function finishEventProcessorInstall(
+  pending: PendingRunnerInstall,
+  onProgress?: (task: AsyncTask) => void,
+): Promise<RunnerDescriptor> {
+  await waitForRunnerInstall(pending, onProgress);
+  const deadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const metadata = await httpClient.getAgentMetadata();
+    // Only the event registry is authoritative; Agent-only Runners are invalid.
+    const candidates = (metadata.event_processors ?? []).filter(
+      (component) =>
+        component.plugin_author === pending.pluginAuthor &&
+        component.plugin_name === pending.pluginName,
+    );
+    const component =
+      candidates.find((component) => component.id.endsWith('/default')) ??
+      candidates[0];
+    if (component) {
+      clearPendingRunnerInstall(pending.scope, pending.taskId);
+      return component;
+    }
+    await wait(1000);
+  }
+  clearPendingRunnerInstall(pending.scope, pending.taskId);
+  throw new RunnerMarketplaceError('registration-timeout');
 }

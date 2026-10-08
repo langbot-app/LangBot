@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, ExternalLink, Loader2, Store } from 'lucide-react';
+import { Bot, Puzzle, ExternalLink, Loader2, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
+import { getCloudServiceClientSync } from '@/app/infra/http';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
+import type { RunnerDescriptor } from '@/app/infra/entities/api';
 import {
   RunnerMarketplaceError,
   getErrorMessage,
   installMarketplaceRunner,
+  installMarketplaceEventProcessor,
+  resumePendingEventProcessorInstall,
   loadRunnerCatalog,
   marketplacePluginId,
   runnerPluginPrefix,
@@ -51,21 +55,25 @@ function installErrorMessage(
   return getErrorMessage(error) || t('wizard.aiEngine.installFailed');
 }
 
-function installedRunnerIconURL(option: IDynamicFormItemOption) {
-  return option.name.startsWith('plugin:')
-    ? (() => {
-        const match = option.name.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
-        return match ? httpClient.getPluginIconURL(match[1], match[2]) : null;
-      })()
-    : null;
+function pluginOptionParts(option: IDynamicFormItemOption): {
+  author: string;
+  name: string;
+} | null {
+  if (!option.name.startsWith('plugin:')) return null;
+  const match = option.name.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
+  return match ? { author: match[1], name: match[2] } : null;
 }
 
 function InstalledRunnerContent({
   option,
+  eventProcessor = false,
 }: {
   option: IDynamicFormItemOption;
+  eventProcessor?: boolean;
 }) {
-  const iconURL = installedRunnerIconURL(option);
+  const Icon = eventProcessor ? Puzzle : Bot;
+  const parts = pluginOptionParts(option);
+  const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -76,7 +84,7 @@ function InstalledRunnerContent({
           className="size-5 shrink-0 rounded object-cover"
         />
       ) : (
-        <Bot className="size-4 shrink-0 text-muted-foreground" />
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
       )}
       <span className="truncate">{extractI18nObject(option.label)}</span>
     </span>
@@ -86,11 +94,15 @@ function InstalledRunnerContent({
 function InstalledRunnerOptionContent({
   option,
   description,
+  eventProcessor = false,
 }: {
   option: IDynamicFormItemOption;
   description: string;
+  eventProcessor?: boolean;
 }) {
-  const iconURL = installedRunnerIconURL(option);
+  const Icon = eventProcessor ? Puzzle : Bot;
+  const parts = pluginOptionParts(option);
+  const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
   return (
     <span className="grid w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-x-2 text-left">
@@ -101,7 +113,7 @@ function InstalledRunnerOptionContent({
           className="row-span-2 size-7 shrink-0 rounded-md object-cover"
         />
       ) : (
-        <Bot className="row-span-2 size-5 justify-self-center text-muted-foreground" />
+        <Icon className="row-span-2 size-5 justify-self-center text-muted-foreground" />
       )}
       <span className="truncate font-medium leading-5">
         {extractI18nObject(option.label)}
@@ -199,13 +211,19 @@ export default function RunnerSelect({
   onValueChange,
   installScope,
   onInstalled,
+  usage = 'agent',
+  disabled = false,
+  onEventProcessorInstalled,
 }: {
   options: IDynamicFormItemOption[];
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   installScope: string;
-  onInstalled: (installed: InstalledRunner) => void;
+  onInstalled?: (installed: InstalledRunner) => void;
+  usage?: 'agent' | 'event';
+  disabled?: boolean;
+  onEventProcessorInstalled?: (component: RunnerDescriptor) => void;
 }) {
   const { t } = useTranslation();
   const { addTask, tasks } = usePluginInstallTasks();
@@ -227,7 +245,7 @@ export default function RunnerSelect({
     setCatalogLoading(true);
     setCatalogError(false);
     try {
-      const catalog = await loadRunnerCatalog('agent');
+      const catalog = await loadRunnerCatalog(usage);
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
       setInstalledPluginDescriptions(catalog.installedPluginDescriptions);
@@ -237,7 +255,37 @@ export default function RunnerSelect({
     } finally {
       setCatalogLoading(false);
     }
-  }, []);
+  }, [usage]);
+
+  useEffect(() => {
+    if (
+      usage !== 'event' ||
+      disabled ||
+      !readPendingRunnerInstall(installScope)
+    )
+      return;
+    let cancelled = false;
+    void resumePendingEventProcessorInstall(installScope)
+      .then((component) => {
+        if (!cancelled && component) {
+          onEventProcessorInstalled?.(component);
+          void loadCatalog();
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setInstallError(installErrorMessage(error, t));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    installScope,
+    usage,
+    disabled,
+    onEventProcessorInstalled,
+    loadCatalog,
+    t,
+  ]);
 
   useEffect(() => {
     void loadCatalog();
@@ -286,22 +334,28 @@ export default function RunnerSelect({
   const handleInstall = useCallback(
     async (plugin: PluginV4) => {
       const pluginId = marketplacePluginId(plugin);
-      if (pendingInstall || installingPluginId) return;
+      if (disabled || pendingInstall || installingPluginId) return;
 
       setInstallingPluginId(pluginId);
       setInstallError(null);
       try {
-        const installed = await installMarketplaceRunner(plugin, {
+        const installOptions = {
           scope: installScope,
-          onTaskCreated: (taskId) =>
+          onTaskCreated: (taskId: number) =>
             addTask({
               taskId,
               pluginName: marketplacePluginId(plugin),
               source: 'marketplace',
               extensionType: 'plugin',
             }),
-        });
-        onInstalled(installed);
+        };
+        if (usage === 'event') {
+          onEventProcessorInstalled?.(
+            await installMarketplaceEventProcessor(plugin, installOptions),
+          );
+        } else {
+          onInstalled?.(await installMarketplaceRunner(plugin, installOptions));
+        }
         await loadCatalog();
         toast.success(
           t('agents.runnerInstallSuccess', {
@@ -326,12 +380,16 @@ export default function RunnerSelect({
       onInstalled,
       pendingInstall,
       t,
+      usage,
+      disabled,
+      onEventProcessorInstalled,
     ],
   );
 
   return (
     <div className="w-full max-w-[22rem] space-y-2">
       <Select
+        disabled={disabled}
         value={value}
         onValueChange={handleValueChange}
         onOpenChange={(open) => {
@@ -343,17 +401,34 @@ export default function RunnerSelect({
           className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]"
         >
           {selectedOption ? (
-            <InstalledRunnerContent option={selectedOption} />
+            <InstalledRunnerContent
+              option={selectedOption}
+              eventProcessor={usage === 'event'}
+            />
           ) : (
-            <SelectValue placeholder={t('common.select')} />
+            <SelectValue
+              placeholder={t(
+                usage === 'event'
+                  ? 'agents.eventProcessor.selectComponent'
+                  : 'common.select',
+              )}
+            />
           )}
         </SelectTrigger>
         <SelectContent className="z-[70] max-h-72 w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
           <SelectGroup>
             <SelectLabel className="px-2 py-1 text-[11px] font-medium">
               <span className="inline-flex items-center gap-1.5">
-                <Bot className="size-3.5" />
-                {t('agents.installedRunners')}
+                {usage === 'event' ? (
+                  <Puzzle className="size-3.5" />
+                ) : (
+                  <Bot className="size-3.5" />
+                )}
+                {t(
+                  usage === 'event'
+                    ? 'plugins.installed'
+                    : 'agents.installedRunners',
+                )}
               </span>
             </SelectLabel>
             {options.length > 0 ? (
@@ -371,6 +446,7 @@ export default function RunnerSelect({
                   >
                     <InstalledRunnerOptionContent
                       option={option}
+                      eventProcessor={usage === 'event'}
                       description={description}
                     />
                   </SelectItem>
@@ -378,7 +454,11 @@ export default function RunnerSelect({
               })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {t('agents.noInstalledRunners')}
+                {t(
+                  usage === 'event'
+                    ? 'agents.eventProcessor.noComponents'
+                    : 'agents.noInstalledRunners',
+                )}
               </div>
             )}
           </SelectGroup>
@@ -389,10 +469,14 @@ export default function RunnerSelect({
             <SelectLabel className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] font-medium">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <Store className="size-3.5" />
-                {t('agents.marketplaceRunners')}
+                {t(
+                  usage === 'event'
+                    ? 'plugins.marketplace'
+                    : 'agents.marketplaceRunners',
+                )}
               </span>
               <a
-                href="https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=agent"
+                href={`https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=${usage}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"

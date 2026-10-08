@@ -767,6 +767,7 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     """Draining runner results must not send text, duplicate replies, or stream cards."""
     from langbot_plugin.api.entities.builtin.platform import entities, events, message
     from langbot_plugin.api.entities.builtin.provider import message as provider_message
+    from datetime import datetime
 
     from langbot.pkg.agent.runner.platform_tools import execute_platform_tool, freeze_platform_context
 
@@ -783,6 +784,10 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     completed = []
 
     async def run(envelope, binding, adapter_context):
+        if kind == 'event_processor':
+            restored = message.MessageChain.model_validate(envelope.data['message_chain'])
+            assert restored.source.id == 'source-1'
+            assert restored.source.time == datetime(2026, 10, 8, 12)
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_streaming is False
         assert binding.delivery_policy.enable_reply is False
@@ -823,7 +828,9 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     )
     event = events.MessageReceivedEvent(
         message_id='message-1',
-        message_chain=message.MessageChain([message.Plain(text='hello')]),
+        message_chain=message.MessageChain(
+            [message.Source(id='source-1', time=datetime(2026, 10, 8, 12)), message.Plain(text='hello')]
+        ),
         sender=entities.User(id='user-1', nickname='QA'),
         chat_type=entities.ChatType.PRIVATE,
         chat_id='user-1',

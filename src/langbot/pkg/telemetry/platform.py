@@ -11,6 +11,21 @@ from .execution import record
 processing_mode: ContextVar[str] = ContextVar('telemetry_processing_mode', default='none')
 
 
+def result_failure_detail(result) -> str:
+    """Pull a bounded human-readable reason out of a failed platform API result."""
+    raw = getattr(result, 'raw', result)
+    if isinstance(raw, dict):
+        for key in ('error', 'message', 'msg', 'detail', 'reason'):
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+            if isinstance(value, dict):
+                for inner in ('message', 'msg', 'detail'):
+                    if isinstance(value.get(inner), str) and value[inner].strip():
+                        return value[inner]
+    return ''
+
+
 def result_outcome(result):
     # Empty returns do not prove a remote operation succeeded.
     if result is None:
@@ -69,18 +84,24 @@ def observe_adapter(ap, context, adapter):
                     if action in declared:
                         observed_operation = action
                 outcome = 'unknown'
+                error_detail = ''
                 try:
                     result = await method(*args, **kwargs)
                     outcome = result_outcome(result)
+                    if outcome != 'success':
+                        error_detail = result_failure_detail(result)
                     return result
                 except asyncio.CancelledError:
                     outcome = 'cancelled'
+                    error_detail = 'cancelled'
                     raise
-                except TimeoutError:
+                except TimeoutError as exc:
                     outcome = 'timeout'
+                    error_detail = str(exc) or 'timeout'
                     raise
-                except Exception:
+                except Exception as exc:
                     outcome = 'failed'
+                    error_detail = str(exc)
                     raise
                 finally:
                     record(
@@ -91,9 +112,12 @@ def observe_adapter(ap, context, adapter):
                         adapter=adapter.__class__.__name__,
                         mode=processing_mode.get(),
                         outcome=outcome,
+                        error=error_detail,
                     )
 
             return wrapped
 
-        setattr(adapter, name, make_wrapper(original, name))
-    setattr(adapter, '_execution_observed', True)
+        # Adapters are Pydantic models: method instrumentation is not a model
+        # field assignment. Keep wrappers instance-local, never on the class.
+        object.__setattr__(adapter, name, make_wrapper(original, name))
+    object.__setattr__(adapter, '_execution_observed', True)

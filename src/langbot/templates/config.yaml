@@ -293,6 +293,20 @@ plugin:
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
+    runtime_ops:
+        # Cloud-only ops telemetry: aggregates this instance's plugin Runtime
+        # health, desired installations and reconcile failures and pushes them
+        # to the Space control plane for the internal ops dashboard. This is
+        # separate from product telemetry (space.disable_telemetry) and has no
+        # effect outside the cloud edition. Defaults to on for the cloud
+        # edition; set false to stop pushing samples.
+        enabled: true
+        # Seconds between samples pushed to Space.
+        interval_seconds: 30
+        # Per-request timeout for the Runtime /healthz probe and the upload.
+        timeout_seconds: 10
+        # Maximum number of failed installations included per sample.
+        max_failures: 5
 runner:
     # Host-level admin permissions for trusted control plugins. These plugins
     # can use existing plugin action handlers to inspect or manage Runner
@@ -430,7 +444,17 @@ space:
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
     # Per-event execution traces: off | failures | sampled | all.
-    # 'sampled' keeps every failed run plus every N-th successful one
-    # (N is execution_trace_sample) and always keeps WebUI debug runs.
-    execution_trace: sampled
+    # Every eligible execution is reported by default: one record per workflow
+    # node plus one terminal chain record. 'failures' keeps only broken chains;
+    # 'sampled' keeps broken chains plus about 1/N of successful ones, selected
+    # by event hash (N is execution_trace_sample); 'off' reports no executions.
+    # Unmatched/discarded platform events are never reported unless a plugin
+    # subscription matches. Matched delivery failures and valid interaction
+    # resumptions remain eligible, as do independent API/WebUI executions.
+    # Cloud uses 'all' but still applies this route eligibility filter.
+    execution_trace: all
     execution_trace_sample: 20
+    # How often buffered execution records are uploaded, in seconds.
+    # Complete execution records are batched as {"records": [...]}; records are
+    # removed from the buffer only once the sender accepted them.
+    telemetry_flush_seconds: 180

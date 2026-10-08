@@ -3,7 +3,7 @@ import {
   SYSTEM_FIELD_PREFIX,
   DynamicFormItemType,
 } from '@/app/infra/entities/form/dynamic';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
 import type { ControllerRenderProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { isJsonValue, isPromptValue } from './StructuredFieldValue';
@@ -24,7 +24,7 @@ import {
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
@@ -469,7 +469,7 @@ export default function DynamicFormComponent({
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   // Filter out display-only fields (webhook-url/embed-code/qr-code-login types
   // and `__system.*`-named fields) that should not participate in form state,
@@ -493,28 +493,32 @@ export default function DynamicFormComponent({
   );
 
   // 根据 itemConfigList 动态生成 zod schema
-  const formSchema = z.object(
-    editableValueSpecs.reduce(
-      (acc, item) => {
-        let fieldSchema = getValueSchema(item);
+  const formSchema = useMemo(
+    () =>
+      z.object(
+        editableValueSpecs.reduce(
+          (acc, item) => {
+            let fieldSchema = getValueSchema(item);
 
-        if (
-          item.required &&
-          (fieldSchema instanceof z.ZodString ||
-            fieldSchema instanceof z.ZodArray)
-        ) {
-          fieldSchema = fieldSchema.min(1, {
-            message: t('common.fieldRequired'),
-          });
-        }
+            if (
+              item.required &&
+              (fieldSchema instanceof z.ZodString ||
+                fieldSchema instanceof z.ZodArray)
+            ) {
+              fieldSchema = fieldSchema.min(1, {
+                message: t('common.fieldRequired'),
+              });
+            }
 
-        return {
-          ...acc,
-          [item.name]: fieldSchema,
-        };
-      },
-      {} as Record<string, z.ZodTypeAny>,
-    ),
+            return {
+              ...acc,
+              [item.name]: fieldSchema,
+            };
+          },
+          {} as Record<string, z.ZodTypeAny>,
+        ),
+      ),
+    [editableValueSpecs, t],
   );
 
   type FormValues = z.infer<typeof formSchema>;
@@ -580,21 +584,12 @@ export default function DynamicFormComponent({
     }
   }, [initialValues, form, editableValueSpecs]);
 
-  // Get reactive form values for conditional rendering
-  const watchedValues = form.watch();
-  const setFormValue = (name: string, value: unknown) => {
-    form.setValue(name as keyof FormValues, value as never, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  };
-
   // Stable ref for onSubmit to avoid re-triggering the effect when the
   // parent passes a new closure on every render.
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
 
-  // 监听表单值变化
+  // Keep parent drafts synchronous with field changes.
   useEffect(() => {
     // Emit initial form values immediately so the parent always has a valid snapshot,
     // even if the user saves without modifying any field.
@@ -621,11 +616,97 @@ export default function DynamicFormComponent({
         editableValueSpecs,
         formValues as Record<string, unknown>,
       );
-      onSubmitRef.current?.(finalValues);
       previousInitialValues.current = finalValues as Record<string, object>;
+      onSubmitRef.current?.(finalValues);
     });
     return () => subscription.unsubscribe();
   }, [form, editableValueSpecs]);
+
+  return (
+    <DynamicFormFields
+      form={form}
+      itemConfigList={itemConfigList}
+      onFileUploaded={onFileUploaded}
+      isEditing={isEditing}
+      externalDependentValues={externalDependentValues}
+      systemContext={systemContext}
+      renderItem={renderItem}
+      hiddenItemNames={hiddenItemNames}
+    />
+  );
+}
+
+type DynamicFormProps = Parameters<typeof DynamicFormComponent>[0];
+
+type DynamicFormFieldsProps = Omit<
+  DynamicFormProps,
+  'initialValues' | 'onSubmit' | 'onValidate'
+> & {
+  form: UseFormReturn<Record<string, any>>;
+};
+
+// The stable provider also isolates useWatch/useController from an outer form's
+// context updates. The field list itself must subscribe inside this provider.
+const DynamicFormFields = memo(function DynamicFormFields(
+  props: DynamicFormFieldsProps,
+) {
+  return (
+    <Form {...props.form}>
+      <DynamicFormFieldList {...props} />
+    </Form>
+  );
+});
+
+function DynamicFormFieldList({
+  form,
+  itemConfigList,
+  onFileUploaded,
+  isEditing,
+  externalDependentValues,
+  systemContext,
+  renderItem,
+  hiddenItemNames,
+}: DynamicFormFieldsProps) {
+  type FormValues = Record<string, any>;
+  const { t, i18n } = useTranslation();
+  const dependencies = useMemo(
+    () => [
+      ...new Set(
+        itemConfigList
+          .flatMap((item) => [
+            item.show_if?.field,
+            item.disable_if?.field,
+            ...(item.disabled_tooltip_overrides ?? []).map(
+              (rule) => rule.when.field,
+            ),
+            ...(item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
+            item.type === DynamicFormItemType.RESOURCES_SELECTOR
+              ? getValueSpecs(item).map((spec) => spec.name)
+              : []),
+          ])
+          .filter(
+            (name): name is string =>
+              !!name && !name.startsWith(SYSTEM_FIELD_PREFIX),
+          ),
+      ),
+    ],
+    [itemConfigList],
+  );
+  const watchedValues = useWatch({
+    control: form.control,
+    // Custom controls can read arbitrary fields; regular controls only need
+    // their declared conditions and composite-field dependencies here.
+    compute: (values: Record<string, any>) =>
+      renderItem
+        ? values
+        : Object.fromEntries(dependencies.map((name) => [name, values[name]])),
+  });
+  const setFormValue = useCallback(
+    (name: string, value: unknown) => {
+      form.setValue(name, value, { shouldDirty: true, shouldValidate: true });
+    },
+    [form],
+  );
 
   // State for QR code login dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -633,313 +714,365 @@ export default function DynamicFormComponent({
     useState<QrLoginPlatform>('feishu');
 
   return (
-    <Form {...form}>
-      <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
-        {/* QR code login dialog */}
-        <QrCodeLoginDialog
-          open={qrDialogOpen}
-          onOpenChange={setQrDialogOpen}
-          platform={qrDialogPlatform}
-          onSuccess={(credentials) => {
-            for (const [key, value] of Object.entries(credentials)) {
-              if (value) {
-                form.setValue(key as keyof FormValues, value as never);
-              }
-            }
-          }}
-        />
-
-        {itemConfigList.map((config, index) => {
-          if (hiddenItemNames?.includes(config.name)) return null;
-
-          // Create a normalized config with type converted to frontend format
-          const normalizedConfig = {
-            ...config,
-            type: normalizeItemType(config.type),
-          };
-          const fieldKey = config.id || config.name || `field-${index}`;
-
-          let isHiddenByCondition = false;
-          if (config.show_if) {
-            const dependValue = resolveShowIfValue(
-              config.show_if.field,
-              watchedValues as Record<string, unknown>,
-              externalDependentValues,
-              systemContext,
-            );
-
-            if (
-              config.show_if.operator === 'eq' &&
-              dependValue !== config.show_if.value
-            ) {
-              isHiddenByCondition = true;
-            }
-            if (
-              config.show_if.operator === 'neq' &&
-              dependValue === config.show_if.value
-            ) {
-              isHiddenByCondition = true;
-            }
-            if (
-              config.show_if.operator === 'in' &&
-              Array.isArray(config.show_if.value) &&
-              !config.show_if.value.includes(dependValue)
-            ) {
-              isHiddenByCondition = true;
+    <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+      {/* QR code login dialog */}
+      <QrCodeLoginDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        platform={qrDialogPlatform}
+        onSuccess={(credentials) => {
+          for (const [key, value] of Object.entries(credentials)) {
+            if (value) {
+              form.setValue(key as keyof FormValues, value as never);
             }
           }
+        }}
+      />
 
-          // Keep structured drafts mounted across conditional hiding so invalid
-          // JSON cannot disappear from validation when Advanced Settings closes.
+      {itemConfigList.map((config, index) => {
+        if (hiddenItemNames?.includes(config.name)) return null;
+
+        // Create a normalized config with type converted to frontend format
+        const normalizedConfig = {
+          ...config,
+          type: normalizeItemType(config.type),
+        };
+        const fieldKey = config.id || config.name || `field-${index}`;
+
+        let isHiddenByCondition = false;
+        if (config.show_if) {
+          const dependValue = resolveShowIfValue(
+            config.show_if.field,
+            watchedValues as Record<string, unknown>,
+            externalDependentValues,
+            systemContext,
+          );
+
           if (
-            isHiddenByCondition &&
-            normalizedConfig.type !== DynamicFormItemType.JSON &&
-            normalizedConfig.type !== DynamicFormItemType.PROMPT_EDITOR
-          )
-            return null;
-
-          // Keep locked fields visible and resolve only the applicable reason.
-          const { isDisabledByCondition, disabledTooltip: tooltip } =
-            resolveDisabledState(
-              config,
-              watchedValues as Record<string, unknown>,
-              externalDependentValues,
-              systemContext,
-            );
-
-          // All fields are disabled when editing (creation_settings are
-          // immutable) or when ``disable_if`` matches.
-          const isFieldDisabled = !!isEditing || isDisabledByCondition;
-          const disabledTooltip = tooltip ? extractI18nObject(tooltip) : '';
-          const renderDisabledTooltipIcon = () =>
-            disabledTooltip ? (
-              <DisabledTooltipIcon text={disabledTooltip} />
-            ) : null;
-
-          // `__system.*` fields are display-only; their value is resolved
-          // from systemContext (same namespace as show_if), not user input.
-          // Hidden entirely when the deployment doesn't provide the value.
-          if (config.name.startsWith(SYSTEM_FIELD_PREFIX)) {
-            const rawValue =
-              systemContext?.[config.name.slice(SYSTEM_FIELD_PREFIX.length)];
-            const values = (Array.isArray(rawValue) ? rawValue : [rawValue])
-              .filter((v) => v !== undefined && v !== null && v !== '')
-              .map(String);
-            if (values.length === 0) return null;
-
-            return (
-              <SystemInfoField
-                key={config.id}
-                label={extractI18nObject(config.label)}
-                description={
-                  config.description
-                    ? extractI18nObject(config.description)
-                    : undefined
-                }
-                values={values}
-              />
-            );
+            config.show_if.operator === 'eq' &&
+            dependValue !== config.show_if.value
+          ) {
+            isHiddenByCondition = true;
           }
-
-          // Webhook URL fields are display-only; render outside of form binding
-          if (normalizedConfig.type === 'webhook-url') {
-            const webhookUrl = (systemContext?.webhook_url as string) || '';
-            const extraWebhookUrl =
-              (systemContext?.extra_webhook_url as string) || '';
-
-            if (!webhookUrl) return null;
-
-            return (
-              <WebhookUrlField
-                key={fieldKey}
-                label={extractI18nObject(config.label)}
-                description={
-                  config.description
-                    ? extractI18nObject(config.description)
-                    : undefined
-                }
-                url={webhookUrl}
-                extraUrl={extraWebhookUrl || undefined}
-              />
-            );
+          if (
+            config.show_if.operator === 'neq' &&
+            dependValue === config.show_if.value
+          ) {
+            isHiddenByCondition = true;
           }
-
-          if (normalizedConfig.type === 'embed-code') {
-            const botUuid = (systemContext?.bot_uuid as string) || '';
-            if (!botUuid) return null;
-
-            const baseUrl =
-              import.meta.env.VITE_API_BASE_URL || window.location.origin;
-            const widgetTitle =
-              ((systemContext?.adapter_config as Record<string, unknown>)
-                ?.title as string) || 'LangBot';
-            const safeTitle = widgetTitle
-              .replace(/&/g, '&amp;')
-              .replace(/"/g, '&quot;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;');
-            const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
-
-            return (
-              <EmbedCodeField
-                key={fieldKey}
-                label={extractI18nObject(config.label)}
-                description={
-                  config.description
-                    ? extractI18nObject(config.description)
-                    : undefined
-                }
-                snippet={embedSnippet}
-              />
-            );
+          if (
+            config.show_if.operator === 'in' &&
+            Array.isArray(config.show_if.value) &&
+            !config.show_if.value.includes(dependValue)
+          ) {
+            isHiddenByCondition = true;
           }
+        }
 
-          if (config.type === 'download-link') {
-            if (!config.url) return null;
+        // Keep structured drafts mounted across conditional hiding so invalid
+        // JSON cannot disappear from validation when Advanced Settings closes.
+        if (
+          isHiddenByCondition &&
+          normalizedConfig.type !== DynamicFormItemType.JSON &&
+          normalizedConfig.type !== DynamicFormItemType.PROMPT_EDITOR
+        )
+          return null;
 
-            return (
-              <DownloadLinkField
-                key={config.id}
-                label={extractI18nObject(config.label)}
-                description={
-                  config.description
-                    ? extractI18nObject(config.description)
-                    : undefined
-                }
-                url={config.url}
-                filename={config.download_filename}
-                helpUrl={getAdapterDocUrl(config.help_links, i18n.language)}
-                helpLabel={
-                  config.help_label
-                    ? extractI18nObject(config.help_label)
-                    : t('bots.viewAdapterDocs')
-                }
-              />
-            );
-          }
+        // Keep locked fields visible and resolve only the applicable reason.
+        const { isDisabledByCondition, disabledTooltip: tooltip } =
+          resolveDisabledState(
+            config,
+            watchedValues as Record<string, unknown>,
+            externalDependentValues,
+            systemContext,
+          );
 
-          // QR code login button (e.g. Feishu one-click create, WeChat scan login)
-          if (config.type === 'qr-code-login') {
-            return (
-              <FormItem key={fieldKey}>
-                <div
-                  className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
-                  style={{
-                    borderColor:
-                      'color-mix(in srgb, var(--primary) 25%, transparent)',
-                    background:
-                      'color-mix(in srgb, var(--primary) 3%, transparent)',
-                  }}
-                  onClick={() => {
-                    if (!isEditing) {
-                      setQrDialogPlatform(
-                        (config.login_platform as QrLoginPlatform) || 'feishu',
-                      );
-                      setQrDialogOpen(true);
-                    }
+        // All fields are disabled when editing (creation_settings are
+        // immutable) or when ``disable_if`` matches.
+        const isFieldDisabled = !!isEditing || isDisabledByCondition;
+        const disabledTooltip = tooltip ? extractI18nObject(tooltip) : '';
+        const renderDisabledTooltipIcon = () =>
+          disabledTooltip ? (
+            <DisabledTooltipIcon text={disabledTooltip} />
+          ) : null;
+
+        // `__system.*` fields are display-only; their value is resolved
+        // from systemContext (same namespace as show_if), not user input.
+        // Hidden entirely when the deployment doesn't provide the value.
+        if (config.name.startsWith(SYSTEM_FIELD_PREFIX)) {
+          const rawValue =
+            systemContext?.[config.name.slice(SYSTEM_FIELD_PREFIX.length)];
+          const values = (Array.isArray(rawValue) ? rawValue : [rawValue])
+            .filter((v) => v !== undefined && v !== null && v !== '')
+            .map(String);
+          if (values.length === 0) return null;
+
+          return (
+            <SystemInfoField
+              key={config.id}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              values={values}
+            />
+          );
+        }
+
+        // Webhook URL fields are display-only; render outside of form binding
+        if (normalizedConfig.type === 'webhook-url') {
+          const webhookUrl = (systemContext?.webhook_url as string) || '';
+          const extraWebhookUrl =
+            (systemContext?.extra_webhook_url as string) || '';
+
+          if (!webhookUrl) return null;
+
+          return (
+            <WebhookUrlField
+              key={fieldKey}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              url={webhookUrl}
+              extraUrl={extraWebhookUrl || undefined}
+            />
+          );
+        }
+
+        if (normalizedConfig.type === 'embed-code') {
+          const botUuid = (systemContext?.bot_uuid as string) || '';
+          if (!botUuid) return null;
+
+          const baseUrl =
+            import.meta.env.VITE_API_BASE_URL || window.location.origin;
+          const widgetTitle =
+            ((systemContext?.adapter_config as Record<string, unknown>)
+              ?.title as string) || 'LangBot';
+          const safeTitle = widgetTitle
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
+
+          return (
+            <EmbedCodeField
+              key={fieldKey}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              snippet={embedSnippet}
+            />
+          );
+        }
+
+        if (config.type === 'download-link') {
+          if (!config.url) return null;
+
+          return (
+            <DownloadLinkField
+              key={config.id}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              url={config.url}
+              filename={config.download_filename}
+              helpUrl={getAdapterDocUrl(config.help_links, i18n.language)}
+              helpLabel={
+                config.help_label
+                  ? extractI18nObject(config.help_label)
+                  : t('bots.viewAdapterDocs')
+              }
+            />
+          );
+        }
+
+        // QR code login button (e.g. Feishu one-click create, WeChat scan login)
+        if (config.type === 'qr-code-login') {
+          return (
+            <FormItem key={fieldKey}>
+              <div
+                className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
+                style={{
+                  borderColor:
+                    'color-mix(in srgb, var(--primary) 25%, transparent)',
+                  background:
+                    'color-mix(in srgb, var(--primary) 3%, transparent)',
+                }}
+                onClick={() => {
+                  if (!isEditing) {
+                    setQrDialogPlatform(
+                      (config.login_platform as QrLoginPlatform) || 'feishu',
+                    );
+                    setQrDialogOpen(true);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
+                  <QrCode className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {extractI18nObject(config.label)}
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
+                      {t('common.recommend')}
+                    </span>
+                  </div>
+                  {config.description && (
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!!isEditing}
+                  className="shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setQrDialogPlatform(
+                      (config.login_platform as QrLoginPlatform) || 'feishu',
+                    );
+                    setQrDialogOpen(true);
                   }}
                 >
-                  <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
-                    <QrCode className="h-6 w-6 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">
-                        {extractI18nObject(config.label)}
-                      </span>
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
-                        {t('common.recommend')}
-                      </span>
-                    </div>
-                    {config.description && (
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                        {extractI18nObject(config.description)}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!!isEditing}
-                    className="shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setQrDialogPlatform(
-                        (config.login_platform as QrLoginPlatform) || 'feishu',
-                      );
-                      setQrDialogOpen(true);
-                    }}
-                  >
-                    <QrCode className="h-3.5 w-3.5 mr-1" />
-                    {t('common.start')}
-                  </Button>
-                </div>
-              </FormItem>
-            );
-          }
+                  <QrCode className="h-3.5 w-3.5 mr-1" />
+                  {t('common.start')}
+                </Button>
+              </div>
+            </FormItem>
+          );
+        }
 
-          if (
-            config.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
-            config.type === DynamicFormItemType.RESOURCES_SELECTOR
-          ) {
-            return (
-              <FormField
-                key={config.id}
-                control={form.control}
-                name={config.name as keyof FormValues}
-                render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormControl>
-                      <div
-                        className={cn(
-                          'min-w-0 max-w-full overflow-x-hidden',
-                          isFieldDisabled && 'pointer-events-none opacity-60',
-                        )}
-                      >
-                        <DynamicFormItemComponent
-                          config={config}
-                          field={field}
-                          formValues={watchedValues as Record<string, unknown>}
-                          onFileUploaded={onFileUploaded}
-                          setFormValue={setFormValue}
-                          systemContext={systemContext}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            );
-          }
-
-          // Boolean fields use a special inline layout
-          if (normalizedConfig.type === 'boolean') {
-            return (
-              <FormField
-                key={fieldKey}
-                control={form.control}
-                name={config.name as keyof FormValues}
-                render={({ field }) => (
-                  <FormItem className="min-w-0">
+        if (
+          config.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
+          config.type === DynamicFormItemType.RESOURCES_SELECTOR
+        ) {
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem className="min-w-0">
+                  <FormControl>
                     <div
                       className={cn(
-                        'flex w-full min-w-0 max-w-full flex-row items-center justify-between rounded-lg border p-4',
+                        'min-w-0 max-w-full overflow-x-hidden',
                         isFieldDisabled && 'pointer-events-none opacity-60',
                       )}
                     >
-                      <div className="min-w-0 space-y-0.5">
-                        <FormLabel className="flex min-w-0 items-center gap-1.5 text-base">
-                          {extractI18nObject(config.label)}
-                          {renderDisabledTooltipIcon()}
-                        </FormLabel>
-                        {config.description && (
-                          <p className="text-sm break-words text-muted-foreground">
-                            {extractI18nObject(config.description)}
-                          </p>
-                        )}
-                      </div>
-                      <FormControl>
+                      <DynamicFormItemComponent
+                        config={config}
+                        field={field}
+                        formValues={watchedValues as Record<string, unknown>}
+                        onFileUploaded={onFileUploaded}
+                        setFormValue={setFormValue}
+                        systemContext={systemContext}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        }
+
+        // Boolean fields use a special inline layout
+        if (normalizedConfig.type === 'boolean') {
+          return (
+            <FormField
+              key={fieldKey}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem className="min-w-0">
+                  <div
+                    className={cn(
+                      'flex w-full min-w-0 max-w-full flex-row items-center justify-between rounded-lg border p-4',
+                      isFieldDisabled && 'pointer-events-none opacity-60',
+                    )}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <FormLabel className="flex min-w-0 items-center gap-1.5 text-base">
+                        {extractI18nObject(config.label)}
+                        {renderDisabledTooltipIcon()}
+                      </FormLabel>
+                      {config.description && (
+                        <p className="text-sm break-words text-muted-foreground">
+                          {extractI18nObject(config.description)}
+                        </p>
+                      )}
+                    </div>
+                    <FormControl>
+                      <DynamicFormItemComponent
+                        config={normalizedConfig}
+                        field={field}
+                        formValues={watchedValues as Record<string, unknown>}
+                        onFileUploaded={onFileUploaded}
+                        setFormValue={setFormValue}
+                        systemContext={systemContext}
+                      />
+                    </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        }
+
+        return (
+          <FormField
+            key={fieldKey}
+            control={form.control}
+            name={config.name as keyof FormValues}
+            render={({ field }) => {
+              const customItem = renderItem?.({
+                config: normalizedConfig,
+                field,
+                formValues: watchedValues as Record<string, unknown>,
+                setFormValue,
+              });
+              return (
+                <FormItem
+                  className={cn('min-w-0', isHiddenByCondition && 'hidden')}
+                  hidden={isHiddenByCondition}
+                >
+                  <FormLabel className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 break-words">
+                      {extractI18nObject(config.label)}{' '}
+                      {config.required && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </span>
+                    {renderDisabledTooltipIcon()}
+                  </FormLabel>
+                  <FormControl>
+                    <div
+                      className={cn(
+                        'min-w-0 max-w-full overflow-x-hidden',
+                        isFieldDisabled && 'pointer-events-none opacity-60',
+                      )}
+                    >
+                      {customItem !== undefined ? (
+                        customItem
+                      ) : (
                         <DynamicFormItemComponent
                           config={normalizedConfig}
                           field={field}
@@ -948,77 +1081,21 @@ export default function DynamicFormComponent({
                           setFormValue={setFormValue}
                           systemContext={systemContext}
                         />
-                      </FormControl>
+                      )}
                     </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            );
-          }
-
-          return (
-            <FormField
-              key={fieldKey}
-              control={form.control}
-              name={config.name as keyof FormValues}
-              render={({ field }) => {
-                const customItem = renderItem?.({
-                  config: normalizedConfig,
-                  field,
-                  formValues: watchedValues as Record<string, unknown>,
-                  setFormValue,
-                });
-                return (
-                  <FormItem
-                    className={cn('min-w-0', isHiddenByCondition && 'hidden')}
-                    hidden={isHiddenByCondition}
-                  >
-                    <FormLabel className="flex min-w-0 items-center gap-1.5">
-                      <span className="min-w-0 break-words">
-                        {extractI18nObject(config.label)}{' '}
-                        {config.required && (
-                          <span className="text-red-500">*</span>
-                        )}
-                      </span>
-                      {renderDisabledTooltipIcon()}
-                    </FormLabel>
-                    <FormControl>
-                      <div
-                        className={cn(
-                          'min-w-0 max-w-full overflow-x-hidden',
-                          isFieldDisabled && 'pointer-events-none opacity-60',
-                        )}
-                      >
-                        {customItem !== undefined ? (
-                          customItem
-                        ) : (
-                          <DynamicFormItemComponent
-                            config={normalizedConfig}
-                            field={field}
-                            formValues={
-                              watchedValues as Record<string, unknown>
-                            }
-                            onFileUploaded={onFileUploaded}
-                            setFormValue={setFormValue}
-                            systemContext={systemContext}
-                          />
-                        )}
-                      </div>
-                    </FormControl>
-                    {config.description && (
-                      <p className="text-sm break-words text-muted-foreground">
-                        {extractI18nObject(config.description)}
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
-          );
-        })}
-      </div>
-    </Form>
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm break-words text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }
