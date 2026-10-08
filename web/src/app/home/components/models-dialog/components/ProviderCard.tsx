@@ -195,9 +195,18 @@ export default function ProviderCard({
                     {t('models.modelsCount', { count: totalModels })}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground truncate">
+                <p
+                  className={`text-xs text-muted-foreground ${isLangBotModels ? 'leading-relaxed' : 'truncate'}`}
+                >
                   {isLangBotModels ? (
-                    t('models.langbotModelsDescription')
+                    <>
+                      {t('models.langbotModelsDescription')}
+                      {!ownerSpaceBound && (
+                        <span className="mt-1 block">
+                          {t('models.ownerMustBindSpace')}
+                        </span>
+                      )}
+                    </>
                   ) : (
                     <>
                       {provider.base_url}
@@ -222,7 +231,7 @@ export default function ProviderCard({
                   }}
                 >
                   <LogIn className="h-4 w-4 mr-1" />
-                  {t('models.ownerMustBindSpace')}
+                  {t('models.loginWithSpace')}
                 </Button>
               )}
               {isLangBotModels && ownerSpaceBound && spaceCredits !== null && (
@@ -251,11 +260,6 @@ export default function ProviderCard({
               {isLangBotModels && !isWorkspaceOwner && ownerSpaceBound && (
                 <span className="text-xs text-muted-foreground">
                   {t('models.usesOwnerSpaceBilling')}
-                </span>
-              )}
-              {isLangBotModels && !isWorkspaceOwner && !ownerSpaceBound && (
-                <span className="text-xs text-muted-foreground">
-                  {t('models.ownerMustBindSpace')}
                 </span>
               )}
               {canManage && !isLangBotModels && (

@@ -7,9 +7,8 @@ const zhHans = {
     currentChat: '当前会话',
     stop: '停止任务',
     stopped: '已停止。执行中的工具可能已经生效，请检查相关资源后再尝试。',
-    setupRequired:
-      '登录 LangBot Account 使用 LangBot Models，或先配置自己的模型供应商，即可开始对话。',
-    loginAccount: '登录 LangBot Account',
+    setupRequired: '请使用 LangBot 账户登录或配置模型',
+    loginAccount: '登录 LangBot 账户',
     configureModels: '配置模型',
     providerCheckFailed: '无法检查模型供应商，请重试。',
     retrySetup: '重试',
@@ -628,7 +627,7 @@ const zhHans = {
     searchProviders: '搜索供应商...',
     langbotModelsDescription: 'LangBot Space 提供的云端模型',
     credits: '积分',
-    loginWithSpace: '使用 LangBot 账号登录',
+    loginWithSpace: '使用 LangBot 账户登录',
     loginToUseModels: '通过 LangBot 账号登录以使用云端模型',
     ownerMustBindSpace:
       '工作区所有者需要绑定 LangBot 账号才能使用 LangBot 模型。',

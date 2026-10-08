@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useId } from 'react';
+import { useEffect, useRef, useState, useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Send, ChevronDown, LoaderCircle, Square } from 'lucide-react';
 import {
@@ -14,7 +14,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import '@/styles/github-markdown.css';
-import { backendClient, useCurrentWorkspace, userInfo } from '@/app/infra/http';
+import {
+  backendClient,
+  systemInfo,
+  useCurrentWorkspace,
+  userInfo,
+} from '@/app/infra/http';
 import { toast } from 'sonner';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SettingsDialog, {
@@ -31,6 +36,7 @@ import {
 import DynamicFormItemComponent from './dynamic-form/DynamicFormItemComponent';
 import { DynamicFormItemType } from '@/app/infra/entities/form/dynamic';
 import AssistantToolResult, { AssistantTool } from './AssistantToolResult';
+import { LANGBOT_MODELS_PROVIDER_REQUESTER } from './models-dialog/types';
 
 type Conversation = {
   uuid: string;
@@ -68,6 +74,9 @@ export default function WorkspaceAssistant() {
 function AssistantEntry({ storageKey }: { storageKey: string }) {
   const { t } = useTranslation();
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [localModel, setLocalModel] = useState<
+    { uuid: string; name: string } | undefined
+  >();
   const [failed, setFailed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [section, setSection] = useState<SettingsSection>('models');
@@ -78,9 +87,25 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
     let active = true;
     async function check() {
       try {
-        const { providers } = await backendClient.getModelProviders();
+        const { models } = await backendClient.getProviderLLMModels();
         if (active) {
-          setAvailable(providers.length > 0);
+          const usableModels = models.filter(
+            (model) =>
+              !!model.uuid?.trim() &&
+              model.abilities?.includes('func_call') &&
+              (model.provider?.requester !==
+                LANGBOT_MODELS_PROVIDER_REQUESTER ||
+                (userInfo?.account_type === 'space' &&
+                  !systemInfo.disable_models_service)),
+          );
+          setAvailable(usableModels.length > 0);
+          const firstLocalModel =
+            userInfo?.account_type !== 'space' ? usableModels[0] : undefined;
+          setLocalModel(
+            firstLocalModel
+              ? { uuid: firstLocalModel.uuid, name: firstLocalModel.name }
+              : undefined,
+          );
           setFailed(false);
         }
       } catch {
@@ -98,8 +123,8 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
   async function login() {
     setLoginBusy(true);
     try {
-      const response = await httpClient.getSpaceAuthorizeUrl(
-        `${window.location.origin}/auth/space/callback`,
+      const response = await httpClient.getSpaceBindAuthorizeUrl(
+        `${window.location.origin}/auth/space/callback?mode=bind`,
       );
       window.location.href = response.authorize_url;
     } catch {
@@ -110,29 +135,25 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
 
   return (
     <>
-      {available ? (
-        <AssistantSessions storageKey={storageKey} />
-      ) : available === false || failed ? (
-        createPortal(
-          <aside
-            aria-label={t('assistant.title')}
-            className="fixed bottom-3 left-1/2 z-40 w-[calc(100%-24px)] max-w-sm -translate-x-1/2 rounded-xl border bg-background p-3 shadow-sm"
-          >
-            <p className="flex items-center gap-2 text-sm font-medium">
-              <RiMagicLine className="size-4 text-primary" aria-hidden="true" />
-              {t('assistant.title')}
-            </p>
+      <AssistantSessions
+        storageKey={storageKey}
+        canUseModels={available === true && !failed}
+        initialModel={localModel}
+        setup={
+          <div className="mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0 border-t pt-3">
             <p
-              className="mt-1 text-xs leading-relaxed text-muted-foreground"
+              className="text-[13px] leading-relaxed text-muted-foreground"
               role={failed ? 'alert' : undefined}
             >
               {t(
                 failed
                   ? 'assistant.providerCheckFailed'
-                  : 'assistant.setupRequired',
+                  : available === null
+                    ? 'assistant.preparing'
+                    : 'assistant.setupRequired',
               )}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {failed ? (
                 <Button
                   size="sm"
@@ -141,7 +162,7 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
                 >
                   {t('assistant.retrySetup')}
                 </Button>
-              ) : (
+              ) : available === false ? (
                 <>
                   <Button
                     size="sm"
@@ -161,12 +182,11 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
                     {t('assistant.configureModels')}
                   </Button>
                 </>
-              )}
+              ) : null}
             </div>
-          </aside>,
-          document.body,
-        )
-      ) : null}
+          </div>
+        }
+      />
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
@@ -177,16 +197,22 @@ function AssistantEntry({ storageKey }: { storageKey: string }) {
   );
 }
 
-function AssistantSessions({ storageKey }: { storageKey: string }) {
+type AssistantPanelProps = {
+  storageKey: string;
+  canUseModels: boolean;
+  initialModel?: { uuid: string; name: string };
+  setup: ReactNode;
+};
+
+function AssistantSessions(props: AssistantPanelProps) {
+  const { storageKey } = props;
   const [version, setVersion] = useState(0);
   function select(id: string | null) {
     if (id) localStorage.setItem(storageKey, id);
     else localStorage.removeItem(storageKey);
     setVersion((value) => value + 1);
   }
-  return (
-    <AssistantPanel key={version} storageKey={storageKey} onSelect={select} />
-  );
+  return <AssistantPanel key={version} {...props} onSelect={select} />;
 }
 
 const ASSISTANT_HEIGHT_STORAGE_KEY = 'langbot-assistant-panel-height';
@@ -194,12 +220,16 @@ const ASSISTANT_POSITION_STORAGE_KEY = 'langbot-assistant-panel-position';
 
 function AssistantPanel({
   storageKey,
+  canUseModels,
+  initialModel,
+  setup,
   onSelect,
-}: {
-  storageKey: string;
+}: AssistantPanelProps & {
   onSelect: (id: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const initialModelUuid = initialModel?.uuid;
+  const initialModelName = initialModel?.name;
   const [open, setOpen] = useState(true);
   const [closing, setClosing] = useState(false);
   const [horizontalPosition, setHorizontalPosition] = useState(() => {
@@ -331,13 +361,16 @@ function AssistantPanel({
           if (abort.signal.aborted) return;
           setConversation(saved);
         }
+        if (!canUseModels) return;
         const model = saved?.model_uuid
           ? { uuid: saved.model_uuid, name: saved.model_name ?? undefined }
-          : await backendClient.request<{ uuid: string; name: string }>({
-              method: 'GET',
-              url: '/api/v1/assistant/recommended-model',
-              signal: abort.signal,
-            });
+          : initialModelUuid
+            ? { uuid: initialModelUuid, name: initialModelName }
+            : await backendClient.request<{ uuid: string; name: string }>({
+                method: 'GET',
+                url: '/api/v1/assistant/recommended-model',
+                signal: abort.signal,
+              });
         if (!abort.signal.aborted && !manualModel.current) {
           setModelUuid(model.uuid);
           setModelName(model.name);
@@ -350,7 +383,7 @@ function AssistantPanel({
     }
     void initialize();
     return () => abort.abort();
-  }, [storageKey]);
+  }, [storageKey, canUseModels, initialModelUuid, initialModelName]);
 
   useEffect(() => {
     let active = true;
@@ -438,6 +471,7 @@ function AssistantPanel({
 
   async function submit(approved?: boolean) {
     if (
+      !canUseModels ||
       busy ||
       (approved === undefined &&
         (!text.trim() ||
@@ -893,7 +927,7 @@ function AssistantPanel({
                       <button
                         key={key}
                         type="button"
-                        disabled={busy}
+                        disabled={busy || !canUseModels}
                         className={styles.prompt}
                         onClick={() => {
                           setText(t(`assistant.${key}`));
@@ -1030,7 +1064,7 @@ function AssistantPanel({
                       )}
                 </p>
               )}
-              {modelError && !modelUuid && (
+              {canUseModels && modelError && !modelUuid && (
                 <p role="alert" className="text-xs text-destructive">
                   {t('assistant.recommendationFailed')}
                 </p>
@@ -1050,107 +1084,113 @@ function AssistantPanel({
                 </p>
               )}
             </div>
-            <form
-              className={`mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col gap-1 rounded-xl p-1.5 ${styles.composer}`}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
-              <textarea
-                ref={input}
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                maxLength={8000}
-                rows={2}
-                aria-label={t('assistant.placeholder')}
-                placeholder={t(
-                  busy ? 'assistant.draftPlaceholder' : 'assistant.placeholder',
-                )}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing
-                  ) {
-                    event.preventDefault();
-                    void submit();
-                  }
+            {canUseModels ? (
+              <form
+                className={`mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col gap-1 rounded-xl p-1.5 ${styles.composer}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submit();
                 }}
-                className={`w-full min-w-0 resize-none rounded-lg bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:outline-none ${styles.input}`}
-              />
-              <div className="flex w-full items-center justify-between gap-3">
-                {open && (
-                  <div
-                    className="w-28 min-w-0 shrink-0"
-                    title={t('assistant.modelHint')}
-                  >
-                    <DynamicFormItemComponent
-                      config={{
-                        id: 'assistant-model',
-                        name: 'assistant-model',
-                        type: DynamicFormItemType.LLM_MODEL_SELECTOR,
-                        default: '',
-                        required: false,
-                        label: {
-                          en_US: 'Assistant model',
-                          zh_Hans: '助手模型',
-                        },
-                      }}
-                      field={{
-                        name: 'assistant-model',
-                        value: modelUuid,
-                        onChange: (value: string) => {
-                          // Radix's native form bridge can emit an empty value while
-                          // async options mount. It is not a user model selection.
-                          if (!value) return;
-                          manualModel.current = true;
-                          setModelUuid(value);
-                          setModelName(undefined);
-                          setModelError(false);
-                        },
-                        onBlur: () => {},
-                        ref: () => {},
-                        disabled:
-                          sending ||
-                          (!!conversation && conversation.status !== 'ready'),
-                      }}
-                      requiredModelAbility="func_call"
-                      compactModelSelector
-                      selectedModelLabel={modelName}
-                    />
-                  </div>
-                )}
-                {conversation?.status === 'running' ? (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="size-7 rounded-lg"
-                    aria-label={t('assistant.stop')}
-                    disabled={stopping}
-                    onClick={() => void stop()}
-                  >
-                    <Square className="size-3 fill-current" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    size="icon"
-                    className={`size-7 rounded-lg ${styles.send}`}
-                    aria-label={t('assistant.send')}
-                    disabled={
-                      busy ||
-                      !text.trim() ||
-                      !modelUuid ||
-                      (!!conversation && conversation.status !== 'ready')
+              >
+                <textarea
+                  ref={input}
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  maxLength={8000}
+                  rows={2}
+                  aria-label={t('assistant.placeholder')}
+                  placeholder={t(
+                    busy
+                      ? 'assistant.draftPlaceholder'
+                      : 'assistant.placeholder',
+                  )}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void submit();
                     }
-                  >
-                    <Send className="size-4" />
-                  </Button>
-                )}
-              </div>
-            </form>
+                  }}
+                  className={`w-full min-w-0 resize-none rounded-lg bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:outline-none ${styles.input}`}
+                />
+                <div className="flex w-full items-center justify-between gap-3">
+                  {open && (
+                    <div
+                      className="w-28 min-w-0 shrink-0"
+                      title={t('assistant.modelHint')}
+                    >
+                      <DynamicFormItemComponent
+                        config={{
+                          id: 'assistant-model',
+                          name: 'assistant-model',
+                          type: DynamicFormItemType.LLM_MODEL_SELECTOR,
+                          default: '',
+                          required: false,
+                          label: {
+                            en_US: 'Assistant model',
+                            zh_Hans: '助手模型',
+                          },
+                        }}
+                        field={{
+                          name: 'assistant-model',
+                          value: modelUuid,
+                          onChange: (value: string) => {
+                            // Radix's native form bridge can emit an empty value while
+                            // async options mount. It is not a user model selection.
+                            if (!value) return;
+                            manualModel.current = true;
+                            setModelUuid(value);
+                            setModelName(undefined);
+                            setModelError(false);
+                          },
+                          onBlur: () => {},
+                          ref: () => {},
+                          disabled:
+                            sending ||
+                            (!!conversation && conversation.status !== 'ready'),
+                        }}
+                        requiredModelAbility="func_call"
+                        compactModelSelector
+                        selectedModelLabel={modelName}
+                      />
+                    </div>
+                  )}
+                  {conversation?.status === 'running' ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="size-7 rounded-lg"
+                      aria-label={t('assistant.stop')}
+                      disabled={stopping}
+                      onClick={() => void stop()}
+                    >
+                      <Square className="size-3 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className={`size-7 rounded-lg ${styles.send}`}
+                      aria-label={t('assistant.send')}
+                      disabled={
+                        busy ||
+                        !text.trim() ||
+                        !modelUuid ||
+                        (!!conversation && conversation.status !== 'ready')
+                      }
+                    >
+                      <Send className="size-4" />
+                    </Button>
+                  )}
+                </div>
+              </form>
+            ) : (
+              setup
+            )}
           </section>
         )}
       </div>

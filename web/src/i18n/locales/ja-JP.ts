@@ -9,7 +9,7 @@ const jaJP = {
     stopped:
       '停止しました。実行中のツールが反映済みの場合があります。再試行前にリソースを確認してください。',
     setupRequired:
-      'LangBot Account にログインして LangBot Models を使うか、モデルプロバイダーを設定すると会話を始められます。',
+      'LangBot Account にログインするか、モデルを設定してください。',
     loginAccount: 'LangBot Account にログイン',
     configureModels: 'モデルを設定',
     providerCheckFailed:
