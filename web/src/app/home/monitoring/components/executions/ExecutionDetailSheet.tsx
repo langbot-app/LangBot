@@ -1,3 +1,4 @@
+import LoadErrorState from '@/components/LoadErrorState';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -297,9 +298,7 @@ export default function ExecutionDetailSheet({
           <div key={`${item.id}-${i}`}>{renderItem(section, item)}</div>
         ))}
         {sectionError === section && (
-          <p role="alert" className="text-sm text-destructive">
-            {t('monitoring.execution.detail.loadError')}
-          </p>
+          <LoadErrorState compact title={t('monitoring.execution.detail.loadError')} onRetry={() => loadMore(section)} />
         )}
         {page.has_more && (
           <Button
@@ -375,9 +374,7 @@ export default function ExecutionDetailSheet({
             </div>
             {loading && <Skeleton className="h-36 w-full" />}
             {error && (
-              <p role="alert" className="text-destructive">
-                {t('monitoring.execution.detail.loadError')}
-              </p>
+              <LoadErrorState title={t('monitoring.execution.detail.loadError')} onRetry={() => setRefresh((value) => value + 1)} />
             )}
             {record && (
               <>

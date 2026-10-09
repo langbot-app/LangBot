@@ -339,6 +339,8 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: 'Không thể tải nội dung',
+    loadFailedHint: 'Vui lòng thử lại sau. Nếu vẫn không tải được, hãy kiểm tra kết nối và trạng thái dịch vụ.',
     customValue: 'Tùy chỉnh',
     loadFailed: 'Không tải được. Vui lòng thử lại.',
     search: 'Tìm kiếm',

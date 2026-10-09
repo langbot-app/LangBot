@@ -319,6 +319,8 @@ const zhHans = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: '暂时无法加载',
+    loadFailedHint: '请稍后重试。如果仍无法加载，请检查网络连接与服务状态。',
     customValue: '自定义',
     loadFailed: '加载失败，请重试。',
     search: '搜索',

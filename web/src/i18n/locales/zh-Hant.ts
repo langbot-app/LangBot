@@ -316,6 +316,8 @@ const zhHant = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: '暫時無法載入',
+    loadFailedHint: '請稍後重試。如果仍無法載入，請檢查網路連線與服務狀態。',
     customValue: '自訂',
     loadFailed: '載入失敗，請重試。',
     search: '搜尋',

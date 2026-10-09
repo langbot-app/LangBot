@@ -1,3 +1,4 @@
+import LoadErrorState from '@/components/LoadErrorState';
 import React, {
   useState,
   useEffect,
@@ -738,19 +739,7 @@ const BotSessionMonitor = forwardRef<
                 {t('bots.sessionMonitor.loading')}
               </div>
             ) : sessionError ? (
-              <div
-                role="alert"
-                className="p-3 space-y-2 text-sm text-destructive"
-              >
-                <p>{t('monitoring.loadError')}</p>
-                <button
-                  type="button"
-                  onClick={loadSessions}
-                  className="rounded border px-2 py-1 text-foreground"
-                >
-                  {t('common.retry')}
-                </button>
-              </div>
+              <LoadErrorState compact title={t('monitoring.loadError')} onRetry={loadSessions} />
             ) : sessions.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-sm">
                 {t('bots.sessionMonitor.noSessions')}
@@ -922,45 +911,14 @@ const BotSessionMonitor = forwardRef<
               >
                 <div className="space-y-4">
                   {analysisError && !loadingMessages && (
-                    <div
-                      role="alert"
-                      className="text-sm text-destructive space-y-2"
-                    >
-                      <p>
-                        {t('monitoring.toolCalls.title')}:{' '}
-                        {t('monitoring.loadError')}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          loadMessages(selectedSessionId, messagePage)
-                        }
-                        className="rounded border px-2 py-1 text-foreground"
-                      >
-                        {t('common.retry')}
-                      </button>
-                    </div>
+                    <LoadErrorState compact title={`${t('monitoring.toolCalls.title')}: ${t('monitoring.loadError')}`} onRetry={() => loadMessages(selectedSessionId, messagePage)} />
                   )}
                   {loadingMessages ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.loading')}
                     </div>
                   ) : messageError ? (
-                    <div
-                      role="alert"
-                      className="text-sm text-destructive space-y-2"
-                    >
-                      <p>{t('monitoring.loadError')}</p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          loadMessages(selectedSessionId, messagePage)
-                        }
-                        className="rounded border px-2 py-1 text-foreground"
-                      >
-                        {t('common.retry')}
-                      </button>
-                    </div>
+                    <LoadErrorState title={t('monitoring.loadError')} onRetry={() => loadMessages(selectedSessionId, messagePage)} />
                   ) : timelineItems.length === 0 ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.noMessages')}

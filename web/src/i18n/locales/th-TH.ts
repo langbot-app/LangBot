@@ -335,6 +335,8 @@ const thTH = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: 'ไม่สามารถโหลดเนื้อหาได้',
+    loadFailedHint: 'โปรดลองอีกครั้ง หากยังโหลดไม่ได้ ให้ตรวจสอบการเชื่อมต่อและสถานะบริการ',
     customValue: 'กำหนดเอง',
     loadFailed: 'โหลดไม่สำเร็จ โปรดลองอีกครั้ง',
     search: 'ค้นหา',

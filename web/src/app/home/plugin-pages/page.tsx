@@ -1,4 +1,5 @@
 import EntityLoadState from '@/components/EntityLoadState';
+import LoadErrorState from '@/components/LoadErrorState';
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -202,9 +203,7 @@ function PluginPageIframe({
   return (
     <div className="flex flex-col h-full w-full">
       {assetError ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          {t('plugins.loadFailed')}
-        </div>
+        <LoadErrorState title={t('plugins.loadFailed')} className="flex-1" onRetry={() => window.location.reload()} />
       ) : loading || !assetUrl ? (
         <EntityLoadState />
       ) : null}

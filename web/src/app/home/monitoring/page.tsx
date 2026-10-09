@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -266,14 +266,7 @@ function MonitoringPageContent() {
 
       {/* Content Area */}
       {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>{t('monitoring.loadError')}</AlertTitle>
-          <AlertDescription className="mt-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              {t('common.retry')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <LoadErrorState title={t('monitoring.loadError')} onRetry={handleRefresh} busy={refreshing} />
       ) : (
         <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
           {/* Overview Section: the execution metrics and the runtime status share
@@ -365,20 +358,7 @@ function MonitoringPageContent() {
 
                 {executionError ? (
                   <div className="px-3 pt-4 sm:px-6">
-                    <Alert variant="destructive">
-                      <AlertTitle>
-                        {t('monitoring.execution.detail.loadError')}
-                      </AlertTitle>
-                      <AlertDescription className="mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleRefresh}
-                        >
-                          {t('common.retry')}
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
+                    <LoadErrorState title={t('monitoring.execution.detail.loadError')} onRetry={handleRefresh} busy={refreshing} />
                   </div>
                 ) : (
                   <>

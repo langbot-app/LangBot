@@ -343,6 +343,8 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: 'No se pudo cargar el contenido',
+    loadFailedHint: 'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
     customValue: 'Personalizado',
     loadFailed: 'No se pudo cargar. Inténtalo de nuevo.',
     search: 'Buscar',

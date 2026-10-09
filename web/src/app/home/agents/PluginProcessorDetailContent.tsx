@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
@@ -363,11 +364,7 @@ export default function PluginProcessorDetailContent({
   const logsContent = (
     <div className="flex h-full min-h-0 flex-col gap-4 p-4">
       {failed && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            {t('agents.eventProcessor.loadError')}
-          </AlertDescription>
-        </Alert>
+        <LoadErrorState compact title={t('agents.eventProcessor.loadError')} onRetry={refreshLatestRun} />
       )}
       <div className="flex shrink-0 items-center justify-between gap-2">
         <span className="text-sm font-medium">

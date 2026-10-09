@@ -339,6 +339,8 @@ const jaJP = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: '読み込めませんでした',
+    loadFailedHint: 'しばらくしてから再試行してください。解決しない場合は、接続とサービスの状態を確認してください。',
     customValue: 'カスタム',
     loadFailed: '読み込みに失敗しました。再試行してください。',
     search: '検索',

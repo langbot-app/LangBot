@@ -340,6 +340,8 @@ const enUS = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: 'Unable to load this content',
+    loadFailedHint: 'Please try again in a moment. If this continues, check your connection and service status.',
     customValue: 'Custom',
     loadFailed: 'Failed to load. Please try again.',
     search: 'Search',

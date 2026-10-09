@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -263,9 +264,7 @@ export default function AgentMonitoringTab({
         </Button>
       </div>
       {listError && (
-        <Alert variant="destructive">
-          <AlertDescription>{t('monitoring.loadError')}</AlertDescription>
-        </Alert>
+        <LoadErrorState compact title={t('monitoring.loadError')} onRetry={refresh} />
       )}
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <section
@@ -494,17 +493,7 @@ export default function AgentMonitoringTab({
             )
           )}
           {traceError && (
-            <Alert variant="destructive">
-              <AlertDescription>
-                {t('monitoring.loadError')}
-                <Button
-                  variant="link"
-                  onClick={() => setTraceRevision((value) => value + 1)}
-                >
-                  {t('common.retry')}
-                </Button>
-              </AlertDescription>
-            </Alert>
+            <LoadErrorState title={t('monitoring.loadError')} onRetry={() => setTraceRevision((value) => value + 1)} />
           )}
         </section>
       </div>
