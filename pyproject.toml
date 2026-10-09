@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.11rc1",
+    "langbot-plugin==0.7.10",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -234,3 +234,6 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+[tool.uv.sources]
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git", rev = "646f8bb3c6f4e5e4dc4c03cad8d58a03bad9e174" }
