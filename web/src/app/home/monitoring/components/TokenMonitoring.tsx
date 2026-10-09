@@ -168,7 +168,7 @@ export default function TokenMonitoring({
     }));
   }, [stats]);
 
-  if (loading) {
+  if (loading && !stats) {
     return <TabState loading rows={6} />;
   }
 

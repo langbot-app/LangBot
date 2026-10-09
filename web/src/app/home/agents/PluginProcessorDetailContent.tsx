@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
-import { RefreshCw, Trash2, ScrollText, Settings2 } from 'lucide-react';
+import { RefreshCw, Trash2, Clock3, Puzzle } from 'lucide-react';
 import isEqual from 'lodash/isEqual';
 import { toast } from 'sonner';
 import type {
@@ -29,6 +29,7 @@ import PluginProcessorTrace, {
   ProcessorPayload,
 } from './components/PluginProcessorTrace';
 import ProcessorRunList from './components/ProcessorRunList';
+import { processorRunDuration, formatRunDuration } from './components/processor-run-timing';
 import PluginProcessorSettings from './components/PluginProcessorSettings';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 
@@ -52,10 +53,14 @@ export default function PluginProcessorDetailContent({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get('tab') === 'logs' ? 'logs' : 'config',
-  );
+  const [, setSearchParams] = useSearchParams();
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('tab', tab);
+      return next;
+    }, { preventScrollReset: true });
+  }, [setSearchParams]);
   const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
   const toolLabels = Object.fromEntries(
     platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
@@ -135,7 +140,7 @@ export default function PluginProcessorDetailContent({
         : []),
       {
         id: 'logs',
-        target: '[data-guide="event-processor-form-tab-logs"]',
+        target: '[data-guide="event-processor-form-monitoring"]',
         title: t('guidedTour.pluginProcessor.logs.title'),
         description: t('guidedTour.pluginProcessor.logs.description'),
         onEnter: () => setActiveTab('logs'),
@@ -152,7 +157,7 @@ export default function PluginProcessorDetailContent({
           ]
         : []),
     ],
-    [t, available, hasParameters, canOperate],
+    [t, available, hasParameters, canOperate, setActiveTab],
   );
 
   const applyInstalledProcessor = useCallback((component: RunnerDescriptor) => {
@@ -170,7 +175,7 @@ export default function PluginProcessorDetailContent({
     );
     setActiveTab('config');
     validate.current = null;
-  }, []);
+  }, [setActiveTab]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -356,14 +361,7 @@ export default function PluginProcessorDetailContent({
   }
 
   const logsContent = (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <form
-        id="event-processor-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      />
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4">
       {failed && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -377,16 +375,19 @@ export default function PluginProcessorDetailContent({
           <span className="text-muted-foreground">({runs.length})</span>
         </span>
         <Button
-          variant="ghost"
-          size="icon"
+          variant="outline"
+          size="sm"
           aria-label={t('agents.eventProcessor.refresh')}
           onClick={() => void refreshLatestRun()}
         >
           <RefreshCw className="size-4" />
+          {t('agents.eventProcessor.refresh')}
         </Button>
       </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
       {runs.length > 0 && (
         <ProcessorRunList
+          className="max-h-64 overflow-y-auto rounded-lg border lg:max-h-none lg:h-full"
           runs={runs}
           selectedId={selected?.run_id}
           onSelect={(run) => void openRun(run)}
@@ -405,7 +406,7 @@ export default function PluginProcessorDetailContent({
         />
       )}
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-2 pr-3">
+        <div className="space-y-4 pr-2">
           {!selected ? (
             <Alert>
               <AlertDescription>
@@ -421,25 +422,31 @@ export default function PluginProcessorDetailContent({
             </Alert>
           ) : (
             <>
-              <div className="border-b pb-2">
-                <p className="text-sm font-medium">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+                <div className="space-y-1.5">
+                <p className="font-medium">
                   {eventPatternLabel(selected.metadata.event_type ?? '', t)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {new Date(selected.created_at * 1000).toLocaleString()}
                 </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {processorRunDuration(selected) !== null && (
+                    <span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+                      <Clock3 className="size-3.5" />
+                      {formatRunDuration(processorRunDuration(selected)!)}
+                    </span>
+                  )}
+                  <Badge status={selected.status}>
+                    {t(`agents.eventProcessor.status_${selected.status}`, { defaultValue: selected.status })}
+                  </Badge>
+                </div>
               </div>
-              <Badge
-                variant={
-                  selected.status === 'failed' ? 'destructive' : 'outline'
-                }
-              >
-                {t(`agents.eventProcessor.status_${selected.status}`, {
-                  defaultValue: selected.status,
-                })}
-              </Badge>
+              <div className="space-y-2 rounded-lg border p-3">
+              <h3 className="text-sm font-medium">{t('agents.eventProcessor.input')}</h3>
               <ProcessorPayload
-                title={t('agents.eventProcessor.input')}
+                title={t('agents.monitoring.eventData')}
                 value={selected.metadata.input_event}
               />
               {selected.metadata.delivery != null && (
@@ -448,7 +455,14 @@ export default function PluginProcessorDetailContent({
                   value={selected.metadata.delivery}
                 />
               )}
-              <PluginProcessorTrace events={events} toolLabels={toolLabels} />
+              </div>
+              <section className="space-y-3">
+                <h2 className="flex items-center gap-2 text-sm font-medium">
+                  <Puzzle className="size-4 text-amber-600 dark:text-amber-400" />
+                  {t('agents.eventProcessor.type')} · {t('agents.eventProcessor.logsTab')}
+                </h2>
+                <PluginProcessorTrace events={events} toolLabels={toolLabels} />
+              </section>
               {selected.status === 'failed' && selected.status_reason && (
                 <Alert variant="destructive">
                   <AlertDescription className="break-words">
@@ -469,6 +483,7 @@ export default function PluginProcessorDetailContent({
           )}
         </div>
       </ScrollArea>
+      </div>
     </div>
   );
 
@@ -477,6 +492,10 @@ export default function PluginProcessorDetailContent({
 
   return (
     <>
+      <form id="event-processor-form" onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }} />
       <GuidedTour
         enabled={canManage}
         storageKey="langbot_plugin_processor_setup_guide_v1"
@@ -485,6 +504,12 @@ export default function PluginProcessorDetailContent({
       />
       <ProcessorDetailWorkbench
         title={`${agent.emoji || '🧩'} ${agent.name}`}
+        titleBadge={
+          <Badge variant="outline" className="gap-1.5 border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            <Puzzle className="size-3.5" />
+            {t('agents.eventProcessor.type')}
+          </Badge>
+        }
         titleAction={
           canManage ? <EntityTitleEditButton onClick={onEdit} /> : undefined
         }
@@ -529,15 +554,13 @@ export default function PluginProcessorDetailContent({
           ) : undefined
         }
         configTitle={t('agents.eventProcessor.type')}
-        configTabs={{
-          value: activeTab,
-          onValueChange: setActiveTab,
-          items: [
-            {
-              value: 'config',
-              label: t('agents.eventProcessor.configTab'),
-              icon: <Settings2 className="size-4" />,
-              content: (
+        configIcon={<Puzzle className="size-4 text-amber-600 dark:text-amber-400" />}
+        monitoring={{
+          label: t('pipelines.monitoring.title'),
+          workbenchLabel: t('pipelines.monitoring.workbench'),
+          content: logsContent,
+        }}
+        configContent={
                 <div className="h-full overflow-y-auto">
                   {!component ? (
                     <p className="text-sm text-muted-foreground">
@@ -563,16 +586,7 @@ export default function PluginProcessorDetailContent({
                     </fieldset>
                   )}
                 </div>
-              ),
-            },
-            {
-              value: 'logs',
-              label: t('agents.eventProcessor.logsTab'),
-              icon: <ScrollText className="size-4" />,
-              content: logsContent,
-            },
-          ],
-        }}
+        }
         debugTitle={canOperate ? t('agents.debugTab') : undefined}
         debugDescription={t('agents.eventProcessor.debugNotice')}
         debugContent={

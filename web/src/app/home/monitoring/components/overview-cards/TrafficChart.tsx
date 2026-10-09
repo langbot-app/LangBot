@@ -74,7 +74,7 @@ function TrafficChartContent({ traffic, loading }: TrafficChartProps) {
     [traffic],
   );
 
-  if (loading) {
+  if (loading && !traffic) {
     return (
       <div>
         <div className="h-[300px] flex items-center justify-center">
@@ -162,6 +162,7 @@ function TrafficChartContent({ traffic, loading }: TrafficChartProps) {
               itemStyle={{ padding: '4px 0' }}
             />
             <Area
+              isAnimationActive={false}
               type="monotone"
               dataKey="messages"
               name={t('monitoring.trafficChart.messages')}
@@ -173,6 +174,7 @@ function TrafficChartContent({ traffic, loading }: TrafficChartProps) {
               activeDot={{ r: 6, strokeWidth: 2 }}
             />
             <Area
+              isAnimationActive={false}
               type="monotone"
               dataKey="llmCalls"
               name={t('monitoring.trafficChart.llmCalls')}

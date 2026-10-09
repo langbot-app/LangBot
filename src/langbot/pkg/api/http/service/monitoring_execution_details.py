@@ -201,10 +201,25 @@ class ExecutionDetailsMixin:
         # Absorbed steering events belong to an existing run, too.
         conditions = [
             EventLog.workspace_id == workspace,
+            # The primary route is first; plugin subscriptions follow it.
+            # Delivered pipeline ingress is not an unhandled execution, including
+            # older queued/aggregated messages whose trace identity was lost.
+            ~sa.and_(
+                sa.func.coalesce(
+                    self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
+                ) == 'pipeline',
+                sa.func.coalesce(
+                    self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'status')), ''
+                ) == 'delivered',
+            ),
             ~sa.exists(
                 sa.select(AgentRun.id).where(
                     AgentRun.workspace_id == workspace,
-                    sa.or_(AgentRun.event_id == EventLog.event_id, AgentRun.run_id == EventLog.run_id),
+                    sa.or_(
+                        AgentRun.event_id == EventLog.event_id,
+                        AgentRun.run_id == EventLog.run_id,
+                        self._execution_json_text(AgentRun.metadata_json, 'ingress_event_id') == EventLog.event_id,
+                    ),
                 )
             ),
             ~sa.exists(
@@ -259,6 +274,49 @@ class ExecutionDetailsMixin:
         }
 
     async def enrich_execution_rows(self, workspace, items):
+        pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
+        if pipeline_items:
+            # Pipeline rows own the UI identity; their linked Runner ledger owns
+            # timing and usage. Read them in one batch for both list and detail.
+            linked = await self._execution_query(
+                workspace,
+                sa.select(models.MonitoringMessage.id, AgentRun)
+                .join(AgentRun, sa.and_(
+                    AgentRun.workspace_id == workspace,
+                    AgentRun.run_id == models.MonitoringMessage.run_id,
+                ))
+                .where(
+                    models.MonitoringMessage.workspace_uuid == workspace,
+                    models.MonitoringMessage.id.in_(pipeline_items),
+                ),
+            )
+            for message_id, run in linked.all():
+                metrics = self._serialize_agent_execution(run)
+                pipeline_items[message_id].update({
+                    key: metrics[key]
+                    for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')
+                })
+
+            calls = models.MonitoringLLMCall
+            usage_rows = await self._execution_query(
+                workspace,
+                sa.select(
+                    calls.message_id,
+                    sa.func.sum(calls.input_tokens),
+                    sa.func.sum(calls.output_tokens),
+                    sa.func.sum(calls.total_tokens),
+                ).where(
+                    calls.workspace_uuid == workspace,
+                    calls.message_id.in_(pipeline_items),
+                ).group_by(calls.message_id),
+            )
+            for message_id, input_tokens, output_tokens, total_tokens in usage_rows.all():
+                if not pipeline_items[message_id].get('usage'):
+                    pipeline_items[message_id]['usage'] = {
+                        'input_tokens': int(input_tokens or 0),
+                        'output_tokens': int(output_tokens or 0),
+                        'total_tokens': int(total_tokens or 0),
+                    }
         ids = {item['event_id'] for item in items if item.get('event_id')}
         if not ids:
             return

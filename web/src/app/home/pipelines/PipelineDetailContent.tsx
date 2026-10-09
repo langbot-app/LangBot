@@ -1,7 +1,7 @@
 import EntityLoadState from '@/components/EntityLoadState';
 import { isCurrentPipelineConfig } from './pipeline-config-safety';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -51,10 +51,8 @@ export default function PipelineDetailContent({
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
 
-  const [activeView, setActiveView] = useState<'workbench' | 'monitoring'>(
-    'workbench',
-  );
-  useEffect(() => setActiveView('workbench'), [id]);
+  const [searchParams] = useSearchParams();
+  const activeView = searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
@@ -187,7 +185,6 @@ export default function PipelineDetailContent({
     <>
       <ProcessorDetailWorkbench
         key={id}
-        onViewChange={setActiveView}
         title={`${pipelineEmoji} ${pipelineName}`}
         titleAction={
           canManage ? (

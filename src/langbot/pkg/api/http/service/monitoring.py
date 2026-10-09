@@ -1418,6 +1418,28 @@ class MonitoringService(ExecutionDetailsMixin):
             end_time=end_time,
             debug=True if mode == 'debug' else False if mode == 'real' else None,
         )
+        Message = persistence_monitoring.MonitoringMessage
+        pipeline_timing = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.started_at, AgentRun.finished_at)
+            .select_from(Message)
+            .join(AgentRun, sqlalchemy.and_(
+                AgentRun.workspace_id == workspace_uuid,
+                AgentRun.run_id == Message.run_id,
+            ))
+            .where(
+                *pipeline_conditions,
+                Message.status == 'success',
+                AgentRun.started_at.is_not(None),
+                AgentRun.finished_at.is_not(None),
+            )
+            .order_by(Message.timestamp.desc())
+            .limit(self._detail_limit())
+        )
+        durations.extend(
+            (row[1] - row[0]).total_seconds() * 1000
+            for row in pipeline_timing.all() if row[0] and row[1]
+        )
+        durations.sort()
         pipeline_status_result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(
                 persistence_monitoring.MonitoringMessage.status,

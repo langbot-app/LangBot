@@ -162,6 +162,13 @@ class MessageAggregator:
         if variables:
             enabled = False
 
+        # Preserve ingress identity across the queue and detached debounce task.
+        from ..telemetry import trace
+
+        ingress_trace = trace.current()
+        if ingress_trace is not None:
+            variables = {**(variables or {}), '_ingress_event_id': ingress_trace.event_id}
+
         if not enabled:
             await self.ap.query_pool.add_query(
                 bot_uuid=bot_uuid,

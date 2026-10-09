@@ -62,7 +62,7 @@ function MonitoringPageContent() {
   } = useMonitoringFilters();
   const executionMode = filterState.mode ?? 'all';
   const executionStatus = filterState.statusGroup ?? 'all';
-  const { data, loading, error, refetch } = useMonitoringData({
+  const { data, loading: monitoringRefreshing, error, refetch } = useMonitoringData({
     ...filterState,
     mode: executionMode,
     statusGroup: executionStatus,
@@ -74,7 +74,7 @@ function MonitoringPageContent() {
 
   const {
     result: executionResult,
-    loading: executionLoading,
+    loading: executionRefreshing,
     error: executionError,
     refetch: refetchExecutions,
   } = useExecutions({
@@ -120,7 +120,7 @@ function MonitoringPageContent() {
   const {
     feedback: feedbackList,
     stats: feedbackStats,
-    loading: feedbackLoading,
+    loading: feedbackRefreshing,
   } = useFeedbackData({
     mode: executionMode,
     statusGroup: executionStatus,
@@ -137,6 +137,10 @@ function MonitoringPageContent() {
     limit: 50,
   });
 
+  const loading = monitoringRefreshing && !data;
+  const executionLoading = executionRefreshing && !executionResult;
+  const feedbackLoading = feedbackRefreshing && !feedbackStats;
+  const refreshing = monitoringRefreshing || executionRefreshing || feedbackRefreshing;
   const countdown = useRef(0);
   const intervalRef = useRef(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -157,8 +161,8 @@ function MonitoringPageContent() {
   });
   const refreshState = useRef({ handleRefresh, busy: false });
   useEffect(() => {
-    refreshState.current = { handleRefresh, busy: loading || executionLoading || feedbackLoading };
-  }, [handleRefresh, loading, executionLoading, feedbackLoading]);
+    refreshState.current = { handleRefresh, busy: refreshing };
+  }, [handleRefresh, refreshing]);
   useEffect(() => {
     intervalRef.current = refreshInterval;
     countdown.current = refreshInterval;
@@ -228,10 +232,10 @@ function MonitoringPageContent() {
                 variant="ghost"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={loading || executionLoading || feedbackLoading}
+                disabled={refreshing}
                 className="gap-2 rounded-none px-3"
               >
-                <RefreshCw className={cn('size-3.5', (loading || executionLoading || feedbackLoading) && 'animate-spin')} />
+                <RefreshCw className={cn('size-3.5', refreshing && 'animate-spin')} />
                 {t('monitoring.refreshData')}
                 {refreshInterval > 0 && <span className="min-w-8 text-right text-xs tabular-nums text-muted-foreground">{remainingSeconds}s</span>}
               </Button>
