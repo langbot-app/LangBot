@@ -152,6 +152,9 @@ async def harness():
     )
     ap.plugin_connector = PromptPullConnector(ap)
     ap.agent_run_orchestrator = AgentRunOrchestrator(ap, ap.runner_registry)
+    from langbot.pkg.api.http.service.model import LLMModelsService
+
+    ap.llm_model_service = LLMModelsService(ap)
     ap.agent_service = AgentService(ap)
     try:
         yield ap
@@ -315,4 +318,5 @@ async def test_non_debug_query_keeps_effective_prompt_instead_of_static_config(h
         assert query.prompt is original
         assert pulled == [message.model_dump(mode='json') for message in original.messages]
     else:
-        assert pulled == []
+        # Event-only runs have no pipeline-prepared query; use the runner prompt.
+        assert pulled == [Message(**message).model_dump(mode='json') for message in DEFAULT_PROMPT]

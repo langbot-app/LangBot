@@ -39,7 +39,13 @@ def chain(text):
 def test_omni_config_contains_mainline_options_and_help(name):
     legacy = yaml.safe_load((PLATFORM / 'sources' / f'{name}.yaml').read_text())['spec']
     omni = yaml.safe_load((PLATFORM / 'adapters' / name / 'manifest.yaml').read_text())['spec']
-    assert {c['name'] for c in legacy['config']} <= {c['name'] for c in omni['config']}
+    legacy_options = {c['name'] for c in legacy['config']}
+    omni_options = {c['name'] for c in omni['config']}
+    if name == 'lark':
+        # Identity is discovered through the bot info API, not a configured name.
+        legacy_options.remove('bot_name')
+        assert 'bot_name' not in omni_options
+    assert legacy_options <= omni_options
     assert omni['help_links'] == legacy['help_links']
 
 

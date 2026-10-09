@@ -99,6 +99,9 @@ def _make_app():
         get=AsyncMock(return_value=SimpleNamespace(usages=['agent'], config_schema=[])),
         list_runners=AsyncMock(return_value=[]),
     )
+    from langbot.pkg.api.http.service.model import LLMModelsService
+
+    app.llm_model_service = LLMModelsService(app)
     app.tool_mgr = None
     app.logger = Mock()
     return app
@@ -877,7 +880,9 @@ async def test_event_processor_rejects_invalid_component_and_missing_parameters(
         )
     )
     with pytest.raises(ValueError, match='Required processor parameter'):
-        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c'})
+        await service.create_agent(
+            WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c', 'parameters': {}}
+        )
 
 
 async def test_unavailable_event_processor_can_still_be_renamed():
