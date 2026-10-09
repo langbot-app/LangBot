@@ -538,6 +538,9 @@ const enUS = {
     help: 'Get Help',
   },
   models: {
+    starModel: 'Star model (default for new processors)',
+    unstarModel: 'Unstar model',
+    starModelFailed: 'Could not update starred model',
     codex: {
       account: 'ChatGPT subscription',
       description:

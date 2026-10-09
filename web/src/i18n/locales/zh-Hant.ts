@@ -502,6 +502,9 @@ const zhHant = {
     help: '查看說明文件',
   },
   models: {
+    starModel: '標星模型（用作新處理器的預設模型）',
+    unstarModel: '取消標星',
+    starModelFailed: '無法更新標星模型',
     codex: {
       account: 'ChatGPT 訂閱',
       description:

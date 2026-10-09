@@ -545,6 +545,9 @@ const esES = {
     help: 'Obtener ayuda',
   },
   models: {
+    starModel: 'Marcar como favorito para nuevos procesadores',
+    unstarModel: 'Quitar de favoritos',
+    starModelFailed: 'No se pudo actualizar el modelo favorito',
     codex: {
       account: 'Suscripción de ChatGPT',
       description:

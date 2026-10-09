@@ -372,6 +372,18 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/agents', agent);
   }
 
+  public getStarredModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/starred');
+  }
+
+  public setStarredModel(uuid: string | null): Promise<object> {
+    return this.put('/api/v1/provider/models/llm/_/starred', { uuid });
+  }
+
+  public getDefaultModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/default');
+  }
+
   public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
     return this.put(`/api/v1/agents/${uuid}`, agent);
   }

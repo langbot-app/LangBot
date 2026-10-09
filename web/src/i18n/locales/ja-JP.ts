@@ -539,6 +539,9 @@ const jaJP = {
     help: 'ヘルプドキュメントを見る',
   },
   models: {
+    starModel: '新規処理器の既定モデルに設定',
+    unstarModel: 'スターを解除',
+    starModelFailed: 'スター付きモデルを更新できませんでした',
     codex: {
       account: 'ChatGPT サブスクリプション',
       description:

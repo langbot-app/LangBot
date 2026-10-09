@@ -103,6 +103,17 @@ export default function AgentCreateContent({
     const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
     const config = { runner: { id: runner }, runner_config: { [runner]: parameters } };
     try {
+      if (kind === 'pipeline' && runnerStage?.config.some((field) => ['llm-model-selector', 'select-llm-model', 'model-fallback-selector'].includes(field.type))) {
+        const { uuid } = await httpClient.getDefaultModel();
+        if (uuid) {
+          for (const field of runnerStage.config) {
+            if (['llm-model-selector', 'select-llm-model'].includes(field.type) && !parameters[field.name]) parameters[field.name] = uuid;
+            if (field.type === 'model-fallback-selector' && !parameters[field.name]?.primary) {
+              parameters[field.name] = { ...parameters[field.name], primary: uuid, fallbacks: parameters[field.name]?.fallbacks ?? [] };
+            }
+          }
+        }
+      }
       if (kind === 'pipeline') {
         // Keep the created ID if configuration fails, so retry does not create duplicates.
         const uuid = createdPipeline.current ?? (await httpClient.createAgent({ kind, name: values.name, description: '', emoji: values.emoji })).uuid;

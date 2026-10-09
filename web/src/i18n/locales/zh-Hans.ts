@@ -505,6 +505,9 @@ const zhHans = {
     help: '查看帮助文档',
   },
   models: {
+    starModel: '标星模型（用作新处理器的默认模型）',
+    unstarModel: '取消标星',
+    starModelFailed: '无法更新标星模型',
     codex: {
       account: 'ChatGPT 订阅',
       description:

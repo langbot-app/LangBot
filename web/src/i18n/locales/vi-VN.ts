@@ -535,6 +535,9 @@ const viVN = {
     help: 'Trợ giúp',
   },
   models: {
+    starModel: 'Đánh dấu làm mô hình mặc định cho bộ xử lý mới',
+    unstarModel: 'Bỏ đánh dấu',
+    starModelFailed: 'Không thể cập nhật mô hình được đánh dấu',
     codex: {
       account: 'Gói đăng ký ChatGPT',
       description:

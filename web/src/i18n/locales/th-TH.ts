@@ -529,6 +529,9 @@ const thTH = {
     help: 'ขอความช่วยเหลือ',
   },
   models: {
+    starModel: 'ติดดาวเพื่อใช้เป็นค่าเริ่มต้นสำหรับตัวประมวลผลใหม่',
+    unstarModel: 'ยกเลิกดาว',
+    starModelFailed: 'อัปเดตโมเดลที่ติดดาวไม่สำเร็จ',
     codex: {
       account: 'การสมัครสมาชิก ChatGPT',
       description:

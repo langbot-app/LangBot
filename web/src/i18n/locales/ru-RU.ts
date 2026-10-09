@@ -541,6 +541,9 @@ const ruRU = {
     help: 'Помощь',
   },
   models: {
+    starModel: 'Отметить модель для новых обработчиков',
+    unstarModel: 'Снять отметку',
+    starModelFailed: 'Не удалось изменить избранную модель',
     codex: {
       account: 'Подписка ChatGPT',
       description:
