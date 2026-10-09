@@ -1179,7 +1179,7 @@ function RouteDryRunDialog({
 interface BindingCardProps {
   binding: EventBinding;
   globalIndex: number;
-  routeStatus?: BotEventRouteStatus;
+
   eventOptions: string[];
   agentOptions: Agent[];
   expandedIds: Set<string>;
@@ -1193,7 +1193,6 @@ interface BindingCardProps {
 function BindingCardContent({
   binding,
   globalIndex,
-  routeStatus,
   eventOptions,
   agentOptions,
   expandedIds,
@@ -1209,8 +1208,6 @@ function BindingCardContent({
   const isExpanded = expandedIds.has(id);
   const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
-  const statusTime = formatRouteStatusTime(routeStatus?.timestamp);
-  const statusDetail = routeStatusDetail(routeStatus, t);
 
   return (
     <div
@@ -1342,23 +1339,6 @@ function BindingCardContent({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border-t px-3 py-1.5">
-        <Badge
-          variant="outline"
-          className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
-            routeStatus?.last_status,
-          )}`}
-        >
-          {routeStatusLabel(routeStatus?.last_status, t)}
-        </Badge>
-        <span
-          className="min-w-0 truncate text-[11px] text-muted-foreground"
-          title={statusTime ? `${statusDetail} · ${statusTime}` : statusDetail}
-        >
-          {statusDetail || statusTime}
-        </span>
-      </div>
-
       {/* conditions panel */}
       {isExpanded && (
         <div className="border-t px-3 py-2.5">
@@ -1429,6 +1409,7 @@ export default function EventBindingsEditor({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [disabledSectionOpen, setDisabledSectionOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeStatusError, setRouteStatusError] = useState<string | null>(null);
@@ -1455,13 +1436,7 @@ export default function EventBindingsEditor({
     () => (supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS),
     [supportedEvents],
   );
-  const routeStatusByBinding = useMemo(() => {
-    const map = new Map<string, BotEventRouteStatus>();
-    routeStatuses.forEach((status) => {
-      if (status.binding_id) map.set(String(status.binding_id), status);
-    });
-    return map;
-  }, [routeStatuses]);
+
   const routeConflicts = useMemo(
     () => findRouteConflicts(bindings),
     [bindings],
@@ -1496,7 +1471,9 @@ export default function EventBindingsEditor({
     setRouteStatusError(null);
     try {
       const response = await backendClient.getBotEventRouteStatuses(botId);
-      setRouteStatuses(response.routes || []);
+      setRouteStatuses([...response.routes, ...response.unmatched_events, ...response.stale_routes]
+        .filter((record) => record.last_status)
+        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
     } catch (error) {
       console.error('Failed to refresh Bot event route status', error);
       setRouteStatusError(t('bots.routeStatusRefreshFailed'));
@@ -1506,8 +1483,8 @@ export default function EventBindingsEditor({
   }, [botId, t]);
 
   useEffect(() => {
-    refreshRouteStatuses();
-  }, [refreshRouteStatuses]);
+    if (recordsOpen) void refreshRouteStatuses();
+  }, [recordsOpen, refreshRouteStatuses]);
 
   function updateBindings(next: EventBinding[]) {
     form.setValue('event_bindings', next, { shouldDirty: true });
@@ -1674,11 +1651,6 @@ export default function EventBindingsEditor({
                   sortableId={idsRef.current[sortIdx]}
                   binding={binding}
                   globalIndex={globalIdx}
-                  routeStatus={
-                    binding.id
-                      ? routeStatusByBinding.get(String(binding.id))
-                      : undefined
-                  }
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
                   expandedIds={expandedIds}
@@ -1695,11 +1667,6 @@ export default function EventBindingsEditor({
             <BindingCardContent
               binding={activeBinding}
               globalIndex={activeGlobalIdx}
-              routeStatus={
-                activeBinding.id
-                  ? routeStatusByBinding.get(String(activeBinding.id))
-                  : undefined
-              }
               eventOptions={eventOptions}
               agentOptions={agentOptions}
               expandedIds={expandedIds}
@@ -1791,26 +1758,43 @@ export default function EventBindingsEditor({
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={`size-8 ${routeStatusError ? 'text-destructive' : 'text-muted-foreground'}`}
-              aria-label={t('bots.refreshRouteStatus')}
-              onClick={refreshRouteStatuses}
-              disabled={!botId || routeStatusLoading}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {routeStatusError || t('bots.refreshRouteStatus')}
-          </TooltipContent>
-        </Tooltip>
+        <Button type="button" variant="outline" size="sm" disabled={!botId} onClick={() => setRecordsOpen(true)}>
+          <ListChecks className="mr-1 size-4" />
+          {t('bots.matchRecords')}
+        </Button>
+        <Dialog open={recordsOpen} onOpenChange={setRecordsOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{t('bots.matchRecords')}</DialogTitle>
+              <DialogDescription>{t('bots.matchRecordsDescription')}</DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={refreshRouteStatuses} disabled={routeStatusLoading}>
+                <RefreshCw className={`mr-2 size-4 ${routeStatusLoading ? 'animate-spin' : ''}`} />
+                {t('monitoring.refreshData')}
+              </Button>
+            </div>
+            {routeStatusError && <p role="alert" className="text-sm text-destructive">{routeStatusError}</p>}
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {routeStatuses.map((record, index) => (
+                <div key={`${record.binding_id}:${record.seq_id}:${index}`} className="space-y-2 rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex-1 text-sm font-medium">{eventLabel(record.event_type || record.event_pattern || '*', t)}</span>
+                    <Badge variant="outline" className={routeStatusBadgeClass(record.last_status)}>{routeStatusLabel(record.last_status, t)}</Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{formatRouteStatusTime(record.timestamp)}</div>
+                  {record.target_type && <div className="break-words text-sm">{record.target_type}{record.target_uuid ? ` · ${agentOptions.find((agent) => agent.uuid === record.target_uuid)?.name || record.target_uuid}` : ''}</div>}
+                  <p className="text-sm text-muted-foreground">{routeStatusDetail(record, t)}</p>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">{t('monitoring.unified.metadata')}</summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{JSON.stringify(record, null, 2)}</pre>
+                  </details>
+                </div>
+              ))}
+              {!routeStatuses.length && <p className="py-8 text-center text-sm text-muted-foreground">{t(routeStatusLoading ? 'common.loading' : 'monitoring.unified.noRecords')}</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* disabled section */}
@@ -1838,9 +1822,6 @@ export default function EventBindingsEditor({
                   key={b.id ?? i}
                   binding={b}
                   globalIndex={i}
-                  routeStatus={
-                    b.id ? routeStatusByBinding.get(String(b.id)) : undefined
-                  }
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
                   expandedIds={expandedIds}

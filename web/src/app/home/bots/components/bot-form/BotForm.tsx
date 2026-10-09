@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EventBindingsEditor from './EventBindingsEditor';
+import EventRoutingHelp from './EventRoutingHelp';
+import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginProcessorBindings from './PluginProcessorBindings';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -866,10 +868,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       className="border-t pt-5"
                       data-adapter-category="legacy"
                     >
+                      <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => setShowLegacyAdapters((value) => !value)}
-                        className="flex w-full items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+                        className="flex items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
                         aria-expanded={showLegacyAdapters || !!adapterQuery}
                       >
                         {showLegacyAdapters || adapterQuery ? (
@@ -882,6 +885,8 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                           {galleryLegacyAdapters.length}
                         </span>
                       </button>
+                      <LegacyAdapterHelp />
+                      </div>
                       {(showLegacyAdapters || !!adapterQuery) && (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           {galleryLegacyAdapters.map((item) => (
@@ -1220,7 +1225,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               )}
             >
               <CardHeader>
-                <CardTitle>{t('bots.eventRouting')}</CardTitle>
+                <CardTitle className="flex items-center gap-1.5">{t('bots.eventRouting')}<EventRoutingHelp /></CardTitle>
                 <CardDescription>
                   {t('bots.eventRoutingDescription')}
                 </CardDescription>

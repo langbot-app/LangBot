@@ -74,7 +74,10 @@ export default function PluginProcessorDetailContent({
     componentRef,
     parameters: initialParameters,
   });
-  const dirty =
+  const [needsInitialSave, setNeedsInitialSave] = useState(
+    Boolean(agent.component_ref) && !agent.supported_event_patterns?.length,
+  );
+  const dirty = needsInitialSave ||
     componentRef !== savedConfig.componentRef ||
     !isEqual(parameters, savedConfig.parameters);
   const [runs, setRuns] = useState<ProcessorRun[]>([]);
@@ -341,6 +344,7 @@ export default function PluginProcessorDetailContent({
       toast.success(t('agents.saveSuccess'));
       onSaved();
       setSavedConfig({ componentRef, parameters });
+      setNeedsInitialSave(false);
       await load();
       return true;
     } catch {

@@ -25,6 +25,7 @@ import { formatRunDuration } from '@/app/home/agents/components/processor-run-ti
 import { formatDateTime } from '../../utils/dateUtils';
 import {
   executionKindLabel,
+  ExecutionKindBadge,
   executionProcessorLabel,
   executionStatusLabel,
 } from './ExecutionTable';
@@ -384,9 +385,7 @@ export default function ExecutionDetailSheet({
                   <Badge status={record.status_group}>
                     {executionStatusLabel(record, t)}
                   </Badge>
-                  <Badge variant="outline">
-                    {executionKindLabel(record, t)}
-                  </Badge>
+                  <ExecutionKindBadge row={record} />
                   {record.debug && (
                     <Badge status="debug">
                       {t('monitoring.execution.debug')}

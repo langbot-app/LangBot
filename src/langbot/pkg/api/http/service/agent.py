@@ -531,6 +531,7 @@ class AgentService:
 
     async def _prepare_event_processor(self, context, data, existing=None):
         """Resolve an installed component and keep its capability declaration authoritative."""
+        draft = existing is None and 'config' not in data and 'parameters' not in data
         config = copy.deepcopy(data.get('config', existing.config if existing is not None else {}))
         if not isinstance(config, dict):
             raise ValueError('Processor configuration must be an object')
@@ -562,10 +563,12 @@ class AgentService:
         if not isinstance(parameters, dict):
             raise ValueError('Processor parameters must be an object')
         for field in descriptor.config_schema:
-            if field.get('required') and parameters.get(field['name']) in (None, ''):
+            if not draft and field.get('required') and parameters.get(field['name']) in (None, ''):
                 raise ValueError(f'Required processor parameter: {field["name"]}')
         config['runner_config'] = {component_ref: parameters}
-        return config, component_ref, descriptor.supported_event_patterns
+        # Component-only creation keeps defaults for the detail form, but does
+        # not subscribe to events until configuration is saved and validated.
+        return config, component_ref, [] if draft else descriptor.supported_event_patterns
 
     async def get_processor_runs(self, context, processor_id, *, before_id=None):
         """Read only this Workspace's Agent or plugin processor runs."""

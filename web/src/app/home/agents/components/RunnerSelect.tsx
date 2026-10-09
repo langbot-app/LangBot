@@ -521,6 +521,18 @@ export default function RunnerSelect({
               </div>
             )}
           </SelectGroup>
+              <SelectSeparator />
+              <a
+                href="https://langbot.app/docs/zh/plugin/dev/components/runner"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {t(usage === 'event' ? 'bots.routingHelp.docs' : 'bots.routingHelp.runnerDocs')}
+                <ExternalLink className="size-3" />
+              </a>
         </SelectContent>
       </Select>
 

@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { backendClient } from '@/app/infra/http';
+import { resolveMonitoringWindow } from '../utils/dateUtils';
 import { FilterState } from '../types/monitoring';
 
 export type ExportType =
@@ -38,44 +39,7 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
   const { t } = useTranslation();
   const [exporting, setExporting] = useState<ExportType | null>(null);
 
-  const getDateRangeParams = (): { startTime: string; endTime: string } => {
-    const now = new Date();
-    let startTime: Date;
-    let endTime: Date = now;
-
-    switch (filterState.timeRange) {
-      case 'lastHour':
-        startTime = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'last6Hours':
-        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case 'last24Hours':
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case 'last7Days':
-        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'last30Days':
-        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case 'custom':
-        if (filterState.customDateRange) {
-          startTime = filterState.customDateRange.from;
-          endTime = filterState.customDateRange.to;
-        } else {
-          startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        }
-        break;
-      default:
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    }
-
-    return {
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-    };
-  };
+  const getDateRangeParams = () => resolveMonitoringWindow(filterState.timeRange, filterState.customDateRange);
 
   const handleExport = async (type: ExportType) => {
     setExporting(type);

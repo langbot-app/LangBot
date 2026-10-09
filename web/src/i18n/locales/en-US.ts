@@ -76,6 +76,14 @@ const enUS = {
   sidebarGuide: {
     steps: {
       monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
         title: 'Review activity',
         description:
           'Review bot activity, model usage, message volume, and system performance at a glance.',
@@ -157,6 +165,14 @@ const enUS = {
           'Send test messages to check triggers, AI replies, and output processing. Any configuration changes are saved before testing.',
       },
       monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
         title: 'Review run history',
         description:
           'Use the tab beside the title to review past conversations, processing steps, and errors when replies are missing or unexpected.',
@@ -787,7 +803,7 @@ const enUS = {
     legacyAdapters: 'Legacy adapters',
     legacyAdapterBadge: 'Legacy',
     legacyAdaptersHint:
-      'These adapters have newer event-driven counterparts.\nThey are kept only for existing configurations and are not recommended for new bots.',
+      'Legacy adapters mainly send and receive messages and remain available for existing bot configurations.\nNew adapters connect to the same platform using events, including messages and supported friend requests or group changes, routed to processors.\nPrefer the new adapter for new bots. Existing bots can keep using legacy adapters. When switching, review connection settings and event routes; this does not upgrade your platform account.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
     bindPipeline: 'Bind Pipeline',
@@ -808,6 +824,25 @@ const enUS = {
     routingConnection: 'Routing & Connection',
     routingConnectionDescription:
       'Bind the pipeline that processes messages for this bot',
+    routingHelp: {
+      title: 'What is event routing?',
+      intro: 'Bots receive more than messages: friend requests, group invitations and other events too.',
+      events: 'Incoming events',
+      agents: 'Different agents',
+      message: 'Message received',
+      friend: 'Friend request',
+      group: 'Joined a group',
+      messageAction: 'Reply agent → Answer',
+      friendAction: 'Review agent → Review',
+      groupAction: 'Welcome agent → Greet',
+      rules: 'Your routing rules · Example',
+      instructions: 'Agents follow your instructions and use tools to reply, review requests and more.',
+      plugin: 'For advanced workflows, plugin processors register events in bulk and handle them with code. Add a plugin processor configuration below.',
+      docs: 'Develop your own plugin processor',
+      runnerDocs: 'Develop your own Agent runner',
+      pause: 'Pause',
+      play: 'Play',
+    },
     eventRouting: 'Event Routing',
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
@@ -870,6 +905,8 @@ const enUS = {
     routeFallbackCatchAll: '{{route}} is the catch-all route.',
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
+    matchRecords: 'Match records',
+    matchRecordsDescription: 'Latest result for each rule and recent unmatched events, from bot memory logs. Cleared on restart.',
     testRoute: 'Check route',
     adapterEventDebugAction: 'Test listener',
     adapterEventDebugTitle: 'Platform event debugging',
@@ -1128,7 +1165,16 @@ const enUS = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Select all',
     monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
       runStatus: "Run status",
       toolCalls: "Tool calls",
       delivery: "Message delivery",
@@ -1243,6 +1289,9 @@ const enUS = {
       'Handle message events only, with AI generating replies directly and practical features such as knowledge bases and plugins.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
+    selectAgentRunner: 'Select Agent runner',
+    selectProcessorPlugin: 'Select processor plugin',
+    createBasicInfoDescription: 'Set a name, icon and plugin',
     chooseType: 'Choose how it works',
     chooseTypeDescription:
       'Choose the processor model first. You can configure it further after creation.',
@@ -2061,6 +2110,14 @@ const enUS = {
       uploading: 'Uploading...',
     },
     monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
       title: 'Run logs',
       workbench: 'Configure & debug',
       description:
@@ -2490,6 +2547,14 @@ const enUS = {
     },
   },
   monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
     unified: {
       inputs: 'Event / input',
       outputs: 'Generated results',
@@ -2642,6 +2707,15 @@ const enUS = {
       feedback: 'User Feedback',
       sessions: 'Session Analysis',
       errors: 'Error Logs',
+    },
+    pipelineTrace: {
+      received: 'Received message',
+      processing: 'Processing',
+      replies: 'Replies',
+      noSteps: 'No model or tool calls recorded',
+      success: 'Success',
+      error: 'Failed',
+      pending: 'Pending',
     },
     messageList: {
       timestamp: 'Timestamp',

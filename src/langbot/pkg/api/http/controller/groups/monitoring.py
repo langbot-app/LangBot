@@ -24,6 +24,14 @@ def parse_iso_datetime(datetime_str: str | None) -> datetime.datetime | None:
     return dt
 
 
+def validate_monitoring_window(start_time: datetime.datetime | None, end_time: datetime.datetime | None) -> None:
+    """Bound explicit dashboard windows to one year without silently truncating them."""
+    if start_time is None:
+        return
+    end = end_time or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    if start_time >= end or end - start_time > datetime.timedelta(days=365):
+        quart.abort(400, description='Monitoring time range must be positive and no longer than 365 days')
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -39,6 +47,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             metrics = await self.ap.monitoring_service.get_overview_metrics(
                 request_context,
@@ -61,6 +70,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             mode = quart.request.args.get('mode', 'all')
             start_time = parse_iso_datetime(quart.request.args.get('startTime'))
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            validate_monitoring_window(start_time, end_time)
 
             result = await self.ap.monitoring_service.get_executions(
                 request_context,
@@ -111,6 +121,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_token_statistics(
                 request_context,
@@ -146,6 +157,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             messages, total = await self.ap.monitoring_service.get_messages(
                 request_context,
@@ -187,6 +199,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             llm_calls, total = await self.ap.monitoring_service.get_llm_calls(
                 request_context,
@@ -226,6 +239,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             tool_calls, total = await self.ap.monitoring_service.get_tool_calls(
                 request_context,
@@ -266,6 +280,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             embedding_calls, total = await self.ap.monitoring_service.get_embedding_calls(
                 request_context,
@@ -307,6 +322,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse is_active
             is_active = None
@@ -354,6 +370,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             errors, total = await self.ap.monitoring_service.get_errors(
                 request_context,
@@ -391,6 +408,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get overview metrics
             overview = await self.ap.monitoring_service.get_overview_metrics(
@@ -512,6 +530,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             """Get detailed analysis for a specific session"""
             start_time = parse_iso_datetime(quart.request.args.get('startTime'))
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            validate_monitoring_window(start_time, end_time)
             analysis = await self.ap.monitoring_service.get_session_analysis(
                 request_context,
                 session_id,
@@ -553,6 +572,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get data based on export type
             if export_type == 'messages':
@@ -743,6 +763,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_feedback_stats(
                 request_context,
@@ -771,6 +792,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse feedback type
             feedback_type = int(feedback_type_str) if feedback_type_str else None

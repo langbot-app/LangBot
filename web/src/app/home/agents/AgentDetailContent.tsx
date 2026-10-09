@@ -1,11 +1,11 @@
 import EntityLoadState from '@/components/EntityLoadState';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { useCurrentWorkspace } from '@/app/infra/http';
+import { useCurrentWorkspace, userInfo } from '@/app/infra/http';
 import { Agent, AgentPlatformTool } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
@@ -33,6 +33,9 @@ import AgentFormComponent, {
   RunnerStatus,
 } from './components/AgentFormComponent';
 
+// Keep the last checked display state across navigation within this app session.
+const runnerStatusCache = new Map<string, RunnerStatus>();
+
 export default function AgentDetailContent({
   id,
   pipelineRevision,
@@ -42,7 +45,7 @@ export default function AgentDetailContent({
 }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const currentWorkspace = useCurrentWorkspace();
   const canManage =
     currentWorkspace?.permissions.includes('resource.manage') ?? false;
@@ -59,7 +62,32 @@ export default function AgentDetailContent({
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [runnerStatus, setRunnerStatus] = useState<RunnerStatus | null>(null);
+  const runnerStatusKey = JSON.stringify([
+    userInfo?.account_uuid, currentWorkspace?.workspace.uuid, id, i18n.language,
+  ]);
+  const [runnerStatusState, setRunnerStatusState] = useState<{
+    key: string; status: RunnerStatus;
+  } | null>(null);
+  const runnerStatus = runnerStatusState?.key === runnerStatusKey
+    ? runnerStatusState.status : runnerStatusCache.get(runnerStatusKey) ?? null;
+  const updateRunnerStatus = useCallback((status: RunnerStatus) => {
+    setRunnerStatusState((previous) => {
+      if (status.tone === 'neutral') {
+        const cached = previous?.key === runnerStatusKey
+          ? previous.status : runnerStatusCache.get(runnerStatusKey);
+        if (cached) return { key: runnerStatusKey, status: cached };
+      }
+      return { key: runnerStatusKey, status };
+    });
+    if (status.tone !== 'neutral' && !formDirty) {
+      runnerStatusCache.delete(runnerStatusKey);
+      runnerStatusCache.set(runnerStatusKey, status);
+      if (runnerStatusCache.size > 100) {
+        const oldest = runnerStatusCache.keys().next().value;
+        if (oldest !== undefined) runnerStatusCache.delete(oldest);
+      }
+    }
+  }, [runnerStatusKey, formDirty]);
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
     'message.received',
   ]);
@@ -78,10 +106,6 @@ export default function AgentDetailContent({
     setDetailEntityName(sidebarItem?.name ?? id);
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
-
-  useEffect(() => {
-    setRunnerStatus(null);
-  }, [id]);
 
   useEffect(() => {
     if (isCreateMode) return;
@@ -258,7 +282,7 @@ export default function AgentDetailContent({
                 }}
                 onDirtyChange={setFormDirty}
                 onSavingChange={setFormSaving}
-                onRunnerStatusChange={setRunnerStatus}
+                onRunnerStatusChange={updateRunnerStatus}
                 onSupportedEventPatternsChange={setSupportedEventPatterns}
                 onPlatformToolsChange={setPlatformTools}
                 guideEnabled={canManage}

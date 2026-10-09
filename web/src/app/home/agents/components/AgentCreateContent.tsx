@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,6 +27,10 @@ import {
 import { Input } from '@/components/ui/input';
 import EmojiPicker from '@/components/ui/emoji-picker';
 import ProcessorTypeDiagram from './ProcessorTypeDiagram';
+import RunnerSelect from './RunnerSelect';
+import type { GetAgentMetadataResponseData } from '@/app/infra/entities/api';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export default function AgentCreateContent({
   onCreated,
@@ -34,10 +38,24 @@ export default function AgentCreateContent({
   onCreated: (agentId: string) => void;
 }) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<AgentKind>('agent');
+  const [kind, setKind] = useState<AgentKind>('pipeline');
+  const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
+  const [runner, setRunner] = useState('');
+  const [loading, setLoading] = useState(true);
+  const createdPipeline = useRef<string | null>(null);
+  const loadMetadata = useCallback(async () => {
+    setLoading(true);
+    try { setMetadata(await httpClient.getAgentMetadata()); }
+    catch { toast.error(t('agents.createError')); }
+    finally { setLoading(false); }
+  }, [t]);
+  useEffect(() => { void loadMetadata(); }, [loadMetadata]);
+  const runnerOptions = kind === 'event_processor'
+    ? (metadata?.event_processors ?? []).map((item) => ({ name: item.id, label: { en_US: item.id, ...item.label } }))
+    : metadata?.runner_config?.stages.find((stage) => stage.name === 'runner')?.config.find((item) => item.name === 'id')?.options ?? [];
+  const selectorLabel = t(kind === 'event_processor' ? 'agents.selectProcessorPlugin' : 'agents.selectAgentRunner');
   const formSchema = z.object({
     name: z.string().min(1, { message: t('agents.nameRequired') }),
-    description: z.string().optional(),
     emoji: z.string().optional(),
   });
   type FormValues = z.infer<typeof formSchema>;
@@ -45,10 +63,20 @@ export default function AgentCreateContent({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      description: '',
-      emoji: '🤖',
+      emoji: '⚙️',
     },
   });
+
+  function selectRunner(value: string, name?: string) {
+    setRunner(value);
+    if (!form.getValues('name').trim()) {
+      const option = runnerOptions.find((item) => item.name === value);
+      const displayName = name || (option ? extractI18nObject(option.label) : '');
+      if (displayName) {
+        form.setValue('name', displayName, { shouldDirty: true, shouldValidate: true });
+      }
+    }
+  }
 
   function handleKindChange(nextKind: AgentKind) {
     const previousDefaultEmoji =
@@ -59,6 +87,9 @@ export default function AgentCreateContent({
         : nextKind === 'event_processor'
           ? '🧩'
           : '🤖';
+    if ((kind === 'event_processor') !== (nextKind === 'event_processor')) {
+      setRunner('');
+    }
     setKind(nextKind);
     const currentEmoji = form.getValues('emoji');
     if (!currentEmoji || currentEmoji === previousDefaultEmoji) {
@@ -67,28 +98,34 @@ export default function AgentCreateContent({
   }
 
   async function handleSubmit(values: FormValues) {
-    return httpClient
-      .createAgent({
-        kind,
-        name: values.name,
-        description: values.description ?? '',
-        emoji:
-          values.emoji ||
-          (kind === 'pipeline'
-            ? '⚙️'
-            : kind === 'event_processor'
-              ? '🧩'
-              : '🤖'),
-      })
-      .then((resp) => {
+    if (!runner) { toast.error(selectorLabel); return; }
+    const runnerStage = metadata?.runner_config?.stages.find((stage) => stage.name === runner);
+    const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
+    const config = { runner: { id: runner }, runner_config: { [runner]: parameters } };
+    try {
+      if (kind === 'pipeline') {
+        // Keep the created ID if configuration fails, so retry does not create duplicates.
+        const uuid = createdPipeline.current ?? (await httpClient.createAgent({ kind, name: values.name, description: '', emoji: values.emoji })).uuid;
+        createdPipeline.current = uuid;
+        const { pipeline } = await httpClient.getPipeline(uuid);
+        await httpClient.updatePipeline(uuid, {
+          name: values.name, emoji: values.emoji,
+          config: { ...pipeline.config, ai: { ...pipeline.config.ai, ...config } },
+        });
         toast.success(t('agents.createSuccess'));
-        onCreated(resp.uuid);
-      })
-      .catch((err) => {
-        toast.error(t('agents.createError') + err.msg);
-      });
+        onCreated(uuid);
+      } else {
+        const response = await httpClient.createAgent({
+          kind, name: values.name, description: '', emoji: values.emoji,
+          component_ref: runner, ...(kind === 'event_processor' ? {} : { config }),
+        });
+        toast.success(t('agents.createSuccess'));
+        onCreated(response.uuid);
+      }
+    } catch (error) {
+      toast.error(t('agents.createError') + String((error as { msg?: string }).msg ?? error));
+    }
   }
-
   const typeOptions = [
     {
       kind: 'pipeline' as const,
@@ -118,7 +155,7 @@ export default function AgentCreateContent({
         <Button
           type="submit"
           form="agent-create-form"
-          disabled={form.formState.isSubmitting}
+          disabled={form.formState.isSubmitting || loading || !runner}
         >
           {t('common.submit')}
         </Button>
@@ -157,8 +194,8 @@ export default function AgentCreateContent({
                   {typeOptions.map((option) => {
                     const Icon = option.icon;
                     return (
+                      <div key={option.kind} className="relative w-full">
                       <ToggleGroupItem
-                        key={option.kind}
                         value={option.kind}
                         data-processor-kind={option.kind}
                         aria-label={`${option.title} ${option.description}`}
@@ -176,6 +213,7 @@ export default function AgentCreateContent({
                           </span>
                         </span>
                       </ToggleGroupItem>
+                      </div>
                     );
                   })}
                 </ToggleGroup>
@@ -185,7 +223,7 @@ export default function AgentCreateContent({
                 <CardHeader>
                   <CardTitle>{t('agents.basicInfo')}</CardTitle>
                   <CardDescription>
-                    {t('agents.basicInfoDescription')}
+                    {t('agents.createBasicInfoDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -195,6 +233,27 @@ export default function AgentCreateContent({
                       onSubmit={form.handleSubmit(handleSubmit)}
                       className="space-y-4"
                     >
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">{selectorLabel}</p>
+                        <RunnerSelect
+                          key={kind === 'event_processor' ? 'event' : 'agent'}
+                          usage={kind === 'event_processor' ? 'event' : 'agent'}
+                          options={runnerOptions}
+                          label={selectorLabel}
+                          value={runner}
+                          onValueChange={selectRunner}
+                          disabled={loading || form.formState.isSubmitting}
+                          installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
+                          onInstalled={(installed) => {
+                            setMetadata((previous) => previous ? { ...previous, runner_config: installed.configTab } : previous);
+                            selectRunner(installed.runner.name, extractI18nObject(installed.runner.label));
+                          }}
+                          onEventProcessorInstalled={(component) => {
+                            setMetadata((previous) => previous ? { ...previous, event_processors: [...(previous.event_processors ?? []).filter((item) => item.id !== component.id), component] } : previous);
+                            selectRunner(component.id, extractI18nObject({ en_US: component.id, ...component.label }));
+                          }}
+                        />
+                      </div>
                       <div className="flex gap-4 items-start">
                         <FormField
                           control={form.control}
@@ -230,21 +289,9 @@ export default function AgentCreateContent({
                         />
                       </div>
 
-                      <FormField
-                        control={form.control}
-                        name="description"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('common.description')}</FormLabel>
-                            <FormControl>
-                              <Input {...field} value={field.value ?? ''} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                     </form>
                   </Form>
+
                 </CardContent>
               </Card>
             </div>
