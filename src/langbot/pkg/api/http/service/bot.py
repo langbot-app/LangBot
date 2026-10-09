@@ -704,7 +704,8 @@ class BotService:
         bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
         try:
-            await self.ap.platform_mgr.load_bot(context, bot)
+            if bot.get('enable'):
+                await self.ap.platform_mgr.load_bot(context, bot)
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
 
@@ -740,8 +741,8 @@ class BotService:
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
-            runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
-            if runtime_bot.enable:
+            if bot.get('enable'):
+                runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
                 await runtime_bot.run()
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc

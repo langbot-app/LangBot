@@ -605,7 +605,6 @@ export default function PluginProcessorDetailContent({
                 hasUnsavedChanges={dirty}
                 beforeRun={save}
                 onRunFinished={() => {
-                  setActiveTab('logs');
                   void refreshLatestRun();
                 }}
                 supportedEventPatterns={component.supported_event_patterns}

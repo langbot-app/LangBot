@@ -450,10 +450,13 @@ class RuntimeBot:
             return {}
         if hasattr(model, 'model_dump'):
             try:
-                return model.model_dump(mode='json')
+                # Native adapter objects are for replying, not event logging.
+                # Exclude them before JSON serialization, since some (OAEvent,
+                # for example) cannot be serialized by Pydantic.
+                return model.model_dump(mode='json', exclude={'source_platform_object'})
             except TypeError:
                 try:
-                    return model.model_dump()
+                    return model.model_dump(exclude={'source_platform_object'})
                 except Exception:
                     return {}
             except Exception:
@@ -2231,6 +2234,10 @@ class PlatformManager:
         )
         binding = _binding
         for bot in result.all():
+            # Disabled drafts may not have the credentials needed to construct
+            # an adapter. They become runtime bots when explicitly enabled.
+            if not bot.enable:
+                continue
             try:
                 if binding is None:
                     binding = await self.ap.workspace_service.get_execution_binding(workspace_uuid)
