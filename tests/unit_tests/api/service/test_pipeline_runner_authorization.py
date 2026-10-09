@@ -58,6 +58,9 @@ async def env(tmp_path):
         pipeline_mgr=NS(load_pipeline=AsyncMock(), remove_pipeline=AsyncMock()),
         sess_mgr=NS(session_list=[]),
         runner_registry=NS(list_runners=AsyncMock(return_value=[NS(id=RID, config_schema=[])])),
+        plugin_connector=NS(is_enable_plugin=False, list_plugins=AsyncMock(return_value=[])),
+        mcp_service=NS(get_mcp_servers=AsyncMock(return_value=[])),
+        skill_service=NS(list_skills=AsyncMock(return_value=[])),
     )
     ap.persistence_mgr = PersistenceManager(ap)
     ap.persistence_mgr.db = NS(get_engine=lambda: engine)
