@@ -1467,9 +1467,15 @@ export default function EventBindingsEditor({
     setRouteStatusError(null);
     try {
       const response = await backendClient.getBotEventRouteStatuses(botId);
-      setRouteStatuses([...response.routes, ...response.unmatched_events, ...response.stale_routes]
-        .filter((record) => record.last_status)
-        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
+      setRouteStatuses(
+        [
+          ...response.routes,
+          ...response.unmatched_events,
+          ...response.stale_routes,
+        ]
+          .filter((record) => record.last_status)
+          .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
+      );
     } catch (error) {
       console.error('Failed to refresh Bot event route status', error);
       setRouteStatusError(t('bots.routeStatusRefreshFailed'));
@@ -1771,7 +1777,13 @@ export default function EventBindingsEditor({
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
         />
-        <Button type="button" variant="outline" size="sm" disabled={!botId} onClick={() => setRecordsOpen(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!botId}
+          onClick={() => setRecordsOpen(true)}
+        >
           <ListChecks className="mr-1 size-4" />
           {t('bots.matchRecords')}
         </Button>
@@ -1779,38 +1791,86 @@ export default function EventBindingsEditor({
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{t('bots.matchRecords')}</DialogTitle>
-              <DialogDescription>{t('bots.matchRecordsDescription')}</DialogDescription>
+              <DialogDescription>
+                {t('bots.matchRecordsDescription')}
+              </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={refreshRouteStatuses} disabled={routeStatusLoading}>
-                <RefreshCw className={`mr-2 size-4 ${routeStatusLoading ? 'animate-spin' : ''}`} />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={refreshRouteStatuses}
+                disabled={routeStatusLoading}
+              >
+                <RefreshCw
+                  className={`mr-2 size-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
+                />
                 {t('monitoring.refreshData')}
               </Button>
             </div>
-            {routeStatusError && <p role="alert" className="text-sm text-destructive">{routeStatusError}</p>}
+            {routeStatusError && (
+              <p role="alert" className="text-sm text-destructive">
+                {routeStatusError}
+              </p>
+            )}
             <div className="max-h-[60vh] space-y-3 overflow-y-auto">
               {routeStatuses.map((record, index) => (
-                <div key={`${record.binding_id}:${record.seq_id}:${index}`} className="space-y-2 rounded-lg border p-3">
+                <div
+                  key={`${record.binding_id}:${record.seq_id}:${index}`}
+                  className="space-y-2 rounded-lg border p-3"
+                >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="flex-1 text-sm font-medium">{eventLabel(record.event_type || record.event_pattern || '*', t)}</span>
-                    <Badge variant="outline" className={routeStatusBadgeClass(record.last_status)}>{routeStatusLabel(record.last_status, t)}</Badge>
+                    <span className="flex-1 text-sm font-medium">
+                      {eventLabel(
+                        record.event_type || record.event_pattern || '*',
+                        t,
+                      )}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={routeStatusBadgeClass(record.last_status)}
+                    >
+                      {routeStatusLabel(record.last_status, t)}
+                    </Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground">{formatRouteStatusTime(record.timestamp)}</div>
-                  {record.target_type && <div className="break-words text-sm">{record.target_type}{record.target_uuid ? ` · ${agentOptions.find((agent) => agent.uuid === record.target_uuid)?.name || record.target_uuid}` : ''}</div>}
-                  <p className="text-sm text-muted-foreground">{routeStatusDetail(record, t)}</p>
+                  <div className="text-xs text-muted-foreground">
+                    {formatRouteStatusTime(record.timestamp)}
+                  </div>
+                  {record.target_type && (
+                    <div className="break-words text-sm">
+                      {record.target_type}
+                      {record.target_uuid
+                        ? ` · ${agentOptions.find((agent) => agent.uuid === record.target_uuid)?.name || record.target_uuid}`
+                        : ''}
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {routeStatusDetail(record, t)}
+                  </p>
                   <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">{t('monitoring.unified.metadata')}</summary>
-                    <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{JSON.stringify(record, null, 2)}</pre>
+                    <summary className="cursor-pointer">
+                      {t('monitoring.unified.metadata')}
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {JSON.stringify(record, null, 2)}
+                    </pre>
                   </details>
                 </div>
               ))}
-              {!routeStatuses.length && <p className="py-8 text-center text-sm text-muted-foreground">{t(routeStatusLoading ? 'common.loading' : 'monitoring.unified.noRecords')}</p>}
+              {!routeStatuses.length && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t(
+                    routeStatusLoading
+                      ? 'common.loading'
+                      : 'monitoring.unified.noRecords',
+                  )}
+                </p>
+              )}
             </div>
           </DialogContent>
         </Dialog>
       </div>
-
-
     </div>
   );
 }

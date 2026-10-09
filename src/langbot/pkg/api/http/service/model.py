@@ -198,6 +198,7 @@ class LLMModelsService:
 
     async def get_starred_model(self, context: TenantContext) -> str | None:
         from ....entity.persistence.metadata import WorkspaceMetadata
+
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(WorkspaceMetadata.value).where(
                 WorkspaceMetadata.workspace_uuid == require_workspace_uuid(context),
@@ -212,6 +213,7 @@ class LLMModelsService:
 
     async def set_starred_model(self, context: TenantContext, model_uuid: str | None) -> None:
         from ....entity.persistence.metadata import WorkspaceMetadata
+
         workspace_uuid = require_workspace_uuid(context)
         if model_uuid and await self.get_llm_model(context, model_uuid) is None:
             raise ValueError('Model not found in this Workspace')
@@ -222,11 +224,16 @@ class LLMModelsService:
         else:
             from sqlalchemy.dialects.sqlite import insert
         statement = insert(WorkspaceMetadata).values(
-            workspace_uuid=workspace_uuid, key='starred_llm_model', value=model_uuid or '',
+            workspace_uuid=workspace_uuid,
+            key='starred_llm_model',
+            value=model_uuid or '',
         )
-        await self.ap.persistence_mgr.execute_async(statement.on_conflict_do_update(
-            index_elements=['workspace_uuid', 'key'], set_={'value': model_uuid or ''},
-        ))
+        await self.ap.persistence_mgr.execute_async(
+            statement.on_conflict_do_update(
+                index_elements=['workspace_uuid', 'key'],
+                set_={'value': model_uuid or ''},
+            )
+        )
 
     async def get_default_model(self, context: TenantContext) -> str | None:
         starred = await self.get_starred_model(context)
@@ -245,9 +252,18 @@ class LLMModelsService:
 
     async def apply_default_model(self, context: TenantContext, schema: list[dict], parameters: dict) -> dict:
         import copy
-        fields = [field for field in schema if field.get('type') in (
-            'llm-model-selector', 'select-llm-model', 'model-fallback-selector',
-        ) and field.get('name')]
+
+        fields = [
+            field
+            for field in schema
+            if field.get('type')
+            in (
+                'llm-model-selector',
+                'select-llm-model',
+                'model-fallback-selector',
+            )
+            and field.get('name')
+        ]
         if not fields:
             return parameters
         model_uuid = await self.get_default_model(context)
@@ -264,6 +280,7 @@ class LLMModelsService:
             elif not result.get(name):
                 result[name] = model_uuid
         return result
+
     async def get_llm_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """Get all LLM models with provider info"""
         result = await self.ap.persistence_mgr.execute_async(

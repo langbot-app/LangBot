@@ -32,6 +32,7 @@ def validate_monitoring_window(start_time: datetime.datetime | None, end_time: d
     if start_time >= end or end - start_time > datetime.timedelta(days=365):
         quart.abort(400, description='Monitoring time range must be positive and no longer than 365 days')
 
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:

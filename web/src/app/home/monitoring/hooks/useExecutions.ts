@@ -31,7 +31,10 @@ export function useExecutions(params: {
   const [nonce, setNonce] = useState(0);
   const workspaceUuid = useCurrentWorkspace()?.workspace.uuid;
   const requestIdRef = useRef(0);
-  const scope = JSON.stringify([workspaceUuid, { ...params, refreshKey: undefined }]);
+  const scope = JSON.stringify([
+    workspaceUuid,
+    { ...params, refreshKey: undefined },
+  ]);
   const [requestScope, setRequestScope] = useState<string | null>(null);
 
   // Memoize filter parameters to prevent unnecessary re-renders
@@ -90,7 +93,7 @@ export function useExecutions(params: {
     } catch (err) {
       if (!isCurrent()) return;
       setRequestScope(scope);
-      setResult((current) => requestScope === scope ? current : null);
+      setResult((current) => (requestScope === scope ? current : null));
       setError(err as Error);
       console.error('Failed to fetch executions:', err);
     } finally {

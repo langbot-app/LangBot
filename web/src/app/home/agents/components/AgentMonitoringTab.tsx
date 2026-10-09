@@ -212,8 +212,13 @@ export default function AgentMonitoringTab({
     (step) => step.kind === 'tool' || step.text.trim() || step.reasoning.trim(),
   );
   const toolSteps = steps.filter((step) => step.kind === 'tool');
-  const sentCount = toolSteps.filter((step) => isReplyStep(step) && !isMockStep(step) && step.status === 'completed').length;
-  const sendFailed = toolSteps.some((step) => isReplyStep(step) && step.status === 'failed');
+  const sentCount = toolSteps.filter(
+    (step) =>
+      isReplyStep(step) && !isMockStep(step) && step.status === 'completed',
+  ).length;
+  const sendFailed = toolSteps.some(
+    (step) => isReplyStep(step) && step.status === 'failed',
+  );
   const duration = selected ? processorRunDuration(selected) : null;
   const failureReason =
     selected?.status_reason ||
@@ -264,7 +269,11 @@ export default function AgentMonitoringTab({
         </Button>
       </div>
       {listError && (
-        <LoadErrorState compact title={t('monitoring.loadError')} onRetry={refresh} />
+        <LoadErrorState
+          compact
+          title={t('monitoring.loadError')}
+          onRetry={refresh}
+        />
       )}
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <section
@@ -383,17 +392,32 @@ export default function AgentMonitoringTab({
                 </div>
                 <div className="grid grid-cols-1 divide-y rounded-lg border bg-muted/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                   <div className="space-y-1 p-4">
-                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.runStatus')}</p>
-                    <p className="text-sm font-semibold">{stateLabel(selected)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('agents.monitoring.runStatus')}
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {stateLabel(selected)}
+                    </p>
                   </div>
                   <div className="space-y-1 p-4">
-                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.toolCalls')}</p>
-                    <p className="text-sm font-semibold tabular-nums">{toolSteps.length}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('agents.monitoring.toolCalls')}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {toolSteps.length}
+                    </p>
                   </div>
                   <div className="space-y-1 p-4">
-                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.delivery')}</p>
-                    <p className={`text-sm font-semibold ${sendFailed ? 'text-destructive' : ''}`}>
-                      {t(`agents.monitoring.${sendFailed ? 'sendFailed' : sentCount ? 'sendCount' : 'noSend'}`, { count: sentCount })}
+                    <p className="text-xs text-muted-foreground">
+                      {t('agents.monitoring.delivery')}
+                    </p>
+                    <p
+                      className={`text-sm font-semibold ${sendFailed ? 'text-destructive' : ''}`}
+                    >
+                      {t(
+                        `agents.monitoring.${sendFailed ? 'sendFailed' : sentCount ? 'sendCount' : 'noSend'}`,
+                        { count: sentCount },
+                      )}
                     </p>
                   </div>
                 </div>
@@ -438,13 +462,21 @@ export default function AgentMonitoringTab({
                 </Card>
                 <h3 className="text-sm font-medium">
                   {t('agents.monitoring.execution')}
-                  <span className="ml-2 text-muted-foreground">{steps.length}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {steps.length}
+                  </span>
                 </h3>
-                {!steps.length && <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('agents.monitoring.noSteps')}</p>}
+                {!steps.length && (
+                  <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                    {t('agents.monitoring.noSteps')}
+                  </p>
+                )}
                 <AgentRunTimeline
                   steps={steps}
                   labels={labels}
-                  active={activeStatuses.has(selected.status) || eventCursor !== null}
+                  active={
+                    activeStatuses.has(selected.status) || eventCursor !== null
+                  }
                 />
                 {events
                   .filter((event) => event.type === 'processor.log')
@@ -493,7 +525,10 @@ export default function AgentMonitoringTab({
             )
           )}
           {traceError && (
-            <LoadErrorState title={t('monitoring.loadError')} onRetry={() => setTraceRevision((value) => value + 1)} />
+            <LoadErrorState
+              title={t('monitoring.loadError')}
+              onRetry={() => setTraceRevision((value) => value + 1)}
+            />
           )}
         </section>
       </div>

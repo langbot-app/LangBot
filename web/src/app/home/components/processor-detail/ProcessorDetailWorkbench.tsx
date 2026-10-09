@@ -89,7 +89,8 @@ export default function ProcessorDetailWorkbench({
   onViewChange,
 }: ProcessorDetailWorkbenchProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeView = searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
+  const activeView =
+    searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
   const hasDebug = Boolean(debugTitle && debugContent);
 
   const configPanel = (
@@ -148,11 +149,14 @@ export default function ProcessorDetailWorkbench({
       value={view ?? activeView}
       onValueChange={(value) => {
         const view = value as 'workbench' | 'monitoring';
-        setSearchParams((current) => {
-          const next = new URLSearchParams(current);
-          next.set('tab', view === 'monitoring' ? 'logs' : 'config');
-          return next;
-        }, { preventScrollReset: true });
+        setSearchParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.set('tab', view === 'monitoring' ? 'logs' : 'config');
+            return next;
+          },
+          { preventScrollReset: true },
+        );
         onViewChange?.(view);
       }}
       className="flex h-full min-h-0 min-w-0 flex-col gap-0"

@@ -26,7 +26,9 @@ export function getPresetDateRange(option: TimeRangeOption): DateRange | null {
     case 'last180Days':
     case 'last365Days':
     case 'last30Days':
-      from.setTime(now.getTime() - Number(option.match(/\d+/)?.[0] ?? 30) * 86400000);
+      from.setTime(
+        now.getTime() - Number(option.match(/\d+/)?.[0] ?? 30) * 86400000,
+      );
       break;
     default:
       return null;
@@ -150,7 +152,9 @@ export function resolveMonitoringWindow(
     case 'last180Days':
     case 'last365Days':
     case 'last30Days':
-      startTime = new Date(now.getTime() - Number(timeRange.match(/\d+/)?.[0] ?? 30) * 86400000);
+      startTime = new Date(
+        now.getTime() - Number(timeRange.match(/\d+/)?.[0] ?? 30) * 86400000,
+      );
       break;
     case 'custom':
       if (customDateRange) {

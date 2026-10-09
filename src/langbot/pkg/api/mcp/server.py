@@ -429,13 +429,17 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump({'uuid': await ap.llm_model_service.get_starred_model(context)})
 
-        @mcp.tool(description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.')
+        @mcp.tool(
+            description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.'
+        )
         async def set_starred_model(model_uuid: str | None = None) -> str:
             context = _authorized(Permission.PROVIDER_SECRET_MANAGE)
             await ap.llm_model_service.set_starred_model(context, model_uuid)
             return _dump({'uuid': model_uuid})
 
-        @mcp.tool(description='Resolve the default LLM model: starred model, then the available Space wizard recommendation.')
+        @mcp.tool(
+            description='Resolve the default LLM model: starred model, then the available Space wizard recommendation.'
+        )
         async def get_default_model() -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump({'uuid': await ap.llm_model_service.get_default_model(context)})

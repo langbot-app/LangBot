@@ -53,33 +53,42 @@ export default function PluginProcessorTrace({
             key={event.sequence ?? index}
             className="min-w-0 overflow-hidden rounded-lg border bg-background"
           >
-              <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-3">
-                <ScrollText className="size-4 text-muted-foreground" />
-                <span className="flex-1 text-sm font-medium">{t('agents.eventProcessor.logsTab')}</span>
-                <Badge status={String(event.data.level)}>{String(event.data.level)}</Badge>
-              </div>
-              <p className={`min-w-0 whitespace-pre-wrap break-words p-4 text-sm leading-7 [overflow-wrap:anywhere] ${event.data.level === 'error' ? 'text-destructive' : ''}`}>
-                {String(event.data.text)}
-              </p>
+            <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-3">
+              <ScrollText className="size-4 text-muted-foreground" />
+              <span className="flex-1 text-sm font-medium">
+                {t('agents.eventProcessor.logsTab')}
+              </span>
+              <Badge status={String(event.data.level)}>
+                {String(event.data.level)}
+              </Badge>
+            </div>
+            <p
+              className={`min-w-0 whitespace-pre-wrap break-words p-4 text-sm leading-7 [overflow-wrap:anywhere] ${event.data.level === 'error' ? 'text-destructive' : ''}`}
+            >
+              {String(event.data.text)}
+            </p>
           </div>
         ) : (
-          <div key={event.sequence ?? index} className="rounded-lg border bg-background p-3">
-          <ProcessorPayload
-            title={
-              <>
-                {t(
-                  `agents.eventProcessor.trace_${event.type.replaceAll('.', '_')}`,
-                  { defaultValue: event.type },
-                )}
-                {typeof event.data.tool_name === 'string' && (
-                  <span className="ml-2 text-muted-foreground">
-                    {toolLabels[event.data.tool_name] || event.data.tool_name}
-                  </span>
-                )}
-              </>
-            }
-            value={event.data}
-          />
+          <div
+            key={event.sequence ?? index}
+            className="rounded-lg border bg-background p-3"
+          >
+            <ProcessorPayload
+              title={
+                <>
+                  {t(
+                    `agents.eventProcessor.trace_${event.type.replaceAll('.', '_')}`,
+                    { defaultValue: event.type },
+                  )}
+                  {typeof event.data.tool_name === 'string' && (
+                    <span className="ml-2 text-muted-foreground">
+                      {toolLabels[event.data.tool_name] || event.data.tool_name}
+                    </span>
+                  )}
+                </>
+              }
+              value={event.data}
+            />
           </div>
         ),
       )}

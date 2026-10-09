@@ -88,16 +88,24 @@ class ExecutionDetailsMixin:
         message = models.MonitoringMessage
         conversation = sa.func.coalesce(
             EventLog.conversation_id,
-            sa.select(AgentRun.conversation_id).where(
+            sa.select(AgentRun.conversation_id)
+            .where(
                 AgentRun.workspace_id == workspace,
                 AgentRun.bot_id == EventLog.bot_id,
                 AgentRun.event_id == EventLog.event_id,
-            ).order_by(AgentRun.id).limit(1).scalar_subquery(),
+            )
+            .order_by(AgentRun.id)
+            .limit(1)
+            .scalar_subquery(),
             sa.case(
-                (self._execution_json_text(EventLog.input_json, 'chat_type') == 'group',
-                 sa.literal('group_') + self._execution_json_text(EventLog.input_json, 'chat_id')),
-                (self._execution_json_text(EventLog.input_json, 'chat_type') == 'private',
-                 sa.literal('person_') + self._execution_json_text(EventLog.input_json, ('sender', 'id'))),
+                (
+                    self._execution_json_text(EventLog.input_json, 'chat_type') == 'group',
+                    sa.literal('group_') + self._execution_json_text(EventLog.input_json, 'chat_id'),
+                ),
+                (
+                    self._execution_json_text(EventLog.input_json, 'chat_type') == 'private',
+                    sa.literal('person_') + self._execution_json_text(EventLog.input_json, ('sender', 'id')),
+                ),
             ),
         )
         values = {
@@ -106,8 +114,12 @@ class ExecutionDetailsMixin:
             'timestamp': sa.func.coalesce(EventLog.event_time, EventLog.created_at),
             'bot_id': EventLog.bot_id,
             'bot_name': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'bot_name'), ''),
-            'pipeline_id': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_uuid')), ''),
-            'pipeline_name': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''),
+            'pipeline_id': sa.func.coalesce(
+                self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_uuid')), ''
+            ),
+            'pipeline_name': sa.func.coalesce(
+                self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
+            ),
             'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
             'session_id': conversation,
             'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
@@ -121,45 +133,62 @@ class ExecutionDetailsMixin:
         }
         columns = list(message.__table__.columns)
         stored = sa.select(*columns).where(message.workspace_uuid == workspace, message.bot_id.in_(bot_ids))
-        incoming = sa.select(*[
-            values.get(column.name, sa.literal(None)).label(column.name) for column in columns
-        ]).where(
+        incoming = sa.select(
+            *[values.get(column.name, sa.literal(None)).label(column.name) for column in columns]
+        ).where(
             EventLog.workspace_id == workspace,
             EventLog.bot_id.in_(bot_ids),
             EventLog.source == 'platform',
             EventLog.event_type == 'message.received',
             conversation.is_not(None),
             conversation != '',
-            ~sa.exists(sa.select(message.id).where(
-                message.workspace_uuid == workspace,
-                message.bot_id == EventLog.bot_id,
-                sa.func.coalesce(message.role, 'user') != 'assistant',
-                sa.or_(message.event_id == EventLog.event_id, message.id == EventLog.event_id),
-            )),
+            ~sa.exists(
+                sa.select(message.id).where(
+                    message.workspace_uuid == workspace,
+                    message.bot_id == EventLog.bot_id,
+                    sa.func.coalesce(message.role, 'user') != 'assistant',
+                    sa.or_(message.event_id == EventLog.event_id, message.id == EventLog.event_id),
+                )
+            ),
         )
         return sa.union_all(stored, incoming).subquery()
 
     async def _session_projection_page(self, workspace, statement, limit, offset):
-        count = (await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))).scalar_one()
+        count = (
+            await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))
+        ).scalar_one()
         rows = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
         return [
             {key: value.isoformat() if isinstance(value, datetime.datetime) else value for key, value in row.items()}
             for row in rows
         ], count
 
-    async def get_bot_conversation_sessions(self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset):
+    async def get_bot_conversation_sessions(
+        self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset
+    ):
         """Read session summaries across processor types without mutating history."""
         messages = self._session_message_source(workspace, bot_ids)
         key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
-        ranked = sa.select(
-            *messages.c,
-            sa.func.row_number().over(partition_by=key, order_by=[
-                sa.case((messages.c.role == 'user', 0), else_=1), messages.c.timestamp.desc(), messages.c.id.desc(),
-            ]).label('position'),
-            sa.func.min(messages.c.timestamp).over(partition_by=key).label('first_seen'),
-            sa.func.max(messages.c.timestamp).over(partition_by=key).label('last_seen'),
-            sa.func.count().over(partition_by=key).label('count'),
-        ).where(messages.c.session_id != '').subquery()
+        ranked = (
+            sa.select(
+                *messages.c,
+                sa.func.row_number()
+                .over(
+                    partition_by=key,
+                    order_by=[
+                        sa.case((messages.c.role == 'user', 0), else_=1),
+                        messages.c.timestamp.desc(),
+                        messages.c.id.desc(),
+                    ],
+                )
+                .label('position'),
+                sa.func.min(messages.c.timestamp).over(partition_by=key).label('first_seen'),
+                sa.func.max(messages.c.timestamp).over(partition_by=key).label('last_seen'),
+                sa.func.count().over(partition_by=key).label('count'),
+            )
+            .where(messages.c.session_id != '')
+            .subquery()
+        )
         session = models.MonitoringSession
         fields = list(session.__table__.columns)
         projected = {
@@ -168,15 +197,21 @@ class ExecutionDetailsMixin:
             'message_count': ranked.c['count'],
             'is_active': sa.literal(True),
         }
-        derived = sa.select(*[
-            (projected[field.name] if field.name in projected else ranked.c[field.name]).label(field.name)
-            for field in fields
-        ]).where(ranked.c.position == 1)
+        derived = sa.select(
+            *[
+                (projected[field.name] if field.name in projected else ranked.c[field.name]).label(field.name)
+                for field in fields
+            ]
+        ).where(ranked.c.position == 1)
         existing = sa.select(*fields).where(session.workspace_uuid == workspace, session.bot_id.in_(bot_ids))
         combined = sa.union_all(existing, derived).subquery()
         group = [combined.c.workspace_uuid, combined.c.bot_id, combined.c.session_id]
         merged = sa.select(
-            *[combined.c[field.name] for field in fields if field.name not in {'message_count', 'start_time', 'last_activity'}],
+            *[
+                combined.c[field.name]
+                for field in fields
+                if field.name not in {'message_count', 'start_time', 'last_activity'}
+            ],
             sa.func.max(combined.c.message_count).over(partition_by=group).label('message_count'),
             sa.func.min(combined.c.start_time).over(partition_by=group).label('start_time'),
             sa.func.max(combined.c.last_activity).over(partition_by=group).label('last_activity'),
@@ -193,7 +228,10 @@ class ExecutionDetailsMixin:
         if is_active is not None:
             query = query.where(merged.c.is_active == is_active)
         return await self._session_projection_page(
-            workspace, query.order_by(merged.c.last_activity.desc(), merged.c.session_id), limit, offset,
+            workspace,
+            query.order_by(merged.c.last_activity.desc(), merged.c.session_id),
+            limit,
+            offset,
         )
 
     def _execution_json_text(self, column, key):
@@ -320,12 +358,10 @@ class ExecutionDetailsMixin:
             # Delivered pipeline ingress is not an unhandled execution, including
             # older queued/aggregated messages whose trace identity was lost.
             ~sa.and_(
-                sa.func.coalesce(
-                    self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
-                ) == 'pipeline',
-                sa.func.coalesce(
-                    self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'status')), ''
-                ) == 'delivered',
+                sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), '')
+                == 'pipeline',
+                sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'status')), '')
+                == 'delivered',
             ),
             ~sa.exists(
                 sa.select(AgentRun.id).where(
@@ -396,10 +432,13 @@ class ExecutionDetailsMixin:
             linked = await self._execution_query(
                 workspace,
                 sa.select(models.MonitoringMessage.id, AgentRun)
-                .join(AgentRun, sa.and_(
-                    AgentRun.workspace_id == workspace,
-                    AgentRun.run_id == models.MonitoringMessage.run_id,
-                ))
+                .join(
+                    AgentRun,
+                    sa.and_(
+                        AgentRun.workspace_id == workspace,
+                        AgentRun.run_id == models.MonitoringMessage.run_id,
+                    ),
+                )
                 .where(
                     models.MonitoringMessage.workspace_uuid == workspace,
                     models.MonitoringMessage.id.in_(pipeline_items),
@@ -407,10 +446,9 @@ class ExecutionDetailsMixin:
             )
             for message_id, run in linked.all():
                 metrics = self._serialize_agent_execution(run)
-                pipeline_items[message_id].update({
-                    key: metrics[key]
-                    for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')
-                })
+                pipeline_items[message_id].update(
+                    {key: metrics[key] for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')}
+                )
 
             calls = models.MonitoringLLMCall
             usage_rows = await self._execution_query(
@@ -420,10 +458,12 @@ class ExecutionDetailsMixin:
                     sa.func.sum(calls.input_tokens),
                     sa.func.sum(calls.output_tokens),
                     sa.func.sum(calls.total_tokens),
-                ).where(
+                )
+                .where(
                     calls.workspace_uuid == workspace,
                     calls.message_id.in_(pipeline_items),
-                ).group_by(calls.message_id),
+                )
+                .group_by(calls.message_id),
             )
             for message_id, input_tokens, output_tokens, total_tokens in usage_rows.all():
                 if not pipeline_items[message_id].get('usage'):

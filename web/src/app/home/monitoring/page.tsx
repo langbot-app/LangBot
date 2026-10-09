@@ -9,7 +9,12 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
 import LoadErrorState from '@/components/LoadErrorState';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -62,7 +67,12 @@ function MonitoringPageContent() {
   } = useMonitoringFilters();
   const executionMode = filterState.mode ?? 'all';
   const executionStatus = filterState.statusGroup ?? 'all';
-  const { data, loading: monitoringRefreshing, error, refetch } = useMonitoringData({
+  const {
+    data,
+    loading: monitoringRefreshing,
+    error,
+    refetch,
+  } = useMonitoringData({
     ...filterState,
     mode: executionMode,
     statusGroup: executionStatus,
@@ -140,7 +150,8 @@ function MonitoringPageContent() {
   const loading = monitoringRefreshing && !data;
   const executionLoading = executionRefreshing && !executionResult;
   const feedbackLoading = feedbackRefreshing && !feedbackStats;
-  const refreshing = monitoringRefreshing || executionRefreshing || feedbackRefreshing;
+  const refreshing =
+    monitoringRefreshing || executionRefreshing || feedbackRefreshing;
   const countdown = useRef(0);
   const intervalRef = useRef(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -155,9 +166,13 @@ function MonitoringPageContent() {
 
   const [refreshInterval, setRefreshInterval] = useState(() => {
     try {
-      const saved = Number(localStorage.getItem('langbot-dashboard-refresh-interval'));
+      const saved = Number(
+        localStorage.getItem('langbot-dashboard-refresh-interval'),
+      );
       return [5, 15, 30, 60, 300].includes(saved) ? saved : 0;
-    } catch { return 0; }
+    } catch {
+      return 0;
+    }
   });
   const refreshState = useRef({ handleRefresh, busy: false });
   useEffect(() => {
@@ -169,7 +184,10 @@ function MonitoringPageContent() {
     setRemainingSeconds(refreshInterval);
     if (!refreshInterval) return;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && !refreshState.current.busy) {
+      if (
+        document.visibilityState === 'visible' &&
+        !refreshState.current.busy
+      ) {
         countdown.current = Math.max(0, countdown.current - 1);
         setRemainingSeconds(countdown.current);
         if (countdown.current === 0) {
@@ -228,36 +246,76 @@ function MonitoringPageContent() {
               </Button>
               {canExport && <ExportDropdown filterState={filterState} />}
               <div className="relative flex items-center overflow-hidden rounded-lg border bg-background shadow-xs">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="gap-2 rounded-none px-3"
-              >
-                <RefreshCw className={cn('size-3.5', refreshing && 'animate-spin')} />
-                {t('monitoring.refreshData')}
-                {refreshInterval > 0 && <span className="min-w-8 text-right text-xs tabular-nums text-muted-foreground">{remainingSeconds}s</span>}
-              </Button>
-              <Select value={String(refreshInterval)} onValueChange={(value) => {
-                setRefreshInterval(Number(value));
-                try { localStorage.setItem('langbot-dashboard-refresh-interval', value); } catch { /* Storage may be unavailable. */ }
-              }}>
-                <SelectTrigger className="w-11 justify-center rounded-l-none border-0 border-l px-2 shadow-none [&>svg:last-child]:hidden" aria-label={t('monitoring.autoRefreshLabel')} title={refreshInterval ? t('monitoring.autoRefreshEvery', { seconds: refreshInterval }) : t('monitoring.autoRefreshOff')}>
-                  <span aria-hidden="true"><ChevronDown className="size-3.5" /></span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">{t('monitoring.autoRefreshOff')}</SelectItem>
-                  {[5, 15, 30, 60, 300].map((seconds) => (
-                    <SelectItem key={seconds} value={String(seconds)}>
-                      {t('monitoring.autoRefreshEvery', { seconds })}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="gap-2 rounded-none px-3"
+                >
+                  <RefreshCw
+                    className={cn('size-3.5', refreshing && 'animate-spin')}
+                  />
+                  {t('monitoring.refreshData')}
+                  {refreshInterval > 0 && (
+                    <span className="min-w-8 text-right text-xs tabular-nums text-muted-foreground">
+                      {remainingSeconds}s
+                    </span>
+                  )}
+                </Button>
+                <Select
+                  value={String(refreshInterval)}
+                  onValueChange={(value) => {
+                    setRefreshInterval(Number(value));
+                    try {
+                      localStorage.setItem(
+                        'langbot-dashboard-refresh-interval',
+                        value,
+                      );
+                    } catch {
+                      /* Storage may be unavailable. */
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-11 justify-center rounded-l-none border-0 border-l px-2 shadow-none [&>svg:last-child]:hidden"
+                    aria-label={t('monitoring.autoRefreshLabel')}
+                    title={
+                      refreshInterval
+                        ? t('monitoring.autoRefreshEvery', {
+                            seconds: refreshInterval,
+                          })
+                        : t('monitoring.autoRefreshOff')
+                    }
+                  >
+                    <span aria-hidden="true">
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">
+                      {t('monitoring.autoRefreshOff')}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {refreshInterval > 0 && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-blue-500/10" aria-hidden="true">
-                <div className="h-full origin-left bg-blue-500/70 transition-transform duration-700 ease-linear motion-reduce:transition-none" style={{ transform: `scaleX(${remainingSeconds / refreshInterval})` }} />
-              </div>}
+                    {[5, 15, 30, 60, 300].map((seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {t('monitoring.autoRefreshEvery', { seconds })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {refreshInterval > 0 && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-blue-500/10"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full origin-left bg-blue-500/70 transition-transform duration-700 ease-linear motion-reduce:transition-none"
+                      style={{
+                        transform: `scaleX(${remainingSeconds / refreshInterval})`,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -266,7 +324,11 @@ function MonitoringPageContent() {
 
       {/* Content Area */}
       {error ? (
-        <LoadErrorState title={t('monitoring.loadError')} onRetry={handleRefresh} busy={refreshing} />
+        <LoadErrorState
+          title={t('monitoring.loadError')}
+          onRetry={handleRefresh}
+          busy={refreshing}
+        />
       ) : (
         <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
           {/* Overview Section: the execution metrics and the runtime status share
@@ -358,7 +420,11 @@ function MonitoringPageContent() {
 
                 {executionError ? (
                   <div className="px-3 pt-4 sm:px-6">
-                    <LoadErrorState title={t('monitoring.execution.detail.loadError')} onRetry={handleRefresh} busy={refreshing} />
+                    <LoadErrorState
+                      title={t('monitoring.execution.detail.loadError')}
+                      onRetry={handleRefresh}
+                      busy={refreshing}
+                    />
                   </div>
                 ) : (
                   <>

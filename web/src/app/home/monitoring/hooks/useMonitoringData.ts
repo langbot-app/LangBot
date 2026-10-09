@@ -389,7 +389,7 @@ export function useMonitoringData(filterState: FilterState) {
     } catch (err) {
       if (!isCurrent()) return;
       setRequestScope(scope);
-      setData((current) => requestScope === scope ? current : null);
+      setData((current) => (requestScope === scope ? current : null));
       setError(err as Error);
       console.error('Failed to fetch monitoring data:', err);
     } finally {

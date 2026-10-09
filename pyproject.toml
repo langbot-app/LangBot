@@ -236,4 +236,4 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.uv.sources]
-langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git", rev = "646f8bb3c6f4e5e4dc4c03cad8d58a03bad9e174" }
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git", rev = "2f0308cf4c20339a576972202686706176e5412e" }

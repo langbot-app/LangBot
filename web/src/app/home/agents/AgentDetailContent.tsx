@@ -63,31 +63,42 @@ export default function AgentDetailContent({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const runnerStatusKey = JSON.stringify([
-    userInfo?.account_uuid, currentWorkspace?.workspace.uuid, id, i18n.language,
+    userInfo?.account_uuid,
+    currentWorkspace?.workspace.uuid,
+    id,
+    i18n.language,
   ]);
   const [runnerStatusState, setRunnerStatusState] = useState<{
-    key: string; status: RunnerStatus;
+    key: string;
+    status: RunnerStatus;
   } | null>(null);
-  const runnerStatus = runnerStatusState?.key === runnerStatusKey
-    ? runnerStatusState.status : runnerStatusCache.get(runnerStatusKey) ?? null;
-  const updateRunnerStatus = useCallback((status: RunnerStatus) => {
-    setRunnerStatusState((previous) => {
-      if (status.tone === 'neutral') {
-        const cached = previous?.key === runnerStatusKey
-          ? previous.status : runnerStatusCache.get(runnerStatusKey);
-        if (cached) return { key: runnerStatusKey, status: cached };
+  const runnerStatus =
+    runnerStatusState?.key === runnerStatusKey
+      ? runnerStatusState.status
+      : (runnerStatusCache.get(runnerStatusKey) ?? null);
+  const updateRunnerStatus = useCallback(
+    (status: RunnerStatus) => {
+      setRunnerStatusState((previous) => {
+        if (status.tone === 'neutral') {
+          const cached =
+            previous?.key === runnerStatusKey
+              ? previous.status
+              : runnerStatusCache.get(runnerStatusKey);
+          if (cached) return { key: runnerStatusKey, status: cached };
+        }
+        return { key: runnerStatusKey, status };
+      });
+      if (status.tone !== 'neutral' && !formDirty) {
+        runnerStatusCache.delete(runnerStatusKey);
+        runnerStatusCache.set(runnerStatusKey, status);
+        if (runnerStatusCache.size > 100) {
+          const oldest = runnerStatusCache.keys().next().value;
+          if (oldest !== undefined) runnerStatusCache.delete(oldest);
+        }
       }
-      return { key: runnerStatusKey, status };
-    });
-    if (status.tone !== 'neutral' && !formDirty) {
-      runnerStatusCache.delete(runnerStatusKey);
-      runnerStatusCache.set(runnerStatusKey, status);
-      if (runnerStatusCache.size > 100) {
-        const oldest = runnerStatusCache.keys().next().value;
-        if (oldest !== undefined) runnerStatusCache.delete(oldest);
-      }
-    }
-  }, [runnerStatusKey, formDirty]);
+    },
+    [runnerStatusKey, formDirty],
+  );
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
     'message.received',
   ]);

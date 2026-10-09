@@ -314,7 +314,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     `${adapter.label} ${adapter.value} ${adapterDescriptionList[adapter.value] ?? ''}`
       .toLocaleLowerCase()
       .includes(adapterQuery);
-  const galleryGroups = groupByCategory(activeAdapters.filter(matchesAdapterSearch));
+  const galleryGroups = groupByCategory(
+    activeAdapters.filter(matchesAdapterSearch),
+  );
   const galleryLegacyAdapters = legacyAdapters.filter(matchesAdapterSearch);
 
   // Whether the collapsed legacy adapter group is expanded in the Select.
@@ -787,7 +789,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       <Input
                         type="search"
                         value={adapterSearch}
-                        onChange={(event) => setAdapterSearch(event.target.value)}
+                        onChange={(event) =>
+                          setAdapterSearch(event.target.value)
+                        }
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') event.preventDefault();
                         }}
@@ -803,11 +807,15 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 </div>
 
                 <div className="space-y-8">
-                  {galleryGroups.length === 0 && galleryLegacyAdapters.length === 0 && (
-                    <p className="py-8 text-center text-sm text-muted-foreground" role="status">
-                      {t('bots.noMatchingAdapters')}
-                    </p>
-                  )}
+                  {galleryGroups.length === 0 &&
+                    galleryLegacyAdapters.length === 0 && (
+                      <p
+                        className="py-8 text-center text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        {t('bots.noMatchingAdapters')}
+                      </p>
+                    )}
                   {galleryGroups.map((group) => (
                     <section
                       key={group.categoryId ?? 'uncategorized'}
@@ -869,23 +877,25 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       data-adapter-category="legacy"
                     >
                       <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowLegacyAdapters((value) => !value)}
-                        className="flex items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
-                        aria-expanded={showLegacyAdapters || !!adapterQuery}
-                      >
-                        {showLegacyAdapters || adapterQuery ? (
-                          <ChevronDown className="size-4" />
-                        ) : (
-                          <ChevronRight className="size-4" />
-                        )}
-                        {t('bots.legacyAdapters')}
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
-                          {galleryLegacyAdapters.length}
-                        </span>
-                      </button>
-                      <LegacyAdapterHelp />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowLegacyAdapters((value) => !value)
+                          }
+                          className="flex items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+                          aria-expanded={showLegacyAdapters || !!adapterQuery}
+                        >
+                          {showLegacyAdapters || adapterQuery ? (
+                            <ChevronDown className="size-4" />
+                          ) : (
+                            <ChevronRight className="size-4" />
+                          )}
+                          {t('bots.legacyAdapters')}
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                            {galleryLegacyAdapters.length}
+                          </span>
+                        </button>
+                        <LegacyAdapterHelp />
                       </div>
                       {(showLegacyAdapters || !!adapterQuery) && (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1225,7 +1235,10 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               )}
             >
               <CardHeader>
-                <CardTitle className="flex items-center gap-1.5">{t('bots.eventRouting')}<EventRoutingHelp /></CardTitle>
+                <CardTitle className="flex items-center gap-1.5">
+                  {t('bots.eventRouting')}
+                  <EventRoutingHelp />
+                </CardTitle>
                 <CardDescription>
                   {t('bots.eventRoutingDescription')}
                 </CardDescription>

@@ -217,7 +217,8 @@ export default function AgentApiToolPicker({
       if (checked) selection.add(tool.name);
       else selection.delete(tool.name);
     }
-    if (tools.some((tool) => tool.kind === 'platform')) onPlatformChange([...platform]);
+    if (tools.some((tool) => tool.kind === 'platform'))
+      onPlatformChange([...platform]);
     if (tools.some((tool) => tool.kind === 'host')) onHostChange([...host]);
   };
 
@@ -294,8 +295,16 @@ export default function AgentApiToolPicker({
                 <span>{groupLabel(group)}</span>
                 <label className="flex cursor-pointer items-center gap-2">
                   <Checkbox
-                    checked={groupTools.every(isSelected) ? true : groupTools.some(isSelected) ? 'indeterminate' : false}
-                    onCheckedChange={(checked) => setGroup(groupTools, checked === true)}
+                    checked={
+                      groupTools.every(isSelected)
+                        ? true
+                        : groupTools.some(isSelected)
+                          ? 'indeterminate'
+                          : false
+                    }
+                    onCheckedChange={(checked) =>
+                      setGroup(groupTools, checked === true)
+                    }
                     aria-label={`${groupLabel(group)} · ${t('agents.apiToolsSelectAll')}`}
                   />
                   {t('agents.apiToolsSelectAll')}

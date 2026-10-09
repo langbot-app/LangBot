@@ -7,10 +7,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ChevronDown } from 'lucide-react';
 import { DateRange } from '../../types/monitoring';
@@ -162,22 +172,32 @@ export default function MonitoringFilters({
   const [dateOpen, setDateOpen] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const localDate = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const localDate = (date: Date) =>
+    new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
   const openCustom = () => {
-    setFromDate(localDate(customDateRange?.from ?? new Date(Date.now() - 86400000)));
+    setFromDate(
+      localDate(customDateRange?.from ?? new Date(Date.now() - 86400000)),
+    );
     setToDate(localDate(customDateRange?.to ?? new Date()));
     setDateOpen(true);
   };
   const from = new Date(fromDate);
   const to = new Date(toDate);
-  const validDates = Number.isFinite(from.getTime()) && Number.isFinite(to.getTime()) && from < to && to.getTime() - from.getTime() <= 365 * 86400000 && to.getTime() <= Date.now();
+  const validDates =
+    Number.isFinite(from.getTime()) &&
+    Number.isFinite(to.getTime()) &&
+    from < to &&
+    to.getTime() - from.getTime() <= 365 * 86400000 &&
+    to.getTime() <= Date.now();
   const handleTimeRangeChange = (value: string) => {
     if (value === 'custom') customPending.current = true;
     else onTimeRangeChange(value as TimeRangeOption);
   };
   const toggleProcessors = (ids: string[], checked: boolean) => {
     const next = new Set(selectedPipelines);
-    ids.forEach((id) => checked ? next.add(id) : next.delete(id));
+    ids.forEach((id) => (checked ? next.add(id) : next.delete(id)));
     onPipelinesChange([...next]);
   };
   return (
@@ -237,28 +257,82 @@ export default function MonitoringFilters({
         </Label>
         <Popover>
           <PopoverTrigger asChild>
-            <Button id="monitoring-filter-processor" variant="outline" disabled={loadingProcessors} className="h-9 w-full justify-between font-normal">
-              <span className="truncate">{selectedPipelines.length ? t('agents.apiToolsSelected', { count: selectedPipelines.length }) : t('monitoring.filters.allProcessors')}</span>
+            <Button
+              id="monitoring-filter-processor"
+              variant="outline"
+              disabled={loadingProcessors}
+              className="h-9 w-full justify-between font-normal"
+            >
+              <span className="truncate">
+                {selectedPipelines.length
+                  ? t('agents.apiToolsSelected', {
+                      count: selectedPipelines.length,
+                    })
+                  : t('monitoring.filters.allProcessors')}
+              </span>
               <ChevronDown className="ml-2 size-4 shrink-0 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="max-h-96 w-72 overflow-y-auto p-2">
-            <Button variant="ghost" size="sm" className="mb-1 w-full justify-start" onClick={() => onPipelinesChange([])}>{t('monitoring.filters.allProcessors')}</Button>
+          <PopoverContent
+            align="start"
+            className="max-h-96 w-72 overflow-y-auto p-2"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mb-1 w-full justify-start"
+              onClick={() => onPipelinesChange([])}
+            >
+              {t('monitoring.filters.allProcessors')}
+            </Button>
             {['pipeline', 'agent', 'event_processor'].map((kind) => {
               const group = processors.filter((item) => item.kind === kind);
               if (!group.length) return null;
-              const selected = group.filter((item) => selectedPipelines.includes(item.uuid)).length;
-              return <div key={kind} className="border-t py-2">
-                <label className="mb-1 flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted">
-                  <Checkbox checked={selected === group.length ? true : selected ? 'indeterminate' : false} onCheckedChange={(checked) => toggleProcessors(group.map((item) => item.uuid), checked === true)} />
-                  <span className="flex-1">{t(`monitoring.execution.kind.${kind === 'event_processor' ? 'processor' : kind}`)}</span>
-                  <span>{t('agents.apiToolsSelectAll')}</span>
-                </label>
-                {group.map((item) => <label key={item.uuid} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-muted">
-                  <Checkbox checked={selectedPipelines.includes(item.uuid)} onCheckedChange={(checked) => toggleProcessors([item.uuid], checked === true)} />
-                  <span aria-hidden="true">{item.emoji}</span><span className="truncate">{item.name}</span>
-                </label>)}
-              </div>;
+              const selected = group.filter((item) =>
+                selectedPipelines.includes(item.uuid),
+              ).length;
+              return (
+                <div key={kind} className="border-t py-2">
+                  <label className="mb-1 flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted">
+                    <Checkbox
+                      checked={
+                        selected === group.length
+                          ? true
+                          : selected
+                            ? 'indeterminate'
+                            : false
+                      }
+                      onCheckedChange={(checked) =>
+                        toggleProcessors(
+                          group.map((item) => item.uuid),
+                          checked === true,
+                        )
+                      }
+                    />
+                    <span className="flex-1">
+                      {t(
+                        `monitoring.execution.kind.${kind === 'event_processor' ? 'processor' : kind}`,
+                      )}
+                    </span>
+                    <span>{t('agents.apiToolsSelectAll')}</span>
+                  </label>
+                  {group.map((item) => (
+                    <label
+                      key={item.uuid}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-muted"
+                    >
+                      <Checkbox
+                        checked={selectedPipelines.includes(item.uuid)}
+                        onCheckedChange={(checked) =>
+                          toggleProcessors([item.uuid], checked === true)
+                        }
+                      />
+                      <span aria-hidden="true">{item.emoji}</span>
+                      <span className="truncate">{item.name}</span>
+                    </label>
+                  ))}
+                </div>
+              );
             })}
           </PopoverContent>
         </Popover>
@@ -349,21 +423,44 @@ export default function MonitoringFilters({
         >
           {t('monitoring.filters.timeRange')}
         </Label>
-        <Select value={timeRange === 'custom' ? '' : timeRange} onValueChange={handleTimeRangeChange}>
+        <Select
+          value={timeRange === 'custom' ? '' : timeRange}
+          onValueChange={handleTimeRangeChange}
+        >
           <SelectTrigger
             id="monitoring-filter-time"
             className="h-9 w-full min-w-0 gap-2 [&>svg]:shrink-0"
-            title={timeRange === 'custom' && customDateRange ? `${customDateRange.from.toLocaleString()} – ${customDateRange.to.toLocaleString()}` : undefined}
+            title={
+              timeRange === 'custom' && customDateRange
+                ? `${customDateRange.from.toLocaleString()} – ${customDateRange.to.toLocaleString()}`
+                : undefined
+            }
           >
             {timeRange === 'custom' && customDateRange ? (
               <span className="min-w-0 truncate text-xs tabular-nums">
-                {customDateRange.from.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })}
+                {customDateRange.from.toLocaleDateString(undefined, {
+                  month: '2-digit',
+                  day: '2-digit',
+                })}
                 {' – '}
-                {customDateRange.to.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })}
+                {customDateRange.to.toLocaleDateString(undefined, {
+                  month: '2-digit',
+                  day: '2-digit',
+                })}
               </span>
-            ) : <SelectValue />}
+            ) : (
+              <SelectValue />
+            )}
           </SelectTrigger>
-          <SelectContent onCloseAutoFocus={(event) => { if (customPending.current) { event.preventDefault(); customPending.current = false; openCustom(); } }}>
+          <SelectContent
+            onCloseAutoFocus={(event) => {
+              if (customPending.current) {
+                event.preventDefault();
+                customPending.current = false;
+                openCustom();
+              }
+            }}
+          >
             <SelectItem value="lastHour">
               {t('monitoring.filters.lastHour')}
             </SelectItem>
@@ -376,17 +473,64 @@ export default function MonitoringFilters({
             <SelectItem value="last7Days">
               {t('monitoring.filters.last7Days')}
             </SelectItem>
-            {[30, 90, 180, 365].map((days) => <SelectItem key={days} value={`last${days}Days`}>{t('monitoring.rangeDays', { days })}</SelectItem>)}
-            {onCustomDateRangeChange && <SelectItem value="custom">{t('monitoring.customRange')}</SelectItem>}          </SelectContent>
-        </Select>        {onCustomDateRangeChange && <>
-          <Dialog open={dateOpen} onOpenChange={setDateOpen}><DialogContent className="sm:max-w-md space-y-3">
-            <DialogHeader><DialogTitle>{t('monitoring.customRange')}</DialogTitle><DialogDescription>{t('monitoring.rangeHint')}</DialogDescription></DialogHeader>
-            <label className="block space-y-1 text-xs">{t('monitoring.rangeStart')}<Input type="datetime-local" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} /></label>
-            <label className="block space-y-1 text-xs">{t('monitoring.rangeEnd')}<Input type="datetime-local" value={toDate} min={fromDate} max={localDate(new Date())} onChange={(event) => setToDate(event.target.value)} /></label>
+            {[30, 90, 180, 365].map((days) => (
+              <SelectItem key={days} value={`last${days}Days`}>
+                {t('monitoring.rangeDays', { days })}
+              </SelectItem>
+            ))}
+            {onCustomDateRangeChange && (
+              <SelectItem value="custom">
+                {t('monitoring.customRange')}
+              </SelectItem>
+            )}{' '}
+          </SelectContent>
+        </Select>{' '}
+        {onCustomDateRangeChange && (
+          <>
+            <Dialog open={dateOpen} onOpenChange={setDateOpen}>
+              <DialogContent className="sm:max-w-md space-y-3">
+                <DialogHeader>
+                  <DialogTitle>{t('monitoring.customRange')}</DialogTitle>
+                  <DialogDescription>
+                    {t('monitoring.rangeHint')}
+                  </DialogDescription>
+                </DialogHeader>
+                <label className="block space-y-1 text-xs">
+                  {t('monitoring.rangeStart')}
+                  <Input
+                    type="datetime-local"
+                    value={fromDate}
+                    max={toDate}
+                    onChange={(event) => setFromDate(event.target.value)}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs">
+                  {t('monitoring.rangeEnd')}
+                  <Input
+                    type="datetime-local"
+                    value={toDate}
+                    min={fromDate}
+                    max={localDate(new Date())}
+                    onChange={(event) => setToDate(event.target.value)}
+                  />
+                </label>
 
-            <Button size="sm" className="w-full" disabled={!validDates} onClick={() => { onCustomDateRangeChange({ from, to }); onTimeRangeChange('custom'); setDateOpen(false); }}>{t('common.confirm')}</Button>
-          </DialogContent></Dialog>
-        </>}
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={!validDates}
+                  onClick={() => {
+                    onCustomDateRangeChange({ from, to });
+                    onTimeRangeChange('custom');
+                    setDateOpen(false);
+                  }}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
       </div>
     </div>
   );

@@ -413,14 +413,18 @@ const BotSessionMonitor = forwardRef<
       if (parsed && typeof parsed === 'object') {
         const chain = parsed.message_chain ?? parsed.event?.message_chain;
         if (Array.isArray(chain)) return chain as MessageChainComponent[];
-        if (Array.isArray(chain?.root)) return chain.root as MessageChainComponent[];
+        if (Array.isArray(chain?.root))
+          return chain.root as MessageChainComponent[];
         if (Array.isArray(parsed.contents)) {
           const components: MessageChainComponent[] = [];
           for (const part of parsed.contents) {
             if (part.type === 'text' && typeof part.text === 'string') {
               components.push({ type: 'Plain', text: part.text } as Plain);
             } else if (part.type === 'image' && part.image_url) {
-              components.push({ type: 'Image', url: part.image_url } as MessageChainComponent);
+              components.push({
+                type: 'Image',
+                url: part.image_url,
+              } as MessageChainComponent);
             }
           }
           if (components.length) return components;
@@ -758,7 +762,11 @@ const BotSessionMonitor = forwardRef<
                 {t('bots.sessionMonitor.loading')}
               </div>
             ) : sessionError ? (
-              <LoadErrorState compact title={t('monitoring.loadError')} onRetry={loadSessions} />
+              <LoadErrorState
+                compact
+                title={t('monitoring.loadError')}
+                onRetry={loadSessions}
+              />
             ) : sessions.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-sm">
                 {t('bots.sessionMonitor.noSessions')}
@@ -930,14 +938,25 @@ const BotSessionMonitor = forwardRef<
               >
                 <div className="space-y-4">
                   {analysisError && !loadingMessages && (
-                    <LoadErrorState compact title={`${t('monitoring.toolCalls.title')}: ${t('monitoring.loadError')}`} onRetry={() => loadMessages(selectedSessionId, messagePage)} />
+                    <LoadErrorState
+                      compact
+                      title={`${t('monitoring.toolCalls.title')}: ${t('monitoring.loadError')}`}
+                      onRetry={() =>
+                        loadMessages(selectedSessionId, messagePage)
+                      }
+                    />
                   )}
                   {loadingMessages ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.loading')}
                     </div>
                   ) : messageError ? (
-                    <LoadErrorState title={t('monitoring.loadError')} onRetry={() => loadMessages(selectedSessionId, messagePage)} />
+                    <LoadErrorState
+                      title={t('monitoring.loadError')}
+                      onRetry={() =>
+                        loadMessages(selectedSessionId, messagePage)
+                      }
+                    />
                   ) : timelineItems.length === 0 ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.noMessages')}

@@ -452,7 +452,9 @@ class AgentService:
             if runner_id:
                 descriptor = await self.ap.runner_registry.get(context, runner_id)
                 config['runner_config'][runner_id] = await self.ap.llm_model_service.apply_default_model(
-                    context, descriptor.config_schema, config['runner_config'][runner_id],
+                    context,
+                    descriptor.config_schema,
+                    config['runner_config'][runner_id],
                 )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
         new_uuid = str(uuid.uuid4())
@@ -566,7 +568,9 @@ class AgentService:
         if parameters is None:
             parameters = self.ap.pipeline_service._get_default_values_from_schema(descriptor.config_schema)
         if draft:
-            parameters = await self.ap.llm_model_service.apply_default_model(context, descriptor.config_schema, parameters)
+            parameters = await self.ap.llm_model_service.apply_default_model(
+                context, descriptor.config_schema, parameters
+            )
         if not isinstance(parameters, dict):
             raise ValueError('Processor parameters must be an object')
         for field in descriptor.config_schema:

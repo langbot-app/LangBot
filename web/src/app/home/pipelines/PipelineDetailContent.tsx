@@ -52,7 +52,8 @@ export default function PipelineDetailContent({
   }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
 
   const [searchParams] = useSearchParams();
-  const activeView = searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
+  const activeView =
+    searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);

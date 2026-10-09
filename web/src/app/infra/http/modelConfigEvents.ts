@@ -1,4 +1,5 @@
-export const MODEL_CONFIGURATION_CHANGED = 'langbot:model-configuration-changed';
+export const MODEL_CONFIGURATION_CHANGED =
+  'langbot:model-configuration-changed';
 
 export async function notifyAfterModelConfigurationChange<T>(
   request: Promise<T>,
