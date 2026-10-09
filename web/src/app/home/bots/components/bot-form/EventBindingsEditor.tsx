@@ -39,6 +39,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
   Popover,
@@ -1211,7 +1212,7 @@ function BindingCardContent({
 
   return (
     <div
-      className={`rounded-lg border bg-card ${
+      className={`rounded-lg border ${isEnabled ? 'bg-card' : 'bg-muted/30 border-dashed'} ${
         isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
       }`}
       data-drag-overlay={isOverlay ? 'true' : undefined}
@@ -1230,6 +1231,7 @@ function BindingCardContent({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
+        {!isEnabled && <span className="h-4 w-4 shrink-0" aria-hidden="true" />}
 
         <Badge
           variant="secondary"
@@ -1316,16 +1318,11 @@ function BindingCardContent({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* disable/enable toggle */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs text-muted-foreground"
-            onClick={() => onUpdate(globalIndex, { enabled: !isEnabled })}
-          >
-            {isEnabled ? t('bots.disable') : t('bots.enable')}
-          </Button>
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
+            aria-label={`${t('bots.enable')} · ${t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}`}
+          />
 
           <Button
             type="button"
@@ -1407,7 +1404,6 @@ export default function EventBindingsEditor({
     form.watch('event_bindings');
   const bindings = useMemo(() => watchedBindings ?? [], [watchedBindings]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [disabledSectionOpen, setDisabledSectionOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
@@ -1487,7 +1483,11 @@ export default function EventBindingsEditor({
   }, [recordsOpen, refreshRouteStatuses]);
 
   function updateBindings(next: EventBinding[]) {
-    form.setValue('event_bindings', next, { shouldDirty: true });
+    const ordered = [
+      ...next.filter((binding) => binding.enabled ?? true),
+      ...next.filter((binding) => !(binding.enabled ?? true)),
+    ];
+    form.setValue('event_bindings', ordered, { shouldDirty: true });
   }
 
   function addBinding(eventPattern = 'message.received') {
@@ -1638,7 +1638,7 @@ export default function EventBindingsEditor({
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-2">
-            {enabledBindings.length === 0 && (
+            {bindings.length === 0 && (
               <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
                 {t('bots.noEventBindings')}
               </div>
@@ -1660,6 +1660,19 @@ export default function EventBindingsEditor({
                 />
               );
             })}
+            {disabledBindings.map(({ b, i }) => (
+              <BindingCardContent
+                key={b.id ?? `disabled-${i}`}
+                binding={b}
+                globalIndex={i}
+                eventOptions={eventOptions}
+                agentOptions={agentOptions}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpand}
+                onUpdate={updateBinding}
+                onRemove={removeBinding}
+              />
+            ))}
           </div>
         </SortableContext>
         <DragOverlay adjustScale={false} dropAnimation={null}>
@@ -1797,43 +1810,7 @@ export default function EventBindingsEditor({
         </Dialog>
       </div>
 
-      {/* disabled section */}
-      {disabledBindings.length > 0 && (
-        <div className="rounded-lg border border-dashed">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setDisabledSectionOpen((v) => !v)}
-          >
-            {disabledSectionOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-            {t('bots.disabledBindings')}
-            <Badge variant="outline" className="ml-1 text-xs">
-              {disabledBindings.length}
-            </Badge>
-          </button>
-          {disabledSectionOpen && (
-            <div className="border-t p-2 space-y-2">
-              {disabledBindings.map(({ b, i }) => (
-                <BindingCardContent
-                  key={b.id ?? i}
-                  binding={b}
-                  globalIndex={i}
-                  eventOptions={eventOptions}
-                  agentOptions={agentOptions}
-                  expandedIds={expandedIds}
-                  onToggleExpand={toggleExpand}
-                  onUpdate={updateBinding}
-                  onRemove={removeBinding}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+
     </div>
   );
 }
