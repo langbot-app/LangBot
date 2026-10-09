@@ -115,7 +115,11 @@ class LangBotMCPServer:
                 await ap.pipeline_service.get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
             )
 
-        @mcp.tool(description='Replace all Pipeline extension bindings. All binding lists and switches are required.')
+        @mcp.tool(
+            description='Replace all Pipeline extension bindings. All binding lists and switches are required. '
+            'When enable_all_plugins is false, bound_plugins must include the selected Runner plugin; '
+            'otherwise the update fails with pipeline_runner_not_authorized.'
+        )
         async def update_pipeline_extensions(
             pipeline_uuid: str,
             bound_plugins: list[dict],
@@ -329,7 +333,11 @@ class LangBotMCPServer:
                 }
             )
 
-        @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
+        @mcp.tool(
+            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. '
+            'The resulting Runner binding must be allowed by extensions_preferences; '
+            'otherwise the update fails with pipeline_runner_not_authorized.'
+        )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)

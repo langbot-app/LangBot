@@ -1813,6 +1813,8 @@ const zhHant = {
     createError: '建立失敗：',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
+    runnerNotAuthorized:
+      '目前執行器未獲授權。請在擴充功能中透過「新增插件」加入執行器所屬插件，或啟用所有插件，然後重新儲存。',
     copySuffix: ' Copy',
     deleteConfirmation:
       '您確定要刪除這個流程線嗎？已綁定此流程線的機器人將無法使用。',

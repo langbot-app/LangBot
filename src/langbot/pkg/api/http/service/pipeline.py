@@ -7,6 +7,7 @@ import typing
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
+from ....agent.runner.id import parse_runner_id
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....pipeline.extension_preferences import (
     normalize_extension_preferences,
@@ -37,6 +38,21 @@ class PipelineService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    @staticmethod
+    def _validate_runner_plugin_binding(config: dict, preferences: typing.Any) -> None:
+        """Validate configuration consistency without requiring a live Runtime.
+
+        Runtime discovery/authorization remains the execution-time authority.
+        Legacy or unconfigured pipelines have no current Runner binding to check.
+        """
+        runner_id = RunnerConfigResolver.resolve_runner_id(config)
+        prefs = normalize_extension_preferences(preferences)
+        if not runner_id or prefs['enable_all_plugins']:
+            return
+        plugin_id = parse_runner_id(runner_id).to_plugin_id()
+        if plugin_id not in {f'{plugin["author"]}/{plugin["name"]}' for plugin in prefs['plugins']}:
+            raise ValueError('pipeline_runner_not_authorized')
 
     @staticmethod
     def _get_default_values_from_schema(
@@ -196,6 +212,8 @@ class PipelineService:
                 'mcp_resource_agent_read_enabled': True,
             }
 
+        self._validate_runner_plugin_binding(pipeline_data['config'], pipeline_data['extensions_preferences'])
+
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
         )
@@ -212,10 +230,11 @@ class PipelineService:
         for protected_field in ('uuid', 'workspace_uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
 
-        if 'config' in pipeline_data:
+        if 'config' in pipeline_data or 'extensions_preferences' in pipeline_data:
             current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
             if current_pipeline is None:
                 raise WorkspaceNotFoundError('Pipeline not found')
+        if 'config' in pipeline_data:
             current_config = current_pipeline.get('config', {})
             old_ai = current_config.get('ai', {}) if isinstance(current_config, dict) else {}
             old_runner = old_ai.get('runner') if isinstance(old_ai, dict) else None
@@ -238,6 +257,12 @@ class PipelineService:
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         if 'extensions_preferences' in pipeline_data:
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
+
+        if 'config' in pipeline_data or 'extensions_preferences' in pipeline_data:
+            self._validate_runner_plugin_binding(
+                pipeline_data.get('config', current_pipeline.get('config', {})),
+                pipeline_data.get('extensions_preferences', current_pipeline.get('extensions_preferences')),
+            )
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -322,6 +347,7 @@ class PipelineService:
         }
 
         # Insert the new pipeline
+        self._validate_runner_plugin_binding(new_pipeline_data['config'], new_pipeline_data['extensions_preferences'])
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**new_pipeline_data)
         )
@@ -338,7 +364,9 @@ class PipelineService:
             raise WorkspaceNotFoundError('Pipeline not found')
         if self.ap.plugin_connector.is_enable_plugin:
             await self.ap.plugin_connector.require_workspace_context(context)
-        plugins = await self.ap.plugin_connector.list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
+        plugins = await self.ap.plugin_connector.list_plugins(
+            component_kinds=['Command', 'EventListener', 'Tool', 'Runner']
+        )
         prefs = pipeline.get('extensions_preferences', {})
         return {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
@@ -422,6 +450,8 @@ class PipelineService:
             extensions_preferences['skills'] = bound_skills
         if bound_mcp_resources is not None:
             extensions_preferences['mcp_resources'] = bound_mcp_resources
+
+        self._validate_runner_plugin_binding(pipeline.config, extensions_preferences)
 
         await self.ap.persistence_mgr.execute_async(
             scope_statement(

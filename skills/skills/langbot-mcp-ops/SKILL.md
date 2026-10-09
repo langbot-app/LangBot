@@ -90,6 +90,17 @@ the immutable Workspace context authenticated at the MCP transport boundary.
 Pass `is_default: true` to `create_pipeline` only when the Workspace does not
 already have a default pipeline.
 
+Pipeline saves validate the selected Runner against the plugin allowlist. If
+`enable_all_plugins` is false, `plugins` (or `bound_plugins` for the extension
+tool) must include the Runner's exact `author` and `name`. An inconsistent save
+fails with `pipeline_runner_not_authorized` before persistence; HTTP clients
+receive 400. Runtime authorization still runs when the pipeline executes.
+`get_pipeline_extensions` includes Runner plugins among available plugins.
+When changing both the Runner and its allowlist, send `config` and
+`extensions_preferences` together through `update_pipeline`, preserving the
+other fields of each object. Do not silently enable all plugins to bypass a
+rejected save. The same consistency check applies to creation and copying.
+
 ## How to use
 
 1. Get an API key (web UI key, or set `api.global_api_key` in config.yaml).
