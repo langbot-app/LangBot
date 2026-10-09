@@ -1146,38 +1146,54 @@ class BoxService:
             )
         return result
 
-    async def collect_outbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+    async def collect_outbound_attachments(self, query: pipeline_query.Query, *, clear: bool = True) -> list[dict]:
         """Collect files the agent produced in the sandbox outbox.
 
         Reads ``/workspace/outbox/<query_id>/`` (recursively) — directly from
-        the bind-mounted host directory when available (no size limit), else
+        the bind-mounted host directory when available, else
         via the exec channel — returns a list of ``{type, name, base64}``
         ready to become platform message components, then clears the outbox so
         a later turn in the same session does not re-send stale files. Returns
-        ``[]`` when nothing was produced.
+        ``[]`` when nothing was produced. Read failures and exceeded export
+        limits raise without clearing the outbox. Runner export defers cleanup
+        until its cumulative run limits have also been checked.
         """
         if not self._available:
+            if not clear:
+                raise BoxError('Box runtime is not available; output files were retained')
             return []
         if self._cloud_managed:
             await self.require_workspace_sandbox(self._query_execution_context(query))
 
         host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
-        if host_dir is not None:
-            entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
-        else:
-            entries = await self._read_outbox_via_exec(query)
+        try:
+            if host_dir is not None:
+                try:
+                    entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+                except PermissionError:
+                    # Root-owned container output can be unreadable to Core.
+                    # Retry the complete read inside the already-bound Box.
+                    entries = await self._read_outbox_via_exec(query)
+            else:
+                entries = await self._read_outbox_via_exec(query)
+        except OSError as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
 
         attachments = self._classify_outbound_entries(entries)
 
-        # Always clear the per-query outbox after reading — even when nothing
-        # was collected — so a later turn that reuses the same query_id (the
-        # counter resets across restarts) never inherits stale files.
-        await self._clear_outbox(query, host_dir)
+        # A successful empty read still clears stale state, but an incomplete
+        # read must never reach cleanup. Export can be retried after the failure.
+        if clear:
+            await self._clear_outbox(query, host_dir)
         if attachments:
             self.ap.logger.info(
                 f'Collected {len(attachments)} outbound attachment(s) from sandbox: query_id={query.query_id}'
             )
         return attachments
+
+    async def clear_outbound_attachments(self, query: pipeline_query.Query) -> None:
+        """Clear output after a complete read has been accepted by the Runner."""
+        await self._clear_outbox(query, self._host_query_dir(self.OUTBOX_SUBDIR, query))
 
     def _read_outbox_host(self, host_dir: str) -> list[dict]:
         """Read outbox files straight off the bind-mounted host directory."""
@@ -1197,6 +1213,8 @@ class BoxService:
             )
         except secure_fs.UnsafeWorkspacePathError as exc:
             raise BoxValidationError('Sandbox outbox contains an unsafe symbolic link') from exc
+        except secure_fs.WorkspaceReadLimitError as exc:
+            raise BoxValidationError(str(exc)) from exc
         return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
@@ -1206,76 +1224,64 @@ class BoxService:
         so stdout is NOT truncated by ``output_limit_chars`` - the raw
         base64 payload can be far larger than the 4000-char display limit.
         """
-        import json as _json
+        import base64
+        import binascii
+        import inspect
 
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
+        from .runner import binding_for
+
+        binding = binding_for(query)
+        query_key = self._attachment_query_key(query)
         max_file_bytes = self._EXEC_FALLBACK_MAX_BYTES
         max_files = self._ATTACHMENT_MAX_FILES
-        max_total_bytes = max_file_bytes * max_files
-        max_scan_entries = 1000
+        max_total_bytes = min(self._ATTACHMENT_MAX_TOTAL_BYTES, max_file_bytes * max_files)
+        # Execute the same fd-relative, bounded reader in the sandbox. Keeping
+        # one implementation preserves the host path's no-follow/race defenses.
         script = (
-            'import base64, json, os\n'
-            f'target = {target_dir!r}\n'
-            f'max_file_bytes = {max_file_bytes}\n'
-            f'max_files = {max_files}\n'
-            f'max_total_bytes = {max_total_bytes}\n'
-            f'max_scan_entries = {max_scan_entries}\n'
-            'out = []\n'
-            'total_bytes = 0\n'
-            'scanned_entries = 0\n'
-            'stack = [target]\n'
-            'if os.path.isdir(target):\n'
-            '    while stack and len(out) < max_files and scanned_entries < max_scan_entries:\n'
-            '        current = stack.pop()\n'
-            '        try:\n'
-            '            with os.scandir(current) as iterator:\n'
-            '                entries = sorted(iterator, key=lambda item: item.name, reverse=True)\n'
-            '        except OSError:\n'
-            '            continue\n'
-            '        for entry in entries:\n'
-            '            scanned_entries += 1\n'
-            '            if scanned_entries > max_scan_entries:\n'
-            '                break\n'
-            '            try:\n'
-            '                if entry.is_dir(follow_symlinks=False):\n'
-            '                    stack.append(entry.path)\n'
-            '                    continue\n'
-            '                if not entry.is_file(follow_symlinks=False):\n'
-            '                    continue\n'
-            '                size = entry.stat(follow_symlinks=False).st_size\n'
-            '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
-            '                    continue\n'
-            "                with open(entry.path, 'rb') as f:\n"
-            '                    data = f.read(max_file_bytes + 1)\n'
-            '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
-            '                    continue\n'
-            '            except OSError:\n'
-            '                continue\n'
-            '            rel = os.path.relpath(entry.path, target)\n'
-            "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
-            '            total_bytes += len(data)\n'
-            '            if len(out) >= max_files:\n'
-            '                break\n'
-            'print(json.dumps(out))\n'
+            inspect.getsource(secure_fs)
+            + '\nimport base64, json\n'
+            + f'files = read_regular_files({os.path.dirname(self.OUTBOX_MOUNT_DIR)!r}, '
+            f'{os.path.basename(self.OUTBOX_MOUNT_DIR)!r}, {query_key!r}, '
+            f'max_file_bytes={max_file_bytes}, max_files={max_files}, max_total_bytes={max_total_bytes}, '
+            'max_entries=1000)\n'
+            "print(json.dumps([{'name': name, 'b64': base64.b64encode(data).decode('ascii')} for name, data in files]))\n"
         )
         spec_payload: dict = {
+            **binding.spec,
             'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
             'timeout_sec': 120,
-            'session_id': self.resolve_box_session_id(query),
+            'session_id': binding.session_id,
         }
         if 'extra_mounts' not in spec_payload:
             spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
         try:
-            spec = self.build_spec(spec_payload)
-            result = await self.client.execute(spec)
-        except Exception:
-            return []
+            result = await self.execute_in_context(self._query_execution_context(query), spec_payload)
+        except BoxError:
+            raise
+        except Exception as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
         if not result.ok:
-            return []
+            raise BoxError('Sandbox outbox read failed; output files were retained')
         try:
-            return _json.loads(str(result.stdout or '').strip().splitlines()[-1])
-        except Exception:
-            return []
+            entries = json.loads(result.stdout)
+            if not isinstance(entries, list) or len(entries) > max_files:
+                raise ValueError('Invalid file list')
+            total_bytes = 0
+            for entry in entries:
+                if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
+                    raise ValueError('Invalid file entry')
+                for component in entry['name'].split('/'):
+                    secure_fs._component(component)
+                encoded = entry.get('b64')
+                if not isinstance(encoded, str) or len(encoded) > 4 * ((max_file_bytes + 2) // 3):
+                    raise ValueError('Invalid file payload')
+                size = len(base64.b64decode(encoded, validate=True))
+                total_bytes += size
+                if size > max_file_bytes or total_bytes > max_total_bytes:
+                    raise ValueError('File payload exceeds export limits')
+        except (TypeError, ValueError, OSError, binascii.Error) as exc:
+            raise BoxError('Invalid sandbox outbox response; output files were retained') from exc
+        return entries
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
         """Empty the per-query outbox after collection.

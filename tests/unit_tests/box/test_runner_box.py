@@ -20,6 +20,7 @@ def service():
         enabled=True,
         managed_admission_required=False,
         _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
+        clear_outbound_attachments=AsyncMock(),
         create_session=AsyncMock(side_effect=create),
         require_workspace_sandbox=AsyncMock(side_effect=lambda context: context),
         _action_context=lambda context: context,

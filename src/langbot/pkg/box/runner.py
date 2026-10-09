@@ -211,19 +211,24 @@ class RunnerBoxService:
     async def export_files(self, query):
         binding = binding_for(query)
         async with binding.lock:
-            items = await self.box.collect_outbound_attachments(query)
+            items = await self.box.collect_outbound_attachments(query, clear=False)
+            if len(binding.exported) + len(items) > 100:
+                raise BoxValidationError('At most 100 output files may be exported per run')
+            total_bytes = sum(x['size'] for x in binding.exported.values())
+            pending = {}
             for item in items:
-                if len(binding.exported) >= 100:
-                    raise BoxValidationError('At most 100 output files may be exported per run')
                 size = len(base64.b64decode(item['base64'].split(';base64,')[-1]))
-                if sum(x['size'] for x in binding.exported.values()) + size > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
+                total_bytes += size
+                if total_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
                     raise BoxValidationError('Output files exceed the per-run byte limit')
                 key = str(uuid.uuid4())
-                binding.exported[key] = {
+                pending[key] = {
                     **item,
                     'id': key,
                     'size': size,
                 }
+            binding.exported.update(pending)
+            await self.box.clear_outbound_attachments(query)
             return {
                 'items': [
                     {k: v for k, v in item.items() if k != 'base64'}
