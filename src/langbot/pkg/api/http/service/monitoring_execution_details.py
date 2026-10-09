@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,19 +33,8 @@ def event_content(content, event_data):
     """Keep event-specific properties alongside the normalized message input."""
     if not isinstance(event_data, dict) or not event_data:
         return content
-    if not isinstance(content, dict):
-        return event_data if not content else {**event_data, 'input': content}
-    merged = dict(event_data)
-    conflicts = {}
-    for key, value in content.items():
-        if key not in merged:
-            merged[key] = value
-        elif merged[key] != value and value is not None and value != '' and value != [] and value != {}:
-            conflicts[key] = value
-    if conflicts:
-        # Never silently overwrite a custom field that shares an input name.
-        return {'event': merged, 'input': conflicts}
-    return merged
+    # Keep the original event intact; text is the existing normalized input field.
+    return {'text': event_summary(event_data), 'event': event_data, 'input': content}
 
 
 def event_item(row):

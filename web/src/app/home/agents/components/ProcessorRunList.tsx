@@ -54,6 +54,7 @@ export default function ProcessorRunList({
             </span>
             <span className="flex shrink-0 flex-col items-end gap-1">
               <Badge
+                status={run.status}
                 variant={
                   run.status === 'failed' || run.status === 'timeout'
                     ? 'destructive'

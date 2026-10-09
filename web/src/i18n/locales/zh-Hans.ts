@@ -734,6 +734,9 @@ const zhHans = {
     deleteConfirmation: '你确定要删除这个机器人吗？',
     platformAdapter: '平台/适配器选择',
     selectAdapter: '选择适配器',
+    saveAndEnable: '保存并启用',
+    searchAdapters: '搜索适配器',
+    noMatchingAdapters: '未找到匹配的适配器',
     legacyAdapters: '旧版适配器',
     legacyAdapterBadge: '过时',
     legacyAdaptersHint:
@@ -1060,6 +1063,16 @@ const zhHans = {
   },
   agents: {
     monitoring: {
+      runStatus: "执行状态",
+      toolCalls: "工具调用",
+      delivery: "消息发送",
+      sendFailed: "发送失败",
+      sendCount: "{{count}} 次发送调用成功",
+      noSend: "暂无发送记录",
+      noSteps: "暂未记录执行步骤。",
+      recipient: "接收目标",
+      actionCompleted: "工具已执行完成。",
+      simulatedAction: "模拟执行，未发送真实消息。",
       description: '查看每次任务的触发事件、模型输出和工具执行过程。',
       empty: '暂无运行记录。触发平台事件或运行调试后，可在这里查看。',
       input: '触发输入',

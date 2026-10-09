@@ -14,6 +14,7 @@ metadata:
 spec:
   legacy: true
   categories:
+    - popular
     - china
   help_links:
     zh: https://langbot.app/docs/zh/usage/platforms/dingtalk

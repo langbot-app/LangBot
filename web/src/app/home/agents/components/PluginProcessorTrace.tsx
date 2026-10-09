@@ -55,7 +55,7 @@ export default function PluginProcessorTrace({
             variant={event.data.level === 'error' ? 'destructive' : 'default'}
           >
             <AlertDescription className="flex min-w-0 items-start gap-2">
-              <Badge variant="outline">{String(event.data.level)}</Badge>
+              <Badge status={String(event.data.level)}>{String(event.data.level)}</Badge>
               <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {String(event.data.text)}
               </span>

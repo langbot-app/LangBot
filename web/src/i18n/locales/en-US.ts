@@ -781,6 +781,9 @@ const enUS = {
     deleteConfirmation: 'Are you sure you want to delete this bot?',
     platformAdapter: 'Platform/Adapter Selection',
     selectAdapter: 'Select Adapter',
+    saveAndEnable: 'Save and enable',
+    searchAdapters: 'Search adapters',
+    noMatchingAdapters: 'No matching adapters found',
     legacyAdapters: 'Legacy adapters',
     legacyAdapterBadge: 'Legacy',
     legacyAdaptersHint:
@@ -1126,6 +1129,16 @@ const enUS = {
   },
   agents: {
     monitoring: {
+      runStatus: "Run status",
+      toolCalls: "Tool calls",
+      delivery: "Message delivery",
+      sendFailed: "Send failed",
+      sendCount: "{{count}} send calls succeeded",
+      noSend: "No send recorded",
+      noSteps: "No execution steps recorded yet.",
+      recipient: "Recipient",
+      actionCompleted: "Tool completed successfully.",
+      simulatedAction: "Simulated action; no real message was sent.",
       description:
         'Follow each task from its triggering event through model output and tool execution.',
       empty:

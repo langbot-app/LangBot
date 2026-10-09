@@ -222,6 +222,7 @@ function AssistantSessions(props: AssistantPanelProps) {
 
 const ASSISTANT_HEIGHT_STORAGE_KEY = 'langbot-assistant-panel-height';
 const ASSISTANT_POSITION_STORAGE_KEY = 'langbot-assistant-panel-position';
+const ASSISTANT_OPEN_STORAGE_KEY = 'langbot-assistant-panel-open';
 
 function AssistantPanel({
   storageKey,
@@ -235,7 +236,20 @@ function AssistantPanel({
   const { t } = useTranslation();
   const initialModelUuid = initialModel?.uuid;
   const initialModelName = initialModel?.name;
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(ASSISTANT_OPEN_STORAGE_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(ASSISTANT_OPEN_STORAGE_KEY, String(open));
+    } catch {
+      // The panel remains usable when browser storage is unavailable.
+    }
+  }, [open]);
   const [closing, setClosing] = useState(false);
   const [horizontalPosition, setHorizontalPosition] = useState(() => {
     try {

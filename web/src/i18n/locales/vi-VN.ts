@@ -782,6 +782,9 @@ const viVN = {
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    saveAndEnable: 'Lưu và bật',
+    searchAdapters: 'Tìm kiếm adapter',
+    noMatchingAdapters: 'Không tìm thấy adapter phù hợp',
     legacyAdapters: 'Adapter cũ',
     legacyAdapterBadge: 'Cũ',
     legacyAdaptersHint:
@@ -1124,6 +1127,16 @@ const viVN = {
   },
   agents: {
     monitoring: {
+      runStatus: "Trạng thái thực thi",
+      toolCalls: "Lượt gọi công cụ",
+      delivery: "Gửi tin nhắn",
+      sendFailed: "Gửi thất bại",
+      sendCount: "{{count}} lượt gọi gửi thành công",
+      noSend: "Chưa ghi nhận lượt gửi",
+      noSteps: "Chưa ghi nhận bước thực thi.",
+      recipient: "Người nhận",
+      actionCompleted: "Công cụ đã thực thi thành công.",
+      simulatedAction: "Thao tác mô phỏng; không gửi tin nhắn thật.",
       description:
         'Xem sự kiện kích hoạt, đầu ra mô hình và quá trình gọi công cụ của mỗi tác vụ.',
       empty: 'Chưa có lượt chạy. Kích hoạt sự kiện hoặc chạy thử gỡ lỗi.',

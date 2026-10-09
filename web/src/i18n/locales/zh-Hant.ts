@@ -732,6 +732,9 @@ const zhHant = {
     deleteConfirmation: '您確定要刪除這個機器人嗎？',
     platformAdapter: '平台/適配器選擇',
     selectAdapter: '選擇適配器',
+    saveAndEnable: '儲存並啟用',
+    searchAdapters: '搜尋適配器',
+    noMatchingAdapters: '找不到符合條件的適配器',
     legacyAdapters: '舊版適配器',
     legacyAdapterBadge: '過時',
     legacyAdaptersHint:
@@ -1059,6 +1062,16 @@ const zhHant = {
   },
   agents: {
     monitoring: {
+      runStatus: "執行狀態",
+      toolCalls: "工具呼叫",
+      delivery: "訊息傳送",
+      sendFailed: "傳送失敗",
+      sendCount: "{{count}} 次傳送呼叫成功",
+      noSend: "暫無傳送記錄",
+      noSteps: "尚未記錄執行步驟。",
+      recipient: "接收目標",
+      actionCompleted: "工具已執行完成。",
+      simulatedAction: "模擬執行，未傳送真實訊息。",
       description: '查看每次任務的觸發事件、模型輸出和工具執行過程。',
       empty: '尚無執行紀錄。觸發平台事件或執行除錯後，可在此查看。',
       input: '觸發輸入',

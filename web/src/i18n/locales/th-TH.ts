@@ -768,6 +768,9 @@ const thTH = {
     deleteConfirmation: 'คุณแน่ใจหรือไม่ว่าต้องการลบ Bot นี้?',
     platformAdapter: 'การเลือกแพลตฟอร์ม/อะแดปเตอร์',
     selectAdapter: 'เลือกอะแดปเตอร์',
+    saveAndEnable: 'บันทึกและเปิดใช้งาน',
+    searchAdapters: 'ค้นหาอะแดปเตอร์',
+    noMatchingAdapters: 'ไม่พบอะแดปเตอร์ที่ตรงกัน',
     legacyAdapters: 'อะแดปเตอร์รุ่นเก่า',
     legacyAdapterBadge: 'เก่า',
     legacyAdaptersHint:
@@ -1106,6 +1109,16 @@ const thTH = {
   },
   agents: {
     monitoring: {
+      runStatus: "สถานะการทำงาน",
+      toolCalls: "การเรียกเครื่องมือ",
+      delivery: "การส่งข้อความ",
+      sendFailed: "ส่งไม่สำเร็จ",
+      sendCount: "เรียกส่งสำเร็จ {{count}} ครั้ง",
+      noSend: "ไม่มีบันทึกการส่ง",
+      noSteps: "ยังไม่มีบันทึกขั้นตอนการทำงาน",
+      recipient: "ผู้รับ",
+      actionCompleted: "เครื่องมือทำงานสำเร็จ",
+      simulatedAction: "การจำลอง ไม่ได้ส่งข้อความจริง",
       description:
         'ดูเหตุการณ์เริ่มต้น ผลลัพธ์โมเดล และการเรียกเครื่องมือของแต่ละงาน',
       empty: 'ยังไม่มีการทำงาน เริ่มเหตุการณ์หรือทดสอบการดีบักเพื่อดูบันทึก',

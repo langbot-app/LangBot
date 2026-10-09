@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, ChevronRight, RefreshCw, Wrench } from 'lucide-react';
+import { ChevronRight, RefreshCw } from 'lucide-react';
+import AgentRunTimeline, { isReplyStep, isMockStep } from './AgentRunTimeline';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type {
   AgentPlatformTool,
@@ -206,7 +207,12 @@ export default function AgentMonitoringTab({
   const labels = Object.fromEntries(
     platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
   );
-  const steps = executionSteps(events);
+  const steps = executionSteps(events).filter(
+    (step) => step.kind === 'tool' || step.text.trim() || step.reasoning.trim(),
+  );
+  const toolSteps = steps.filter((step) => step.kind === 'tool');
+  const sentCount = toolSteps.filter((step) => isReplyStep(step) && !isMockStep(step) && step.status === 'completed').length;
+  const sendFailed = toolSteps.some((step) => isReplyStep(step) && step.status === 'failed');
   const duration = selected ? processorRunDuration(selected) : null;
   const failureReason =
     selected?.status_reason ||
@@ -261,7 +267,7 @@ export default function AgentMonitoringTab({
           <AlertDescription>{t('monitoring.loadError')}</AlertDescription>
         </Alert>
       )}
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,2fr)]">
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <section
           className="flex min-h-0 min-w-0 flex-col gap-2"
           aria-label={t('agents.eventProcessor.runs')}
@@ -279,13 +285,14 @@ export default function AgentMonitoringTab({
                 variant="ghost"
                 aria-pressed={selectedId === run.run_id}
                 onClick={() => setSelectedId(run.run_id)}
-                className="h-auto w-full flex-col items-stretch gap-2 rounded-none border-b p-3 text-left font-normal last:border-b-0 aria-pressed:bg-accent"
+                className="h-auto w-full flex-col items-stretch gap-2 rounded-none border-b border-l-2 border-l-transparent p-4 text-left font-normal last:border-b-0 aria-pressed:border-l-primary aria-pressed:bg-primary/5"
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">
                     {eventPatternLabel(run.metadata.event_type ?? '', t)}
                   </span>
                   <Badge
+                    status={run.status}
                     variant={
                       failedStatuses.has(run.status) ? 'destructive' : 'outline'
                     }
@@ -303,7 +310,7 @@ export default function AgentMonitoringTab({
                     {new Date(run.created_at * 1000).toLocaleString()}
                   </time>
                   {debugRun(run) && (
-                    <Badge variant="secondary">{t('agents.debugTab')}</Badge>
+                    <Badge status="debug">{t('agents.debugTab')}</Badge>
                   )}
                   {processorRunDuration(run) !== null && (
                     <span>{formatRunDuration(processorRunDuration(run)!)}</span>
@@ -343,6 +350,7 @@ export default function AgentMonitoringTab({
                       {eventPatternLabel(selected.metadata.event_type ?? '', t)}
                     </h2>
                     <Badge
+                      status={selected.status}
                       variant={
                         failedStatuses.has(selected.status)
                           ? 'destructive'
@@ -352,7 +360,7 @@ export default function AgentMonitoringTab({
                       {stateLabel(selected)}
                     </Badge>
                     {debugRun(selected) && (
-                      <Badge variant="secondary">{t('agents.debugTab')}</Badge>
+                      <Badge status="debug">{t('agents.debugTab')}</Badge>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -373,9 +381,22 @@ export default function AgentMonitoringTab({
                       </span>
                     )}
                   </div>
-                  <p className="break-all text-xs text-muted-foreground">
-                    {selected.runner_id}
-                  </p>
+                </div>
+                <div className="grid grid-cols-1 divide-y rounded-lg border bg-muted/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                  <div className="space-y-1 p-4">
+                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.runStatus')}</p>
+                    <p className="text-sm font-semibold">{stateLabel(selected)}</p>
+                  </div>
+                  <div className="space-y-1 p-4">
+                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.toolCalls')}</p>
+                    <p className="text-sm font-semibold tabular-nums">{toolSteps.length}</p>
+                  </div>
+                  <div className="space-y-1 p-4">
+                    <p className="text-xs text-muted-foreground">{t('agents.monitoring.delivery')}</p>
+                    <p className={`text-sm font-semibold ${sendFailed ? 'text-destructive' : ''}`}>
+                      {t(`agents.monitoring.${sendFailed ? 'sendFailed' : sentCount ? 'sendCount' : 'noSend'}`, { count: sentCount })}
+                    </p>
+                  </div>
                 </div>
                 {failedStatuses.has(selected.status) && failureReason && (
                   <Alert variant="destructive">
@@ -418,72 +439,14 @@ export default function AgentMonitoringTab({
                 </Card>
                 <h3 className="text-sm font-medium">
                   {t('agents.monitoring.execution')}
+                  <span className="ml-2 text-muted-foreground">{steps.length}</span>
                 </h3>
-                {steps.map((step, index) => (
-                  <Card key={index} className="gap-2 py-3">
-                    <CardHeader className="px-3">
-                      <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
-                        {step.kind === 'tool' ? (
-                          <>
-                            <Wrench className="size-4 shrink-0" />
-                            <span className="break-all">
-                              {labels[step.name] || step.name}
-                            </span>
-                            <Badge
-                              variant={
-                                step.status === 'failed'
-                                  ? 'destructive'
-                                  : 'outline'
-                              }
-                            >
-                              {t(
-                                `agents.debugTool${step.status === 'running' ? (activeStatuses.has(selected.status) || eventCursor !== null ? 'Running' : 'Interrupted') : step.result && typeof step.result === 'object' && 'mock' in step.result && step.result.mock === true ? (step.status === 'failed' ? 'MockFailed' : 'Simulated') : step.status === 'failed' ? 'Failed' : 'Completed'}`,
-                              )}
-                            </Badge>
-                          </>
-                        ) : (
-                          <>
-                            <Brain className="size-4" />
-                            {t('agents.debugTextOutput')}
-                          </>
-                        )}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 px-3">
-                      {step.kind === 'message' ? (
-                        <>
-                          {step.text && (
-                            <p className={textClass}>{step.text}</p>
-                          )}
-                          {step.reasoning && (
-                            <ProcessorPayload
-                              title={t('agents.debugReasoning')}
-                              value={step.reasoning}
-                            />
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {step.error && (
-                            <p className={`${textClass} text-destructive`}>
-                              {step.error}
-                            </p>
-                          )}
-                          <ProcessorPayload
-                            title={t('agents.debugToolArguments')}
-                            value={step.parameters}
-                          />
-                          {step.result !== undefined && (
-                            <ProcessorPayload
-                              title={t('agents.debugToolResult')}
-                              value={step.result}
-                            />
-                          )}
-                        </>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                {!steps.length && <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t('agents.monitoring.noSteps')}</p>}
+                <AgentRunTimeline
+                  steps={steps}
+                  labels={labels}
+                  active={activeStatuses.has(selected.status) || eventCursor !== null}
+                />
                 {events
                   .filter((event) => event.type === 'processor.log')
                   .map((event) => (
@@ -520,6 +483,7 @@ export default function AgentMonitoringTab({
                     >
                       {json({
                         run_id: selected.run_id,
+                        runner_id: selected.runner_id,
                         usage: selected.usage,
                         events,
                       })}

@@ -704,33 +704,20 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = None
+        text = platform_events.event_summary(event)
         contents: list[dict[str, typing.Any]] = []
 
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            text_parts: list[str] = []
             try:
                 for component in message_chain:
-                    if isinstance(component, platform_message.Plain):
-                        text_parts.append(component.text)
-                    elif isinstance(component, platform_message.Image):
+                    if isinstance(component, platform_message.Image):
                         if component.url:
                             contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
                         elif component.base64:
                             contents.append({'type': 'image_base64', 'image_base64': component.base64})
             except TypeError:
-                text_parts.append(str(message_chain))
-            text = ''.join(text_parts) or str(message_chain)
-
-        if text is None:
-            feedback_content = getattr(event, 'feedback_content', None)
-            if feedback_content:
-                text = str(feedback_content)
-            elif getattr(event, 'action', None):
-                text = str(getattr(event, 'action'))
-            else:
-                text = str(getattr(event, 'type', 'event'))
+                pass
 
         if text:
             contents.insert(0, {'type': 'text', 'text': text})

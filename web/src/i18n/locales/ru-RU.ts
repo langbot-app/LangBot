@@ -792,6 +792,9 @@ const ruRU = {
     deleteConfirmation: 'Вы уверены, что хотите удалить этого бота?',
     platformAdapter: 'Выбор платформы/адаптера',
     selectAdapter: 'Выберите адаптер',
+    saveAndEnable: 'Сохранить и включить',
+    searchAdapters: 'Поиск адаптеров',
+    noMatchingAdapters: 'Подходящие адаптеры не найдены',
     legacyAdapters: 'Устаревшие адаптеры',
     legacyAdapterBadge: 'Устаревший',
     legacyAdaptersHint:
@@ -1146,6 +1149,16 @@ const ruRU = {
   },
   agents: {
     monitoring: {
+      runStatus: "Статус выполнения",
+      toolCalls: "Вызовы инструментов",
+      delivery: "Отправка сообщений",
+      sendFailed: "Ошибка отправки",
+      sendCount: "Успешных вызовов отправки: {{count}}",
+      noSend: "Отправки не зарегистрированы",
+      noSteps: "Шаги выполнения ещё не зарегистрированы.",
+      recipient: "Получатель",
+      actionCompleted: "Инструмент выполнен успешно.",
+      simulatedAction: "Действие смоделировано; реальное сообщение не отправлено.",
       description:
         'Просмотр события, ответа модели и вызовов инструментов для каждой задачи.',
       empty:

@@ -784,6 +784,9 @@ const jaJP = {
     deleteConfirmation: '本当にこのボットを削除しますか？',
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
+    saveAndEnable: '保存して有効化',
+    searchAdapters: 'アダプターを検索',
+    noMatchingAdapters: '一致するアダプターが見つかりません',
     legacyAdapters: '旧式アダプター',
     legacyAdapterBadge: '旧式',
     legacyAdaptersHint:
@@ -1136,6 +1139,16 @@ const jaJP = {
   },
   agents: {
     monitoring: {
+      runStatus: "実行状態",
+      toolCalls: "ツール呼び出し",
+      delivery: "メッセージ送信",
+      sendFailed: "送信失敗",
+      sendCount: "送信 API 呼び出し成功：{{count}} 回",
+      noSend: "送信記録なし",
+      noSteps: "実行ステップはまだありません。",
+      recipient: "送信先",
+      actionCompleted: "ツールの実行が完了しました。",
+      simulatedAction: "シミュレーションです。実際のメッセージは送信されていません。",
       description:
         '各タスクのトリガーイベント、モデル出力、ツール実行を確認します。',
       empty:

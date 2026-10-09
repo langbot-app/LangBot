@@ -235,11 +235,11 @@ export default function BotDetailContent({ id }: { id: string }) {
               <Button
                 type="submit"
                 form="bot-form"
-                disabled={!formDirty}
+                disabled={!enableLoaded || (!formDirty && botEnabled)}
                 className={activeTab !== 'config' ? 'invisible' : ''}
                 data-guide="bot-config-save"
               >
-                {t('common.save')}
+                {t(botEnabled ? 'common.save' : 'bots.saveAndEnable')}
               </Button>
               <Button
                 type="button"

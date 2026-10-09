@@ -161,11 +161,11 @@ export default function ExecutionTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant={executionStatusVariant(row.status_group)}>
+                    <Badge status={row.status_group}>
                       {executionStatusLabel(row, t)}
                     </Badge>
                     {row.debug && (
-                      <Badge variant="secondary">
+                      <Badge status="debug">
                         {t('monitoring.execution.debug')}
                       </Badge>
                     )}

@@ -797,6 +797,9 @@ const esES = {
     deleteConfirmation: '¿Estás seguro de que deseas eliminar este Bot?',
     platformAdapter: 'Selección de plataforma/adaptador',
     selectAdapter: 'Seleccionar adaptador',
+    saveAndEnable: 'Guardar y activar',
+    searchAdapters: 'Buscar adaptadores',
+    noMatchingAdapters: 'No se encontraron adaptadores coincidentes',
     legacyAdapters: 'Adaptadores heredados',
     legacyAdapterBadge: 'Heredado',
     legacyAdaptersHint:
@@ -1148,6 +1151,16 @@ const esES = {
   },
   agents: {
     monitoring: {
+      runStatus: "Estado de ejecución",
+      toolCalls: "Llamadas a herramientas",
+      delivery: "Envío de mensajes",
+      sendFailed: "Error de envío",
+      sendCount: "{{count}} llamadas de envío correctas",
+      noSend: "Sin envíos registrados",
+      noSteps: "Aún no hay pasos registrados.",
+      recipient: "Destinatario",
+      actionCompleted: "Herramienta ejecutada correctamente.",
+      simulatedAction: "Acción simulada; no se envió ningún mensaje real.",
       description:
         'Consulta el evento, la salida del modelo y las herramientas de cada tarea.',
       empty:
