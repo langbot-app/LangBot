@@ -873,7 +873,7 @@ const thTH = {
     enabled: 'เปิดใช้งาน',
     eventBindingDescriptionPlaceholder: 'คำอธิบายกฎ',
     noEventBindings: 'ไม่มีเส้นทางเหตุการณ์',
-    unsupportedPipelineEvent: 'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.* เท่านั้น',
+    unsupportedPipelineEvent: 'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.received เท่านั้น',
     disable: 'ปิดใช้งาน',
     enable: 'เปิดใช้งาน',
     disabledBindings: 'ปิดใช้งาน',

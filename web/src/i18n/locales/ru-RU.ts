@@ -899,7 +899,7 @@ const ruRU = {
     enabled: 'Включено',
     eventBindingDescriptionPlaceholder: 'Описание правила',
     noEventBindings: 'Нет маршрутов событий',
-    unsupportedPipelineEvent: 'Конвейеры поддерживают только события message.*',
+    unsupportedPipelineEvent: 'Конвейеры поддерживают только события message.received',
     disable: 'Отключить',
     enable: 'Включить',
     disabledBindings: 'Отключено',

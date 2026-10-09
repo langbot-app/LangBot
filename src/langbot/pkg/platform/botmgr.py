@@ -158,7 +158,7 @@ class RuntimeBot:
 
     @classmethod
     def _is_message_event_type(cls, event_type: str) -> bool:
-        return cls._match_event_pattern(event_type, 'message.*')
+        return event_type == 'message.received'
 
     @classmethod
     def _agent_supports_event_type(
@@ -310,6 +310,12 @@ class RuntimeBot:
                 step['reason'] = 'Event type does not match binding event_pattern'
                 diagnostic_steps.append(step)
                 continue
+            if binding.get('target_type') == 'pipeline' and not cls._is_message_event_type(event_type):
+                step['failure_code'] = 'processor_incompatible'
+                step['reason'] = 'Pipeline targets only support message.received'
+                diagnostic_steps.append(step)
+                continue
+
             if not cls._match_event_filters(event, binding.get('filters')):
                 step['failure_code'] = 'filters_mismatch'
                 step['reason'] = 'Event data does not satisfy binding filters'
@@ -423,6 +429,8 @@ class RuntimeBot:
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
         """Return the first Pipeline target configured for an event type."""
+        if not self._is_message_event_type(event_type):
+            return None
         matched: list[tuple[int, int, str]] = []
         for index, binding in enumerate(self._get_event_bindings()):
             if not binding.get('enabled', True):

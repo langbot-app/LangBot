@@ -833,7 +833,7 @@ const zhHans = {
     enabled: '启用',
     eventBindingDescriptionPlaceholder: '规则说明',
     noEventBindings: '暂无事件路由',
-    unsupportedPipelineEvent: '流水线 仅可用于 message.* 事件',
+    unsupportedPipelineEvent: '流水线 仅可用于 message.received 事件',
     disable: '禁用',
     enable: '启用',
     disabledBindings: '已禁用',

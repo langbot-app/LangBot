@@ -218,7 +218,7 @@ const BEHAVIOR_PRESETS = [
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function isMessageEventPattern(p: string) {
-  return p === 'message.*' || p.startsWith('message.');
+  return p === 'message.received';
 }
 
 interface RouteConflict {

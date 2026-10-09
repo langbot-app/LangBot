@@ -47,7 +47,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 AGENT_KIND_AGENT = 'agent'
 AGENT_KIND_PIPELINE = 'pipeline'
 AGENT_KIND_EVENT_PROCESSOR = 'event_processor'
-PIPELINE_EVENT_PATTERNS = ['message.*']
+PIPELINE_EVENT_PATTERNS = ['message.received']
 AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
 

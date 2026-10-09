@@ -886,7 +886,7 @@ const enUS = {
     enabled: 'Enabled',
     eventBindingDescriptionPlaceholder: 'Rule description',
     noEventBindings: 'No event routes',
-    unsupportedPipelineEvent: 'Pipelines can only be used for message.* events',
+    unsupportedPipelineEvent: 'Pipelines can only be used for message.received events',
     disable: 'Disable',
     enable: 'Enable',
     disabledBindings: 'Disabled',

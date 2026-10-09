@@ -832,7 +832,7 @@ const zhHant = {
     enabled: '啟用',
     eventBindingDescriptionPlaceholder: '規則說明',
     noEventBindings: '暫無事件路由',
-    unsupportedPipelineEvent: '流水線 僅可用於 message.* 事件',
+    unsupportedPipelineEvent: '流水線 僅可用於 message.received 事件',
     disable: '禁用',
     enable: '啟用',
     disabledBindings: '已禁用',

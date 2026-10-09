@@ -64,7 +64,7 @@ class BotService:
 
     @staticmethod
     def _is_message_event_pattern(event_pattern: str) -> bool:
-        return event_pattern == 'message.*' or event_pattern.startswith('message.')
+        return event_pattern == 'message.received'
 
     @staticmethod
     def _event_pattern_covers(supported_pattern: str, binding_pattern: str) -> bool:
@@ -507,7 +507,7 @@ class BotService:
 
             if target_type == 'pipeline':
                 if not self._is_message_event_pattern(event_pattern):
-                    raise ValueError('Pipeline can only be bound to message events')
+                    raise ValueError('Pipeline can only be bound to message.received')
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
                         sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
