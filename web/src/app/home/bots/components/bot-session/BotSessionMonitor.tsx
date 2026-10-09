@@ -1158,33 +1158,35 @@ const BotSessionMonitor = forwardRef<
                   )}
                 </div>
               </ScrollArea>
-              <div className="h-9 border-t px-3 flex items-center justify-center gap-3 shrink-0 text-xs">
-                <button
-                  type="button"
-                  disabled={messagePage === 0 || loadingMessages}
-                  onClick={() =>
-                    setMessagePage((page) => Math.max(0, page - 1))
-                  }
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
-                >
-                  <ChevronLeft className="size-3.5" />
-                  {t('common.previous')}
-                </button>
-                <span className="tabular-nums text-muted-foreground">
-                  {messagePage + 1} / {messagePageCount} · {messageTotal}
-                </span>
-                <button
-                  type="button"
-                  disabled={
-                    messagePage + 1 >= messagePageCount || loadingMessages
-                  }
-                  onClick={() => setMessagePage((page) => page + 1)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
-                >
-                  {t('common.next')}
-                  <ChevronRight className="size-3.5" />
-                </button>
-              </div>
+              {messagePageCount > 1 && (
+                <div className="h-9 border-t px-3 flex items-center justify-center gap-3 shrink-0 text-xs">
+                  <button
+                    type="button"
+                    disabled={messagePage === 0 || loadingMessages}
+                    onClick={() =>
+                      setMessagePage((page) => Math.max(0, page - 1))
+                    }
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    {t('operationTrace.previousPage')}
+                  </button>
+                  <span className="tabular-nums text-muted-foreground">
+                    {messagePage + 1} / {messagePageCount} · {messageTotal}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      messagePage + 1 >= messagePageCount || loadingMessages
+                    }
+                    onClick={() => setMessagePage((page) => page + 1)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                  >
+                    {t('operationTrace.nextPage')}
+                    <ChevronRight className="size-3.5" />
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
