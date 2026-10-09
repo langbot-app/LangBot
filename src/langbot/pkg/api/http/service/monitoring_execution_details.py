@@ -83,6 +83,119 @@ def transcript_item(row):
 
 
 class ExecutionDetailsMixin:
+    def _session_message_source(self, workspace, bot_ids):
+        """Combine delivered messages with ingress missing from the legacy ledger."""
+        message = models.MonitoringMessage
+        conversation = sa.func.coalesce(
+            EventLog.conversation_id,
+            sa.select(AgentRun.conversation_id).where(
+                AgentRun.workspace_id == workspace,
+                AgentRun.bot_id == EventLog.bot_id,
+                AgentRun.event_id == EventLog.event_id,
+            ).order_by(AgentRun.id).limit(1).scalar_subquery(),
+            sa.case(
+                (self._execution_json_text(EventLog.input_json, 'chat_type') == 'group',
+                 sa.literal('group_') + self._execution_json_text(EventLog.input_json, 'chat_id')),
+                (self._execution_json_text(EventLog.input_json, 'chat_type') == 'private',
+                 sa.literal('person_') + self._execution_json_text(EventLog.input_json, ('sender', 'id'))),
+            ),
+        )
+        values = {
+            'id': EventLog.event_id,
+            'workspace_uuid': EventLog.workspace_id,
+            'timestamp': sa.func.coalesce(EventLog.event_time, EventLog.created_at),
+            'bot_id': EventLog.bot_id,
+            'bot_name': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'bot_name'), ''),
+            'pipeline_id': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_uuid')), ''),
+            'pipeline_name': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''),
+            'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
+            'session_id': conversation,
+            'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
+            'level': sa.literal('info'),
+            'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),
+            'user_id': EventLog.actor_id,
+            'user_name': EventLog.actor_name,
+            'role': sa.literal('user'),
+            'event_id': EventLog.event_id,
+            'run_id': EventLog.run_id,
+        }
+        columns = list(message.__table__.columns)
+        stored = sa.select(*columns).where(message.workspace_uuid == workspace, message.bot_id.in_(bot_ids))
+        incoming = sa.select(*[
+            values.get(column.name, sa.literal(None)).label(column.name) for column in columns
+        ]).where(
+            EventLog.workspace_id == workspace,
+            EventLog.bot_id.in_(bot_ids),
+            EventLog.source == 'platform',
+            EventLog.event_type == 'message.received',
+            conversation.is_not(None),
+            conversation != '',
+            ~sa.exists(sa.select(message.id).where(
+                message.workspace_uuid == workspace,
+                message.bot_id == EventLog.bot_id,
+                sa.func.coalesce(message.role, 'user') != 'assistant',
+                sa.or_(message.event_id == EventLog.event_id, message.id == EventLog.event_id),
+            )),
+        )
+        return sa.union_all(stored, incoming).subquery()
+
+    async def _session_projection_page(self, workspace, statement, limit, offset):
+        count = (await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))).scalar_one()
+        rows = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
+        return [
+            {key: value.isoformat() if isinstance(value, datetime.datetime) else value for key, value in row.items()}
+            for row in rows
+        ], count
+
+    async def get_bot_conversation_sessions(self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset):
+        """Read session summaries across processor types without mutating history."""
+        messages = self._session_message_source(workspace, bot_ids)
+        key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
+        ranked = sa.select(
+            *messages.c,
+            sa.func.row_number().over(partition_by=key, order_by=[
+                sa.case((messages.c.role == 'user', 0), else_=1), messages.c.timestamp.desc(), messages.c.id.desc(),
+            ]).label('position'),
+            sa.func.min(messages.c.timestamp).over(partition_by=key).label('first_seen'),
+            sa.func.max(messages.c.timestamp).over(partition_by=key).label('last_seen'),
+            sa.func.count().over(partition_by=key).label('count'),
+        ).where(messages.c.session_id != '').subquery()
+        session = models.MonitoringSession
+        fields = list(session.__table__.columns)
+        projected = {
+            'start_time': ranked.c.first_seen,
+            'last_activity': ranked.c.last_seen,
+            'message_count': ranked.c['count'],
+            'is_active': sa.literal(True),
+        }
+        derived = sa.select(*[
+            (projected[field.name] if field.name in projected else ranked.c[field.name]).label(field.name)
+            for field in fields
+        ]).where(ranked.c.position == 1)
+        existing = sa.select(*fields).where(session.workspace_uuid == workspace, session.bot_id.in_(bot_ids))
+        combined = sa.union_all(existing, derived).subquery()
+        group = [combined.c.workspace_uuid, combined.c.bot_id, combined.c.session_id]
+        merged = sa.select(
+            *[combined.c[field.name] for field in fields if field.name not in {'message_count', 'start_time', 'last_activity'}],
+            sa.func.max(combined.c.message_count).over(partition_by=group).label('message_count'),
+            sa.func.min(combined.c.start_time).over(partition_by=group).label('start_time'),
+            sa.func.max(combined.c.last_activity).over(partition_by=group).label('last_activity'),
+            sa.func.row_number().over(partition_by=group, order_by=combined.c.last_activity.desc()).label('position'),
+        ).subquery()
+        query = sa.select(*[merged.c[field.name] for field in fields]).where(merged.c.position == 1)
+        if start_time:
+            query = query.where(merged.c.last_activity >= start_time)
+        if end_time:
+            query = query.where(merged.c.last_activity <= end_time)
+        if user_query and user_query.strip():
+            pattern = f'%{user_query.strip()}%'
+            query = query.where(sa.or_(merged.c.user_id.ilike(pattern), merged.c.user_name.ilike(pattern)))
+        if is_active is not None:
+            query = query.where(merged.c.is_active == is_active)
+        return await self._session_projection_page(
+            workspace, query.order_by(merged.c.last_activity.desc(), merged.c.session_id), limit, offset,
+        )
+
     def _execution_json_text(self, column, key):
         # SQLite JSON functions accept TEXT directly; PostgreSQL operators
         # require an explicit JSON cast for the existing text-backed journals.
@@ -121,6 +234,7 @@ class ExecutionDetailsMixin:
         payload,
         actor_id=None,
         actor_name=None,
+        conversation_id=None,
         status='running',
         routes=None,
     ):
@@ -142,6 +256,7 @@ class ExecutionDetailsMixin:
             bot_id=bot_id,
             actor_id=actor_id,
             actor_name=actor_name,
+            conversation_id=conversation_id,
             actor_type='user' if actor_id else 'system',
             input_summary=summary,
             input_json=content,

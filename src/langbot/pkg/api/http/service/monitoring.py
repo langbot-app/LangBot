@@ -1884,6 +1884,16 @@ class MonitoringService(ExecutionDetailsMixin):
         """Get messages with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
+        if bot_ids and session_ids and not pipeline_ids and not execution_statuses and mode == 'all':
+            source = self._session_message_source(workspace_uuid, bot_ids)
+            query = sqlalchemy.select(source).where(source.c.session_id.in_(session_ids))
+            if start_time:
+                query = query.where(source.c.timestamp >= start_time)
+            if end_time:
+                query = query.where(source.c.timestamp <= end_time)
+            return await self._session_projection_page(
+                workspace_uuid, query.order_by(source.c.timestamp.desc(), source.c.id.desc()), limit, offset,
+            )
         conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
         conditions.append(
@@ -2141,6 +2151,10 @@ class MonitoringService(ExecutionDetailsMixin):
         """Get sessions with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
+        if bot_ids and not pipeline_ids and not execution_statuses and mode == 'all':
+            return await self.get_bot_conversation_sessions(
+                workspace_uuid, bot_ids, start_time, end_time, user_query, is_active, limit, offset,
+            )
         conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
         conditions.append(

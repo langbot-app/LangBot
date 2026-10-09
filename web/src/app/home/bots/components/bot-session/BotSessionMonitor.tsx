@@ -410,6 +410,25 @@ const BotSessionMonitor = forwardRef<
       if (Array.isArray(parsed)) {
         return parsed as MessageChainComponent[];
       }
+      if (parsed && typeof parsed === 'object') {
+        const chain = parsed.message_chain ?? parsed.event?.message_chain;
+        if (Array.isArray(chain)) return chain as MessageChainComponent[];
+        if (Array.isArray(chain?.root)) return chain.root as MessageChainComponent[];
+        if (Array.isArray(parsed.contents)) {
+          const components: MessageChainComponent[] = [];
+          for (const part of parsed.contents) {
+            if (part.type === 'text' && typeof part.text === 'string') {
+              components.push({ type: 'Plain', text: part.text } as Plain);
+            } else if (part.type === 'image' && part.image_url) {
+              components.push({ type: 'Image', url: part.image_url } as MessageChainComponent);
+            }
+          }
+          if (components.length) return components;
+        }
+        if (typeof parsed.text === 'string') {
+          return [{ type: 'Plain', text: parsed.text } as Plain];
+        }
+      }
     } catch {
       // Not JSON, return as plain text
     }

@@ -218,7 +218,7 @@ _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES = {
     'now': sqlalchemy.sql.functions.now,
     'sum': sqlalchemy.sql.functions.sum,
 }
-_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'strftime'})
+_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'row_number', 'strftime'})
 _ALLOWED_SCOPED_CUSTOM_OPERATORS = frozenset({'<=>'})
 _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.dml.UpdateBase,
@@ -488,7 +488,10 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 and isinstance(source, sqlalchemy.Column)
                 and type(source.type) is sqlalchemy.Text
                 and getattr(getattr(source, 'table', None), 'name', None) in {'event_log', 'agent_run'}
-                and source.name == 'metadata_json'
+                and (
+                    source.name == 'metadata_json'
+                    or (source.table.name == 'event_log' and source.name == 'input_json')
+                )
             )
             if not (pipeline_json_cas or monitoring_metadata):
                 raise ScopedSessionTransactionError(

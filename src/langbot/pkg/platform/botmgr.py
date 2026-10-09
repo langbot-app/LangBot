@@ -946,6 +946,7 @@ class RuntimeBot:
             return
         try:
             sender = getattr(event, 'sender', None)
+            target_type, target_id, _ = self._infer_reply_target(event)
             await service.record_ingress_event(
                 self.execution_context,
                 event_id=execution_id,
@@ -960,6 +961,7 @@ class RuntimeBot:
                 },
                 actor_id=self._get_entity_id(sender),
                 actor_name=self._get_entity_name(sender),
+                conversation_id=f'{target_type}_{target_id}' if target_type and target_id else None,
                 status=status,
                 routes=routes,
             )
