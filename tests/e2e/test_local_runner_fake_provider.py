@@ -1023,6 +1023,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
+    capfd,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
@@ -1091,7 +1092,8 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             evidence = await self.box.execute_tool({'command': 'python3 -c ' + shlex.quote(stat_script)}, query)
             assert evidence['ok'], evidence
             metadata = json.loads(evidence['stdout'])
-            print(f'Core uid={os.geteuid()}; LocalAgent Docker copy: {metadata}')
+            with capfd.disabled():
+                print(f'Core uid={os.geteuid()}; LocalAgent Docker copy: {metadata}', flush=True)
             assert metadata['mode'] == 0o600
             if sys.platform == 'linux' and os.geteuid() != 0:
                 assert metadata['uid'] == 0

@@ -36,7 +36,7 @@ class _Client(_InProcessBoxRuntimeClient):
 
 
 @pytest.mark.asyncio
-async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, monkeypatch):
+async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, monkeypatch, capfd):
     logger = logging.getLogger('test.box.outbox')
     backend = _TestDockerBackend(logger)
     if not await backend.is_available():
@@ -80,7 +80,9 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
             evidence = await box.execute_tool({'command': 'python3 -c ' + shlex.quote(stat_script)}, query)
             assert evidence['ok'], evidence
             metadata = json.loads(evidence['stdout'])
-            print(f'Core uid={os.geteuid()}; Docker copy: {metadata}')
+            # Keep ownership evidence in CI logs even when the test passes.
+            with capfd.disabled():
+                print(f'Core uid={os.geteuid()}; Docker copy: {metadata}', flush=True)
             assert metadata['mode'] == 0o600
             if sys.platform == 'linux':
                 # Linux CI exercises the issue's exact root-owned 0600 case.
