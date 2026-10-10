@@ -7,10 +7,12 @@ _MARKER = re.compile(r"</?think>", re.IGNORECASE)
 
 def visible_think_markers(content: str, markdown: bool = True) -> str:
     def replace(match):
-        tag = match.group(0).lower()
-        return "\n\n" + (f"`{tag}`" if markdown else tag) + "\n\n"
+        tag = match.group(1).lower()
+        separator = "\n\n" if markdown else "\n"
+        return separator + (f"`{tag}`" if markdown else tag) + separator
 
-    return _MARKER.sub(replace, content).strip()
+    # Normalize only marker boundaries; preserve paragraph spacing in the body.
+    return re.sub(r"[ \t\r\n]*(</?think>)[ \t\r\n]*", replace, content, flags=re.IGNORECASE).strip()
 
 
 def card_text_fields(content: str) -> dict[str, str]:
