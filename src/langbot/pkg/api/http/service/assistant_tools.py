@@ -285,7 +285,7 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         compact['query'] = {key: args[key] for key in ('search', 'action', 'resource_type', 'actor') if args.get(key)}
         return compact
     if name == 'get_pipeline':
-        return await ap.pipeline_service.get_pipeline(context, args['pipeline_uuid'])
+        return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline(context, args['pipeline_uuid'])
     if name == 'get_knowledge_schema':
         return {
             'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),
