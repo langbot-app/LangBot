@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  inflight: {
+    autoCollapse: "自動折りたたみ",
+    empty: "処理中のイベントはありません",
+    move: "上下にドラッグ、または矢印キーで移動",
+    botLogs: "ボットのログ",
+    processorLogs: "プロセッサーのログ",
+
+    "title": "実行中",
+    "expand": "展開",
+    "collapse": "折りたたむ",
+    "reconnecting": "再接続中。最後に受信した状態を表示しています。",
+    "details": "詳細を見る",
+    "debug": "デバッグイベント",
+    "limited": "一部のみ表示しています。全実行はダッシュボードで確認できます。",
+    "queued": "待機中",
+    "running": "処理中",
+    "waiting": "入力待ち",
+    "tool": "ツール呼び出し中",
+    "thinking": "思考中",
+    "replying": "返信準備中",
+    "generating": "返信生成中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み",
+    "ignored": "無視"
+  },
   assistant: {
     movePosition: 'アシスタントを左右に移動',
     resizeHeight: 'アシスタントの高さを調整',

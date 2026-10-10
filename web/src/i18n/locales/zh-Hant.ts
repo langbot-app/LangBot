@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
+  inflight: {
+    autoCollapse: "自動摺疊",
+    empty: "目前沒有正在處理的事件",
+    move: "上下拖動；也可用方向鍵移動",
+    botLogs: "機器人日誌",
+    processorLogs: "處理器日誌",
+
+    "title": "處理中",
+    "expand": "展開",
+    "collapse": "收起",
+    "reconnecting": "連線中斷，正在重新連線；顯示最後收到的狀態。",
+    "details": "查看詳情",
+    "debug": "除錯事件",
+    "limited": "僅顯示部分執行，請在儀表板查看全部記錄。",
+    "queued": "排隊中",
+    "running": "處理中",
+    "waiting": "等待使用者輸入",
+    "tool": "呼叫工具",
+    "thinking": "思考中",
+    "replying": "準備回覆",
+    "generating": "產生回覆",
+    "completed": "已完成",
+    "failed": "失敗",
+    "cancelled": "已取消",
+    "ignored": "已忽略"
+  },
   assistant: {
     movePosition: '左右移動助手',
     resizeHeight: '調整助手高度',

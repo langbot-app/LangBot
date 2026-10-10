@@ -1,6 +1,6 @@
 import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -22,7 +22,14 @@ import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-ses
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users, RefreshCw, Trash2, Loader2 } from 'lucide-react';
+import {
+  Settings,
+  FileText,
+  Users,
+  RefreshCw,
+  Trash2,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { showBotError } from './bot-error';
@@ -56,7 +63,23 @@ export default function BotDetailContent({ id }: { id: string }) {
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, bots, setDetailEntityName, t]);
 
-  const [activeTab, setActiveTab] = useState('config');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab =
+    !isCreateMode &&
+    canViewMonitoring &&
+    ['logs', 'sessions'].includes(requestedTab || '')
+      ? requestedTab!
+      : 'config';
+  const setActiveTab = (tab: string) =>
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('tab', tab);
+        return next;
+      },
+      { replace: true },
+    );
   const [adapterLabel, setAdapterLabel] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
@@ -101,7 +124,9 @@ export default function BotDetailContent({ id }: { id: string }) {
         setBot((current) =>
           current ? { ...current, enable: checked } : current,
         );
-        toast.success(t(checked ? 'bots.enableConfirmed' : 'bots.disableConfirmed'));
+        toast.success(
+          t(checked ? 'bots.enableConfirmed' : 'bots.disableConfirmed'),
+        );
         refreshBots();
       } catch (error) {
         setBotEnabled(prev);
@@ -217,17 +242,34 @@ export default function BotDetailContent({ id }: { id: string }) {
             {enableLoaded && (
               <div className="flex items-center gap-2">
                 <Badge
-                  status={isTogglingEnable ? 'pending' : botEnabled ? 'enabled' : 'disabled'}
+                  status={
+                    isTogglingEnable
+                      ? 'pending'
+                      : botEnabled
+                        ? 'enabled'
+                        : 'disabled'
+                  }
                   className="gap-1.5 rounded-full"
                   role="status"
                   aria-live="polite"
                 >
-                  {isTogglingEnable
-                    ? <Loader2 className="animate-spin" aria-hidden="true" />
-                    : <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />}
-                  {t(isTogglingEnable
-                    ? botEnabled ? 'bots.enabling' : 'bots.disabling'
-                    : botEnabled ? 'bots.enableConfirmed' : 'bots.disableConfirmed')}
+                  {isTogglingEnable ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <span
+                      className="size-1.5 rounded-full bg-current"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {t(
+                    isTogglingEnable
+                      ? botEnabled
+                        ? 'bots.enabling'
+                        : 'bots.disabling'
+                      : botEnabled
+                        ? 'bots.enableConfirmed'
+                        : 'bots.disableConfirmed',
+                  )}
                 </Badge>
                 <Switch
                   id="bot-enable-switch"
@@ -256,7 +298,11 @@ export default function BotDetailContent({ id }: { id: string }) {
                 className={activeTab !== 'config' ? 'invisible' : ''}
                 data-guide="bot-config-save"
               >
-                {t(formDirty && !botEnabled ? 'bots.saveAndEnable' : 'common.save')}
+                {t(
+                  formDirty && !botEnabled
+                    ? 'bots.saveAndEnable'
+                    : 'common.save',
+                )}
               </Button>
               <Button
                 type="button"

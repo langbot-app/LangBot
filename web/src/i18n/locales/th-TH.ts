@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
+  inflight: {
+    autoCollapse: "ยุบอัตโนมัติ",
+    empty: "ไม่มีเหตุการณ์ที่กำลังประมวลผล",
+    move: "ลากขึ้นลงหรือใช้ปุ่มลูกศรเพื่อย้าย",
+    botLogs: "บันทึกบอต",
+    processorLogs: "บันทึกตัวประมวลผล",
+
+    "title": "กำลังดำเนินการ",
+    "expand": "ขยาย",
+    "collapse": "ย่อ",
+    "reconnecting": "กำลังเชื่อมต่อใหม่ แสดงสถานะล่าสุดที่ได้รับ",
+    "details": "ดูรายละเอียด",
+    "debug": "เหตุการณ์ทดสอบ",
+    "limited": "แสดงบางรายการ ดูทั้งหมดได้ที่แดชบอร์ด",
+    "queued": "อยู่ในคิว",
+    "running": "กำลังประมวลผล",
+    "waiting": "รอข้อมูล",
+    "tool": "กำลังเรียกเครื่องมือ",
+    "thinking": "กำลังคิด",
+    "replying": "กำลังเตรียมคำตอบ",
+    "generating": "กำลังสร้างคำตอบ",
+    "completed": "เสร็จสิ้น",
+    "failed": "ล้มเหลว",
+    "cancelled": "ยกเลิกแล้ว",
+    "ignored": "ละเว้นแล้ว"
+  },
   assistant: {
     movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
     resizeHeight: 'ปรับความสูงของผู้ช่วย',

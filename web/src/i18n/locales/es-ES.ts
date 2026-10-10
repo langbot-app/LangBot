@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
+  inflight: {
+    autoCollapse: "Plegar auto.",
+    empty: "No hay eventos en proceso",
+    move: "Arrastra verticalmente o usa las flechas",
+    botLogs: "Registros del bot",
+    processorLogs: "Registros del procesador",
+
+    "title": "En curso",
+    "expand": "Expandir",
+    "collapse": "Contraer",
+    "reconnecting": "Reconectando; se muestra el último estado recibido.",
+    "details": "Ver detalles",
+    "debug": "Evento de depuración",
+    "limited": "Se muestra un subconjunto. Consulte todas las ejecuciones en el panel.",
+    "queued": "En cola",
+    "running": "Procesando",
+    "waiting": "Esperando entrada",
+    "tool": "Ejecutando herramienta",
+    "thinking": "Pensando",
+    "replying": "Preparando respuesta",
+    "generating": "Generando respuesta",
+    "completed": "Completado",
+    "failed": "Fallido",
+    "cancelled": "Cancelado",
+    "ignored": "Ignorado"
+  },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
     resizeHeight: 'Ajustar la altura del asistente',

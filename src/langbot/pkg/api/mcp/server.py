@@ -207,6 +207,10 @@ class LangBotMCPServer:
                 return _dump(await ap.monitoring_service.get_message_details(context, identifier))
             return _dump(await ap.monitoring_service.get_session_analysis(context, identifier))
 
+        @mcp.tool(description='Read a bounded snapshot of active and recently started Workspace executions, including the latest progress event. No percentage is estimated.')
+        async def get_inflight_executions() -> str:
+            return _dump(await ap.monitoring_service.get_inflight_snapshot(_authorized(Permission.RESOURCE_VIEW)))
+
         @mcp.tool(
             description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
         )

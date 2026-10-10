@@ -127,8 +127,13 @@ def _workspace_transaction(method):
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         if callable(tenant_uow):
             async with tenant_uow(workspace_uuid):
-                return await method(self, context, *args, **kwargs)
-        return await method(self, context, *args, **kwargs)
+                result = await method(self, context, *args, **kwargs)
+        else:
+            result = await method(self, context, *args, **kwargs)
+        if method.__name__ in {'record_message', 'update_message_status'}:
+            from ....utils.inflight import inflight_hub
+            inflight_hub.notify(workspace_uuid)
+        return result
 
     return wrapped
 
@@ -1533,6 +1538,7 @@ class MonitoringService(ExecutionDetailsMixin):
         end_time: datetime.datetime | None = None,
         limit: int = 50,
         offset: int = 0,
+        include_summary: bool = True,
     ) -> dict:
         """List executions from both object types (agent runs and pipeline queries)."""
         workspace_uuid = require_workspace_uuid(context)
@@ -1633,6 +1639,8 @@ class MonitoringService(ExecutionDetailsMixin):
                     by_key[(kind, item['id'])] = item
             page = [by_key[(ref.source, ref.id)] for ref in refs if (ref.source, ref.id) in by_key]
             await self.enrich_execution_rows(workspace_uuid, page)
+        if not include_summary:
+            return {'items': page, 'total': total, 'has_more': total > offset + len(page)}
         return {
             'items': page,
             'total': total,
@@ -1660,6 +1668,54 @@ class MonitoringService(ExecutionDetailsMixin):
                 ),
             },
         }
+
+    async def get_inflight_snapshot(self, context: TenantContext, previous: list[dict] | None = None) -> dict:
+        """Bounded Workspace snapshot without dashboard aggregates or token payloads."""
+        from ....utils.inflight import inflight_hub
+
+        workspace = require_workspace_uuid(context)
+        active = await self.get_executions(context, statuses=['running', 'queued'], limit=100, include_summary=False)
+        recent = await self.get_executions(
+            context, start_time=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30),
+            limit=100, include_summary=False,
+        )
+        items = {(r['source'], r['id']): r for r in recent['items'] + active['items'] if r['source'] != 'event'}
+        # Keep the actual terminal state of older runs that just left the active set.
+        for kind, model, column, scope in [
+            ('agent', persistence_agent_run.AgentRun, persistence_agent_run.AgentRun.run_id, persistence_agent_run.AgentRun.workspace_id),
+            ('pipeline', persistence_monitoring.MonitoringMessage, persistence_monitoring.MonitoringMessage.id, persistence_monitoring.MonitoringMessage.workspace_uuid),
+        ]:
+            missing = [r['id'] for r in (previous or [])[:100] if r['source'] == kind and (kind, r['id']) not in items]
+            if missing:
+                records = await self._execution_rows(workspace, sqlalchemy.select(model).where(scope == workspace, column.in_(missing)))
+                names = await self._agent_names(workspace, records) if kind == 'agent' else {}
+                for record in records:
+                    row = self._serialize_agent_execution(record, names) if kind == 'agent' else self._serialize_pipeline_execution(record)
+                    items[(kind, row['id'])] = row
+        rows = list(items.values())
+        Run = persistence_agent_run.AgentRun
+        Message = persistence_monitoring.MonitoringMessage
+        agent_ids = [r['id'] for r in rows if r['source'] == 'agent']
+        pipeline_ids = [r['id'] for r in rows if r['source'] == 'pipeline']
+        linked = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Run.run_id, Message.id.label('message_id')).outerjoin(
+                Message, sqlalchemy.and_(Message.workspace_uuid == workspace, Message.run_id == Run.run_id)
+            ).where(Run.workspace_id == workspace, sqlalchemy.or_(Run.run_id.in_(agent_ids), Message.id.in_(pipeline_ids)))
+        )
+        identities = {r.run_id: ('pipeline', r.message_id) if r.message_id in pipeline_ids else ('agent', r.run_id) for r in linked.all()}
+        inflight_hub.track(workspace, identities)
+        Event = persistence_agent_run.AgentRunEvent
+        latest = sqlalchemy.select(Event.run_id, sqlalchemy.func.max(Event.sequence).label('seq')).where(
+            Event.run_id.in_(identities)
+        ).group_by(Event.run_id).subquery()
+        phases = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Event.run_id, Event.type).join(latest, sqlalchemy.and_(Event.run_id == latest.c.run_id, Event.sequence == latest.c.seq))
+        )
+        for run_id, event_type in phases.all():
+            row = items.get(identities[run_id])
+            if row is not None:
+                row['progress_event'] = event_type
+        return {'items': rows, 'active_total': active['total'], 'truncated': active['has_more'] or recent['has_more']}
 
     async def get_token_statistics(
         self,

@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/zh-Hans';
 const zhHans = {
+  inflight: {
+    autoCollapse: "自动折叠",
+    empty: "当前没有正在处理的事件",
+    move: "上下拖动；也可用方向键移动",
+    botLogs: "机器人日志",
+    processorLogs: "处理器日志",
+
+    "title": "处理中",
+    "expand": "展开",
+    "collapse": "收起",
+    "reconnecting": "连接中断，正在重连；显示的是最后收到的状态。",
+    "details": "查看详情",
+    "debug": "调试事件",
+    "limited": "仅展示部分执行，请在仪表盘查看全部记录。",
+    "queued": "排队中",
+    "running": "处理中",
+    "waiting": "等待用户输入",
+    "tool": "调用工具",
+    "thinking": "思考中",
+    "replying": "准备回复",
+    "generating": "生成回复",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "ignored": "已忽略"
+  },
   assistant: {
     movePosition: '左右移动助手',
     resizeHeight: '调整助手高度',

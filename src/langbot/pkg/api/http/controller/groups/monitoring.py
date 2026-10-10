@@ -59,6 +59,31 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=metrics)
 
+        @self.route('/in-flight/stream', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def stream_inflight(request_context: RequestContext):
+            from .....utils.inflight import inflight_hub
+            from ...service.tenant import require_workspace_uuid
+            import json
+
+            workspace = require_workspace_uuid(request_context)
+            previous = []
+
+            async def snapshot():
+                nonlocal previous
+                result = await self.ap.monitoring_service.get_inflight_snapshot(request_context, previous)
+                previous = [row for row in result['items'] if row['status_group'] in {'running', 'queued'}]
+                return result
+
+            async def frames():
+                async for frame in inflight_hub.watch(workspace, snapshot):
+                    yield 'data: ' + json.dumps(frame, ensure_ascii=False) + '\n\n'
+
+            response = quart.Response(frames(), content_type='text/event-stream')
+            response.headers['Cache-Control'] = 'no-cache, no-store'
+            response.headers['X-Accel-Buffering'] = 'no'
+            response.timeout = None
+            return response
+
         @self.route('/executions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_executions(request_context: RequestContext) -> str:
             """Unified execution list across agent runs and pipeline queries."""

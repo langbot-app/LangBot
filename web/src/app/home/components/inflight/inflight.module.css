@@ -1,0 +1,125 @@
+.active {
+  width: 40%;
+  animation: travel 1.6s ease-in-out infinite;
+}
+@keyframes travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .active {
+    animation: none;
+    width: 40%;
+  }
+}
+.panel {
+  contain: layout;
+  overflow-x: hidden;
+  transition:
+    width 180ms ease-out,
+    transform 180ms ease-out;
+}
+.task {
+  animation: arrive 180ms ease-out both;
+}
+.leaving {
+  animation: depart 180ms ease-in both;
+  pointer-events: none;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes depart {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task,
+  .leaving {
+    animation: none;
+  }
+}
+
+.panel[data-dragging='true'] {
+  transition: none;
+}
+.dockContent {
+  animation: dockReveal 160ms ease-out both;
+}
+@keyframes dockReveal {
+  from {
+    opacity: 0.35;
+    transform: translateX(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    transition: none;
+  }
+  .dockContent {
+    animation: none;
+  }
+}
+
+.connection {
+  position: relative;
+  height: 2px;
+  background: var(--border);
+}
+.connection::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
+  border-top: 1.5px solid var(--muted-foreground);
+  border-right: 1.5px solid var(--muted-foreground);
+  transform: rotate(45deg);
+}
+.flowing {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.flowing i {
+  display: block;
+  width: 8px;
+  height: 2px;
+  background: var(--primary);
+  animation: nodeFlow 1.4s ease-in-out infinite;
+}
+@keyframes nodeFlow {
+  from {
+    transform: translateX(-8px);
+  }
+  to {
+    transform: translateX(24px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flowing i {
+    animation: none;
+    transform: translateX(8px);
+  }
+}

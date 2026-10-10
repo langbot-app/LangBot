@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
+  inflight: {
+    autoCollapse: "Tự thu gọn",
+    empty: "Không có sự kiện đang xử lý",
+    move: "Kéo lên xuống hoặc dùng phím mũi tên",
+    botLogs: "Nhật ký bot",
+    processorLogs: "Nhật ký bộ xử lý",
+
+    "title": "Đang thực hiện",
+    "expand": "Mở rộng",
+    "collapse": "Thu gọn",
+    "reconnecting": "Đang kết nối lại; hiển thị trạng thái nhận được gần nhất.",
+    "details": "Xem chi tiết",
+    "debug": "Sự kiện gỡ lỗi",
+    "limited": "Chỉ hiển thị một phần. Xem bảng điều khiển để biết tất cả lượt chạy.",
+    "queued": "Đang chờ",
+    "running": "Đang xử lý",
+    "waiting": "Chờ nhập liệu",
+    "tool": "Đang gọi công cụ",
+    "thinking": "Đang suy nghĩ",
+    "replying": "Chuẩn bị trả lời",
+    "generating": "Đang tạo câu trả lời",
+    "completed": "Hoàn tất",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy",
+    "ignored": "Đã bỏ qua"
+  },
   assistant: {
     movePosition: 'Di chuyển trợ lý theo chiều ngang',
     resizeHeight: 'Điều chỉnh chiều cao trợ lý',

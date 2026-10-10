@@ -1,5 +1,31 @@
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  inflight: {
+    autoCollapse: "Auto-collapse",
+    empty: "No events are being processed",
+    move: "Drag vertically; use arrow keys to move",
+    botLogs: "Robot logs",
+    processorLogs: "Processor logs",
+
+    "title": "In flight",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "reconnecting": "Reconnecting; showing the last received state.",
+    "details": "View details",
+    "debug": "Debug event",
+    "limited": "Showing a limited set. Open the dashboard for all executions.",
+    "queued": "Queued",
+    "running": "Processing",
+    "waiting": "Waiting for input",
+    "tool": "Calling a tool",
+    "thinking": "Thinking",
+    "replying": "Preparing reply",
+    "generating": "Generating reply",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "ignored": "Ignored"
+  },
   assistant: {
     movePosition: 'Move assistant horizontally',
     resizeHeight: 'Resize assistant height',

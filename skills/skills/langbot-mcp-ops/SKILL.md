@@ -177,6 +177,11 @@ logs and action results. These times are not internal plugin profiling data.
 
 ## Unified execution monitoring
 
+Use `get_inflight_executions` for a bounded current-workspace snapshot of active
+and recently started executions, including `progress_event`. Progress is a
+reported stage, not an estimated completion percentage. The UI uses the shared
+`GET /api/v1/monitoring/in-flight/stream` SSE feed instead of polling per viewer.
+
 Use `get_monitoring_executions` for the execution list and
 its legacy `pipeline_ids` parameter to filter any processor kind (Agent,
 Pipeline or event processor); the summary uses the same processor scope. Use

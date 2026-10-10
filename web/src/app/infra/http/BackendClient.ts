@@ -6,6 +6,7 @@ import type {
 } from '@/app/infra/entities/api/pipeline-migration';
 import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
 import type {
+  InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
   ExecutionModeFilter,
@@ -2201,6 +2202,33 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public async streamInflight(onFrame: (frame: InflightFrame) => void, signal: AbortSignal): Promise<void> {
+    const response = await this.instance.get<ReadableStream<Uint8Array>>(
+      '/api/v1/monitoring/in-flight/stream',
+      { adapter: 'fetch', responseType: 'stream', timeout: 0, signal, headers: { Accept: 'text/event-stream' } },
+    );
+    const reader = response.data.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (frame.startsWith('data: ')) onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
+        }
+        if (buffer.length > 2_000_000) throw new Error('Monitoring frame exceeds limit');
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
   }
 
   public getExecutions(params: {
