@@ -339,7 +339,12 @@ class PipelineService:
         if self.ap.plugin_connector.is_enable_plugin:
             await self.ap.plugin_connector.require_workspace_context(context)
         plugins = await self.ap.plugin_connector.list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
-        prefs = pipeline.get('extensions_preferences', {})
+        prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
+        try:
+            available_skills = await self.ap.skill_service.list_skills(context)
+        except Exception as exc:
+            self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
+            available_skills = []
         return {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
             'enable_all_mcp_servers': prefs.get('enable_all_mcp_servers', True),
@@ -351,7 +356,7 @@ class PipelineService:
             'bound_mcp_resources': prefs.get('mcp_resources', []),
             'mcp_resource_agent_read_enabled': prefs.get('mcp_resource_agent_read_enabled', True),
             'bound_skills': prefs.get('skills', []),
-            'available_skills': await self.ap.skill_service.list_skills(context),
+            'available_skills': available_skills,
         }
 
     async def update_pipeline_extensions(
