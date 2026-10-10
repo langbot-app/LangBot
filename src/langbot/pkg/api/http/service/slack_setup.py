@@ -47,7 +47,30 @@ def manifest(name: str, webhook_url: str, redirect_url: str, *, events: bool, so
     if events:
         settings['event_subscriptions'] = {
             **({} if socket_mode else {'request_url': webhook_url}),
-            'bot_events': ['app_mention', 'message.im'],
+            'bot_events': [
+                'app_mention',
+                'message.im',
+                'message.channels',
+                'message.groups',
+                'message.mpim',
+                'reaction_added',
+                'reaction_removed',
+                'member_joined_channel',
+                'member_left_channel',
+                'channel_rename',
+                'group_rename',
+                'channel_archive',
+                'channel_unarchive',
+                'group_archive',
+                'group_unarchive',
+                'app_home_opened',
+                'app_uninstalled',
+                'tokens_revoked',
+            ],
+        }
+        settings['interactivity'] = {
+            'is_enabled': True,
+            **({} if socket_mode else {'request_url': webhook_url}),
         }
     return {
         'display_information': {'name': name},
@@ -60,6 +83,7 @@ def manifest(name: str, webhook_url: str, redirect_url: str, *, events: bool, so
             'scopes': {
                 'bot': [
                     'app_mentions:read',
+                    'reactions:read',
                     'chat:write',
                     'channels:history',
                     'channels:read',

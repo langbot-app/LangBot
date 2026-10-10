@@ -1,4 +1,6 @@
 export default {
+  permissionsHint:
+    'Requests message, channel, user, file and reaction permissions. Subscribes to edits/deletions, reactions, membership, channel updates, App Home and app lifecycle events; enables button/form callbacks. Channel replies still require an @mention. Existing apps need updated subscriptions and reinstallation after adding scopes.',
   title: 'Quick Slack setup',
   description:
     'Create and configure a Slack app, authorize installation, then fill the adapter credentials.',

@@ -33,7 +33,7 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         typing.Type[platform_events.Event],
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
-    _message_cache: dict[str, platform_events.MessageReceivedEvent] = {}
+    _message_cache: dict[tuple[str, str], platform_events.MessageReceivedEvent] = {}
     _user_cache: dict[str, platform_entities.User] = {}
     _group_cache: dict[str, platform_entities.UserGroup] = {}
     _member_cache: dict[tuple[str, str], platform_entities.UserGroupMember] = {}
@@ -74,6 +74,14 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
     def get_supported_events(self) -> list[str]:
         return [
             'message.received',
+            'message.edited',
+            'message.deleted',
+            'message.reaction',
+            'group.member_joined',
+            'group.member_left',
+            'group.info_updated',
+            'bot.invited_to_group',
+            'bot.removed_from_group',
             'platform.specific',
         ]
 
@@ -111,8 +119,15 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             raise ValueError('Slack reply_message requires a SlackEvent source object')
         target_type = 'channel' if source.type == 'channel' else 'person'
         target_id = source.channel_id if source.type == 'channel' else source.user_id
-        raw = await send_chain(self.bot, target_type, target_id, message)
-        return platform_events.MessageResult(message_id=source.message_id, raw=raw)
+        thread_ts = source.get('event', {}).get('thread_ts') or (source.message_id if quote_origin else None)
+        if thread_ts:
+            target_type, target_id = 'channel', source.channel_id
+        raw = await send_chain(self.bot, target_type, target_id, message, thread_ts)
+        responses = raw.get('responses', [])
+        sent = responses[-1] if responses else {}
+        return platform_events.MessageResult(
+            message_id=sent.get('ts') or sent.get('message', {}).get('ts', ''), raw=raw
+        )
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         handler = PLATFORM_API_MAP.get(action)
@@ -144,6 +159,9 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
+        identity = await self.bot.client.auth_test()
+        self.bot_account_id = identity.get('user_id', '')
+        self.bot.bot_user_id = self.bot_account_id
         if self.config.get('socket_mode', False):
             await self.bot.run_socket(self.config['app_token'])
             return
@@ -163,11 +181,30 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         return False
 
     def _register_native_handlers(self):
-        for msg_type in ('im', 'channel'):
+        for msg_type in ('im', 'channel', 'event'):
             self.bot.on_message(msg_type)(self._handle_native_event)
 
     async def _handle_native_event(self, event: SlackEvent):
         try:
+            self.event_converter.bot_user_id = getattr(self.bot, 'bot_user_id', None) or self.bot_account_id
+            raw = event.get('event', {})
+            channel = raw.get('channel') or raw.get('item', {}).get('channel', '')
+            if (
+                isinstance(channel, str)
+                and channel.startswith('D')
+                and channel not in self.event_converter.private_chats
+                and (
+                    raw.get('subtype') in {'message_changed', 'message_deleted'}
+                    or raw.get('type') in {'reaction_added', 'reaction_removed'}
+                )
+            ):
+                try:
+                    conversation = await self.bot.client.conversations_info(channel=channel)
+                    self.event_converter.remember_private_chat(channel, conversation.get('channel', {}).get('user', ''))
+                except Exception:
+                    await self.logger.warning('Slack DM participant lookup failed; using channel ID for this event')
+            if event.get('event', {}).get('type') in {'app_uninstalled', 'tokens_revoked'}:
+                await self.logger.warning(f'Slack application lifecycle event: {event["event"]["type"]}')
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
                 legacy_event = await self.event_converter.target2legacy(event)
                 if legacy_event and type(legacy_event) in self.listeners:
@@ -190,7 +227,7 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
     def _cache_event(self, event: platform_events.Event):
         if not isinstance(event, platform_events.MessageReceivedEvent):
             return
-        self._message_cache[str(event.message_id)] = event
+        self._message_cache[(str(event.chat_id), str(event.message_id))] = event
         self._user_cache[str(event.sender.id)] = event.sender
         if event.group:
             self._group_cache[str(event.group.id)] = event.group

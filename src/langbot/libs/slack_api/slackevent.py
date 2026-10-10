@@ -65,7 +65,8 @@ class SlackEvent(dict):
 
     @property
     def message_id(self) -> str:
-        return self.get('event_id', '')
+        raw = self.get('event', {})
+        return raw.get('deleted_ts') or raw.get('message', {}).get('ts') or raw.get('ts', '')
 
     @property
     def pic_url(self) -> str:

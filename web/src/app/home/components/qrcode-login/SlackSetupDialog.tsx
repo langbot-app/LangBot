@@ -177,6 +177,9 @@ export default function SlackSetupDialog({
           <div className="space-y-4">
             {status === 'idle' && (
               <>
+                <p className="text-sm text-muted-foreground">
+                  {t('slackSetup.permissionsHint')}
+                </p>
                 <a
                   className="text-sm text-primary underline"
                   href="https://api.slack.com/apps"

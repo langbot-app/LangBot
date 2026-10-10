@@ -1,6 +1,8 @@
 import asyncio
 import json
 import traceback
+from urllib.parse import parse_qs
+from slack_sdk.signature import SignatureVerifier
 from quart import Quart, jsonify, request
 from slack_sdk.web.async_client import AsyncWebClient
 from .slackevent import SlackEvent
@@ -64,13 +66,20 @@ class SlackClient:
             body = await req.get_data()
             if len(body) > _MAX_CALLBACK_BODY_BYTES:
                 raise ValueError('Slack callback body exceeds the size limit')
-            data = await asyncio.to_thread(json.loads, body)
+            if not SignatureVerifier(self.signing_secret).is_valid_request(body, dict(req.headers)):
+                return jsonify({'error': 'Invalid Slack signature'}), 401
+            if req.mimetype == 'application/x-www-form-urlencoded':
+                data = json.loads(parse_qs(body.decode()).get('payload', ['{}'])[0])
+            else:
+                data = json.loads(body)
             if 'type' in data:
                 if data['type'] == 'url_verification':
                     return data['challenge']
 
-            await self.handle_payload(data)
-            return jsonify({'status': 'ok'})
+            self._start_worker()
+            if not self._enqueue(data, data.get('event_id')):
+                return jsonify({'error': 'Slack event queue is full'}), 503
+            return '', 200
 
         except Exception as e:
             await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
@@ -79,29 +88,64 @@ class SlackClient:
     async def handle_payload(self, data):
         """Dispatch the same event representation for HTTP and Socket Mode."""
         raw = data.get('event', {})
+        for authorization in data.get('authorizations', []):
+            if not self.bot_user_id and authorization.get('is_bot') and authorization.get('user_id'):
+                self.bot_user_id = authorization['user_id']
+                break
+        if data.get('type') in {'block_actions', 'view_submission', 'view_closed', 'shortcut', 'message_action'}:
+            await self._handle_message(SlackEvent(data), 'event')
+            return
         if raw.get('bot_id') or raw.get('subtype') == 'bot_message':
             return
-        if raw.get('channel_type') == 'im':
+        kind, subtype = raw.get('type'), raw.get('subtype')
+        if kind == 'message' and subtype not in (None, 'file_share', 'thread_broadcast'):
+            await self._handle_message(SlackEvent(data), 'event')
+        elif raw.get('channel_type') == 'im' and kind == 'message':
             await self._handle_message(SlackEvent.from_payload(data))
-        elif raw.get('type') == 'app_mention':
+        elif kind == 'app_mention':
             raw['channel_type'] = 'channel'
             await self._handle_message(SlackEvent.from_payload(data))
+        elif kind != 'message':
+            await self._handle_message(SlackEvent(data), 'event')
+
+    def _enqueue(self, payload, key=None):
+        if key and key in self.socket_seen:
+            return True
+        try:
+            self.socket_queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            return False
+        if key:
+            self.socket_seen[key] = True
+            while len(self.socket_seen) > 4096:
+                self.socket_seen.popitem(last=False)
+        return True
+
+    def _start_worker(self):
+        if self.socket_worker is not None and not self.socket_worker.done():
+            return
+
+        async def worker():
+            while True:
+                payload = await self.socket_queue.get()
+                try:
+                    await self.handle_payload(payload)
+                except Exception:
+                    await self.logger.error('Slack event processing failed')
+                finally:
+                    self.socket_queue.task_done()
+
+        self.socket_worker = asyncio.create_task(worker())
 
     async def _socket_request(self, client, req):
         from slack_sdk.socket_mode.response import SocketModeResponse
 
-        if req.type == 'events_api':
+        if req.type in {'events_api', 'interactive'}:
             key = req.payload.get('event_id') or req.envelope_id
-            if key not in self.socket_seen:
-                try:
-                    self.socket_queue.put_nowait(req.payload)
-                except asyncio.QueueFull:
-                    # Leave unacknowledged so Slack can retry; do not grow tasks without bounds.
-                    await self.logger.warning('Slack Socket Mode event queue is full')
-                    return
-                self.socket_seen[key] = True
-                while len(self.socket_seen) > 4096:
-                    self.socket_seen.popitem(last=False)
+            if not self._enqueue(req.payload, key):
+                # Leave unacknowledged so Slack can retry; do not grow tasks without bounds.
+                await self.logger.warning('Slack Socket Mode event queue is full')
+                return
         await client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
 
     async def run_socket(self, app_token):
@@ -111,17 +155,7 @@ class SlackClient:
         self.socket_client = SocketModeClient(app_token=app_token, web_client=self.client)
         self.socket_client.socket_mode_request_listeners.append(self._socket_request)
 
-        async def worker():
-            while True:
-                payload = await self.socket_queue.get()
-                try:
-                    await self.handle_payload(payload)
-                except Exception:
-                    await self.logger.error('Slack Socket Mode event processing failed')
-                finally:
-                    self.socket_queue.task_done()
-
-        self.socket_worker = asyncio.create_task(worker())
+        self._start_worker()
         try:
             await self.socket_client.connect()
             await self.logger.info('Slack Socket Mode connected')
@@ -143,11 +177,11 @@ class SlackClient:
             self.socket_queue.get_nowait()
             self.socket_queue.task_done()
 
-    async def _handle_message(self, event: SlackEvent):
+    async def _handle_message(self, event: SlackEvent, kind=None):
         """
         处理消息事件。
         """
-        msg_type = event.type
+        msg_type = kind or event.type
         if msg_type in self._message_handlers:
             for handler in self._message_handlers[msg_type]:
                 await handler(event)
@@ -167,7 +201,7 @@ class SlackClient:
         try:
             response = await self.client.chat_postMessage(channel=channel_id, text=text)
             if self.bot_user_id is None and response.get('ok'):
-                self.bot_user_id = response.get('message', {}).get('bot_id')
+                self.bot_user_id = response.get('message', {}).get('user')
             return response.data if hasattr(response, 'data') else response
         except Exception as e:
             await self.logger.error(f'Error in send_message: {e}')
@@ -177,7 +211,7 @@ class SlackClient:
         try:
             response = await self.client.chat_postMessage(channel='@' + user_id, text=text)
             if self.bot_user_id is None and response.get('ok'):
-                self.bot_user_id = response.get('message', {}).get('bot_id')
+                self.bot_user_id = response.get('message', {}).get('user')
 
             return response.data if hasattr(response, 'data') else response
         except Exception as e:
