@@ -147,6 +147,10 @@ class PipelineID(Arguments):
     pipeline_uuid: UUID
 
 
+class PipelineExtensionsID(PipelineID):
+    pass
+
+
 class EngineID(Arguments):
     plugin_id: str = Field(min_length=3, max_length=255)
 
@@ -180,6 +184,12 @@ TOOLS = {
         None,
     ),
     'get_pipeline': (PipelineID, 'Read a Pipeline configuration with secrets redacted.', False, None),
+    'get_pipeline_extensions': (
+        PipelineExtensionsID,
+        'Read Pipeline extension bindings and available Workspace extensions.',
+        False,
+        None,
+    ),
     'get_knowledge_schema': (EngineID, 'Get the engine creation and retrieval configuration schemas.', False, None),
     'list_operation_logs': (
         ListOperationLogs,
@@ -286,6 +296,10 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         return compact
     if name == 'get_pipeline':
         return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline(context, args['pipeline_uuid'])
+    if name == 'get_pipeline_extensions':
+        return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline_extensions(
+            context, args['pipeline_uuid']
+        )
     if name == 'get_knowledge_schema':
         return {
             'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),
