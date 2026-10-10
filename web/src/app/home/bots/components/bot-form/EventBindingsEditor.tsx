@@ -11,6 +11,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import styles from './EventBindingsEditor.module.css';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
@@ -1800,7 +1801,12 @@ export default function EventBindingsEditor({
       <div className="flex flex-wrap gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={bindings.length === 0 ? styles.emptyRouteHint : undefined}
+            >
               <Plus className="h-4 w-4 mr-1" />
               {t('bots.addBehavior')}
               <ChevronDown className="ml-1 h-3.5 w-3.5" />
