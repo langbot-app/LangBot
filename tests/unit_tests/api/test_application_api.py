@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.api.application import ApplicationAPI
-from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.http.authz import Permission, PermissionDeniedError
 
 
 def _context(*permissions: str):
@@ -36,7 +36,7 @@ async def test_pipeline_operation_rejects_missing_permission():
     api = ApplicationAPI(SimpleNamespace(pipeline_service=service))
     context = _context()
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await api.get_pipeline(context, 'p1')
 
     service.get_pipeline.assert_not_awaited()
