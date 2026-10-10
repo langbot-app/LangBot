@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import quart
 
+from .....application import ApplicationAPI
+
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
@@ -11,6 +13,20 @@ from ......pipeline.extension_preferences import (
     normalize_extension_preferences,
     validate_extension_preferences,
 )
+
+
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared facade without evaluating an eager fallback.
+
+    Test and migration graphs may not attach ``application_api`` yet.  Build a
+    small compatibility facade around the existing PipelineService in that
+    case; using ``getattr(..., ap.pipeline_service)`` directly evaluates the
+    fallback eagerly and also assumes legacy services expose ``list_pipelines``
+    (the service contract is ``get_pipelines``).
+    """
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if application_api is not None else ApplicationAPI(ap)
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
@@ -26,7 +42,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             sort_by = quart.request.args.get('sort_by', 'created_at')
             sort_order = quart.request.args.get('sort_order', 'DESC')
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
-            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+            application_api = _application_api(self.ap)
             return self.success(
                 data={
                     'pipelines': await application_api.list_pipelines(
