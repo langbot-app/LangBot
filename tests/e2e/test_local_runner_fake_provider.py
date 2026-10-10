@@ -549,7 +549,14 @@ def _run_local_agent_probe(tmpdir: Path, probe):
             platform_utils.standalone_runtime = previous_standalone_runtime
             os.chdir(previous_cwd)
 
-    return asyncio.run(_run())
+    # Source installs resolve data from the checkout, not the current working
+    # directory. Scope the override to this probe, without leaking to other E2Es.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('LANGBOT_DATA_ROOT', str(tmpdir / 'data'))
+        # Do not replace pytest-asyncio's policy loop when this synchronous
+        # probe follows async integration tests in the same pytest process.
+        with asyncio.Runner(loop_factory=asyncio.new_event_loop) as runner:
+            return runner.run(_run())
 
 
 def test_local_runner_uses_host_fake_provider_and_persists_ledger(
@@ -1016,6 +1023,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
+    capfd,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
@@ -1076,6 +1084,20 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                 query,
             )
             assert result['ok'], result
+            stat_script = (
+                'import json, os, stat; '
+                f's = os.stat({(outbox + "/answer.txt")!r}); '
+                'print(json.dumps(dict(uid=s.st_uid, gid=s.st_gid, mode=stat.S_IMODE(s.st_mode))))'
+            )
+            evidence = await self.box.execute_tool({'command': 'python3 -c ' + shlex.quote(stat_script)}, query)
+            assert evidence['ok'], evidence
+            metadata = json.loads(evidence['stdout'])
+            with capfd.disabled():
+                print(f'Core uid={os.geteuid()}; LocalAgent Docker copy: {metadata}', flush=True)
+            assert metadata['mode'] == 0o600
+            if sys.platform == 'linux' and os.geteuid() != 0:
+                assert metadata['uid'] == 0
+                assert metadata['gid'] == 0
             return result
 
     async def probe(ap):

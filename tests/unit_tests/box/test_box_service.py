@@ -2025,7 +2025,8 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_client_execute(spec):
+        async def fake_client_execute(spec, *, action_context):
+            assert action_context == _ACTION_CONTEXT
             cmd = spec.cmd
             calls.append(cmd)
             if 'os.scandir' in cmd:
@@ -2068,7 +2069,8 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_client_execute(spec):
+        async def fake_client_execute(spec, *, action_context):
+            assert action_context == _ACTION_CONTEXT
             cmd = spec.cmd
             calls.append(cmd)
             if 'os.scandir' in cmd:
@@ -2267,7 +2269,7 @@ class TestAttachmentHostPath:
         for index in range(513):
             os.symlink(harmless_target, os.path.join(outbox, f'entry-{index}'))
 
-        with pytest.raises(BoxValidationError, match='symbolic link'):
+        with pytest.raises(BoxValidationError, match='directory-entry limit'):
             await service.collect_outbound_attachments(query)
         assert harmless_target.read_bytes() == b'x'
 

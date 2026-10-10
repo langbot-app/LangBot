@@ -195,6 +195,7 @@ Box is the sandbox subsystem used by native agent tools, stdio MCP servers, skil
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, skill CRUD, status, reconnects, quotas, mounts, and sandbox profiles.
+- [Outbox export failures](docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py`, `mcp_stdio.py`, and skill loaders depend on Box availability.
 - `pkg/skill/manager.py` loads skills from the Box runtime, falling back to local `data/skills` when needed.
