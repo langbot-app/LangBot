@@ -447,7 +447,10 @@ class RuntimePipeline:
                     lane_outcome = 'success'
                     lane_error = ''
                     try:
-                        return await self._process_query(query)
+                        from ..platform.processing_indicator import processing_indicator
+
+                        async with processing_indicator(query.adapter, query.launcher_type.value.lower(), query.launcher_id):
+                            return await self._process_query(query)
                     except asyncio.CancelledError:
                         lane_outcome = 'cancelled'
                         lane_error = 'cancelled'

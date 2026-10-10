@@ -1272,17 +1272,23 @@ class RuntimeBot:
 
         try:
             with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
-                async for _ in self.ap.agent_run_orchestrator.run(
-                    envelope,
-                    binding,
-                    adapter_context={
-                        '_delivery_adapter': adapter,
-                        '_platform_event': event,
-                        '_execution_context': self.execution_context,
-                    },
-                ):
-                    # Results are journaled by the orchestrator; platform sends require explicit actions.
-                    pass
+                from .processing_indicator import processing_indicator
+
+                reply_type, reply_id = (None, None)
+                if isinstance(event, platform_events.MessageReceivedEvent):
+                    reply_type, reply_id, _ = self._infer_reply_target(event)
+                async with processing_indicator(adapter, reply_type, reply_id):
+                    async for _ in self.ap.agent_run_orchestrator.run(
+                        envelope,
+                        binding,
+                        adapter_context={
+                            '_delivery_adapter': adapter,
+                            '_platform_event': event,
+                            '_execution_context': self.execution_context,
+                        },
+                    ):
+                        # Results are journaled by the orchestrator; platform sends require explicit actions.
+                        pass
         except Exception:
             return await self._record_event_route_trace(
                 event_type=event_type,
