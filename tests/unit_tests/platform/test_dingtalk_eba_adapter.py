@@ -243,7 +243,7 @@ async def test_dingtalk_message_converter_maps_inbound_components():
     assert isinstance(chain[0], platform_message.Source)
     assert isinstance(chain[1], platform_message.At)
     assert isinstance(chain[2], platform_message.Plain)
-    assert chain[2].text == ' hello'
+    assert chain[2].text == '@LangBot hello'
     assert isinstance(chain[3], platform_message.File)
     assert isinstance(chain[4], platform_message.Quote)
     assert str(chain[4].origin) == 'quoted text'

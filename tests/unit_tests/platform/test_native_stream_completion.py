@@ -19,7 +19,7 @@ async def test_native_stream_receives_one_terminal_snapshot(platform):
     module = __import__(f'tests.unit_tests.platform.test_{platform}_eba_adapter', fromlist=['make_adapter'])
     adapter = module.make_adapter()
     object.__setattr__(adapter, 'reply_message', AsyncMock())
-    source = SimpleNamespace()
+    source = SimpleNamespace(source_platform_object=SimpleNamespace(incoming_message={}))
     if platform == 'lark':
         adapter.card_id_dict['response'] = 'card'
         adapter.card_sequence_dict['card'] = 0
@@ -66,7 +66,7 @@ async def test_native_stream_receives_one_terminal_snapshot(platform):
     assert count == 1
     adapter.reply_message.assert_not_awaited()
     if platform == 'lark':
-        adapter._replace_streaming_card.assert_awaited_once_with('card', 'hello')
+        adapter._replace_streaming_card.assert_awaited_once_with('card', 'hello', finished=True)
         assert not adapter.card_id_dict
     elif platform == 'dingtalk':
         adapter.bot.send_card_message.assert_awaited_once_with('card', 'id', 'hello', True)

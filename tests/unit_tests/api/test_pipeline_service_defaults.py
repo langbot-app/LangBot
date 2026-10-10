@@ -8,6 +8,7 @@ import pytest
 
 from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.api.http.service.pipeline import PipelineService
+from langbot.pkg.api.http.service.model import LLMModelsService
 
 
 class FakeLogger:
@@ -54,6 +55,7 @@ async def test_default_pipeline_config_uses_first_installed_runner_schema():
         logger=FakeLogger(),
         runner_registry=FakeRegistry([custom_agent, local_agent]),
     )
+    ap.llm_model_service = LLMModelsService(ap)
 
     config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
 
