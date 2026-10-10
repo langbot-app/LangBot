@@ -139,36 +139,11 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+            pipeline = await application_api.get_pipeline(request_context, pipeline_uuid)
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
-
-            pipeline_component_kinds = ['Command', 'EventListener', 'Tool']
-            if self.ap.plugin_connector.is_enable_plugin:
-                await self.ap.plugin_connector.require_workspace_context(request_context)
-            plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
-            mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
-            try:
-                available_skills = await self.ap.skill_service.list_skills(request_context)
-            except Exception as exc:
-                self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
-                available_skills = []
-            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
-            return self.success(
-                data={
-                    'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
-                    'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
-                    'enable_all_skills': extensions_prefs.get('enable_all_skills', True),
-                    'bound_plugins': extensions_prefs.get('plugins', []),
-                    'available_plugins': redact_secrets(plugins),
-                    'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
-                    'available_mcp_servers': mcp_servers,
-                    'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
-                    'mcp_resource_agent_read_enabled': extensions_prefs.get('mcp_resource_agent_read_enabled', True),
-                    'bound_skills': extensions_prefs.get('skills', []),
-                    'available_skills': available_skills,
-                }
-            )
+            return self.success(data=await application_api.get_pipeline_extensions(request_context, pipeline_uuid))
 
         @self.route(
             '/<pipeline_uuid>/extensions',
@@ -236,13 +211,14 @@ class PipelinesRouterGroup(group.RouterGroup):
                         'mcp_resources': 'bound_mcp_resources',
                     },
                 )
-                await self.ap.pipeline_service.update_pipeline_extensions(
+                application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+                await application_api.update_pipeline_extensions(
                     request_context,
                     pipeline_uuid,
-                    json_data.get('bound_plugins', []),
-                    json_data.get('bound_mcp_servers', []),
-                    json_data.get('enable_all_plugins', True),
-                    json_data.get('enable_all_mcp_servers', True),
+                    bound_plugins=json_data.get('bound_plugins', []),
+                    bound_mcp_servers=json_data.get('bound_mcp_servers', []),
+                    enable_all_plugins=json_data.get('enable_all_plugins', True),
+                    enable_all_mcp_servers=json_data.get('enable_all_mcp_servers', True),
                     bound_skills=json_data.get('bound_skills', []),
                     enable_all_skills=json_data.get('enable_all_skills', True),
                     bound_mcp_resources=json_data.get('bound_mcp_resources'),
