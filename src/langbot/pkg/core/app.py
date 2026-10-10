@@ -359,6 +359,7 @@ class Application:
     async def run(self):
         self.event_loop_monitor.start()
         from ..utils.execution_lease import maintain_execution_leases
+
         self.task_mgr.create_task(
             maintain_execution_leases(self),
             name='execution-lease-maintenance',

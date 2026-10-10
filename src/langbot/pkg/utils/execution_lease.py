@@ -41,44 +41,87 @@ async def reconcile_execution_leases(engine, workspace_uuid, *, now=None, owner_
             conditions.extend([AgentRun.queue_name.is_(None), AgentRun.claimed_by_runtime_id.is_(None)])
         async with engine.begin() as connection:
             if engine.dialect.name == 'postgresql':
-                await connection.execute(sa.text("SELECT set_config('langbot.workspace_uuid', :workspace, true)"),
-                                         {'workspace': workspace_uuid})
-            await connection.execute(sa.update(model).where(
-                *conditions, model.execution_owner_id == owner_id,
-                model.execution_lease_expires_at > now,
-            ).values(execution_lease_expires_at=now + datetime.timedelta(seconds=LEASE_SECONDS)))
+                await connection.execute(
+                    sa.text("SELECT set_config('langbot.workspace_uuid', :workspace, true)"),
+                    {'workspace': workspace_uuid},
+                )
+            await connection.execute(
+                sa.update(model)
+                .where(
+                    *conditions,
+                    model.execution_owner_id == owner_id,
+                    model.execution_lease_expires_at > now,
+                )
+                .values(execution_lease_expires_at=now + datetime.timedelta(seconds=LEASE_SECONDS))
+            )
             expired = [*conditions, model.execution_lease_expires_at <= now]
-            rows = (await connection.execute(sa.select(identity, scope).where(*expired)
-                    .order_by(model.execution_lease_expires_at).limit(500))).all()
+            rows = (
+                await connection.execute(
+                    sa.select(identity, scope).where(*expired).order_by(model.execution_lease_expires_at).limit(500)
+                )
+            ).all()
             if not rows:
                 continue
-            values = {'status': 'failed', 'status_reason': INTERRUPTED_REASON,
-                      'finished_at': now, 'updated_at': now} if model is AgentRun else {
-                          'status': 'error', 'level': 'error',
-                      }
+            values = (
+                {'status': 'failed', 'status_reason': INTERRUPTED_REASON, 'finished_at': now, 'updated_at': now}
+                if model is AgentRun
+                else {
+                    'status': 'error',
+                    'level': 'error',
+                }
+            )
             if model is MonitoringMessage:
-                messages = (await connection.execute(sa.select(model).where(
-                    model.id.in_([row[0] for row in rows]),
-                ))).mappings().all()
+                messages = (
+                    (
+                        await connection.execute(
+                            sa.select(model).where(
+                                model.id.in_([row[0] for row in rows]),
+                            )
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
                 for message in messages:
-                    result = await connection.execute(sa.update(model).where(
-                        *expired, model.id == message['id'],
-                    ).values(**values))
+                    result = await connection.execute(
+                        sa.update(model)
+                        .where(
+                            *expired,
+                            model.id == message['id'],
+                        )
+                        .values(**values)
+                    )
                     changed += result.rowcount
                     if result.rowcount:
-                        await connection.execute(sa.insert(MonitoringError).values(
-                            id=str(uuid.uuid4()), timestamp=now,
-                            error_type='ExecutionInterrupted', error_message=INTERRUPTED_REASON,
-                            message_id=message['id'],
-                            **{key: message[key] for key in (
-                                'workspace_uuid', 'bot_id', 'bot_name', 'pipeline_id',
-                                'pipeline_name', 'session_id',
-                            )},
-                        ))
+                        await connection.execute(
+                            sa.insert(MonitoringError).values(
+                                id=str(uuid.uuid4()),
+                                timestamp=now,
+                                error_type='ExecutionInterrupted',
+                                error_message=INTERRUPTED_REASON,
+                                message_id=message['id'],
+                                **{
+                                    key: message[key]
+                                    for key in (
+                                        'workspace_uuid',
+                                        'bot_id',
+                                        'bot_name',
+                                        'pipeline_id',
+                                        'pipeline_name',
+                                        'session_id',
+                                    )
+                                },
+                            )
+                        )
             else:
-                result = await connection.execute(sa.update(model).where(
-                    *expired, identity.in_([row[0] for row in rows]),
-                ).values(**values))
+                result = await connection.execute(
+                    sa.update(model)
+                    .where(
+                        *expired,
+                        identity.in_([row[0] for row in rows]),
+                    )
+                    .values(**values)
+                )
                 changed += result.rowcount
             workspaces.update(row[1] for row in rows)
     for workspace in workspaces:
@@ -92,7 +135,8 @@ async def maintain_execution_leases(ap):
             count = 0
             for binding in await ap.workspace_service.list_active_execution_bindings():
                 count += await reconcile_execution_leases(
-                    ap.persistence_mgr.get_db_engine(), binding.workspace_uuid,
+                    ap.persistence_mgr.get_db_engine(),
+                    binding.workspace_uuid,
                 )
             if count:
                 ap.logger.info(f'Marked {count} interrupted executions as failed after host lease expiry')

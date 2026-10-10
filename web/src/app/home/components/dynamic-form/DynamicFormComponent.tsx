@@ -318,7 +318,8 @@ function DownloadLinkField({
       if (/^https?:\/\//i.test(url)) {
         // External templates must not receive backend credentials.
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+        if (!response.ok)
+          throw new Error(`Download failed: ${response.status}`);
         blob = await response.blob();
       } else {
         const response = await backendClient.downloadFile(url);
@@ -327,7 +328,8 @@ function DownloadLinkField({
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = filename || url.split('/').pop()?.split('?')[0] || 'download';
+      link.download =
+        filename || url.split('/').pop()?.split('?')[0] || 'download';
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -752,33 +754,39 @@ function DynamicFormFieldList({
 
   // State for QR code login dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [qrDialogPlatform, setQrDialogPlatform] =
-    useState<QrLoginPlatform | 'slack'>('feishu');
+  const [qrDialogPlatform, setQrDialogPlatform] = useState<
+    QrLoginPlatform | 'slack'
+  >('feishu');
 
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
       {/* QR code login dialog */}
-      {qrDialogPlatform === 'slack' ? <SlackSetupDialog
-        open={qrDialogOpen}
-        onOpenChange={setQrDialogOpen}
-        botId={systemContext?.bot_uuid as string | undefined}
-        webhookUrl={(systemContext?.webhook_url as string) || ''}
-        socketMode={!!form.getValues('socket_mode')}
-        onSuccess={(credentials) => {
-          for (const [key, value] of Object.entries(credentials)) setFormValue(key, value);
-        }}
-      /> : <QrCodeLoginDialog
-        open={qrDialogOpen}
-        onOpenChange={setQrDialogOpen}
-        platform={qrDialogPlatform}
-        onSuccess={(credentials) => {
-          for (const [key, value] of Object.entries(credentials)) {
-            if (value) {
-              form.setValue(key as keyof FormValues, value as never);
+      {qrDialogPlatform === 'slack' ? (
+        <SlackSetupDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          botId={systemContext?.bot_uuid as string | undefined}
+          webhookUrl={(systemContext?.webhook_url as string) || ''}
+          socketMode={!!form.getValues('socket_mode')}
+          onSuccess={(credentials) => {
+            for (const [key, value] of Object.entries(credentials))
+              setFormValue(key, value);
+          }}
+        />
+      ) : (
+        <QrCodeLoginDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          platform={qrDialogPlatform}
+          onSuccess={(credentials) => {
+            for (const [key, value] of Object.entries(credentials)) {
+              if (value) {
+                form.setValue(key as keyof FormValues, value as never);
+              }
             }
-          }
-        }}
-      />}
+          }}
+        />
+      )}
 
       {itemConfigList.map((config, index) => {
         if (hiddenItemNames?.includes(config.name)) return null;
@@ -964,7 +972,8 @@ function DynamicFormFieldList({
                 onClick={() => {
                   if (!isEditing) {
                     setQrDialogPlatform(
-                      (config.login_platform as QrLoginPlatform | 'slack') || 'feishu',
+                      (config.login_platform as QrLoginPlatform | 'slack') ||
+                        'feishu',
                     );
                     setQrDialogOpen(true);
                   }
@@ -996,7 +1005,8 @@ function DynamicFormFieldList({
                   onClick={(e) => {
                     e.stopPropagation();
                     setQrDialogPlatform(
-                      (config.login_platform as QrLoginPlatform | 'slack') || 'feishu',
+                      (config.login_platform as QrLoginPlatform | 'slack') ||
+                        'feishu',
                     );
                     setQrDialogOpen(true);
                   }}

@@ -14,7 +14,11 @@ const TOOL_DISPLAYS: Readonly<Record<string, ToolDisplay>> = {
   glob: { fields: ['pattern', 'path'] },
   grep: { fields: ['pattern', 'path'] },
   event_reply: { fields: ['text'], kind: 'reply' },
-  platform_send_message: { fields: ['text'], kind: 'reply', recipient: 'target_id' },
+  platform_send_message: {
+    fields: ['text'],
+    kind: 'reply',
+    recipient: 'target_id',
+  },
   event_delete_message: { fields: [] },
   event_get_actor: { fields: [] },
   event_get_group: { fields: [] },
@@ -41,21 +45,29 @@ const TOOL_DISPLAYS: Readonly<Record<string, ToolDisplay>> = {
 
 export function toolDisplay(name: string): ToolDisplay | undefined {
   return Object.prototype.hasOwnProperty.call(TOOL_DISPLAYS, name)
-    ? TOOL_DISPLAYS[name] : undefined;
+    ? TOOL_DISPLAYS[name]
+    : undefined;
 }
 
 export function toolSummary(name: string, parameters: Record<string, unknown>) {
   const display = toolDisplay(name);
   const fields = (display?.fields ?? []).flatMap((field) => {
     const value = parameters[field];
-    if (!['string', 'number', 'boolean'].includes(typeof value) || value === '') return [];
+    if (!['string', 'number', 'boolean'].includes(typeof value) || value === '')
+      return [];
     return [{ field, text: String(value) }];
   });
   return {
-    text: fields.map(({ field, text }) =>
-      display?.kind === 'reply' || display?.fields.length === 1 ? text : `${field}: ${text}`,
-    ).join('\n'),
-    recipient: display?.recipient && typeof parameters[display.recipient] === 'string'
-      ? String(parameters[display.recipient]) : '',
+    text: fields
+      .map(({ field, text }) =>
+        display?.kind === 'reply' || display?.fields.length === 1
+          ? text
+          : `${field}: ${text}`,
+      )
+      .join('\n'),
+    recipient:
+      display?.recipient && typeof parameters[display.recipient] === 'string'
+        ? String(parameters[display.recipient])
+        : '',
   };
 }

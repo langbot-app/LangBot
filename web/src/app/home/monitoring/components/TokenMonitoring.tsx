@@ -174,7 +174,12 @@ export default function TokenMonitoring({
 
   if (error) {
     return (
-      <LoadErrorState title={t('monitoring.loadError')} description={error} onRetry={fetchStats} busy={loading} />
+      <LoadErrorState
+        title={t('monitoring.loadError')}
+        description={error}
+        onRetry={fetchStats}
+        busy={loading}
+      />
     );
   }
 

@@ -10,15 +10,32 @@ depends_on = None
 
 
 def upgrade():
+    inspector = sa.inspect(op.get_bind())
     for table in ('agent_run', 'monitoring_messages'):
-        op.add_column(table, sa.Column('execution_owner_id', sa.String(36), nullable=True))
-        op.add_column(table, sa.Column('execution_lease_expires_at', sa.DateTime(), nullable=True))
-        for column in ('execution_owner_id', 'execution_lease_expires_at'):
-            op.create_index(f'ix_{table}_{column}', table, [column])
+        if not inspector.has_table(table):
+            continue
+        columns = {c['name'] for c in inspector.get_columns(table)}
+        indexes = {i['name'] for i in inspector.get_indexes(table)}
+        for column, column_type in (
+            ('execution_owner_id', sa.String(36)),
+            ('execution_lease_expires_at', sa.DateTime()),
+        ):
+            if column not in columns:
+                op.add_column(table, sa.Column(column, column_type, nullable=True))
+            index = f'ix_{table}_{column}'
+            if index not in indexes:
+                op.create_index(index, table, [column])
 
 
 def downgrade():
+    inspector = sa.inspect(op.get_bind())
     for table in ('agent_run', 'monitoring_messages'):
+        if not inspector.has_table(table):
+            continue
+        columns = {c['name'] for c in inspector.get_columns(table)}
+        indexes = {i['name'] for i in inspector.get_indexes(table)}
         for column in ('execution_owner_id', 'execution_lease_expires_at'):
-            op.drop_index(f'ix_{table}_{column}', table_name=table)
-            op.drop_column(table, column)
+            if f'ix_{table}_{column}' in indexes:
+                op.drop_index(f'ix_{table}_{column}', table_name=table)
+            if column in columns:
+                op.drop_column(table, column)

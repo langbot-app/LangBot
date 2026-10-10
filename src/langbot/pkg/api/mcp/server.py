@@ -207,35 +207,65 @@ class LangBotMCPServer:
                 return _dump(await ap.monitoring_service.get_message_details(context, identifier))
             return _dump(await ap.monitoring_service.get_session_analysis(context, identifier))
 
-        @mcp.tool(description='Read a bounded snapshot of active and recently started Workspace executions, including the latest progress event. No percentage is estimated.')
+        @mcp.tool(
+            description='Read a bounded snapshot of active and recently started Workspace executions, including the latest progress event. No percentage is estimated.'
+        )
         async def get_inflight_executions() -> str:
             return _dump(await ap.monitoring_service.get_inflight_snapshot(_authorized(Permission.RESOURCE_VIEW)))
 
-        @mcp.tool(description='Reset a bot session model context, preserving monitoring history. Refuses busy sessions.')
+        @mcp.tool(
+            description='Reset a bot session model context, preserving monitoring history. Refuses busy sessions.'
+        )
         async def reset_session_context(bot_id: str, session_id: str) -> str:
-            return _dump(await ap.monitoring_service.reset_session_context(
-                _authorized(Permission.RESOURCE_MANAGE), bot_id, session_id,
-            ))
+            return _dump(
+                await ap.monitoring_service.reset_session_context(
+                    _authorized(Permission.RESOURCE_MANAGE),
+                    bot_id,
+                    session_id,
+                )
+            )
 
-        @mcp.tool(description='Create/configure a Slack app for an existing Workspace bot draft. Returns a setup session; poll it for the installation authorization URL. The user must approve Slack installation. Configuration tokens stay in memory only.')
-        async def start_slack_setup(bot_uuid: str, access_token: str, refresh_token: str,
-                                    webhook_url: str = '', name: str = 'LangBot',
-                                    socket_mode: bool = False, redirect_url: str = '') -> str:
+        @mcp.tool(
+            description='Create/configure a Slack app for an existing Workspace bot draft. Returns a setup session; poll it for the installation authorization URL. The user must approve Slack installation. Configuration tokens stay in memory only.'
+        )
+        async def start_slack_setup(
+            bot_uuid: str,
+            access_token: str,
+            refresh_token: str,
+            webhook_url: str = '',
+            name: str = 'LangBot',
+            socket_mode: bool = False,
+            redirect_url: str = '',
+        ) -> str:
             from langbot.pkg.api.http.service.slack_setup import get_slack_setup
-            return _dump(await get_slack_setup(ap).start(
-                _authorized(Permission.RESOURCE_MANAGE), bot_uuid=bot_uuid, access_token=access_token,
-                refresh_token=refresh_token, webhook_url=webhook_url, name=name,
-                socket_mode=socket_mode, redirect_url=redirect_url,
-            ))
 
-        @mcp.tool(description='Read an owned Slack setup session. Success includes adapter credentials; save them with the existing bot update tool. Socket Mode additionally needs an App-Level Token with connections:write.')
+            return _dump(
+                await get_slack_setup(ap).start(
+                    _authorized(Permission.RESOURCE_MANAGE),
+                    bot_uuid=bot_uuid,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    webhook_url=webhook_url,
+                    name=name,
+                    socket_mode=socket_mode,
+                    redirect_url=redirect_url,
+                )
+            )
+
+        @mcp.tool(
+            description='Read an owned Slack setup session. Success includes adapter credentials; save them with the existing bot update tool. Socket Mode additionally needs an App-Level Token with connections:write.'
+        )
         async def get_slack_setup_status(session_id: str) -> str:
             from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+
             return _dump(get_slack_setup(ap).status(_authorized(Permission.RESOURCE_MANAGE), session_id))
 
-        @mcp.tool(description='Discard an owned Slack setup session and its temporary credentials. Does not delete the Slack app.')
+        @mcp.tool(
+            description='Discard an owned Slack setup session and its temporary credentials. Does not delete the Slack app.'
+        )
         async def cancel_slack_setup(session_id: str) -> str:
             from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+
             service = get_slack_setup(ap)
             service.owned(_authorized(Permission.RESOURCE_MANAGE), session_id)
             service.discard(session_id)
@@ -463,13 +493,17 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump({'uuid': await ap.llm_model_service.get_starred_model(context)})
 
-        @mcp.tool(description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.')
+        @mcp.tool(
+            description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.'
+        )
         async def set_starred_model(model_uuid: str | None = None) -> str:
             context = _authorized(Permission.PROVIDER_SECRET_MANAGE)
             await ap.llm_model_service.set_starred_model(context, model_uuid)
             return _dump({'uuid': model_uuid})
 
-        @mcp.tool(description='Resolve the default LLM model: starred model, then the available Space wizard recommendation.')
+        @mcp.tool(
+            description='Resolve the default LLM model: starred model, then the available Space wizard recommendation.'
+        )
         async def get_default_model() -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump({'uuid': await ap.llm_model_service.get_default_model(context)})

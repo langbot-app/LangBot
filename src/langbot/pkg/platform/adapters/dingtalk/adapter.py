@@ -166,9 +166,9 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         assert isinstance(message_source.source_platform_object, DingTalkEvent)
         incoming_message = message_source.source_platform_object.incoming_message
         markdown_enabled = self.config.get('markdown_card', False)
-        text_message = platform_message.MessageChain([
-            part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))
-        ])
+        text_message = platform_message.MessageChain(
+            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+        )
         content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         raw = await self.bot.send_message(content, incoming_message, at)
         await self._send_attachments(message, incoming_message)
@@ -206,9 +206,9 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         last_updates[message_id] = now
 
         markdown_enabled = self.config.get('markdown_card', False)
-        text_message = platform_message.MessageChain([
-            part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))
-        ])
+        text_message = platform_message.MessageChain(
+            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+        )
         content, _ = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         card_instance, card_instance_id = self.card_instance_id_dict[message_id]
         if not content and bot_message.content:

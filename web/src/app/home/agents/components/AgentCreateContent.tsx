@@ -49,15 +49,31 @@ export default function AgentCreateContent({
   const createdPipeline = useRef<string | null>(null);
   const loadMetadata = useCallback(async () => {
     setLoading(true);
-    try { setMetadata(await httpClient.getAgentMetadata()); }
-    catch { toast.error(t('agents.createError')); }
-    finally { setLoading(false); }
+    try {
+      setMetadata(await httpClient.getAgentMetadata());
+    } catch {
+      toast.error(t('agents.createError'));
+    } finally {
+      setLoading(false);
+    }
   }, [t]);
-  useEffect(() => { void loadMetadata(); }, [loadMetadata]);
-  const runnerOptions = kind === 'event_processor'
-    ? (metadata?.event_processors ?? []).map((item) => ({ name: item.id, label: { en_US: item.id, zh_Hans: item.id, ...item.label } }))
-    : metadata?.runner_config?.stages.find((stage) => stage.name === 'runner')?.config.find((item) => item.name === 'id')?.options ?? [];
-  const selectorLabel = t(kind === 'event_processor' ? 'agents.selectProcessorPlugin' : 'agents.selectAgentRunner');
+  useEffect(() => {
+    void loadMetadata();
+  }, [loadMetadata]);
+  const runnerOptions =
+    kind === 'event_processor'
+      ? (metadata?.event_processors ?? []).map((item) => ({
+          name: item.id,
+          label: { en_US: item.id, zh_Hans: item.id, ...item.label },
+        }))
+      : (metadata?.runner_config?.stages
+          .find((stage) => stage.name === 'runner')
+          ?.config.find((item) => item.name === 'id')?.options ?? []);
+  const selectorLabel = t(
+    kind === 'event_processor'
+      ? 'agents.selectProcessorPlugin'
+      : 'agents.selectAgentRunner',
+  );
   const formSchema = z.object({
     name: z.string().min(1, { message: t('agents.nameRequired') }),
     emoji: z.string().optional(),
@@ -75,9 +91,13 @@ export default function AgentCreateContent({
     setRunner(value);
     if (!form.getValues('name').trim()) {
       const option = runnerOptions.find((item) => item.name === value);
-      const displayName = name || (option ? extractI18nObject(option.label) : '');
+      const displayName =
+        name || (option ? extractI18nObject(option.label) : '');
       if (displayName) {
-        form.setValue('name', displayName, { shouldDirty: true, shouldValidate: true });
+        form.setValue('name', displayName, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
       }
     }
   }
@@ -102,43 +122,91 @@ export default function AgentCreateContent({
   }
 
   async function handleSubmit(values: FormValues) {
-    if (!runner) { toast.error(selectorLabel); return; }
-    const runnerStage = metadata?.runner_config?.stages.find((stage) => stage.name === runner);
+    if (!runner) {
+      toast.error(selectorLabel);
+      return;
+    }
+    const runnerStage = metadata?.runner_config?.stages.find(
+      (stage) => stage.name === runner,
+    );
     const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
-    const config = { runner: { id: runner }, runner_config: { [runner]: parameters } };
+    const config = {
+      runner: { id: runner },
+      runner_config: { [runner]: parameters },
+    };
     try {
-      if (kind === 'pipeline' && runnerStage?.config.some((field) => ['llm-model-selector', 'select-llm-model', 'model-fallback-selector'].includes(field.type))) {
+      if (
+        kind === 'pipeline' &&
+        runnerStage?.config.some((field) =>
+          [
+            'llm-model-selector',
+            'select-llm-model',
+            'model-fallback-selector',
+          ].includes(field.type),
+        )
+      ) {
         const { uuid } = await httpClient.getDefaultModel();
         if (uuid) {
           for (const field of runnerStage.config) {
-            if (['llm-model-selector', 'select-llm-model'].includes(field.type) && !parameters[field.name]) parameters[field.name] = uuid;
-            if (field.type === 'model-fallback-selector' && !parameters[field.name]?.primary) {
-              parameters[field.name] = { ...parameters[field.name], primary: uuid, fallbacks: parameters[field.name]?.fallbacks ?? [] };
+            if (
+              ['llm-model-selector', 'select-llm-model'].includes(field.type) &&
+              !parameters[field.name]
+            )
+              parameters[field.name] = uuid;
+            if (
+              field.type === 'model-fallback-selector' &&
+              !parameters[field.name]?.primary
+            ) {
+              parameters[field.name] = {
+                ...parameters[field.name],
+                primary: uuid,
+                fallbacks: parameters[field.name]?.fallbacks ?? [],
+              };
             }
           }
         }
       }
       if (kind === 'pipeline') {
         // Keep the created ID if configuration fails, so retry does not create duplicates.
-        const uuid = createdPipeline.current ?? (await httpClient.createAgent({ kind, name: values.name, description: '', emoji: values.emoji })).uuid;
+        const uuid =
+          createdPipeline.current ??
+          (
+            await httpClient.createAgent({
+              kind,
+              name: values.name,
+              description: '',
+              emoji: values.emoji,
+            })
+          ).uuid;
         createdPipeline.current = uuid;
         const { pipeline } = await httpClient.getPipeline(uuid);
         await httpClient.updatePipeline(uuid, {
-          name: values.name, emoji: values.emoji,
-          config: { ...pipeline.config, ai: { ...pipeline.config.ai, ...config } },
+          name: values.name,
+          emoji: values.emoji,
+          config: {
+            ...pipeline.config,
+            ai: { ...pipeline.config.ai, ...config },
+          },
         });
         toast.success(t('agents.createSuccess'));
         onCreated(uuid);
       } else {
         const response = await httpClient.createAgent({
-          kind, name: values.name, description: '', emoji: values.emoji,
-          component_ref: runner, ...(kind === 'event_processor' ? {} : { config }),
+          kind,
+          name: values.name,
+          description: '',
+          emoji: values.emoji,
+          component_ref: runner,
+          ...(kind === 'event_processor' ? {} : { config }),
         });
         toast.success(t('agents.createSuccess'));
         onCreated(response.uuid);
       }
     } catch (error) {
-      toast.error(t('agents.createError') + String((error as { msg?: string }).msg ?? error));
+      toast.error(
+        t('agents.createError') +
+          String((error as { msg?: string }).msg ?? error),
+      );
     }
   }
   const typeOptions = [
@@ -163,11 +231,17 @@ export default function AgentCreateContent({
   ];
   return (
     <div className="flex h-full flex-col">
-      <div className={embedded ? 'order-last flex justify-end border-t pt-4 shrink-0' : 'flex items-center justify-between pb-4 shrink-0'}>
+      <div
+        className={
+          embedded
+            ? 'order-last flex justify-end border-t pt-4 shrink-0'
+            : 'flex items-center justify-between pb-4 shrink-0'
+        }
+      >
         {!embedded && (
-        <h1 className="text-xl font-semibold">
-          {t('agents.eventProcessor.createPageTitle')}
-        </h1>
+          <h1 className="text-xl font-semibold">
+            {t('agents.eventProcessor.createPageTitle')}
+          </h1>
         )}
         <Button
           type="submit"
@@ -193,9 +267,11 @@ export default function AgentCreateContent({
                   >
                     {t('agents.chooseType')}
                   </h2>
-                  {!embedded && <p className="mt-1 text-sm text-muted-foreground">
-                    {t('agents.chooseTypeDescription')}
-                  </p>}
+                  {!embedded && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t('agents.chooseTypeDescription')}
+                    </p>
+                  )}
                 </div>
 
                 <ToggleGroup
@@ -208,31 +284,36 @@ export default function AgentCreateContent({
                   spacing={3}
                   className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-1"
                 >
-                  {typeOptions.filter((option) => !allowedKinds || allowedKinds.includes(option.kind)).map((option) => {
-                    const Icon = option.icon;
-                    return (
-                      <div key={option.kind} className="relative w-full">
-                      <ToggleGroupItem
-                        value={option.kind}
-                        data-processor-kind={option.kind}
-                        aria-label={`${option.title} ${option.description}`}
-                        className="h-auto min-h-28 w-full items-start justify-start gap-3 rounded-lg border px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
-                      >
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
-                          <Icon className="size-4" />
-                        </span>
-                        <span className="min-w-0 space-y-1.5">
-                          <span className="block text-sm font-medium text-foreground">
-                            {option.title}
-                          </span>
-                          <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
-                            {option.description}
-                          </span>
-                        </span>
-                      </ToggleGroupItem>
-                      </div>
-                    );
-                  })}
+                  {typeOptions
+                    .filter(
+                      (option) =>
+                        !allowedKinds || allowedKinds.includes(option.kind),
+                    )
+                    .map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <div key={option.kind} className="relative w-full">
+                          <ToggleGroupItem
+                            value={option.kind}
+                            data-processor-kind={option.kind}
+                            aria-label={`${option.title} ${option.description}`}
+                            className="h-auto min-h-28 w-full items-start justify-start gap-3 rounded-lg border px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
+                          >
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+                              <Icon className="size-4" />
+                            </span>
+                            <span className="min-w-0 space-y-1.5">
+                              <span className="block text-sm font-medium text-foreground">
+                                {option.title}
+                              </span>
+                              <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
+                                {option.description}
+                              </span>
+                            </span>
+                          </ToggleGroupItem>
+                        </div>
+                      );
+                    })}
                 </ToggleGroup>
               </section>
 
@@ -262,12 +343,43 @@ export default function AgentCreateContent({
                           disabled={loading || form.formState.isSubmitting}
                           installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
                           onInstalled={(installed) => {
-                            setMetadata((previous) => previous ? { ...previous, runner_config: installed.configTab } : previous);
-                            selectRunner(installed.runner.name, extractI18nObject(installed.runner.label));
+                            setMetadata((previous) =>
+                              previous
+                                ? {
+                                    ...previous,
+                                    runner_config: installed.configTab,
+                                  }
+                                : previous,
+                            );
+                            selectRunner(
+                              installed.runner.name,
+                              extractI18nObject(installed.runner.label),
+                            );
                           }}
                           onEventProcessorInstalled={(component) => {
-                            setMetadata((previous) => previous ? { ...previous, event_processors: [...(previous.event_processors ?? []).filter((item) => item.id !== component.id), component] } : previous);
-                            selectRunner(component.id, extractI18nObject({ en_US: component.id, zh_Hans: component.id, ...component.label }));
+                            setMetadata((previous) =>
+                              previous
+                                ? {
+                                    ...previous,
+                                    event_processors: [
+                                      ...(
+                                        previous.event_processors ?? []
+                                      ).filter(
+                                        (item) => item.id !== component.id,
+                                      ),
+                                      component,
+                                    ],
+                                  }
+                                : previous,
+                            );
+                            selectRunner(
+                              component.id,
+                              extractI18nObject({
+                                en_US: component.id,
+                                zh_Hans: component.id,
+                                ...component.label,
+                              }),
+                            );
                           }}
                         />
                       </div>
@@ -305,15 +417,19 @@ export default function AgentCreateContent({
                           )}
                         />
                       </div>
-
                     </form>
                   </Form>
-
                 </CardContent>
               </Card>
             </div>
 
-            <Card className={embedded ? 'min-h-[360px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[480px]' : 'min-h-[600px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[680px]'}>
+            <Card
+              className={
+                embedded
+                  ? 'min-h-[360px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[480px]'
+                  : 'min-h-[600px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[680px]'
+              }
+            >
               <CardContent className="flex h-full items-center p-0">
                 <ProcessorTypeDiagram kind={kind} />
               </CardContent>

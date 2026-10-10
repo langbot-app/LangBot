@@ -46,9 +46,7 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         operator = cls._event_user(data.get('operator_id'))
         if event_type == 'im.chat.member.bot.deleted_v1':
             return [platform_events.BotRemovedFromGroupEvent(group=group, operator=operator, **common)]
-        if event_type in {
-            'im.chat.member.user.added_v1', 'im.chat.member.user.deleted_v1'
-        }:
+        if event_type in {'im.chat.member.user.added_v1', 'im.chat.member.user.deleted_v1'}:
             events = []
             for user in data.get('users') or []:
                 member = cls._event_user(user.get('user_id'), user.get('name') or '')
@@ -56,15 +54,25 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     continue
                 if event_type == 'im.chat.member.user.added_v1':
                     inviter = operator if operator and operator.id != member.id else None
-                    events.append(platform_events.MemberJoinedEvent(
-                        group=group, member=member, inviter=inviter,
-                        join_type='invite' if inviter else None, **common,
-                    ))
+                    events.append(
+                        platform_events.MemberJoinedEvent(
+                            group=group,
+                            member=member,
+                            inviter=inviter,
+                            join_type='invite' if inviter else None,
+                            **common,
+                        )
+                    )
                 else:
-                    events.append(platform_events.MemberLeftEvent(
-                        group=group, member=member, operator=operator,
-                        is_kicked=operator is not None and operator.id != member.id, **common,
-                    ))
+                    events.append(
+                        platform_events.MemberLeftEvent(
+                            group=group,
+                            member=member,
+                            operator=operator,
+                            is_kicked=operator is not None and operator.id != member.id,
+                            **common,
+                        )
+                    )
             return events
         if event_type == 'im.chat.updated_v1':
             after = data.get('after_change') or {}
@@ -77,9 +85,14 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
             group.avatar_url = after.get('avatar')
             owner = cls._event_user(after.get('owner_id'))
             group.owner_id = owner.id if owner else None
-            return [platform_events.GroupInfoUpdatedEvent(
-                group=group, operator=operator, changed_fields=sorted(changed), **common,
-            )]
+            return [
+                platform_events.GroupInfoUpdatedEvent(
+                    group=group,
+                    operator=operator,
+                    changed_fields=sorted(changed),
+                    **common,
+                )
+            ]
         context = message_context or {}
         if event_type == 'im.message.recalled_v1':
             return [platform_events.MessageDeletedEvent(message_id=data['message_id'], **context, **common)]
@@ -87,11 +100,16 @@ class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
             user = cls._event_user(data.get('user_id'))
             if user is None:
                 user = platform_entities.User(id=data.get('app_id') or '', is_bot=data.get('operator_type') == 'app')
-            return [platform_events.MessageReactionEvent(
-                message_id=data['message_id'], user=user,
-                reaction=(data.get('reaction_type') or {}).get('emoji_type') or '',
-                is_add=event_type == 'im.message.reaction.created_v1', **context, **common,
-            )]
+            return [
+                platform_events.MessageReactionEvent(
+                    message_id=data['message_id'],
+                    user=user,
+                    reaction=(data.get('reaction_type') or {}).get('emoji_type') or '',
+                    is_add=event_type == 'im.message.reaction.created_v1',
+                    **context,
+                    **common,
+                )
+            ]
         return []
 
     _processed_thread_quote_cache: typing.ClassVar[dict[str, float]] = {}

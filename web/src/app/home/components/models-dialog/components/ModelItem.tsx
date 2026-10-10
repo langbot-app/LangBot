@@ -241,7 +241,12 @@ export default function ModelItem({
               loaded={availabilityLoaded}
             />
           )}
-          {modelType === 'llm' && <ModelStar uuid={model.uuid} disabled={!canManage || isPopoverDisabled} />}
+          {modelType === 'llm' && (
+            <ModelStar
+              uuid={model.uuid}
+              disabled={!canManage || isPopoverDisabled}
+            />
+          )}
           {canManage && !isLangBotModels && (
             <Popover
               open={isDeleteOpen}

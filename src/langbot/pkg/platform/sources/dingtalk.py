@@ -613,9 +613,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         incoming_message = event.incoming_message
 
         markdown_enabled = self.config.get('markdown_card', False)
-        text_message = platform_message.MessageChain([
-            part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))
-        ])
+        text_message = platform_message.MessageChain(
+            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+        )
         content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         await self.bot.send_message(content, incoming_message, at)
         for part in message:
@@ -647,9 +647,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         if (msg_seq - 1) % 8 == 0 or is_final:
             markdown_enabled = self.config.get('markdown_card', False)
-            text_message = platform_message.MessageChain([
-                part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))
-            ])
+            text_message = platform_message.MessageChain(
+                [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+            )
             content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
             if not content and bot_message.content:
                 content = bot_message.content  # 兼容直接传入content的情况

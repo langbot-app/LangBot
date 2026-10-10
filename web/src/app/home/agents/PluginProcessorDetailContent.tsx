@@ -30,7 +30,10 @@ import PluginProcessorTrace, {
   ProcessorPayload,
 } from './components/PluginProcessorTrace';
 import ProcessorRunList from './components/ProcessorRunList';
-import { processorRunDuration, formatRunDuration } from './components/processor-run-timing';
+import {
+  processorRunDuration,
+  formatRunDuration,
+} from './components/processor-run-timing';
 import PluginProcessorSettings from './components/PluginProcessorSettings';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 
@@ -55,13 +58,19 @@ export default function PluginProcessorDetailContent({
 }) {
   const { t } = useTranslation();
   const [, setSearchParams] = useSearchParams();
-  const setActiveTab = useCallback((tab: string) => {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set('tab', tab);
-      return next;
-    }, { preventScrollReset: true });
-  }, [setSearchParams]);
+  const setActiveTab = useCallback(
+    (tab: string) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set('tab', tab);
+          return next;
+        },
+        { preventScrollReset: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
   const toolLabels = Object.fromEntries(
     platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
@@ -83,7 +92,8 @@ export default function PluginProcessorDetailContent({
   const [needsInitialSave, setNeedsInitialSave] = useState(
     Boolean(agent.component_ref) && !agent.supported_event_patterns?.length,
   );
-  const dirty = needsInitialSave ||
+  const dirty =
+    needsInitialSave ||
     componentRef !== savedConfig.componentRef ||
     !isEqual(parameters, savedConfig.parameters);
   const [runs, setRuns] = useState<ProcessorRun[]>([]);
@@ -161,22 +171,25 @@ export default function PluginProcessorDetailContent({
     [t, available, hasParameters, canOperate, setActiveTab],
   );
 
-  const applyInstalledProcessor = useCallback((component: RunnerDescriptor) => {
-    setComponents((current) => [
-      ...current.filter((item) => item.id !== component.id),
-      component,
-    ]);
-    setComponentRef(component.id);
-    setParameters(
-      Object.fromEntries(
-        (component.config_schema ?? [])
-          .filter((field) => field.default !== undefined)
-          .map((field) => [field.name, field.default]),
-      ),
-    );
-    setActiveTab('config');
-    validate.current = null;
-  }, [setActiveTab]);
+  const applyInstalledProcessor = useCallback(
+    (component: RunnerDescriptor) => {
+      setComponents((current) => [
+        ...current.filter((item) => item.id !== component.id),
+        component,
+      ]);
+      setComponentRef(component.id);
+      setParameters(
+        Object.fromEntries(
+          (component.config_schema ?? [])
+            .filter((field) => field.default !== undefined)
+            .map((field) => [field.name, field.default]),
+        ),
+      );
+      setActiveTab('config');
+      validate.current = null;
+    },
+    [setActiveTab],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -364,7 +377,11 @@ export default function PluginProcessorDetailContent({
   const logsContent = (
     <div className="flex h-full min-h-0 flex-col gap-4 p-4">
       {failed && (
-        <LoadErrorState compact title={t('agents.eventProcessor.loadError')} onRetry={refreshLatestRun} />
+        <LoadErrorState
+          compact
+          title={t('agents.eventProcessor.loadError')}
+          onRetry={refreshLatestRun}
+        />
       )}
       <div className="flex shrink-0 items-center justify-between gap-2">
         <span className="text-sm font-medium">
@@ -382,104 +399,112 @@ export default function PluginProcessorDetailContent({
         </Button>
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      {runs.length > 0 && (
-        <ProcessorRunList
-          className="max-h-64 overflow-y-auto rounded-lg border lg:max-h-none lg:h-full"
-          runs={runs}
-          selectedId={selected?.run_id}
-          onSelect={(run) => void openRun(run)}
-          footer={
-            cursor !== null ? (
-              <Button
-                className="w-full"
-                variant="ghost"
-                disabled={pagingRuns}
-                onClick={() => void loadMoreRuns()}
-              >
-                {t('agents.eventProcessor.loadMore')}
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-4 pr-2">
-          {!selected ? (
-            <Alert>
-              <AlertDescription>
-                {loading
-                  ? t('common.loading')
-                  : t('agents.eventProcessor.noRuns')}
-                <Button asChild variant="link" className="h-auto px-0">
-                  <Link to="/home/bots">
-                    {t('agents.eventProcessor.bindBot')}
-                  </Link>
-                </Button>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-                <div className="space-y-1.5">
-                <p className="font-medium">
-                  {eventPatternLabel(selected.metadata.event_type ?? '', t)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(selected.created_at * 1000).toLocaleString()}
-                </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {processorRunDuration(selected) !== null && (
-                    <span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-                      <Clock3 className="size-3.5" />
-                      {formatRunDuration(processorRunDuration(selected)!)}
-                    </span>
-                  )}
-                  <Badge status={selected.status}>
-                    {t(`agents.eventProcessor.status_${selected.status}`, { defaultValue: selected.status })}
-                  </Badge>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-lg border p-3">
-              <h3 className="text-sm font-medium">{t('agents.eventProcessor.input')}</h3>
-              <ProcessorPayload
-                title={t('agents.monitoring.eventData')}
-                value={selected.metadata.input_event}
-              />
-              {selected.metadata.delivery != null && (
-                <ProcessorPayload
-                  title={t('agents.eventProcessor.destination')}
-                  value={selected.metadata.delivery}
-                />
-              )}
-              </div>
-              <section className="space-y-3">
-                <h2 className="flex items-center gap-2 text-sm font-medium">
-                  <Puzzle className="size-4 text-amber-600 dark:text-amber-400" />
-                  {t('agents.eventProcessor.type')} · {t('agents.eventProcessor.logsTab')}
-                </h2>
-                <PluginProcessorTrace events={events} toolLabels={toolLabels} />
-              </section>
-              {selected.status === 'failed' && selected.status_reason && (
-                <Alert variant="destructive">
-                  <AlertDescription className="break-words">
-                    {selected.status_reason}
-                  </AlertDescription>
-                </Alert>
-              )}
-              {eventCursor !== null && (
+        {runs.length > 0 && (
+          <ProcessorRunList
+            className="max-h-64 overflow-y-auto rounded-lg border lg:max-h-none lg:h-full"
+            runs={runs}
+            selectedId={selected?.run_id}
+            onSelect={(run) => void openRun(run)}
+            footer={
+              cursor !== null ? (
                 <Button
+                  className="w-full"
                   variant="ghost"
-                  disabled={pagingEvents}
-                  onClick={() => void loadMoreEvents()}
+                  disabled={pagingRuns}
+                  onClick={() => void loadMoreRuns()}
                 >
                   {t('agents.eventProcessor.loadMore')}
                 </Button>
-              )}
-            </>
-          )}
-        </div>
-      </ScrollArea>
+              ) : undefined
+            }
+          />
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-4 pr-2">
+            {!selected ? (
+              <Alert>
+                <AlertDescription>
+                  {loading
+                    ? t('common.loading')
+                    : t('agents.eventProcessor.noRuns')}
+                  <Button asChild variant="link" className="h-auto px-0">
+                    <Link to="/home/bots">
+                      {t('agents.eventProcessor.bindBot')}
+                    </Link>
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+                  <div className="space-y-1.5">
+                    <p className="font-medium">
+                      {eventPatternLabel(selected.metadata.event_type ?? '', t)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(selected.created_at * 1000).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {processorRunDuration(selected) !== null && (
+                      <span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+                        <Clock3 className="size-3.5" />
+                        {formatRunDuration(processorRunDuration(selected)!)}
+                      </span>
+                    )}
+                    <Badge status={selected.status}>
+                      {t(`agents.eventProcessor.status_${selected.status}`, {
+                        defaultValue: selected.status,
+                      })}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="space-y-2 rounded-lg border p-3">
+                  <h3 className="text-sm font-medium">
+                    {t('agents.eventProcessor.input')}
+                  </h3>
+                  <ProcessorPayload
+                    title={t('agents.monitoring.eventData')}
+                    value={selected.metadata.input_event}
+                  />
+                  {selected.metadata.delivery != null && (
+                    <ProcessorPayload
+                      title={t('agents.eventProcessor.destination')}
+                      value={selected.metadata.delivery}
+                    />
+                  )}
+                </div>
+                <section className="space-y-3">
+                  <h2 className="flex items-center gap-2 text-sm font-medium">
+                    <Puzzle className="size-4 text-amber-600 dark:text-amber-400" />
+                    {t('agents.eventProcessor.type')} ·{' '}
+                    {t('agents.eventProcessor.logsTab')}
+                  </h2>
+                  <PluginProcessorTrace
+                    events={events}
+                    toolLabels={toolLabels}
+                  />
+                </section>
+                {selected.status === 'failed' && selected.status_reason && (
+                  <Alert variant="destructive">
+                    <AlertDescription className="break-words">
+                      {selected.status_reason}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {eventCursor !== null && (
+                  <Button
+                    variant="ghost"
+                    disabled={pagingEvents}
+                    onClick={() => void loadMoreEvents()}
+                  >
+                    {t('agents.eventProcessor.loadMore')}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        </ScrollArea>
       </div>
     </div>
   );
@@ -489,10 +514,13 @@ export default function PluginProcessorDetailContent({
 
   return (
     <>
-      <form id="event-processor-form" onSubmit={(event) => {
-        event.preventDefault();
-        void save();
-      }} />
+      <form
+        id="event-processor-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      />
       <GuidedTour
         enabled={canManage}
         storageKey="langbot_plugin_processor_setup_guide_v1"
@@ -502,7 +530,10 @@ export default function PluginProcessorDetailContent({
       <ProcessorDetailWorkbench
         title={`${agent.emoji || '🧩'} ${agent.name}`}
         titleBadge={
-          <Badge variant="outline" className="gap-1.5 border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+          <Badge
+            variant="outline"
+            className="gap-1.5 border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          >
             <Puzzle className="size-3.5" />
             {t('agents.eventProcessor.type')}
           </Badge>
@@ -551,38 +582,40 @@ export default function PluginProcessorDetailContent({
           ) : undefined
         }
         configTitle={t('agents.eventProcessor.type')}
-        configIcon={<Puzzle className="size-4 text-amber-600 dark:text-amber-400" />}
+        configIcon={
+          <Puzzle className="size-4 text-amber-600 dark:text-amber-400" />
+        }
         monitoring={{
           label: t('pipelines.monitoring.title'),
           workbenchLabel: t('pipelines.monitoring.workbench'),
           content: logsContent,
         }}
         configContent={
-                <div className="h-full overflow-y-auto">
-                  {!component ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t('agents.eventProcessor.selectComponent')}
-                    </p>
-                  ) : component.config_schema.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t('agents.eventProcessor.noSettings')}
-                    </p>
-                  ) : (
-                    <fieldset disabled={!canManage || saving}>
-                      <DynamicFormComponent
-                        key={componentRef}
-                        itemConfigList={component.config_schema}
-                        initialValues={parameters}
-                        onSubmit={(values) =>
-                          setParameters(values as Record<string, unknown>)
-                        }
-                        onValidate={(fn) => {
-                          validate.current = fn;
-                        }}
-                      />
-                    </fieldset>
-                  )}
-                </div>
+          <div className="h-full overflow-y-auto">
+            {!component ? (
+              <p className="text-sm text-muted-foreground">
+                {t('agents.eventProcessor.selectComponent')}
+              </p>
+            ) : component.config_schema.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t('agents.eventProcessor.noSettings')}
+              </p>
+            ) : (
+              <fieldset disabled={!canManage || saving}>
+                <DynamicFormComponent
+                  key={componentRef}
+                  itemConfigList={component.config_schema}
+                  initialValues={parameters}
+                  onSubmit={(values) =>
+                    setParameters(values as Record<string, unknown>)
+                  }
+                  onValidate={(fn) => {
+                    validate.current = fn;
+                  }}
+                />
+              </fieldset>
+            )}
+          </div>
         }
         debugTitle={canOperate ? t('agents.debugTab') : undefined}
         debugDescription={t('agents.eventProcessor.debugNotice')}

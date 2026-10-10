@@ -55,7 +55,8 @@ function restore(key: string): FilterState {
       if (
         Number.isFinite(from.getTime()) &&
         Number.isFinite(to.getTime()) &&
-        from < to && to.getTime() - from.getTime() <= 365 * 86400000
+        from < to &&
+        to.getTime() - from.getTime() <= 365 * 86400000
       )
         state.customDateRange = { from, to };
     }

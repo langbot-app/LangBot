@@ -203,7 +203,11 @@ function PluginPageIframe({
   return (
     <div className="flex flex-col h-full w-full">
       {assetError ? (
-        <LoadErrorState title={t('plugins.loadFailed')} className="flex-1" onRetry={() => window.location.reload()} />
+        <LoadErrorState
+          title={t('plugins.loadFailed')}
+          className="flex-1"
+          onRetry={() => window.location.reload()}
+        />
       ) : loading || !assetUrl ? (
         <EntityLoadState />
       ) : null}

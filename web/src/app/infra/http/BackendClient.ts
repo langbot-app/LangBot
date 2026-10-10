@@ -822,9 +822,13 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
 
-  public resetSessionContext(botId: string, sessionId: string): Promise<{ reset: boolean }> {
+  public resetSessionContext(
+    botId: string,
+    sessionId: string,
+  ): Promise<{ reset: boolean }> {
     return this.post('/api/v1/monitoring/sessions/reset-context', {
-      bot_id: botId, session_id: sessionId,
+      bot_id: botId,
+      session_id: sessionId,
     });
   }
 
@@ -2210,10 +2214,19 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
   }
 
-  public async streamInflight(onFrame: (frame: InflightFrame) => void, signal: AbortSignal): Promise<void> {
+  public async streamInflight(
+    onFrame: (frame: InflightFrame) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
     const response = await this.instance.get<ReadableStream<Uint8Array>>(
       '/api/v1/monitoring/in-flight/stream',
-      { adapter: 'fetch', responseType: 'stream', timeout: 0, signal, headers: { Accept: 'text/event-stream' } },
+      {
+        adapter: 'fetch',
+        responseType: 'stream',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'text/event-stream' },
+      },
     );
     const reader = response.data.getReader();
     const decoder = new TextDecoder();
@@ -2227,9 +2240,11 @@ export class BackendClient extends BaseHttpClient {
         while ((end = buffer.indexOf('\n\n')) !== -1) {
           const frame = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
-          if (frame.startsWith('data: ')) onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
+          if (frame.startsWith('data: '))
+            onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
         }
-        if (buffer.length > 2_000_000) throw new Error('Monitoring frame exceeds limit');
+        if (buffer.length > 2_000_000)
+          throw new Error('Monitoring frame exceeds limit');
       }
     } finally {
       await reader.cancel().catch(() => undefined);

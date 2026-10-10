@@ -39,7 +39,8 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
   const { t } = useTranslation();
   const [exporting, setExporting] = useState<ExportType | null>(null);
 
-  const getDateRangeParams = () => resolveMonitoringWindow(filterState.timeRange, filterState.customDateRange);
+  const getDateRangeParams = () =>
+    resolveMonitoringWindow(filterState.timeRange, filterState.customDateRange);
 
   const handleExport = async (type: ExportType) => {
     setExporting(type);

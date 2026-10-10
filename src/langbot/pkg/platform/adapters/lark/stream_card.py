@@ -7,7 +7,7 @@ def split_content(content: str) -> tuple[str, str]:
     reasoning, answer = [], []
     inside, offset = False, 0
     for marker in re.finditer(r'</?think>', content, re.IGNORECASE):
-        (reasoning if inside else answer).append(content[offset:marker.start()])
+        (reasoning if inside else answer).append(content[offset : marker.start()])
         inside = marker.group().lower() == '<think>'
         offset = marker.end()
     tail = content[offset:]
@@ -38,32 +38,62 @@ def build_card(content: str = '', *, streaming: bool = False, finished: bool = T
         elements.append({'tag': 'markdown', 'content': streaming_text(content), 'element_id': 'streaming_txt'})
     else:
         if reasoning:
-            elements.append({
-                'tag': 'collapsible_panel', 'expanded': not finished,
-                'header': {'title': {'tag': 'plain_text', 'content': '思考过程 / Thinking'}},
-                'elements': [{'tag': 'markdown', 'content': reasoning}],
-            })
+            elements.append(
+                {
+                    'tag': 'collapsible_panel',
+                    'expanded': not finished,
+                    'header': {'title': {'tag': 'plain_text', 'content': '思考过程 / Thinking'}},
+                    'elements': [{'tag': 'markdown', 'content': reasoning}],
+                }
+            )
         if answer:
             elements.append({'tag': 'markdown', 'content': answer})
-    elements.append({
-        'tag': 'column_set', 'horizontal_spacing': '8px',
-        'columns': [
-            {'tag': 'column', 'width': 'weighted', 'weight': 1, 'vertical_align': 'center',
-             'elements': [{'tag': 'markdown', 'content': '内容由 AI 生成 / AI-generated',
-                           'text_size': 'notation'}]},
-            {'tag': 'column', 'width': 'auto', 'vertical_align': 'center',
-             'elements': [{'tag': 'markdown', 'content': '[LangBot](https://langbot.app?utm_source=feishu&utm_medium=bot_card&utm_campaign=langbot)', 'text_size': 'notation',
-                           'text_align': 'right',
-                           'icon': {'tag': 'custom_icon',
-                                    'img_key': 'img_v3_02p3_05c65d5d-9bad-440a-a2fb-c89571bfd5bg'}}]},
-        ],
-    })
+    elements.append(
+        {
+            'tag': 'column_set',
+            'horizontal_spacing': '8px',
+            'columns': [
+                {
+                    'tag': 'column',
+                    'width': 'weighted',
+                    'weight': 1,
+                    'vertical_align': 'center',
+                    'elements': [
+                        {'tag': 'markdown', 'content': '内容由 AI 生成 / AI-generated', 'text_size': 'notation'}
+                    ],
+                },
+                {
+                    'tag': 'column',
+                    'width': 'auto',
+                    'vertical_align': 'center',
+                    'elements': [
+                        {
+                            'tag': 'markdown',
+                            'content': '[LangBot](https://langbot.app?utm_source=feishu&utm_medium=bot_card&utm_campaign=langbot)',
+                            'text_size': 'notation',
+                            'text_align': 'right',
+                            'icon': {
+                                'tag': 'custom_icon',
+                                'img_key': 'img_v3_02p3_05c65d5d-9bad-440a-a2fb-c89571bfd5bg',
+                            },
+                        }
+                    ],
+                },
+            ],
+        }
+    )
     config = {'update_multi': True}
     if streaming:
-        config.update(streaming_mode=True, streaming_config={
-            'print_step': {'default': 3}, 'print_frequency_ms': {'default': 40}, 'print_strategy': 'fast',
-        })
+        config.update(
+            streaming_mode=True,
+            streaming_config={
+                'print_step': {'default': 3},
+                'print_frequency_ms': {'default': 40},
+                'print_strategy': 'fast',
+            },
+        )
     return {
-        'schema': '2.0', 'config': config,
+        'schema': '2.0',
+        'config': config,
         'body': {'direction': 'vertical', 'padding': '12px 12px 12px 12px', 'elements': elements},
     }

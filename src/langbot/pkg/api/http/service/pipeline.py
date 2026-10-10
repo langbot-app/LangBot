@@ -69,7 +69,9 @@ class PipelineService:
         runner_config.setdefault('expire-time', 0)
         ai_config['runner_config'] = {selected.id: self._get_default_values_from_schema(selected.config_schema)}
         ai_config['runner_config'][selected.id] = await self.ap.llm_model_service.apply_default_model(
-            context, selected.config_schema, ai_config['runner_config'][selected.id],
+            context,
+            selected.config_schema,
+            ai_config['runner_config'][selected.id],
         )
         return config
 

@@ -68,7 +68,11 @@ export default function LoadErrorState({
               >
                 <RefreshCw
                   aria-hidden="true"
-                  className={cn('size-3.5', (retrying || busy) && 'animate-spin motion-reduce:animate-none')}
+                  className={cn(
+                    'size-3.5',
+                    (retrying || busy) &&
+                      'animate-spin motion-reduce:animate-none',
+                  )}
                 />
                 {retrying || busy ? t('common.loading') : t('common.retry')}
               </Button>

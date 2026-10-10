@@ -192,7 +192,10 @@ class PersistentStateStore:
         if self._check_scope_enabled('conversation', binding) and event.conversation_id:
             if 'external.conversation_id' not in snapshot['conversation']:
                 from .context_reset import get_reset_generation
-                generation = await get_reset_generation(self._db_engine, event.workspace_id, event.bot_id, event.conversation_id)
+
+                generation = await get_reset_generation(
+                    self._db_engine, event.workspace_id, event.bot_id, event.conversation_id
+                )
                 snapshot['conversation']['external.conversation_id'] = generation or event.conversation_id
 
         return snapshot

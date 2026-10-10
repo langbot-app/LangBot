@@ -66,7 +66,6 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
         yiri_chain = await OmniMessageConverter.target2yiri(event, bot.bot_token)
 
         if event.type == 'channel':
-
             sender = platform_entities.GroupMember(
                 id=event.user_id,
                 member_name=str(event.sender_name),
@@ -108,7 +107,10 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
         bot = SlackClient(
-            bot_token=config['bot_token'], signing_secret=config.get('signing_secret', ''), logger=logger, unified_mode=True
+            bot_token=config['bot_token'],
+            signing_secret=config.get('signing_secret', ''),
+            logger=logger,
+            unified_mode=True,
         )
 
         super().__init__(
@@ -174,6 +176,7 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if self.config.get('socket_mode', False):
             await self.bot.run_socket(self.config['app_token'])
             return
+
         # 统一 webhook 模式下，不启动独立的 Quart 应用
         # 保持运行但不启动独立端口
         async def keep_alive():

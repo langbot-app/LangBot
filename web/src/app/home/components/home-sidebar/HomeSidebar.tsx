@@ -656,9 +656,13 @@ function NavItems({
             return `/home/skills?id=${encodeURIComponent(item.id)}`;
           }
           const processorTab = searchParams.get('tab');
-          if (hasDetailPages && (routePrefix === '/home/agents' || routePrefix === '/home/pipelines') &&
-              (pathname === '/home/agents' || pathname === '/home/pipelines') &&
-              (processorTab === 'logs' || processorTab === 'config')) {
+          if (
+            hasDetailPages &&
+            (routePrefix === '/home/agents' ||
+              routePrefix === '/home/pipelines') &&
+            (pathname === '/home/agents' || pathname === '/home/pipelines') &&
+            (processorTab === 'logs' || processorTab === 'config')
+          ) {
             return `${routePrefix}?id=${encodeURIComponent(item.id)}&tab=${processorTab}`;
           }
           return hasDetailPages

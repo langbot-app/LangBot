@@ -33,15 +33,26 @@ async def _read_callback_xml(client, req):
     if root.find('Encrypt') is not None:
         crypt = WXBizMsgCrypt(client.token, client.aes, client.appid)
         code, xml = await asyncio.to_thread(
-            crypt.DecryptMsg, body, req.args.get('msg_signature', ''),
-            req.args.get('timestamp', ''), req.args.get('nonce', ''),
+            crypt.DecryptMsg,
+            body,
+            req.args.get('msg_signature', ''),
+            req.args.get('timestamp', ''),
+            req.args.get('nonce', ''),
         )
         if code != 0:
             raise ValueError('Official Account callback decryption failed')
         return xml.decode('utf-8') if isinstance(xml, bytes) else xml
-    digest = hashlib.sha1(''.join(sorted([
-        client.token, req.args.get('timestamp', ''), req.args.get('nonce', ''),
-    ])).encode('utf-8')).hexdigest()
+    digest = hashlib.sha1(
+        ''.join(
+            sorted(
+                [
+                    client.token,
+                    req.args.get('timestamp', ''),
+                    req.args.get('nonce', ''),
+                ]
+            )
+        ).encode('utf-8')
+    ).hexdigest()
     if not hmac.compare_digest(digest, req.args.get('signature', '')):
         raise ValueError('Official Account callback signature verification failed')
     return body.decode('utf-8')
@@ -232,9 +243,15 @@ class OAClient:
         if message_data.get('MsgId'):
             message_data['MsgId'] = int(message_data['MsgId'])
         else:
-            message_data['MsgId'] = ':'.join(str(message_data.get(key) or '') for key in (
-                'FromUserName', 'CreateTime', 'Event', 'EventKey',
-            ))
+            message_data['MsgId'] = ':'.join(
+                str(message_data.get(key) or '')
+                for key in (
+                    'FromUserName',
+                    'CreateTime',
+                    'Event',
+                    'EventKey',
+                )
+            )
 
         return message_data
 
@@ -423,9 +440,11 @@ class OAClientForLongerResponse:
                 root = await asyncio.to_thread(ET.fromstring, xml_msg)
                 from_user = root.find('FromUserName').text
                 to_user = root.find('ToUserName').text
-                message_key = (from_user, root.findtext('MsgId') or (
-                    root.findtext('CreateTime'), root.findtext('Event'), root.findtext('EventKey')
-                ))
+                message_key = (
+                    from_user,
+                    root.findtext('MsgId')
+                    or (root.findtext('CreateTime'), root.findtext('Event'), root.findtext('EventKey')),
+                )
                 cached = self._callback_responses.get(message_key)
                 if cached and time.monotonic() - cached[0] < 600:
                     return cached[1]
@@ -502,9 +521,15 @@ class OAClientForLongerResponse:
         if message_data.get('MsgId'):
             message_data['MsgId'] = int(message_data['MsgId'])
         else:
-            message_data['MsgId'] = ':'.join(str(message_data.get(key) or '') for key in (
-                'FromUserName', 'CreateTime', 'Event', 'EventKey',
-            ))
+            message_data['MsgId'] = ':'.join(
+                str(message_data.get(key) or '')
+                for key in (
+                    'FromUserName',
+                    'CreateTime',
+                    'Event',
+                    'EventKey',
+                )
+            )
 
         return message_data
 

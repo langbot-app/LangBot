@@ -489,8 +489,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 and type(source.type) is sqlalchemy.Text
                 and getattr(getattr(source, 'table', None), 'name', None) in {'event_log', 'agent_run'}
                 and (
-                    source.name == 'metadata_json'
-                    or (source.table.name == 'event_log' and source.name == 'input_json')
+                    source.name == 'metadata_json' or (source.table.name == 'event_log' and source.name == 'input_json')
                 )
             )
             if not (pipeline_json_cas or monitoring_metadata):

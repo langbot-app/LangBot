@@ -28,7 +28,9 @@ export default function ProcessorRunList({
     <div
       role="group"
       aria-label={t('agents.eventProcessor.runs')}
-      className={className ?? 'max-h-56 shrink-0 overflow-y-auto rounded-md border'}
+      className={
+        className ?? 'max-h-56 shrink-0 overflow-y-auto rounded-md border'
+      }
     >
       {runs.map((run) => {
         const duration = processorRunDuration(run);

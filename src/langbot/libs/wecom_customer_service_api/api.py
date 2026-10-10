@@ -198,7 +198,9 @@ class WecomCSClient:
                     params['cursor'] = cursor
                 async with self._http_client_context() as client:
                     response = await client.post(
-                        self.base_url + '/kf/sync_msg', params={'access_token': self.access_token}, json=params,
+                        self.base_url + '/kf/sync_msg',
+                        params={'access_token': self.access_token},
+                        json=params,
                     )
                     data = await httpclient.parse_json_response(response)
                 if data.get('errcode') in (40014, 42001) and not refreshed:
@@ -206,7 +208,7 @@ class WecomCSClient:
                     refreshed = True
                     continue
                 if data.get('errcode') != 0:
-                    raise RuntimeError(f"WeCom sync_msg failed (errcode={data.get('errcode')})")
+                    raise RuntimeError(f'WeCom sync_msg failed (errcode={data.get("errcode")})')
                 messages.extend(data.get('msg_list') or [])
                 next_cursor = data.get('next_cursor')
                 if data.get('has_more'):
@@ -452,9 +454,12 @@ class WecomCSClient:
             self._received_messages = {
                 key: seen for key, seen in self._received_messages.items() if now - seen < 4 * 86400
             }
-            message_id = message_data.get('msgid') or hashlib.sha256(
-                json.dumps(message_data, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
-            ).hexdigest()
+            message_id = (
+                message_data.get('msgid')
+                or hashlib.sha256(
+                    json.dumps(message_data, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+                ).hexdigest()
+            )
             if not message_id or message_id not in self._received_messages:
                 if message_id:
                     if len(self._received_messages) >= 4096:

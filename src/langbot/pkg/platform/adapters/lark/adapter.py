@@ -570,7 +570,9 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 ContentCardElementRequest.builder()
                 .card_id(card_id)
                 .element_id('streaming_txt')
-                .request_body(ContentCardElementRequestBody.builder().content(streaming_text(content)).sequence(sequence).build())
+                .request_body(
+                    ContentCardElementRequestBody.builder().content(streaming_text(content)).sequence(sequence).build()
+                )
                 .build()
             )
             response: ContentCardElementResponse = await self.api_client.cardkit.v1.card_element.acontent(
@@ -578,7 +580,9 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             )
             if not response.success():
                 if self._streaming_mode_closed(response):
-                    await self._replace_streaming_card(card_id, content, finished=is_final and not bot_message.tool_calls)
+                    await self._replace_streaming_card(
+                        card_id, content, finished=is_final and not bot_message.tool_calls
+                    )
                 else:
                     raise RuntimeError(f'Lark card_element update failed: {response.code} {response.msg}')
         self.card_last_update_dict[card_id] = now

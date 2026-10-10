@@ -55,7 +55,9 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
             }
             event_class = event_classes.get(event_type)
             if event_class:
-                fields = {key: value for key, value in data.items() if key in event_class.model_fields and value is not None}
+                fields = {
+                    key: value for key, value in data.items() if key in event_class.model_fields and value is not None
+                }
                 fields.update(common)
                 fields['data'] = dict(data)
                 actor_id = data.get('servicer_userid') or customer_id

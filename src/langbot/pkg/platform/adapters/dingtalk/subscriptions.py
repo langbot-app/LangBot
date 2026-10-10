@@ -14,14 +14,23 @@ def subscription_events(message):
     headers = message.headers
     action = headers.event_type or data.get('EventType') or data.get('eventType') or ''
     raw = {'headers': vars(headers).copy(), 'data': data}
-    stamp = headers.event_born_time or data.get('TimeStamp') or data.get('EventTime') or data.get('timestamp') or headers.time or 0
+    stamp = (
+        headers.event_born_time
+        or data.get('TimeStamp')
+        or data.get('EventTime')
+        or data.get('timestamp')
+        or headers.time
+        or 0
+    )
     stamp = float(stamp)
     common = dict(
         adapter_name=ADAPTER_NAME,
         timestamp=stamp / 1000 if stamp > 10_000_000_000 else stamp,
         source_platform_object=raw,
     )
-    group_id = data.get('OpenConversationId') or data.get('openConversationId') or data.get('chatId') or data.get('ChatId')
+    group_id = (
+        data.get('OpenConversationId') or data.get('openConversationId') or data.get('chatId') or data.get('ChatId')
+    )
     group = entities.UserGroup(id=str(group_id or ''), name=str(data.get('Title') or data.get('title') or ''))
     owner_id = data.get('Owner') or data.get('owner')
     if owner_id:
@@ -38,13 +47,18 @@ def subscription_events(message):
                 yield events.MemberJoinedEvent(group=group, member=member, inviter=operator, **common)
             else:
                 yield events.MemberLeftEvent(
-                    group=group, member=member, operator=operator,
-                    is_kicked=action == 'chat_remove_member', **common,
+                    group=group,
+                    member=member,
+                    operator=operator,
+                    is_kicked=action == 'chat_remove_member',
+                    **common,
                 )
     elif group_id and action in {'chat_update_title', 'chat_update_owner'}:
         yield events.GroupInfoUpdatedEvent(
-            group=group, operator=operator,
-            changed_fields=['name' if action == 'chat_update_title' else 'owner_id'], **common,
+            group=group,
+            operator=operator,
+            changed_fields=['name' if action == 'chat_update_title' else 'owner_id'],
+            **common,
         )
     else:
         yield events.PlatformSpecificEvent(action=action or 'unknown', data=raw, **common)

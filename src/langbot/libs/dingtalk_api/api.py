@@ -80,7 +80,9 @@ def is_stream_card_configured(config: dict) -> bool:
         return False
     template_id = config.get('card_template_id')
     # Older manifests stored instructional placeholder text as the default.
-    return isinstance(template_id, str) and bool(template_id.strip()) and template_id.strip() != '填写你的卡片template_id'
+    return (
+        isinstance(template_id, str) and bool(template_id.strip()) and template_id.strip() != '填写你的卡片template_id'
+    )
 
 
 class DingTalkClient:
@@ -283,9 +285,9 @@ class DingTalkClient:
         data = response.json()
         if response.status_code != 200 or data.get('errcode', 0) != 0 or data.get('code'):
             raise RuntimeError(
-                f"DingTalk delivery failed (HTTP {response.status_code}, "
-                f"code={data.get('errcode', data.get('code', 'unknown'))}): "
-                f"{data.get('errmsg', data.get('message', 'Unknown error'))}"
+                f'DingTalk delivery failed (HTTP {response.status_code}, '
+                f'code={data.get("errcode", data.get("code", "unknown"))}): '
+                f'{data.get("errmsg", data.get("message", "Unknown error"))}'
             )
         return data
 
@@ -333,7 +335,8 @@ class DingTalkClient:
             response = await client.post(
                 'https://oapi.dingtalk.com/media/upload',
                 params={'access_token': token, 'type': 'image' if is_image else 'file'},
-                files={'media': (name, body)}, timeout=30.0,
+                files={'media': (name, body)},
+                timeout=30.0,
             )
         uploaded = self._check_send_result(response)
         media_id = uploaded.get('media_id')
@@ -341,9 +344,11 @@ class DingTalkClient:
             raise RuntimeError('DingTalk media upload returned no media ID')
         if not await self.check_access_token():
             await self.get_access_token()
-        params = {'photoURL': media_id} if is_image else {
-            'mediaId': media_id, 'fileName': name, 'fileType': os.path.splitext(name)[1].lstrip('.')
-        }
+        params = (
+            {'photoURL': media_id}
+            if is_image
+            else {'mediaId': media_id, 'fileName': name, 'fileType': os.path.splitext(name)[1].lstrip('.')}
+        )
         payload = {
             'robotCode': self.robot_code or self.key,
             'msgKey': 'sampleImageMsg' if is_image else 'sampleFile',
@@ -359,7 +364,8 @@ class DingTalkClient:
             response = await client.post(
                 f'{DINGTALK_OPENAPI_BASE}/v1.0/robot/{endpoint}',
                 headers={'x-acs-dingtalk-access-token': self.access_token},
-                json=payload, timeout=30.0,
+                json=payload,
+                timeout=30.0,
             )
         return self._check_send_result(response)
 
@@ -724,7 +730,14 @@ class DingTalkClient:
         else:
             open_space_id = f'dtv1.card//IM_ROBOT.{incoming_message.sender_staff_id}'
 
-        card_param_map = {'content': '', 'answer': '', 'reasoning': '', 'flowStatus': '1', 'brand': '', 'hasReasoning': ''}
+        card_param_map = {
+            'content': '',
+            'answer': '',
+            'reasoning': '',
+            'flowStatus': '1',
+            'brand': '',
+            'hasReasoning': '',
+        }
         if incoming_message.message_type == 'text':
             card_param_map['query'] = incoming_message.get_text_list()[0]
         else:

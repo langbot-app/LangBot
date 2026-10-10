@@ -742,6 +742,7 @@ async def execute_platform_tool(
             raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
         api_func = getattr(bot.adapter, definition.api, None)
         if reply_via_source:
+
             async def api_func(target_type, target_id, message):
                 source = await bot.adapter.get_message(
                     chat_type=target_type,
@@ -749,14 +750,17 @@ async def execute_platform_tool(
                     message_id=delivery['reply_target']['message_id'],
                 )
                 return await bot.adapter.reply_message(source, message)
+
         # Some platforms require a one-time event credential instead of an
         # ordinary conversation send. Only pass the Host-frozen event context.
         event_reply_handler = getattr(bot.adapter, 'reply_to_event', None)
         if definition.name == 'event_reply' and callable(event_reply_handler):
+
             async def api_func(target_type, target_id, message):
                 return await event_reply_handler(
                     context=context, target_type=target_type, target_id=target_id, message=message
                 )
+
         if not callable(api_func):
             raise ValueError(f'Platform API {definition.api} is declared but not implemented')
         if definition.api == 'send_message':

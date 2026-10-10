@@ -1,30 +1,31 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
   inflight: {
-    autoCollapse: "Plegar auto.",
-    empty: "No hay eventos en proceso",
-    move: "Arrastra verticalmente o usa las flechas",
-    botLogs: "Registros del bot",
-    processorLogs: "Registros del procesador",
+    autoCollapse: 'Plegar auto.',
+    empty: 'No hay eventos en proceso',
+    move: 'Arrastra verticalmente o usa las flechas',
+    botLogs: 'Registros del bot',
+    processorLogs: 'Registros del procesador',
 
-    "title": "En curso",
-    "expand": "Expandir",
-    "collapse": "Contraer",
-    "reconnecting": "Reconectando; se muestra el último estado recibido.",
-    "details": "Ver detalles",
-    "debug": "Evento de depuración",
-    "limited": "Se muestra un subconjunto. Consulte todas las ejecuciones en el panel.",
-    "queued": "En cola",
-    "running": "Procesando",
-    "waiting": "Esperando entrada",
-    "tool": "Ejecutando herramienta",
-    "thinking": "Pensando",
-    "replying": "Preparando respuesta",
-    "generating": "Generando respuesta",
-    "completed": "Completado",
-    "failed": "Fallido",
-    "cancelled": "Cancelado",
-    "ignored": "Ignorado"
+    title: 'En curso',
+    expand: 'Expandir',
+    collapse: 'Contraer',
+    reconnecting: 'Reconectando; se muestra el último estado recibido.',
+    details: 'Ver detalles',
+    debug: 'Evento de depuración',
+    limited:
+      'Se muestra un subconjunto. Consulte todas las ejecuciones en el panel.',
+    queued: 'En cola',
+    running: 'Procesando',
+    waiting: 'Esperando entrada',
+    tool: 'Ejecutando herramienta',
+    thinking: 'Pensando',
+    replying: 'Preparando respuesta',
+    generating: 'Generando respuesta',
+    completed: 'Completado',
+    failed: 'Fallido',
+    cancelled: 'Cancelado',
+    ignored: 'Ignorado',
   },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
@@ -105,14 +106,14 @@ const esES = {
   sidebarGuide: {
     steps: {
       monitoring: {
-    rangeDays: 'Últimos {{days}} días',
-    customRange: 'Periodo personalizado',
-    rangeStart: 'Inicio',
-    rangeEnd: 'Fin',
-    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
-    autoRefreshLabel: 'Actualización automática',
-    autoRefreshOff: 'Actualización: desactivada',
-    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
         title: 'Revisar la actividad',
         description:
           'Consulta la actividad de los bots, el uso de modelos, los mensajes y el rendimiento del sistema.',
@@ -194,14 +195,14 @@ const esES = {
           'Envía mensajes de prueba para comprobar los activadores, las respuestas de IA y el procesamiento de salida. Los cambios se guardan antes de la prueba.',
       },
       monitoring: {
-    rangeDays: 'Últimos {{days}} días',
-    customRange: 'Periodo personalizado',
-    rangeStart: 'Inicio',
-    rangeEnd: 'Fin',
-    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
-    autoRefreshLabel: 'Actualización automática',
-    autoRefreshOff: 'Actualización: desactivada',
-    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
         title: 'Revisar el historial',
         description:
           'Usa la pestaña junto al título para revisar conversaciones, pasos de procesamiento y errores cuando falten respuestas o sean inesperadas.',
@@ -369,9 +370,11 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
-    failureReasonNotRecorded: 'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
+    failureReasonNotRecorded:
+      'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
     loadFailedTitle: 'No se pudo cargar el contenido',
-    loadFailedHint: 'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
+    loadFailedHint:
+      'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
     customValue: 'Personalizado',
     loadFailed: 'No se pudo cargar. Inténtalo de nuevo.',
     search: 'Buscar',
@@ -878,7 +881,8 @@ const esES = {
       'Vincula el Pipeline que procesa los mensajes de este Bot',
     routingHelp: {
       title: '¿Qué es el enrutamiento de eventos?',
-      intro: 'Los bots reciben mensajes, solicitudes de amistad y eventos como unirse a un grupo.',
+      intro:
+        'Los bots reciben mensajes, solicitudes de amistad y eventos como unirse a un grupo.',
       events: 'Eventos recibidos',
       agents: 'Distintos agentes',
       message: 'Mensaje recibido',
@@ -888,8 +892,10 @@ const esES = {
       friendAction: 'Agente de revisión',
       groupAction: 'Agente de bienvenida',
       rules: 'Según tus reglas · Ejemplo',
-      instructions: 'Los agentes siguen tus instrucciones y usan herramientas para responder o revisar solicitudes.',
-      plugin: 'Para casos avanzados, los procesadores de plugins registran eventos en lote y los gestionan con código. Añade su configuración abajo.',
+      instructions:
+        'Los agentes siguen tus instrucciones y usan herramientas para responder o revisar solicitudes.',
+      plugin:
+        'Para casos avanzados, los procesadores de plugins registran eventos en lote y los gestionan con código. Añade su configuración abajo.',
       docs: 'Desarrolla tu propio procesador de plugins',
       runnerDocs: 'Desarrolla tu propio ejecutor de Agent',
       pause: 'Pausar',
@@ -935,7 +941,8 @@ const esES = {
     enabled: 'Activado',
     eventBindingDescriptionPlaceholder: 'Descripción de la regla',
     noEventBindings: 'No hay rutas de eventos',
-    unsupportedPipelineEvent: 'Los flujos solo admiten eventos message.received',
+    unsupportedPipelineEvent:
+      'Los flujos solo admiten eventos message.received',
     disable: 'Desactivar',
     enable: 'Activar',
     disabledBindings: 'Desactivado',
@@ -945,7 +952,7 @@ const esES = {
     advancedEventValues: 'Ver todos',
     eventGroup: 'Grupo',
     eventGroupNames: {
-      wecomcs: "Atención al cliente de WeCom",
+      wecomcs: 'Atención al cliente de WeCom',
       bot: 'Estado del bot',
       feedback: 'Comentarios',
       friend: 'Amigos',
@@ -961,7 +968,8 @@ const esES = {
     routeFallbackIgnored:
       'Se ignoran los eventos sin ruta coincidente. Añade una ruta general solo si todos los eventos necesitan un resultado explícito.',
     matchRecords: 'Registros de coincidencias',
-    matchRecordsDescription: 'Último resultado de cada regla y eventos recientes sin coincidencia. Los registros en memoria se borran al reiniciar.',
+    matchRecordsDescription:
+      'Último resultado de cada regla y eventos recientes sin coincidencia. Los registros en memoria se borran al reiniciar.',
     testRoute: 'Comprobar ruta',
     adapterEventDebugAction: 'Probar escucha',
     adapterEventDebugTitle: 'Depuración de eventos de plataforma',
@@ -1048,14 +1056,15 @@ const esES = {
     eventWildcard: 'Todos los eventos',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
-      wecombot_enter_chat: "Usuario entró al chat del bot",
-      wecombot_template_card_event: "Interacción con tarjeta",
-      dingtalk_card_action: "Interacción con tarjeta de DingTalk",
-      wecomcs_enter_session: "Cliente entró en la conversación",
-      wecomcs_msg_send_fail: "Fallo de envío de atención al cliente",
-      wecomcs_servicer_status_change: "Disponibilidad del agente modificada",
-      wecomcs_session_status_change: "Estado de conversación modificado",
-      wecomcs_reject_customer_msg_switch_change: "Rechazo de mensajes modificado",
+      wecombot_enter_chat: 'Usuario entró al chat del bot',
+      wecombot_template_card_event: 'Interacción con tarjeta',
+      dingtalk_card_action: 'Interacción con tarjeta de DingTalk',
+      wecomcs_enter_session: 'Cliente entró en la conversación',
+      wecomcs_msg_send_fail: 'Fallo de envío de atención al cliente',
+      wecomcs_servicer_status_change: 'Disponibilidad del agente modificada',
+      wecomcs_session_status_change: 'Estado de conversación modificado',
+      wecomcs_reject_customer_msg_switch_change:
+        'Rechazo de mensajes modificado',
       message_received: 'Mensaje recibido',
       message_edited: 'Mensaje editado',
       message_deleted: 'Mensaje eliminado',
@@ -1065,7 +1074,7 @@ const esES = {
       friend_added: 'Amigo añadido',
       group_member_joined: 'Miembro unido al grupo',
       group_member_left: 'Miembro salió del grupo',
-      group_info_updated: "Información del grupo actualizada",
+      group_info_updated: 'Información del grupo actualizada',
       group_member_banned: 'Miembro bloqueado',
       bot_invited_to_group: 'Bot invitado al grupo',
       bot_removed_from_group: 'Bot eliminado del grupo',
@@ -1074,14 +1083,22 @@ const esES = {
       platform_specific: 'Evento específico de la plataforma',
     },
     eventDescriptions: {
-      wecombot_enter_chat: "Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.",
-      wecombot_template_card_event: "Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.",
-      dingtalk_card_action: "Clics y envíos de tarjetas; las valoraciones y los formularios gestionados se procesan por separado.",
-      wecomcs_enter_session: "Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.",
-      wecomcs_msg_send_fail: "WeChat notificó un fallo de envío con el ID y el tipo de error.",
-      wecomcs_servicer_status_change: "Un agente inició, detuvo o suspendió la atención.",
-      wecomcs_session_status_change: "Un agente aceptó, transfirió, cerró o reabrió la conversación.",
-      wecomcs_reject_customer_msg_switch_change: "Un agente activó o desactivó el rechazo de mensajes del cliente.",
+      wecombot_enter_chat:
+        'Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.',
+      wecombot_template_card_event:
+        'Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.',
+      dingtalk_card_action:
+        'Clics y envíos de tarjetas; las valoraciones y los formularios gestionados se procesan por separado.',
+      wecomcs_enter_session:
+        'Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.',
+      wecomcs_msg_send_fail:
+        'WeChat notificó un fallo de envío con el ID y el tipo de error.',
+      wecomcs_servicer_status_change:
+        'Un agente inició, detuvo o suspendió la atención.',
+      wecomcs_session_status_change:
+        'Un agente aceptó, transfirió, cerró o reabrió la conversación.',
+      wecomcs_reject_customer_msg_switch_change:
+        'Un agente activó o desactivó el rechazo de mensajes del cliente.',
       all: 'Coincide con todos los eventos recibidos por este adaptador.',
       namespace: 'Coincide con todos los eventos de {{group}}.',
       namespace_bot:
@@ -1089,7 +1106,8 @@ const esES = {
       namespace_feedback:
         'Coincide con comentarios recibidos de la plataforma o de usuarios.',
       namespace_friend: 'Coincide con solicitudes y cambios de amistad.',
-      namespace_group: "Coincide con cambios de miembros y actualizaciones de información del grupo.",
+      namespace_group:
+        'Coincide con cambios de miembros y actualizaciones de información del grupo.',
       namespace_message:
         'Coincide con mensajes recibidos, editados, eliminados y reacciones.',
       namespace_platform:
@@ -1106,7 +1124,8 @@ const esES = {
       friend_added: 'Se ha creado una relación de amistad.',
       group_member_joined: 'Un miembro se une a un grupo donde está el bot.',
       group_member_left: 'Un miembro abandona un grupo donde está el bot.',
-      group_info_updated: "Han cambiado datos del grupo, como su nombre o propietario.",
+      group_info_updated:
+        'Han cambiado datos del grupo, como su nombre o propietario.',
       group_member_banned: 'Un miembro del grupo es bloqueado o expulsado.',
       bot_invited_to_group: 'El bot es invitado a un grupo.',
       bot_removed_from_group: 'El bot es expulsado de un grupo.',
@@ -1194,10 +1213,12 @@ const esES = {
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
     sessionMonitor: {
-      resetContext: "Restablecer contexto",
-      resetDescription: "Los mensajes nuevos comenzarán sin contexto previo. Se conservan el historial de monitoreo, los archivos y la memoria a largo plazo. Espere a que terminen las tareas activas.",
-      resetSuccess: "Contexto restablecido.",
-      resetError: "No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.",
+      resetContext: 'Restablecer contexto',
+      resetDescription:
+        'Los mensajes nuevos comenzarán sin contexto previo. Se conservan el historial de monitoreo, los archivos y la memoria a largo plazo. Espere a que terminen las tareas activas.',
+      resetSuccess: 'Contexto restablecido.',
+      resetError:
+        'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
 
       title: 'Sesiones',
       sessions: 'Sesiones',
@@ -1248,24 +1269,24 @@ const esES = {
   agents: {
     apiToolsSelectAll: 'Seleccionar todo',
     monitoring: {
-    rangeDays: 'Últimos {{days}} días',
-    customRange: 'Periodo personalizado',
-    rangeStart: 'Inicio',
-    rangeEnd: 'Fin',
-    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
-    autoRefreshLabel: 'Actualización automática',
-    autoRefreshOff: 'Actualización: desactivada',
-    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
-      runStatus: "Estado de ejecución",
-      toolCalls: "Llamadas a herramientas",
-      delivery: "Envío de mensajes",
-      sendFailed: "Error de envío",
-      sendCount: "{{count}} llamadas de envío correctas",
-      noSend: "Sin envíos registrados",
-      noSteps: "Aún no hay pasos registrados.",
-      recipient: "Destinatario",
-      actionCompleted: "Herramienta ejecutada correctamente.",
-      simulatedAction: "Acción simulada; no se envió ningún mensaje real.",
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+      runStatus: 'Estado de ejecución',
+      toolCalls: 'Llamadas a herramientas',
+      delivery: 'Envío de mensajes',
+      sendFailed: 'Error de envío',
+      sendCount: '{{count}} llamadas de envío correctas',
+      noSend: 'Sin envíos registrados',
+      noSteps: 'Aún no hay pasos registrados.',
+      recipient: 'Destinatario',
+      actionCompleted: 'Herramienta ejecutada correctamente.',
+      simulatedAction: 'Acción simulada; no se envió ningún mensaje real.',
       description:
         'Consulta el evento, la salida del modelo y las herramientas de cada tarea.',
       empty:
@@ -2206,14 +2227,14 @@ const esES = {
       uploading: 'Subiendo...',
     },
     monitoring: {
-    rangeDays: 'Últimos {{days}} días',
-    customRange: 'Periodo personalizado',
-    rangeStart: 'Inicio',
-    rangeEnd: 'Fin',
-    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
-    autoRefreshLabel: 'Actualización automática',
-    autoRefreshOff: 'Actualización: desactivada',
-    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
       title: 'Registros de ejecución',
       workbench: 'Configurar y depurar',
       description:

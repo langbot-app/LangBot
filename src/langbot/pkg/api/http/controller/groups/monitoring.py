@@ -32,6 +32,7 @@ def validate_monitoring_window(start_time: datetime.datetime | None, end_time: d
     if start_time >= end or end - start_time > datetime.timedelta(days=365):
         quart.abort(400, description='Monitoring time range must be positive and no longer than 365 days')
 
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -545,15 +546,21 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/sessions/reset-context', methods=['POST'],
-                    auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_MANAGE)
+        @self.route(
+            '/sessions/reset-context',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
         async def reset_session_context(request_context: RequestContext):
             body = await quart.request.get_json()
             if not isinstance(body, dict):
                 return self.http_status(400, 'invalid_request', 'Expected a JSON object')
             try:
                 result = await self.ap.monitoring_service.reset_session_context(
-                    request_context, body.get('bot_id'), body.get('session_id'),
+                    request_context,
+                    body.get('bot_id'),
+                    body.get('session_id'),
                 )
             except ValueError as exc:
                 return self.http_status(400, 'invalid_request', str(exc))

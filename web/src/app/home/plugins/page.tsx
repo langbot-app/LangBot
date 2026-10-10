@@ -168,7 +168,12 @@ function PluginListView() {
   }
 
   if (statusError) {
-    return <LoadErrorState title={t('plugins.failedToGetStatus')} onRetry={() => setStatusRevision((value) => value + 1)} />;
+    return (
+      <LoadErrorState
+        title={t('plugins.failedToGetStatus')}
+        onRetry={() => setStatusRevision((value) => value + 1)}
+      />
+    );
   }
 
   if (!pluginSystemStatus?.is_enable) {

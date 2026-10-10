@@ -272,11 +272,14 @@ class SessionManager:
         """获取会话"""
         session_key, execution_context = _query_session_key(query)
         from ...agent.runner.context_reset import get_reset_generation
+
         generation = None
         persistence = getattr(self.ap, 'persistence_mgr', None)
         if persistence is not None:
             generation = await get_reset_generation(
-                persistence.get_db_engine(), execution_context.workspace_uuid, query.bot_uuid,
+                persistence.get_db_engine(),
+                execution_context.workspace_uuid,
+                query.bot_uuid,
                 f'{str(query.launcher_type.value).lower()}_{query.launcher_id}',
             )
         now = time.monotonic()
