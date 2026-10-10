@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import asyncio
@@ -157,6 +158,26 @@ def make_adapter(config: dict | None = None) -> LarkAdapter:
     adapter.api_client = DummyAPIClient()
     adapter.bot = DummyWSClient()
     return adapter
+
+
+def signed_webhook_request(payload: dict, encrypt_key: str) -> SimpleNamespace:
+    """Build a Quart-request-like double carrying a valid X-Lark-Signature.
+
+    Mirrors Lark's documented event-security-verification scheme:
+    sha256(timestamp + nonce + encrypt_key + body).
+    """
+    body = json.dumps(payload).encode('utf-8')
+    timestamp = '1714000000'
+    nonce = 'nonce-1'
+    signature = hashlib.sha256((timestamp + nonce + encrypt_key).encode('utf-8') + body).hexdigest()
+    return SimpleNamespace(
+        get_data=lambda: asyncio.sleep(0, result=body),
+        headers={
+            'X-Lark-Request-Timestamp': timestamp,
+            'X-Lark-Request-Nonce': nonce,
+            'X-Lark-Signature': signature,
+        },
+    )
 
 
 def lark_event(chat_type='group', message_type='text', content=None):
@@ -849,7 +870,7 @@ def test_lark_native_form_callback_submits_typed_field_value():
 
 @pytest.mark.asyncio
 async def test_lark_webhook_dispatches_native_form_submission():
-    adapter = make_adapter({'enable-webhook': True})
+    adapter = make_adapter({'enable-webhook': True, 'encrypt-key': 'test-encrypt-key'})
     calls: list[platform_events.Event] = []
 
     async def listener(event, adapter):
@@ -873,7 +894,7 @@ async def test_lark_webhook_dispatches_native_form_submission():
             'context': {'open_chat_id': 'chat-1', 'open_message_id': 'card-message-1'},
         },
     }
-    request = SimpleNamespace(json=asyncio.sleep(0, result=payload))
+    request = signed_webhook_request(payload, 'test-encrypt-key')
 
     response = await adapter.handle_unified_webhook('bot-1', '', request)
 
@@ -889,7 +910,7 @@ async def test_lark_webhook_dispatches_native_form_submission():
 
 @pytest.mark.asyncio
 async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
-    adapter = make_adapter({'enable-webhook': True})
+    adapter = make_adapter({'enable-webhook': True, 'encrypt-key': 'test-encrypt-key'})
 
     async def listener(event, adapter):
         pass
@@ -904,8 +925,60 @@ async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
             'context': {'open_chat_id': 'chat-1', 'open_message_id': 'card-message-1'},
         },
     }
-    request = SimpleNamespace(json=asyncio.sleep(0, result=payload))
+    request = signed_webhook_request(payload, 'test-encrypt-key')
 
     response = await adapter.handle_unified_webhook('bot-1', '', request)
 
     assert response == {'toast': {'type': 'success', 'content': 'Submitted / 已提交'}}
+
+
+@pytest.mark.asyncio
+async def test_lark_webhook_rejects_unsigned_callback_with_no_encrypt_key():
+    """A bot with Webhook Mode on but no Encrypt Key set must not process
+    inbound events at all, since there is no way to authenticate the
+    caller. Spoofed message.received events must never reach a listener."""
+    adapter = make_adapter({'enable-webhook': True})
+    calls: list[platform_events.Event] = []
+
+    async def listener(event, adapter):
+        calls.append(event)
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    payload = {
+        'schema': '2.0',
+        'header': {'event_type': 'im.message.receive_v1'},
+        'event': {
+            'message': {'message_id': 'spoofed-msg', 'chat_id': 'chat-1', 'chat_type': 'p2p', 'content': '{}'},
+            'sender': {'sender_id': {'open_id': 'attacker'}},
+        },
+    }
+    request = SimpleNamespace(
+        get_data=lambda: asyncio.sleep(0, result=json.dumps(payload).encode('utf-8')),
+        headers={},
+    )
+
+    response, status = await adapter.handle_unified_webhook('bot-1', '', request)
+
+    assert status == 403
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_lark_webhook_rejects_wrong_signature():
+    """A caller who knows the webhook URL but not the Encrypt Key must not
+    be able to forge a valid X-Lark-Signature and inject a card action."""
+    adapter = make_adapter({'enable-webhook': True, 'encrypt-key': 'real-encrypt-key'})
+    payload = {
+        'schema': '2.0',
+        'header': {'event_type': 'card.action.trigger'},
+        'event': {
+            'action': {'value': {'lbi': 'callback-token', 't': 'group', 'ck': 1, 'a': 0}},
+            'operator': {'open_id': 'user-1'},
+            'context': {'open_chat_id': 'chat-1', 'open_message_id': 'card-message-1'},
+        },
+    }
+    request = signed_webhook_request(payload, 'wrong-encrypt-key')
+
+    response, status = await adapter.handle_unified_webhook('bot-1', '', request)
+
+    assert status == 403
