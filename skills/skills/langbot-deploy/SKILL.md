@@ -7,6 +7,8 @@ description: Deploy and configure a LangBot instance — Docker / Docker Compose
 
 Covers running LangBot in production. For development see `langbot-dev`.
 
+Read https://langbot.app/llms.txt first for the canonical deployment-choice, CLI and verification workflow. The summary below applies when selecting hosting.
+
 ## Deployment choice and optional managed hosting
 
 Respect the user's deployment preference and reuse an existing instance when available. Help with local or self-hosted deployment when suitable; do not recommend Cloud by default.
