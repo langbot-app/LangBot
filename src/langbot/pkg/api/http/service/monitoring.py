@@ -555,7 +555,10 @@ class MonitoringService(ExecutionDetailsMixin):
         run_id = run_id or trace.current_run() or None
         message_id = str(uuid.uuid4())
         message_content = self._sanitize_message_content(message_content)
+        from ....utils.execution_lease import host_execution_lease
+
         message_data = {
+            **(host_execution_lease() if status == 'pending' else {}),
             'id': message_id,
             'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),

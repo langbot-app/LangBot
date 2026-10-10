@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
 from ...utils.inflight import inflight_hub
+from ...utils.execution_lease import host_execution_lease
 
 from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 
@@ -137,6 +138,7 @@ class RunLedgerStore:
                 thread_id=thread_id,
                 workspace_id=workspace_id,
                 bot_id=bot_id,
+                **(host_execution_lease() if status == 'running' and queue_name is None else {}),
                 status=status,
                 queue_name=queue_name,
                 priority=priority,

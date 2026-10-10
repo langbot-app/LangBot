@@ -21,6 +21,10 @@ class MonitoringMessage(Base):
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     message_content = sqlalchemy.Column(sqlalchemy.Text, nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    execution_owner_id = sqlalchemy.Column(sqlalchemy.String(36), nullable=True, index=True)
+    execution_lease_expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
+    """Host process lease, independent of execution duration and remote queue claims."""
+
     status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # success, error, pending
     level = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # info, warning, error, debug
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
