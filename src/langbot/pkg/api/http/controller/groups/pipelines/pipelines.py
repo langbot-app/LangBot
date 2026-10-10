@@ -27,9 +27,10 @@ class PipelinesRouterGroup(group.RouterGroup):
             sort_by = quart.request.args.get('sort_by', 'created_at')
             sort_order = quart.request.args.get('sort_order', 'DESC')
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
+            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
             return self.success(
                 data={
-                    'pipelines': await self.ap.pipeline_service.get_pipelines(
+                    'pipelines': await application_api.list_pipelines(
                         request_context,
                         sort_by,
                         sort_order,
@@ -73,7 +74,8 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            pipeline = await self.ap.pipeline_service.get_pipeline(
+            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+            pipeline = await application_api.get_pipeline(
                 request_context,
                 pipeline_uuid,
                 include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
