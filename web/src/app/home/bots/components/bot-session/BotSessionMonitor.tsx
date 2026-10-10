@@ -341,7 +341,7 @@ const BotSessionMonitor = forwardRef<
 
         // Collect user message IDs for feedback matching
         const userMsgIds = new Set(
-          sorted.filter((m) => !m.role || m.role === 'user').map((m) => m.id),
+          sorted.filter(isUserMessage).map((m) => m.id),
         );
 
         if (userMsgIds.size > 0) {
@@ -458,11 +458,15 @@ const BotSessionMonitor = forwardRef<
     return [{ type: 'Plain', text: content } as Plain];
   };
 
-  const isUserMessage = (msg: SessionMessage): boolean => {
+  function isUserMessage(msg: SessionMessage): boolean {
+    // Older processing-error records inherited the default user role.
+    if (msg.status === 'error' && msg.message_content.startsWith('Error: ')) {
+      return false;
+    }
     if (msg.role === 'assistant') return false;
     if (msg.role === 'user') return true;
     return !msg.runner_name;
-  };
+  }
 
   const renderMessageComponent = (
     component: MessageChainComponent,
