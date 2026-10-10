@@ -241,7 +241,7 @@ async def test_wecombot_event_converter_maps_private_and_group_messages_to_eba()
     assert private_event.adapter_name == 'wecombot-omni'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 'user-1'
-    assert str(private_event.message_chain) == 'hello'
+    assert str(private_event.message_chain) == '@EBA Bot hello'
 
     assert isinstance(group_event, platform_events.MessageReceivedEvent)
     assert group_event.chat_type == platform_entities.ChatType.GROUP
@@ -302,7 +302,9 @@ async def test_wecombot_send_reply_feedback_and_platform_api_use_underlying_clie
 
     source_event = await WecomBotEventConverter().target2yiri(wecombot_event())
     await adapter.reply_message(source_event, message)
-    adapter.bot.reply_text.assert_awaited_once_with('req-1', 'hello')
+    adapter.bot.push_stream_chunk.assert_awaited_once_with('msg-1', 'hello', is_final=True)
+    adapter.bot.reply_text.assert_not_awaited()
+    adapter.bot.push_stream_chunk.reset_mock()
 
     await adapter.reply_message_chunk(source_event, None, message, is_final=True)
     adapter.bot.push_stream_chunk.assert_awaited_once_with('msg-1', 'hello', is_final=True)

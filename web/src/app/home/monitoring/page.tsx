@@ -167,7 +167,7 @@ function MonitoringPageContent() {
     intervalRef.current = refreshInterval;
     countdown.current = refreshInterval;
     setRemainingSeconds(refreshInterval);
-    if (!refreshInterval) return;
+    if (!refreshInterval || error) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible' && !refreshState.current.busy) {
         countdown.current = Math.max(0, countdown.current - 1);
@@ -179,7 +179,7 @@ function MonitoringPageContent() {
       }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [refreshInterval]);
+  }, [refreshInterval, error]);
 
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
@@ -204,7 +204,7 @@ function MonitoringPageContent() {
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
-      <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
+      {!error && <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
         <div>
           <Card className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end">
             <MonitoringFilters
@@ -263,6 +263,8 @@ function MonitoringPageContent() {
           </Card>
         </div>
       </div>
+
+      }
 
       {/* Content Area */}
       {error ? (

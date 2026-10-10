@@ -148,6 +148,16 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         raw = await self.bot.send_message(str(target_id), content)
         return platform_events.MessageResult(raw={'result': raw})
 
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        """Bind Agent replies to the originating callback and its loading stream."""
+        message_id = ((context.get('delivery') or {}).get('reply_target') or {}).get('message_id')
+        if context.get('event_type') == 'message.received' and message_id:
+            source = await self.get_message(target_type, target_id, message_id)
+            return await self.reply_message(source, message)
+        return await self.send_message(target_type, target_id, message)
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -160,9 +170,14 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         items = await WecomBotMessageConverter.yiri2target(message)
         content = self._join_text_components(items)
         raw = None
+        from .stream_text import format_stream_text
+
+        content = format_stream_text(content)
         if not self.config.get('enable-webhook', False) and event.get('req_id'):
             if content:
-                raw = await self.bot.reply_text(event.get('req_id'), content)
+                finished = await self.bot.push_stream_chunk(event.message_id, content, is_final=True)
+                if not finished:
+                    raw = await self.bot.reply_text(event.get('req_id'), content)
             for item in self._iter_media_components(items):
                 await self._send_media(self.bot, event.get('req_id'), item)
         else:
@@ -181,7 +196,9 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         if not isinstance(event, WecomBotEvent):
             raise ValueError('WeComBot reply_message_chunk requires a WecomBotEvent source object')
         items = await WecomBotMessageConverter.yiri2target(message)
-        content = self._join_text_components(items)
+        from .stream_text import format_stream_text
+
+        content = format_stream_text(self._join_text_components(items))
         success = await self.bot.push_stream_chunk(event.message_id, content, is_final=is_final)
         if not success and is_final and not self.config.get('enable-webhook', False) and event.get('req_id'):
             await self.bot.reply_text(event.get('req_id'), content)

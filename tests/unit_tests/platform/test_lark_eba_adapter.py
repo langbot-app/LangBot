@@ -301,6 +301,7 @@ async def test_lark_event_converter_maps_group_and_private_message():
 @pytest.mark.asyncio
 async def test_lark_adapter_dispatches_and_caches_message_event():
     adapter = make_adapter()
+    adapter._get_bot_open_id = AsyncMock(return_value='bot-open-id')
     calls: list[platform_events.Event] = []
 
     async def listener(event, adapter):

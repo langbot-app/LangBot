@@ -43,7 +43,8 @@ export function useMonitoringData(filterState: FilterState) {
       requestId === requestIdRef.current &&
       getCurrentWorkspaceSnapshot()?.workspace.uuid === workspaceUuid;
     setLoading(true);
-    setError(null);
+    // Keep the failure view during retries; restore the dashboard only after
+    // a successful response, without briefly restarting its polling timer.
 
     try {
       const { startTime, endTime } = resolveMonitoringWindow(
@@ -385,6 +386,7 @@ export function useMonitoringData(filterState: FilterState) {
       ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
       setData(transformedData);
+      setError(null);
       setRequestScope(scope);
     } catch (err) {
       if (!isCurrent()) return;

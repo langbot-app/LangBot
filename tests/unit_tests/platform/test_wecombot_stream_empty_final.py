@@ -117,3 +117,61 @@ async def test_real_final_chunk_is_sent_and_closes_stream():
     assert frames[-1]['stream']['content'] == 'the answer'
     assert frames[-1]['stream']['finish'] is True
     assert not client.stream_still_open()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_final_is_acknowledged_without_sending_again():
+    client = RecordingClient()
+    client.seed_stream()
+    assert await client.push_stream_chunk('msg-1', 'answer', is_final=True)
+    assert await client.push_stream_chunk('msg-1', 'answer', is_final=True)
+    assert len(client.stream_frames()) == 1
+    assert not await client.push_stream_chunk('different-message', 'answer', is_final=True)
+    assert not await client.push_stream_chunk('msg-1', 'different answer', is_final=True)
+
+
+@pytest.mark.asyncio
+async def test_runner_cumulative_snapshots_reach_wire_once_without_concatenation():
+    from langbot.pkg.pipeline.process.stream_results import coalesce_stream_results
+    from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+    from tests.unit_tests.platform.test_wecombot_eba_adapter import (
+        make_adapter,
+        wecombot_event,
+        WecomBotEventConverter,
+    )
+
+    client = RecordingClient()
+    client.seed_stream()
+    adapter = make_adapter()
+    adapter.bot = client
+    event = await WecomBotEventConverter().target2yiri(wecombot_event())
+    snapshots = ['<think>test', '<think>test</think>\nOK', '<think>test</think>\nOK!']
+
+    async def runner():
+        # LocalAgent's StreamingModelCaller sets content to the accumulated
+        # text, leaves all_content unset, then emits message.completed.
+        for index, text in enumerate(snapshots):
+            yield MessageChunk(role='assistant', content=text, msg_sequence=index + 1, is_final=index == 2)
+        yield Message(role='assistant', content=snapshots[-1])
+
+    async for result in coalesce_stream_results(runner()):
+        final = isinstance(result, Message) or result.is_final
+        if isinstance(result, MessageChunk):
+            result = result.model_copy(update={'content': result.all_content})
+        await adapter.reply_message_chunk(event, result, result.get_content_platform_message_chain(), is_final=final)
+
+    frames = client.stream_frames()
+    from langbot.pkg.platform.adapters.wecombot.stream_text import format_stream_text
+
+    assert [frame['stream']['content'] for frame in frames] == [format_stream_text(text) for text in snapshots]
+    assert [frame['stream']['finish'] for frame in frames] == [False, False, True]
+    assert len(client.replies) == 3  # No extra plain-text reply after completion.
+
+
+@pytest.mark.asyncio
+async def test_revised_snapshot_replaces_previous_text():
+    client = RecordingClient()
+    client.seed_stream()
+    await client.push_stream_chunk('msg-1', '<think>test</think>\nanswer')
+    await client.push_stream_chunk('msg-1', 'answer', is_final=True)
+    assert client.stream_frames()[-1]['stream']['content'] == 'answer'

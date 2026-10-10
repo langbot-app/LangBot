@@ -811,6 +811,10 @@ class BoxService:
         to the sandbox (and vice-versa). It is ``None`` / not a local dir for
         E2B and remote runtimes, where we must fall back to the exec channel.
         """
+        # secure_fs relies on POSIX openat/O_NOFOLLOW. On Windows use the
+        # sandbox execution channel rather than misclassifying EACCES as a link.
+        if os.open not in os.supports_dir_fd or not hasattr(os, 'O_NOFOLLOW'):
+            return None
         root = self._tenant_workspace(self._query_execution_context(query))
         if not root or not os.path.isdir(root) or os.path.islink(root):
             return None

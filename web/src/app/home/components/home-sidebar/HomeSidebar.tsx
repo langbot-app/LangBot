@@ -800,7 +800,7 @@ function NavItems({
                       {(isBot || isMCP) && (
                         <span
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
+                            'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-popover',
                             isMCP
                               ? mcpStatusColor(item)
                               : item.enabled === false
@@ -868,7 +868,7 @@ function NavItems({
                             {(isBot || isMCP) && (
                               <span
                                 className={cn(
-                                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
+                                  'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-sidebar',
                                   isMCP
                                     ? mcpStatusColor(item)
                                     : item.enabled === false

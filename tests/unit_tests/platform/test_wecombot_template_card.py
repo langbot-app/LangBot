@@ -369,11 +369,13 @@ async def test_ws_stream_sends_cumulative_snapshots_to_wecom():
 
     assert await client.push_stream_chunk('msg-1', '你', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '<think>test</think>你好', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
 
     assert sent == [
         ('req-1', 'stream-1', '你', False),
         ('req-1', 'stream-1', '你好', False),
+        ('req-1', 'stream-1', '<think>test</think>你好', False),
         ('req-1', 'stream-1', '你好', True),
     ]
 
@@ -385,6 +387,7 @@ async def test_webhook_stream_queues_cumulative_snapshots_for_followups():
 
     assert await client.push_stream_chunk('msg-1', '你', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '<think>test</think>你好', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
 
     assert session.queue.qsize() == 1

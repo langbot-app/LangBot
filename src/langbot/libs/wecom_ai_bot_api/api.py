@@ -2123,7 +2123,7 @@ class WecomBotClient:
 
         Args:
             msg_id: 原始企业微信消息 ID。
-            content: 模型产生的片段内容。
+            content: 流水线传入的累计正文快照。
             is_final: 是否为最终片段。
 
         Returns:
@@ -2138,12 +2138,8 @@ class WecomBotClient:
             return False
 
         previous_content = self._stream_last_content.get(msg_id, '')
-        if previous_content and content.startswith(previous_content):
-            next_content = content
-        elif previous_content and not content:
-            next_content = previous_content
-        else:
-            next_content = previous_content + content if previous_content else content
+        # Pipeline delivery provides a snapshot, not a provider delta.
+        next_content = content or previous_content
         if len(next_content) > _MAX_STREAM_CONTENT_CHARS:
             next_content = next_content[-_MAX_STREAM_CONTENT_CHARS:]
 
