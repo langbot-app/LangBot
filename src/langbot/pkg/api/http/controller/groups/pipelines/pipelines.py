@@ -5,7 +5,6 @@ import quart
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
-from ....service.secrets import redact_secrets
 from ....service.pipeline_run import run_pipeline
 from ... import group
 from ......pipeline.extension_preferences import (
