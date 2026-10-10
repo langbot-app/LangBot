@@ -116,7 +116,6 @@ class BuildAppStage(stage.BootingStage):
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
-        ap.application_api = ApplicationAPI(ap)
 
         agent_service_inst = agent_service.AgentService(ap)
         ap.agent_service = agent_service_inst
@@ -141,6 +140,7 @@ class BuildAppStage(stage.BootingStage):
 
         skill_service_inst = skill_service.SkillService(ap)
         ap.skill_service = skill_service_inst
+        ap.application_api = ApplicationAPI(ap)
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
