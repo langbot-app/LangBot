@@ -27,6 +27,7 @@ import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import {
   Cable,
+  TriangleAlert,
   Check,
   ExternalLink,
   ChevronDown,
@@ -715,6 +716,16 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       });
   }
 
+  const hasProcessing =
+    (form.watch('event_bindings') ?? []).some((binding) =>
+      binding.enabled !== false && !!binding.event_pattern &&
+      (binding.target_type === 'discard' ||
+        agentNameList.some((agent) => agent.uuid === binding.target_uuid)),
+    ) ||
+    (form.watch('plugin_processors') ?? []).some(
+      (processor) => processor.enabled !== false && !!processor.processor_uuid,
+    );
+
   if (loadFailed)
     return (
       <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
@@ -1231,9 +1242,19 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               data-guide="bot-routing"
               className={cn(
                 'min-w-0',
+                !hasProcessing && 'pt-0',
                 initBotId && 'lg:min-h-0 lg:overflow-hidden',
               )}
             >
+              {!hasProcessing && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-start gap-2.5 rounded-t-xl border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm leading-relaxed text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <p>{t('botSetup.warning')}</p>
+                </div>
+              )}
               <CardHeader>
                 <CardTitle className="flex items-center gap-1.5">{t('bots.eventRouting')}<EventRoutingHelp /></CardTitle>
                 <CardDescription>
@@ -1248,6 +1269,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               >
                 <EventBindingsEditor
                   form={form}
+                  onAgentCreated={(agent) => setAgentNameList((items) => [...items.filter((item) => item.uuid !== agent.uuid), agent])}
                   botId={initBotId}
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList.filter(

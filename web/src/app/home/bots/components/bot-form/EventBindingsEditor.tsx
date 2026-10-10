@@ -119,6 +119,9 @@ import {
   BotEventRouteStatus,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
+import AgentCreateContent from '@/app/home/agents/components/AgentCreateContent';
+import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import { toast } from 'sonner';
 import {
   eventGroupLabel,
   eventNamespaces,
@@ -136,6 +139,7 @@ interface EventBindingsEditorProps {
   botId?: string;
   supportedEvents: string[];
   agentOptions: Agent[];
+  onAgentCreated: (agent: Agent) => void;
 }
 
 type FilterField =
@@ -496,13 +500,17 @@ function TargetCombobox({
   binding,
   agentOptions,
   onUpdate,
+  onAgentCreated,
 }: {
   binding: EventBinding;
   agentOptions: Agent[];
   onUpdate: (patch: Partial<EventBinding>) => void;
+  onAgentCreated: (agent: Agent) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const { refreshPipelines } = useSidebarData();
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
   const targetType = binding.target_type || 'agent';
   const selectedTarget =
@@ -618,8 +626,55 @@ function TargetCombobox({
               )}
             </CommandList>
           </Command>
+          <div className="border-t p-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => {
+                setOpen(false);
+                setCreating(true);
+              }}
+            >
+              <Plus className="mr-2 size-4" />
+              {t('botSetup.create')}
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent
+          className="flex max-h-[90dvh] w-[calc(100%-2rem)] flex-col overflow-y-auto sm:max-w-6xl"
+          onSubmit={(event) => event.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('botSetup.create')}</DialogTitle>
+            <DialogDescription>{t('botSetup.createDescription')}</DialogDescription>
+          </DialogHeader>
+          <AgentCreateContent
+            embedded
+            allowedKinds={pipelineAllowed ? ['pipeline', 'agent'] : ['agent']}
+            onCreated={async (id) => {
+              void refreshPipelines();
+              try {
+                const { agent } = await backendClient.getAgent(id);
+                onAgentCreated(agent);
+                const compatible = agent.kind === 'pipeline'
+                  ? pipelineAllowed
+                  : agentSupportsEventPattern(agent, binding.event_pattern);
+                if (compatible) {
+                  onUpdate({ target_type: agent.kind, target_uuid: id });
+                } else {
+                  toast.warning(t('botSetup.incompatible'));
+                }
+                setCreating(false);
+              } catch {
+                toast.error(t('agents.createError'));
+              }
+            }}
+          />
+        </DialogContent>
+      </Dialog>
       {selectedTarget && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1226,6 +1281,7 @@ interface BindingCardProps {
 
   eventOptions: string[];
   agentOptions: Agent[];
+  onAgentCreated: (agent: Agent) => void;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
   onUpdate: (globalIndex: number, patch: Partial<EventBinding>) => void;
@@ -1239,6 +1295,7 @@ function BindingCardContent({
   globalIndex,
   eventOptions,
   agentOptions,
+  onAgentCreated,
   expandedIds,
   onToggleExpand,
   onUpdate,
@@ -1351,6 +1408,7 @@ function BindingCardContent({
         <TargetCombobox
           binding={binding}
           agentOptions={agentOptions}
+          onAgentCreated={onAgentCreated}
           onUpdate={(patch) => onUpdate(globalIndex, patch)}
         />
 
@@ -1441,6 +1499,7 @@ export default function EventBindingsEditor({
   botId,
   supportedEvents,
   agentOptions,
+  onAgentCreated,
 }: EventBindingsEditorProps) {
   const { t } = useTranslation();
   const watchedBindings: EventBinding[] | undefined =
@@ -1696,6 +1755,7 @@ export default function EventBindingsEditor({
                   globalIndex={globalIdx}
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
+                  onAgentCreated={onAgentCreated}
                   expandedIds={expandedIds}
                   onToggleExpand={toggleExpand}
                   onUpdate={updateBinding}
@@ -1710,6 +1770,7 @@ export default function EventBindingsEditor({
                 globalIndex={i}
                 eventOptions={eventOptions}
                 agentOptions={agentOptions}
+                onAgentCreated={onAgentCreated}
                 expandedIds={expandedIds}
                 onToggleExpand={toggleExpand}
                 onUpdate={updateBinding}
@@ -1725,6 +1786,7 @@ export default function EventBindingsEditor({
               globalIndex={activeGlobalIdx}
               eventOptions={eventOptions}
               agentOptions={agentOptions}
+              onAgentCreated={onAgentCreated}
               expandedIds={expandedIds}
               onToggleExpand={toggleExpand}
               onUpdate={updateBinding}

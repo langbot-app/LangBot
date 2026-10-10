@@ -34,11 +34,15 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 
 export default function AgentCreateContent({
   onCreated,
+  allowedKinds,
+  embedded = false,
 }: {
   onCreated: (agentId: string) => void;
+  allowedKinds?: AgentKind[];
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<AgentKind>('pipeline');
+  const [kind, setKind] = useState<AgentKind>(allowedKinds?.[0] ?? 'pipeline');
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
   const [runner, setRunner] = useState('');
   const [loading, setLoading] = useState(true);
@@ -51,7 +55,7 @@ export default function AgentCreateContent({
   }, [t]);
   useEffect(() => { void loadMetadata(); }, [loadMetadata]);
   const runnerOptions = kind === 'event_processor'
-    ? (metadata?.event_processors ?? []).map((item) => ({ name: item.id, label: { en_US: item.id, ...item.label } }))
+    ? (metadata?.event_processors ?? []).map((item) => ({ name: item.id, label: { en_US: item.id, zh_Hans: item.id, ...item.label } }))
     : metadata?.runner_config?.stages.find((stage) => stage.name === 'runner')?.config.find((item) => item.name === 'id')?.options ?? [];
   const selectorLabel = t(kind === 'event_processor' ? 'agents.selectProcessorPlugin' : 'agents.selectAgentRunner');
   const formSchema = z.object({
@@ -159,10 +163,12 @@ export default function AgentCreateContent({
   ];
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between pb-4 shrink-0">
+      <div className={embedded ? 'order-last flex justify-end border-t pt-4 shrink-0' : 'flex items-center justify-between pb-4 shrink-0'}>
+        {!embedded && (
         <h1 className="text-xl font-semibold">
           {t('agents.eventProcessor.createPageTitle')}
         </h1>
+        )}
         <Button
           type="submit"
           form="agent-create-form"
@@ -187,9 +193,9 @@ export default function AgentCreateContent({
                   >
                     {t('agents.chooseType')}
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  {!embedded && <p className="mt-1 text-sm text-muted-foreground">
                     {t('agents.chooseTypeDescription')}
-                  </p>
+                  </p>}
                 </div>
 
                 <ToggleGroup
@@ -202,7 +208,7 @@ export default function AgentCreateContent({
                   spacing={3}
                   className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-1"
                 >
-                  {typeOptions.map((option) => {
+                  {typeOptions.filter((option) => !allowedKinds || allowedKinds.includes(option.kind)).map((option) => {
                     const Icon = option.icon;
                     return (
                       <div key={option.kind} className="relative w-full">
@@ -261,7 +267,7 @@ export default function AgentCreateContent({
                           }}
                           onEventProcessorInstalled={(component) => {
                             setMetadata((previous) => previous ? { ...previous, event_processors: [...(previous.event_processors ?? []).filter((item) => item.id !== component.id), component] } : previous);
-                            selectRunner(component.id, extractI18nObject({ en_US: component.id, ...component.label }));
+                            selectRunner(component.id, extractI18nObject({ en_US: component.id, zh_Hans: component.id, ...component.label }));
                           }}
                         />
                       </div>
@@ -307,7 +313,7 @@ export default function AgentCreateContent({
               </Card>
             </div>
 
-            <Card className="min-h-[600px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[680px]">
+            <Card className={embedded ? 'min-h-[360px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[480px]' : 'min-h-[600px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[680px]'}>
               <CardContent className="flex h-full items-center p-0">
                 <ProcessorTypeDiagram kind={kind} />
               </CardContent>
