@@ -724,7 +724,7 @@ class DingTalkClient:
         else:
             open_space_id = f'dtv1.card//IM_ROBOT.{incoming_message.sender_staff_id}'
 
-        card_param_map = {'content': '', 'answer': '', 'reasoning': '', 'flowStatus': '1', 'brand': '**🤖 LangBot**', 'hasReasoning': ''}
+        card_param_map = {'content': '', 'answer': '', 'reasoning': '', 'flowStatus': '1', 'brand': '', 'hasReasoning': ''}
         if incoming_message.message_type == 'text':
             card_param_map['query'] = incoming_message.get_text_list()[0]
         else:
@@ -747,7 +747,7 @@ class DingTalkClient:
         # the supplied split template binds only reasoning and answer.
         fields['content'] = visible_think_markers(content)
         fields['flowStatus'] = '3' if is_final else '2'
-        fields['brand'] = '**🤖 LangBot**'
+        fields['brand'] = ''
         if isinstance(card_instance, dict):
             fields['config'] = card_instance
             fields['autoLayout'] = str(card_instance.get('autoLayout', True)).lower()
