@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 
+from ...application import ApplicationAPI
+
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext
 from .secrets import redact_secrets
@@ -234,6 +236,13 @@ def _required_permission(writes: bool, extra: Permission | None) -> Permission:
     return Permission.RESOURCE_MANAGE if writes else Permission.RESOURCE_VIEW
 
 
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared facade without evaluating a legacy fallback eagerly."""
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if application_api is not None else ApplicationAPI(ap)
+
+
 def _authorized(context, name: str) -> bool:
     _schema, _description, writes, extra = TOOLS[name]
     return _required_permission(writes, extra).value in context.workspace.permissions
@@ -295,7 +304,7 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         compact['query'] = {key: args[key] for key in ('search', 'action', 'resource_type', 'actor') if args.get(key)}
         return compact
     if name == 'get_pipeline':
-        return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline(context, args['pipeline_uuid'])
+        return await _application_api(ap).get_pipeline(context, args['pipeline_uuid'])
     if name == 'get_pipeline_extensions':
         return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline_extensions(
             context, args['pipeline_uuid']
