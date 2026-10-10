@@ -58,6 +58,8 @@ import lark_oapi.ws.exception
 import pydantic
 import quart
 
+from .stream_card import build_card, streaming_text
+
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot.pkg.platform.adapters.lark.api_impl import LarkAPIMixin
@@ -490,28 +492,13 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.card_sequence_dict.pop(old_card, None)
             self.card_last_update_dict.pop(old_card, None)
             self.closed_streaming_cards.discard(old_card)
-        card_data = {
-            'schema': '2.0',
-            'config': {
-                'update_multi': True,
-                'streaming_mode': True,
-                'streaming_config': {
-                    'print_step': {'default': 1},
-                    'print_frequency_ms': {'default': 70},
-                    'print_strategy': 'fast',
-                },
-            },
-            'body': {
-                'direction': 'vertical',
-                'elements': [{'tag': 'markdown', 'content': '', 'element_id': 'streaming_txt'}],
-            },
-        }
+        card_data = build_card(streaming=True)
         request = (
             CreateCardRequest.builder()
             .request_body(CreateCardRequestBody.builder().type('card_json').data(json.dumps(card_data)).build())
             .build()
         )
-        response: CreateCardResponse = self.api_client.cardkit.v1.card.create(request)
+        response: CreateCardResponse = await self.api_client.cardkit.v1.card.acreate(request)
         if not response.success():
             raise RuntimeError(f'Lark create_card failed: {response.code} {response.msg}')
         card_id = str(response.data.card_id)
@@ -531,16 +518,9 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     def _streaming_mode_closed(response: ContentCardElementResponse) -> bool:
         return response.code == 300309 or 'streaming mode is closed' in str(response.msg).lower()
 
-    async def _replace_streaming_card(self, card_id: str, content: str) -> None:
+    async def _replace_streaming_card(self, card_id: str, content: str, *, finished: bool = True) -> None:
         sequence = self._next_card_sequence(card_id)
-        card_data = {
-            'schema': '2.0',
-            'config': {'update_multi': True},
-            'body': {
-                'direction': 'vertical',
-                'elements': [{'tag': 'markdown', 'content': content}],
-            },
-        }
+        card_data = build_card(content, finished=finished)
         request = (
             UpdateCardRequest.builder()
             .card_id(card_id)
@@ -583,14 +563,14 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 for paragraph in text_elements
             )
         if (is_final and not bot_message.tool_calls) or card_id in self.closed_streaming_cards:
-            await self._replace_streaming_card(card_id, content)
+            await self._replace_streaming_card(card_id, content, finished=is_final and not bot_message.tool_calls)
         else:
             sequence = self._next_card_sequence(card_id)
             request = (
                 ContentCardElementRequest.builder()
                 .card_id(card_id)
                 .element_id('streaming_txt')
-                .request_body(ContentCardElementRequestBody.builder().content(content).sequence(sequence).build())
+                .request_body(ContentCardElementRequestBody.builder().content(streaming_text(content)).sequence(sequence).build())
                 .build()
             )
             response: ContentCardElementResponse = await self.api_client.cardkit.v1.card_element.acontent(
@@ -598,7 +578,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             )
             if not response.success():
                 if self._streaming_mode_closed(response):
-                    await self._replace_streaming_card(card_id, content)
+                    await self._replace_streaming_card(card_id, content, finished=is_final and not bot_message.tool_calls)
                 else:
                     raise RuntimeError(f'Lark card_element update failed: {response.code} {response.msg}')
         self.card_last_update_dict[card_id] = now
