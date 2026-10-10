@@ -1915,6 +1915,8 @@ const viVN = {
     createError: 'Tạo thất bại: ',
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
+    runnerNotAuthorized:
+      'Trình chạy đã chọn chưa được cho phép. Trong Tiện ích mở rộng, hãy thêm plugin của trình chạy vào danh sách hoặc bật tất cả plugin, rồi lưu lại.',
     copySuffix: ' Bản sao',
     deleteConfirmation:
       'Bạn có chắc chắn muốn xóa Pipeline này không? Bot liên kết với Pipeline này sẽ không hoạt động.',

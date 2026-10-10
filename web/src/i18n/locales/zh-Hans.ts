@@ -1816,6 +1816,8 @@ const zhHans = {
     createError: '创建失败：',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
+    runnerNotAuthorized:
+      '当前运行器未获授权。请在扩展中通过“添加插件”加入运行器所属插件，或启用所有插件，然后重新保存。',
     copySuffix: ' Copy',
     deleteConfirmation:
       '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',

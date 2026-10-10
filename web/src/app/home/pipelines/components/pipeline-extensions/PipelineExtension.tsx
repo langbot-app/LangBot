@@ -194,7 +194,15 @@ export default function PipelineExtension({
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
       console.error('Failed to save extensions:', error);
-      toast.error(t('pipelines.extensions.saveError'));
+      const message =
+        typeof error === 'object' && error && 'msg' in error
+          ? String(error.msg)
+          : '';
+      toast.error(
+        message === 'pipeline_runner_not_authorized'
+          ? t('pipelines.runnerNotAuthorized')
+          : t('pipelines.extensions.saveError'),
+      );
       // Reload on error to restore correct state
       loadExtensions();
     }
@@ -457,7 +465,6 @@ export default function PipelineExtension({
           onClick={handleOpenPluginDialog}
           variant="outline"
           className="w-full"
-          disabled={enableAllPlugins}
         >
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addPlugin')}

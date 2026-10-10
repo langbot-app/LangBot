@@ -1937,6 +1937,8 @@ const jaJP = {
     createError: '作成に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
+    runnerNotAuthorized:
+      '選択したランナーは許可されていません。拡張機能の「プラグインを追加」でランナーのプラグインを追加するか、すべてのプラグインを有効にしてから、再度保存してください。',
     copySuffix: ' Copy',
     deleteConfirmation:
       '本当にこのパイプラインを削除しますか？このパイプラインに紐付けられたボットは動作しなくなります。',

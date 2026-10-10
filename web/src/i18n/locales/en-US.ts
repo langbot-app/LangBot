@@ -1922,6 +1922,8 @@ const enUS = {
     createError: 'Creation failed: ',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
+    runnerNotAuthorized:
+      'The selected runner is not authorized. In Extensions, use Add Plugin to include its plugin, or enable all plugins, then save again.',
     copySuffix: ' Copy',
     deleteConfirmation:
       'Are you sure you want to delete this pipeline? Bots bound to this pipeline will not work.',

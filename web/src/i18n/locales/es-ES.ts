@@ -1958,6 +1958,8 @@ const esES = {
     createError: 'Error al crear: ',
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
+    runnerNotAuthorized:
+      'El ejecutor seleccionado no está autorizado. En Extensiones, usa Añadir plugin para incluir su plugin o habilita todos los plugins y vuelve a guardar.',
     copySuffix: ' Copia',
     deleteConfirmation:
       '¿Estás seguro de que deseas eliminar este Pipeline? Los Bots vinculados a este Pipeline dejarán de funcionar.',

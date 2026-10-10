@@ -141,7 +141,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
 
-            pipeline_component_kinds = ['Command', 'EventListener', 'Tool']
+            pipeline_component_kinds = ['Command', 'EventListener', 'Tool', 'Runner']
             if self.ap.plugin_connector.is_enable_plugin:
                 await self.ap.plugin_connector.require_workspace_context(request_context)
             plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
