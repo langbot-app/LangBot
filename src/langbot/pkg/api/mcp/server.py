@@ -18,9 +18,12 @@ maintainable. Extend deliberately.
 from __future__ import annotations
 
 import json
+import functools
 import typing
 
 from mcp.server.fastmcp import FastMCP
+
+from ..application import ApplicationAPI
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
@@ -53,6 +56,19 @@ def _authorized(permission: Permission):
     context = get_request_context()
     require_permission(context, permission)
     return context
+
+
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared operation facade without an eager fallback.
+
+    ``_application_api(ap)`` evaluates
+    ``ap.pipeline_service`` even when the facade exists and assumes the legacy
+    service has facade method names such as ``list_pipelines``. Both make
+    lightweight app graphs fail before the operation can run.
+    """
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if application_api is not None else ApplicationAPI(ap)
 
 
 class LangBotMCPServer:
@@ -487,7 +503,24 @@ class LangBotMCPServer:
         """Register a tool boundary before its authorization and service call."""
 
         def register(fn):
-            observed = fn
+            @functools.wraps(fn)
+            async def observed(*args, **kwargs):
+                # FastMCP executes tool handlers in a child task. The mount's
+                # request boundary is intentionally not inherited by child
+                # tasks, so establish a fresh short-lived scope for each tool
+                # invocation using the already authenticated ContextVar.
+                context = get_request_context()
+                persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+                tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+                if not callable(tenant_scope):
+                    # Keep lightweight in-process test doubles usable. The
+                    # production Application always has a PersistenceManager;
+                    # MCPMount itself still fails closed when that manager is
+                    # absent on a real request.
+                    return await fn(*args, **kwargs)
+                async with tenant_scope(context.workspace_uuid):
+                    return await fn(*args, **kwargs)
+
             return self.mcp.tool(**options)(observed)
 
         return register
