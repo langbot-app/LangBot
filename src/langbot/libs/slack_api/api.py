@@ -167,8 +167,8 @@ class SlackClient:
         try:
             response = await self.client.chat_postMessage(channel=channel_id, text=text)
             if self.bot_user_id is None and response.get('ok'):
-                self.bot_user_id = response['message']['bot_id']
-            return
+                self.bot_user_id = response.get('message', {}).get('bot_id')
+            return response.data if hasattr(response, 'data') else response
         except Exception as e:
             await self.logger.error(f'Error in send_message: {e}')
             raise e
@@ -177,9 +177,9 @@ class SlackClient:
         try:
             response = await self.client.chat_postMessage(channel='@' + user_id, text=text)
             if self.bot_user_id is None and response.get('ok'):
-                self.bot_user_id = response['message']['bot_id']
+                self.bot_user_id = response.get('message', {}).get('bot_id')
 
-            return
+            return response.data if hasattr(response, 'data') else response
         except Exception as e:
             await self.logger.error(f'Error in send_message: {traceback.format_exc()}')
             raise e

@@ -8,6 +8,7 @@ import pydantic
 
 from langbot.libs.slack_api.api import SlackClient
 from langbot.libs.slack_api.slackevent import SlackEvent
+from langbot.libs.slack_api.media import send_chain
 from langbot.pkg.platform.adapters.slack.api_impl import SlackAPIMixin
 from langbot.pkg.platform.adapters.slack.errors import NotSupportedError
 from langbot.pkg.platform.adapters.slack.event_converter import SlackEventConverter
@@ -96,8 +97,7 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         target_id: str,
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
-        content = await SlackMessageConverter.yiri2target(message)
-        raw = await self._send_text(str(target_type), str(target_id), content)
+        raw = await send_chain(self.bot, self._normalize_target_type(str(target_type)), str(target_id), message)
         return platform_events.MessageResult(raw=raw)
 
     async def reply_message(
@@ -111,7 +111,7 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             raise ValueError('Slack reply_message requires a SlackEvent source object')
         target_type = 'channel' if source.type == 'channel' else 'person'
         target_id = source.channel_id if source.type == 'channel' else source.user_id
-        raw = await self._send_text(target_type, target_id, await SlackMessageConverter.yiri2target(message))
+        raw = await send_chain(self.bot, target_type, target_id, message)
         return platform_events.MessageResult(message_id=source.message_id, raw=raw)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
