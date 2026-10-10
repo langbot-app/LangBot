@@ -12,9 +12,9 @@ metadata:
     es_ES: Slack
   description:
     en_US: Slack Adapter
-    zh_Hans: Slack 适配器，需要公网地址以接收 Slack 消息推送，请查看文档了解使用方式
-    zh_Hant: Slack 適配器，需要公網地址以接收 Slack 訊息推送，請查看文件了解使用方式
-    ja_JP: Slack アダプター、Slackのメッセージプッシュを受信するためにパブリックURLが必要です。使用方法の詳細については、ドキュメントを参照してください。
+    zh_Hans: Slack 适配器，支持 Webhook 和无需公网地址的长连接，请查看文档了解使用方式
+    zh_Hant: Slack 適配器，支援 Webhook 或無需公開網址的 Socket Mode。
+    ja_JP: Slack アダプター。Webhook または公開 URL が不要な Socket Mode を利用できます。
     th_TH: อะแดปเตอร์ Slack ต้องการที่อยู่สาธารณะเพื่อรับการแจ้งเตือนข้อความจาก Slack โปรดดูเอกสารประกอบสำหรับวิธีการใช้งาน
     vi_VN: Bộ điều hợp Slack, cần địa chỉ công cộng để nhận thông báo tin nhắn từ Slack, vui lòng xem tài liệu để biết cách sử dụng
     es_ES: Adaptador de Slack, requiere una dirección pública para recibir notificaciones de mensajes de Slack, consulte la documentación para obtener instrucciones de uso
@@ -29,7 +29,26 @@ spec:
     en: https://langbot.app/docs/en/usage/platforms/slack
     ja: https://langbot.app/docs/ja/usage/platforms/slack
   config:
+    - name: quick_setup
+      label: {en_US: Quick Slack setup, zh_Hans: Slack 快速配置, zh_Hant: Slack 快速設定, ja_JP: Slack クイック設定}
+      description: {en_US: Create and configure an app using App Configuration Tokens., zh_Hans: 填入配置令牌，自动创建应用并配置权限，授权后填入凭据。, zh_Hant: 填入設定權杖，自動建立應用程式並設定權限，授權後填入憑證。, ja_JP: 設定トークンでアプリを作成し、承認後に認証情報を入力します。}
+      type: qr-code-login
+      login_platform: slack
+      required: false
+    - name: socket_mode
+      label: {en_US: Socket Mode, zh_Hans: 长连接模式, zh_Hant: 長連線模式, ja_JP: Socket Mode}
+      type: boolean
+      default: false
+      required: false
+    - name: app_token
+      label: {en_US: App-Level Token, zh_Hans: App-Level Token, zh_Hant: App-Level Token, ja_JP: App-Level Token}
+      description: {en_US: Generate an xapp- token with connections:write in Basic Information., zh_Hans: 在 Basic Information 中生成带 connections:write 权限的 xapp- 令牌。, zh_Hant: 在 Basic Information 產生具有 connections:write 權限的 xapp- 權杖。, ja_JP: Basic Information で connections:write 権限の xapp- トークンを生成してください。}
+      type: string
+      required: false
+      default: ''
+      show_if: {field: socket_mode, operator: eq, value: true}
     - name: webhook_url
+      show_if: {field: socket_mode, operator: eq, value: false}
       label:
         en_US: Webhook Callback URL
         zh_Hans: Webhook 回调地址
@@ -62,6 +81,7 @@ spec:
       required: true
       default: ""
     - name: signing_secret
+      show_if: {field: socket_mode, operator: eq, value: false}
       label:
         en_US: signing_secret
         zh_Hans: 密钥
@@ -71,7 +91,7 @@ spec:
         vi_VN: Khóa ký
         es_ES: Secreto de firma
       type: string
-      required: true
+      required: false
       default: ""
 execution:
   python:

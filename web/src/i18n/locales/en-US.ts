@@ -1,5 +1,7 @@
+import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  slackSetup,
   inflight: {
     autoCollapse: "Auto-collapse",
     empty: "No events are being processed",

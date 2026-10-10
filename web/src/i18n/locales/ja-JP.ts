@@ -1,5 +1,7 @@
+import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  slackSetup,
   inflight: {
     autoCollapse: "自動折りたたみ",
     empty: "処理中のイベントはありません",

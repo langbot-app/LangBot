@@ -217,6 +217,30 @@ class LangBotMCPServer:
                 _authorized(Permission.RESOURCE_MANAGE), bot_id, session_id,
             ))
 
+        @mcp.tool(description='Create/configure a Slack app for an existing Workspace bot draft. Returns a setup session; poll it for the installation authorization URL. The user must approve Slack installation. Configuration tokens stay in memory only.')
+        async def start_slack_setup(bot_uuid: str, access_token: str, refresh_token: str,
+                                    webhook_url: str = '', name: str = 'LangBot',
+                                    socket_mode: bool = False, redirect_url: str = '') -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+            return _dump(await get_slack_setup(ap).start(
+                _authorized(Permission.RESOURCE_MANAGE), bot_uuid=bot_uuid, access_token=access_token,
+                refresh_token=refresh_token, webhook_url=webhook_url, name=name,
+                socket_mode=socket_mode, redirect_url=redirect_url,
+            ))
+
+        @mcp.tool(description='Read an owned Slack setup session. Success includes adapter credentials; save them with the existing bot update tool. Socket Mode additionally needs an App-Level Token with connections:write.')
+        async def get_slack_setup_status(session_id: str) -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+            return _dump(get_slack_setup(ap).status(_authorized(Permission.RESOURCE_MANAGE), session_id))
+
+        @mcp.tool(description='Discard an owned Slack setup session and its temporary credentials. Does not delete the Slack app.')
+        async def cancel_slack_setup(session_id: str) -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+            service = get_slack_setup(ap)
+            service.owned(_authorized(Permission.RESOURCE_MANAGE), session_id)
+            service.discard(session_id)
+            return _dump({'cancelled': True})
+
         @mcp.tool(
             description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
         )

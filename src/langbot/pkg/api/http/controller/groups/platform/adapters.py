@@ -158,6 +158,52 @@ def _decrypt_qqofficial_secret(encrypted_b64: str, key: bytes) -> str:
 @group.group_class('adapters', '/api/v1/platform/adapters')
 class AdaptersRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        from ....service.slack_setup import get_slack_setup, SlackSetupError
+
+        slack_setup = get_slack_setup(self.ap)
+
+        @self.route('/slack/setup', methods=['POST'], permission=Permission.RESOURCE_MANAGE,
+                    auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def slack_start(request_context: RequestContext):
+            data = await quart.request.get_json()
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid_input')
+            try:
+                result = await slack_setup.start(request_context, **{
+                    key: data[key] for key in ('bot_uuid', 'access_token', 'refresh_token', 'webhook_url',
+                                              'name', 'socket_mode', 'redirect_url') if key in data
+                })
+                return self.success(data=result)
+            except (SlackSetupError, TypeError) as exc:
+                return self.http_status(400, -1, str(exc) if isinstance(exc, SlackSetupError) else 'invalid_input')
+
+        @self.route('/slack/setup/<session_id>', methods=['GET', 'DELETE'],
+                    permission=Permission.RESOURCE_MANAGE, auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def slack_status(session_id: str, request_context: RequestContext):
+            try:
+                slack_setup.owned(request_context, session_id)
+                if quart.request.method == 'DELETE':
+                    slack_setup.discard(session_id)
+                    return self.success(data={})
+                response = await quart.make_response(self.success(data=slack_setup.status(request_context, session_id)))
+                response.headers['Cache-Control'] = 'no-store'
+                return response
+            except SlackSetupError:
+                return self.http_status(404, -1, 'session_not_found')
+
+        @self.route('/slack/setup/callback', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def slack_callback():
+            try:
+                await slack_setup.finish(quart.request.args.get('state', ''), quart.request.args.get('code', ''),
+                                         quart.request.args.get('error'))
+                message = 'Slack authorization completed. Return to LangBot to finish setup. / Slack 授权完成，请返回 LangBot 完成配置。'
+                status = 200
+            except SlackSetupError:
+                message = 'Slack authorization failed or expired. Return to LangBot for details. / Slack 授权失败或已过期，请返回 LangBot 查看详情。'
+                status = 400
+            return quart.Response(message, status=status, content_type='text/plain; charset=utf-8',
+                                  headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+
         @self.route('', methods=['GET'])
         async def _() -> str:
             return self.success(data={'adapters': self.ap.platform_mgr.get_available_adapters_info()})

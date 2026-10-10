@@ -60,6 +60,19 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 
 ## Tool surface
 
+Slack quick setup: create a disabled `slack-omni` bot draft first, then use
+`start_slack_setup` with the user's App Configuration access/refresh tokens.
+Choose `socket_mode=true` with a browser-reachable OAuth `redirect_url`, or
+provide the public HTTPS `webhook_url` ending in `/bots/<bot_uuid>`.
+Poll `get_slack_setup_status` for the Slack installation authorization URL;
+the user must authorize installation. On success, apply the returned `config`
+using the normal bot update flow. Socket Mode also requires a separately
+generated `app_token` (`xapp-`, scope `connections:write`). Never log tokens.
+`cancel_slack_setup` removes the temporary session without deleting the Slack
+application. Sessions expire after 15 minutes and are bound to the initiating
+Workspace, principal, and placement generation. Restarting a failed setup can
+create another Slack application; inspect the returned `app_id` first.
+
 The tools wrap the LangBot service layer. Current tools (v1):
 
 | Tool | Purpose |

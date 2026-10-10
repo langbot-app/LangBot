@@ -1,5 +1,7 @@
+import slackSetup from './slack-setup/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
+  slackSetup,
   inflight: {
     autoCollapse: "自動摺疊",
     empty: "目前沒有正在處理的事件",

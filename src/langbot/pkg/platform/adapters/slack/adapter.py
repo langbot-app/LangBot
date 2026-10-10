@@ -41,14 +41,14 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         arbitrary_types_allowed = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
-        required_keys = ['bot_token', 'signing_secret']
+        required_keys = ['bot_token', 'app_token' if config.get('socket_mode', False) else 'signing_secret']
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
             raise Exception(f'Slack Omni adapter missing config: {missing_keys}')
 
         bot = SlackClient(
             bot_token=config['bot_token'],
-            signing_secret=config['signing_secret'],
+            signing_secret=config.get('signing_secret', ''),
             logger=logger,
             unified_mode=True,
         )
@@ -144,11 +144,15 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
+        if self.config.get('socket_mode', False):
+            await self.bot.run_socket(self.config['app_token'])
+            return
         await self.logger.info('Slack Omni adapter running in unified webhook mode')
         while True:
             await asyncio.sleep(1)
 
     async def kill(self) -> bool:
+        await self.bot.close_socket()
         self._message_cache.clear()
         self._user_cache.clear()
         self._group_cache.clear()

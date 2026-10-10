@@ -24,6 +24,7 @@ import {
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
+import SlackSetupDialog from '@/app/home/components/qrcode-login/SlackSetupDialog';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
@@ -752,12 +753,21 @@ function DynamicFormFieldList({
   // State for QR code login dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrDialogPlatform, setQrDialogPlatform] =
-    useState<QrLoginPlatform>('feishu');
+    useState<QrLoginPlatform | 'slack'>('feishu');
 
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
       {/* QR code login dialog */}
-      <QrCodeLoginDialog
+      {qrDialogPlatform === 'slack' ? <SlackSetupDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        botId={systemContext?.bot_uuid as string | undefined}
+        webhookUrl={(systemContext?.webhook_url as string) || ''}
+        socketMode={!!form.getValues('socket_mode')}
+        onSuccess={(credentials) => {
+          for (const [key, value] of Object.entries(credentials)) setFormValue(key, value);
+        }}
+      /> : <QrCodeLoginDialog
         open={qrDialogOpen}
         onOpenChange={setQrDialogOpen}
         platform={qrDialogPlatform}
@@ -768,7 +778,7 @@ function DynamicFormFieldList({
             }
           }
         }}
-      />
+      />}
 
       {itemConfigList.map((config, index) => {
         if (hiddenItemNames?.includes(config.name)) return null;
@@ -954,7 +964,7 @@ function DynamicFormFieldList({
                 onClick={() => {
                   if (!isEditing) {
                     setQrDialogPlatform(
-                      (config.login_platform as QrLoginPlatform) || 'feishu',
+                      (config.login_platform as QrLoginPlatform | 'slack') || 'feishu',
                     );
                     setQrDialogOpen(true);
                   }
@@ -986,7 +996,7 @@ function DynamicFormFieldList({
                   onClick={(e) => {
                     e.stopPropagation();
                     setQrDialogPlatform(
-                      (config.login_platform as QrLoginPlatform) || 'feishu',
+                      (config.login_platform as QrLoginPlatform | 'slack') || 'feishu',
                     );
                     setQrDialogOpen(true);
                   }}

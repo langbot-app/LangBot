@@ -155,7 +155,8 @@ function detectConnectionMode(
   if (!webhookField.show_if) return 'webhook';
   return conditionMatches(
     webhookField.show_if,
-    values[webhookField.show_if.field],
+    values[webhookField.show_if.field] ??
+      config.find((item) => item.name === webhookField.show_if?.field)?.default,
   )
     ? 'webhook'
     : 'persistent';

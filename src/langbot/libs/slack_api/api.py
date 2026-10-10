@@ -5,6 +5,7 @@ from quart import Quart, jsonify, request
 from slack_sdk.web.async_client import AsyncWebClient
 from .slackevent import SlackEvent
 from typing import Callable
+from collections import OrderedDict
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 _MAX_CALLBACK_BODY_BYTES = 1024 * 1024
@@ -30,6 +31,11 @@ class SlackClient:
         }
         self.bot_user_id = None  # 避免机器人回复自己的消息
         self.logger = logger
+        self.socket_client = None
+        self.socket_queue = asyncio.Queue(maxsize=100)
+        self.socket_seen = OrderedDict()
+        self.socket_stop = asyncio.Event()
+        self.socket_worker = None
 
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）"""
@@ -44,6 +50,8 @@ class SlackClient:
         Returns:
             响应数据
         """
+        if self.socket_client is not None:
+            return jsonify({'error': 'Socket Mode is enabled'}), 409
         return await self._handle_callback_internal(req)
 
     async def _handle_callback_internal(self, req):
@@ -61,29 +69,79 @@ class SlackClient:
                 if data['type'] == 'url_verification':
                     return data['challenge']
 
-            bot_user_id = data.get('event', {}).get('bot_id', '')
-
-            if self.bot_user_id and bot_user_id == self.bot_user_id:
-                return jsonify({'status': 'ok'})
-
-            # 处理私信
-            if data and data.get('event', {}).get('channel_type') in ['im']:
-                event = SlackEvent.from_payload(data)
-                await self._handle_message(event)
-                return jsonify({'status': 'ok'})
-
-            # 处理群聊
-            if data.get('event', {}).get('type') == 'app_mention':
-                data.setdefault('event', {})['channel_type'] = 'channel'
-                event = SlackEvent.from_payload(data)
-                await self._handle_message(event)
-                return jsonify({'status': 'ok'})
-
+            await self.handle_payload(data)
             return jsonify({'status': 'ok'})
 
         except Exception as e:
             await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
             raise (e)
+
+    async def handle_payload(self, data):
+        """Dispatch the same event representation for HTTP and Socket Mode."""
+        raw = data.get('event', {})
+        if raw.get('bot_id') or raw.get('subtype') == 'bot_message':
+            return
+        if raw.get('channel_type') == 'im':
+            await self._handle_message(SlackEvent.from_payload(data))
+        elif raw.get('type') == 'app_mention':
+            raw['channel_type'] = 'channel'
+            await self._handle_message(SlackEvent.from_payload(data))
+
+    async def _socket_request(self, client, req):
+        from slack_sdk.socket_mode.response import SocketModeResponse
+
+        if req.type == 'events_api':
+            key = req.payload.get('event_id') or req.envelope_id
+            if key not in self.socket_seen:
+                try:
+                    self.socket_queue.put_nowait(req.payload)
+                except asyncio.QueueFull:
+                    # Leave unacknowledged so Slack can retry; do not grow tasks without bounds.
+                    await self.logger.warning('Slack Socket Mode event queue is full')
+                    return
+                self.socket_seen[key] = True
+                while len(self.socket_seen) > 4096:
+                    self.socket_seen.popitem(last=False)
+        await client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+
+    async def run_socket(self, app_token):
+        from slack_sdk.socket_mode.aiohttp import SocketModeClient
+
+        self.socket_stop.clear()
+        self.socket_client = SocketModeClient(app_token=app_token, web_client=self.client)
+        self.socket_client.socket_mode_request_listeners.append(self._socket_request)
+
+        async def worker():
+            while True:
+                payload = await self.socket_queue.get()
+                try:
+                    await self.handle_payload(payload)
+                except Exception:
+                    await self.logger.error('Slack Socket Mode event processing failed')
+                finally:
+                    self.socket_queue.task_done()
+
+        self.socket_worker = asyncio.create_task(worker())
+        try:
+            await self.socket_client.connect()
+            await self.logger.info('Slack Socket Mode connected')
+            await self.socket_stop.wait()
+        finally:
+            await self.close_socket()
+
+    async def close_socket(self):
+        self.socket_stop.set()
+        client, self.socket_client = self.socket_client, None
+        if client is not None:
+            await client.close()
+        worker, self.socket_worker = self.socket_worker, None
+        if worker is not None:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        self.socket_seen.clear()
+        while not self.socket_queue.empty():
+            self.socket_queue.get_nowait()
+            self.socket_queue.task_done()
 
     async def _handle_message(self, event: SlackEvent):
         """

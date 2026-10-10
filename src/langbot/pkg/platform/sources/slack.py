@@ -102,14 +102,14 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
             'bot_token',
-            'signing_secret',
+            'app_token' if config.get('socket_mode', False) else 'signing_secret',
         ]
-        missing_keys = [key for key in required_keys if key not in config]
+        missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
         bot = SlackClient(
-            bot_token=config['bot_token'], signing_secret=config['signing_secret'], logger=logger, unified_mode=True
+            bot_token=config['bot_token'], signing_secret=config.get('signing_secret', ''), logger=logger, unified_mode=True
         )
 
         super().__init__(
@@ -186,6 +186,9 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
+        if self.config.get('socket_mode', False):
+            await self.bot.run_socket(self.config['app_token'])
+            return
         # 统一 webhook 模式下，不启动独立的 Quart 应用
         # 保持运行但不启动独立端口
         async def keep_alive():
@@ -195,7 +198,8 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
-        return False
+        await self.bot.close_socket()
+        return True
 
     async def unregister_listener(
         self,

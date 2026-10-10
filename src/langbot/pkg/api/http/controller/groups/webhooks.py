@@ -31,6 +31,11 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
+            setup = getattr(self.ap, 'slack_setup_service', None)
+            if setup is not None and not path and quart.request.method == 'POST':
+                challenge = await setup.challenge(bot_uuid, quart.request)
+                if challenge is not None:
+                    return quart.jsonify(challenge)
             # Public ingress never accepts X-Workspace-Id.  The opaque bot UUID
             # is resolved against the already-bound runtime resource, which
             # carries the trusted Workspace and placement generation.
