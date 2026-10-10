@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.0-rc.1"
+version = "4.11.0-rc.2"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@8c29bc0787be3b514fb379c5154dfc5eaa561cbd",
+    "langbot-plugin==0.7.11rc2",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
