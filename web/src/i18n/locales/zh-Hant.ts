@@ -1107,6 +1107,11 @@ const zhHant = {
     imagesAttached: '張圖片已附加',
     noLogs: '暫無日誌',
     sessionMonitor: {
+      resetContext: "重設上下文",
+      resetDescription: "重設後，新訊息將從空上下文開始。監控歷史會保留，檔案和長期記憶不受影響。請等待目前任務結束後再重設。",
+      resetSuccess: "上下文已重設，新訊息將開始新的對話。",
+      resetError: "重設失敗，請等待目前任務結束後重試。",
+
       title: '會話監控',
       sessions: '會話列表',
       noSessions: '暫無會話',

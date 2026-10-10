@@ -545,6 +545,24 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
+        @self.route('/sessions/reset-context', methods=['POST'],
+                    auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_MANAGE)
+        async def reset_session_context(request_context: RequestContext):
+            body = await quart.request.get_json()
+            if not isinstance(body, dict):
+                return self.http_status(400, 'invalid_request', 'Expected a JSON object')
+            try:
+                result = await self.ap.monitoring_service.reset_session_context(
+                    request_context, body.get('bot_id'), body.get('session_id'),
+                )
+            except ValueError as exc:
+                return self.http_status(400, 'invalid_request', str(exc))
+            except LookupError as exc:
+                return self.http_status(404, 'resource_not_found', str(exc))
+            except RuntimeError as exc:
+                return self.http_status(409, 'session_busy', str(exc))
+            return self.success(data=result)
+
         @self.route(
             '/sessions/<session_id>/analysis',
             methods=['GET'],

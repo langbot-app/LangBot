@@ -1182,6 +1182,11 @@ const jaJP = {
     imagesAttached: '枚の画像が添付されています',
     noLogs: 'ログはまだありません',
     sessionMonitor: {
+      resetContext: "コンテキストをリセット",
+      resetDescription: "新しいメッセージは空のコンテキストから開始します。監視履歴、ファイル、長期記憶は保持されます。実行中のタスクが完了してからリセットしてください。",
+      resetSuccess: "コンテキストをリセットしました。",
+      resetError: "リセットできませんでした。実行中のタスクが完了してから再試行してください。",
+
       title: 'セッション監視',
       sessions: 'セッション一覧',
       noSessions: 'セッションが見つかりません',

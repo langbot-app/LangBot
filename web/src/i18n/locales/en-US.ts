@@ -1172,6 +1172,11 @@ const enUS = {
     imagesAttached: 'image(s) attached',
     noLogs: 'No logs yet',
     sessionMonitor: {
+      resetContext: "Reset context",
+      resetDescription: "New messages will start with an empty context. Monitoring history is kept; files and long-term memory are unchanged. Wait for active tasks to finish before resetting.",
+      resetSuccess: "Context reset. New messages will start a fresh conversation.",
+      resetError: "Could not reset context. Wait for active tasks to finish and try again.",
+
       title: 'Sessions',
       sessions: 'Sessions',
       noSessions: 'No sessions found',

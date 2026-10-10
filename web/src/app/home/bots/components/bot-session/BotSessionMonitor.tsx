@@ -1,3 +1,6 @@
+import { useCurrentWorkspace } from '@/app/infra/http';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import LoadErrorState from '@/components/LoadErrorState';
 import React, {
   useState,
@@ -13,6 +16,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
+  RotateCcw,
   Ban,
   Bot,
   Copy,
@@ -143,6 +147,23 @@ const BotSessionMonitor = forwardRef<
   BotSessionMonitorProps
 >(function BotSessionMonitor({ botId }, ref) {
   const { t } = useTranslation();
+  const workspace = useCurrentWorkspace();
+  const canReset = workspace?.permissions.includes('resource.manage') ?? false;
+  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const resetContext = async () => {
+    if (!resetTarget || resetting) return;
+    setResetting(true);
+    try {
+      await httpClient.resetSessionContext(botId, resetTarget);
+      toast.success(t('bots.sessionMonitor.resetSuccess'));
+      setResetTarget(null);
+    } catch {
+      toast.error(t('bots.sessionMonitor.resetError'));
+    } finally {
+      setResetting(false);
+    }
+  };
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [sessionTotal, setSessionTotal] = useState(0);
   const [sessionPage, setSessionPage] = useState(0);
@@ -686,7 +707,7 @@ const BotSessionMonitor = forwardRef<
         {/* Left Panel: Session List */}
         <div className="max-h-48 md:max-h-none md:w-60 flex-shrink-0 border-b md:border-b-0 md:border-r flex flex-col min-h-0">
           {/* Admin header */}
-          <div className="px-2 py-1.5 border-b shrink-0 flex items-center justify-between">
+          <div className="px-2 py-1.5 border-b shrink-0 flex items-center justify-between gap-4">
             <button
               type="button"
               className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-foreground transition-colors"
@@ -860,7 +881,7 @@ const BotSessionMonitor = forwardRef<
                       selectedSession?.user_id ||
                       selectedSessionId.slice(0, 20)}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                     {parseSessionType(selectedSessionId) && (
                       <span>{parseSessionType(selectedSessionId)}</span>
                     )}
@@ -923,6 +944,13 @@ const BotSessionMonitor = forwardRef<
                     )}
                   </div>
                 </div>
+                {canReset && (
+                  <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1.5"
+                    disabled={resetting} onClick={() => setResetTarget(selectedSessionId)}>
+                    <RotateCcw className="size-3.5" />
+                    {t('bots.sessionMonitor.resetContext')}
+                  </Button>
+                )}
               </div>
 
               {/* Messages Area */}
@@ -1194,6 +1222,21 @@ const BotSessionMonitor = forwardRef<
         </div>
       </div>
 
+      <Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open && !resetting) setResetTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('bots.sessionMonitor.resetContext')}</DialogTitle>
+            <DialogDescription>{t('bots.sessionMonitor.resetDescription')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={resetting} onClick={() => setResetTarget(null)}>{t('common.cancel')}</Button>
+            <Button disabled={resetting} onClick={resetContext}>
+              <RotateCcw className={cn('size-4', resetting && 'animate-spin motion-reduce:animate-none')} />
+              {t('bots.sessionMonitor.resetContext')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <BotAdminsDialog
         botId={botId}
         open={adminsDialogOpen}

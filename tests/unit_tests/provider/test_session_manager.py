@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from importlib import import_module
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -24,6 +24,13 @@ from langbot.pkg.pipeline.pool import (
     ExecutionContextMismatchError,
     ExecutionContextRequiredError,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_generation(monkeypatch):
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.get_reset_generation', lookup)
+    return lookup
 
 
 TEST_CONTEXT = ExecutionContext(
@@ -447,7 +454,7 @@ class TestSessionManagerWorkspaceIsolation:
             sessions.append(await manager.get_session(query))
 
         assert len(manager.session_list) == 2
-        assert sessions[0] not in manager.session_list
+        assert all(session is not sessions[0] for session in manager.session_list)
         assert sessions[1:] == manager.session_list
         assert await manager.get_session(queries[-1]) is manager.session_list[-1]
 
@@ -556,3 +563,18 @@ class TestSessionManagerWorkspaceIsolation:
         content = conversation.messages[0].content
         assert content[1].image_base64 is None
         assert content[2].file_base64 is None
+
+
+@pytest.mark.asyncio
+async def test_reset_generation_replaces_cached_session(reset_generation):
+    app = Mock()
+    app.instance_config.data = {'concurrency': {'session': 5}}
+    manager = get_session_module().SessionManager(app)
+    query = scoped_query()
+    previous = await manager.get_session(query)
+    assert await manager.get_session(query) is previous
+    reset_generation.return_value = 'new-context'
+    fresh = await manager.get_session(query)
+    assert fresh is not previous
+    assert not fresh.conversations
+    assert await manager.get_session(query) is fresh

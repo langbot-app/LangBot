@@ -209,3 +209,7 @@ recommendation only when LangBot Models is enabled and the Workspace owner is
 bound to a LangBot Account. It returns a nullable `uuid`.
 New processor LLM selector defaults use this preference; existing configurations
 are not rewritten. Embedding and rerank models are not eligible.
+
+### Reset a bot session context
+
+Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.

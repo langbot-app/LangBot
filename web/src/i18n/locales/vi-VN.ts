@@ -1170,6 +1170,11 @@ const viVN = {
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
     sessionMonitor: {
+      resetContext: "Đặt lại ngữ cảnh",
+      resetDescription: "Tin nhắn mới sẽ bắt đầu với ngữ cảnh trống. Lịch sử giám sát, tệp và bộ nhớ dài hạn được giữ lại. Hãy đợi các tác vụ đang chạy hoàn tất.",
+      resetSuccess: "Đã đặt lại ngữ cảnh.",
+      resetError: "Không thể đặt lại. Hãy đợi các tác vụ đang chạy hoàn tất rồi thử lại.",
+
       title: 'Phiên',
       sessions: 'Phiên',
       noSessions: 'Không tìm thấy phiên nào',

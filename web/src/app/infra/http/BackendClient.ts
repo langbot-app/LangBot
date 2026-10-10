@@ -822,6 +822,12 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
 
+  public resetSessionContext(botId: string, sessionId: string): Promise<{ reset: boolean }> {
+    return this.post('/api/v1/monitoring/sessions/reset-context', {
+      bot_id: botId, session_id: sessionId,
+    });
+  }
+
   public getSessionAnalysis<T>(
     sessionId: string,
     botId: string,

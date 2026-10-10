@@ -335,6 +335,8 @@ class TranscriptStore:
         thread_id: str | None,
         strict_thread: bool,
     ) -> typing.Any:
+        from .context_reset import active_history_condition
+        query = query.where(active_history_condition(Transcript))
         if bot_id is not None:
             query = query.where(Transcript.bot_id == bot_id)
         if workspace_id is not None:

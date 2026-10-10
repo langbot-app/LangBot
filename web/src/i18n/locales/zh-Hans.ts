@@ -1108,6 +1108,11 @@ const zhHans = {
     imagesAttached: '张图片',
     noLogs: '暂无日志',
     sessionMonitor: {
+      resetContext: "重置上下文",
+      resetDescription: "重置后，新消息将从空上下文开始。监控历史会保留，文件和长期记忆不受影响。请等待当前任务结束后再重置。",
+      resetSuccess: "上下文已重置，新消息将开启新的对话。",
+      resetError: "重置失败，请等待当前任务结束后重试。",
+
       title: '会话监控',
       sessions: '会话列表',
       noSessions: '暂无会话',

@@ -2193,6 +2193,60 @@ class MonitoringService(ExecutionDetailsMixin):
             total,
         )
 
+    @_workspace_transaction
+    async def reset_session_context(self, context: TenantContext, bot_id: str, session_id: str) -> dict:
+        """Reset model context without deleting monitoring history or other sessions."""
+        from ....agent.runner.context_reset import HOST_RESET_RUNNER, reset_scope
+        from ....entity.persistence.runner_state import RunnerState
+
+        if not isinstance(bot_id, str) or not bot_id or not isinstance(session_id, str) or not session_id:
+            raise ValueError('bot_id and session_id are required')
+        workspace = require_workspace_uuid(context)
+        execute = self.ap.persistence_mgr.execute_async
+        source = self._session_message_source(workspace, [bot_id])
+        exists = (await execute(sqlalchemy.select(source.c.session_id).where(
+            source.c.session_id == session_id,
+        ).limit(1))).first()
+        if exists is None:
+            session = persistence_monitoring.MonitoringSession
+            exists = (await execute(sqlalchemy.select(session.session_id).where(
+                session.workspace_uuid == workspace, session.bot_id == bot_id, session.session_id == session_id,
+            ).limit(1))).first()
+        if exists is None:
+            raise LookupError('Session not found')
+        # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
+        conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
+        run = persistence_agent_run.AgentRun
+        busy = (await execute(sqlalchemy.select(run.run_id).where(
+            run.workspace_id == workspace, run.bot_id == bot_id, run.conversation_id == conversation,
+            run.status.in_(['created', 'queued', 'claimed', 'running']),
+        ).limit(1))).first()
+        message = persistence_monitoring.MonitoringMessage
+        pending = (await execute(sqlalchemy.select(message.id).where(
+            message.workspace_uuid == workspace, message.bot_id == bot_id,
+            message.session_id.in_([session_id, conversation]), message.status == 'pending',
+        ).limit(1))).first()
+        interaction = persistence_agent_interaction.AgentInteraction
+        waiting = (await execute(sqlalchemy.select(interaction.id).where(
+            interaction.workspace_id == workspace, interaction.bot_id == bot_id,
+            interaction.conversation_id == conversation, interaction.status.in_(['pending', 'submitted']),
+            sqlalchemy.or_(interaction.expires_at.is_(None), interaction.expires_at > datetime.datetime.utcnow()),
+        ).limit(1))).first()
+        if busy or pending or waiting:
+            raise RuntimeError('Session is processing a task; wait until it finishes')
+        await execute(sqlalchemy.delete(RunnerState).where(
+            RunnerState.workspace_id == workspace, RunnerState.bot_id == bot_id,
+            RunnerState.conversation_id == conversation, RunnerState.scope == 'conversation',
+        ))
+        generation = str(uuid.uuid4())
+        await execute(sqlalchemy.insert(RunnerState).values(
+            runner_id=HOST_RESET_RUNNER, binding_identity=HOST_RESET_RUNNER, scope='conversation',
+            scope_key=reset_scope(workspace, bot_id, conversation), state_key='generation',
+            value_json=json.dumps(generation), workspace_id=workspace, bot_id=bot_id,
+            conversation_id=conversation, created_at=datetime.datetime.utcnow(),
+        ))
+        return {'reset': True, 'session_id': session_id}
+
     async def get_sessions(
         self,
         context: TenantContext,

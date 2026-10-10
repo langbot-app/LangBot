@@ -211,6 +211,12 @@ class LangBotMCPServer:
         async def get_inflight_executions() -> str:
             return _dump(await ap.monitoring_service.get_inflight_snapshot(_authorized(Permission.RESOURCE_VIEW)))
 
+        @mcp.tool(description='Reset a bot session model context, preserving monitoring history. Refuses busy sessions.')
+        async def reset_session_context(bot_id: str, session_id: str) -> str:
+            return _dump(await ap.monitoring_service.reset_session_context(
+                _authorized(Permission.RESOURCE_MANAGE), bot_id, session_id,
+            ))
+
         @mcp.tool(
             description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
         )

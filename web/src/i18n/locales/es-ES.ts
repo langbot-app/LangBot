@@ -1194,6 +1194,11 @@ const esES = {
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
     sessionMonitor: {
+      resetContext: "Restablecer contexto",
+      resetDescription: "Los mensajes nuevos comenzarán sin contexto previo. Se conservan el historial de monitoreo, los archivos y la memoria a largo plazo. Espere a que terminen las tareas activas.",
+      resetSuccess: "Contexto restablecido.",
+      resetError: "No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.",
+
       title: 'Sesiones',
       sessions: 'Sesiones',
       noSessions: 'No se encontraron sesiones',
