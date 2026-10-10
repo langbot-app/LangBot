@@ -57,6 +57,7 @@ export default function GuidedTour({
     useState<PopoverPosition | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const previousStorageKeyRef = useRef(storageKey);
+  const enteredStepRef = useRef<string | null>(null);
 
   const activeIndex = steps.findIndex((step) => step.id === activeStepId);
   const activeStep = activeIndex >= 0 ? steps[activeIndex] : undefined;
@@ -86,8 +87,17 @@ export default function GuidedTour({
   }, [activeStepId, enabled, finished, steps, storageKey]);
 
   useEffect(() => {
-    if (enabled && !finished) activeStep?.onEnter?.();
-  }, [activeStep, enabled, finished]);
+    if (!enabled || finished || !activeStep) {
+      enteredStepRef.current = null;
+      return;
+    }
+    // Callback identities can change during navigation. Enter each step once,
+    // so a URL update cannot replay its navigation and override the user's tab.
+    const stepKey = JSON.stringify([storageKey, activeStep.id]);
+    if (enteredStepRef.current === stepKey) return;
+    enteredStepRef.current = stepKey;
+    activeStep.onEnter?.();
+  }, [activeStep, enabled, finished, storageKey]);
 
   const measure = useCallback(() => {
     if (!activeStep) return;

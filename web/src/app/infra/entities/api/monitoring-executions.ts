@@ -163,3 +163,12 @@ export interface ExecutionDetail {
 
 export type AgentExecutionDetail = ExecutionDetail & { source: 'agent' };
 export type PipelineExecutionDetail = ExecutionDetail & { source: 'pipeline' };
+
+export interface InflightSnapshot {
+  items: (ExecutionRow & { progress_event?: string })[];
+  active_total: number;
+  truncated: boolean;
+}
+export type InflightFrame =
+  | { kind: 'snapshot'; data: InflightSnapshot }
+  | { kind: 'heartbeat' | 'unavailable' };

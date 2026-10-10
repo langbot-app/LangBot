@@ -206,6 +206,22 @@ export default function AgentApiToolPicker({
       ? platformCatalogAvailable
       : hostCatalogAvailable;
 
+  const isSelected = (tool: ToolEntry) =>
+    (tool.kind === 'platform' ? selectedPlatform : selectedHost).has(tool.name);
+
+  const setGroup = (tools: ToolEntry[], checked: boolean) => {
+    const platform = new Set(platformValue);
+    const host = new Set(hostValue);
+    for (const tool of tools) {
+      const selection = tool.kind === 'platform' ? platform : host;
+      if (checked) selection.add(tool.name);
+      else selection.delete(tool.name);
+    }
+    if (tools.some((tool) => tool.kind === 'platform'))
+      onPlatformChange([...platform]);
+    if (tools.some((tool) => tool.kind === 'host')) onHostChange([...host]);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -275,8 +291,24 @@ export default function AgentApiToolPicker({
         <div className="overflow-hidden rounded-lg border bg-background">
           {groupedEntries.map(([group, groupTools], groupIndex) => (
             <section key={group} className={cn(groupIndex > 0 && 'border-t')}>
-              <div className="bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                {groupLabel(group)}
+              <div className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                <span>{groupLabel(group)}</span>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <Checkbox
+                    checked={
+                      groupTools.every(isSelected)
+                        ? true
+                        : groupTools.some(isSelected)
+                          ? 'indeterminate'
+                          : false
+                    }
+                    onCheckedChange={(checked) =>
+                      setGroup(groupTools, checked === true)
+                    }
+                    aria-label={`${groupLabel(group)} · ${t('agents.apiToolsSelectAll')}`}
+                  />
+                  {t('agents.apiToolsSelectAll')}
+                </label>
               </div>
               <div className="divide-y">
                 {groupTools.map((tool) => {

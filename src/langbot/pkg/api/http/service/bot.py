@@ -64,7 +64,7 @@ class BotService:
 
     @staticmethod
     def _is_message_event_pattern(event_pattern: str) -> bool:
-        return event_pattern == 'message.*' or event_pattern.startswith('message.')
+        return event_pattern == 'message.received'
 
     @staticmethod
     def _event_pattern_covers(supported_pattern: str, binding_pattern: str) -> bool:
@@ -507,7 +507,7 @@ class BotService:
 
             if target_type == 'pipeline':
                 if not self._is_message_event_pattern(event_pattern):
-                    raise ValueError('Pipeline can only be bound to message events')
+                    raise ValueError('Pipeline can only be bound to message.received')
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
                         sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
@@ -704,7 +704,8 @@ class BotService:
         bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
         try:
-            await self.ap.platform_mgr.load_bot(context, bot)
+            if bot.get('enable'):
+                await self.ap.platform_mgr.load_bot(context, bot)
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
 
@@ -740,8 +741,8 @@ class BotService:
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
-            runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
-            if runtime_bot.enable:
+            if bot.get('enable'):
+                runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
                 await runtime_bot.run()
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc

@@ -577,6 +577,19 @@ class BoxService:
         *,
         skip_host_mount_validation: bool = False,
     ) -> dict:
+        result = await self._execute_spec_payload_result(
+            spec_payload, query, skip_host_mount_validation=skip_host_mount_validation
+        )
+        return self._serialize_result(result)
+
+    async def _execute_spec_payload_result(
+        self,
+        spec_payload: dict,
+        query: pipeline_query.Query,
+        *,
+        skip_host_mount_validation: bool = False,
+    ) -> BoxExecutionResult:
+        """Execute within the bound Workspace and preserve the raw result for file transfers."""
         if not self._available:
             raise BoxError(
                 'Box runtime is not available. Configure an available Box backend before using Box features.'
@@ -635,7 +648,7 @@ class BoxService:
             f'query_id={query.query_id} '
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
-        return self._serialize_result(result)
+        return result
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
         """Use the Box explicitly bound by the current Runner invocation."""
@@ -811,6 +824,10 @@ class BoxService:
         to the sandbox (and vice-versa). It is ``None`` / not a local dir for
         E2B and remote runtimes, where we must fall back to the exec channel.
         """
+        # secure_fs relies on POSIX openat/O_NOFOLLOW. On Windows use the
+        # sandbox execution channel rather than misclassifying EACCES as a link.
+        if os.open not in os.supports_dir_fd or not hasattr(os, 'O_NOFOLLOW'):
+            return None
         root = self._tenant_workspace(self._query_execution_context(query))
         if not root or not os.path.isdir(root) or os.path.islink(root):
             return None
@@ -1202,16 +1219,17 @@ class BoxService:
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
-        Uses ``client.execute`` directly (bypassing ``_serialize_result``)
-        so stdout is NOT truncated by ``output_limit_chars`` - the raw
-        base64 payload can be far larger than the 4000-char display limit.
+        Use the same Workspace-scoped execution path as tools, retaining raw
+        stdout because base64 payloads can exceed the display truncation limit.
         """
         import json as _json
 
         target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
-        max_file_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        # Outbound bytes travel in raw stdout, not argv. Use the regular
+        # attachment limits rather than the smaller inbound command limit.
+        max_file_bytes = self._ATTACHMENT_MAX_BYTES
         max_files = self._ATTACHMENT_MAX_FILES
-        max_total_bytes = max_file_bytes * max_files
+        max_total_bytes = self._ATTACHMENT_MAX_TOTAL_BYTES
         max_scan_entries = 1000
         script = (
             'import base64, json, os\n'
@@ -1244,11 +1262,11 @@ class BoxService:
             '                    continue\n'
             '                size = entry.stat(follow_symlinks=False).st_size\n'
             '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
-            '                    continue\n'
+            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
             "                with open(entry.path, 'rb') as f:\n"
             '                    data = f.read(max_file_bytes + 1)\n'
             '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
-            '                    continue\n'
+            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
             '            except OSError:\n'
             '                continue\n'
             '            rel = os.path.relpath(entry.path, target)\n'
@@ -1265,17 +1283,26 @@ class BoxService:
         }
         if 'extra_mounts' not in spec_payload:
             spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
-        try:
-            spec = self.build_spec(spec_payload)
-            result = await self.client.execute(spec)
-        except Exception:
-            return []
+        result = await self._execute_spec_payload_result(spec_payload, query)
         if not result.ok:
-            return []
+            if 'Sandbox output attachment exceeds the export size limit' in (result.stderr or ''):
+                raise BoxValidationError(
+                    f'Sandbox output attachments exceed the export limit '
+                    f'({max_file_bytes} bytes per file, {max_total_bytes} bytes total); files were retained'
+                )
+            raise BoxValidationError(f'Failed to read sandbox outbox (exit code {result.exit_code})')
         try:
-            return _json.loads(str(result.stdout or '').strip().splitlines()[-1])
-        except Exception:
-            return []
+            entries = _json.loads(str(result.stdout or '').strip().splitlines()[-1])
+            if not isinstance(entries, list) or any(
+                not isinstance(entry, dict)
+                or not isinstance(entry.get('name'), str)
+                or not isinstance(entry.get('b64'), str)
+                for entry in entries
+            ):
+                raise ValueError('Invalid attachment list')
+            return entries
+        except (ValueError, IndexError) as exc:
+            raise BoxValidationError('Sandbox outbox returned invalid attachment data') from exc
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
         """Empty the per-query outbox after collection.

@@ -8,9 +8,9 @@ metadata:
     zh_Hans: 企业微信智能机器人
     zh_Hant: 企業微信智慧機器人
   description:
-    en_US: WeCom AI Bot adapter with event-driven orchestration support
-    zh_Hans: 企业微信智能机器人适配器，支持事件驱动编排、长连接和 Webhook 两种接入方式
-    zh_Hant: 企業微信智慧機器人適配器，支援事件驅動編排、長連線和 Webhook 兩種接入方式
+    en_US: Answer questions and assist teams in WeCom chats and groups
+    zh_Hans: 在企业微信单聊和群聊中提供智能问答与协作
+    zh_Hant: 在企業微信單聊和群聊中提供智慧問答與協作
   icon: wecombot.png
 
 spec:
@@ -27,10 +27,9 @@ spec:
         zh_Hans: 一键创建机器人
         zh_Hant: 一鍵建立機器人
       description:
-        en_US: 'Scan QR code with WeCom to automatically create a bot and fill in BotId and Secret. Note: Robot Name needs to
-          be filled in manually.'
-        zh_Hans: 使用企业微信扫码自动创建机器人并填写 BotId 和 Secret。注意：机器人名称需手动填写。
-        zh_Hant: 使用企業微信掃碼自動建立機器人並填寫 BotId 和 Secret。注意：機器人名稱需手動填寫。
+        en_US: Scan with WeCom to create a bot and fill in BotId and Secret automatically.
+        zh_Hans: 使用企业微信扫码自动创建机器人并填写 BotId 和 Secret。
+        zh_Hant: 使用企業微信掃碼自動建立機器人並填寫 BotId 和 Secret。
       type: qr-code-login
       login_platform: wecombot
       required: false
@@ -60,8 +59,12 @@ spec:
         en_US: Robot Name
         zh_Hans: 机器人名称
         zh_Hant: 機器人名稱
+      description:
+        en_US: Optional. Only removes matching @name text in group messages; bot mentions are identified by BotId.
+        zh_Hans: 可选。仅用于清理群消息中的 @名称 文本，机器人提及通过 BotId 识别。
+        zh_Hant: 選填。僅用於清理群訊息中的 @名稱 文字，機器人提及透過 BotId 識別。
       type: string
-      required: true
+      required: false
       default: ""
     - name: enable-webhook
       label:
@@ -103,6 +106,10 @@ spec:
       type: string
       required: false
       default: ""
+      show_if:
+        field: enable-webhook
+        operator: neq
+        value: true
     - name: Corpid
       label:
         en_US: Corpid
@@ -115,6 +122,10 @@ spec:
       type: string
       required: false
       default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: Token
       label:
         en_US: Token
@@ -127,18 +138,26 @@ spec:
       type: string
       required: false
       default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: EncodingAESKey
       label:
         en_US: EncodingAESKey
         zh_Hans: 消息加解密密钥 (EncodingAESKey)
         zh_Hant: 訊息加解密密鑰 (EncodingAESKey)
       description:
-        en_US: Required for webhook mode. Optional for WebSocket mode when encrypted files need to be decrypted.
-        zh_Hans: Webhook 模式必填。WebSocket 模式下如需解密文件则填写。
-        zh_Hant: Webhook 模式必填。WebSocket 模式下如需解密檔案則填寫。
+        en_US: Required for webhook mode. Long connections use the decryption key included in each message.
+        zh_Hans: Webhook 模式必填。长连接模式使用消息自带的解密密钥。
+        zh_Hant: Webhook 模式必填。長連線模式使用訊息自帶的解密金鑰。
       type: string
       required: false
       default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: enable-stream-reply
       label:
         en_US: Enable Stream Reply
@@ -155,6 +174,8 @@ spec:
   supported_events:
     - message.received
     - feedback.received
+    - wecombot.enter_chat
+    - wecombot.template_card_event
     - platform.specific
 
   supported_apis:

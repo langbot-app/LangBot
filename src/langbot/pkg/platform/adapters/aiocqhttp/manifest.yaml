@@ -15,6 +15,7 @@ metadata:
 
 spec:
   categories:
+    - popular
     - protocol
   help_links:
     zh: https://langbot.app/docs/zh/usage/platforms/qq/aiocqhttp/napcat

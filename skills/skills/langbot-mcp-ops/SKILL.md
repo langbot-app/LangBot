@@ -60,6 +60,19 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 
 ## Tool surface
 
+Slack quick setup: create a disabled `slack-omni` bot draft first, then use
+`start_slack_setup` with the user's App Configuration access/refresh tokens.
+Choose `socket_mode=true` with a browser-reachable OAuth `redirect_url`, or
+provide the public HTTPS `webhook_url` ending in `/bots/<bot_uuid>`.
+Poll `get_slack_setup_status` for the Slack installation authorization URL;
+the user must authorize installation. On success, apply the returned `config`
+using the normal bot update flow. Socket Mode also requires a separately
+generated `app_token` (`xapp-`, scope `connections:write`). Never log tokens.
+`cancel_slack_setup` removes the temporary session without deleting the Slack
+application. Sessions expire after 15 minutes and are bound to the initiating
+Workspace, principal, and placement generation. Restarting a failed setup can
+create another Slack application; inspect the returned `app_id` first.
+
 The tools wrap the LangBot service layer. Current tools (v1):
 
 | Tool | Purpose |
@@ -177,6 +190,11 @@ logs and action results. These times are not internal plugin profiling data.
 
 ## Unified execution monitoring
 
+Use `get_inflight_executions` for a bounded current-workspace snapshot of active
+and recently started executions, including `progress_event`. Progress is a
+reported stage, not an estimated completion percentage. The UI uses the shared
+`GET /api/v1/monitoring/in-flight/stream` SSE feed instead of polling per viewer.
+
 Use `get_monitoring_executions` for the execution list and
 its legacy `pipeline_ids` parameter to filter any processor kind (Agent,
 Pipeline or event processor); the summary uses the same processor scope. Use
@@ -193,3 +211,18 @@ Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
 `execution_statuses` (normalized execution statuses). These select the owning
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
+
+### Workspace default LLM model
+
+`get_starred_model` reads the Workspace-wide favorite. `set_starred_model`
+requires `provider_secret.manage` and replaces the single starred model; pass
+`null` to clear it. The model must belong to the current Workspace.
+`get_default_model` resolves the favorite first, then the Space wizard chat
+recommendation only when LangBot Models is enabled and the Workspace owner is
+bound to a LangBot Account. It returns a nullable `uuid`.
+New processor LLM selector defaults use this preference; existing configurations
+are not rewritten. Embedding and rerank models are not eligible.
+
+### Reset a bot session context
+
+Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.

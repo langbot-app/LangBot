@@ -12,6 +12,8 @@ class SlackEvent(dict):
 
     @property
     def text(self) -> str:
+        if self.get('event', {}).get('text') is not None:
+            return self['event']['text']
         if self.get('event', {}).get('channel_type') == 'im':
             blocks = self.get('event', {}).get('blocks', [])
             if not blocks:
@@ -63,7 +65,8 @@ class SlackEvent(dict):
 
     @property
     def message_id(self) -> str:
-        return self.get('event_id', '')
+        raw = self.get('event', {})
+        return raw.get('deleted_ts') or raw.get('message', {}).get('ts') or raw.get('ts', '')
 
     @property
     def pic_url(self) -> str:

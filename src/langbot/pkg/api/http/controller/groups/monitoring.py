@@ -24,6 +24,15 @@ def parse_iso_datetime(datetime_str: str | None) -> datetime.datetime | None:
     return dt
 
 
+def validate_monitoring_window(start_time: datetime.datetime | None, end_time: datetime.datetime | None) -> None:
+    """Bound explicit dashboard windows to one year without silently truncating them."""
+    if start_time is None:
+        return
+    end = end_time or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    if start_time >= end or end - start_time > datetime.timedelta(days=365):
+        quart.abort(400, description='Monitoring time range must be positive and no longer than 365 days')
+
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -39,6 +48,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             metrics = await self.ap.monitoring_service.get_overview_metrics(
                 request_context,
@@ -49,6 +59,31 @@ class MonitoringRouterGroup(group.RouterGroup):
             )
 
             return self.success(data=metrics)
+
+        @self.route('/in-flight/stream', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def stream_inflight(request_context: RequestContext):
+            from .....utils.inflight import inflight_hub
+            from ...service.tenant import require_workspace_uuid
+            import json
+
+            workspace = require_workspace_uuid(request_context)
+            previous = []
+
+            async def snapshot():
+                nonlocal previous
+                result = await self.ap.monitoring_service.get_inflight_snapshot(request_context, previous)
+                previous = [row for row in result['items'] if row['status_group'] in {'running', 'queued'}]
+                return result
+
+            async def frames():
+                async for frame in inflight_hub.watch(workspace, snapshot):
+                    yield 'data: ' + json.dumps(frame, ensure_ascii=False) + '\n\n'
+
+            response = quart.Response(frames(), content_type='text/event-stream')
+            response.headers['Cache-Control'] = 'no-cache, no-store'
+            response.headers['X-Accel-Buffering'] = 'no'
+            response.timeout = None
+            return response
 
         @self.route('/executions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_executions(request_context: RequestContext) -> str:
@@ -61,6 +96,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             mode = quart.request.args.get('mode', 'all')
             start_time = parse_iso_datetime(quart.request.args.get('startTime'))
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            validate_monitoring_window(start_time, end_time)
 
             result = await self.ap.monitoring_service.get_executions(
                 request_context,
@@ -111,6 +147,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_token_statistics(
                 request_context,
@@ -146,6 +183,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             messages, total = await self.ap.monitoring_service.get_messages(
                 request_context,
@@ -187,6 +225,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             llm_calls, total = await self.ap.monitoring_service.get_llm_calls(
                 request_context,
@@ -226,6 +265,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             tool_calls, total = await self.ap.monitoring_service.get_tool_calls(
                 request_context,
@@ -266,6 +306,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             embedding_calls, total = await self.ap.monitoring_service.get_embedding_calls(
                 request_context,
@@ -307,6 +348,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse is_active
             is_active = None
@@ -354,6 +396,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             errors, total = await self.ap.monitoring_service.get_errors(
                 request_context,
@@ -391,6 +434,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get overview metrics
             overview = await self.ap.monitoring_service.get_overview_metrics(
@@ -503,6 +547,30 @@ class MonitoringRouterGroup(group.RouterGroup):
             )
 
         @self.route(
+            '/sessions/reset-context',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def reset_session_context(request_context: RequestContext):
+            body = await quart.request.get_json()
+            if not isinstance(body, dict):
+                return self.http_status(400, 'invalid_request', 'Expected a JSON object')
+            try:
+                result = await self.ap.monitoring_service.reset_session_context(
+                    request_context,
+                    body.get('bot_id'),
+                    body.get('session_id'),
+                )
+            except ValueError as exc:
+                return self.http_status(400, 'invalid_request', str(exc))
+            except LookupError as exc:
+                return self.http_status(404, 'resource_not_found', str(exc))
+            except RuntimeError as exc:
+                return self.http_status(409, 'session_busy', str(exc))
+            return self.success(data=result)
+
+        @self.route(
             '/sessions/<session_id>/analysis',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
@@ -512,6 +580,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             """Get detailed analysis for a specific session"""
             start_time = parse_iso_datetime(quart.request.args.get('startTime'))
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            validate_monitoring_window(start_time, end_time)
             analysis = await self.ap.monitoring_service.get_session_analysis(
                 request_context,
                 session_id,
@@ -553,6 +622,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get data based on export type
             if export_type == 'messages':
@@ -743,6 +813,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_feedback_stats(
                 request_context,
@@ -771,6 +842,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse feedback type
             feedback_type = int(feedback_type_str) if feedback_type_str else None

@@ -5,9 +5,11 @@ from __future__ import annotations
 import time
 import asyncio
 import contextlib
+import copy
 import typing
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
+from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -18,6 +20,7 @@ from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
+from .config_schema import extract_prompt_config
 from .execution_context import (
     append_mcp_resource_context_to_event,
     build_mcp_resource_context_addition,
@@ -115,6 +118,12 @@ class AgentRunOrchestrator:
 
         if execution_query is None:
             execution_query = build_execution_query(event, [])
+            # Event runs bypass pipeline prompt preparation, just like debug runs.
+            prompt_config = extract_prompt_config(descriptor, binding.runner_config, [])
+            execution_query.prompt = provider_prompt.Prompt(
+                name='default',
+                messages=[provider_message.Message(**item) for item in copy.deepcopy(prompt_config)],
+            )
             # Synthetic events must expose the same trusted scope as pipeline queries.
             for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
                 object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))

@@ -84,9 +84,11 @@ test('creates a configured processor, persists subscriptions separately and reus
     const request = page.waitForRequest(
       (r) => r.method() === 'PUT' && r.url().endsWith('/platform/bots/bot-1'),
     );
-    await page.getByRole('button', { name: /^Save$/ }).click();
+    await page.getByRole('button', { name: /^Save(?: and enable)?$/ }).click();
     const body = (await request).postDataJSON();
-    await expect(page.getByRole('button', { name: /^Save$/ })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: /^Save(?: and enable)?$/ }),
+    ).toBeDisabled();
     // Move away so hovering the next control does not pause an overlapping toast.
     await page.mouse.move(0, 0);
     await expect(

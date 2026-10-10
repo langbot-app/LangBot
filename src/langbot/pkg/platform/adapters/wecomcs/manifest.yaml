@@ -8,9 +8,9 @@ metadata:
     zh_Hans: 企业微信客服
     zh_Hant: 企業微信客服
   description:
-    en_US: WeCom Customer Service adapter with event-driven orchestration support
-    zh_Hans: 企业微信客服适配器，支持事件驱动编排，通过统一 Webhook 接收客服会话消息
-    zh_Hant: 企業微信客服適配器，支援事件驅動編排，透過統一 Webhook 接收客服會話訊息
+    en_US: Support customers on WeChat through WeChat Customer Service
+    zh_Hans: 通过微信客服，为微信用户提供咨询与售后服务
+    zh_Hant: 透過微信客服，為微信使用者提供諮詢與售後服務
   icon: wecom.png
 
 spec:
@@ -93,6 +93,12 @@ spec:
 
   supported_events:
     - message.received
+    - message.deleted
+    - wecomcs.enter_session
+    - wecomcs.msg_send_fail
+    - wecomcs.servicer_status_change
+    - wecomcs.session_status_change
+    - wecomcs.reject_customer_msg_switch_change
     - platform.specific
 
   supported_apis:

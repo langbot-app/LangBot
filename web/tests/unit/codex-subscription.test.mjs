@@ -24,7 +24,7 @@ test('all locale catalogs cover Codex states and preserve the expiry placeholder
   const directory = new URL('../../src/i18n/locales/', import.meta.url);
   const files = fs
     .readdirSync(directory)
-    .filter((file) => file.endsWith('.ts'));
+    .filter((file) => /^[a-z]{2}-[A-Za-z]+\.ts$/.test(file));
   assert.equal(files.length, 8);
   let expected;
   for (const file of files) {

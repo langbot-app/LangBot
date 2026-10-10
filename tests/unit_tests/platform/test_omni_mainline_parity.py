@@ -39,7 +39,8 @@ def chain(text):
 def test_omni_config_contains_mainline_options_and_help(name):
     legacy = yaml.safe_load((PLATFORM / 'sources' / f'{name}.yaml').read_text())['spec']
     omni = yaml.safe_load((PLATFORM / 'adapters' / name / 'manifest.yaml').read_text())['spec']
-    assert {c['name'] for c in legacy['config']} <= {c['name'] for c in omni['config']}
+    retired = {'bot_name'} if name == 'lark' else set()
+    assert {c['name'] for c in legacy['config']} - retired <= {c['name'] for c in omni['config']}
     assert omni['help_links'] == legacy['help_links']
 
 
@@ -216,9 +217,9 @@ async def test_wecombot_reply_uploads_media_instead_of_placeholder(kind, stream)
         reply_text=AsyncMock(),
         push_stream_chunk=AsyncMock(return_value=True),
         upload_media=AsyncMock(return_value={'media_id': 'media'}),
-        reply_image=AsyncMock(),
-        reply_voice=AsyncMock(),
-        reply_file=AsyncMock(),
+        reply_image=AsyncMock(return_value={'errcode': 0}),
+        reply_voice=AsyncMock(return_value={'errcode': 0}),
+        reply_file=AsyncMock(return_value={'errcode': 0}),
     )
     adapter = WecomBotAdapter.model_construct(config={}, bot=bot)
     event = WecomBotEvent({'message_id': 'message', 'req_id': 'request'})

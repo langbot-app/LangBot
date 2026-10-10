@@ -44,6 +44,10 @@ class AgentRun(Base):
     bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     """Bot UUID this run belongs to."""
 
+    execution_owner_id = sqlalchemy.Column(sqlalchemy.String(36), nullable=True, index=True)
+    execution_lease_expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
+    """Host process lease, independent of execution duration and remote queue claims."""
+
     status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)
     """Run lifecycle status."""
 

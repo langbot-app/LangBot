@@ -47,7 +47,7 @@ export default function LangBotModelMetadata({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
+                className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
                 onMouseDown={(event) => event.preventDefault()}
               >
                 <Coins className="size-3" />
@@ -59,12 +59,12 @@ export default function LangBotModelMetadata({
             <TooltipContent side="top" className="max-w-64">
               <div className="space-y-0.5">
                 <p>{t('models.pricing.title')}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs">
                   {t('models.pricing.input', {
                     credits: input,
                   })}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs">
                   {t('models.pricing.output', {
                     credits: output,
                   })}

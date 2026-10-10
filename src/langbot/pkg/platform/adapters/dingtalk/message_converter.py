@@ -86,7 +86,7 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         return content, at
 
     @staticmethod
-    async def target2yiri(event: DingTalkEvent, bot_name: str) -> platform_message.MessageChain:
+    async def target2yiri(event: DingTalkEvent, bot_id: str) -> platform_message.MessageChain:
         incoming_message = event.incoming_message
         components: list[platform_message.MessageComponent] = [
             platform_message.Source(
@@ -95,15 +95,19 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             )
         ]
 
-        for at_user in getattr(incoming_message, 'at_users', []) or []:
-            if getattr(at_user, 'dingtalk_id', None) == getattr(incoming_message, 'chatbot_user_id', None):
-                components.append(platform_message.At(target=bot_name, display=bot_name))
+        chatbot_id = getattr(incoming_message, 'chatbot_user_id', None)
+        mentioned = getattr(incoming_message, 'is_in_at_list', False) or any(
+            chatbot_id and getattr(at_user, 'dingtalk_id', None) == chatbot_id
+            for at_user in getattr(incoming_message, 'at_users', []) or []
+        )
+        if mentioned:
+            components.append(platform_message.At(target=bot_id))
 
         rich_content = event.rich_content
         if rich_content:
             for element in rich_content.get('Elements') or []:
                 if element.get('Type') == 'text':
-                    text = DingTalkMessageConverter._strip_bot_mention(element.get('Content', ''), bot_name)
+                    text = element.get('Content', '')
                     if text.strip():
                         components.append(platform_message.Plain(text=text))
                 elif element.get('Type') == 'image' and element.get('Picture'):
@@ -112,7 +116,7 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             if event.content and event.type != 'audio':
                 components.append(
                     platform_message.Plain(
-                        text=DingTalkMessageConverter._strip_bot_mention(event.content, bot_name),
+                        text=event.content,
                     )
                 )
             if event.picture:
@@ -159,10 +163,6 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             or getattr(incoming_message, 'sender_staff_id', None),
             origin=platform_message.MessageChain(origin_components),
         )
-
-    @staticmethod
-    def _strip_bot_mention(text: str, bot_name: str) -> str:
-        return text.replace('@' + bot_name, '')
 
     @staticmethod
     def _message_time(incoming_message: typing.Any) -> datetime.datetime:

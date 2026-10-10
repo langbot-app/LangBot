@@ -74,9 +74,9 @@ async def test_event_properties_survive_detail_snapshot_fallback(engine, service
         await session.commit()
     detail = await service.get_execution_detail(WORKSPACE, 'agent', 'custom-run')
     items = detail['pages']['inputs']['items']
-    assert items[0]['content']['member'] == data['member']
-    assert items[0]['content']['count'] == 0
-    assert items[0]['content']['custom'] == data['custom']
+    assert items[0]['content']['event']['member'] == data['member']
+    assert items[0]['content']['event']['count'] == 0
+    assert items[0]['content']['event']['custom'] == data['custom']
     if has_log:
         assert items[1]['content'] == {'text': 'later'}
 
@@ -85,6 +85,7 @@ def test_event_content_preserves_conflicting_custom_input_fields():
     from langbot.pkg.api.http.service.monitoring_execution_details import event_content
 
     assert event_content({'text': 'normalized'}, {'text': {'custom': False}}) == {
+        'text': 'event',
         'event': {'text': {'custom': False}},
         'input': {'text': 'normalized'},
     }
@@ -736,3 +737,68 @@ async def test_pipeline_debug_is_consistent_across_rows_rollups_and_telemetry(en
     assert real_calls == 1 and real_rows[0]['id'] == 'llm-2'
     traffic = await get_traffic_series(service.ap, WORKSPACE, mode='debug', pipeline_ids=['pipeline-1'])
     assert sum(p['llm_calls'] for p in traffic['points']) == 1
+
+
+@pytest.mark.asyncio
+async def test_inflight_snapshot_is_scoped_and_keeps_terminal_transition(engine, service):
+    import sqlalchemy as sa
+    from unittest.mock import AsyncMock
+
+    service._get_execution_summary = AsyncMock(side_effect=AssertionError('No dashboard aggregates'))
+    service._get_token_coverage = AsyncMock(side_effect=AssertionError('No dashboard aggregates'))
+    async with AsyncSession(engine) as session:
+        for workspace, run_id in [(WORKSPACE, 'flight-visible'), ('other-workspace', 'flight-secret')]:
+            session.add(
+                persistence_agent_run.AgentRun(
+                    run_id=run_id,
+                    workspace_id=workspace,
+                    runner_id='runner',
+                    status='running',
+                    created_at=_dt(1),
+                )
+            )
+        session.add(persistence_agent_run.AgentRunEvent(run_id='flight-visible', sequence=1, type='tool.started'))
+        await session.commit()
+    snapshot = await service.get_inflight_snapshot(WORKSPACE)
+    rows = {r['id']: r for r in snapshot['items']}
+    assert 'flight-secret' not in rows
+    assert rows['flight-visible']['progress_event'] == 'tool.started'
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_agent_run.AgentRun)
+            .where(persistence_agent_run.AgentRun.run_id == 'flight-visible')
+            .values(status='completed')
+        )
+        await session.commit()
+    next_snapshot = await service.get_inflight_snapshot(WORKSPACE, [rows['flight-visible']])
+    assert next(r for r in next_snapshot['items'] if r['id'] == 'flight-visible')['status_group'] == 'completed'
+
+
+@pytest.mark.asyncio
+async def test_inflight_viewers_share_work_and_cleanup():
+    import asyncio
+    from unittest.mock import AsyncMock
+    from langbot.pkg.utils.inflight import InflightHub
+
+    hub = InflightHub()
+    loader = AsyncMock(return_value={'items': []})
+    first = hub.watch('one', loader)
+    second = hub.watch('one', loader)
+    assert (await anext(first))['kind'] == 'snapshot'
+    assert (await anext(second))['kind'] == 'snapshot'
+    assert loader.await_count == 1
+    other_loader = AsyncMock(return_value={'items': ['private']})
+    other = hub.watch('two', other_loader)
+    assert (await anext(other))['data']['items'] == ['private']
+    hub.track('one', ['run'])
+    hub.notify_run('run', 'tool.started')
+    loader.return_value = {'items': ['updated']}
+    frame = await asyncio.wait_for(anext(first), 2)
+    assert frame['data']['items'] == ['updated']
+    assert (await anext(second)) == frame
+    await first.aclose()
+    assert 'one' in hub.channels
+    await second.aclose()
+    assert 'one' not in hub.channels and 'run' not in hub.run_workspaces
+    await other.aclose()
+    assert not hub.channels

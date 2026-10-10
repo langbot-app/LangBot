@@ -241,6 +241,13 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     flattened.append(ele)
                 elif isinstance(ele, list):
                     flattened.extend(item for item in ele if isinstance(item, dict))
+            for index, ele in enumerate(flattened):
+                if ele.get('tag') == 'at':
+                    mentions = LarkMessageConverter._split_text_mentions(
+                        ele.get('user_id') or '', getattr(message, 'mentions', []) or []
+                    )
+                    if len(mentions) == 1 and mentions[0].get('tag') == 'at':
+                        flattened[index] = {**ele, **mentions[0]}
             return flattened
         if message.message_type == 'image':
             return [{'tag': 'img', 'image_key': content.get('image_key', ''), 'style': []}]
@@ -275,10 +282,15 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 result.append({'tag': 'text', 'text': text[pos : match.start()], 'style': []})
             mention = mention_by_key.get(match.group(0))
             if mention:
+                identity = getattr(mention, 'id', None)
+                if isinstance(identity, dict):
+                    identity = identity.get('open_id') or identity.get('user_id')
+                elif identity is not None and not isinstance(identity, str):
+                    identity = getattr(identity, 'open_id', None) or getattr(identity, 'user_id', None)
                 result.append(
                     {
                         'tag': 'at',
-                        'user_id': getattr(mention, 'id', None)
+                        'user_id': identity
                         or getattr(mention, 'open_id', None)
                         or getattr(mention, 'user_id', None)
                         or getattr(mention, 'key', match.group(0)),

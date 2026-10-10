@@ -264,6 +264,57 @@ class TestChatHandlerStreaming:
     """Tests for streaming behavior."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('with_tool_call', [False, True])
+    async def test_terminal_delta_and_snapshot_close_card_once(
+        self, fake_app, mock_event_ctx, set_runner, with_tool_call
+    ):
+        from tests.factories import text_query
+        from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+        from langbot_plugin.api.entities.builtin.platform.message import File, MessageChain
+
+        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        query = text_query('stream test')
+        query.adapter = Mock()
+        query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
+        query.adapter.create_message_card = AsyncMock()
+        attachments = MessageChain([File(url='https://example.com/file.txt', name='file.txt')])
+
+        class StreamRunner:
+            def __init__(self, app, config):
+                pass
+
+            async def run(self, query):
+                if with_tool_call:
+                    yield MessageChunk(
+                        role='assistant',
+                        is_final=True,
+                        tool_calls=[
+                            {'id': 'call-1', 'type': 'function', 'function': {'name': 'search', 'arguments': '{}'}}
+                        ],
+                    )
+                yield MessageChunk(role='assistant', content='hello')
+                yield MessageChunk(role='assistant', content='hello world', is_final=True)
+                completed = Message(role='assistant', content='hello world')
+                completed.attachments = attachments
+                yield completed
+
+        set_runner(StreamRunner)
+        handler = get_chat_handler().ChatMessageHandler(fake_app)
+        handler._ensure_conversation_for_history = AsyncMock()
+        delivered = []
+        async for stage_result in handler.handle(query):
+            assert stage_result.result_type == get_entities().ResultType.CONTINUE
+            delivered.append(query.resp_messages[-1])
+        assert [result.content for result in delivered if result.content] == ['hello', 'hello world']
+        if with_tool_call:
+            assert delivered[0].tool_calls
+            assert not delivered[0].is_final
+        assert sum(result.is_final for result in delivered) == 1
+        assert delivered[-1].attachments is attachments
+        assert len({result.resp_message_id for result in delivered}) == 1
+        query.adapter.create_message_card.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_streaming_chunks_collected(self, fake_app, mock_event_ctx, set_runner):
         """Streaming produces multiple results."""
         from tests.factories import text_query

@@ -15,18 +15,22 @@ export default function ProcessorRunList({
   selectedId,
   onSelect,
   footer,
+  className,
 }: {
   runs: ProcessorRun[];
   selectedId?: string;
   onSelect: (run: ProcessorRun) => void;
   footer?: ReactNode;
+  className?: string;
 }) {
   const { t } = useTranslation();
   return (
     <div
       role="group"
       aria-label={t('agents.eventProcessor.runs')}
-      className="max-h-56 shrink-0 overflow-y-auto rounded-md border"
+      className={
+        className ?? 'max-h-56 shrink-0 overflow-y-auto rounded-md border'
+      }
     >
       {runs.map((run) => {
         const duration = processorRunDuration(run);
@@ -41,7 +45,7 @@ export default function ProcessorRunList({
             onClick={() => onSelect(run)}
             aria-label={`${label} ${event} ${new Date(run.created_at * 1000).toLocaleString()}`}
             title={event}
-            className="flex h-auto min-h-12 w-full justify-start gap-3 rounded-none border-b px-3 py-2 text-left text-sm font-normal last:border-b-0 aria-pressed:bg-accent"
+            className="flex h-auto min-h-12 w-full justify-start gap-3 rounded-none border-b border-l-2 border-l-transparent p-4 text-left text-sm font-normal last:border-b-0 aria-pressed:border-l-primary aria-pressed:bg-primary/5"
           >
             <span className="min-w-0 flex-1 space-y-1">
               <span className="block truncate font-medium">{label}</span>
@@ -54,6 +58,7 @@ export default function ProcessorRunList({
             </span>
             <span className="flex shrink-0 flex-col items-end gap-1">
               <Badge
+                status={run.status}
                 variant={
                   run.status === 'failed' || run.status === 'timeout'
                     ? 'destructive'
