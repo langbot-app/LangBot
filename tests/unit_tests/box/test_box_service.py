@@ -422,6 +422,56 @@ def test_separated_box_runtime_allows_box_owned_missing_host_path(tmp_path):
     assert not (host_root / 'default').exists()
 
 
+def test_box_build_spec_injects_local_default_env():
+    logger = Mock()
+    app = make_app(logger)
+    app.instance_config.data['box']['local']['env'] = {'JENKINS_BASE_URL': 'https://jenkins.example.com'}
+    service = BoxService(app, client=Mock())
+
+    spec = service.build_spec({'cmd': 'echo hi', 'session_id': 'default-env'})
+
+    assert spec.env == {'JENKINS_BASE_URL': 'https://jenkins.example.com'}
+
+
+def test_box_build_spec_per_call_env_overrides_local_default():
+    logger = Mock()
+    app = make_app(logger)
+    app.instance_config.data['box']['local']['env'] = {
+        'JENKINS_BASE_URL': 'https://default.example.com',
+        'KEEP_ME': 'yes',
+    }
+    service = BoxService(app, client=Mock())
+
+    spec = service.build_spec(
+        {'cmd': 'echo hi', 'session_id': 'override-env', 'env': {'JENKINS_BASE_URL': 'https://override.example.com'}}
+    )
+
+    assert spec.env == {'JENKINS_BASE_URL': 'https://override.example.com', 'KEEP_ME': 'yes'}
+
+
+def test_box_build_spec_ignores_invalid_local_env_entries():
+    logger = Mock()
+    app = make_app(logger)
+    app.instance_config.data['box']['local']['env'] = {
+        'OK': 'value',
+        '': 'empty-key',
+        '   ': 'blank-key',
+        'BAD_VALUE': 123,
+        3: 'non-string-key',
+    }
+    service = BoxService(app, client=Mock())
+
+    spec = service.build_spec({'cmd': 'echo hi', 'session_id': 'invalid-env'})
+
+    assert spec.env == {'OK': 'value'}
+
+    app.instance_config.data['box']['local']['env'] = 'not-a-dict'
+    service = BoxService(app, client=Mock())
+    spec = service.build_spec({'cmd': 'echo hi', 'session_id': 'non-dict-env'})
+
+    assert spec.env == {}
+
+
 @pytest.mark.asyncio
 async def test_box_service_get_sessions_delegates_to_client():
     client = Mock()
