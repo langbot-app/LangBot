@@ -88,7 +88,11 @@ function extractKeys(filePath) {
 }
 
 function main() {
-  const files = readdirSync(LOCALES_DIR).filter((f) => f.endsWith('.ts'));
+  // Shared translation modules (for example bot-setup.ts) are not locales.
+  // Match language-region and language-script filenames used by the app.
+  const files = readdirSync(LOCALES_DIR).filter((f) =>
+    /^[a-z]{2,3}-(?:[A-Z]{2}|[A-Z][a-z]{3})\.ts$/.test(f),
+  );
 
   if (!files.includes(REFERENCE)) {
     console.error(`Reference file ${REFERENCE} not found in ${LOCALES_DIR}`);
