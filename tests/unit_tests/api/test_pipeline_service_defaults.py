@@ -55,6 +55,9 @@ async def test_default_pipeline_config_uses_first_installed_runner_schema():
         runner_registry=FakeRegistry([custom_agent, local_agent]),
     )
 
+    from langbot.pkg.api.http.service.model import LLMModelsService
+
+    ap.llm_model_service = LLMModelsService(ap)
     config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
 
     assert config['ai']['runner']['id'] == 'plugin:alice/custom-agent/default'
@@ -72,6 +75,9 @@ async def test_default_pipeline_config_stays_neutral_without_installed_runners()
         runner_registry=FakeRegistry([]),
     )
 
+    from langbot.pkg.api.http.service.model import LLMModelsService
+
+    ap.llm_model_service = LLMModelsService(ap)
     config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
 
     assert config['ai']['runner']['id'] == ''

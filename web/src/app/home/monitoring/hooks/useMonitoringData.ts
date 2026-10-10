@@ -42,8 +42,6 @@ export function useMonitoringData(filterState: FilterState) {
     const isCurrent = () =>
       requestId === requestIdRef.current &&
       getCurrentWorkspaceSnapshot()?.workspace.uuid === workspaceUuid;
-    setRequestScope(scope);
-    setData(null);
     setLoading(true);
     setError(null);
 
@@ -387,8 +385,11 @@ export function useMonitoringData(filterState: FilterState) {
       ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
       setData(transformedData);
+      setRequestScope(scope);
     } catch (err) {
       if (!isCurrent()) return;
+      setRequestScope(scope);
+      setData((current) => (requestScope === scope ? current : null));
       setError(err as Error);
       console.error('Failed to fetch monitoring data:', err);
     } finally {
@@ -402,6 +403,7 @@ export function useMonitoringData(filterState: FilterState) {
     filterState.selectedBots,
     filterState.selectedPipelines,
     scope,
+    requestScope,
     workspaceUuid,
   ]);
 

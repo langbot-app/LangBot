@@ -74,9 +74,9 @@ async def test_event_properties_survive_detail_snapshot_fallback(engine, service
         await session.commit()
     detail = await service.get_execution_detail(WORKSPACE, 'agent', 'custom-run')
     items = detail['pages']['inputs']['items']
-    assert items[0]['content']['member'] == data['member']
-    assert items[0]['content']['count'] == 0
-    assert items[0]['content']['custom'] == data['custom']
+    assert items[0]['content']['event']['member'] == data['member']
+    assert items[0]['content']['event']['count'] == 0
+    assert items[0]['content']['event']['custom'] == data['custom']
     if has_log:
         assert items[1]['content'] == {'text': 'later'}
 
@@ -85,6 +85,7 @@ def test_event_content_preserves_conflicting_custom_input_fields():
     from langbot.pkg.api.http.service.monitoring_execution_details import event_content
 
     assert event_content({'text': 'normalized'}, {'text': {'custom': False}}) == {
+        'text': 'event',
         'event': {'text': {'custom': False}},
         'input': {'text': 'normalized'},
     }

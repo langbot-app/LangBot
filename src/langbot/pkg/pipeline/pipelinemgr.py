@@ -423,12 +423,13 @@ class RuntimePipeline:
         token = processing_mode.set('pipeline')
         # The Workspace-scoped opaque query uuid is the execution identity Space
         # shows for this lane; it is a stable UUID for every pooled query.
-        execution_id = str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
+        ingress_event_id = (query.variables or {}).get('_ingress_event_id')
+        execution_id = ingress_event_id or str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
         # A lane with no inbound platform event in flight (WebChat, WebUI debug,
         # HTTP pipeline run) synthesizes its virtual inbound event here, so every
         # execution starts at an event boundary and the Runner is never the trace
         # origin. A lane running under a platform route nests inside that ingress.
-        synthesizing = trace_mod.current() is None
+        synthesizing = trace_mod.current() is None and not ingress_event_id
         try:
             with ingress(
                 self.ap,

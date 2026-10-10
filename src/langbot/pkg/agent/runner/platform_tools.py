@@ -465,7 +465,11 @@ def build_platform_tool_resources(
         reason = None
         if definition is None:
             reason = 'unknown_tool'
-        elif definition.api not in supported_apis:
+        elif definition.api not in supported_apis and not (
+            definition.name == 'event_reply'
+            and {'reply_message', 'get_message'} <= supported_apis
+            and (event.delivery.reply_target or {}).get('message_id')
+        ):
             reason = 'adapter_api_unsupported'
         elif definition.scope == 'event' and not _event_matches(event.event_type, definition.event_patterns):
             reason = 'event_incompatible'
@@ -727,9 +731,26 @@ async def execute_platform_tool(
         bot = await ap.platform_mgr.get_bot_by_uuid(execution_context, bot_id)
         if bot is None:
             raise ValueError(f'Bot {bot_id} is not running')
-        if definition.api not in set(bot.adapter.get_supported_apis() or []):
+        supported_apis = set(bot.adapter.get_supported_apis() or [])
+        reply_via_source = (
+            definition.name == 'event_reply'
+            and 'send_message' not in supported_apis
+            and {'reply_message', 'get_message'} <= supported_apis
+            and (delivery.get('reply_target') or {}).get('message_id')
+        )
+        if definition.api not in supported_apis and not reply_via_source:
             raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
         api_func = getattr(bot.adapter, definition.api, None)
+        if reply_via_source:
+
+            async def api_func(target_type, target_id, message):
+                source = await bot.adapter.get_message(
+                    chat_type=target_type,
+                    chat_id=target_id,
+                    message_id=delivery['reply_target']['message_id'],
+                )
+                return await bot.adapter.reply_message(source, message)
+
         if not callable(api_func):
             raise ValueError(f'Platform API {definition.api} is declared but not implemented')
         if definition.api == 'send_message':

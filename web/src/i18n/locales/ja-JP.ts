@@ -9,7 +9,7 @@ const jaJP = {
     stopped:
       '停止しました。実行中のツールが反映済みの場合があります。再試行前にリソースを確認してください。',
     setupRequired:
-      'LangBot Account にログインして LangBot Models を使うか、モデルプロバイダーを設定すると会話を始められます。',
+      'LangBot アカウントにログインするか、モデルを設定すると、ワークスペースアシスタントを利用できます。',
     loginAccount: 'LangBot Account にログイン',
     configureModels: 'モデルを設定',
     providerCheckFailed:
@@ -77,6 +77,14 @@ const jaJP = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: '過去 {{days}} 日間',
+        customRange: '期間を指定',
+        rangeStart: '開始日時',
+        rangeEnd: '終了日時',
+        rangeHint: '開始は終了より前、期間は最大365日です。',
+        autoRefreshLabel: '自動更新',
+        autoRefreshOff: '自動更新：オフ',
+        autoRefreshEvery: '{{seconds}} 秒ごとに更新',
         title: '稼働状況を確認する',
         description:
           'ボットの稼働状況、モデルの使用量、メッセージ数、システムの状態をまとめて確認できます。',
@@ -158,6 +166,14 @@ const jaJP = {
           'テストメッセージで起動条件、AI の返信、出力処理を確認します。設定の変更はテスト前に保存されます。',
       },
       monitoring: {
+        rangeDays: '過去 {{days}} 日間',
+        customRange: '期間を指定',
+        rangeStart: '開始日時',
+        rangeEnd: '終了日時',
+        rangeHint: '開始は終了より前、期間は最大365日です。',
+        autoRefreshLabel: '自動更新',
+        autoRefreshOff: '自動更新：オフ',
+        autoRefreshEvery: '{{seconds}} 秒ごとに更新',
         title: '実行履歴を確認する',
         description:
           'タイトル横のタブで過去の会話、処理過程、エラーを確認し、返信がない場合や想定外の回答を調べます。',
@@ -323,6 +339,9 @@ const jaJP = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: '読み込めませんでした',
+    loadFailedHint:
+      'しばらくしてから再試行してください。解決しない場合は、接続とサービスの状態を確認してください。',
     customValue: 'カスタム',
     loadFailed: '読み込みに失敗しました。再試行してください。',
     search: '検索',
@@ -523,6 +542,9 @@ const jaJP = {
     help: 'ヘルプドキュメントを見る',
   },
   models: {
+    starModel: '新規処理器の既定モデルに設定',
+    unstarModel: 'スターを解除',
+    starModelFailed: 'スター付きモデルを更新できませんでした',
     codex: {
       account: 'ChatGPT サブスクリプション',
       description:
@@ -784,10 +806,13 @@ const jaJP = {
     deleteConfirmation: '本当にこのボットを削除しますか？',
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
+    saveAndEnable: '保存して有効化',
+    searchAdapters: 'アダプターを検索',
+    noMatchingAdapters: '一致するアダプターが見つかりません',
     legacyAdapters: '旧式アダプター',
     legacyAdapterBadge: '旧式',
     legacyAdaptersHint:
-      'これらのアダプターには新しいイベント駆動の接続方式があります。\n既存設定との互換性のために残しており、新規ボットには推奨されません。',
+      '旧版は主にメッセージ送受信用で、既存の設定との互換性のために残されています。\n新版は同じプラットフォームにイベント方式で接続し、対応する友達申請やグループの変化も処理器へ振り分けます。\n新規ボットには新版を推奨します。既存ボットは旧版を継続利用できます。切り替え時は接続設定とイベントルートを確認してください。アカウントの更新ではありません。',
     adapterConfig: 'アダプター設定',
     viewAdapterDocs: 'ドキュメントを見る',
     bindPipeline: 'パイプラインを紐付け',
@@ -808,6 +833,28 @@ const jaJP = {
     routingConnection: 'ルーティングと接続',
     routingConnectionDescription:
       'このボットのメッセージを処理するパイプラインを紐付け',
+    routingHelp: {
+      title: 'イベントルーティングとは？',
+      intro:
+        'ボットはメッセージのほか、友達リクエストやグループ参加などのイベントも受け取ります。',
+      events: '受信イベント',
+      agents: '各 Agent へ',
+      message: 'メッセージ受信',
+      friend: '友達リクエスト',
+      group: 'グループ参加',
+      messageAction: '応答 Agent → 返信',
+      friendAction: '審査 Agent → 確認',
+      groupAction: '歓迎 Agent → 挨拶',
+      rules: '設定したルールで振り分け · 例',
+      instructions:
+        'Agent は指示に従ってツールを使い、返信や申請の確認を行います。',
+      plugin:
+        '高度な用途にはプラグイン処理器を利用できます。イベントを一括登録してコードで処理し、下の欄で設定を追加します。',
+      docs: '独自のプラグイン処理器を開発',
+      runnerDocs: '独自の Agent ランナーを開発',
+      pause: '一時停止',
+      play: '再生',
+    },
     eventRouting: 'イベントルーティング',
     eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',
@@ -848,7 +895,7 @@ const jaJP = {
     eventBindingDescriptionPlaceholder: 'ルール説明',
     noEventBindings: 'イベントルートはありません',
     unsupportedPipelineEvent:
-      'Pipeline は message.* イベントにのみ使用できます',
+      'Pipeline は message.received イベントにのみ使用できます',
     disable: '無効化',
     enable: '有効化',
     disabledBindings: '無効',
@@ -872,6 +919,9 @@ const jaJP = {
     routeFallbackCatchAll: '{{route}} はフォールバックルートです。',
     routeFallbackIgnored:
       'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
+    matchRecords: 'マッチ記録',
+    matchRecordsDescription:
+      '各ルールの最新結果と最近の未一致イベントを表示します。ボットのメモリ内ログは再起動時に消去されます。',
     testRoute: 'ルートを確認',
     adapterEventDebugAction: 'イベント監視テスト',
     adapterEventDebugTitle: 'プラットフォームイベントのデバッグ',
@@ -1135,7 +1185,27 @@ const jaJP = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'すべて選択',
     monitoring: {
+      rangeDays: '過去 {{days}} 日間',
+      customRange: '期間を指定',
+      rangeStart: '開始日時',
+      rangeEnd: '終了日時',
+      rangeHint: '開始は終了より前、期間は最大365日です。',
+      autoRefreshLabel: '自動更新',
+      autoRefreshOff: '自動更新：オフ',
+      autoRefreshEvery: '{{seconds}} 秒ごとに更新',
+      runStatus: '実行状態',
+      toolCalls: 'ツール呼び出し',
+      delivery: 'メッセージ送信',
+      sendFailed: '送信失敗',
+      sendCount: '送信 API 呼び出し成功：{{count}} 回',
+      noSend: '送信記録なし',
+      noSteps: '実行ステップはまだありません。',
+      recipient: '送信先',
+      actionCompleted: 'ツールの実行が完了しました。',
+      simulatedAction:
+        'シミュレーションです。実際のメッセージは送信されていません。',
       description:
         '各タスクのトリガーイベント、モデル出力、ツール実行を確認します。',
       empty:
@@ -1242,6 +1312,9 @@ const jaJP = {
       'メッセージイベントのみを処理し、AI が直接返信を生成します。ナレッジベースやプラグインなどの便利な機能も利用できます。',
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
+    selectAgentRunner: 'Agent ランナーを選択',
+    selectProcessorPlugin: '処理プラグインを選択',
+    createBasicInfoDescription: '名前・アイコン・プラグインを設定',
     chooseType: '処理方法を選択',
     chooseTypeDescription:
       '最初にプロセッサーの動作方式を選びます。作成後に詳しく設定できます。',
@@ -2063,6 +2136,14 @@ const jaJP = {
       uploading: 'アップロード中...',
     },
     monitoring: {
+      rangeDays: '過去 {{days}} 日間',
+      customRange: '期間を指定',
+      rangeStart: '開始日時',
+      rangeEnd: '終了日時',
+      rangeHint: '開始は終了より前、期間は最大365日です。',
+      autoRefreshLabel: '自動更新',
+      autoRefreshOff: '自動更新：オフ',
+      autoRefreshEvery: '{{seconds}} 秒ごとに更新',
       title: '実行ログ',
       workbench: '設定とデバッグ',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
@@ -2494,6 +2575,14 @@ const jaJP = {
     },
   },
   monitoring: {
+    rangeDays: '過去 {{days}} 日間',
+    customRange: '期間を指定',
+    rangeStart: '開始日時',
+    rangeEnd: '終了日時',
+    rangeHint: '開始は終了より前、期間は最大365日です。',
+    autoRefreshLabel: '自動更新',
+    autoRefreshOff: '自動更新：オフ',
+    autoRefreshEvery: '{{seconds}} 秒ごとに更新',
     unified: {
       inputs: 'イベントと入力',
       outputs: '生成結果',
@@ -2646,6 +2735,15 @@ const jaJP = {
       feedback: 'ユーザーフィードバック',
       sessions: 'セッション分析',
       errors: 'エラーログ',
+    },
+    pipelineTrace: {
+      received: '受信メッセージ',
+      processing: '処理の流れ',
+      replies: '返信',
+      noSteps: 'モデル・ツールの呼び出し記録はありません',
+      success: '成功',
+      error: '失敗',
+      pending: '処理待ち',
     },
     messageList: {
       timestamp: 'タイムスタンプ',

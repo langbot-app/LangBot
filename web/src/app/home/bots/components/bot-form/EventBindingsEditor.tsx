@@ -39,6 +39,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
   Popover,
@@ -218,7 +219,7 @@ const BEHAVIOR_PRESETS = [
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function isMessageEventPattern(p: string) {
-  return p === 'message.*' || p.startsWith('message.');
+  return p === 'message.received';
 }
 
 interface RouteConflict {
@@ -1179,7 +1180,7 @@ function RouteDryRunDialog({
 interface BindingCardProps {
   binding: EventBinding;
   globalIndex: number;
-  routeStatus?: BotEventRouteStatus;
+
   eventOptions: string[];
   agentOptions: Agent[];
   expandedIds: Set<string>;
@@ -1193,7 +1194,6 @@ interface BindingCardProps {
 function BindingCardContent({
   binding,
   globalIndex,
-  routeStatus,
   eventOptions,
   agentOptions,
   expandedIds,
@@ -1209,12 +1209,10 @@ function BindingCardContent({
   const isExpanded = expandedIds.has(id);
   const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
-  const statusTime = formatRouteStatusTime(routeStatus?.timestamp);
-  const statusDetail = routeStatusDetail(routeStatus, t);
 
   return (
     <div
-      className={`rounded-lg border bg-card ${
+      className={`rounded-lg border ${isEnabled ? 'bg-card' : 'bg-muted/30 border-dashed'} ${
         isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
       }`}
       data-drag-overlay={isOverlay ? 'true' : undefined}
@@ -1233,6 +1231,7 @@ function BindingCardContent({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
+        {!isEnabled && <span className="h-4 w-4 shrink-0" aria-hidden="true" />}
 
         <Badge
           variant="secondary"
@@ -1319,16 +1318,11 @@ function BindingCardContent({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* disable/enable toggle */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs text-muted-foreground"
-            onClick={() => onUpdate(globalIndex, { enabled: !isEnabled })}
-          >
-            {isEnabled ? t('bots.disable') : t('bots.enable')}
-          </Button>
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
+            aria-label={`${t('bots.enable')} · ${t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}`}
+          />
 
           <Button
             type="button"
@@ -1340,23 +1334,6 @@ function BindingCardContent({
             <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
           </Button>
         </div>
-      </div>
-
-      <div className="flex items-center gap-2 border-t px-3 py-1.5">
-        <Badge
-          variant="outline"
-          className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${routeStatusBadgeClass(
-            routeStatus?.last_status,
-          )}`}
-        >
-          {routeStatusLabel(routeStatus?.last_status, t)}
-        </Badge>
-        <span
-          className="min-w-0 truncate text-[11px] text-muted-foreground"
-          title={statusTime ? `${statusDetail} · ${statusTime}` : statusDetail}
-        >
-          {statusDetail || statusTime}
-        </span>
       </div>
 
       {/* conditions panel */}
@@ -1427,8 +1404,8 @@ export default function EventBindingsEditor({
     form.watch('event_bindings');
   const bindings = useMemo(() => watchedBindings ?? [], [watchedBindings]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [disabledSectionOpen, setDisabledSectionOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeStatusError, setRouteStatusError] = useState<string | null>(null);
@@ -1455,13 +1432,7 @@ export default function EventBindingsEditor({
     () => (supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS),
     [supportedEvents],
   );
-  const routeStatusByBinding = useMemo(() => {
-    const map = new Map<string, BotEventRouteStatus>();
-    routeStatuses.forEach((status) => {
-      if (status.binding_id) map.set(String(status.binding_id), status);
-    });
-    return map;
-  }, [routeStatuses]);
+
   const routeConflicts = useMemo(
     () => findRouteConflicts(bindings),
     [bindings],
@@ -1496,7 +1467,15 @@ export default function EventBindingsEditor({
     setRouteStatusError(null);
     try {
       const response = await backendClient.getBotEventRouteStatuses(botId);
-      setRouteStatuses(response.routes || []);
+      setRouteStatuses(
+        [
+          ...response.routes,
+          ...response.unmatched_events,
+          ...response.stale_routes,
+        ]
+          .filter((record) => record.last_status)
+          .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
+      );
     } catch (error) {
       console.error('Failed to refresh Bot event route status', error);
       setRouteStatusError(t('bots.routeStatusRefreshFailed'));
@@ -1506,11 +1485,15 @@ export default function EventBindingsEditor({
   }, [botId, t]);
 
   useEffect(() => {
-    refreshRouteStatuses();
-  }, [refreshRouteStatuses]);
+    if (recordsOpen) void refreshRouteStatuses();
+  }, [recordsOpen, refreshRouteStatuses]);
 
   function updateBindings(next: EventBinding[]) {
-    form.setValue('event_bindings', next, { shouldDirty: true });
+    const ordered = [
+      ...next.filter((binding) => binding.enabled ?? true),
+      ...next.filter((binding) => !(binding.enabled ?? true)),
+    ];
+    form.setValue('event_bindings', ordered, { shouldDirty: true });
   }
 
   function addBinding(eventPattern = 'message.received') {
@@ -1661,7 +1644,7 @@ export default function EventBindingsEditor({
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-2">
-            {enabledBindings.length === 0 && (
+            {bindings.length === 0 && (
               <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
                 {t('bots.noEventBindings')}
               </div>
@@ -1674,11 +1657,6 @@ export default function EventBindingsEditor({
                   sortableId={idsRef.current[sortIdx]}
                   binding={binding}
                   globalIndex={globalIdx}
-                  routeStatus={
-                    binding.id
-                      ? routeStatusByBinding.get(String(binding.id))
-                      : undefined
-                  }
                   eventOptions={eventOptions}
                   agentOptions={agentOptions}
                   expandedIds={expandedIds}
@@ -1688,6 +1666,19 @@ export default function EventBindingsEditor({
                 />
               );
             })}
+            {disabledBindings.map(({ b, i }) => (
+              <BindingCardContent
+                key={b.id ?? `disabled-${i}`}
+                binding={b}
+                globalIndex={i}
+                eventOptions={eventOptions}
+                agentOptions={agentOptions}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpand}
+                onUpdate={updateBinding}
+                onRemove={removeBinding}
+              />
+            ))}
           </div>
         </SortableContext>
         <DragOverlay adjustScale={false} dropAnimation={null}>
@@ -1695,11 +1686,6 @@ export default function EventBindingsEditor({
             <BindingCardContent
               binding={activeBinding}
               globalIndex={activeGlobalIdx}
-              routeStatus={
-                activeBinding.id
-                  ? routeStatusByBinding.get(String(activeBinding.id))
-                  : undefined
-              }
               eventOptions={eventOptions}
               agentOptions={agentOptions}
               expandedIds={expandedIds}
@@ -1791,68 +1777,100 @@ export default function EventBindingsEditor({
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={`size-8 ${routeStatusError ? 'text-destructive' : 'text-muted-foreground'}`}
-              aria-label={t('bots.refreshRouteStatus')}
-              onClick={refreshRouteStatuses}
-              disabled={!botId || routeStatusLoading}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {routeStatusError || t('bots.refreshRouteStatus')}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
-      {/* disabled section */}
-      {disabledBindings.length > 0 && (
-        <div className="rounded-lg border border-dashed">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setDisabledSectionOpen((v) => !v)}
-          >
-            {disabledSectionOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-            {t('bots.disabledBindings')}
-            <Badge variant="outline" className="ml-1 text-xs">
-              {disabledBindings.length}
-            </Badge>
-          </button>
-          {disabledSectionOpen && (
-            <div className="border-t p-2 space-y-2">
-              {disabledBindings.map(({ b, i }) => (
-                <BindingCardContent
-                  key={b.id ?? i}
-                  binding={b}
-                  globalIndex={i}
-                  routeStatus={
-                    b.id ? routeStatusByBinding.get(String(b.id)) : undefined
-                  }
-                  eventOptions={eventOptions}
-                  agentOptions={agentOptions}
-                  expandedIds={expandedIds}
-                  onToggleExpand={toggleExpand}
-                  onUpdate={updateBinding}
-                  onRemove={removeBinding}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!botId}
+          onClick={() => setRecordsOpen(true)}
+        >
+          <ListChecks className="mr-1 size-4" />
+          {t('bots.matchRecords')}
+        </Button>
+        <Dialog open={recordsOpen} onOpenChange={setRecordsOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{t('bots.matchRecords')}</DialogTitle>
+              <DialogDescription>
+                {t('bots.matchRecordsDescription')}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={refreshRouteStatuses}
+                disabled={routeStatusLoading}
+              >
+                <RefreshCw
+                  className={`mr-2 size-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
                 />
-              ))}
+                {t('monitoring.refreshData')}
+              </Button>
             </div>
-          )}
-        </div>
-      )}
+            {routeStatusError && (
+              <p role="alert" className="text-sm text-destructive">
+                {routeStatusError}
+              </p>
+            )}
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {routeStatuses.map((record, index) => (
+                <div
+                  key={`${record.binding_id}:${record.seq_id}:${index}`}
+                  className="space-y-2 rounded-lg border p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex-1 text-sm font-medium">
+                      {eventLabel(
+                        record.event_type || record.event_pattern || '*',
+                        t,
+                      )}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={routeStatusBadgeClass(record.last_status)}
+                    >
+                      {routeStatusLabel(record.last_status, t)}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatRouteStatusTime(record.timestamp)}
+                  </div>
+                  {record.target_type && (
+                    <div className="break-words text-sm">
+                      {record.target_type}
+                      {record.target_uuid
+                        ? ` · ${agentOptions.find((agent) => agent.uuid === record.target_uuid)?.name || record.target_uuid}`
+                        : ''}
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {routeStatusDetail(record, t)}
+                  </p>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">
+                      {t('monitoring.unified.metadata')}
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {JSON.stringify(record, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ))}
+              {!routeStatuses.length && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t(
+                    routeStatusLoading
+                      ? 'common.loading'
+                      : 'monitoring.unified.noRecords',
+                  )}
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

@@ -4,11 +4,18 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
+import LoadErrorState from '@/components/LoadErrorState';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -53,13 +60,19 @@ function MonitoringPageContent() {
     setSelectedBots,
     setSelectedPipelines,
     setTimeRange,
+    setCustomDateRange,
     setExecutionMode,
     setExecutionStatus,
     resetFilters,
   } = useMonitoringFilters();
   const executionMode = filterState.mode ?? 'all';
   const executionStatus = filterState.statusGroup ?? 'all';
-  const { data, loading, error, refetch } = useMonitoringData({
+  const {
+    data,
+    loading: monitoringRefreshing,
+    error,
+    refetch,
+  } = useMonitoringData({
     ...filterState,
     mode: executionMode,
     statusGroup: executionStatus,
@@ -71,7 +84,7 @@ function MonitoringPageContent() {
 
   const {
     result: executionResult,
-    loading: executionLoading,
+    loading: executionRefreshing,
     error: executionError,
     refetch: refetchExecutions,
   } = useExecutions({
@@ -117,7 +130,7 @@ function MonitoringPageContent() {
   const {
     feedback: feedbackList,
     stats: feedbackStats,
-    loading: feedbackLoading,
+    loading: feedbackRefreshing,
   } = useFeedbackData({
     mode: executionMode,
     statusGroup: executionStatus,
@@ -134,12 +147,57 @@ function MonitoringPageContent() {
     limit: 50,
   });
 
+  const loading = monitoringRefreshing && !data;
+  const executionLoading = executionRefreshing && !executionResult;
+  const feedbackLoading = feedbackRefreshing && !feedbackStats;
+  const refreshing =
+    monitoringRefreshing || executionRefreshing || feedbackRefreshing;
+  const countdown = useRef(0);
+  const intervalRef = useRef(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   // Combined refresh handler for both monitoring and feedback data
   const handleRefresh = useCallback(() => {
+    countdown.current = intervalRef.current;
+    setRemainingSeconds(countdown.current);
     refetch();
     refetchExecutions();
     setFeedbackRefreshKey((k) => k + 1);
   }, [refetch, refetchExecutions]);
+
+  const [refreshInterval, setRefreshInterval] = useState(() => {
+    try {
+      const saved = Number(
+        localStorage.getItem('langbot-dashboard-refresh-interval'),
+      );
+      return [5, 15, 30, 60, 300].includes(saved) ? saved : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const refreshState = useRef({ handleRefresh, busy: false });
+  useEffect(() => {
+    refreshState.current = { handleRefresh, busy: refreshing };
+  }, [handleRefresh, refreshing]);
+  useEffect(() => {
+    intervalRef.current = refreshInterval;
+    countdown.current = refreshInterval;
+    setRemainingSeconds(refreshInterval);
+    if (!refreshInterval) return;
+    const timer = window.setInterval(() => {
+      if (
+        document.visibilityState === 'visible' &&
+        !refreshState.current.busy
+      ) {
+        countdown.current = Math.max(0, countdown.current - 1);
+        setRemainingSeconds(countdown.current);
+        if (countdown.current === 0) {
+          refreshState.current.busy = true;
+          refreshState.current.handleRefresh();
+        }
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [refreshInterval]);
 
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
@@ -174,6 +232,8 @@ function MonitoringPageContent() {
               onBotsChange={setSelectedBots}
               onPipelinesChange={setSelectedPipelines}
               onTimeRangeChange={setTimeRange}
+              customDateRange={filterState.customDateRange}
+              onCustomDateRangeChange={setCustomDateRange}
               mode={executionMode}
               onModeChange={setExecutionMode}
               statusGroup={executionStatus}
@@ -185,15 +245,78 @@ function MonitoringPageContent() {
                 {t('monitoring.filters.reset')}
               </Button>
               {canExport && <ExportDropdown filterState={filterState} />}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                className="shadow-sm"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                {t('monitoring.refreshData')}
-              </Button>
+              <div className="relative flex items-center overflow-hidden rounded-lg border bg-background shadow-xs">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="gap-2 rounded-none px-3"
+                >
+                  <RefreshCw
+                    className={cn('size-3.5', refreshing && 'animate-spin')}
+                  />
+                  {t('monitoring.refreshData')}
+                  {refreshInterval > 0 && (
+                    <span className="min-w-8 text-right text-xs tabular-nums text-muted-foreground">
+                      {remainingSeconds}s
+                    </span>
+                  )}
+                </Button>
+                <Select
+                  value={String(refreshInterval)}
+                  onValueChange={(value) => {
+                    setRefreshInterval(Number(value));
+                    try {
+                      localStorage.setItem(
+                        'langbot-dashboard-refresh-interval',
+                        value,
+                      );
+                    } catch {
+                      /* Storage may be unavailable. */
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-11 justify-center rounded-l-none border-0 border-l px-2 shadow-none [&>svg:last-child]:hidden"
+                    aria-label={t('monitoring.autoRefreshLabel')}
+                    title={
+                      refreshInterval
+                        ? t('monitoring.autoRefreshEvery', {
+                            seconds: refreshInterval,
+                          })
+                        : t('monitoring.autoRefreshOff')
+                    }
+                  >
+                    <span aria-hidden="true">
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">
+                      {t('monitoring.autoRefreshOff')}
+                    </SelectItem>
+                    {[5, 15, 30, 60, 300].map((seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {t('monitoring.autoRefreshEvery', { seconds })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {refreshInterval > 0 && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-blue-500/10"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full origin-left bg-blue-500/70 transition-transform duration-700 ease-linear motion-reduce:transition-none"
+                      style={{
+                        transform: `scaleX(${remainingSeconds / refreshInterval})`,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
         </div>
@@ -201,14 +324,11 @@ function MonitoringPageContent() {
 
       {/* Content Area */}
       {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>{t('monitoring.loadError')}</AlertTitle>
-          <AlertDescription className="mt-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              {t('common.retry')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <LoadErrorState
+          title={t('monitoring.loadError')}
+          onRetry={handleRefresh}
+          busy={refreshing}
+        />
       ) : (
         <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
           {/* Overview Section: the execution metrics and the runtime status share
@@ -300,20 +420,11 @@ function MonitoringPageContent() {
 
                 {executionError ? (
                   <div className="px-3 pt-4 sm:px-6">
-                    <Alert variant="destructive">
-                      <AlertTitle>
-                        {t('monitoring.execution.detail.loadError')}
-                      </AlertTitle>
-                      <AlertDescription className="mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleRefresh}
-                        >
-                          {t('common.retry')}
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
+                    <LoadErrorState
+                      title={t('monitoring.execution.detail.loadError')}
+                      onRetry={handleRefresh}
+                      busy={refreshing}
+                    />
                   </div>
                 ) : (
                   <>

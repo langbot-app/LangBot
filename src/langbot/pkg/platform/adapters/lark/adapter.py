@@ -46,6 +46,8 @@ from lark_oapi.api.im.v1 import (
     CreateMessageResponse,
     EventMessage,
     EventSender,
+    GetChatRequest,
+    GetMessageRequest,
     P2ImMessageReceiveV1,
     P2ImMessageReceiveV1Data,
     ReplyMessageRequest,
@@ -140,13 +142,15 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     _message_cache: dict[str, platform_events.MessageReceivedEvent] = pydantic.PrivateAttr(default_factory=dict)
     _user_cache: dict[str, platform_entities.User] = pydantic.PrivateAttr(default_factory=dict)
     _group_cache: dict[str, platform_entities.UserGroup] = pydantic.PrivateAttr(default_factory=dict)
+    _bot_open_ids: dict[str, str] = pydantic.PrivateAttr(default_factory=dict)
+    _bot_identity_lock: asyncio.Lock = pydantic.PrivateAttr(default_factory=asyncio.Lock)
     _monitoring_mapping_ttl: int = 600
 
     class Config:
         arbitrary_types_allowed = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
-        required_keys = ['app_id', 'app_secret', 'bot_name']
+        required_keys = ['app_id', 'app_secret']
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
             raise ValueError(f'Lark missing required config: {", ".join(missing_keys)}')
@@ -165,7 +169,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             config=config,
             logger=logger,
             lark_tenant_key=config.get('lark_tenant_key', ''),
-            bot_account_id=config['bot_name'],
+            bot_account_id=config['app_id'],
             bot=bot,
             api_client=api_client,
             quart_app=quart.Quart(__name__),
@@ -195,17 +199,32 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         def sync_on_card_action(event):
             return self._handle_card_action_sync(event)
 
-        return (
+        def sync_on_bot_added(event):
+            self._submit_coro(self._handle_bot_added_event(event))
+
+        def sync_on_standard_event(event):
+            self._submit_coro(self._handle_standard_event(json.loads(lark_oapi.JSON.marshal(event))))
+
+        builder = (
             lark_oapi.EventDispatcherHandler.builder('', '')
             .register_p2_im_message_receive_v1(sync_on_message)
+            .register_p2_im_chat_member_bot_added_v1(sync_on_bot_added)
             .register_p2_card_action_trigger(sync_on_card_action)
-            .build()
         )
+        for registration in LarkEventConverter.STANDARD_EVENT_CALLBACKS.values():
+            getattr(builder, registration)(sync_on_standard_event)
+        return builder.build()
 
     def get_supported_events(self) -> list[str]:
         return [
             'message.received',
             'bot.invited_to_group',
+            'bot.removed_from_group',
+            'group.member_joined',
+            'group.member_left',
+            'group.info_updated',
+            'message.deleted',
+            'message.reaction',
             'platform.specific',
         ]
 
@@ -640,6 +659,9 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             if event_type == 'app_ticket':
                 self.app_ticket = self._webhook_event(data).get('app_ticket')
                 return {'code': 200, 'message': 'ok'}
+            if event_type in LarkEventConverter.STANDARD_EVENT_CALLBACKS:
+                await self._handle_standard_event(data)
+                return {'code': 200, 'message': 'ok'}
             if event_type == 'im.message.receive_v1':
                 p2v1 = P2ImMessageReceiveV1()
                 p2v1.header = self._webhook_header(data)
@@ -652,11 +674,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 await self._handle_message_event(p2v1)
                 return {'code': 200, 'message': 'ok'}
             if event_type == 'im.chat.member.bot.added_v1':
-                raw_event = self._webhook_event(data)
-                header = self._webhook_header(data)
-                chat_id = raw_event.get('chat_id', '')
-                await self._send_bot_added_welcome(chat_id, getattr(header, 'tenant_key', None))
-                await self._dispatch_eba_event(LarkEventConverter.bot_invited_to_group(data, chat_id))
+                await self._handle_bot_added_event(lark_oapi.im.v1.P2ImChatMemberBotAddedV1(data))
                 return {'code': 200, 'message': 'ok'}
             if event_type == 'card.action.trigger':
                 interaction_event = interaction_event_from_webhook(data)
@@ -689,6 +707,11 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
 
     async def run_async(self):
         self.event_loop = asyncio.get_running_loop()
+        if self.config.get('app_type', 'self') != 'isv':
+            try:
+                await self._get_bot_open_id(None)
+            except Exception as exc:
+                await self.logger.warning(f'Lark bot identity lookup failed; will retry on incoming message: {exc}')
         if not self.config.get('enable-webhook', False):
             try:
                 await self.bot._connect()
@@ -733,13 +756,118 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     async def is_muted(self, group_id: int | None = None) -> bool:
         return False
 
+    async def _standard_message_context(self, raw: dict) -> dict:
+        data = raw['event']
+        cached = self._message_cache.get(data['message_id'])
+        if cached:
+            return {'chat_type': cached.chat_type, 'chat_id': cached.chat_id, 'group': cached.group}
+        tenant_key = (raw.get('header') or {}).get('tenant_key')
+        option = await asyncio.to_thread(self.request_option, tenant_key)
+        chat_id = data.get('chat_id')
+        if not chat_id:
+            request = GetMessageRequest.builder().message_id(data['message_id']).build()
+            response = await self.api_client.im.v1.message.aget(request, option)
+            if not response.success() or not response.data or not response.data.items:
+                raise RuntimeError(f'Lark message context lookup failed: {response.code} {response.msg}')
+            chat_id = response.data.items[0].chat_id
+        request = GetChatRequest.builder().chat_id(chat_id).build()
+        response = await self.api_client.im.v1.chat.aget(request, option)
+        if not response.success() or not response.data:
+            raise RuntimeError(f'Lark chat context lookup failed: {response.code} {response.msg}')
+        mode = response.data.chat_mode
+        if mode not in {'group', 'p2p'}:
+            raise RuntimeError(f'Lark chat context has unknown chat mode: {mode}')
+        is_group = mode == 'group'
+        return {
+            'chat_type': platform_entities.ChatType.GROUP if is_group else platform_entities.ChatType.PRIVATE,
+            'chat_id': chat_id,
+            'group': platform_entities.UserGroup(id=chat_id, name=response.data.name or '') if is_group else None,
+        }
+
+    async def _handle_standard_event(self, raw: dict):
+        event_type = (raw.get('header') or {}).get('event_type', 'unknown')
+        await self.logger.info(f'Lark event received: {event_type}')
+        try:
+            await self._process_standard_event(raw)
+        except Exception:
+            await self.logger.error(f'Lark event processing failed ({event_type}): {traceback.format_exc()}')
+            raise
+
+    async def _process_standard_event(self, raw: dict):
+        event_type = raw['header']['event_type']
+        context = None
+        if event_type.startswith('im.message.'):
+            try:
+                context = await self._standard_message_context(raw)
+            except Exception as exc:
+                # Preserve the event without falsely classifying an unknown conversation as a private chat.
+                await self.logger.warning(f'Lark {event_type}: {exc}; forwarding original platform event')
+                await self._dispatch_eba_event(LarkEventConverter.platform_specific(raw, event_type, raw))
+                return
+        events = LarkEventConverter.standard_events(raw, context)
+        if not events:
+            await self.logger.warning(f'Lark {event_type}: no standard events could be extracted')
+        for event in events:
+            if isinstance(event, (platform_events.GroupInfoUpdatedEvent, platform_events.BotRemovedFromGroupEvent)):
+                self._group_cache.pop(str(event.group.id), None)
+            await self._dispatch_eba_event(event)
+        await self.logger.info(f'Lark event dispatched: {event_type}, count={len(events)}')
+        if event_type == 'im.message.recalled_v1':
+            self._message_cache.pop(raw['event']['message_id'], None)
+
+    async def _handle_bot_added_event(self, event: lark_oapi.im.v1.P2ImChatMemberBotAddedV1):
+        chat_id = event.event.chat_id
+        operator = event.event.operator_id
+        operator_id = getattr(operator, 'open_id', None) or getattr(operator, 'user_id', None)
+        await self._dispatch_eba_event(LarkEventConverter.bot_invited_to_group(event, chat_id, operator_id))
+        try:
+            await self._send_bot_added_welcome(chat_id, getattr(event.header, 'tenant_key', None))
+        except Exception:
+            await self.logger.warning(f'Lark bot_added_welcome failed: {traceback.format_exc()}')
+
+    async def _get_bot_open_id(self, tenant_key: str | None) -> str:
+        key = tenant_key or ''
+        async with self._bot_identity_lock:
+            if key in self._bot_open_ids:
+                return self._bot_open_ids[key]
+            request = (
+                lark_oapi.BaseRequest.builder()
+                .http_method(lark_oapi.HttpMethod.GET)
+                .uri('/open-apis/bot/v3/info')
+                .token_types({lark_oapi.AccessTokenType.TENANT})
+                .build()
+            )
+            option = await asyncio.to_thread(self.request_option, tenant_key)
+            response = await self.api_client.arequest(request, option)
+            if not response.success():
+                raise RuntimeError(f'Lark bot identity lookup failed: {response.code} {response.msg}')
+            bot_info = json.loads(response.raw.content).get('bot') or {}
+            open_id = bot_info.get('open_id') or bot_info.get('openid')
+            if not isinstance(open_id, str) or not open_id:
+                raise RuntimeError('Lark bot identity response is missing open_id')
+            # Keep a stable adapter identity across tenant-specific callbacks.
+            if not self._bot_open_ids:
+                self.bot_account_id = open_id
+            self._bot_open_ids[key] = open_id
+            return open_id
+
+    def _normalize_bot_mention(self, event, open_id: str) -> None:
+        if event is not None:
+            for component in event.message_chain:
+                if isinstance(component, platform_message.At) and str(component.target) == open_id:
+                    component.target = self.bot_account_id
+
     async def _handle_message_event(self, event: lark_oapi.im.v1.P2ImMessageReceiveV1):
         try:
+            tenant_key = getattr(getattr(event, 'header', None), 'tenant_key', None)
+            open_id = await self._get_bot_open_id(tenant_key if self.config.get('app_type', 'self') == 'isv' else None)
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
                 legacy_event = await self.event_converter.target2legacy(event, self.api_client)
+                self._normalize_bot_mention(legacy_event, open_id)
                 if legacy_event and type(legacy_event) in self.listeners:
                     await self.listeners[type(legacy_event)](legacy_event, self)
             eba_event = await self.event_converter.target2yiri(event, self.api_client)
+            self._normalize_bot_mention(eba_event, open_id)
             if eba_event:
                 self._cache_event(eba_event)
                 await self._dispatch_eba_event(eba_event)

@@ -1,4 +1,5 @@
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
+import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
@@ -148,19 +149,25 @@ export class BackendClient extends BaseHttpClient {
   public createModelProvider(
     provider: Omit<ModelProvider, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/providers', provider);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/providers', provider),
+    );
   }
 
   public updateModelProvider(
     uuid: string,
     provider: Partial<ModelProvider>,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/providers/${uuid}`, provider);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/providers/${uuid}`, provider),
+    );
   }
 
   public deleteModelProvider(uuid: string, cascade = false): Promise<object> {
-    return this.delete(
-      `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(
+        `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+      ),
     );
   }
 
@@ -229,18 +236,24 @@ export class BackendClient extends BaseHttpClient {
   public createProviderLLMModel(
     model: Omit<LLMModel, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/models/llm', model);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/models/llm', model),
+    );
   }
 
   public deleteProviderLLMModel(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/models/llm/${uuid}`);
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(`/api/v1/provider/models/llm/${uuid}`),
+    );
   }
 
   public updateProviderLLMModel(
     uuid: string,
     model: LLMModel,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/models/llm/${uuid}`, model);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/models/llm/${uuid}`, model),
+    );
   }
 
   public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
@@ -357,6 +370,18 @@ export class BackendClient extends BaseHttpClient {
 
   public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
+  }
+
+  public getStarredModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/starred');
+  }
+
+  public setStarredModel(uuid: string | null): Promise<object> {
+    return this.put('/api/v1/provider/models/llm/_/starred', { uuid });
+  }
+
+  public getDefaultModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/default');
   }
 
   public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {

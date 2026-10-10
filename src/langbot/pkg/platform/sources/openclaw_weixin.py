@@ -385,6 +385,7 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                 await self.logger.error(
                     f'Failed to send component {type(component).__name__}: {traceback.format_exc()}'
                 )
+                raise
 
     async def reply_message(
         self,

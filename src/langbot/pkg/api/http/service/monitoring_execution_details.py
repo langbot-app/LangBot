@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,19 +33,8 @@ def event_content(content, event_data):
     """Keep event-specific properties alongside the normalized message input."""
     if not isinstance(event_data, dict) or not event_data:
         return content
-    if not isinstance(content, dict):
-        return event_data if not content else {**event_data, 'input': content}
-    merged = dict(event_data)
-    conflicts = {}
-    for key, value in content.items():
-        if key not in merged:
-            merged[key] = value
-        elif merged[key] != value and value is not None and value != '' and value != [] and value != {}:
-            conflicts[key] = value
-    if conflicts:
-        # Never silently overwrite a custom field that shares an input name.
-        return {'event': merged, 'input': conflicts}
-    return merged
+    # Keep the original event intact; text is the existing normalized input field.
+    return {'text': event_summary(event_data), 'event': event_data, 'input': content}
 
 
 def event_item(row):
@@ -93,6 +83,157 @@ def transcript_item(row):
 
 
 class ExecutionDetailsMixin:
+    def _session_message_source(self, workspace, bot_ids):
+        """Combine delivered messages with ingress missing from the legacy ledger."""
+        message = models.MonitoringMessage
+        conversation = sa.func.coalesce(
+            EventLog.conversation_id,
+            sa.select(AgentRun.conversation_id)
+            .where(
+                AgentRun.workspace_id == workspace,
+                AgentRun.bot_id == EventLog.bot_id,
+                AgentRun.event_id == EventLog.event_id,
+            )
+            .order_by(AgentRun.id)
+            .limit(1)
+            .scalar_subquery(),
+            sa.case(
+                (
+                    self._execution_json_text(EventLog.input_json, 'chat_type') == 'group',
+                    sa.literal('group_') + self._execution_json_text(EventLog.input_json, 'chat_id'),
+                ),
+                (
+                    self._execution_json_text(EventLog.input_json, 'chat_type') == 'private',
+                    sa.literal('person_') + self._execution_json_text(EventLog.input_json, ('sender', 'id')),
+                ),
+            ),
+        )
+        values = {
+            'id': EventLog.event_id,
+            'workspace_uuid': EventLog.workspace_id,
+            'timestamp': sa.func.coalesce(EventLog.event_time, EventLog.created_at),
+            'bot_id': EventLog.bot_id,
+            'bot_name': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'bot_name'), ''),
+            'pipeline_id': sa.func.coalesce(
+                self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_uuid')), ''
+            ),
+            'pipeline_name': sa.func.coalesce(
+                self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
+            ),
+            'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
+            'session_id': conversation,
+            'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
+            'level': sa.literal('info'),
+            'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),
+            'user_id': EventLog.actor_id,
+            'user_name': EventLog.actor_name,
+            'role': sa.literal('user'),
+            'event_id': EventLog.event_id,
+            'run_id': EventLog.run_id,
+        }
+        columns = list(message.__table__.columns)
+        stored = sa.select(*columns).where(message.workspace_uuid == workspace, message.bot_id.in_(bot_ids))
+        incoming = sa.select(
+            *[values.get(column.name, sa.literal(None)).label(column.name) for column in columns]
+        ).where(
+            EventLog.workspace_id == workspace,
+            EventLog.bot_id.in_(bot_ids),
+            EventLog.source == 'platform',
+            EventLog.event_type == 'message.received',
+            conversation.is_not(None),
+            conversation != '',
+            ~sa.exists(
+                sa.select(message.id).where(
+                    message.workspace_uuid == workspace,
+                    message.bot_id == EventLog.bot_id,
+                    sa.func.coalesce(message.role, 'user') != 'assistant',
+                    sa.or_(message.event_id == EventLog.event_id, message.id == EventLog.event_id),
+                )
+            ),
+        )
+        return sa.union_all(stored, incoming).subquery()
+
+    async def _session_projection_page(self, workspace, statement, limit, offset):
+        count = (
+            await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))
+        ).scalar_one()
+        rows = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
+        return [
+            {key: value.isoformat() if isinstance(value, datetime.datetime) else value for key, value in row.items()}
+            for row in rows
+        ], count
+
+    async def get_bot_conversation_sessions(
+        self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset
+    ):
+        """Read session summaries across processor types without mutating history."""
+        messages = self._session_message_source(workspace, bot_ids)
+        key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
+        ranked = (
+            sa.select(
+                *messages.c,
+                sa.func.row_number()
+                .over(
+                    partition_by=key,
+                    order_by=[
+                        sa.case((messages.c.role == 'user', 0), else_=1),
+                        messages.c.timestamp.desc(),
+                        messages.c.id.desc(),
+                    ],
+                )
+                .label('position'),
+                sa.func.min(messages.c.timestamp).over(partition_by=key).label('first_seen'),
+                sa.func.max(messages.c.timestamp).over(partition_by=key).label('last_seen'),
+                sa.func.count().over(partition_by=key).label('count'),
+            )
+            .where(messages.c.session_id != '')
+            .subquery()
+        )
+        session = models.MonitoringSession
+        fields = list(session.__table__.columns)
+        projected = {
+            'start_time': ranked.c.first_seen,
+            'last_activity': ranked.c.last_seen,
+            'message_count': ranked.c['count'],
+            'is_active': sa.literal(True),
+        }
+        derived = sa.select(
+            *[
+                (projected[field.name] if field.name in projected else ranked.c[field.name]).label(field.name)
+                for field in fields
+            ]
+        ).where(ranked.c.position == 1)
+        existing = sa.select(*fields).where(session.workspace_uuid == workspace, session.bot_id.in_(bot_ids))
+        combined = sa.union_all(existing, derived).subquery()
+        group = [combined.c.workspace_uuid, combined.c.bot_id, combined.c.session_id]
+        merged = sa.select(
+            *[
+                combined.c[field.name]
+                for field in fields
+                if field.name not in {'message_count', 'start_time', 'last_activity'}
+            ],
+            sa.func.max(combined.c.message_count).over(partition_by=group).label('message_count'),
+            sa.func.min(combined.c.start_time).over(partition_by=group).label('start_time'),
+            sa.func.max(combined.c.last_activity).over(partition_by=group).label('last_activity'),
+            sa.func.row_number().over(partition_by=group, order_by=combined.c.last_activity.desc()).label('position'),
+        ).subquery()
+        query = sa.select(*[merged.c[field.name] for field in fields]).where(merged.c.position == 1)
+        if start_time:
+            query = query.where(merged.c.last_activity >= start_time)
+        if end_time:
+            query = query.where(merged.c.last_activity <= end_time)
+        if user_query and user_query.strip():
+            pattern = f'%{user_query.strip()}%'
+            query = query.where(sa.or_(merged.c.user_id.ilike(pattern), merged.c.user_name.ilike(pattern)))
+        if is_active is not None:
+            query = query.where(merged.c.is_active == is_active)
+        return await self._session_projection_page(
+            workspace,
+            query.order_by(merged.c.last_activity.desc(), merged.c.session_id),
+            limit,
+            offset,
+        )
+
     def _execution_json_text(self, column, key):
         # SQLite JSON functions accept TEXT directly; PostgreSQL operators
         # require an explicit JSON cast for the existing text-backed journals.
@@ -131,6 +272,7 @@ class ExecutionDetailsMixin:
         payload,
         actor_id=None,
         actor_name=None,
+        conversation_id=None,
         status='running',
         routes=None,
     ):
@@ -152,6 +294,7 @@ class ExecutionDetailsMixin:
             bot_id=bot_id,
             actor_id=actor_id,
             actor_name=actor_name,
+            conversation_id=conversation_id,
             actor_type='user' if actor_id else 'system',
             input_summary=summary,
             input_json=content,
@@ -211,10 +354,23 @@ class ExecutionDetailsMixin:
         # Absorbed steering events belong to an existing run, too.
         conditions = [
             EventLog.workspace_id == workspace,
+            # The primary route is first; plugin subscriptions follow it.
+            # Delivered pipeline ingress is not an unhandled execution, including
+            # older queued/aggregated messages whose trace identity was lost.
+            ~sa.and_(
+                sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), '')
+                == 'pipeline',
+                sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'status')), '')
+                == 'delivered',
+            ),
             ~sa.exists(
                 sa.select(AgentRun.id).where(
                     AgentRun.workspace_id == workspace,
-                    sa.or_(AgentRun.event_id == EventLog.event_id, AgentRun.run_id == EventLog.run_id),
+                    sa.or_(
+                        AgentRun.event_id == EventLog.event_id,
+                        AgentRun.run_id == EventLog.run_id,
+                        self._execution_json_text(AgentRun.metadata_json, 'ingress_event_id') == EventLog.event_id,
+                    ),
                 )
             ),
             ~sa.exists(
@@ -269,6 +425,53 @@ class ExecutionDetailsMixin:
         }
 
     async def enrich_execution_rows(self, workspace, items):
+        pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
+        if pipeline_items:
+            # Pipeline rows own the UI identity; their linked Runner ledger owns
+            # timing and usage. Read them in one batch for both list and detail.
+            linked = await self._execution_query(
+                workspace,
+                sa.select(models.MonitoringMessage.id, AgentRun)
+                .join(
+                    AgentRun,
+                    sa.and_(
+                        AgentRun.workspace_id == workspace,
+                        AgentRun.run_id == models.MonitoringMessage.run_id,
+                    ),
+                )
+                .where(
+                    models.MonitoringMessage.workspace_uuid == workspace,
+                    models.MonitoringMessage.id.in_(pipeline_items),
+                ),
+            )
+            for message_id, run in linked.all():
+                metrics = self._serialize_agent_execution(run)
+                pipeline_items[message_id].update(
+                    {key: metrics[key] for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')}
+                )
+
+            calls = models.MonitoringLLMCall
+            usage_rows = await self._execution_query(
+                workspace,
+                sa.select(
+                    calls.message_id,
+                    sa.func.sum(calls.input_tokens),
+                    sa.func.sum(calls.output_tokens),
+                    sa.func.sum(calls.total_tokens),
+                )
+                .where(
+                    calls.workspace_uuid == workspace,
+                    calls.message_id.in_(pipeline_items),
+                )
+                .group_by(calls.message_id),
+            )
+            for message_id, input_tokens, output_tokens, total_tokens in usage_rows.all():
+                if not pipeline_items[message_id].get('usage'):
+                    pipeline_items[message_id]['usage'] = {
+                        'input_tokens': int(input_tokens or 0),
+                        'output_tokens': int(output_tokens or 0),
+                        'total_tokens': int(total_tokens or 0),
+                    }
         ids = {item['event_id'] for item in items if item.get('event_id')}
         if not ids:
             return

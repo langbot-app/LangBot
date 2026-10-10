@@ -170,7 +170,9 @@ class TestEventRouteTrace:
             agent_service=SimpleNamespace(get_agent=AsyncMock(side_effect=[malformed_agent, valid_agent])),
             agent_run_orchestrator=SimpleNamespace(run=fake_run),
         )
-        event = SimpleNamespace(type='platform.member.joined')
+        from langbot_plugin.api.entities.builtin.platform.events import EBAEvent
+
+        event = EBAEvent(type='platform.member.joined')
 
         failed = await bot._dispatch_eba_event_to_processor(event, Mock())
         delivered = await bot._dispatch_eba_event_to_processor(event, Mock())

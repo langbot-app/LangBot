@@ -655,6 +655,16 @@ function NavItems({
           if (item.extensionType === 'skill') {
             return `/home/skills?id=${encodeURIComponent(item.id)}`;
           }
+          const processorTab = searchParams.get('tab');
+          if (
+            hasDetailPages &&
+            (routePrefix === '/home/agents' ||
+              routePrefix === '/home/pipelines') &&
+            (pathname === '/home/agents' || pathname === '/home/pipelines') &&
+            (processorTab === 'logs' || processorTab === 'config')
+          ) {
+            return `${routePrefix}?id=${encodeURIComponent(item.id)}&tab=${processorTab}`;
+          }
           return hasDetailPages
             ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
             : routePrefix;

@@ -68,6 +68,9 @@ def message_item(message_id='msg-remote'):
 
 class DummyAPIClient:
     def __init__(self):
+        identity_response = DummyResponse()
+        identity_response.raw.content = json.dumps({'bot': {'open_id': 'bot-open-id'}})
+        self.arequest = AsyncMock(return_value=identity_response)
         self.im = SimpleNamespace(
             v1=SimpleNamespace(
                 message=SimpleNamespace(

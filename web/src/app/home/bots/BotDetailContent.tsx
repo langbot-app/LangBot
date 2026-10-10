@@ -227,19 +227,21 @@ export default function BotDetailContent({ id }: { id: string }) {
           </div>
           {canManage && (
             <div className="flex shrink-0 items-center gap-2">
-              <AdapterEventDebugDialog
-                key={id}
-                botId={id}
-                adapterLabel={adapterLabel}
-              />
+              {activeTab === 'config' && (
+                <AdapterEventDebugDialog
+                  key={id}
+                  botId={id}
+                  adapterLabel={adapterLabel}
+                />
+              )}
               <Button
                 type="submit"
                 form="bot-form"
-                disabled={!formDirty}
+                disabled={!enableLoaded || (!formDirty && botEnabled)}
                 className={activeTab !== 'config' ? 'invisible' : ''}
                 data-guide="bot-config-save"
               >
-                {t('common.save')}
+                {t(botEnabled ? 'common.save' : 'bots.saveAndEnable')}
               </Button>
               <Button
                 type="button"

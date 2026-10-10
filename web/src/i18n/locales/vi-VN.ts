@@ -9,7 +9,7 @@ const viVN = {
     stopped:
       'Đã dừng. Công cụ có thể đã thực hiện thay đổi. Kiểm tra tài nguyên trước khi thử lại.',
     setupRequired:
-      'Đăng nhập LangBot Account để dùng LangBot Models hoặc cấu hình nhà cung cấp mô hình riêng để bắt đầu trò chuyện.',
+      'Đăng nhập bằng tài khoản LangBot hoặc cấu hình mô hình để bắt đầu sử dụng trợ lý không gian làm việc.',
     loginAccount: 'Đăng nhập LangBot Account',
     configureModels: 'Cấu hình mô hình',
     providerCheckFailed: 'Không thể kiểm tra nhà cung cấp. Vui lòng thử lại.',
@@ -77,6 +77,14 @@ const viVN = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: '{{days}} ngày qua',
+        customRange: 'Khoảng thời gian tùy chỉnh',
+        rangeStart: 'Bắt đầu',
+        rangeEnd: 'Kết thúc',
+        rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+        autoRefreshLabel: 'Tự động làm mới',
+        autoRefreshOff: 'Tự động làm mới: tắt',
+        autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
         title: 'Xem hoạt động',
         description:
           'Xem hoạt động bot, mức sử dụng mô hình, lượng tin nhắn và hiệu suất hệ thống.',
@@ -157,6 +165,14 @@ const viVN = {
           'Gửi tin nhắn thử để kiểm tra điều kiện kích hoạt, câu trả lời AI và xử lý đầu ra. Thay đổi cấu hình được lưu trước khi thử.',
       },
       monitoring: {
+        rangeDays: '{{days}} ngày qua',
+        customRange: 'Khoảng thời gian tùy chỉnh',
+        rangeStart: 'Bắt đầu',
+        rangeEnd: 'Kết thúc',
+        rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+        autoRefreshLabel: 'Tự động làm mới',
+        autoRefreshOff: 'Tự động làm mới: tắt',
+        autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
         title: 'Xem lịch sử chạy',
         description:
           'Dùng thẻ cạnh tiêu đề để xem cuộc trò chuyện, các bước xử lý và lỗi khi không có phản hồi hoặc phản hồi không đúng dự kiến.',
@@ -323,6 +339,9 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    loadFailedTitle: 'Không thể tải nội dung',
+    loadFailedHint:
+      'Vui lòng thử lại sau. Nếu vẫn không tải được, hãy kiểm tra kết nối và trạng thái dịch vụ.',
     customValue: 'Tùy chỉnh',
     loadFailed: 'Không tải được. Vui lòng thử lại.',
     search: 'Tìm kiếm',
@@ -519,6 +538,9 @@ const viVN = {
     help: 'Trợ giúp',
   },
   models: {
+    starModel: 'Đánh dấu làm mô hình mặc định cho bộ xử lý mới',
+    unstarModel: 'Bỏ đánh dấu',
+    starModelFailed: 'Không thể cập nhật mô hình được đánh dấu',
     codex: {
       account: 'Gói đăng ký ChatGPT',
       description:
@@ -782,10 +804,13 @@ const viVN = {
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    saveAndEnable: 'Lưu và bật',
+    searchAdapters: 'Tìm kiếm adapter',
+    noMatchingAdapters: 'Không tìm thấy adapter phù hợp',
     legacyAdapters: 'Adapter cũ',
     legacyAdapterBadge: 'Cũ',
     legacyAdaptersHint:
-      'Các adapter này đã có phiên bản hướng sự kiện mới hơn.\nChúng chỉ được giữ lại để tương thích với cấu hình hiện có và không được khuyến nghị cho Bot mới.',
+      'Adapter cũ chủ yếu gửi và nhận tin nhắn, được giữ để tương thích với cấu hình bot hiện có.\nAdapter mới kết nối cùng nền tảng qua sự kiện, gồm tin nhắn và các yêu cầu kết bạn hoặc thay đổi nhóm được hỗ trợ, rồi chuyển đến bộ xử lý.\nƯu tiên bản mới khi tạo bot. Bot hiện có vẫn dùng được bản cũ. Khi chuyển đổi, kiểm tra kết nối và tuyến sự kiện; tài khoản nền tảng không được nâng cấp.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
     bindPipeline: 'Liên kết Pipeline',
@@ -806,6 +831,28 @@ const viVN = {
     routingConnection: 'Định tuyến & Kết nối',
     routingConnectionDescription:
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    routingHelp: {
+      title: 'Định tuyến sự kiện là gì?',
+      intro:
+        'Bot nhận tin nhắn, lời mời kết bạn và các sự kiện như tham gia nhóm.',
+      events: 'Sự kiện đến',
+      agents: 'Các Agent khác nhau',
+      message: 'Nhận tin nhắn',
+      friend: 'Lời mời kết bạn',
+      group: 'Tham gia nhóm',
+      messageAction: 'Agent trả lời',
+      friendAction: 'Agent xét duyệt',
+      groupAction: 'Agent chào mừng',
+      rules: 'Theo quy tắc của bạn · Ví dụ',
+      instructions:
+        'Agent làm theo chỉ dẫn của bạn và gọi công cụ để trả lời, xét duyệt yêu cầu và thực hiện thao tác khác.',
+      plugin:
+        'Với nhu cầu nâng cao, bộ xử lý plugin đăng ký hàng loạt sự kiện và xử lý bằng mã. Thêm cấu hình bộ xử lý plugin bên dưới.',
+      docs: 'Phát triển bộ xử lý plugin của riêng bạn',
+      runnerDocs: 'Phát triển trình chạy Agent của riêng bạn',
+      pause: 'Tạm dừng',
+      play: 'Phát',
+    },
     eventRouting: 'Định tuyến sự kiện',
     eventRoutingDescription:
       'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
@@ -845,7 +892,7 @@ const viVN = {
     enabled: 'Đã bật',
     eventBindingDescriptionPlaceholder: 'Mô tả quy tắc',
     noEventBindings: 'Chưa có tuyến sự kiện',
-    unsupportedPipelineEvent: 'Pipeline chỉ hỗ trợ sự kiện message.*',
+    unsupportedPipelineEvent: 'Pipeline chỉ hỗ trợ sự kiện message.received',
     disable: 'Tắt',
     enable: 'Bật',
     disabledBindings: 'Đã tắt',
@@ -869,6 +916,9 @@ const viVN = {
     routeFallbackCatchAll: '{{route}} là tuyến nhận mọi sự kiện.',
     routeFallbackIgnored:
       'Sự kiện không khớp tuyến nào sẽ bị bỏ qua. Chỉ thêm tuyến nhận tất cả khi mọi sự kiện cần kết quả rõ ràng.',
+    matchRecords: 'Lịch sử khớp',
+    matchRecordsDescription:
+      'Kết quả gần nhất của mỗi quy tắc và các sự kiện không khớp gần đây. Nhật ký trong bộ nhớ được xóa khi khởi động lại.',
     testRoute: 'Kiểm tra tuyến',
     adapterEventDebugAction: 'Kiểm tra lắng nghe',
     adapterEventDebugTitle: 'Gỡ lỗi sự kiện nền tảng',
@@ -1123,7 +1173,26 @@ const viVN = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Chọn tất cả',
     monitoring: {
+      rangeDays: '{{days}} ngày qua',
+      customRange: 'Khoảng thời gian tùy chỉnh',
+      rangeStart: 'Bắt đầu',
+      rangeEnd: 'Kết thúc',
+      rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+      autoRefreshLabel: 'Tự động làm mới',
+      autoRefreshOff: 'Tự động làm mới: tắt',
+      autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
+      runStatus: 'Trạng thái thực thi',
+      toolCalls: 'Lượt gọi công cụ',
+      delivery: 'Gửi tin nhắn',
+      sendFailed: 'Gửi thất bại',
+      sendCount: '{{count}} lượt gọi gửi thành công',
+      noSend: 'Chưa ghi nhận lượt gửi',
+      noSteps: 'Chưa ghi nhận bước thực thi.',
+      recipient: 'Người nhận',
+      actionCompleted: 'Công cụ đã thực thi thành công.',
+      simulatedAction: 'Thao tác mô phỏng; không gửi tin nhắn thật.',
       description:
         'Xem sự kiện kích hoạt, đầu ra mô hình và quá trình gọi công cụ của mỗi tác vụ.',
       empty: 'Chưa có lượt chạy. Kích hoạt sự kiện hoặc chạy thử gỡ lỗi.',
@@ -1226,6 +1295,9 @@ const viVN = {
       'Chạy theo quy trình cố định: nhận tin nhắn, gọi AI và trả lời người dùng, với cơ sở tri thức và plugin có thể cấu hình. Chỉ xử lý sự kiện tin nhắn, phù hợp với tác vụ có các bước rõ ràng và cần kiểm soát quá trình xử lý.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
+    selectAgentRunner: 'Chọn trình chạy Agent',
+    selectProcessorPlugin: 'Chọn plugin xử lý',
+    createBasicInfoDescription: 'Đặt tên, biểu tượng và chọn plugin',
     chooseType: 'Chọn cách hoạt động',
     chooseTypeDescription:
       'Chọn loại bộ xử lý trước. Bạn có thể cấu hình thêm sau khi tạo.',
@@ -2040,6 +2112,14 @@ const viVN = {
       uploading: 'Đang tải lên...',
     },
     monitoring: {
+      rangeDays: '{{days}} ngày qua',
+      customRange: 'Khoảng thời gian tùy chỉnh',
+      rangeStart: 'Bắt đầu',
+      rangeEnd: 'Kết thúc',
+      rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+      autoRefreshLabel: 'Tự động làm mới',
+      autoRefreshOff: 'Tự động làm mới: tắt',
+      autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
       title: 'Nhật ký chạy',
       workbench: 'Cấu hình và gỡ lỗi',
       description: 'Xem nhật ký thực thi và lỗi của Pipeline này (24 giờ qua)',
@@ -2463,6 +2543,14 @@ const viVN = {
     },
   },
   monitoring: {
+    rangeDays: '{{days}} ngày qua',
+    customRange: 'Khoảng thời gian tùy chỉnh',
+    rangeStart: 'Bắt đầu',
+    rangeEnd: 'Kết thúc',
+    rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+    autoRefreshLabel: 'Tự động làm mới',
+    autoRefreshOff: 'Tự động làm mới: tắt',
+    autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
     unified: {
       inputs: 'Sự kiện và đầu vào',
       outputs: 'Kết quả tạo ra',
@@ -2615,6 +2703,15 @@ const viVN = {
       feedback: 'Phản hồi người dùng',
       sessions: 'Phân tích phiên',
       errors: 'Nhật ký lỗi',
+    },
+    pipelineTrace: {
+      received: 'Tin nhắn nhận được',
+      processing: 'Quá trình xử lý',
+      replies: 'Phản hồi',
+      noSteps: 'Không có bản ghi gọi mô hình hoặc công cụ',
+      success: 'Thành công',
+      error: 'Thất bại',
+      pending: 'Đang chờ',
     },
     messageList: {
       timestamp: 'Thời gian',

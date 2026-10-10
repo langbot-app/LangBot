@@ -1,3 +1,4 @@
+import LoadErrorState from '@/components/LoadErrorState';
 import React, {
   useState,
   useEffect,
@@ -409,6 +410,29 @@ const BotSessionMonitor = forwardRef<
       if (Array.isArray(parsed)) {
         return parsed as MessageChainComponent[];
       }
+      if (parsed && typeof parsed === 'object') {
+        const chain = parsed.message_chain ?? parsed.event?.message_chain;
+        if (Array.isArray(chain)) return chain as MessageChainComponent[];
+        if (Array.isArray(chain?.root))
+          return chain.root as MessageChainComponent[];
+        if (Array.isArray(parsed.contents)) {
+          const components: MessageChainComponent[] = [];
+          for (const part of parsed.contents) {
+            if (part.type === 'text' && typeof part.text === 'string') {
+              components.push({ type: 'Plain', text: part.text } as Plain);
+            } else if (part.type === 'image' && part.image_url) {
+              components.push({
+                type: 'Image',
+                url: part.image_url,
+              } as MessageChainComponent);
+            }
+          }
+          if (components.length) return components;
+        }
+        if (typeof parsed.text === 'string') {
+          return [{ type: 'Plain', text: parsed.text } as Plain];
+        }
+      }
     } catch {
       // Not JSON, return as plain text
     }
@@ -738,19 +762,11 @@ const BotSessionMonitor = forwardRef<
                 {t('bots.sessionMonitor.loading')}
               </div>
             ) : sessionError ? (
-              <div
-                role="alert"
-                className="p-3 space-y-2 text-sm text-destructive"
-              >
-                <p>{t('monitoring.loadError')}</p>
-                <button
-                  type="button"
-                  onClick={loadSessions}
-                  className="rounded border px-2 py-1 text-foreground"
-                >
-                  {t('common.retry')}
-                </button>
-              </div>
+              <LoadErrorState
+                compact
+                title={t('monitoring.loadError')}
+                onRetry={loadSessions}
+              />
             ) : sessions.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-sm">
                 {t('bots.sessionMonitor.noSessions')}
@@ -922,45 +938,25 @@ const BotSessionMonitor = forwardRef<
               >
                 <div className="space-y-4">
                   {analysisError && !loadingMessages && (
-                    <div
-                      role="alert"
-                      className="text-sm text-destructive space-y-2"
-                    >
-                      <p>
-                        {t('monitoring.toolCalls.title')}:{' '}
-                        {t('monitoring.loadError')}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          loadMessages(selectedSessionId, messagePage)
-                        }
-                        className="rounded border px-2 py-1 text-foreground"
-                      >
-                        {t('common.retry')}
-                      </button>
-                    </div>
+                    <LoadErrorState
+                      compact
+                      title={`${t('monitoring.toolCalls.title')}: ${t('monitoring.loadError')}`}
+                      onRetry={() =>
+                        loadMessages(selectedSessionId, messagePage)
+                      }
+                    />
                   )}
                   {loadingMessages ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.loading')}
                     </div>
                   ) : messageError ? (
-                    <div
-                      role="alert"
-                      className="text-sm text-destructive space-y-2"
-                    >
-                      <p>{t('monitoring.loadError')}</p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          loadMessages(selectedSessionId, messagePage)
-                        }
-                        className="rounded border px-2 py-1 text-foreground"
-                      >
-                        {t('common.retry')}
-                      </button>
-                    </div>
+                    <LoadErrorState
+                      title={t('monitoring.loadError')}
+                      onRetry={() =>
+                        loadMessages(selectedSessionId, messagePage)
+                      }
+                    />
                   ) : timelineItems.length === 0 ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.noMessages')}
@@ -1181,33 +1177,35 @@ const BotSessionMonitor = forwardRef<
                   )}
                 </div>
               </ScrollArea>
-              <div className="h-9 border-t px-3 flex items-center justify-center gap-3 shrink-0 text-xs">
-                <button
-                  type="button"
-                  disabled={messagePage === 0 || loadingMessages}
-                  onClick={() =>
-                    setMessagePage((page) => Math.max(0, page - 1))
-                  }
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
-                >
-                  <ChevronLeft className="size-3.5" />
-                  {t('common.previous')}
-                </button>
-                <span className="tabular-nums text-muted-foreground">
-                  {messagePage + 1} / {messagePageCount} · {messageTotal}
-                </span>
-                <button
-                  type="button"
-                  disabled={
-                    messagePage + 1 >= messagePageCount || loadingMessages
-                  }
-                  onClick={() => setMessagePage((page) => page + 1)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
-                >
-                  {t('common.next')}
-                  <ChevronRight className="size-3.5" />
-                </button>
-              </div>
+              {messagePageCount > 1 && (
+                <div className="h-9 border-t px-3 flex items-center justify-center gap-3 shrink-0 text-xs">
+                  <button
+                    type="button"
+                    disabled={messagePage === 0 || loadingMessages}
+                    onClick={() =>
+                      setMessagePage((page) => Math.max(0, page - 1))
+                    }
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    {t('operationTrace.previousPage')}
+                  </button>
+                  <span className="tabular-nums text-muted-foreground">
+                    {messagePage + 1} / {messagePageCount} · {messageTotal}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      messagePage + 1 >= messagePageCount || loadingMessages
+                    }
+                    onClick={() => setMessagePage((page) => page + 1)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                  >
+                    {t('operationTrace.nextPage')}
+                    <ChevronRight className="size-3.5" />
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

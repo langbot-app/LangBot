@@ -158,7 +158,7 @@ class RuntimeBot:
 
     @classmethod
     def _is_message_event_type(cls, event_type: str) -> bool:
-        return cls._match_event_pattern(event_type, 'message.*')
+        return event_type == 'message.received'
 
     @classmethod
     def _agent_supports_event_type(
@@ -310,6 +310,12 @@ class RuntimeBot:
                 step['reason'] = 'Event type does not match binding event_pattern'
                 diagnostic_steps.append(step)
                 continue
+            if binding.get('target_type') == 'pipeline' and not cls._is_message_event_type(event_type):
+                step['failure_code'] = 'processor_incompatible'
+                step['reason'] = 'Pipeline targets only support message.received'
+                diagnostic_steps.append(step)
+                continue
+
             if not cls._match_event_filters(event, binding.get('filters')):
                 step['failure_code'] = 'filters_mismatch'
                 step['reason'] = 'Event data does not satisfy binding filters'
@@ -423,6 +429,8 @@ class RuntimeBot:
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
         """Return the first Pipeline target configured for an event type."""
+        if not self._is_message_event_type(event_type):
+            return None
         matched: list[tuple[int, int, str]] = []
         for index, binding in enumerate(self._get_event_bindings()):
             if not binding.get('enabled', True):
@@ -450,10 +458,13 @@ class RuntimeBot:
             return {}
         if hasattr(model, 'model_dump'):
             try:
-                return model.model_dump(mode='json')
+                # Native adapter objects are for replying, not event logging.
+                # Exclude them before JSON serialization, since some (OAEvent,
+                # for example) cannot be serialized by Pydantic.
+                return model.model_dump(mode='json', exclude={'source_platform_object'})
             except TypeError:
                 try:
-                    return model.model_dump()
+                    return model.model_dump(exclude={'source_platform_object'})
                 except Exception:
                     return {}
             except Exception:
@@ -704,33 +715,20 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = None
+        text = platform_events.event_summary(event)
         contents: list[dict[str, typing.Any]] = []
 
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            text_parts: list[str] = []
             try:
                 for component in message_chain:
-                    if isinstance(component, platform_message.Plain):
-                        text_parts.append(component.text)
-                    elif isinstance(component, platform_message.Image):
+                    if isinstance(component, platform_message.Image):
                         if component.url:
                             contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
                         elif component.base64:
                             contents.append({'type': 'image_base64', 'image_base64': component.base64})
             except TypeError:
-                text_parts.append(str(message_chain))
-            text = ''.join(text_parts) or str(message_chain)
-
-        if text is None:
-            feedback_content = getattr(event, 'feedback_content', None)
-            if feedback_content:
-                text = str(feedback_content)
-            elif getattr(event, 'action', None):
-                text = str(getattr(event, 'action'))
-            else:
-                text = str(getattr(event, 'type', 'event'))
+                pass
 
         if text:
             contents.insert(0, {'type': 'text', 'text': text})
@@ -948,6 +946,7 @@ class RuntimeBot:
             return
         try:
             sender = getattr(event, 'sender', None)
+            target_type, target_id, _ = self._infer_reply_target(event)
             await service.record_ingress_event(
                 self.execution_context,
                 event_id=execution_id,
@@ -962,6 +961,7 @@ class RuntimeBot:
                 },
                 actor_id=self._get_entity_id(sender),
                 actor_name=self._get_entity_name(sender),
+                conversation_id=f'{target_type}_{target_id}' if target_type and target_id else None,
                 status=status,
                 routes=routes,
             )
@@ -2244,6 +2244,10 @@ class PlatformManager:
         )
         binding = _binding
         for bot in result.all():
+            # Disabled drafts may not have the credentials needed to construct
+            # an adapter. They become runtime bots when explicitly enabled.
+            if not bot.enable:
+                continue
             try:
                 if binding is None:
                     binding = await self.ap.workspace_service.get_execution_binding(workspace_uuid)

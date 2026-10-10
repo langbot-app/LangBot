@@ -193,3 +193,14 @@ Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
 `execution_statuses` (normalized execution statuses). These select the owning
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
+
+### Workspace default LLM model
+
+`get_starred_model` reads the Workspace-wide favorite. `set_starred_model`
+requires `provider_secret.manage` and replaces the single starred model; pass
+`null` to clear it. The model must belong to the current Workspace.
+`get_default_model` resolves the favorite first, then the Space wizard chat
+recommendation only when LangBot Models is enabled and the Workspace owner is
+bound to a LangBot Account. It returns a nullable `uuid`.
+New processor LLM selector defaults use this preference; existing configurations
+are not rewritten. Embedding and rerank models are not eligible.

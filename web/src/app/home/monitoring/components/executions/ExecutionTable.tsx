@@ -1,4 +1,5 @@
 import React from 'react';
+import { Bot, Workflow, Puzzle, CircleDashed } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -61,6 +62,32 @@ export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
     return t(`monitoring.execution.kind.${row.target_kind}`);
   }
   return row.target_kind;
+}
+
+export function ExecutionKindBadge({ row }: { row: ExecutionRow }) {
+  const { t } = useTranslation();
+  const Icon =
+    row.target_kind === 'pipeline'
+      ? Workflow
+      : row.target_kind === 'agent'
+        ? Bot
+        : ['processor', 'event_processor'].includes(row.target_kind)
+          ? Puzzle
+          : CircleDashed;
+  const color =
+    row.target_kind === 'pipeline'
+      ? 'border-blue-200/70 bg-blue-50/70 text-blue-700 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-300'
+      : row.target_kind === 'agent'
+        ? 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300'
+        : ['processor', 'event_processor'].includes(row.target_kind)
+          ? 'border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300'
+          : 'border-border bg-muted/40 text-muted-foreground';
+  return (
+    <Badge variant="outline" className={`gap-1 whitespace-nowrap ${color}`}>
+      <Icon className="size-3 shrink-0" aria-hidden="true" />
+      {executionKindLabel(row, t)}
+    </Badge>
+  );
 }
 
 export function executionTargetLabel(row: ExecutionRow, t: TFunction): string {
@@ -133,9 +160,7 @@ export default function ExecutionTable({
                 <TableCell>
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {executionKindLabel(row, t)}
-                      </Badge>
+                      <ExecutionKindBadge row={row} />
                       <span className="truncate font-medium">
                         {row.source === 'event'
                           ? t('monitoring.unified.unhandled')
@@ -161,11 +186,11 @@ export default function ExecutionTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant={executionStatusVariant(row.status_group)}>
+                    <Badge status={row.status_group}>
                       {executionStatusLabel(row, t)}
                     </Badge>
                     {row.debug && (
-                      <Badge variant="secondary">
+                      <Badge status="debug">
                         {t('monitoring.execution.debug')}
                       </Badge>
                     )}
