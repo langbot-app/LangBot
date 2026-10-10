@@ -166,11 +166,11 @@ class OAClient:
                     timestamp,
                     nonce,
                 )
-                xml_msg = xml_msg.decode('utf-8')
-
                 if ret != 0:
-                    await self.logger.error('消息解密失败')
-                    raise Exception('消息解密失败')
+                    await self.logger.error(f'OfficialAccount message decryption failed: ret={ret}')
+                    return 'message decryption failed', 403
+
+                xml_msg = xml_msg.decode('utf-8')
 
                 message_data = await self.get_message(xml_msg)
                 if message_data:
@@ -215,6 +215,7 @@ class OAClient:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return 'callback processing failed', 500
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
@@ -404,11 +405,11 @@ class OAClientForLongerResponse:
                     timestamp,
                     nonce,
                 )
-                xml_msg = xml_msg.decode('utf-8')
-
                 if ret != 0:
-                    await self.logger.error('消息解密失败')
-                    raise Exception('消息解密失败')
+                    await self.logger.error(f'OfficialAccount message decryption failed: ret={ret}')
+                    return 'message decryption failed', 403
+
+                xml_msg = xml_msg.decode('utf-8')
 
                 # 解析 XML
                 root = await asyncio.to_thread(ET.fromstring, xml_msg)
@@ -464,6 +465,7 @@ class OAClientForLongerResponse:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return 'callback processing failed', 500
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
