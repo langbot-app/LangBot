@@ -319,6 +319,7 @@ const zhHans = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: '这条历史记录未保存失败原因，请查看机器人日志，或重新发送消息获取详细错误。',
     loadFailedTitle: '暂时无法加载',
     loadFailedHint: '请稍后重试。如果仍无法加载，请检查网络连接与服务状态。',
     customValue: '自定义',
@@ -843,6 +844,7 @@ const zhHans = {
     advancedEventValues: '查看全部',
     eventGroup: '事件组',
     eventGroupNames: {
+      wecomcs: "企业微信客服",
       bot: '机器人状态',
       feedback: '反馈',
       friend: '好友',
@@ -940,6 +942,11 @@ const zhHans = {
     eventWildcard: '全部事件',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "客户进入会话",
+      wecomcs_msg_send_fail: "客服消息发送失败",
+      wecomcs_servicer_status_change: "接待人员状态变更",
+      wecomcs_session_status_change: "客服会话状态变更",
+      wecomcs_reject_customer_msg_switch_change: "拒收客户消息设置变更",
       message_received: '收到消息',
       message_edited: '消息被编辑',
       message_deleted: '消息被删除',
@@ -957,6 +964,11 @@ const zhHans = {
       platform_specific: '平台特定事件',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "客户通过客服链接进入会话，可获取来源和欢迎语凭据。",
+      wecomcs_msg_send_fail: "微信通知客服消息发送失败，包含消息 ID 和失败类型。",
+      wecomcs_servicer_status_change: "接待人员开始、停止接待或暂时挂起。",
+      wecomcs_session_status_change: "人工客服接入、转接、结束或重新接入会话。",
+      wecomcs_reject_customer_msg_switch_change: "接待人员开启或取消拒收客户消息。",
       all: '匹配此适配器收到的全部事件。',
       namespace: '匹配所有{{group}}事件。',
       namespace_bot: '匹配机器人入群、退群、禁言和解除禁言等状态事件。',

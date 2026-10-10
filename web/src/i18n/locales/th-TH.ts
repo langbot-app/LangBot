@@ -335,6 +335,7 @@ const thTH = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'ไม่ได้บันทึกสาเหตุของข้อผิดพลาด โปรดตรวจสอบบันทึกของบอตหรือส่งข้อความอีกครั้งเพื่อดูรายละเอียด',
     loadFailedTitle: 'ไม่สามารถโหลดเนื้อหาได้',
     loadFailedHint: 'โปรดลองอีกครั้ง หากยังโหลดไม่ได้ ให้ตรวจสอบการเชื่อมต่อและสถานะบริการ',
     customValue: 'กำหนดเอง',
@@ -883,6 +884,7 @@ const thTH = {
     advancedEventValues: 'ดูทั้งหมด',
     eventGroup: 'กลุ่ม',
     eventGroupNames: {
+      wecomcs: "บริการลูกค้า WeCom",
       bot: 'สถานะบอท',
       feedback: 'ข้อเสนอแนะ',
       friend: 'เพื่อน',
@@ -980,6 +982,11 @@ const thTH = {
     eventWildcard: 'ทุกเหตุการณ์',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "ลูกค้าเข้าสู่การสนทนา",
+      wecomcs_msg_send_fail: "ส่งข้อความบริการลูกค้าไม่สำเร็จ",
+      wecomcs_servicer_status_change: "สถานะเจ้าหน้าที่เปลี่ยนแปลง",
+      wecomcs_session_status_change: "สถานะการสนทนาบริการลูกค้าเปลี่ยนแปลง",
+      wecomcs_reject_customer_msg_switch_change: "การปฏิเสธข้อความลูกค้าเปลี่ยนแปลง",
       message_received: 'ได้รับข้อความ',
       message_edited: 'แก้ไขข้อความ',
       message_deleted: 'ลบข้อความ',
@@ -997,6 +1004,11 @@ const thTH = {
       platform_specific: 'เหตุการณ์เฉพาะแพลตฟอร์ม',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "ลูกค้าเปิดลิงก์บริการ พร้อมข้อมูลแหล่งที่มาและรหัสต้อนรับ",
+      wecomcs_msg_send_fail: "WeChat แจ้งการส่งล้มเหลว พร้อม ID ข้อความและประเภทข้อผิดพลาด",
+      wecomcs_servicer_status_change: "เจ้าหน้าที่เริ่ม หยุด หรือพักการให้บริการ",
+      wecomcs_session_status_change: "เจ้าหน้าที่รับ โอน ปิด หรือเปิดการสนทนาอีกครั้ง",
+      wecomcs_reject_customer_msg_switch_change: "เจ้าหน้าที่เปิดหรือปิดการปฏิเสธข้อความลูกค้า",
       all: 'ตรงกับทุกเหตุการณ์ที่อะแดปเตอร์นี้ได้รับ',
       namespace: 'ตรงกับทุกเหตุการณ์ของ {{group}}',
       namespace_bot:

@@ -339,6 +339,7 @@ const jaJP = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'この記録には失敗の理由が保存されていません。ボットのログを確認するか、再送信して詳細を確認してください。',
     loadFailedTitle: '読み込めませんでした',
     loadFailedHint: 'しばらくしてから再試行してください。解決しない場合は、接続とサービスの状態を確認してください。',
     customValue: 'カスタム',
@@ -901,6 +902,7 @@ const jaJP = {
     advancedEventValues: 'すべて表示',
     eventGroup: 'グループ',
     eventGroupNames: {
+      wecomcs: "WeCom カスタマーサービス",
       bot: 'ボットの状態',
       feedback: 'フィードバック',
       friend: '友だち',
@@ -1002,6 +1004,11 @@ const jaJP = {
     eventWildcard: 'すべてのイベント',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "顧客が会話に参加",
+      wecomcs_msg_send_fail: "カスタマーサービスの送信失敗",
+      wecomcs_servicer_status_change: "担当者の受付状態変更",
+      wecomcs_session_status_change: "カスタマーサービスの会話状態変更",
+      wecomcs_reject_customer_msg_switch_change: "顧客メッセージの受信拒否設定変更",
       message_received: 'メッセージ受信',
       message_edited: 'メッセージ編集',
       message_deleted: 'メッセージ削除',
@@ -1019,6 +1026,11 @@ const jaJP = {
       platform_specific: 'プラットフォーム固有イベント',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "顧客がリンクから会話を開きました。流入元と歓迎メッセージ用コードを含みます。",
+      wecomcs_msg_send_fail: "WeChat が送信失敗を通知しました。メッセージ ID と失敗種別を含みます。",
+      wecomcs_servicer_status_change: "担当者が受付を開始、停止、または一時停止しました。",
+      wecomcs_session_status_change: "担当者が会話を受付、転送、終了、または再開しました。",
+      wecomcs_reject_customer_msg_switch_change: "担当者が顧客メッセージの受信拒否を有効または無効にしました。",
       all: 'このアダプターが受信するすべてのイベントに一致します。',
       namespace: 'すべての{{group}}イベントに一致します。',
       namespace_bot:

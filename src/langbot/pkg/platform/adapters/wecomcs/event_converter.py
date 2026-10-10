@@ -29,6 +29,39 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def target2yiri(event: WecomCSEvent, bot: WecomCSClient | None = None) -> platform_events.Event | None:
         if event.type in {'text', 'image', 'file', 'voice'}:
             return await WecomCSEventConverter.message_to_eba(event, bot)
+        if event.type == 'event':
+            data = event.get('event') or {}
+            event_type = data.get('event_type', 'unknown')
+            customer_id = data.get('external_userid') or ''
+            common = {
+                'adapter_name': ADAPTER_NAME,
+                'timestamp': float(event.timestamp or 0),
+                'source_platform_object': event,
+                'chat_id': make_private_chat_id(customer_id, data.get('open_kfid')) if customer_id else '',
+            }
+            if event_type in {'user_recall_msg', 'servicer_recall_msg'}:
+                operator_id = data.get('servicer_userid') if event_type == 'servicer_recall_msg' else customer_id
+                return platform_events.MessageDeletedEvent(
+                    message_id=data.get('recall_msgid') or '',
+                    operator=platform_entities.User(id=operator_id) if operator_id else None,
+                    **common,
+                )
+            event_classes = {
+                'enter_session': platform_events.WecomCSEnterSessionEvent,
+                'msg_send_fail': platform_events.WecomCSMessageSendFailedEvent,
+                'servicer_status_change': platform_events.WecomCSServicerStatusChangedEvent,
+                'session_status_change': platform_events.WecomCSSessionStatusChangedEvent,
+                'reject_customer_msg_switch_change': platform_events.WecomCSRejectCustomerMessageChangedEvent,
+            }
+            event_class = event_classes.get(event_type)
+            if event_class:
+                fields = {key: value for key, value in data.items() if key in event_class.model_fields and value is not None}
+                fields.update(common)
+                fields['data'] = dict(data)
+                actor_id = data.get('servicer_userid') or customer_id
+                fields['user'] = platform_entities.User(id=actor_id) if actor_id else None
+                return event_class(**fields)
+            return WecomCSEventConverter.platform_specific(event, f'wecomcs.{event_type}')
         return WecomCSEventConverter.platform_specific(event, f'wecomcs.{event.type or "unknown"}')
 
     @staticmethod

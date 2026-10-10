@@ -316,6 +316,7 @@ const zhHant = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: '這筆歷史記錄未儲存失敗原因，請查看機器人日誌，或重新傳送訊息取得詳細錯誤。',
     loadFailedTitle: '暫時無法載入',
     loadFailedHint: '請稍後重試。如果仍無法載入，請檢查網路連線與服務狀態。',
     customValue: '自訂',
@@ -842,6 +843,7 @@ const zhHant = {
     advancedEventValues: '查看全部',
     eventGroup: '事件組',
     eventGroupNames: {
+      wecomcs: "企業微信客服",
       bot: '機器人狀態',
       feedback: '反饋',
       friend: '好友',
@@ -939,6 +941,11 @@ const zhHant = {
     eventWildcard: '全部事件',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "客戶進入會話",
+      wecomcs_msg_send_fail: "客服訊息傳送失敗",
+      wecomcs_servicer_status_change: "接待人員狀態變更",
+      wecomcs_session_status_change: "客服會話狀態變更",
+      wecomcs_reject_customer_msg_switch_change: "拒收客戶訊息設定變更",
       message_received: '收到訊息',
       message_edited: '訊息已編輯',
       message_deleted: '訊息已刪除',
@@ -956,6 +963,11 @@ const zhHant = {
       platform_specific: '平台特定事件',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "客戶透過客服連結進入會話，可取得來源和歡迎語憑證。",
+      wecomcs_msg_send_fail: "微信通知客服訊息傳送失敗，包含訊息 ID 和失敗類型。",
+      wecomcs_servicer_status_change: "接待人員開始、停止接待或暫時掛起。",
+      wecomcs_session_status_change: "人工客服接入、轉接、結束或重新接入會話。",
+      wecomcs_reject_customer_msg_switch_change: "接待人員開啟或取消拒收客戶訊息。",
       all: '匹配此適配器收到的全部事件。',
       namespace: '匹配所有{{group}}事件。',
       namespace_bot: '匹配機器人入羣、退羣、禁言和解除禁言等狀態事件。',

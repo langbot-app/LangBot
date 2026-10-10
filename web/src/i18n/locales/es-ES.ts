@@ -343,6 +343,7 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
     loadFailedTitle: 'No se pudo cargar el contenido',
     loadFailedHint: 'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
     customValue: 'Personalizado',
@@ -914,6 +915,7 @@ const esES = {
     advancedEventValues: 'Ver todos',
     eventGroup: 'Grupo',
     eventGroupNames: {
+      wecomcs: "Atención al cliente de WeCom",
       bot: 'Estado del bot',
       feedback: 'Comentarios',
       friend: 'Amigos',
@@ -1016,6 +1018,11 @@ const esES = {
     eventWildcard: 'Todos los eventos',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "Cliente entró en la conversación",
+      wecomcs_msg_send_fail: "Fallo de envío de atención al cliente",
+      wecomcs_servicer_status_change: "Disponibilidad del agente modificada",
+      wecomcs_session_status_change: "Estado de conversación modificado",
+      wecomcs_reject_customer_msg_switch_change: "Rechazo de mensajes modificado",
       message_received: 'Mensaje recibido',
       message_edited: 'Mensaje editado',
       message_deleted: 'Mensaje eliminado',
@@ -1033,6 +1040,11 @@ const esES = {
       platform_specific: 'Evento específico de la plataforma',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.",
+      wecomcs_msg_send_fail: "WeChat notificó un fallo de envío con el ID y el tipo de error.",
+      wecomcs_servicer_status_change: "Un agente inició, detuvo o suspendió la atención.",
+      wecomcs_session_status_change: "Un agente aceptó, transfirió, cerró o reabrió la conversación.",
+      wecomcs_reject_customer_msg_switch_change: "Un agente activó o desactivó el rechazo de mensajes del cliente.",
       all: 'Coincide con todos los eventos recibidos por este adaptador.',
       namespace: 'Coincide con todos los eventos de {{group}}.',
       namespace_bot:

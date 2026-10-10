@@ -49,7 +49,7 @@ function messageBody(value: unknown): unknown {
   if (!value || typeof value !== 'object') return null;
   const data = value as Record<string, unknown>;
   if (['Image', 'File', 'Voice', 'At', 'AtAll', 'Quote'].includes(String(data.type))) return value;
-  for (const key of ['text', 'content', 'message_chain', 'message']) {
+  for (const key of ['text', 'content', 'message_chain', 'message', 'root']) {
     if (data[key] != null) return messageBody(data[key]);
   }
   return null;
@@ -84,13 +84,19 @@ export default function ExecutionDetailSheet({
   const [refresh, setRefresh] = useState(0);
   const request = useRef(0);
   const identity = `${workspace}:${row?.source}:${row?.id}`;
+  const requestedIdentity = useRef('');
   const [loadedIdentity, setLoadedIdentity] = useState('');
   const visible = loadedIdentity === identity ? detail : null;
   const id = row?.id;
   const source = row?.source;
   useEffect(() => {
     const version = ++request.current;
-    setDetail(null);
+    // Refresh the current trace in place so its scroll position and expanded
+    // disclosures survive polling. Only a different selection starts empty.
+    if (requestedIdentity.current !== identity) {
+      setDetail(null);
+      requestedIdentity.current = identity;
+    }
     setError(false);
     setSectionError(null);
     setBusy(null);
@@ -188,11 +194,7 @@ export default function ExecutionDetailSheet({
       'deliveries',
       'conversation',
     ].includes(section);
-    const body = section === 'inputs'
-      ? typeof item.content === 'string' ? item.content
-        : item.content && typeof item.content === 'object' && 'text' in item.content
-          ? item.content.text : null
-      : messageBody(item.content);
+    const body = messageBody(item.content);
     const title = content
       ? [
           item.actor_name || item.actor_id,
@@ -367,13 +369,14 @@ export default function ExecutionDetailSheet({
                 size="icon"
                 disabled={loading}
                 aria-label={t('monitoring.refreshData')}
+                title={error ? t('monitoring.execution.detail.loadError') : t('monitoring.refreshData')}
                 onClick={() => setRefresh((value) => value + 1)}
               >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''} ${error ? 'text-destructive' : ''}`} />
               </Button>
             </div>
-            {loading && <Skeleton className="h-36 w-full" />}
-            {error && (
+            {loading && !visible && <Skeleton className="h-36 w-full" />}
+            {error && !visible && (
               <LoadErrorState title={t('monitoring.execution.detail.loadError')} onRetry={() => setRefresh((value) => value + 1)} />
             )}
             {record && (
@@ -421,7 +424,10 @@ export default function ExecutionDetailSheet({
                 </div>
                 {record.status_reason && !['stop', 'completed', 'success'].includes(record.status_reason) && (
                   <p className="rounded-md bg-muted p-3 text-sm">
-                    {record.status_reason}
+                    {record.status_reason.split('; ').map((reason) =>
+                      reason === 'failure_reason_not_recorded'
+                        ? t('common.failureReasonNotRecorded') : reason,
+                    ).join('; ')}
                   </p>
                 )}
                 {mainSections.map((section) => renderSection(section, true))}

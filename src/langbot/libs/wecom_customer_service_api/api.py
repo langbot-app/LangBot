@@ -5,6 +5,7 @@ import base64
 import binascii
 import contextvars
 import functools
+import hashlib
 import httpx
 import json
 import os
@@ -119,6 +120,10 @@ class WecomCSClient:
             'example': [],
         }
         self._http_client: httpx.AsyncClient | None = None
+        self._delivery_tasks: set[asyncio.Task] = set()
+        self._received_messages: dict[str, float] = {}
+        self._sync_lock = asyncio.Lock()
+        self._sync_cursors: dict[str, str] = {}
 
     @asynccontextmanager
     async def _http_client_context(self):
@@ -127,6 +132,10 @@ class WecomCSClient:
         yield self._http_client
 
     async def close(self) -> None:
+        for task in self._delivery_tasks:
+            task.cancel()
+        if self._delivery_tasks:
+            await asyncio.gather(*self._delivery_tasks, return_exceptions=True)
         if self._http_client is not None:
             await self._http_client.aclose()
             self._http_client = None
@@ -170,47 +179,44 @@ class WecomCSClient:
             else:
                 raise Exception(f'未获取access token: {data}')
 
-    @_bounded_token_retry
     async def get_detailed_message_list(self, xml_msg: str):
-        # 在本方法中解析消息，并且获得消息的具体内容
-        if isinstance(xml_msg, bytes):
-            xml_msg = xml_msg.decode('utf-8')
+        """Drain all callback pages, including non-message events and empty pages."""
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
-        token = root.find('Token').text
-        open_kfid = root.find('OpenKfId').text
-
-        # if open_kfid in self.openkfid_list:
-        #     return None
-        # else:
-        #     self.openkfid_list.append(open_kfid)
-
-        if not await self.check_access_token():
-            self.access_token = await self.get_access_token(self.secret)
-
-        url = self.base_url + '/kf/sync_msg?access_token=' + self.access_token
-        async with self._http_client_context() as client:
-            params = {
-                'token': token,
-                'voice_format': 0,
-                'open_kfid': open_kfid,
-            }
-            response = await client.post(url, json=params)
-            data = await httpclient.parse_json_response(response)
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
-                return await self.get_detailed_message_list(xml_msg)
-            if data['errcode'] != 0:
-                raise Exception('Failed to get message')
-
-            last_msg_data = data['msg_list'][-1]
-            open_kfid = last_msg_data.get('open_kfid')
-            # 进行获取图片操作
-            if last_msg_data.get('msgtype') == 'image':
-                media_id = last_msg_data.get('image').get('media_id')
-                picurl = await self.get_pic_url(media_id)
-                last_msg_data['picurl'] = picurl
-            # await self.change_service_status(userid=external_userid,openkfid=open_kfid,servicer=servicer)
-            return last_msg_data
+        token = root.findtext('Token')
+        open_kfid = root.findtext('OpenKfId')
+        if not token or not open_kfid:
+            raise ValueError('WeCom customer-service callback is missing Token or OpenKfId')
+        async with self._sync_lock:
+            cursor = self._sync_cursors.get(open_kfid)
+            messages = []
+            refreshed = False
+            while True:
+                if not await self.check_access_token():
+                    self.access_token = await self.get_access_token(self.secret)
+                params = {'token': token, 'voice_format': 0, 'open_kfid': open_kfid, 'limit': 1000}
+                if cursor:
+                    params['cursor'] = cursor
+                async with self._http_client_context() as client:
+                    response = await client.post(
+                        self.base_url + '/kf/sync_msg', params={'access_token': self.access_token}, json=params,
+                    )
+                    data = await httpclient.parse_json_response(response)
+                if data.get('errcode') in (40014, 42001) and not refreshed:
+                    self.access_token = await self.get_access_token(self.secret)
+                    refreshed = True
+                    continue
+                if data.get('errcode') != 0:
+                    raise RuntimeError(f"WeCom sync_msg failed (errcode={data.get('errcode')})")
+                messages.extend(data.get('msg_list') or [])
+                next_cursor = data.get('next_cursor')
+                if data.get('has_more'):
+                    if not next_cursor or next_cursor == cursor:
+                        raise RuntimeError('WeCom sync_msg returned a non-advancing cursor')
+                    cursor = next_cursor
+                    continue
+                if next_cursor:
+                    self._sync_cursors[open_kfid] = next_cursor
+                return messages
 
     @_bounded_token_retry
     async def change_service_status(self, userid: str, openkfid: str, servicer: str):
@@ -292,8 +298,35 @@ class WecomCSClient:
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
                 await self.logger.error(f'发送消息失败：{data}')
+                if data['errcode'] == 95002:
+                    raise ValueError(
+                        'WeCom CS rejected the reply (95002): the customer must send a message first, '
+                        'and ordinary replies must be sent within 48 hours. Entering a session alone '
+                        'does not open this window; welcome replies require the event reply API.'
+                    )
                 raise Exception(f'Failed to send message: {data}')
             return data
+
+    @_bounded_token_retry
+    async def send_event_text(self, code: str, msgid: str, content: str):
+        """Send a single event response using its short-lived, one-time code."""
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = f'{self.base_url}/kf/send_msg_on_event?access_token={self.access_token}'
+        payload = {'code': code, 'msgid': msgid, 'msgtype': 'text', 'text': {'content': content}}
+        async with self._http_client_context() as client:
+            response = await client.post(url, json=payload)
+            data = await httpclient.parse_json_response(response)
+        if data.get('errcode') in (40014, 42001):
+            self.access_token = await self.get_access_token(self.secret)
+            return await self.send_event_text(code, msgid, content)
+        if data.get('errcode') != 0:
+            raise ValueError(
+                f'WeCom CS event reply failed (errcode={data.get("errcode")}): {data.get("errmsg")}. '
+                'The event code is single-use and must match the current session state; '
+                'welcome and session-end codes expire after 20 seconds. Do not retry an expired or used code.'
+            )
+        return data
 
     @_bounded_token_retry
     async def send_image_msg(self, open_kfid: str, external_userid: str, msgid: str, media_id: str):
@@ -375,12 +408,11 @@ class WecomCSClient:
                 if ret != 0:
                     raise Exception(f'消息解密失败，错误码: {ret}')
 
-                # 解析消息并处理
-                message_data = await self.get_detailed_message_list(xml_msg)
-                if message_data is not None:
-                    event = WecomCSEvent.from_payload(message_data)
-                    if event:
-                        await self._handle_message(event)
+                # Acknowledge after verification; API fetching and processing must
+                # survive a callback disconnect.
+                task = asyncio.create_task(self._process_callback(xml_msg))
+                self._delivery_tasks.add(task)
+                task.add_done_callback(self._delivery_tasks.discard)
 
                 return 'success'
         except Exception as e:
@@ -389,6 +421,46 @@ class WecomCSClient:
             else:
                 traceback.print_exc()
             return f'Error processing request: {str(e)}', 400
+
+    async def _process_callback(self, xml_msg):
+        try:
+            messages = await self.get_detailed_message_list(xml_msg)
+            for message_data in messages:
+                try:
+                    await self._process_synced_message(message_data)
+                except Exception:
+                    if self.logger:
+                        await self.logger.error(f'WeCom customer-service event failed: {traceback.format_exc()}')
+
+        except Exception:
+            if self.logger:
+                await self.logger.error(f'WeCom customer-service delivery failed: {traceback.format_exc()}')
+
+    async def _process_synced_message(self, message_data):
+        # Agent/API and human replies must not become new customer input.
+        if message_data.get('msgtype') != 'event' and message_data.get('origin', 3) != 3:
+            return
+        if message_data.get('msgtype') == 'image':
+            media_id = (message_data.get('image') or {}).get('media_id')
+            if media_id:
+                message_data['picurl'] = await self.get_pic_url(media_id)
+        event = WecomCSEvent.from_payload(message_data)
+        if event:
+            # A callback disconnect must not cancel processor execution.
+            # Retries can return the same message from sync_msg.
+            now = time.monotonic()
+            self._received_messages = {
+                key: seen for key, seen in self._received_messages.items() if now - seen < 4 * 86400
+            }
+            message_id = message_data.get('msgid') or hashlib.sha256(
+                json.dumps(message_data, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+            ).hexdigest()
+            if not message_id or message_id not in self._received_messages:
+                if message_id:
+                    if len(self._received_messages) >= 4096:
+                        self._received_messages.pop(next(iter(self._received_messages)))
+                    self._received_messages[message_id] = now
+                await self._handle_message(event)
 
     async def run_task(self, host: str, port: int, *args, **kwargs):
         """

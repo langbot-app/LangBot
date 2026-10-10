@@ -339,6 +339,7 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'Chưa lưu nguyên nhân lỗi. Hãy kiểm tra nhật ký bot hoặc gửi lại tin nhắn để biết thêm chi tiết.',
     loadFailedTitle: 'Không thể tải nội dung',
     loadFailedHint: 'Vui lòng thử lại sau. Nếu vẫn không tải được, hãy kiểm tra kết nối và trạng thái dịch vụ.',
     customValue: 'Tùy chỉnh',
@@ -898,6 +899,7 @@ const viVN = {
     advancedEventValues: 'Xem tất cả',
     eventGroup: 'Nhóm',
     eventGroupNames: {
+      wecomcs: "Dịch vụ khách hàng WeCom",
       bot: 'Trạng thái bot',
       feedback: 'Phản hồi',
       friend: 'Bạn bè',
@@ -997,6 +999,11 @@ const viVN = {
     eventWildcard: 'Tất cả sự kiện',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "Khách hàng vào hội thoại",
+      wecomcs_msg_send_fail: "Gửi tin nhắn hỗ trợ thất bại",
+      wecomcs_servicer_status_change: "Trạng thái nhân viên thay đổi",
+      wecomcs_session_status_change: "Trạng thái hội thoại hỗ trợ thay đổi",
+      wecomcs_reject_customer_msg_switch_change: "Cài đặt từ chối tin nhắn thay đổi",
       message_received: 'Nhận tin nhắn',
       message_edited: 'Tin nhắn được chỉnh sửa',
       message_deleted: 'Tin nhắn bị xóa',
@@ -1014,6 +1021,11 @@ const viVN = {
       platform_specific: 'Sự kiện riêng của nền tảng',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "Khách hàng mở liên kết hỗ trợ; gồm nguồn truy cập và mã chào mừng.",
+      wecomcs_msg_send_fail: "WeChat thông báo gửi thất bại, gồm ID tin nhắn và loại lỗi.",
+      wecomcs_servicer_status_change: "Nhân viên bắt đầu, dừng hoặc tạm dừng tiếp nhận.",
+      wecomcs_session_status_change: "Nhân viên tiếp nhận, chuyển, kết thúc hoặc mở lại hội thoại.",
+      wecomcs_reject_customer_msg_switch_change: "Nhân viên bật hoặc tắt từ chối tin nhắn khách hàng.",
       all: 'Khớp mọi sự kiện bộ chuyển đổi này nhận được.',
       namespace: 'Khớp mọi sự kiện {{group}}.',
       namespace_bot:

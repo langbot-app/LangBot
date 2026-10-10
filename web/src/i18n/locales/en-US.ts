@@ -340,6 +340,7 @@ const enUS = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'The failure reason was not recorded. Check the bot logs or retry to capture more details.',
     loadFailedTitle: 'Unable to load this content',
     loadFailedHint: 'Please try again in a moment. If this continues, check your connection and service status.',
     customValue: 'Custom',
@@ -896,6 +897,7 @@ const enUS = {
     advancedEventValues: 'View all',
     eventGroup: 'Group',
     eventGroupNames: {
+      wecomcs: "WeCom Customer Service",
       bot: 'Bot status',
       feedback: 'Feedback',
       friend: 'Friends',
@@ -997,6 +999,11 @@ const enUS = {
     eventWildcard: 'All events',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "Customer entered conversation",
+      wecomcs_msg_send_fail: "Customer service message failed",
+      wecomcs_servicer_status_change: "Representative availability changed",
+      wecomcs_session_status_change: "Customer service conversation changed",
+      wecomcs_reject_customer_msg_switch_change: "Customer message rejection changed",
       message_received: 'Message received',
       message_edited: 'Message edited',
       message_deleted: 'Message deleted',
@@ -1014,6 +1021,11 @@ const enUS = {
       platform_specific: 'Platform-specific event',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "A customer opened a service link; includes entry source and welcome code.",
+      wecomcs_msg_send_fail: "WeChat reported an outgoing message failure, with message ID and failure type.",
+      wecomcs_servicer_status_change: "A representative started, stopped or suspended service.",
+      wecomcs_session_status_change: "A representative accepted, transferred, closed or reopened a conversation.",
+      wecomcs_reject_customer_msg_switch_change: "A representative enabled or disabled rejection of customer messages.",
       all: 'Matches every event received by this adapter.',
       namespace: 'Matches all {{group}} events.',
       namespace_bot:

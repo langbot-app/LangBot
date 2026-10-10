@@ -394,7 +394,7 @@ function MonitoringPageContent() {
                               )
                             }
                           >
-                            {t('common.previous')}
+                            {t('operationTrace.previousPage')}
                           </Button>
                           <span className="text-xs text-muted-foreground">
                             {executionOffset + 1}–
@@ -414,7 +414,7 @@ function MonitoringPageContent() {
                               )
                             }
                           >
-                            {t('common.next')}
+                            {t('operationTrace.nextPage')}
                           </Button>
                         </div>
                       )}

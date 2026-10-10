@@ -93,6 +93,12 @@ spec:
 
   supported_events:
     - message.received
+    - message.deleted
+    - wecomcs.enter_session
+    - wecomcs.msg_send_fail
+    - wecomcs.servicer_status_change
+    - wecomcs.session_status_change
+    - wecomcs.reject_customer_msg_switch_change
     - platform.specific
 
   supported_apis:

@@ -171,7 +171,7 @@ export default function ExecutionTable({
                 </TableCell>
                 <TableCell className="max-w-xs">
                   <div className="line-clamp-2 break-words text-sm">
-                    {row.input_preview || '—'}
+                    {row.input_preview || executionTargetLabel(row, t) || '—'}
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
                     {[row.bot_name, row.user_name || row.user_id]

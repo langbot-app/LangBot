@@ -37,6 +37,22 @@ def event_content(content, event_data):
     return {'text': event_summary(event_data), 'event': event_data, 'input': content}
 
 
+def event_preview(payload, fallback='', event_type=''):
+    """Never use serialized event metadata as a human-readable list preview."""
+    if event_type.startswith('wecomcs.'):
+        return ''
+    if isinstance(payload, dict):
+        if payload.get('type'):
+            if str(payload['type']).startswith('wecomcs.'):
+                return ''
+            return event_summary(payload)[:1000]
+        if isinstance(payload.get('text'), str):
+            return payload['text'][:1000]
+    if fallback and not isinstance(parsed(fallback), (dict, list)):
+        return fallback[:1000]
+    return ''
+
+
 def event_item(row):
     metadata = parsed(row.metadata_json, {})
     return {
@@ -240,14 +256,13 @@ class ExecutionDetailsMixin:
     ):
         """Persist entry facts even when routing never creates a processor run."""
         from ....agent.runner.event_log_store import EventLogStore
-        from .monitoring import _message_preview
 
         workspace = self._require_write_context(context)
         store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
         # Reuse the message sanitizer (including inline-media handling) instead
         # of storing an unbounded adapter object in the event journal.
         content = parsed(self._sanitize_message_content(json.dumps(payload, ensure_ascii=False, default=str)), {})
-        summary = _message_preview(json.dumps(content, ensure_ascii=False), 1000) if content else event_type
+        summary = event_preview(content, event_type=event_type)
         await store.append_event(
             event_id=event_id,
             event_type=event_type,
@@ -266,7 +281,7 @@ class ExecutionDetailsMixin:
             safe_routes = []
             for route in routes:
                 if isinstance(route, BaseException):
-                    safe_routes.append({'status': 'failed', 'reason': str(route)})
+                    safe_routes.append({'status': 'failed', 'reason': str(route) or type(route).__name__})
                 elif isinstance(route, dict):
                     safe_routes.append(
                         {
@@ -362,7 +377,7 @@ class ExecutionDetailsMixin:
             'status': status,
             'status_group': status,
             'title': row.event_type,
-            'input_preview': row.input_summary or '',
+            'input_preview': event_preview(parsed(row.input_json), row.input_summary, row.event_type),
             'target_kind': 'event',
             'target_id': None,
             'target_name': None,
@@ -385,7 +400,11 @@ class ExecutionDetailsMixin:
             'runner_id': None,
             'debug': row.source == 'debug',
             'has_error': status == 'failed',
-            'status_reason': metadata.get('reason'),
+            'status_reason': metadata.get('reason') or '; '.join(
+                route.get('reason') or route.get('failure_code') or 'failure_reason_not_recorded'
+                for route in metadata.get('routes', [])
+                if isinstance(route, dict) and route.get('status') == 'failed'
+            ) or None,
         }
 
     async def enrich_execution_rows(self, workspace, items):
@@ -449,7 +468,7 @@ class ExecutionDetailsMixin:
                 meta = parsed(event.metadata_json, {})
                 item.update(
                     event_type=event.event_type,
-                    input_preview=event.input_summary or item.get('input_preview') or '',
+                    input_preview=event_preview(parsed(event.input_json), event.input_summary, event.event_type),
                     user_id=event.actor_id,
                     user_name=event.actor_name,
                     platform=meta.get('platform') or event.source,

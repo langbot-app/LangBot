@@ -342,6 +342,7 @@ const ruRU = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded: 'Причина сбоя не сохранена. Проверьте журнал бота или отправьте сообщение повторно для получения подробностей.',
     loadFailedTitle: 'Не удалось загрузить данные',
     loadFailedHint: 'Повторите попытку позже. Если проблема остаётся, проверьте подключение и состояние сервиса.',
     customValue: 'Свой вариант',
@@ -909,6 +910,7 @@ const ruRU = {
     advancedEventValues: 'Показать все',
     eventGroup: 'Группа',
     eventGroupNames: {
+      wecomcs: "Поддержка WeCom",
       bot: 'Состояние бота',
       feedback: 'Обратная связь',
       friend: 'Друзья',
@@ -1012,6 +1014,11 @@ const ruRU = {
     eventWildcard: 'Все события',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecomcs_enter_session: "Клиент вошёл в диалог",
+      wecomcs_msg_send_fail: "Ошибка отправки сообщения поддержки",
+      wecomcs_servicer_status_change: "Статус оператора изменён",
+      wecomcs_session_status_change: "Статус диалога поддержки изменён",
+      wecomcs_reject_customer_msg_switch_change: "Приём сообщений клиента изменён",
       message_received: 'Получено сообщение',
       message_edited: 'Сообщение изменено',
       message_deleted: 'Сообщение удалено',
@@ -1029,6 +1036,11 @@ const ruRU = {
       platform_specific: 'Событие конкретной платформы',
     },
     eventDescriptions: {
+      wecomcs_enter_session: "Клиент открыл ссылку поддержки; событие содержит источник и код приветствия.",
+      wecomcs_msg_send_fail: "WeChat сообщил об ошибке отправки с ID сообщения и типом ошибки.",
+      wecomcs_servicer_status_change: "Оператор начал, остановил или приостановил приём обращений.",
+      wecomcs_session_status_change: "Оператор принял, передал, завершил или возобновил диалог.",
+      wecomcs_reject_customer_msg_switch_change: "Оператор включил или отключил отказ в приёме сообщений клиента.",
       all: 'Соответствует всем событиям, полученным адаптером.',
       namespace: 'Соответствует всем событиям {{group}}.',
       namespace_bot:

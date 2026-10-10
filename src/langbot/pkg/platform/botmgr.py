@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import json
 import re
 import time
@@ -85,6 +86,7 @@ class RuntimeBot:
     ):
         if not isinstance(execution_context, ExecutionContext):
             raise WorkspaceRequiredError('RuntimeBot requires an ExecutionContext')
+        self._ingress_dedup_lock = asyncio.Lock()
         if not execution_context.instance_uuid.strip() or not execution_context.workspace_uuid.strip():
             raise WorkspaceRequiredError('RuntimeBot requires an instance and Workspace')
         if execution_context.placement_generation <= 0:
@@ -888,6 +890,18 @@ class RuntimeBot:
     @staticmethod
     def _platform_event_raw_id(event: platform_events.EBAEvent) -> str:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
+        if isinstance(event, platform_events.MessageDeletedEvent) and event.message_id:
+            # A recall is distinct from the original message.
+            return f'{event_type}:{event.message_id}'
+        if getattr(event, 'adapter_name', None) == 'wecomcs-omni':
+            source = getattr(event, 'source_platform_object', None)
+            if isinstance(source, dict):
+                if source.get('msgid'):
+                    return str(source['msgid'])
+                # Native service events can lack msgid. Preserve their identity
+                # across sync retries and process restarts instead of using UUIDs.
+                payload = json.dumps(source, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+                return f'{event_type}:{hashlib.sha256(payload.encode()).hexdigest()}'
         return str(
             getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
         )
@@ -904,6 +918,16 @@ class RuntimeBot:
 
         event.bot_uuid = self.bot_entity.uuid
         execution_id = self._platform_event_execution_id(event)
+        if getattr(event, 'adapter_name', None) == 'wecomcs-omni':
+            from ..agent.runner.event_log_store import EventLogStore
+
+            # The sync API can replay history after an adapter restart. Reuse
+            # the durable ingress journal, including records from earlier runs.
+            async with self._ingress_dedup_lock:
+                store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
+                if await store.get_event(execution_id):
+                    return
+                await self._persist_monitoring_ingress(event, adapter, execution_id)
         with ingress(
             getattr(self, 'ap', None),
             'event_done',
@@ -945,7 +969,7 @@ class RuntimeBot:
         if service is None or not execution_id:
             return
         try:
-            sender = getattr(event, 'sender', None)
+            sender = getattr(event, 'sender', None) or getattr(event, 'user', None) or getattr(event, 'operator', None)
             target_type, target_id, _ = self._infer_reply_target(event)
             await service.record_ingress_event(
                 self.execution_context,
