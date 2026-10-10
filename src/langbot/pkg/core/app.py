@@ -60,6 +60,7 @@ from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ..api.application import ApplicationAPI
 
 if TYPE_CHECKING:
     from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
@@ -180,6 +181,8 @@ class Application:
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
+
+    application_api: ApplicationAPI = None
 
     agent_service: agent_service.AgentService = None
 
