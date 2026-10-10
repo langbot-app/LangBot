@@ -11,6 +11,7 @@ on:
       - 'uv.lock'
       - 'run_tests.sh'
       - 'scripts/test-*.sh'
+      - 'scripts/test-*.py'
   push:
     branches:
       - master
@@ -42,10 +43,63 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run unit + smoke tests
-        run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short
+        if: matrix.python-version != '3.12'
+        run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short -rs --durations=10
+
+      - name: Run unit + smoke tests with coverage
+        if: matrix.python-version == '3.12'
+        run: |
+          uv run pytest tests/unit_tests/ tests/smoke/ \
+            --cov=langbot --cov-branch --cov-report=xml --cov-report=json --cov-report=term-missing \
+            --cov-fail-under=0 -q --tb=short -rs --durations=10
+          # Preserve the existing line-coverage gate. With --cov-branch,
+          # pytest-cov's aggregate total combines statements and branches.
+          python - <<'PY'
+          import json
+          totals = json.load(open('coverage.json'))['totals']
+          line_coverage = 100 * totals['covered_lines'] / totals['num_statements']
+          assert line_coverage >= 18, f'Line coverage {line_coverage:.2f}% is below 18%'
+          PY
+
+      - name: Report source coverage and complexity
+        if: always() && matrix.python-version == '3.12' && hashFiles('coverage.json') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          args=()
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            args+=(--base-ref "$BASE_SHA")
+          fi
+          uv run python scripts/test-complexity.py \
+            --json complexity.json --summary complexity.md --coverage-json coverage.json "${args[@]}"
+          cat complexity.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload source quality reports
+        if: always() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-quality-reports
+          path: |
+            coverage.json
+            coverage.xml
+            complexity.json
+            complexity.md
+          if-no-files-found: ignore
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: unit-tests
+          name: coverage-report
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Test Summary
         if: always()
@@ -72,10 +126,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run fast integration tests
-        run: uv run pytest tests/integration/ -m "not slow" -q --tb=short
+        run: uv run pytest tests/integration/ -m "not slow" -q --tb=short -rs --durations=10
 
       - name: Integration Test Summary
         if: always()
@@ -101,10 +155,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run E2E startup tests
-        run: uv run pytest tests/e2e -q --tb=short
+        run: uv run pytest tests/e2e --ignore=tests/e2e/test_local_runner_fake_provider.py -q --tb=short -rs --durations=10
 
       - name: E2E Test Summary
         if: always()
@@ -130,13 +184,13 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Check Docker runtime
         run: docker info
 
       - name: Run Box integration tests
-        run: uv run pytest tests/integration_tests -q --tb=short
+        run: uv run pytest tests/integration_tests -q --tb=short -rs --durations=10
 
       - name: Box Integration Test Summary
         if: always()
@@ -145,10 +199,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-  coverage:
-    name: Coverage Gate
+  local-agent:
+    name: Local Agent Contract E2E
     runs-on: ubuntu-latest
-    needs: [test, integration]
+    timeout-minutes: 15
+    env:
+      LANGBOT_E2E_REQUIRE_LOCAL_AGENT: '1'
+      LANGBOT_E2E_LOCAL_AGENT_PACKAGE: ${{ github.workspace }}/.pytest_cache/local-agent/LocalAgent.lbpkg
 
     steps:
       - name: Checkout code
@@ -163,31 +220,68 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
-      - name: Run coverage (unit + smoke)
-        run: |
-          uv run pytest tests/unit_tests/ tests/smoke/ \
-            --cov=langbot \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            --cov-fail-under=18 \
-            -q --tb=short
+      # Resolve every run, before consulting the archive cache. The latest
+      # pointer is never cached or replaced with a stale successful version.
+      - name: Resolve latest LocalAgent from Space
+        id: local-agent
+        run: uv run python scripts/test-local-agent-fixture.py resolve local-agent-resolution.json --github-output "$GITHUB_OUTPUT"
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Cache resolved Space artifact
+        uses: actions/cache@v4
         with:
-          files: ./coverage.xml
-          flags: unit-tests
-          name: coverage-report
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          path: ${{ github.workspace }}/.pytest_cache/local-agent
+          key: local-agent-space-${{ steps.local-agent.outputs.cache_key }}
 
-      - name: Coverage Summary
+      # Revalidate every cache hit against this run's metadata. Provisioning
+      # failures are reported separately from Core/runtime contract failures.
+      - name: Provision and verify resolved LocalAgent
+        run: uv run python scripts/test-local-agent-fixture.py fetch local-agent-resolution.json "$LANGBOT_E2E_LOCAL_AGENT_PACKAGE"
+
+      - name: Check Docker runtime for LocalAgent Box probe
+        run: docker info
+
+      - name: Run required LocalAgent contract tests
+        run: |
+          uv run pytest tests/e2e/test_local_runner_fake_provider.py \
+            -q --tb=short -rs --durations=10 --junitxml=local-agent-results.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          suites = ET.parse('local-agent-results.xml').getroot().iter('testsuite')
+          counts = [suite.attrib for suite in suites]
+          assert sum(int(suite['tests']) for suite in counts) > 0, 'No LocalAgent tests ran'
+          assert sum(int(suite.get('skipped', 0)) for suite in counts) == 0, 'LocalAgent tests must not skip in CI'
+          PY
+
+      - name: Upload LocalAgent test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-agent-test-results
+          path: |
+            local-agent-results.xml
+            local-agent-resolution.json
+          if-no-files-found: ignore
+
+      - name: LocalAgent Test Summary
         if: always()
         run: |
-          echo "## Coverage Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Threshold: 18%" >> $GITHUB_STEP_SUMMARY
-          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Local Agent Contract E2E" >> $GITHUB_STEP_SUMMARY
+          echo "Latest Space artifact: langbot-team/LocalAgent (version/checksum in resolution artifact)" >> $GITHUB_STEP_SUMMARY
+          echo "Missing fixtures fail this job; optional local source checkouts are not used." >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # Preserve the existing check name for branch protection without running the
+  # unit suite a fourth time. Python 3.12 above owns the unchanged 18% gate.
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+    if: always()
+    steps:
+      - name: Verify test and coverage results
+        run: |
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          echo "Coverage threshold: 18%, enforced in Unit Tests (3.12)." >> $GITHUB_STEP_SUMMARY

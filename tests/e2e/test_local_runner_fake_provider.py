@@ -1,8 +1,9 @@
 """E2E coverage for the official Local Agent runner with fake Host resources.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
-load the consolidated ``langbot-plugin-demo/Runner/LocalAgent`` plugin, and verify Local Agent paths
-that must cross Host run-scoped APIs without calling any external provider.
+install the official LocalAgent package, and verify paths that cross Host
+run-scoped APIs without calling any external model provider. CI resolves the latest
+Space artifact on every run; a sibling source checkout remains optional for local development.
 """
 
 from __future__ import annotations
@@ -49,10 +50,28 @@ def _local_agent_repo() -> Path:
 
 
 def _package_local_agent_plugin(tmpdir: Path) -> Path:
-    """Package the sibling Local Agent plugin for the real local-install flow."""
+    """Stage a Space artifact or package an optional local source checkout."""
+    package_path = os.environ.get('LANGBOT_E2E_LOCAL_AGENT_PACKAGE')
+    if package_path:
+        package = Path(package_path).expanduser().resolve()
+        if not package.is_file():
+            pytest.fail(f'Explicit LocalAgent package does not exist: {package}')
+        target = tmpdir / 'langbot-local-agent.zip'
+        shutil.copyfile(package, target)
+        return target
+
+    if os.environ.get('LANGBOT_E2E_REQUIRE_LOCAL_AGENT') == '1':
+        pytest.fail(
+            'LocalAgent E2E requires LANGBOT_E2E_LOCAL_AGENT_PACKAGE. '
+            'Run scripts/test-local-agent-fixture.py to resolve and fetch the latest Space artifact.'
+        )
+
     local_agent_src = _local_agent_repo()
     if not (local_agent_src / 'manifest.yaml').exists():
-        pytest.skip(f'local-agent repository not found at {local_agent_src}')
+        pytest.skip(
+            'Optional LocalAgent fixture unavailable; set LANGBOT_E2E_LOCAL_AGENT_PACKAGE '
+            f'or check out source at {local_agent_src}'
+        )
 
     package_source = tmpdir / 'local-agent-package'
     ignore = shutil.ignore_patterns(
