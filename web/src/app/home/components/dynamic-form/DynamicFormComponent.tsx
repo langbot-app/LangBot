@@ -47,7 +47,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { systemInfo } from '@/app/infra/http';
+import { backendClient, systemInfo } from '@/app/infra/http';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { parseDynamicFormItemType } from './DynamicFormItemConfig';
 import {
@@ -304,18 +304,54 @@ function DownloadLinkField({
   helpUrl?: string | null;
   helpLabel: string;
 }) {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
-  const downloadUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+  const { t } = useTranslation();
+  const [downloading, setDownloading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const download = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setFailed(false);
+    try {
+      let blob: Blob;
+      if (/^https?:\/\//i.test(url)) {
+        // External templates must not receive backend credentials.
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+        blob = await response.blob();
+      } else {
+        const response = await backendClient.downloadFile(url);
+        blob = response.data;
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename || url.split('/').pop()?.split('?')[0] || 'download';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setFailed(true);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <FormItem className="min-w-0">
       <FormLabel className="break-words">{label}</FormLabel>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <a href={downloadUrl} download={filename}>
-            <Download className="h-4 w-4" />
-            {label}
-          </a>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={download}
+          disabled={downloading}
+          aria-busy={downloading}
+        >
+          <Download className="h-4 w-4" />
+          {label}
         </Button>
         {helpUrl && (
           <Button asChild variant="ghost" size="sm">
@@ -326,6 +362,11 @@ function DownloadLinkField({
           </Button>
         )}
       </div>
+      {failed && (
+        <p role="alert" className="text-sm text-destructive">
+          {t('common.operationFailed')}
+        </p>
+      )}
       {description && (
         <p className="max-w-2xl text-sm break-words text-muted-foreground">
           {description}

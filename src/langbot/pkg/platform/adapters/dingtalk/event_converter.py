@@ -16,9 +16,9 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    async def target2yiri(event: DingTalkEvent, bot_name: str) -> platform_events.Event | None:
+    async def target2yiri(event: DingTalkEvent, bot_id: str) -> platform_events.Event | None:
         if event.conversation in {'FriendMessage', 'GroupMessage'}:
-            return await DingTalkEventConverter.message_to_eba(event, bot_name)
+            return await DingTalkEventConverter.message_to_eba(event, bot_id)
         if event.conversation == 'CardCallback':
             feedback = DingTalkEventConverter.card_callback_to_feedback(event)
             if feedback is not None:
@@ -29,17 +29,17 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def target2legacy(
         event: DingTalkEvent,
-        bot_name: str,
+        bot_id: str,
     ) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
-        eba_event = await DingTalkEventConverter.message_to_eba(event, bot_name)
+        eba_event = await DingTalkEventConverter.message_to_eba(event, bot_id)
         if eba_event:
             return eba_event.to_legacy_event()
         return None
 
     @staticmethod
-    async def message_to_eba(event: DingTalkEvent, bot_name: str) -> platform_events.MessageReceivedEvent:
+    async def message_to_eba(event: DingTalkEvent, bot_id: str) -> platform_events.MessageReceivedEvent:
         incoming_message = event.incoming_message
-        message_chain = await DingTalkMessageConverter.target2yiri(event, bot_name)
+        message_chain = await DingTalkMessageConverter.target2yiri(event, bot_id)
         sender = DingTalkEventConverter.user_from_event(event)
         chat_type = platform_entities.ChatType.PRIVATE
         chat_id = getattr(incoming_message, 'sender_staff_id', '')
