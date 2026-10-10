@@ -52,6 +52,7 @@ from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...cloud.model_catalog import CloudModelCatalogSyncService
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ...api.application import ApplicationAPI
 from ...api.http.authz import WorkspaceRequiredError
 
 
@@ -115,6 +116,7 @@ class BuildAppStage(stage.BootingStage):
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
+        ap.application_api = ApplicationAPI(ap)
 
         agent_service_inst = agent_service.AgentService(ap)
         ap.agent_service = agent_service_inst
