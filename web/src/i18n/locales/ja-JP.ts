@@ -1010,6 +1010,7 @@ const jaJP = {
     eventNames: {
       wecombot_enter_chat: "ボットとのチャットに参加",
       wecombot_template_card_event: "テンプレートカード操作",
+      dingtalk_card_action: "DingTalk カード操作",
       wecomcs_enter_session: "顧客が会話に参加",
       wecomcs_msg_send_fail: "カスタマーサービスの送信失敗",
       wecomcs_servicer_status_change: "担当者の受付状態変更",
@@ -1024,6 +1025,7 @@ const jaJP = {
       friend_added: '友達追加',
       group_member_joined: 'メンバー参加',
       group_member_left: 'メンバー退出',
+      group_info_updated: "グループ情報更新",
       group_member_banned: 'メンバーBAN',
       bot_invited_to_group: 'ボットがグループに招待された',
       bot_removed_from_group: 'ボットがグループから削除された',
@@ -1034,6 +1036,7 @@ const jaJP = {
     eventDescriptions: {
       wecombot_enter_chat: "ユーザーがボットのチャットを開きました。歓迎や案内のフローに使用できます。",
       wecombot_template_card_event: "ユーザーがカードをクリックまたは送信しました。管理対象フォームの応答は別途処理します。",
+      dingtalk_card_action: "カードのクリックや送信。フィードバックと管理対象フォームは別途処理します。",
       wecomcs_enter_session: "顧客がリンクから会話を開きました。流入元と歓迎メッセージ用コードを含みます。",
       wecomcs_msg_send_fail: "WeChat が送信失敗を通知しました。メッセージ ID と失敗種別を含みます。",
       wecomcs_servicer_status_change: "担当者が受付を開始、停止、または一時停止しました。",
@@ -1046,8 +1049,7 @@ const jaJP = {
       namespace_feedback:
         'プラットフォームまたはユーザーからのフィードバックイベントに一致します。',
       namespace_friend: '友達リクエストや友達関係の変更イベントに一致します。',
-      namespace_group:
-        'メンバーの参加、退出、削除などのグループイベントに一致します。',
+      namespace_group: "メンバーの変更やグループ情報の更新などに一致します。",
       namespace_message:
         'メッセージの受信、編集、削除、リアクションイベントに一致します。',
       namespace_platform:
@@ -1067,6 +1069,7 @@ const jaJP = {
       friend_added: '友達関係が作成されました。',
       group_member_joined: 'ボットがいるグループにメンバーが参加しました。',
       group_member_left: 'ボットがいるグループからメンバーが退出しました。',
+      group_info_updated: "グループ名や所有者などの情報が変更されました。",
       group_member_banned: 'グループメンバーがBANまたは削除されました。',
       bot_invited_to_group: 'ボットがグループに招待されました。',
       bot_removed_from_group: 'ボットがグループから削除されました。',

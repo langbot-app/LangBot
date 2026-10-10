@@ -1024,6 +1024,7 @@ const esES = {
     eventNames: {
       wecombot_enter_chat: "Usuario entró al chat del bot",
       wecombot_template_card_event: "Interacción con tarjeta",
+      dingtalk_card_action: "Interacción con tarjeta de DingTalk",
       wecomcs_enter_session: "Cliente entró en la conversación",
       wecomcs_msg_send_fail: "Fallo de envío de atención al cliente",
       wecomcs_servicer_status_change: "Disponibilidad del agente modificada",
@@ -1038,6 +1039,7 @@ const esES = {
       friend_added: 'Amigo añadido',
       group_member_joined: 'Miembro unido al grupo',
       group_member_left: 'Miembro salió del grupo',
+      group_info_updated: "Información del grupo actualizada",
       group_member_banned: 'Miembro bloqueado',
       bot_invited_to_group: 'Bot invitado al grupo',
       bot_removed_from_group: 'Bot eliminado del grupo',
@@ -1048,6 +1050,7 @@ const esES = {
     eventDescriptions: {
       wecombot_enter_chat: "Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.",
       wecombot_template_card_event: "Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.",
+      dingtalk_card_action: "Clics y envíos de tarjetas; las valoraciones y los formularios gestionados se procesan por separado.",
       wecomcs_enter_session: "Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.",
       wecomcs_msg_send_fail: "WeChat notificó un fallo de envío con el ID y el tipo de error.",
       wecomcs_servicer_status_change: "Un agente inició, detuvo o suspendió la atención.",
@@ -1060,8 +1063,7 @@ const esES = {
       namespace_feedback:
         'Coincide con comentarios recibidos de la plataforma o de usuarios.',
       namespace_friend: 'Coincide con solicitudes y cambios de amistad.',
-      namespace_group:
-        'Coincide con entradas, salidas, expulsiones y otros eventos de grupo.',
+      namespace_group: "Coincide con cambios de miembros y actualizaciones de información del grupo.",
       namespace_message:
         'Coincide con mensajes recibidos, editados, eliminados y reacciones.',
       namespace_platform:
@@ -1078,6 +1080,7 @@ const esES = {
       friend_added: 'Se ha creado una relación de amistad.',
       group_member_joined: 'Un miembro se une a un grupo donde está el bot.',
       group_member_left: 'Un miembro abandona un grupo donde está el bot.',
+      group_info_updated: "Han cambiado datos del grupo, como su nombre o propietario.",
       group_member_banned: 'Un miembro del grupo es bloqueado o expulsado.',
       bot_invited_to_group: 'El bot es invitado a un grupo.',
       bot_removed_from_group: 'El bot es expulsado de un grupo.',

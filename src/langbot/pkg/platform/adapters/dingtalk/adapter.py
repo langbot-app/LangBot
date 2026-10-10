@@ -7,6 +7,8 @@ import typing
 import dingtalk_stream
 import pydantic
 
+from .subscriptions import DingTalkSubscriptionHandler
+
 from langbot.libs.dingtalk_api.api import DingTalkClient, is_stream_card_configured
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -40,6 +42,7 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
             {
                 'conversation_type': 'CardCallback',
                 'Type': 'card_callback',
+                'timestamp': float(message.headers.time or 0) / 1000,
                 'CardCallback': {
                     'extension': callback.extension,
                     'corp_id': callback.corp_id,
@@ -107,6 +110,10 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return [
             'message.received',
             'feedback.received',
+            'group.member_joined',
+            'group.member_left',
+            'group.info_updated',
+            'dingtalk.card_action',
             'platform.specific',
         ]
 
@@ -280,6 +287,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         async def on_message(event: DingTalkEvent):
             await self._handle_native_event(event)
 
+        self.bot.client.register_all_event_handler(DingTalkSubscriptionHandler(self))
         self.bot.on_message('FriendMessage')(on_message)
         self.bot.on_message('GroupMessage')(on_message)
         self.bot.client.register_callback_handler(
@@ -298,7 +306,9 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 'DingTalk event received: '
                 f'conversation={event.conversation}, message_id={getattr(event.incoming_message, "message_id", None)}'
             )
-            if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
+            if event.conversation in {'FriendMessage', 'GroupMessage'} and (
+                platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners
+            ):
                 legacy_event = await self.event_converter.target2legacy(event, self.bot_account_id)
                 if legacy_event:
                     callback = self.listeners.get(type(legacy_event))

@@ -1005,6 +1005,7 @@ const viVN = {
     eventNames: {
       wecombot_enter_chat: "Người dùng vào cuộc trò chuyện với bot",
       wecombot_template_card_event: "Tương tác thẻ mẫu",
+      dingtalk_card_action: "Tương tác thẻ DingTalk",
       wecomcs_enter_session: "Khách hàng vào hội thoại",
       wecomcs_msg_send_fail: "Gửi tin nhắn hỗ trợ thất bại",
       wecomcs_servicer_status_change: "Trạng thái nhân viên thay đổi",
@@ -1019,6 +1020,7 @@ const viVN = {
       friend_added: 'Đã thêm bạn',
       group_member_joined: 'Thành viên tham gia nhóm',
       group_member_left: 'Thành viên rời nhóm',
+      group_info_updated: "Thông tin nhóm được cập nhật",
       group_member_banned: 'Thành viên bị cấm tham gia nhóm',
       bot_invited_to_group: 'Bot được mời vào nhóm',
       bot_removed_from_group: 'Bot bị xóa khỏi nhóm',
@@ -1029,6 +1031,7 @@ const viVN = {
     eventDescriptions: {
       wecombot_enter_chat: "Người dùng mở cuộc trò chuyện với bot. Dùng cho quy trình chào mừng.",
       wecombot_template_card_event: "Người dùng nhấp hoặc gửi thẻ. Phản hồi biểu mẫu do hệ thống quản lý được xử lý riêng.",
+      dingtalk_card_action: "Nhấp và gửi thẻ; phản hồi và biểu mẫu được quản lý được xử lý riêng.",
       wecomcs_enter_session: "Khách hàng mở liên kết hỗ trợ; gồm nguồn truy cập và mã chào mừng.",
       wecomcs_msg_send_fail: "WeChat thông báo gửi thất bại, gồm ID tin nhắn và loại lỗi.",
       wecomcs_servicer_status_change: "Nhân viên bắt đầu, dừng hoặc tạm dừng tiếp nhận.",
@@ -1040,8 +1043,7 @@ const viVN = {
         'Khớp sự kiện mời, xóa, tắt tiếng bot và các thay đổi trạng thái khác.',
       namespace_feedback: 'Khớp sự kiện phản hồi từ nền tảng hoặc người dùng.',
       namespace_friend: 'Khớp yêu cầu kết bạn và thay đổi quan hệ bạn bè.',
-      namespace_group:
-        'Khớp sự kiện tham gia, rời, bị xóa khỏi nhóm và sự kiện nhóm khác.',
+      namespace_group: "Khớp các thay đổi thành viên và cập nhật thông tin nhóm.",
       namespace_message: 'Khớp sự kiện nhận, sửa, xóa và thả cảm xúc tin nhắn.',
       namespace_platform:
         'Khớp sự kiện riêng của nền tảng do bộ chuyển đổi cung cấp.',
@@ -1055,6 +1057,7 @@ const viVN = {
       friend_added: 'Đã tạo quan hệ bạn bè.',
       group_member_joined: 'Thành viên tham gia nhóm có bot.',
       group_member_left: 'Thành viên rời nhóm có bot.',
+      group_info_updated: "Thông tin nhóm như tên hoặc chủ sở hữu đã thay đổi.",
       group_member_banned: 'Thành viên nhóm bị cấm hoặc xóa.',
       bot_invited_to_group: 'Bot được mời vào nhóm.',
       bot_removed_from_group: 'Bot bị xóa khỏi nhóm.',

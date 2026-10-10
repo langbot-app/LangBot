@@ -1020,6 +1020,7 @@ const ruRU = {
     eventNames: {
       wecombot_enter_chat: "Пользователь открыл чат бота",
       wecombot_template_card_event: "Взаимодействие с карточкой",
+      dingtalk_card_action: "Взаимодействие с карточкой DingTalk",
       wecomcs_enter_session: "Клиент вошёл в диалог",
       wecomcs_msg_send_fail: "Ошибка отправки сообщения поддержки",
       wecomcs_servicer_status_change: "Статус оператора изменён",
@@ -1034,6 +1035,7 @@ const ruRU = {
       friend_added: 'Друг добавлен',
       group_member_joined: 'Участник вступил в группу',
       group_member_left: 'Участник покинул группу',
+      group_info_updated: "Информация о группе обновлена",
       group_member_banned: 'Участник заблокирован',
       bot_invited_to_group: 'Бот приглашён в группу',
       bot_removed_from_group: 'Бот удалён из группы',
@@ -1044,6 +1046,7 @@ const ruRU = {
     eventDescriptions: {
       wecombot_enter_chat: "Пользователь открыл чат бота. Событие подходит для сценариев приветствия.",
       wecombot_template_card_event: "Пользователь нажал или отправил карточку. Ответы управляемых форм обрабатываются отдельно.",
+      dingtalk_card_action: "Нажатия и отправка карточек; отзывы и управляемые формы обрабатываются отдельно.",
       wecomcs_enter_session: "Клиент открыл ссылку поддержки; событие содержит источник и код приветствия.",
       wecomcs_msg_send_fail: "WeChat сообщил об ошибке отправки с ID сообщения и типом ошибки.",
       wecomcs_servicer_status_change: "Оператор начал, остановил или приостановил приём обращений.",
@@ -1057,8 +1060,7 @@ const ruRU = {
         'Соответствует обратной связи от платформы или пользователя.',
       namespace_friend:
         'Соответствует заявкам в друзья и изменениям дружеских связей.',
-      namespace_group:
-        'Соответствует вступлениям, выходам, удалениям участников и другим событиям группы.',
+      namespace_group: "Соответствует изменениям состава и информации группы.",
       namespace_message:
         'Соответствует получению, редактированию, удалению сообщений и реакциям.',
       namespace_platform:
@@ -1077,6 +1079,7 @@ const ruRU = {
       friend_added: 'Установлена дружеская связь.',
       group_member_joined: 'Участник вступает в группу, где есть бот.',
       group_member_left: 'Участник покидает группу, где есть бот.',
+      group_info_updated: "Изменились сведения о группе, например название или владелец.",
       group_member_banned: 'Участник группы заблокирован или удалён.',
       bot_invited_to_group: 'Бот приглашён в группу.',
       bot_removed_from_group: 'Бот удалён из группы.',

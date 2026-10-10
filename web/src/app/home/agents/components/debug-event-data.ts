@@ -90,6 +90,10 @@ const DEBUG_EVENT_DEFINITIONS: Record<string, DebugEventDefinition> = {
     messageField: 'text',
   },
   'message.deleted': deletion,
+  'dingtalk.card_action': {
+    fields: [user],
+    defaults: { space_id: 'dtv1.card//IM_GROUP.debug-group', card_instance_id: 'debug-card', action: 'confirm', data: {} },
+  },
   'wecombot.enter_chat': {
     fields: [user],
     defaults: { chat_id: 'debug-user', chat_type: 'private', message_id: 'debug-entry', data: {} },

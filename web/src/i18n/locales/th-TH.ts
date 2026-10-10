@@ -988,6 +988,7 @@ const thTH = {
     eventNames: {
       wecombot_enter_chat: "ผู้ใช้เข้าสู่แชตบอต",
       wecombot_template_card_event: "การโต้ตอบกับการ์ด",
+      dingtalk_card_action: "การโต้ตอบกับการ์ด DingTalk",
       wecomcs_enter_session: "ลูกค้าเข้าสู่การสนทนา",
       wecomcs_msg_send_fail: "ส่งข้อความบริการลูกค้าไม่สำเร็จ",
       wecomcs_servicer_status_change: "สถานะเจ้าหน้าที่เปลี่ยนแปลง",
@@ -1002,6 +1003,7 @@ const thTH = {
       friend_added: 'เพิ่มเพื่อน',
       group_member_joined: 'สมาชิกเข้าร่วมกลุ่ม',
       group_member_left: 'สมาชิกออกจากกลุ่ม',
+      group_info_updated: "อัปเดตข้อมูลกลุ่ม",
       group_member_banned: 'สมาชิกถูกแบน',
       bot_invited_to_group: 'บอตได้รับเชิญเข้ากลุ่ม',
       bot_removed_from_group: 'บอตถูกนำออกจากกลุ่ม',
@@ -1012,6 +1014,7 @@ const thTH = {
     eventDescriptions: {
       wecombot_enter_chat: "ผู้ใช้เปิดแชตบอต ใช้สำหรับขั้นตอนต้อนรับและแนะนำ",
       wecombot_template_card_event: "ผู้ใช้คลิกหรือส่งการ์ด การตอบกลับแบบฟอร์มที่ระบบจัดการจะประมวลผลแยกกัน",
+      dingtalk_card_action: "การคลิกและส่งการ์ด ความคิดเห็นและแบบฟอร์มที่ระบบจัดการจะประมวลผลแยกกัน",
       wecomcs_enter_session: "ลูกค้าเปิดลิงก์บริการ พร้อมข้อมูลแหล่งที่มาและรหัสต้อนรับ",
       wecomcs_msg_send_fail: "WeChat แจ้งการส่งล้มเหลว พร้อม ID ข้อความและประเภทข้อผิดพลาด",
       wecomcs_servicer_status_change: "เจ้าหน้าที่เริ่ม หยุด หรือพักการให้บริการ",
@@ -1023,8 +1026,7 @@ const thTH = {
         'ตรงกับการเชิญ การนำบอทออก การปิดเสียง และเหตุการณ์สถานะอื่น',
       namespace_feedback: 'ตรงกับเหตุการณ์ข้อเสนอแนะจากแพลตฟอร์มหรือผู้ใช้',
       namespace_friend: 'ตรงกับคำขอเป็นเพื่อนและการเปลี่ยนแปลงความสัมพันธ์',
-      namespace_group:
-        'ตรงกับการเข้ากลุ่ม ออกจากกลุ่ม ถูกนำออก และเหตุการณ์กลุ่มอื่น',
+      namespace_group: "ตรงกับการเปลี่ยนแปลงสมาชิกและการอัปเดตข้อมูลกลุ่ม",
       namespace_message: 'ตรงกับการรับ แก้ไข ลบข้อความ และแสดงปฏิกิริยา',
       namespace_platform: 'ตรงกับเหตุการณ์เฉพาะแพลตฟอร์มที่อะแดปเตอร์ให้มา',
       custom: 'เหตุการณ์กำหนดเองหรือยังไม่มีคำอธิบาย',
@@ -1037,6 +1039,7 @@ const thTH = {
       friend_added: 'สร้างความสัมพันธ์เพื่อนแล้ว',
       group_member_joined: 'สมาชิกเข้าร่วมกลุ่มที่มีบอท',
       group_member_left: 'สมาชิกออกจากกลุ่มที่มีบอท',
+      group_info_updated: "ข้อมูลกลุ่ม เช่น ชื่อหรือเจ้าของกลุ่ม มีการเปลี่ยนแปลง",
       group_member_banned: 'สมาชิกกลุ่มถูกแบนหรือนำออก',
       bot_invited_to_group: 'บอทได้รับเชิญเข้ากลุ่ม',
       bot_removed_from_group: 'บอทถูกนำออกจากกลุ่ม',

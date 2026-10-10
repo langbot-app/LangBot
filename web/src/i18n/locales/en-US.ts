@@ -1005,6 +1005,7 @@ const enUS = {
     eventNames: {
       wecombot_enter_chat: "User entered bot chat",
       wecombot_template_card_event: "Template card interaction",
+      dingtalk_card_action: "DingTalk card interaction",
       wecomcs_enter_session: "Customer entered conversation",
       wecomcs_msg_send_fail: "Customer service message failed",
       wecomcs_servicer_status_change: "Representative availability changed",
@@ -1019,6 +1020,7 @@ const enUS = {
       friend_added: 'Friend added',
       group_member_joined: 'Member joined group',
       group_member_left: 'Member left group',
+      group_info_updated: "Group information updated",
       group_member_banned: 'Member banned',
       bot_invited_to_group: 'Bot invited to group',
       bot_removed_from_group: 'Bot removed from group',
@@ -1029,6 +1031,7 @@ const enUS = {
     eventDescriptions: {
       wecombot_enter_chat: "A user opened the bot chat. Use this event for welcome workflows.",
       wecombot_template_card_event: "A user clicked or submitted a template card. Managed form callbacks are handled separately.",
+      dingtalk_card_action: "Card clicks and submissions; feedback and managed forms are handled separately.",
       wecomcs_enter_session: "A customer opened a service link; includes entry source and welcome code.",
       wecomcs_msg_send_fail: "WeChat reported an outgoing message failure, with message ID and failure type.",
       wecomcs_servicer_status_change: "A representative started, stopped or suspended service.",
@@ -1040,8 +1043,7 @@ const enUS = {
         'Matches bot invitations, removals, mutes, and other status events.',
       namespace_feedback: 'Matches feedback events from a platform or user.',
       namespace_friend: 'Matches friend requests and friendship changes.',
-      namespace_group:
-        'Matches member joins, leaves, removals, and other group events.',
+      namespace_group: "Matches group events such as membership changes and group information updates.",
       namespace_message:
         'Matches received, edited, deleted, and reaction message events.',
       namespace_platform:
@@ -1057,6 +1059,7 @@ const enUS = {
       friend_added: 'A friend relationship was created.',
       group_member_joined: 'A member joins a group where the bot is present.',
       group_member_left: 'A member leaves a group where the bot is present.',
+      group_info_updated: "Group details such as its name or owner have changed.",
       group_member_banned: 'A group member is banned or removed.',
       bot_invited_to_group: 'The bot is invited to a group.',
       bot_removed_from_group: 'The bot is removed from a group.',

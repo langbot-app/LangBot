@@ -23,7 +23,18 @@ class DingTalkEventConverter(abstract_platform_adapter.AbstractEventConverter):
             feedback = DingTalkEventConverter.card_callback_to_feedback(event)
             if feedback is not None:
                 return feedback
-            return DingTalkEventConverter.platform_specific(event, 'card.callback')
+            callback = event.get('CardCallback') or {}
+            content = callback.get('content') or {}
+            return platform_events.DingTalkCardActionEvent(
+                adapter_name=ADAPTER_NAME,
+                user=platform_entities.User(id=str(callback.get('user_id') or '')),
+                space_id=str(callback.get('space_id') or ''),
+                card_instance_id=str(callback.get('card_instance_id') or ''),
+                action=str(content.get('action') or content.get('actionKey') or ''),
+                data=callback,
+                timestamp=float(event.get('timestamp') or 0),
+                source_platform_object=event,
+            )
         return DingTalkEventConverter.platform_specific(event, f'message.{event.conversation or "unknown"}')
 
     @staticmethod

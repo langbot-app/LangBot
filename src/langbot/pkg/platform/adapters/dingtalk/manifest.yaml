@@ -151,6 +151,10 @@ spec:
   supported_events:
     - message.received
     - feedback.received
+    - group.member_joined
+    - group.member_left
+    - group.info_updated
+    - dingtalk.card_action
     - platform.specific
 
   supported_apis:

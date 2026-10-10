@@ -331,7 +331,14 @@ function eventLabel(event: string, t: TFunction) {
 
 function eventDescription(event: string, t: TFunction) {
   if (event === '*') return t('bots.eventDescriptions.all');
-  if (event.endsWith('.*')) return t('bots.eventDescriptions.namespace');
+  if (event.endsWith('.*')) {
+    const group = event.slice(0, -2);
+    const key = `bots.eventDescriptions.namespace_${group}`;
+    const description = t(key);
+    return description === key
+      ? t('bots.eventDescriptions.namespace', { group })
+      : description;
+  }
   const key = `bots.eventDescriptions.${event.replace(/\./g, '_')}`;
   const description = t(key);
   return description === key ? t('bots.eventDescriptions.custom') : description;
