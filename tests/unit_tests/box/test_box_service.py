@@ -934,20 +934,21 @@ async def test_truncate_stderr_independently():
 
 
 @pytest.mark.asyncio
-async def test_profile_default_provides_defaults():
+@pytest.mark.parametrize('profile_name,network', [('default', BoxNetworkMode.ON), ('offline', BoxNetworkMode.OFF)])
+async def test_profile_default_provides_defaults(profile_name, network):
     """When tool call omits network/image, profile defaults are used."""
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
+    service = BoxService(make_app(logger, profile=profile_name), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
     result = await service.execute_tool({'command': 'echo hi'}, make_query(30))
 
     assert result['ok'] is True
     spec = backend.start_specs[0]
-    profile = BUILTIN_PROFILES['default']
-    assert spec.network == BoxNetworkMode.OFF
+    profile = BUILTIN_PROFILES[profile_name]
+    assert spec.network == network
     assert spec.image == profile.image
     assert spec.timeout_sec == profile.timeout_sec
 
@@ -962,14 +963,14 @@ async def test_profile_unlocked_field_can_be_overridden():
     await service.initialize()
 
     result = await service.execute_spec_payload(
-        {'cmd': 'echo hi', 'timeout_sec': 60, 'network': 'on', 'session_id': 'person_test_user'},
+        {'cmd': 'echo hi', 'timeout_sec': 60, 'network': 'off', 'session_id': 'person_test_user'},
         make_query(31),
     )
 
     assert result['ok'] is True
     spec = backend.start_specs[0]
     assert spec.timeout_sec == 60
-    assert spec.network == BoxNetworkMode.ON
+    assert spec.network == BoxNetworkMode.OFF
 
 
 @pytest.mark.asyncio
@@ -1037,9 +1038,14 @@ def test_unknown_profile_raises_error():
 def test_builtin_profiles_are_consistent():
     """Basic sanity check on all built-in profiles."""
     assert 'default' in BUILTIN_PROFILES
+    assert 'offline' in BUILTIN_PROFILES
     assert 'offline_readonly' in BUILTIN_PROFILES
     assert 'network_basic' in BUILTIN_PROFILES
     assert 'network_extended' in BUILTIN_PROFILES
+
+    default = BUILTIN_PROFILES['default']
+    assert default.network == BoxNetworkMode.ON
+    assert BUILTIN_PROFILES['offline'] == default.model_copy(update={'name': 'offline', 'network': BoxNetworkMode.OFF})
 
     offline = BUILTIN_PROFILES['offline_readonly']
     assert offline.network == BoxNetworkMode.OFF
@@ -2025,7 +2031,8 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_client_execute(spec):
+        async def fake_client_execute(spec, *, action_context=None):
+            assert action_context.workspace_uuid == query.workspace_uuid
             cmd = spec.cmd
             calls.append(cmd)
             if 'os.scandir' in cmd:
@@ -2068,7 +2075,8 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_client_execute(spec):
+        async def fake_client_execute(spec, *, action_context=None):
+            assert action_context.workspace_uuid == query.workspace_uuid
             cmd = spec.cmd
             calls.append(cmd)
             if 'os.scandir' in cmd:

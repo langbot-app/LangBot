@@ -9,6 +9,8 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
@@ -30,6 +32,7 @@ import {
   Play,
   RefreshCw,
   Shield,
+  Settings2,
   Trash2,
   UserCheck,
   UserMinus,
@@ -495,6 +498,10 @@ function TargetCombobox({
   const [open, setOpen] = useState(false);
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
   const targetType = binding.target_type || 'agent';
+  const selectedTarget =
+    targetType !== 'discard'
+      ? agentOptions.find((agent) => agent.uuid === binding.target_uuid)
+      : undefined;
 
   const current =
     targetType === 'discard'
@@ -545,63 +552,92 @@ function TargetCombobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="h-8 w-[200px] justify-between text-sm font-normal px-3"
-        >
-          <span className="truncate">{currentLabel()}</span>
-          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={t('bots.searchTarget')} className="h-8" />
-          <CommandList>
-            <CommandEmpty>{t('bots.noTargetFound')}</CommandEmpty>
-            {agents.length > 0 && (
-              <CommandGroup heading={t('bots.targetAgent')}>
-                {agents.map((a) => (
-                  <CommandItem
-                    key={a.uuid}
-                    value={`agent:${a.uuid}:${a.name}`}
-                    onSelect={() => select(encodeTarget('agent', a.uuid || ''))}
-                  >
-                    <Bot className="mr-2 size-3.5 shrink-0" />
-                    <span className="truncate">{targetLabel(a)}</span>
-                    {current === encodeTarget('agent', a.uuid || '') && (
-                      <Check className="ml-auto size-3.5 shrink-0" />
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+    <div className="relative w-[200px] shrink-0">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              'h-8 w-full justify-between text-sm font-normal px-3',
+              selectedTarget && 'pr-10',
             )}
-            {pipelines.length > 0 && (
-              <CommandGroup heading={t('bots.targetPipeline')}>
-                {pipelines.map((a) => (
-                  <CommandItem
-                    key={a.uuid}
-                    value={`pipeline:${a.uuid}:${a.name}`}
-                    onSelect={() =>
-                      select(encodeTarget('pipeline', a.uuid || ''))
-                    }
-                  >
-                    <Workflow className="mr-2 size-3.5 shrink-0" />
-                    <span className="truncate">{targetLabel(a)}</span>
-                    {current === encodeTarget('pipeline', a.uuid || '') && (
-                      <Check className="ml-auto size-3.5 shrink-0" />
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+          >
+            <span className="truncate">{currentLabel()}</span>
+            <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[240px] p-0" align="start">
+          <Command>
+            <CommandInput placeholder={t('bots.searchTarget')} className="h-8" />
+            <CommandList>
+              <CommandEmpty>{t('bots.noTargetFound')}</CommandEmpty>
+              {agents.length > 0 && (
+                <CommandGroup heading={t('bots.targetAgent')}>
+                  {agents.map((a) => (
+                    <CommandItem
+                      key={a.uuid}
+                      value={`agent:${a.uuid}:${a.name}`}
+                      onSelect={() => select(encodeTarget('agent', a.uuid || ''))}
+                    >
+                      <Bot className="mr-2 size-3.5 shrink-0" />
+                      <span className="truncate">{targetLabel(a)}</span>
+                      {current === encodeTarget('agent', a.uuid || '') && (
+                        <Check className="ml-auto size-3.5 shrink-0" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {pipelines.length > 0 && (
+                <CommandGroup heading={t('bots.targetPipeline')}>
+                  {pipelines.map((a) => (
+                    <CommandItem
+                      key={a.uuid}
+                      value={`pipeline:${a.uuid}:${a.name}`}
+                      onSelect={() =>
+                        select(encodeTarget('pipeline', a.uuid || ''))
+                      }
+                    >
+                      <Workflow className="mr-2 size-3.5 shrink-0" />
+                      <span className="truncate">{targetLabel(a)}</span>
+                      {current === encodeTarget('pipeline', a.uuid || '') && (
+                        <Check className="ml-auto size-3.5 shrink-0" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selectedTarget && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1 size-6"
+            >
+              <Link
+                to={`/home/agents?id=${encodeURIComponent(selectedTarget.uuid || '')}&tab=config`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('bots.pluginSubscriptions.configure')}
+              >
+                <Settings2 className="size-3.5" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t('bots.pluginSubscriptions.configure')}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   );
 }
 

@@ -174,6 +174,8 @@ spec:
   supported_events:
     - message.received
     - feedback.received
+    - wecombot.enter_chat
+    - wecombot.template_card_event
     - platform.specific
 
   supported_apis:

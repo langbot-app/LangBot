@@ -1003,6 +1003,8 @@ const viVN = {
     eventWildcard: 'Tất cả sự kiện',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "Người dùng vào cuộc trò chuyện với bot",
+      wecombot_template_card_event: "Tương tác thẻ mẫu",
       wecomcs_enter_session: "Khách hàng vào hội thoại",
       wecomcs_msg_send_fail: "Gửi tin nhắn hỗ trợ thất bại",
       wecomcs_servicer_status_change: "Trạng thái nhân viên thay đổi",
@@ -1025,6 +1027,8 @@ const viVN = {
       platform_specific: 'Sự kiện riêng của nền tảng',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "Người dùng mở cuộc trò chuyện với bot. Dùng cho quy trình chào mừng.",
+      wecombot_template_card_event: "Người dùng nhấp hoặc gửi thẻ. Phản hồi biểu mẫu do hệ thống quản lý được xử lý riêng.",
       wecomcs_enter_session: "Khách hàng mở liên kết hỗ trợ; gồm nguồn truy cập và mã chào mừng.",
       wecomcs_msg_send_fail: "WeChat thông báo gửi thất bại, gồm ID tin nhắn và loại lỗi.",
       wecomcs_servicer_status_change: "Nhân viên bắt đầu, dừng hoặc tạm dừng tiếp nhận.",

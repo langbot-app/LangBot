@@ -390,9 +390,10 @@ const BotSessionMonitor = forwardRef<
   }, [selectedSessionId, messagePage, loadMessages]);
 
   useEffect(() => {
+    if (loadingMessages || messageError) return;
     if (messages.length === 0 && toolCalls.length === 0) return;
-    // Wait for DOM to render the new messages before scrolling
-    requestAnimationFrame(() => {
+    // The timeline is hidden until all message data has finished loading.
+    const frame = requestAnimationFrame(() => {
       const container = messagesContainerRef.current;
       if (container) {
         const viewport = container.querySelector(
@@ -402,7 +403,8 @@ const BotSessionMonitor = forwardRef<
         scrollTarget.scrollTop = scrollTarget.scrollHeight;
       }
     });
-  }, [messages, toolCalls]);
+    return () => cancelAnimationFrame(frame);
+  }, [loadingMessages, messageError, messages, toolCalls]);
 
   const parseMessageChain = (content: string): MessageChainComponent[] => {
     try {

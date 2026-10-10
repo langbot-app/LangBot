@@ -1018,6 +1018,8 @@ const ruRU = {
     eventWildcard: 'Все события',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "Пользователь открыл чат бота",
+      wecombot_template_card_event: "Взаимодействие с карточкой",
       wecomcs_enter_session: "Клиент вошёл в диалог",
       wecomcs_msg_send_fail: "Ошибка отправки сообщения поддержки",
       wecomcs_servicer_status_change: "Статус оператора изменён",
@@ -1040,6 +1042,8 @@ const ruRU = {
       platform_specific: 'Событие конкретной платформы',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "Пользователь открыл чат бота. Событие подходит для сценариев приветствия.",
+      wecombot_template_card_event: "Пользователь нажал или отправил карточку. Ответы управляемых форм обрабатываются отдельно.",
       wecomcs_enter_session: "Клиент открыл ссылку поддержки; событие содержит источник и код приветствия.",
       wecomcs_msg_send_fail: "WeChat сообщил об ошибке отправки с ID сообщения и типом ошибки.",
       wecomcs_servicer_status_change: "Оператор начал, остановил или приостановил приём обращений.",

@@ -89,3 +89,24 @@ async def test_cumulative_stream_ends_with_last_snapshot_even_when_final_is_blan
     ]
     assert [item.all_content for item in results] == ['hel', 'hello', 'hello']
     assert results[-1].is_final
+
+
+@pytest.mark.asyncio
+async def test_multi_round_completion_keeps_one_transcript_and_attachments():
+    first = '<think>plan</think>I will create a file.'
+    last = '<think>file created</think>Here is your file.'
+    completed = Message(role='assistant', content=last)
+    completed.attachments = MessageChain([File(name='report.txt', base64='aGVsbG8=')])
+    results = [
+        item
+        async for item in coalesce_stream_results(
+            source(
+                MessageChunk(role='assistant', content=first, is_final=False),
+                MessageChunk(role='assistant', content=first + last, is_final=True),
+                completed,
+            )
+        )
+    ]
+    assert len(results) == 2
+    assert results[-1].content == first + last
+    assert results[-1].attachments is completed.attachments

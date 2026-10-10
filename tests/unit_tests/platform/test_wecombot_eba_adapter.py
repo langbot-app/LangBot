@@ -330,3 +330,170 @@ async def test_wecombot_webhook_mode_rejects_proactive_send():
         await adapter.send_message(
             'person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hi')])
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['enter_chat', 'template_card_event'])
+async def test_business_events_preserve_identity_payload_and_deduplicate(kind):
+    from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
+
+    adapter = make_adapter()
+    listener = AsyncMock()
+    adapter.listeners[platform_events.EBAEvent] = listener
+    client = WecomBotWsClient('bot-id', 'secret', DummyLogger())
+    client.on_message('event')(adapter._handle_native_event)
+    client.on_message('template_card_event')(adapter._handle_interaction_event)
+    body = {
+        'msgid': 'business-event-1',
+        'msgtype': 'event',
+        'chattype': 'single',
+        'from': {'userid': 'visitor-1', 'alias': 'Visitor'},
+        'create_time': 1700000000,
+        'event': {
+            'eventtype': kind,
+            'template_card_event': {
+                'task_id': 'business-card',
+                'event_key': 'approve',
+                'card_type': 'button_interaction',
+                'selected_items': [{'question_key': 'choice', 'option_ids': ['yes']}],
+            },
+        },
+    }
+    frame = {'headers': {'req_id': 'callback-1'}, 'body': body}
+    await client._handle_event_callback(frame)
+    await client._handle_event_callback(frame)
+    listener.assert_awaited_once()
+    event = listener.await_args.args[0]
+    assert event.type == 'wecombot.' + kind
+    assert event.user.id == 'visitor-1'
+    assert event.chat_id == 'visitor-1'
+    assert event.timestamp == 1700000000
+    assert event.data['req_id'] == 'callback-1'
+    assert event.data['event'] == body['event']
+    assert type(event).model_validate(event.model_dump()).type == event.type
+    if kind == 'template_card_event':
+        assert event.event_key == 'approve'
+        assert event.selected_items[0]['option_ids'] == ['yes']
+
+
+@pytest.mark.asyncio
+async def test_managed_card_callback_does_not_start_business_event():
+    adapter = make_adapter()
+    listener = AsyncMock()
+    adapter.listeners[platform_events.EBAEvent] = listener
+    await adapter._handle_interaction_event(
+        WecomBotEvent(
+            {
+                'type': 'single',
+                'msgtype': 'event',
+                'userid': 'user-1',
+                'event': {
+                    'eventtype': 'template_card_event',
+                    'template_card_event': {
+                        'task_id': 'lbi-managed',
+                        'event_key': 'lbi:token:a:0',
+                    },
+                },
+            }
+        )
+    )
+    listener.assert_awaited_once()
+    event = listener.await_args.args[0]
+    assert event.type == 'platform.specific'
+    assert event.action == 'interaction.submitted'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('webhook', [False, True])
+async def test_enter_chat_reply_uses_welcome_callback_and_checks_deadline(webhook):
+    import time
+
+    adapter = make_adapter(webhook)
+    adapter.bot.reply_welcome = AsyncMock(return_value={'ok': True})
+    context = {
+        'event_type': 'wecombot.enter_chat',
+        'data': {
+            'timestamp': time.time(),
+            'message_id': 'entry-1',
+            'data': {'req_id': 'request-1'},
+        },
+    }
+    message = platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+    await adapter.reply_to_event(context=context, target_type='person', target_id='user-1', message=message)
+    adapter.bot.reply_welcome.assert_awaited_once_with('entry-1' if webhook else 'request-1', 'Welcome')
+    context['data']['timestamp'] -= 10
+    with pytest.raises(ValueError, match='5 seconds'):
+        await adapter.reply_to_event(context=context, target_type='person', target_id='user-1', message=message)
+
+
+@pytest.mark.asyncio
+async def test_file_attachment_is_uploaded_and_delivered_after_stream():
+    adapter = make_adapter()
+    adapter.bot.upload_media = AsyncMock(return_value={'media_id': 'file-1'})
+    adapter.bot.reply_file = AsyncMock(return_value={'errcode': 0})
+    source = await adapter.event_converter.target2yiri(wecombot_event())
+    message = platform_message.MessageChain(
+        [
+            platform_message.Plain(text='Here is your file'),
+            platform_message.File(name='report.txt', base64='aGVsbG8='),
+        ]
+    )
+    await adapter.reply_message_chunk(source, None, message, is_final=True)
+    adapter.bot.upload_media.assert_awaited_once_with(b'hello', 'report.txt', media_type='file')
+    adapter.bot.reply_file.assert_awaited_once_with('req-1', 'file-1')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['upload', 'reply', 'timeout'])
+async def test_file_delivery_errors_are_not_silent(failure):
+    adapter = make_adapter()
+    adapter.bot.upload_media = AsyncMock(return_value=None if failure == 'upload' else {'media_id': 'file-1'})
+    adapter.bot.reply_file = AsyncMock(return_value=None if failure == 'timeout' else {'errcode': 40001})
+    source = await adapter.event_converter.target2yiri(wecombot_event())
+    with pytest.raises(RuntimeError, match='WeCom file'):
+        await adapter.reply_message(
+            source,
+            platform_message.MessageChain(
+                [
+                    platform_message.File(name='report.txt', base64='aGVsbG8='),
+                ]
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_multi_round_file_completion_finalizes_once_without_text_fallback():
+    from langbot.pkg.pipeline.process.stream_results import coalesce_stream_results
+    from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+
+    adapter = make_adapter()
+    adapter.bot.upload_media = AsyncMock(return_value={'media_id': 'file-1'})
+    adapter.bot.reply_file = AsyncMock(return_value={'errcode': 0})
+    source = await adapter.event_converter.target2yiri(wecombot_event())
+    prefix = '<think>plan</think>Creating your file.'
+    final = '<think>done</think>Your file is ready.'
+    completed = Message(role='assistant', content=final)
+    completed.attachments = platform_message.MessageChain(
+        [
+            platform_message.File(name='report.txt', base64='aGVsbG8='),
+        ]
+    )
+
+    async def results():
+        yield MessageChunk(role='assistant', content=prefix)
+        yield MessageChunk(role='assistant', content=prefix + final, tool_calls=[], is_final=True)
+        yield completed
+
+    async for result in coalesce_stream_results(results()):
+        await adapter.reply_message_chunk(
+            source,
+            None,
+            result.get_content_platform_message_chain(),
+            is_final=isinstance(result, Message) or result.is_final,
+        )
+    assert sum(call.kwargs['is_final'] for call in adapter.bot.push_stream_chunk.await_args_list) == 1
+    adapter.bot.reply_text.assert_not_awaited()
+    adapter.bot.reply_file.assert_awaited_once_with('req-1', 'file-1')
+    final_text = adapter.bot.push_stream_chunk.await_args_list[-1].args[1]
+    assert final_text.count('<think>') == 1
+    assert final_text.count('Your file is ready.') == 1

@@ -986,6 +986,8 @@ const thTH = {
     eventWildcard: 'ทุกเหตุการณ์',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "ผู้ใช้เข้าสู่แชตบอต",
+      wecombot_template_card_event: "การโต้ตอบกับการ์ด",
       wecomcs_enter_session: "ลูกค้าเข้าสู่การสนทนา",
       wecomcs_msg_send_fail: "ส่งข้อความบริการลูกค้าไม่สำเร็จ",
       wecomcs_servicer_status_change: "สถานะเจ้าหน้าที่เปลี่ยนแปลง",
@@ -1008,6 +1010,8 @@ const thTH = {
       platform_specific: 'เหตุการณ์เฉพาะแพลตฟอร์ม',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "ผู้ใช้เปิดแชตบอต ใช้สำหรับขั้นตอนต้อนรับและแนะนำ",
+      wecombot_template_card_event: "ผู้ใช้คลิกหรือส่งการ์ด การตอบกลับแบบฟอร์มที่ระบบจัดการจะประมวลผลแยกกัน",
       wecomcs_enter_session: "ลูกค้าเปิดลิงก์บริการ พร้อมข้อมูลแหล่งที่มาและรหัสต้อนรับ",
       wecomcs_msg_send_fail: "WeChat แจ้งการส่งล้มเหลว พร้อม ID ข้อความและประเภทข้อผิดพลาด",
       wecomcs_servicer_status_change: "เจ้าหน้าที่เริ่ม หยุด หรือพักการให้บริการ",

@@ -1003,6 +1003,8 @@ const enUS = {
     eventWildcard: 'All events',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "User entered bot chat",
+      wecombot_template_card_event: "Template card interaction",
       wecomcs_enter_session: "Customer entered conversation",
       wecomcs_msg_send_fail: "Customer service message failed",
       wecomcs_servicer_status_change: "Representative availability changed",
@@ -1025,6 +1027,8 @@ const enUS = {
       platform_specific: 'Platform-specific event',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "A user opened the bot chat. Use this event for welcome workflows.",
+      wecombot_template_card_event: "A user clicked or submitted a template card. Managed form callbacks are handled separately.",
       wecomcs_enter_session: "A customer opened a service link; includes entry source and welcome code.",
       wecomcs_msg_send_fail: "WeChat reported an outgoing message failure, with message ID and failure type.",
       wecomcs_servicer_status_change: "A representative started, stopped or suspended service.",

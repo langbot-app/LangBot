@@ -1008,6 +1008,8 @@ const jaJP = {
     eventWildcard: 'すべてのイベント',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "ボットとのチャットに参加",
+      wecombot_template_card_event: "テンプレートカード操作",
       wecomcs_enter_session: "顧客が会話に参加",
       wecomcs_msg_send_fail: "カスタマーサービスの送信失敗",
       wecomcs_servicer_status_change: "担当者の受付状態変更",
@@ -1030,6 +1032,8 @@ const jaJP = {
       platform_specific: 'プラットフォーム固有イベント',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "ユーザーがボットのチャットを開きました。歓迎や案内のフローに使用できます。",
+      wecombot_template_card_event: "ユーザーがカードをクリックまたは送信しました。管理対象フォームの応答は別途処理します。",
       wecomcs_enter_session: "顧客がリンクから会話を開きました。流入元と歓迎メッセージ用コードを含みます。",
       wecomcs_msg_send_fail: "WeChat が送信失敗を通知しました。メッセージ ID と失敗種別を含みます。",
       wecomcs_servicer_status_change: "担当者が受付を開始、停止、または一時停止しました。",

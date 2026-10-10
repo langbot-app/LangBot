@@ -945,6 +945,8 @@ const zhHant = {
     eventWildcard: '全部事件',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "使用者進入機器人會話",
+      wecombot_template_card_event: "範本卡片互動",
       wecomcs_enter_session: "客戶進入會話",
       wecomcs_msg_send_fail: "客服訊息傳送失敗",
       wecomcs_servicer_status_change: "接待人員狀態變更",
@@ -967,6 +969,8 @@ const zhHant = {
       platform_specific: '平台特定事件',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "使用者進入機器人會話，可用於歡迎和引導流程。",
+      wecombot_template_card_event: "使用者點擊或提交範本卡片；已有互動表單的回呼單獨處理。",
       wecomcs_enter_session: "客戶透過客服連結進入會話，可取得來源和歡迎語憑證。",
       wecomcs_msg_send_fail: "微信通知客服訊息傳送失敗，包含訊息 ID 和失敗類型。",
       wecomcs_servicer_status_change: "接待人員開始、停止接待或暫時掛起。",

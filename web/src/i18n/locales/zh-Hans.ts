@@ -946,6 +946,8 @@ const zhHans = {
     eventWildcard: '全部事件',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "用户进入机器人会话",
+      wecombot_template_card_event: "模板卡片交互",
       wecomcs_enter_session: "客户进入会话",
       wecomcs_msg_send_fail: "客服消息发送失败",
       wecomcs_servicer_status_change: "接待人员状态变更",
@@ -968,6 +970,8 @@ const zhHans = {
       platform_specific: '平台特定事件',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "用户进入机器人会话，可用于欢迎和引导流程。",
+      wecombot_template_card_event: "用户点击或提交模板卡片；已有交互表单的回调单独处理。",
       wecomcs_enter_session: "客户通过客服链接进入会话，可获取来源和欢迎语凭据。",
       wecomcs_msg_send_fail: "微信通知客服消息发送失败，包含消息 ID 和失败类型。",
       wecomcs_servicer_status_change: "接待人员开始、停止接待或暂时挂起。",

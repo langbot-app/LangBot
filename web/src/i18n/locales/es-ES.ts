@@ -1022,6 +1022,8 @@ const esES = {
     eventWildcard: 'Todos los eventos',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: "Usuario entró al chat del bot",
+      wecombot_template_card_event: "Interacción con tarjeta",
       wecomcs_enter_session: "Cliente entró en la conversación",
       wecomcs_msg_send_fail: "Fallo de envío de atención al cliente",
       wecomcs_servicer_status_change: "Disponibilidad del agente modificada",
@@ -1044,6 +1046,8 @@ const esES = {
       platform_specific: 'Evento específico de la plataforma',
     },
     eventDescriptions: {
+      wecombot_enter_chat: "Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.",
+      wecombot_template_card_event: "Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.",
       wecomcs_enter_session: "Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.",
       wecomcs_msg_send_fail: "WeChat notificó un fallo de envío con el ID y el tipo de error.",
       wecomcs_servicer_status_change: "Un agente inició, detuvo o suspendió la atención.",

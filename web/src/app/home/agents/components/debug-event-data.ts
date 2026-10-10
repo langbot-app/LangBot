@@ -90,6 +90,14 @@ const DEBUG_EVENT_DEFINITIONS: Record<string, DebugEventDefinition> = {
     messageField: 'text',
   },
   'message.deleted': deletion,
+  'wecombot.enter_chat': {
+    fields: [user],
+    defaults: { chat_id: 'debug-user', chat_type: 'private', message_id: 'debug-entry', data: {} },
+  },
+  'wecombot.template_card_event': {
+    fields: [user],
+    defaults: { chat_id: 'debug-user', chat_type: 'private', message_id: 'debug-card-click', task_id: 'debug-card', event_key: 'confirm', card_type: 'button_interaction', selected_items: [], data: {} },
+  },
   'wecomcs.enter_session': {
     fields: [user],
     defaults: { open_kfid: 'debug-kf', external_userid: 'debug-user', chat_id: 'debug-user|debug-kf', scene: 'debug', scene_param: '', welcome_code: '', wechat_channels: {} },
