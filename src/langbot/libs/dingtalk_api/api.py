@@ -76,6 +76,8 @@ def _stringify_card_param_map(card_param_map: Optional[dict]) -> dict:
 
 
 def is_stream_card_configured(config: dict) -> bool:
+    if not config.get('markdown_card', True):
+        return False
     template_id = config.get('card_template_id')
     # Older manifests stored instructional placeholder text as the default.
     return isinstance(template_id, str) and bool(template_id.strip()) and template_id.strip() != '填写你的卡片template_id'

@@ -49,19 +49,39 @@ spec:
       type: string
       required: true
       default: ""
+    - name: markdown_card
+      label:
+        en_US: Use Card Replies
+        zh_Hans: 使用卡片回复
+        zh_Hant: 使用卡片回覆
+      description:
+        en_US: Controls Markdown and streaming card replies. Disable to use plain text while keeping your template settings. When enabled, a configured template automatically enables streaming.
+        zh_Hans: 控制 Markdown 和流式卡片回复。关闭后使用纯文本，保留模板配置；开启且已配置模板时自动使用流式回复。
+        zh_Hant: 控制 Markdown 和串流卡片回覆。關閉後使用純文字，保留範本設定；開啟且已設定範本時自動使用串流回覆。
+      type: boolean
+      required: false
+      default: true
     - name: card_template_id
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
       label:
         en_US: card template id
         zh_Hans: 卡片模板ID
         zh_Hant: 卡片範本ID
       description:
-        en_US: Template for streaming text replies. Save and publish it in DingTalk Card Platform, then paste its ID here to automatically enable streaming replies. Leave empty for ordinary replies. Separate from the human input template.
-        zh_Hans: 用于流式文字回复。在钉钉卡片平台保存并发布模板后，填写 ID 即自动启用流式回复，留空使用普通回复；与人工输入卡片模板分开配置。
-        zh_Hant: 用於串流文字回覆。在釘釘卡片平台儲存並發布範本後，填寫 ID 即自動啟用串流回覆，留空使用一般回覆；與人工輸入卡片範本分開設定。
+        en_US: Template for streaming text replies. Save and publish it in DingTalk Card Platform, then paste its ID here to automatically enable streaming while card replies are enabled. Leave empty for ordinary replies. Separate from the human input template.
+        zh_Hans: 用于流式文字回复。在钉钉卡片平台保存并发布模板后，开启卡片回复后，填写 ID 即自动启用流式回复，留空使用普通回复；与人工输入卡片模板分开配置。
+        zh_Hant: 用於串流文字回覆。在釘釘卡片平台儲存並發布範本後，開啟卡片回覆後，填寫 ID 即自動啟用串流回覆，留空使用一般回覆；與人工輸入卡片範本分開設定。
       type: string
       required: false
       default: ""
     - name: stream_card_template_download
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
       label:
         en_US: Download Streaming Reply Card Template
         zh_Hans: 下载流式回复卡片模板
@@ -75,15 +95,11 @@ spec:
       default: ''
       url: /api/v1/platform/adapters/dingtalk/stream-card-template
       download_filename: dingtalk_stream_card.json
-    - name: markdown_card
-      label:
-        en_US: Markdown Card
-        zh_Hans: 是否使用 Markdown 卡片
-        zh_Hant: 是否使用 Markdown 卡片
-      type: boolean
-      required: false
-      default: true
     - name: card_auto_layout
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
       label:
         en_US: Card Auto Layout
         zh_Hans: 卡片宽屏自动布局
