@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-import pytest
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
-# TODO: unskip once the handler ↔ app circular import is resolved
-pytest.skip(
-    'circular import in handler ↔ app; will be unblocked once resolved',
-    allow_module_level=True,
-)
+# Initialize the application import graph before importing a leaf handler. This
+# matches normal startup and avoids handler -> app -> handler partial imports.
+from langbot.pkg.core import app  # noqa: F401
 
 from langbot.pkg.pipeline.process.handler import MessageHandler  # noqa: E402
 
