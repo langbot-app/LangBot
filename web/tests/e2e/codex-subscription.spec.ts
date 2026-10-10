@@ -196,7 +196,7 @@ for (const width of [1280, 390, 320]) {
     await page.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(page.getByText('My Codex', { exact: true })).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Add Model', exact: true }),
+      page.getByRole('button', { name: 'Add', exact: true }),
     ).toBeVisible();
     expect(state.creates).toBe(1);
     expect(
@@ -309,7 +309,7 @@ test('model test retains the connected provider identity', async ({ page }) => {
   });
   await page.goto('/home/bots');
   await page.getByRole('button', { name: 'Models', exact: true }).click();
-  await page.getByRole('button', { name: 'Add Model', exact: true }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page
     .getByPlaceholder('Model Name', { exact: true })
     .fill('fixture-codex-model');

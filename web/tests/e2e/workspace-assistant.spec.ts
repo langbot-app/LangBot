@@ -232,7 +232,7 @@ test('sending survives model labels appearing and disappearing in stream snapsho
   await page.goto('/home/bots');
   const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
   const model = assistant.getByRole('combobox', { name: 'Select Model' });
-  await expect(model).toContainText('Recommended model');
+  await expect(model).toContainText('Valid Mock Model');
   for (let i = 1; i <= 3; i++) {
     await assistant.getByRole('textbox').fill(`Hello ${i}`);
     await assistant.getByRole('button', { name: 'Send', exact: true }).click();
@@ -246,7 +246,7 @@ test('sending survives model labels appearing and disappearing in stream snapsho
   expect(errors).toEqual([]);
 });
 
-test('selects the recommendation on entry and submits the visible model', async ({
+test('selects the available local model on entry and submits the visible model', async ({
   page,
 }) => {
   await installLangBotApiMocks(page, {
@@ -290,7 +290,7 @@ test('selects the recommendation on entry and submits the visible model', async 
   const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
   await expect(
     assistant.getByRole('combobox', { name: 'Select Model' }),
-  ).toContainText('Recommended model');
+  ).toContainText('Valid Mock Model');
   await assistant.getByRole('textbox').fill('Hello');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(
@@ -460,7 +460,7 @@ test('renders streaming text and tool progress before completion', async ({
     const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
     await expect(
       assistant.getByRole('combobox', { name: 'Select Model' }),
-    ).toContainText('Recommended model');
+    ).toContainText('Valid Mock Model');
     await assistant.getByRole('textbox').fill('Inspect resources');
     await assistant.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(
@@ -492,7 +492,7 @@ test('renders streaming text and tool progress before completion', async ({
   }
 });
 
-test('without providers shows setup only and rechecks after model settings close', async ({
+test('without usable models shows setup only and rechecks after model settings close', async ({
   page,
 }) => {
   await installLangBotApiMocks(page, {
@@ -504,6 +504,10 @@ test('without providers shows setup only and rechecks after model settings close
   );
   let configured = false;
   let recommendations = 0;
+  await page.route('**/api/v1/provider/models/llm', (route) => {
+    if (configured) return route.fallback();
+    return route.fulfill({ json: { code: 0, data: { models: [] } } });
+  });
   await page.route('**/api/v1/provider/providers', (route) =>
     route.fulfill({
       json: {
@@ -530,25 +534,25 @@ test('without providers shows setup only and rechecks after model settings close
     });
   });
   await page.goto('/home/bots');
-  const setup = page.getByRole('complementary', {
+  const setup = page.getByRole('dialog', {
     name: 'Workspace assistant',
   });
   await expect(
     setup.getByRole('button', { name: 'Sign in to LangBot Account' }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('dialog', { name: 'Workspace assistant' }),
-  ).toHaveCount(0);
+  await expect(setup.getByRole('textbox')).toHaveCount(0);
   expect(recommendations).toBe(0);
   await setup.getByRole('button', { name: 'Configure models' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(
+    page.getByRole('dialog', { name: 'Settings', exact: true }),
+  ).toBeVisible();
   configured = true;
   await page.keyboard.press('Escape');
   await expect(
     page
       .getByRole('dialog', { name: 'Workspace assistant' })
       .getByRole('combobox', { name: 'Select Model' }),
-  ).toContainText('Recommended model');
+  ).toContainText('Valid Mock Model');
 });
 
 test('setup login starts the existing LangBot Account authorization flow', async ({
@@ -563,13 +567,16 @@ test('setup login starts the existing LangBot Account authorization flow', async
       json: { code: 0, data: { providers: [] } },
     }),
   );
+  await page.route('**/api/v1/provider/models/llm', (route) =>
+    route.fulfill({ json: { code: 0, data: { models: [] } } }),
+  );
   await page.goto('/home/bots');
   const request = page.waitForRequest(
     (request) =>
       request.url().includes('/space/') && request.url().includes('authorize'),
   );
   await page
-    .getByRole('complementary', { name: 'Workspace assistant' })
+    .getByRole('dialog', { name: 'Workspace assistant' })
     .getByRole('button', { name: 'Sign in to LangBot Account' })
     .click();
   expect((await request).url()).toContain('authorize');

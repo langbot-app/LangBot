@@ -152,8 +152,7 @@ test.describe('bot session request recovery', () => {
             await page.getByRole('button', { name: /Recovery user 1/ }).click();
           else
             await page
-              .getByRole('button', { name: 'Next', exact: true })
-              .last()
+              .getByRole('button', { name: 'Next page', exact: true })
               .click();
         }
       }
