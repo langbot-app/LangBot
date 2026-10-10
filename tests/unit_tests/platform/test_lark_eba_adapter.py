@@ -154,6 +154,7 @@ def make_adapter(config: dict | None = None) -> LarkAdapter:
             },
             DummyLogger(),
         )
+    adapter.message_converter = LarkMessageConverter()
     adapter.api_client = DummyAPIClient()
     adapter.bot = DummyWSClient()
     return adapter
