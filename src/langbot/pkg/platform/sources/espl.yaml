@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: espl
+  label:
+    en_US: ESPL V3
+    zh_Hans: ESPL V3
+    zh_Hant: ESPL V3
+    ja_JP: ESPL V3
+  description:
+    en_US: "LangBot acts as a WebSocket server. E-SP-Line2 creates a client-mode adapter (接入器) pointing its ws_url to this endpoint. Receives e-commerce messages (Taobao / Xianyu) as inbound events and sends AI replies back to the platform."
+    zh_Hans: "LangBot 作为 WebSocket 服务端。在 E-SP-Line2 中创建客户端模式接入器，将 ws_url 指向本端点即可接入。接收电商平台（淘宝/闲鱼）消息作为入站事件，并将 AI 回复发回平台。"
+    zh_Hant: "LangBot 作為 WebSocket 服務端。在 E-SP-Line2 中建立用戶端模式接入器，將 ws_url 指向本端點即可接入。接收電商平台（淘寶/閒魚）訊息作為入站事件，並將 AI 回覆發回平台。"
+    ja_JP: "LangBot が WebSocket サーバーとして動作します。E-SP-Line2 でクライアントモードのアダプター（接入器）を作成し、ws_url をこのエンドポイントに向けます。EC プラットフォーム（Taobao / Xianyu）のメッセージをインバウンドイベントとして受信し、AI 返信をプラットフォームに送り返します。"
+  icon: espl.png
+spec:
+  categories:
+    - global
+  help_links:
+    zh: https://docs.langbot.app/zh/platforms/espl
+    en: https://docs.langbot.app/en/platforms/espl
+    ja: https://docs.langbot.app/ja/platforms/espl
+  config:
+    - name: host
+      label:
+        en_US: Listen Host
+        zh_Hans: 监听主机
+        zh_Hant: 監聽主機
+        ja_JP: リッスンホスト
+      description:
+        en_US: "Host to bind the WebSocket server. Set 0.0.0.0 when E-SP-Line2 is on another machine."
+        zh_Hans: "WebSocket 服务端绑定的主机。E-SP-Line2 在其他机器时设为 0.0.0.0。"
+        zh_Hant: "WebSocket 服務端綁定的主機。E-SP-Line2 在其他機器時設為 0.0.0.0。"
+        ja_JP: "WebSocket サーバーをバインドするホスト。E-SP-Line2 が別マシンの場合は 0.0.0.0 を設定します。"
+      type: string
+      required: true
+      default: "127.0.0.1"
+    - name: port
+      label:
+        en_US: Listen Port
+        zh_Hans: 监听端口
+        zh_Hant: 監聽連接埠
+        ja_JP: リッスンポート
+      description:
+        en_US: "Port to bind the WebSocket server. E-SP-Line2 client-mode adapter connects to ws://<host>:<port>/ws."
+        zh_Hans: "WebSocket 服务端绑定的端口。E-SP-Line2 客户端模式接入器连接 ws://<host>:<port>/ws。"
+        zh_Hant: "WebSocket 服務端綁定的連接埠。E-SP-Line2 用戶端模式接入器連接 ws://<host>:<port>/ws。"
+        ja_JP: "WebSocket サーバーをバインドするポート。E-SP-Line2 クライアントモードアダプターは ws://<host>:<port>/ws に接続します。"
+      type: integer
+      required: false
+      default: 8000
+    - name: key
+      label:
+        en_US: Access Key
+        zh_Hans: 访问密钥
+        zh_Hant: 訪問密鑰
+        ja_JP: アクセスキー
+      description:
+        en_US: "Access key for authentication. E-SP-Line2 client-mode adapter passes this key as ?key=<KEY> in the WebSocket URL. Leave empty to disable key validation (not recommended)."
+        zh_Hans: "访问密钥用于认证。E-SP-Line2 客户端模式接入器在 WebSocket URL 中携带 ?key=<KEY> 传递此密钥。留空表示不验证密钥（不推荐）。"
+        zh_Hant: "訪問密鑰用於認證。E-SP-Line2 用戶端模式接入器在 WebSocket URL 中攜帶 ?key=<KEY> 傳遞此密鑰。留空表示不驗證密鑰（不推薦）。"
+        ja_JP: "認証用のアクセスキー。E-SP-Line2 クライアントモードアダプターは WebSocket URL に ?key=<KEY> としてこのキーを渡します。空の場合はキー検証を無効にします（非推奨）。"
+      type: string
+      required: false
+      default: ""
+    - name: heartbeat_interval
+      label:
+        en_US: Heartbeat Interval (seconds)
+        zh_Hans: 心跳间隔（秒）
+        zh_Hant: 心跳間隔（秒）
+        ja_JP: ハートビート間隔（秒）
+      description:
+        en_US: "How often to ping connected clients to keep the connection alive."
+        zh_Hans: "发送 ping 帧保持连接的间隔。"
+        zh_Hant: "發送 ping 幀保持連線的間隔。"
+        ja_JP: "接続を維持するためにクライアントに ping を送信する間隔。"
+      type: integer
+      required: false
+      default: 30
+execution:
+  python:
+    path: ./espl.py
+    attr: EsplAdapter
