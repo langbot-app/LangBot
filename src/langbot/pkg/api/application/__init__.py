@@ -2,6 +2,7 @@
 
 from .api import (
     APPLICATION_API_VERSION,
+    ApplicationErrorCode,
     OPERATIONS,
     ApplicationAPI,
     ApplicationAPIError,
@@ -21,6 +22,7 @@ from .client import ApplicationAPIClient, ApplicationAPIClientError
 
 __all__ = [
     'APPLICATION_API_VERSION',
+    'ApplicationErrorCode',
     'OPERATIONS',
     'ApplicationAPI',
     'ApplicationAPIError',

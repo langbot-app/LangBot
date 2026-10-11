@@ -11,10 +11,12 @@ from __future__ import annotations
 import dataclasses
 import enum
 import inspect
+import types
 import typing
 
-from ..http.authz import Permission, require_permission
+from ..authz import AuthorizationError, Permission, require_permission
 from ..context import RequestContext
+from ..secrets import redact_secrets
 
 APPLICATION_API_VERSION = 'v1'
 
@@ -26,6 +28,21 @@ class ApplicationSurface(enum.StrEnum):
     MCP = 'mcp'
     ASSISTANT = 'assistant'
     CLI = 'cli'
+
+
+class ApplicationErrorCode(enum.StrEnum):
+    """Stable machine-readable errors emitted by the application boundary."""
+
+    INVALID_INPUT = 'invalid_input'
+    INVALID_OUTPUT = 'invalid_output'
+    UNKNOWN_OPERATION = 'unknown_operation'
+    SURFACE_NOT_ALLOWED = 'surface_not_allowed'
+    PERMISSION_DENIED = 'permission_denied'
+    INVALID_AUTHENTICATION = 'invalid_authentication'
+    WORKSPACE_REQUIRED = 'workspace_required'
+    RESOURCE_NOT_FOUND = 'resource_not_found'
+    VALIDATION_ERROR = 'validation_error'
+    APPLICATION_ERROR = 'application_error'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -45,11 +62,32 @@ class ApplicationAPIException(Exception):
         self.error = error
 
 
+class _InvalidApplicationOutput(Exception):
+    """Internal marker used when a service violates an operation contract."""
+
+
+_ERROR_STATUS_BY_CODE: dict[str, int] = {
+    'invalid_input': 400,
+    'invalid_output': 500,
+    'unknown_operation': 404,
+    'surface_not_allowed': 403,
+    'permission_denied': 403,
+    'invalid_authentication': 401,
+    'workspace_required': 400,
+    'resource_not_found': 404,
+    'validation_error': 400,
+    'application_error': 500,
+}
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class PipelineListInput:
     sort_by: str = 'created_at'
     sort_order: str = 'DESC'
-    include_secret: bool = False
+    # ``None`` preserves the legacy service call shape for lightweight
+    # adapters; HTTP passes an explicit bool so its redaction intent is
+    # visible to service-level tests and doubles.
+    include_secret: bool | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -191,67 +229,252 @@ class ApplicationAPI:
         spec = OPERATIONS[operation_id]
         require_permission(context, spec.permission)
 
-    async def list_pipelines(
+    @staticmethod
+    def _surface(surface: ApplicationSurface | str) -> ApplicationSurface:
+        try:
+            return surface if isinstance(surface, ApplicationSurface) else ApplicationSurface(surface)
+        except (TypeError, ValueError) as exc:
+            raise ApplicationAPIException(
+                ApplicationAPIError('surface_not_allowed', f'Unknown application surface: {surface}', 403)
+            ) from exc
+
+    @staticmethod
+    def _type_name(value: typing.Any) -> str:
+        return type(value).__name__
+
+    @classmethod
+    def _validate_value(cls, value: typing.Any, annotation: typing.Any, path: str) -> None:
+        """Validate operation DTO values without coercion.
+
+        Dataclasses are deliberately used as the public DTOs instead of
+        accepting arbitrary dictionaries.  This small recursive validator
+        catches the common bool/int and list-item coercions while keeping the
+        application layer independent from Pydantic or any protocol adapter.
+        """
+
+        if annotation is typing.Any or annotation is None:
+            return
+        if isinstance(annotation, typing.TypeVar):
+            return
+        origin = typing.get_origin(annotation)
+        args = typing.get_args(annotation)
+        if origin in (typing.Union, types.UnionType):
+            if value is None and type(None) in args:
+                return
+            for candidate in args:
+                if candidate is type(None):
+                    continue
+                try:
+                    cls._validate_value(value, candidate, path)
+                    return
+                except ApplicationAPIException:
+                    continue
+            raise ApplicationAPIException(ApplicationAPIError('invalid_input', f'{path} has an invalid type', 400))
+        if origin in (list, tuple, set, frozenset):
+            if not isinstance(value, origin):
+                raise ApplicationAPIException(
+                    ApplicationAPIError('invalid_input', f'{path} must be a {origin.__name__}', 400)
+                )
+            if args:
+                item_type = args[0]
+                for index, item in enumerate(value):
+                    cls._validate_value(item, item_type, f'{path}[{index}]')
+            return
+        if origin is dict:
+            if not isinstance(value, dict):
+                raise ApplicationAPIException(ApplicationAPIError('invalid_input', f'{path} must be an object', 400))
+            key_type, value_type = args or (typing.Any, typing.Any)
+            for key, item in value.items():
+                cls._validate_value(key, key_type, f'{path}.<key>')
+                cls._validate_value(item, value_type, f'{path}[{key!r}]')
+            return
+        if annotation is bool:
+            valid = type(value) is bool
+        elif annotation is int:
+            valid = type(value) is int
+        elif annotation is float:
+            valid = type(value) in (int, float) and type(value) is not bool
+        elif annotation is str:
+            valid = type(value) is str
+        elif isinstance(annotation, type):
+            valid = isinstance(value, annotation)
+        else:
+            valid = True
+        if not valid:
+            raise ApplicationAPIException(ApplicationAPIError('invalid_input', f'{path} has an invalid type', 400))
+
+    @classmethod
+    def _validate_input(cls, value: typing.Any, expected_type: type) -> None:
+        if type(value) is not expected_type or not dataclasses.is_dataclass(value):
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'invalid_input',
+                    f'Expected {expected_type.__name__}, received {cls._type_name(value)}',
+                    400,
+                )
+            )
+        hints = typing.get_type_hints(expected_type)
+        for field in dataclasses.fields(expected_type):
+            cls._validate_value(getattr(value, field.name), hints.get(field.name, field.type), field.name)
+
+    @classmethod
+    def _validate_output(cls, value: typing.Any, expected_type: type) -> None:
+        if type(value) is not expected_type or not dataclasses.is_dataclass(value):
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'invalid_output',
+                    f'Application operation returned {cls._type_name(value)}; expected {expected_type.__name__}',
+                    500,
+                )
+            )
+        # Output DTOs are just as strict as input DTOs, but report a server
+        # contract error rather than blaming the caller.
+        try:
+            hints = typing.get_type_hints(expected_type)
+            for field in dataclasses.fields(expected_type):
+                cls._validate_value(getattr(value, field.name), hints.get(field.name, field.type), field.name)
+        except ApplicationAPIException as exc:
+            raise ApplicationAPIException(ApplicationAPIError('invalid_output', exc.error.message, 500)) from exc
+
+    @staticmethod
+    def _error_from_exception(exc: BaseException) -> ApplicationAPIError:
+        if isinstance(exc, ApplicationAPIException):
+            return exc.error
+        code = getattr(exc, 'error_code', None)
+        status = getattr(exc, 'status_code', None)
+        if isinstance(code, str) and code:
+            resolved_status = int(status) if isinstance(status, int) else _ERROR_STATUS_BY_CODE.get(code, 400)
+            return ApplicationAPIError(code, str(exc), resolved_status)
+        if exc.__class__.__name__ in {'WorkspaceNotFoundError', 'ResourceNotFoundError'}:
+            return ApplicationAPIError('resource_not_found', 'Resource not found', 404)
+        if isinstance(exc, ValueError):
+            return ApplicationAPIError('validation_error', str(exc), 400)
+        return ApplicationAPIError('application_error', 'Application operation failed', 500)
+
+    async def execute(
         self,
+        operation_id: str,
         context: RequestContext,
-        sort_by: str = 'created_at',
-        sort_order: str = 'DESC',
+        input: typing.Any,
         *,
-        include_secret: bool | None = None,
-    ) -> list[dict]:
-        self._authorize(context, 'pipeline.list')
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> typing.Any:
+        """Execute a versioned operation with strict DTO and surface checks.
+
+        Protocol adapters receive the typed output DTO and are responsible for
+        unwrapping it into their wire representation.  No adapter object or
+        transport-specific response is accepted at this boundary.
+        """
+
+        spec = OPERATIONS.get(operation_id)
+        if spec is None:
+            raise ApplicationAPIException(
+                ApplicationAPIError('unknown_operation', 'Unknown application operation', 404)
+            )
+        resolved_surface = self._surface(surface)
+        if resolved_surface not in spec.allowed_surfaces:
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'surface_not_allowed',
+                    f'Operation {operation_id} is not available on the {resolved_surface.value} surface',
+                    403,
+                )
+            )
+        self._validate_input(input, spec.input_type)
+        # Keep authorization errors as AuthorizationError instances for the
+        # HTTP compatibility layer; their error_code/status_code are already
+        # stable and callers historically catch PermissionDeniedError.
+        self._authorize(context, operation_id)
+        try:
+            if operation_id == 'pipeline.list':
+                output = await self._list_pipelines(context, input)
+            elif operation_id == 'pipeline.get':
+                output = await self._get_pipeline(context, input)
+            elif operation_id == 'pipeline.extensions.get':
+                output = await self._get_pipeline_extensions(context, input)
+            elif operation_id == 'pipeline.extensions.update':
+                output = await self._update_pipeline_extensions(context, input)
+            else:  # pragma: no cover - guarded by catalog lookup
+                raise ApplicationAPIException(
+                    ApplicationAPIError('unknown_operation', 'Unknown application operation', 404)
+                )
+        except AuthorizationError:
+            raise
+        except _InvalidApplicationOutput as exc:
+            raise ApplicationAPIException(ApplicationAPIError('invalid_output', str(exc), 500)) from exc
+        except ApplicationAPIException:
+            raise
+        except Exception as exc:
+            raise ApplicationAPIException(self._error_from_exception(exc)) from exc
+        self._validate_output(output, spec.output_type)
+        return output
+
+    async def invoke(
+        self,
+        operation_id: str,
+        context: RequestContext,
+        input: typing.Any,
+        *,
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> typing.Any:
+        """Alias for :meth:`execute` used by adapters that prefer verb syntax."""
+
+        return await self.execute(operation_id, context, input, surface=surface)
+
+    async def _list_pipelines(self, context: RequestContext, input: PipelineListInput) -> PipelineListOutput:
         # Secret-bearing pipeline configuration must never be exposed merely
-        # because a caller supplied ``include_secret=True``.  The HTTP route
-        # derives this flag from the same permission, but MCP/assistant callers
-        # can invoke the facade directly.
-        include_secret_requested = include_secret is True
-        if include_secret_requested:
+        # because a caller supplied ``include_secret=True``.  The operation
+        # permission is intentionally stricter than the read permission.
+        if input.include_secret is True:
             require_permission(context, Permission.RESOURCE_MANAGE)
-        # The assistant and MCP adapters use the ordinary defaults and keep
-        # the legacy service call shape.  HTTP passes an explicit boolean so
-        # the redaction intent remains visible to service-level tests and
-        # lightweight doubles.
-        if include_secret is None and sort_by == 'created_at' and sort_order == 'DESC':
-            return await self.ap.pipeline_service.get_pipelines(context)
-        return await self.ap.pipeline_service.get_pipelines(
-            context,
-            sort_by,
-            sort_order,
-            include_secret=include_secret_requested,
-        )
+        if input.include_secret is None and input.sort_by == 'created_at' and input.sort_order == 'DESC':
+            pipelines = await self.ap.pipeline_service.get_pipelines(context)
+        else:
+            pipelines = await self.ap.pipeline_service.get_pipelines(
+                context,
+                input.sort_by,
+                input.sort_order,
+                include_secret=input.include_secret is True,
+            )
+        if not isinstance(pipelines, list):
+            raise _InvalidApplicationOutput('pipeline.list returned a non-list value')
+        return PipelineListOutput(pipelines=pipelines)
 
-    async def get_pipeline(
+    async def _get_pipeline(self, context: RequestContext, input: PipelineGetInput) -> PipelineGetOutput:
+        if input.include_secret:
+            require_permission(context, Permission.RESOURCE_MANAGE)
+        pipeline = await self.ap.pipeline_service.get_pipeline(
+            context,
+            input.pipeline_uuid,
+            include_secret=input.include_secret,
+        )
+        if pipeline is not None and not isinstance(pipeline, dict):
+            raise _InvalidApplicationOutput('pipeline.get returned a non-object value')
+        return PipelineGetOutput(pipeline=pipeline)
+
+    async def _get_pipeline_extensions(
         self,
         context: RequestContext,
-        pipeline_uuid: str,
-        *,
-        include_secret: bool = False,
-    ) -> dict | None:
-        self._authorize(context, 'pipeline.get')
-        if include_secret:
-            require_permission(context, Permission.RESOURCE_MANAGE)
-        return await self.ap.pipeline_service.get_pipeline(
-            context,
-            pipeline_uuid,
-            include_secret=include_secret,
-        )
-
-    async def get_pipeline_extensions(self, context: RequestContext, pipeline_uuid: str) -> dict:
-        self._authorize(context, 'pipeline.extensions.get')
+        input: PipelineExtensionsGetInput,
+    ) -> PipelineExtensionsGetOutput:
         getter = getattr(self.ap.pipeline_service, 'get_pipeline_extensions', None)
-        if callable(getter) and inspect.iscoroutinefunction(getter):
-            return await getter(context, pipeline_uuid)
+        if callable(getter):
+            extensions = getter(context, input.pipeline_uuid)
+            if inspect.isawaitable(extensions):
+                extensions = await extensions
+            if not isinstance(extensions, dict):
+                raise _InvalidApplicationOutput('pipeline.extensions.get returned a non-object value')
+            return PipelineExtensionsGetOutput(extensions=extensions)
 
         # Compatibility path for lightweight service doubles and older service
         # graphs. The production PipelineService owns this implementation;
         # this fallback keeps the shared facade usable while a graph is being
         # assembled and preserves its fail-closed normalization semantics.
         from ...pipeline.extension_preferences import normalize_extension_preferences
-        from ..http.service.secrets import redact_secrets
 
-        pipeline = await self.ap.pipeline_service.get_pipeline(context, pipeline_uuid)
+        pipeline = await self.ap.pipeline_service.get_pipeline(context, input.pipeline_uuid)
         if pipeline is None:
-            return None
+            return PipelineExtensionsGetOutput(extensions={})
         connector = getattr(self.ap, 'plugin_connector', None)
         plugins = []
         if connector is not None:
@@ -260,7 +483,7 @@ class ApplicationAPI:
                 if callable(require_context):
                     result = require_context(context)
                     if inspect.isawaitable(result):
-                        await result
+                        result = await result
             list_plugins = getattr(connector, 'list_plugins', None)
             if callable(list_plugins):
                 result = list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
@@ -285,7 +508,7 @@ class ApplicationAPI:
                 if inspect.isawaitable(result):
                     available_mcp_servers = await result
         prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
-        return {
+        extensions = {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
             'enable_all_mcp_servers': prefs.get('enable_all_mcp_servers', True),
             'enable_all_skills': prefs.get('enable_all_skills', True),
@@ -298,15 +521,13 @@ class ApplicationAPI:
             'bound_skills': prefs.get('skills', []),
             'available_skills': available_skills,
         }
+        return PipelineExtensionsGetOutput(extensions=extensions)
 
-    async def update_pipeline_extensions(
+    async def _update_pipeline_extensions(
         self,
         context: RequestContext,
         input: PipelineExtensionsUpdateInput,
     ) -> PipelineExtensionsUpdateOutput:
-        self._authorize(context, 'pipeline.extensions.update')
-        if not isinstance(input, PipelineExtensionsUpdateInput):
-            raise TypeError('input must be PipelineExtensionsUpdateInput')
         await self.ap.pipeline_service.update_pipeline_extensions(
             context,
             input.pipeline_uuid,
@@ -320,3 +541,68 @@ class ApplicationAPI:
             mcp_resource_agent_read_enabled=input.mcp_resource_agent_read_enabled,
         )
         return PipelineExtensionsUpdateOutput()
+
+    async def list_pipelines(
+        self,
+        context: RequestContext,
+        sort_by: str = 'created_at',
+        sort_order: str = 'DESC',
+        *,
+        include_secret: bool | None = None,
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> list[dict]:
+        """Compatibility helper returning the unwrapped list payload."""
+
+        output = await self.execute(
+            'pipeline.list',
+            context,
+            PipelineListInput(sort_by=sort_by, sort_order=sort_order, include_secret=include_secret),
+            surface=surface,
+        )
+        return output.pipelines
+
+    async def get_pipeline(
+        self,
+        context: RequestContext,
+        pipeline_uuid: str,
+        *,
+        include_secret: bool = False,
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> dict | None:
+        """Compatibility helper returning the unwrapped Pipeline payload."""
+
+        output = await self.execute(
+            'pipeline.get',
+            context,
+            PipelineGetInput(pipeline_uuid=pipeline_uuid, include_secret=include_secret),
+            surface=surface,
+        )
+        return output.pipeline
+
+    async def get_pipeline_extensions(
+        self,
+        context: RequestContext,
+        pipeline_uuid: str,
+        *,
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> dict:
+        """Compatibility helper returning the unwrapped extension payload."""
+
+        output = await self.execute(
+            'pipeline.extensions.get',
+            context,
+            PipelineExtensionsGetInput(pipeline_uuid=pipeline_uuid),
+            surface=surface,
+        )
+        return output.extensions
+
+    async def update_pipeline_extensions(
+        self,
+        context: RequestContext,
+        input: PipelineExtensionsUpdateInput,
+        *,
+        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
+    ) -> PipelineExtensionsUpdateOutput:
+        """Compatibility helper preserving the typed write output."""
+
+        return await self.execute('pipeline.extensions.update', context, input, surface=surface)

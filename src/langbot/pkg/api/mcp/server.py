@@ -23,7 +23,7 @@ import typing
 
 from mcp.server.fastmcp import FastMCP
 
-from ..application import ApplicationAPI, PipelineExtensionsUpdateInput
+from ..application import ApplicationAPI, ApplicationAPIException, ApplicationSurface, PipelineExtensionsUpdateInput
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
@@ -50,6 +50,12 @@ the same shape as the LangBot HTTP API request bodies.
 def _dump(value: typing.Any) -> str:
     """Serialize a tool result to a compact JSON string for the agent."""
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _application_error(exc: ApplicationAPIException) -> str:
+    """Map a shared operation failure to a stable MCP JSON error payload."""
+
+    return _dump({'error': {'code': exc.error.code, 'message': exc.error.message}})
 
 
 def _authorized(permission: Permission):
@@ -127,9 +133,14 @@ class LangBotMCPServer:
 
         @mcp.tool(description='Read Pipeline extension bindings, enable-all switches and available extensions.')
         async def get_pipeline_extensions(pipeline_uuid: str) -> str:
-            return _dump(
-                await _application_api(ap).get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
-            )
+            try:
+                return _dump(
+                    await _application_api(ap).get_pipeline_extensions(
+                        _authorized(Permission.RESOURCE_VIEW), pipeline_uuid, surface=ApplicationSurface.MCP
+                    )
+                )
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
 
         @mcp.tool(description='Replace all Pipeline extension bindings. All binding lists and switches are required.')
         async def update_pipeline_extensions(
@@ -145,21 +156,29 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
-            await _application_api(ap).update_pipeline_extensions(
-                context,
-                PipelineExtensionsUpdateInput(
-                    pipeline_uuid=pipeline_uuid,
-                    bound_plugins=bound_plugins,
-                    bound_mcp_servers=bound_mcp_servers,
-                    bound_skills=bound_skills,
-                    bound_mcp_resources=bound_mcp_resources,
-                    enable_all_plugins=enable_all_plugins,
-                    enable_all_mcp_servers=enable_all_mcp_servers,
-                    enable_all_skills=enable_all_skills,
-                    mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
-                ),
-            )
-            return _dump(await _application_api(ap).get_pipeline_extensions(context, pipeline_uuid))
+            try:
+                await _application_api(ap).update_pipeline_extensions(
+                    context,
+                    PipelineExtensionsUpdateInput(
+                        pipeline_uuid=pipeline_uuid,
+                        bound_plugins=bound_plugins,
+                        bound_mcp_servers=bound_mcp_servers,
+                        bound_skills=bound_skills,
+                        bound_mcp_resources=bound_mcp_resources,
+                        enable_all_plugins=enable_all_plugins,
+                        enable_all_mcp_servers=enable_all_mcp_servers,
+                        enable_all_skills=enable_all_skills,
+                        mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
+                    ),
+                    surface=ApplicationSurface.MCP,
+                )
+                return _dump(
+                    await _application_api(ap).get_pipeline_extensions(
+                        context, pipeline_uuid, surface=ApplicationSurface.MCP
+                    )
+                )
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
 
         @mcp.tool(
             description='Run one Pipeline turn in a fresh session. Calls configured models/tools. Never retry an unknown outcome automatically.'

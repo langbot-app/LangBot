@@ -8,7 +8,9 @@ import pytest
 from langbot.pkg.api.application import (
     APPLICATION_API_VERSION,
     ApplicationAPI,
+    ApplicationAPIException,
     ApplicationSurface,
+    PipelineListInput,
     PipelineExtensionsUpdateInput,
 )
 from langbot.pkg.api.http.authz import Permission, PermissionDeniedError
@@ -47,6 +49,36 @@ async def test_pipeline_operation_rejects_missing_permission():
         await api.get_pipeline(context, 'p1')
 
     service.get_pipeline.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_requires_typed_input_and_enforces_surface():
+    service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[]))
+    api = ApplicationAPI(SimpleNamespace(pipeline_service=service))
+    context = _context(Permission.RESOURCE_VIEW.value)
+
+    with pytest.raises(ApplicationAPIException) as invalid:
+        await api.execute('pipeline.list', context, {'sort_by': 'created_at'})
+    assert invalid.value.error.code == 'invalid_input'
+
+    with pytest.raises(ApplicationAPIException) as denied:
+        await api.execute(
+            'pipeline.extensions.update',
+            context,
+            PipelineExtensionsUpdateInput('p1', []),
+            surface=ApplicationSurface.ASSISTANT,
+        )
+    assert denied.value.error.code == 'surface_not_allowed'
+
+
+@pytest.mark.asyncio
+async def test_execute_validates_service_output_contract():
+    service = SimpleNamespace(get_pipelines=AsyncMock(return_value={'not': 'a list'}))
+    api = ApplicationAPI(SimpleNamespace(pipeline_service=service))
+
+    with pytest.raises(ApplicationAPIException) as failure:
+        await api.execute('pipeline.list', _context(Permission.RESOURCE_VIEW.value), PipelineListInput())
+    assert failure.value.error.code == 'invalid_output'
 
 
 def test_catalog_is_versioned_and_workspace_scoped():

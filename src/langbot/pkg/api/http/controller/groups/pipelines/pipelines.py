@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import quart
 
-from .....application import ApplicationAPI, PipelineExtensionsUpdateInput
+from .....application import (
+    ApplicationAPI,
+    ApplicationAPIException,
+    ApplicationSurface,
+    PipelineExtensionsGetInput,
+    PipelineExtensionsUpdateInput,
+    PipelineGetInput,
+    PipelineListInput,
+)
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
@@ -43,16 +51,16 @@ class PipelinesRouterGroup(group.RouterGroup):
             sort_order = quart.request.args.get('sort_order', 'DESC')
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
             application_api = _application_api(self.ap)
-            return self.success(
-                data={
-                    'pipelines': await application_api.list_pipelines(
-                        request_context,
-                        sort_by,
-                        sort_order,
-                        include_secret=include_secret,
-                    )
-                }
-            )
+            try:
+                output = await application_api.execute(
+                    'pipeline.list',
+                    request_context,
+                    PipelineListInput(sort_by=sort_by, sort_order=sort_order, include_secret=include_secret),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data={'pipelines': output.pipelines})
 
         @self.route(
             '',
@@ -90,11 +98,19 @@ class PipelinesRouterGroup(group.RouterGroup):
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
             application_api = _application_api(self.ap)
-            pipeline = await application_api.get_pipeline(
-                request_context,
-                pipeline_uuid,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
-            )
+            try:
+                output = await application_api.execute(
+                    'pipeline.get',
+                    request_context,
+                    PipelineGetInput(
+                        pipeline_uuid=pipeline_uuid,
+                        include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                    ),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            pipeline = output.pipeline
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
             return self.success(data={'pipeline': pipeline})
@@ -158,7 +174,16 @@ class PipelinesRouterGroup(group.RouterGroup):
             pipeline = await application_api.get_pipeline(request_context, pipeline_uuid)
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
-            return self.success(data=await application_api.get_pipeline_extensions(request_context, pipeline_uuid))
+            try:
+                output = await application_api.execute(
+                    'pipeline.extensions.get',
+                    request_context,
+                    PipelineExtensionsGetInput(pipeline_uuid=pipeline_uuid),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data=output.extensions)
 
         @self.route(
             '/<pipeline_uuid>/extensions',
@@ -227,7 +252,8 @@ class PipelinesRouterGroup(group.RouterGroup):
                     },
                 )
                 application_api = _application_api(self.ap)
-                await application_api.update_pipeline_extensions(
+                await application_api.execute(
+                    'pipeline.extensions.update',
                     request_context,
                     PipelineExtensionsUpdateInput(
                         pipeline_uuid=pipeline_uuid,
@@ -240,7 +266,13 @@ class PipelinesRouterGroup(group.RouterGroup):
                         bound_mcp_resources=json_data.get('bound_mcp_resources'),
                         mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
                     ),
+                    surface=ApplicationSurface.HTTP,
                 )
+            except ApplicationAPIException as exc:
+                # Preserve the legacy Service API validation envelope while
+                # the transport-neutral boundary exposes ``validation_error``.
+                code = -1 if exc.error.code == 'validation_error' else exc.error.code
+                return self.http_status(exc.error.status_code, code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success()

@@ -121,15 +121,28 @@ class ApplicationAPIClient:
             raise ApplicationAPIClientError(
                 'LangBot returned a non-JSON response',
                 status_code=response.status_code,
+                code='invalid_response',
             ) from exc
+        if not isinstance(payload, dict):
+            raise ApplicationAPIClientError(
+                'LangBot returned an invalid JSON response',
+                status_code=response.status_code,
+                code='invalid_response',
+            )
         if response.status_code >= 400 or payload.get('code') not in (0, None):
             raise ApplicationAPIClientError(
                 str(payload.get('msg') or payload.get('message') or 'LangBot request failed'),
                 status_code=response.status_code,
-                code=payload.get('code'),
+                code=payload.get('error_code') or payload.get('code') or 'request_failed',
             )
         data = payload.get('data', {})
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ApplicationAPIClientError(
+                'LangBot returned an invalid data payload',
+                status_code=response.status_code,
+                code='invalid_response',
+            )
+        return data
 
 
 __all__ = ['ApplicationAPIClient', 'ApplicationAPIClientError']

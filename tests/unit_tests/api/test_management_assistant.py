@@ -13,7 +13,13 @@ from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.context import RequestContext, PrincipalContext, PrincipalType, WorkspaceContext
 from langbot.pkg.api.http.service.assistant import AssistantError, AssistantService
-from langbot.pkg.api.http.service.assistant_tools import execute_tool, validate_call
+from langbot.pkg.api.http.service.assistant_tools import (
+    ASSISTANT_APPLICATION_OPERATIONS,
+    TOOLS,
+    execute_tool,
+    validate_call,
+)
+from langbot.pkg.api.application import OPERATIONS
 from langbot.pkg.entity.persistence.assistant import AssistantConversation
 
 
@@ -49,6 +55,18 @@ def proposal():
             'provider_specific_fields': {'thought_signature': 'preserved'},
         }
     )
+
+
+def test_assistant_pipeline_schema_tracks_application_operation_catalog():
+    """Catch drift between assistant argument schemas and Application DTOs."""
+
+    pipeline_id_fields = set(TOOLS['get_pipeline'][0].model_fields)
+    extension_id_fields = set(TOOLS['get_pipeline_extensions'][0].model_fields)
+    assert pipeline_id_fields == {'pipeline_uuid'}
+    assert extension_id_fields == {'pipeline_uuid'}
+    assert ASSISTANT_APPLICATION_OPERATIONS['get_pipeline'] in OPERATIONS
+    assert ASSISTANT_APPLICATION_OPERATIONS['get_pipeline_extensions'] in OPERATIONS
+    assert ASSISTANT_APPLICATION_OPERATIONS['list_resources:pipelines'] in OPERATIONS
 
 
 @pytest.fixture

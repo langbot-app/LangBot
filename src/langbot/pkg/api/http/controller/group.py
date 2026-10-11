@@ -26,6 +26,7 @@ from ..authz import (
     permissions_for_role,
     require_permission,
 )
+from ...application import ApplicationAPIException
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ....cloud.support_admin import SupportAdminSessionError
 
@@ -292,6 +293,8 @@ class RouterGroup(abc.ABC):
                         )
                     if isinstance(e, CodexProviderError):
                         return self.http_status(e.status_code, e.error_code, str(e))
+                    if isinstance(e, ApplicationAPIException):
+                        return self.http_status(e.error.status_code, e.error.code, e.error.message)
                     if isinstance(e, AuthorizationError):
                         return self.http_status(e.status_code, e.error_code, str(e))
                     if isinstance(e, WorkspaceNotFoundError):
