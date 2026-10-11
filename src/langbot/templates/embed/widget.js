@@ -174,6 +174,17 @@
     bubbleIcon: "__LANGBOT_BUBBLE_ICON__",
   };
 
+  // Wizard previews must use the browser-visible backend URL. Behind a TLS
+  // proxy the server's request URL can be HTTP even when widget.js uses HTTPS.
+  // External embeds retain their configured public webhook prefix.
+  if (scriptEl && scriptEl.src) {
+    var scriptUrl = new URL(scriptEl.src, document.baseURI);
+    if (scriptUrl.searchParams.get("preview") === "wizard") {
+      CONFIG.baseUrl = scriptUrl.origin;
+      CONFIG.logoUrl = CONFIG.baseUrl + "/api/v1/embed/logo";
+    }
+  }
+
   // ========== Styles ==========
   var STYLES =
     '\

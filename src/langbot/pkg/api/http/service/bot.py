@@ -776,7 +776,8 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
-            raise Exception('Bot not found')
+            # Saved but disabled/unconfigured bots have no runtime logs yet.
+            return [], 0
 
         logs, total_count = await runtime_bot.logger.get_logs(from_index, max_count)
 
