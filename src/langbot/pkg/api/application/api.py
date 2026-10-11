@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import inspect
 import typing
 
 from ..http.authz import Permission, require_permission
@@ -183,10 +184,7 @@ class ApplicationAPI:
     def operation_catalog() -> list[dict[str, typing.Any]]:
         """Return serializable operation metadata for capability discovery."""
 
-        return [
-            spec.as_dict()
-            for spec in OPERATIONS.values()
-        ]
+        return [spec.as_dict() for spec in OPERATIONS.values()]
 
     @staticmethod
     def _authorize(context: RequestContext, operation_id: str) -> None:
@@ -213,11 +211,7 @@ class ApplicationAPI:
         # the legacy service call shape.  HTTP passes an explicit boolean so
         # the redaction intent remains visible to service-level tests and
         # lightweight doubles.
-        if (
-            include_secret is None
-            and sort_by == 'created_at'
-            and sort_order == 'DESC'
-        ):
+        if include_secret is None and sort_by == 'created_at' and sort_order == 'DESC':
             return await self.ap.pipeline_service.get_pipelines(context)
         return await self.ap.pipeline_service.get_pipelines(
             context,
@@ -245,7 +239,7 @@ class ApplicationAPI:
     async def get_pipeline_extensions(self, context: RequestContext, pipeline_uuid: str) -> dict:
         self._authorize(context, 'pipeline.extensions.get')
         getter = getattr(self.ap.pipeline_service, 'get_pipeline_extensions', None)
-        if callable(getter):
+        if callable(getter) and inspect.iscoroutinefunction(getter):
             return await getter(context, pipeline_uuid)
 
         # Compatibility path for lightweight service doubles and older service
@@ -261,13 +255,17 @@ class ApplicationAPI:
         connector = getattr(self.ap, 'plugin_connector', None)
         plugins = []
         if connector is not None:
-            if getattr(connector, 'is_enable_plugin', False):
+            if getattr(connector, 'is_enable_plugin', False) is True:
                 require_context = getattr(connector, 'require_workspace_context', None)
                 if callable(require_context):
-                    await require_context(context)
+                    result = require_context(context)
+                    if inspect.isawaitable(result):
+                        await result
             list_plugins = getattr(connector, 'list_plugins', None)
             if callable(list_plugins):
-                plugins = await list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
+                result = list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
+                if inspect.isawaitable(result):
+                    plugins = await result
         skill_service = getattr(self.ap, 'skill_service', None)
         available_skills = []
         if skill_service is not None:
@@ -283,7 +281,9 @@ class ApplicationAPI:
         if mcp_service is not None:
             list_servers = getattr(mcp_service, 'get_mcp_servers', None)
             if callable(list_servers):
-                available_mcp_servers = await list_servers(context, contain_runtime_info=True)
+                result = list_servers(context, contain_runtime_info=True)
+                if inspect.isawaitable(result):
+                    available_mcp_servers = await result
         prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
         return {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
@@ -298,7 +298,6 @@ class ApplicationAPI:
             'bound_skills': prefs.get('skills', []),
             'available_skills': available_skills,
         }
-
 
     async def update_pipeline_extensions(
         self,
