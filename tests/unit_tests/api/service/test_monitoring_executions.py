@@ -759,6 +759,24 @@ async def test_inflight_snapshot_is_scoped_and_keeps_terminal_transition(engine,
             )
         session.add(persistence_agent_run.AgentRunEvent(run_id='flight-visible', sequence=1, type='tool.started'))
         await session.commit()
+    # SSE loaders execute after the HTTP handler's tenant scope has exited.
+    # Cloud persistence rejects implicit execute_async calls in that context.
+    from contextlib import asynccontextmanager
+
+    original_execute = service.ap.persistence_mgr.execute_async
+    unscoped_execute = AsyncMock(side_effect=AssertionError('Cloud persistence requires an explicit tenant scope'))
+
+    @asynccontextmanager
+    async def tenant_scope(workspace):
+        assert workspace == WORKSPACE
+        service.ap.persistence_mgr.execute_async = original_execute
+        try:
+            yield
+        finally:
+            service.ap.persistence_mgr.execute_async = unscoped_execute
+
+    service.ap.persistence_mgr.tenant_scope = tenant_scope
+    service.ap.persistence_mgr.execute_async = unscoped_execute
     snapshot = await service.get_inflight_snapshot(WORKSPACE)
     rows = {r['id']: r for r in snapshot['items']}
     assert 'flight-secret' not in rows

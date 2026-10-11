@@ -1674,6 +1674,15 @@ class MonitoringService(ExecutionDetailsMixin):
         }
 
     async def get_inflight_snapshot(self, context: TenantContext, previous: list[dict] | None = None) -> dict:
+        """SSE producers outlive the HTTP handler's tenant scope."""
+        workspace = require_workspace_uuid(context)
+        tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            async with tenant_scope(workspace):
+                return await self._get_inflight_snapshot(context, previous)
+        return await self._get_inflight_snapshot(context, previous)
+
+    async def _get_inflight_snapshot(self, context: TenantContext, previous: list[dict] | None = None) -> dict:
         """Bounded Workspace snapshot without dashboard aggregates or token payloads."""
         from ....utils.inflight import inflight_hub
 
