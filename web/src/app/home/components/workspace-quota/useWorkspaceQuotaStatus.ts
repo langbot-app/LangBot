@@ -49,14 +49,12 @@ export function useWorkspaceQuotaStatus(): WorkspaceQuotaStatus {
   } = useSidebarData();
   const currentWorkspace = useCurrentWorkspace();
   const cloud = currentWorkspace?.workspace.source === 'cloud_projection';
-  const limitation = cloud ? currentWorkspace.limitation : systemInfo.limitation;
+  const limitation = cloud
+    ? currentWorkspace.limitation
+    : systemInfo.limitation;
   const loaded = quotaDataLoaded && (!cloud || limitation != null);
 
-  const botQuota = quotaItem(
-    bots.length,
-    limitation?.max_bots,
-    loaded,
-  );
+  const botQuota = quotaItem(bots.length, limitation?.max_bots, loaded);
   const pipelineQuota = quotaItem(
     pipelines.length,
     limitation?.max_pipelines,
