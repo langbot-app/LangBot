@@ -232,10 +232,10 @@ class PipelinesRouterGroup(group.RouterGroup):
                     PipelineExtensionsUpdateInput(
                         pipeline_uuid=pipeline_uuid,
                         bound_plugins=json_data.get('bound_plugins', []),
-                        bound_mcp_servers=json_data.get('bound_mcp_servers'),
+                        bound_mcp_servers=json_data.get('bound_mcp_servers', []),
                         enable_all_plugins=json_data.get('enable_all_plugins', True),
                         enable_all_mcp_servers=json_data.get('enable_all_mcp_servers', True),
-                        bound_skills=json_data.get('bound_skills'),
+                        bound_skills=json_data.get('bound_skills', []),
                         enable_all_skills=json_data.get('enable_all_skills', True),
                         bound_mcp_resources=json_data.get('bound_mcp_resources'),
                         mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
