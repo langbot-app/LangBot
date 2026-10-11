@@ -33,9 +33,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                 output = await application_api.execute(
                     'knowledge.base.list',
                     request_context,
-                    KnowledgeBaseListInput(
-                        include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE)
-                    ),
+                    KnowledgeBaseListInput(include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE)),
                     surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
