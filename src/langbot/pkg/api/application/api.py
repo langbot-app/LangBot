@@ -489,9 +489,9 @@ class ApplicationAPI:
             if getattr(connector, 'is_enable_plugin', False) is True:
                 require_context = getattr(connector, 'require_workspace_context', None)
                 if callable(require_context):
-                    result = require_context(context)
-                    if inspect.isawaitable(result):
-                        result = await result
+                    require_context_result = require_context(context)
+                    if inspect.isawaitable(require_context_result):
+                        await require_context_result
             list_plugins = getattr(connector, 'list_plugins', None)
             if callable(list_plugins):
                 result = list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
