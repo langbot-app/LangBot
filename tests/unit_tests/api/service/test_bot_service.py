@@ -672,8 +672,8 @@ class TestBotServiceDeleteBot:
 class TestBotServiceListEventLogs:
     """Tests for list_event_logs method."""
 
-    async def test_list_event_logs_bot_not_found_raises(self):
-        """Raises Exception when runtime bot not found."""
+    async def test_list_event_logs_inactive_bot_returns_empty(self):
+        """A saved bot without an active runtime has no event logs."""
         # Setup
         ap = SimpleNamespace()
         ap.platform_mgr = SimpleNamespace()
@@ -683,8 +683,7 @@ class TestBotServiceListEventLogs:
         service.get_bot = AsyncMock(return_value={'uuid': 'nonexistent-uuid'})
 
         # Execute & Verify
-        with pytest.raises(Exception, match='Bot not found'):
-            await service.list_event_logs(WORKSPACE_UUID, 'nonexistent-uuid', 0, 10)
+        assert await service.list_event_logs(WORKSPACE_UUID, 'nonexistent-uuid', 0, 10) == ([], 0)
 
     async def test_list_event_logs_returns_logs(self):
         """Returns logs from runtime bot logger."""
