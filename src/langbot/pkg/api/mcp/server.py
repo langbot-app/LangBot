@@ -23,7 +23,7 @@ import typing
 
 from mcp.server.fastmcp import FastMCP
 
-from ..application import ApplicationAPI
+from ..application import ApplicationAPI, PipelineExtensionsUpdateInput
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
@@ -68,7 +68,7 @@ def _application_api(ap) -> ApplicationAPI:
     """
 
     application_api = getattr(ap, 'application_api', None)
-    return application_api if application_api is not None else ApplicationAPI(ap)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 class LangBotMCPServer:
@@ -128,7 +128,7 @@ class LangBotMCPServer:
         @mcp.tool(description='Read Pipeline extension bindings, enable-all switches and available extensions.')
         async def get_pipeline_extensions(pipeline_uuid: str) -> str:
             return _dump(
-                await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
+                await _application_api(ap).get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
             )
 
         @mcp.tool(description='Replace all Pipeline extension bindings. All binding lists and switches are required.')
@@ -145,19 +145,21 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
-            await getattr(ap, 'application_api', ap.pipeline_service).update_pipeline_extensions(
+            await _application_api(ap).update_pipeline_extensions(
                 context,
-                pipeline_uuid,
-                bound_plugins=bound_plugins,
-                bound_mcp_servers=bound_mcp_servers,
-                enable_all_plugins=enable_all_plugins,
-                enable_all_mcp_servers=enable_all_mcp_servers,
-                bound_skills=bound_skills,
-                enable_all_skills=enable_all_skills,
-                bound_mcp_resources=bound_mcp_resources,
-                mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
+                PipelineExtensionsUpdateInput(
+                    pipeline_uuid=pipeline_uuid,
+                    bound_plugins=bound_plugins,
+                    bound_mcp_servers=bound_mcp_servers,
+                    bound_skills=bound_skills,
+                    bound_mcp_resources=bound_mcp_resources,
+                    enable_all_plugins=enable_all_plugins,
+                    enable_all_mcp_servers=enable_all_mcp_servers,
+                    enable_all_skills=enable_all_skills,
+                    mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
+                ),
             )
-            return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
+            return _dump(await _application_api(ap).get_pipeline_extensions(context, pipeline_uuid))
 
         @mcp.tool(
             description='Run one Pipeline turn in a fresh session. Calls configured models/tools. Never retry an unknown outcome automatically.'
@@ -319,12 +321,12 @@ class LangBotMCPServer:
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await getattr(ap, 'application_api', ap.pipeline_service).list_pipelines(context))
+            return _dump(await _application_api(ap).list_pipelines(context))
 
         @mcp.tool(description='Get a single pipeline by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline(context, pipeline_uuid))
+            return _dump(await _application_api(ap).get_pipeline(context, pipeline_uuid))
 
         @mcp.tool(
             description=(

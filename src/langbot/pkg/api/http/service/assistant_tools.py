@@ -240,7 +240,7 @@ def _application_api(ap) -> ApplicationAPI:
     """Resolve the shared facade without evaluating a legacy fallback eagerly."""
 
     application_api = getattr(ap, 'application_api', None)
-    return application_api if application_api is not None else ApplicationAPI(ap)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 def _authorized(context, name: str) -> bool:
@@ -276,11 +276,13 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         readers = {
             'models': ap.llm_model_service.get_llm_models,
             'embedding_models': ap.embedding_models_service.get_embedding_models,
-            'pipelines': ap.pipeline_service.get_pipelines,
             'knowledge_bases': ap.knowledge_service.get_knowledge_bases,
             'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
         }
-        resources = await readers[args['kind']](context)
+        if args['kind'] == 'pipelines':
+            resources = await _application_api(ap).list_pipelines(context)
+        else:
+            resources = await readers[args['kind']](context)
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
             fields = ('uuid', 'name', 'description', 'abilities', 'knowledge_engine_plugin_id')
@@ -306,9 +308,7 @@ async def execute_tool(ap, context, name: str, arguments: dict):
     if name == 'get_pipeline':
         return await _application_api(ap).get_pipeline(context, args['pipeline_uuid'])
     if name == 'get_pipeline_extensions':
-        return await getattr(ap, 'application_api', ap.pipeline_service).get_pipeline_extensions(
-            context, args['pipeline_uuid']
-        )
+        return await _application_api(ap).get_pipeline_extensions(context, args['pipeline_uuid'])
     if name == 'get_knowledge_schema':
         return {
             'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),

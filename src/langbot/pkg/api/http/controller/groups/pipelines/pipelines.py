@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import quart
 
-from .....application import ApplicationAPI
+from .....application import ApplicationAPI, PipelineExtensionsUpdateInput
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
@@ -26,7 +26,7 @@ def _application_api(ap) -> ApplicationAPI:
     """
 
     application_api = getattr(ap, 'application_api', None)
-    return application_api if application_api is not None else ApplicationAPI(ap)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
@@ -89,7 +89,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+            application_api = _application_api(self.ap)
             pipeline = await application_api.get_pipeline(
                 request_context,
                 pipeline_uuid,
@@ -154,7 +154,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+            application_api = _application_api(self.ap)
             pipeline = await application_api.get_pipeline(request_context, pipeline_uuid)
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
@@ -226,18 +226,20 @@ class PipelinesRouterGroup(group.RouterGroup):
                         'mcp_resources': 'bound_mcp_resources',
                     },
                 )
-                application_api = getattr(self.ap, 'application_api', self.ap.pipeline_service)
+                application_api = _application_api(self.ap)
                 await application_api.update_pipeline_extensions(
                     request_context,
-                    pipeline_uuid,
-                    bound_plugins=json_data.get('bound_plugins', []),
-                    bound_mcp_servers=json_data.get('bound_mcp_servers', []),
-                    enable_all_plugins=json_data.get('enable_all_plugins', True),
-                    enable_all_mcp_servers=json_data.get('enable_all_mcp_servers', True),
-                    bound_skills=json_data.get('bound_skills', []),
-                    enable_all_skills=json_data.get('enable_all_skills', True),
-                    bound_mcp_resources=json_data.get('bound_mcp_resources'),
-                    mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    PipelineExtensionsUpdateInput(
+                        pipeline_uuid=pipeline_uuid,
+                        bound_plugins=json_data.get('bound_plugins', []),
+                        bound_mcp_servers=json_data.get('bound_mcp_servers'),
+                        enable_all_plugins=json_data.get('enable_all_plugins', True),
+                        enable_all_mcp_servers=json_data.get('enable_all_mcp_servers', True),
+                        bound_skills=json_data.get('bound_skills'),
+                        enable_all_skills=json_data.get('enable_all_skills', True),
+                        bound_mcp_resources=json_data.get('bound_mcp_resources'),
+                        mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    ),
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))

@@ -9,12 +9,90 @@ boundary.
 from __future__ import annotations
 
 import dataclasses
+import enum
 import typing
 
 from ..http.authz import Permission, require_permission
-from ..http.context import RequestContext
+from ..context import RequestContext
 
 APPLICATION_API_VERSION = 'v1'
+
+
+class ApplicationSurface(enum.StrEnum):
+    """Protocol surface allowed to invoke an application operation."""
+
+    HTTP = 'http'
+    MCP = 'mcp'
+    ASSISTANT = 'assistant'
+    CLI = 'cli'
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ApplicationAPIError:
+    """Stable, serializable operation error metadata."""
+
+    code: str
+    message: str
+    status_code: int = 400
+
+
+class ApplicationAPIException(Exception):
+    """Typed application-boundary failure for non-HTTP callers."""
+
+    def __init__(self, error: ApplicationAPIError):
+        super().__init__(error.message)
+        self.error = error
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineListInput:
+    sort_by: str = 'created_at'
+    sort_order: str = 'DESC'
+    include_secret: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineListOutput:
+    pipelines: list[dict]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineGetInput:
+    pipeline_uuid: str
+    include_secret: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineGetOutput:
+    pipeline: dict | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineExtensionsGetInput:
+    pipeline_uuid: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineExtensionsGetOutput:
+    extensions: dict
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineExtensionsUpdateInput:
+    pipeline_uuid: str
+    bound_plugins: list[dict]
+    bound_mcp_servers: list[str] | None = None
+    enable_all_plugins: bool = True
+    enable_all_mcp_servers: bool = True
+    bound_skills: list[str] | None = None
+    enable_all_skills: bool = True
+    bound_mcp_resources: list[dict] | None = None
+    mcp_resource_agent_read_enabled: bool | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PipelineExtensionsUpdateOutput:
+    ok: bool = True
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -26,19 +104,66 @@ class OperationSpec:
     permission: Permission
     scope: str = 'workspace'
     side_effect: bool = False
+    input_type: type = dict
+    output_type: type = dict
+    error_type: type = ApplicationAPIError
+    allowed_surfaces: frozenset[ApplicationSurface] = frozenset()
+
+    def as_dict(self) -> dict[str, typing.Any]:
+        """Return JSON-safe metadata for capability discovery."""
+
+        return {
+            'id': self.operation_id,
+            'version': self.version,
+            'scope': self.scope,
+            'permission': self.permission.value,
+            'side_effect': self.side_effect,
+            'input_type': self.input_type.__name__,
+            'output_type': self.output_type.__name__,
+            'error_type': self.error_type.__name__,
+            'allowed_surfaces': sorted(surface.value for surface in self.allowed_surfaces),
+        }
 
 
 OPERATIONS: dict[str, OperationSpec] = {
-    'pipeline.list': OperationSpec('pipeline.list', APPLICATION_API_VERSION, Permission.RESOURCE_VIEW),
-    'pipeline.get': OperationSpec('pipeline.get', APPLICATION_API_VERSION, Permission.RESOURCE_VIEW),
+    'pipeline.list': OperationSpec(
+        'pipeline.list',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=PipelineListInput,
+        output_type=PipelineListOutput,
+        allowed_surfaces=frozenset(ApplicationSurface),
+    ),
+    'pipeline.get': OperationSpec(
+        'pipeline.get',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=PipelineGetInput,
+        output_type=PipelineGetOutput,
+        allowed_surfaces=frozenset(ApplicationSurface),
+    ),
     'pipeline.extensions.get': OperationSpec(
-        'pipeline.extensions.get', APPLICATION_API_VERSION, Permission.RESOURCE_VIEW
+        'pipeline.extensions.get',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=PipelineExtensionsGetInput,
+        output_type=PipelineExtensionsGetOutput,
+        allowed_surfaces=frozenset(ApplicationSurface),
     ),
     'pipeline.extensions.update': OperationSpec(
         'pipeline.extensions.update',
         APPLICATION_API_VERSION,
         Permission.RESOURCE_MANAGE,
         side_effect=True,
+        input_type=PipelineExtensionsUpdateInput,
+        output_type=PipelineExtensionsUpdateOutput,
+        allowed_surfaces=frozenset(
+            {
+                ApplicationSurface.HTTP,
+                ApplicationSurface.MCP,
+                ApplicationSurface.CLI,
+            }
+        ),
     ),
 }
 
@@ -59,13 +184,7 @@ class ApplicationAPI:
         """Return serializable operation metadata for capability discovery."""
 
         return [
-            {
-                'id': spec.operation_id,
-                'version': spec.version,
-                'scope': spec.scope,
-                'permission': spec.permission.value,
-                'side_effect': spec.side_effect,
-            }
+            spec.as_dict()
             for spec in OPERATIONS.values()
         ]
 
@@ -80,20 +199,31 @@ class ApplicationAPI:
         sort_by: str = 'created_at',
         sort_order: str = 'DESC',
         *,
-        include_secret: bool = False,
+        include_secret: bool | None = None,
     ) -> list[dict]:
         self._authorize(context, 'pipeline.list')
         # Secret-bearing pipeline configuration must never be exposed merely
         # because a caller supplied ``include_secret=True``.  The HTTP route
         # derives this flag from the same permission, but MCP/assistant callers
         # can invoke the facade directly.
-        if include_secret:
+        include_secret_requested = include_secret is True
+        if include_secret_requested:
             require_permission(context, Permission.RESOURCE_MANAGE)
+        # The assistant and MCP adapters use the ordinary defaults and keep
+        # the legacy service call shape.  HTTP passes an explicit boolean so
+        # the redaction intent remains visible to service-level tests and
+        # lightweight doubles.
+        if (
+            include_secret is None
+            and sort_by == 'created_at'
+            and sort_order == 'DESC'
+        ):
+            return await self.ap.pipeline_service.get_pipelines(context)
         return await self.ap.pipeline_service.get_pipelines(
             context,
             sort_by,
             sort_order,
-            include_secret=include_secret,
+            include_secret=include_secret_requested,
         )
 
     async def get_pipeline(
@@ -170,6 +300,24 @@ class ApplicationAPI:
         }
 
 
-    async def update_pipeline_extensions(self, context: RequestContext, pipeline_uuid: str, **kwargs) -> None:
+    async def update_pipeline_extensions(
+        self,
+        context: RequestContext,
+        input: PipelineExtensionsUpdateInput,
+    ) -> PipelineExtensionsUpdateOutput:
         self._authorize(context, 'pipeline.extensions.update')
-        await self.ap.pipeline_service.update_pipeline_extensions(context, pipeline_uuid, **kwargs)
+        if not isinstance(input, PipelineExtensionsUpdateInput):
+            raise TypeError('input must be PipelineExtensionsUpdateInput')
+        await self.ap.pipeline_service.update_pipeline_extensions(
+            context,
+            input.pipeline_uuid,
+            bound_plugins=input.bound_plugins,
+            bound_mcp_servers=input.bound_mcp_servers,
+            enable_all_plugins=input.enable_all_plugins,
+            enable_all_mcp_servers=input.enable_all_mcp_servers,
+            bound_skills=input.bound_skills,
+            enable_all_skills=input.enable_all_skills,
+            bound_mcp_resources=input.bound_mcp_resources,
+            mcp_resource_agent_read_enabled=input.mcp_resource_agent_read_enabled,
+        )
+        return PipelineExtensionsUpdateOutput()
