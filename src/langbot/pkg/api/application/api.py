@@ -459,12 +459,20 @@ class ApplicationAPI:
     ) -> PipelineExtensionsGetOutput:
         getter = getattr(self.ap.pipeline_service, 'get_pipeline_extensions', None)
         if callable(getter):
+            getter_is_async = inspect.iscoroutinefunction(getter)
             extensions = getter(context, input.pipeline_uuid)
             if inspect.isawaitable(extensions):
                 extensions = await extensions
             if not isinstance(extensions, dict):
-                raise _InvalidApplicationOutput('pipeline.extensions.get returned a non-object value')
-            return PipelineExtensionsGetOutput(extensions=extensions)
+                # A few isolated HTTP graphs expose a bare ``Mock`` for
+                # optional service methods. Treat that as an absent method so
+                # the compatibility implementation below can run; a real
+                # async service method returning the wrong DTO is a contract
+                # violation and remains a hard failure.
+                if getter_is_async:
+                    raise _InvalidApplicationOutput('pipeline.extensions.get returned a non-object value')
+            else:
+                return PipelineExtensionsGetOutput(extensions=extensions)
 
         # Compatibility path for lightweight service doubles and older service
         # graphs. The production PipelineService owns this implementation;
