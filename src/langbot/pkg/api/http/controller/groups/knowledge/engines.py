@@ -1,9 +1,21 @@
 import quart
 from urllib.parse import unquote
 
+from .....application import (
+    ApplicationAPI,
+    ApplicationAPIException,
+    ApplicationSurface,
+    KnowledgeEngineListInput,
+    KnowledgeEngineSchemaInput,
+)
 from ....authz import Permission
 from ....context import RequestContext
 from ... import group
+
+
+def _application_api(ap) -> ApplicationAPI:
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('knowledge_engines', '/api/v1/knowledge/engines')
@@ -21,8 +33,16 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             Returns a list of Knowledge Engines with their capabilities and configuration schemas.
             This is used by the frontend to render the knowledge base creation wizard.
             """
-            engines = await self.ap.knowledge_service.list_knowledge_engines(request_context)
-            return self.success(data={'engines': engines})
+            try:
+                output = await _application_api(self.ap).execute(
+                    'knowledge.engine.list',
+                    request_context,
+                    KnowledgeEngineListInput(),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data={'engines': output.engines})
 
         @self.route(
             '/<path:plugin_id>/creation-schema',
@@ -41,7 +61,16 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             plugin_id = unquote(plugin_id)
             if '/' not in plugin_id:
                 return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
-            schema = await self.ap.knowledge_service.get_engine_creation_schema(request_context, plugin_id)
+            try:
+                output = await _application_api(self.ap).execute(
+                    'knowledge.engine.schema.get',
+                    request_context,
+                    KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='creation'),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            schema = output.schema
             return self.success(data={'schema': schema})
 
         @self.route(
@@ -61,5 +90,14 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             plugin_id = unquote(plugin_id)
             if '/' not in plugin_id:
                 return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
-            schema = await self.ap.knowledge_service.get_engine_retrieval_schema(request_context, plugin_id)
+            try:
+                output = await _application_api(self.ap).execute(
+                    'knowledge.engine.schema.get',
+                    request_context,
+                    KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='retrieval'),
+                    surface=ApplicationSurface.HTTP,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            schema = output.schema
             return self.success(data={'schema': schema})

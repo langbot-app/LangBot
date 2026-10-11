@@ -23,7 +23,16 @@ import typing
 
 from mcp.server.fastmcp import FastMCP
 
-from ..application import ApplicationAPI, ApplicationAPIException, ApplicationSurface, PipelineExtensionsUpdateInput
+from ..application import (
+    ApplicationAPI,
+    ApplicationAPIException,
+    ApplicationSurface,
+    KnowledgeBaseGetInput,
+    KnowledgeBaseListInput,
+    KnowledgeEngineListInput,
+    KnowledgeEngineSchemaInput,
+    PipelineExtensionsUpdateInput,
+)
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
@@ -118,14 +127,31 @@ class LangBotMCPServer:
 
         @mcp.tool(description='List knowledge engines and their capabilities.')
         async def list_knowledge_engines() -> str:
-            return _dump(await ap.knowledge_service.list_knowledge_engines(_authorized(Permission.RESOURCE_VIEW)))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            try:
+                output = await _application_api(ap).execute(
+                    'knowledge.engine.list',
+                    context,
+                    KnowledgeEngineListInput(),
+                    surface=ApplicationSurface.MCP,
+                )
+                return _dump(output.engines)
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
 
         @mcp.tool(description='Get creation or retrieval schema for an author/name knowledge engine.')
         async def get_knowledge_engine_schema(plugin_id: str, kind: typing.Literal['creation', 'retrieval']) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            if kind == 'creation':
-                return _dump(await ap.knowledge_service.get_engine_creation_schema(context, plugin_id))
-            return _dump(await ap.knowledge_service.get_engine_retrieval_schema(context, plugin_id))
+            try:
+                output = await _application_api(ap).execute(
+                    'knowledge.engine.schema.get',
+                    context,
+                    KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind=kind),
+                    surface=ApplicationSurface.MCP,
+                )
+                return _dump(output.schema)
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
 
         @mcp.tool(description='List document parsers, optionally filtered by MIME type.')
         async def list_knowledge_parsers(mime_type: str | None = None) -> str:
@@ -485,12 +511,34 @@ class LangBotMCPServer:
         @mcp.tool(description='List all knowledge bases (RAG).')
         async def list_knowledge_bases() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.knowledge_service.get_knowledge_bases(context))
+            try:
+                output = await _application_api(ap).execute(
+                    'knowledge.base.list',
+                    context,
+                    KnowledgeBaseListInput(),
+                    surface=ApplicationSurface.MCP,
+                )
+                return _dump(output.bases)
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
 
         @mcp.tool(description='Get a single knowledge base by UUID.')
         async def get_knowledge_base(kb_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.knowledge_service.get_knowledge_base(context, kb_uuid))
+            try:
+                output = await _application_api(ap).execute(
+                    'knowledge.base.get',
+                    context,
+                    KnowledgeBaseGetInput(knowledge_base_uuid=kb_uuid),
+                    surface=ApplicationSurface.MCP,
+                )
+            except ApplicationAPIException as exc:
+                return _application_error(exc)
+            # Preserve the historical MCP contract: a missing optional
+            # resource is encoded as JSON null. HTTP exposes a 404 for the
+            # same operation, while MCP callers have long used null to probe
+            # for a UUID without treating it as a tool failure.
+            return _dump(output.base)
 
         @mcp.tool(
             description=('Retrieve (semantic search) from a knowledge base. Returns the matched chunks for `query`.')

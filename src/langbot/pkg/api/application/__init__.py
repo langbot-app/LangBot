@@ -17,6 +17,14 @@ from .api import (
     PipelineGetOutput,
     PipelineListInput,
     PipelineListOutput,
+    KnowledgeBaseListInput,
+    KnowledgeBaseListOutput,
+    KnowledgeBaseGetInput,
+    KnowledgeBaseGetOutput,
+    KnowledgeEngineListInput,
+    KnowledgeEngineListOutput,
+    KnowledgeEngineSchemaInput,
+    KnowledgeEngineSchemaOutput,
 )
 from .client import ApplicationAPIClient, ApplicationAPIClientError
 
@@ -39,4 +47,12 @@ __all__ = [
     'PipelineGetOutput',
     'PipelineListInput',
     'PipelineListOutput',
+    'KnowledgeBaseListInput',
+    'KnowledgeBaseListOutput',
+    'KnowledgeBaseGetInput',
+    'KnowledgeBaseGetOutput',
+    'KnowledgeEngineListInput',
+    'KnowledgeEngineListOutput',
+    'KnowledgeEngineSchemaInput',
+    'KnowledgeEngineSchemaOutput',
 ]

@@ -12,6 +12,10 @@ from langbot.pkg.api.application import (
     ApplicationSurface,
     PipelineListInput,
     PipelineExtensionsUpdateInput,
+    KnowledgeBaseListInput,
+    KnowledgeBaseGetInput,
+    KnowledgeEngineListInput,
+    KnowledgeEngineSchemaInput,
 )
 from langbot.pkg.api.http.authz import Permission, PermissionDeniedError
 
@@ -84,13 +88,22 @@ async def test_execute_validates_service_output_contract():
 def test_catalog_is_versioned_and_workspace_scoped():
     catalog = {item['id']: item for item in ApplicationAPI.operation_catalog()}
 
-    assert len(catalog) == 4
+    assert len(catalog) == 8
     assert catalog['pipeline.list']['version'] == APPLICATION_API_VERSION
     assert catalog['pipeline.list']['scope'] == 'workspace'
     assert catalog['pipeline.extensions.update']['side_effect'] is True
     assert catalog['pipeline.list']['input_type'] == 'PipelineListInput'
     assert catalog['pipeline.list']['output_type'] == 'PipelineListOutput'
     assert catalog['pipeline.extensions.update']['error_type'] == 'ApplicationAPIError'
+    assert catalog['knowledge.engine.list']['version'] == APPLICATION_API_VERSION
+    assert catalog['knowledge.engine.schema.get']['input_type'] == 'KnowledgeEngineSchemaInput'
+    assert catalog['knowledge.base.list']['output_type'] == 'KnowledgeBaseListOutput'
+    assert catalog['knowledge.base.get']['output_type'] == 'KnowledgeBaseGetOutput'
+    assert set(catalog['knowledge.engine.list']['allowed_surfaces']) == {
+        ApplicationSurface.HTTP.value,
+        ApplicationSurface.MCP.value,
+        ApplicationSurface.ASSISTANT.value,
+    }
     assert set(catalog['pipeline.get']['allowed_surfaces']) == {
         ApplicationSurface.HTTP.value,
         ApplicationSurface.MCP.value,
@@ -121,4 +134,40 @@ def test_application_api_is_part_of_minimal_application_graph():
         'pipeline.get',
         'pipeline.extensions.get',
         'pipeline.extensions.update',
+        'knowledge.base.list',
+        'knowledge.base.get',
+        'knowledge.engine.list',
+        'knowledge.engine.schema.get',
     }
+
+
+@pytest.mark.asyncio
+async def test_knowledge_read_operations_delegate_with_typed_outputs():
+    service = SimpleNamespace(
+        get_knowledge_bases=AsyncMock(return_value=[{'uuid': 'kb-1'}]),
+        get_knowledge_base=AsyncMock(return_value={'uuid': 'kb-1'}),
+        list_knowledge_engines=AsyncMock(return_value=[{'plugin_id': 'author/engine'}]),
+        get_engine_creation_schema=AsyncMock(return_value=[{'name': 'url'}]),
+    )
+    api = ApplicationAPI(SimpleNamespace(knowledge_service=service))
+    context = _context(Permission.RESOURCE_VIEW.value)
+
+    listed = await api.execute('knowledge.base.list', context, KnowledgeBaseListInput())
+    fetched = await api.execute(
+        'knowledge.base.get', context, KnowledgeBaseGetInput('kb-1'), surface=ApplicationSurface.ASSISTANT
+    )
+    engines = await api.execute('knowledge.engine.list', context, KnowledgeEngineListInput())
+    schema = await api.execute(
+        'knowledge.engine.schema.get',
+        context,
+        KnowledgeEngineSchemaInput('author/engine', 'creation'),
+    )
+
+    assert listed.bases == [{'uuid': 'kb-1'}]
+    assert fetched.base == {'uuid': 'kb-1'}
+    assert engines.engines == [{'plugin_id': 'author/engine'}]
+    assert schema.schema == [{'name': 'url'}]
+    service.get_knowledge_bases.assert_awaited_once_with(context)
+    service.get_knowledge_base.assert_awaited_once_with(context, 'kb-1', include_secret=False)
+    service.list_knowledge_engines.assert_awaited_once_with(context)
+    service.get_engine_creation_schema.assert_awaited_once_with(context, 'author/engine')

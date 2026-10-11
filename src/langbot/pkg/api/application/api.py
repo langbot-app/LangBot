@@ -135,6 +135,63 @@ class PipelineExtensionsUpdateOutput:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeBaseListInput:
+    # ``None`` preserves the legacy service call shape for lightweight
+    # adapters; HTTP passes an explicit bool so its redaction intent is
+    # visible to service-level tests and doubles.
+    include_secret: bool | None = None
+
+
+_READ_ONLY_ADAPTER_SURFACES = frozenset(
+    {
+        ApplicationSurface.HTTP,
+        ApplicationSurface.MCP,
+        ApplicationSurface.ASSISTANT,
+    }
+)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeBaseListOutput:
+    bases: list[dict]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeBaseGetInput:
+    knowledge_base_uuid: str
+    include_secret: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeBaseGetOutput:
+    base: dict | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeEngineListInput:
+    pass
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeEngineListOutput:
+    engines: list[dict]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeEngineSchemaInput:
+    plugin_id: str
+    kind: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class KnowledgeEngineSchemaOutput:
+    # Plugin runtimes historically returned either the newer object form or
+    # the original list-of-field-definitions form. Keep both wire shapes in
+    # the typed boundary while adapters preserve the payload unchanged.
+    schema: dict | list[dict]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class OperationSpec:
     """Stable metadata for one public workspace operation."""
 
@@ -203,6 +260,38 @@ OPERATIONS: dict[str, OperationSpec] = {
                 ApplicationSurface.CLI,
             }
         ),
+    ),
+    'knowledge.base.list': OperationSpec(
+        'knowledge.base.list',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=KnowledgeBaseListInput,
+        output_type=KnowledgeBaseListOutput,
+        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
+    ),
+    'knowledge.base.get': OperationSpec(
+        'knowledge.base.get',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=KnowledgeBaseGetInput,
+        output_type=KnowledgeBaseGetOutput,
+        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
+    ),
+    'knowledge.engine.list': OperationSpec(
+        'knowledge.engine.list',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=KnowledgeEngineListInput,
+        output_type=KnowledgeEngineListOutput,
+        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
+    ),
+    'knowledge.engine.schema.get': OperationSpec(
+        'knowledge.engine.schema.get',
+        APPLICATION_API_VERSION,
+        Permission.RESOURCE_VIEW,
+        input_type=KnowledgeEngineSchemaInput,
+        output_type=KnowledgeEngineSchemaOutput,
+        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
     ),
 }
 
@@ -394,6 +483,14 @@ class ApplicationAPI:
                 output = await self._get_pipeline_extensions(context, input)
             elif operation_id == 'pipeline.extensions.update':
                 output = await self._update_pipeline_extensions(context, input)
+            elif operation_id == 'knowledge.base.list':
+                output = await self._list_knowledge_bases(context, input)
+            elif operation_id == 'knowledge.base.get':
+                output = await self._get_knowledge_base(context, input)
+            elif operation_id == 'knowledge.engine.list':
+                output = await self._list_knowledge_engines(context, input)
+            elif operation_id == 'knowledge.engine.schema.get':
+                output = await self._get_knowledge_engine_schema(context, input)
             else:  # pragma: no cover - guarded by catalog lookup
                 raise ApplicationAPIException(
                     ApplicationAPIError('unknown_operation', 'Unknown application operation', 404)
@@ -549,6 +646,63 @@ class ApplicationAPI:
             mcp_resource_agent_read_enabled=input.mcp_resource_agent_read_enabled,
         )
         return PipelineExtensionsUpdateOutput()
+
+    async def _list_knowledge_bases(
+        self, context: RequestContext, input: KnowledgeBaseListInput
+    ) -> KnowledgeBaseListOutput:
+        if input.include_secret is True:
+            require_permission(context, Permission.RESOURCE_MANAGE)
+        if input.include_secret is None:
+            bases = await self.ap.knowledge_service.get_knowledge_bases(context)
+        else:
+            bases = await self.ap.knowledge_service.get_knowledge_bases(
+                context,
+                include_secret=input.include_secret,
+            )
+        if not isinstance(bases, list):
+            raise _InvalidApplicationOutput('knowledge_base.list returned a non-list value')
+        return KnowledgeBaseListOutput(bases=bases)
+
+    async def _get_knowledge_base(
+        self, context: RequestContext, input: KnowledgeBaseGetInput
+    ) -> KnowledgeBaseGetOutput:
+        if input.include_secret:
+            require_permission(context, Permission.RESOURCE_MANAGE)
+        base = await self.ap.knowledge_service.get_knowledge_base(
+            context,
+            input.knowledge_base_uuid,
+            include_secret=input.include_secret,
+        )
+        if base is not None and not isinstance(base, dict):
+            raise _InvalidApplicationOutput('knowledge_base.get returned a non-object value')
+        return KnowledgeBaseGetOutput(base=base)
+
+    async def _list_knowledge_engines(
+        self, context: RequestContext, input: KnowledgeEngineListInput
+    ) -> KnowledgeEngineListOutput:
+        engines = await self.ap.knowledge_service.list_knowledge_engines(context)
+        if not isinstance(engines, list):
+            raise _InvalidApplicationOutput('knowledge_engine.list returned a non-list value')
+        return KnowledgeEngineListOutput(engines=engines)
+
+    async def _get_knowledge_engine_schema(
+        self, context: RequestContext, input: KnowledgeEngineSchemaInput
+    ) -> KnowledgeEngineSchemaOutput:
+        if input.kind not in {'creation', 'retrieval'}:
+            raise ApplicationAPIException(
+                ApplicationAPIError('invalid_input', 'kind must be creation or retrieval', 400)
+            )
+        getter = (
+            self.ap.knowledge_service.get_engine_creation_schema
+            if input.kind == 'creation'
+            else self.ap.knowledge_service.get_engine_retrieval_schema
+        )
+        schema = await getter(context, input.plugin_id)
+        if not isinstance(schema, (dict, list)):
+            raise _InvalidApplicationOutput('knowledge.engine.schema.get returned a non-object value')
+        if isinstance(schema, list) and not all(isinstance(item, dict) for item in schema):
+            raise _InvalidApplicationOutput('knowledge.engine.schema.get returned invalid field definitions')
+        return KnowledgeEngineSchemaOutput(schema=schema)
 
     async def list_pipelines(
         self,
