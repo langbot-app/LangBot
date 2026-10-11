@@ -34,6 +34,7 @@ export interface CurrentWorkspace {
   placement_generation: number;
   /** Signed Cloud display metadata; never used for client-side authorization. */
   plan_name?: string | null;
+  limitation?: Record<string, number> | null;
 }
 
 export interface WorkspaceSpaceBilling {

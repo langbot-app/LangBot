@@ -296,7 +296,9 @@ class PluginsRouterGroup(group.RouterGroup):
     async def _check_extensions_limit(self, request_context: RequestContext) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         await self.ap.plugin_connector.require_workspace_context(request_context)
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from ...service.workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, request_context.workspace_uuid)
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
             plugins = await self.ap.plugin_connector.list_plugins()

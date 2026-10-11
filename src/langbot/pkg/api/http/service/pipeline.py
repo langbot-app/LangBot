@@ -173,7 +173,9 @@ class PipelineService:
         if 'config' in pipeline_data:
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_pipelines = limitation.get('max_pipelines', -1)
         if max_pipelines >= 0:
             existing_pipelines = await self.get_pipelines(context)
@@ -290,7 +292,9 @@ class PipelineService:
         """Copy a pipeline with all its configurations"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_pipelines = limitation.get('max_pipelines', -1)
         if max_pipelines >= 0:
             existing_pipelines = await self.get_pipelines(context)

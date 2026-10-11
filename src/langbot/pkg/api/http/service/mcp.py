@@ -212,7 +212,9 @@ class MCPService:
         # stdio MCP even though Box Runtime itself remains available.
         require_stdio_mcp_enabled(self.ap, server_data)
 
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
             mcp_count_result = await self.ap.persistence_mgr.execute_async(

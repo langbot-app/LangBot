@@ -129,6 +129,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             membership = quart.g.workspace_membership
             workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
             plan_name: str | None = None
+            limitation = None
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
@@ -136,6 +137,9 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     minimum_revision=request_context.entitlement_revision,
                 )
                 plan_name = entitlement.plan_name
+                from ...service.workspace_limits import LIMIT_KEYS
+
+                limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
             if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
                 return self.success(
                     data={
@@ -154,6 +158,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'permissions': sorted(request_context.workspace.permissions),
                         'placement_generation': request_context.placement_generation,
                         'plan_name': plan_name,
+                        'limitation': limitation,
                     }
                 )
             account = await self.ap.user_service.get_user_by_uuid(request_context.account_uuid)
@@ -170,6 +175,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     'permissions': sorted(request_context.workspace.permissions),
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
+                    'limitation': limitation,
                 }
             )
 

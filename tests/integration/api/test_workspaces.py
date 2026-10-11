@@ -824,6 +824,7 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
                 not_before=1,
                 expires_at=4102444800,
                 plan_name='free',
+                limits={'bots.max': 2, 'pipelines.max': 3, 'plugins.max': 4, 'knowledge_bases.max': 5},
             )
 
     application.entitlement_resolver = PlanResolver()
@@ -843,6 +844,7 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
     assert current['workspace']['source'] == 'cloud_projection'
     assert current['placement_generation'] == 12
     assert current['plan_name'] == 'free'
+    assert current['limitation']['max_bots'] == 2
 
     create_workspace = await client.post(
         '/api/v1/workspaces',

@@ -685,7 +685,9 @@ class BotService:
         """Create bot"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_bots = limitation.get('max_bots', -1)
         if max_bots >= 0:
             existing_bots = await self.get_bots(context)
