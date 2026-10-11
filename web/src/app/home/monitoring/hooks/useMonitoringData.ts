@@ -42,10 +42,9 @@ export function useMonitoringData(filterState: FilterState) {
     const isCurrent = () =>
       requestId === requestIdRef.current &&
       getCurrentWorkspaceSnapshot()?.workspace.uuid === workspaceUuid;
-    setRequestScope(scope);
-    setData(null);
     setLoading(true);
-    setError(null);
+    // Keep the failure view during retries; restore the dashboard only after
+    // a successful response, without briefly restarting its polling timer.
 
     try {
       const { startTime, endTime } = resolveMonitoringWindow(
@@ -387,8 +386,12 @@ export function useMonitoringData(filterState: FilterState) {
       ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
       setData(transformedData);
+      setError(null);
+      setRequestScope(scope);
     } catch (err) {
       if (!isCurrent()) return;
+      setRequestScope(scope);
+      setData((current) => (requestScope === scope ? current : null));
       setError(err as Error);
       console.error('Failed to fetch monitoring data:', err);
     } finally {
@@ -402,6 +405,7 @@ export function useMonitoringData(filterState: FilterState) {
     filterState.selectedBots,
     filterState.selectedPipelines,
     scope,
+    requestScope,
     workspaceUuid,
   ]);
 

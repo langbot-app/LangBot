@@ -319,7 +319,7 @@ test('bot adapter gallery keeps categories and fits desktop and mobile', async (
     )
     .toBe(true);
 
-  await gallery.getByRole('button', { name: /Legacy adapters/ }).click();
+  await gallery.getByRole('button', { name: /^Legacy adapters \d+$/ }).click();
   await expect(
     gallery.getByRole('button', { name: /Legacy Adapter/ }),
   ).toBeVisible();
@@ -642,11 +642,11 @@ for (const available of [true, false]) {
       guide.getByRole('heading', { name: 'Review execution results' }),
     ).toBeVisible();
     await expect(
-      page.locator('[data-guide="event-processor-form-tab-logs"]'),
+      page.getByRole('tab', { name: 'Run logs', exact: true }),
     ).toHaveAttribute('data-state', 'active');
     await guide.getByRole('button', { name: 'Previous', exact: true }).click();
     await expect(
-      page.locator('[data-guide="event-processor-form-tab-config"]'),
+      page.getByRole('tab', { name: 'Configure & debug', exact: true }),
     ).toHaveAttribute('data-state', 'active');
     await guide.getByRole('button', { name: 'Next', exact: true }).click();
     if (available) {
@@ -656,7 +656,7 @@ for (const available of [true, false]) {
       ).toBeVisible();
       await expect(guide).toContainText('no per-event routing needed');
       await expect(
-        page.locator('[data-guide="event-processor-form-tab-config"]'),
+        page.getByRole('tab', { name: 'Configure & debug', exact: true }),
       ).toHaveAttribute('data-state', 'active');
     }
     await guide.getByRole('button', { name: 'Finish', exact: true }).click();

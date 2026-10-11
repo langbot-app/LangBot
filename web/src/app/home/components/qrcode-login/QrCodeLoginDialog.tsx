@@ -83,7 +83,6 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
       client_id: data.client_id,
       client_secret: data.client_secret,
     }),
-    successNoteKey: 'dingtalk.robotCodeNote',
   },
   wecombot: {
     titleKey: 'wecombot.createBot',

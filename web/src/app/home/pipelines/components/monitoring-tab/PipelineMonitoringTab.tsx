@@ -57,7 +57,7 @@ export default function PipelineMonitoringTab({
   const [activeTab, setActiveTab] = useState<string>('messages');
 
   const toggleTurnExpand = (turnId: string) => {
-    setExpandedTurnId((current) => (current === turnId ? null : turnId));
+    setExpandedTurnId(turnId);
   };
 
   const toggleErrorExpand = (errorId: string) => {
@@ -83,7 +83,7 @@ export default function PipelineMonitoringTab({
   return (
     <div className="w-full h-full flex flex-col">
       {/* Header with refresh button */}
-      <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {t('pipelines.monitoring.description')}
         </p>
@@ -113,8 +113,8 @@ export default function PipelineMonitoringTab({
 
       {/* Overview Stats */}
       {data && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <div className="mb-4 grid grid-cols-3 divide-x rounded-xl border bg-card">
+          <div className="p-3">
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {t('monitoring.totalMessages')}
             </div>
@@ -122,7 +122,7 @@ export default function PipelineMonitoringTab({
               {data.overview.totalMessages}
             </div>
           </div>
-          <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="p-3">
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {t('monitoring.successRate')}
             </div>
@@ -130,7 +130,7 @@ export default function PipelineMonitoringTab({
               {data.overview.successRate.toFixed(1)}%
             </div>
           </div>
-          <div className="bg-white dark:bg-[#2a2a2e] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="p-3">
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {t('monitoring.tabs.errors')}
             </div>

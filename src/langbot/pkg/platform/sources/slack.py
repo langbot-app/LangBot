@@ -6,6 +6,8 @@ import traceback
 import datetime
 
 from langbot.libs.slack_api.api import SlackClient
+from langbot.libs.slack_api.media import send_chain
+from langbot.pkg.platform.adapters.slack.message_converter import SlackMessageConverter as OmniMessageConverter
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot.libs.slack_api.slackevent import SlackEvent
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -61,13 +63,9 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def target2yiri(event: SlackEvent, bot: SlackClient):
-        yiri_chain = await SlackMessageConverter.target2yiri(
-            message=event.text, message_id=event.message_id, pic_url=event.pic_url, bot=bot
-        )
+        yiri_chain = await OmniMessageConverter.target2yiri(event, bot.bot_token)
 
         if event.type == 'channel':
-            yiri_chain.insert(0, platform_message.At(target='SlackBot'))
-
             sender = platform_entities.GroupMember(
                 id=event.user_id,
                 member_name=str(event.sender_name),
@@ -102,14 +100,17 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
             'bot_token',
-            'signing_secret',
+            'app_token' if config.get('socket_mode', False) else 'signing_secret',
         ]
-        missing_keys = [key for key in required_keys if key not in config]
+        missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
             raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
 
         bot = SlackClient(
-            bot_token=config['bot_token'], signing_secret=config['signing_secret'], logger=logger, unified_mode=True
+            bot_token=config['bot_token'],
+            signing_secret=config.get('signing_secret', ''),
+            logger=logger,
+            unified_mode=True,
         )
 
         super().__init__(
@@ -127,27 +128,13 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         slack_event = await SlackEventConverter.yiri2target(message_source)
 
-        content_list = await SlackMessageConverter.yiri2target(message)
-
-        for content in content_list:
-            # Both text and image (URL) are sent as text messages
-            # Slack will auto-unfurl image URLs
-            message_content = content['content']
-            if slack_event.type == 'channel':
-                await self.bot.send_message_to_channel(message_content, slack_event.channel_id)
-            if slack_event.type == 'im':
-                await self.bot.send_message_to_one(message_content, slack_event.user_id)
+        target_type = 'channel' if slack_event.type == 'channel' else 'person'
+        target_id = slack_event.channel_id if target_type == 'channel' else slack_event.user_id
+        return await send_chain(self.bot, target_type, target_id, message)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        content_list = await SlackMessageConverter.yiri2target(message)
-        for content in content_list:
-            # Both text and image (URL) are sent as text messages
-            # Slack will auto-unfurl image URLs
-            message_content = content['content']
-            if target_type == 'person':
-                await self.bot.send_message_to_one(message_content, target_id)
-            if target_type == 'group':
-                await self.bot.send_message_to_channel(message_content, target_id)
+        target_type = 'channel' if target_type in {'group', 'channel'} else target_type
+        return await send_chain(self.bot, target_type, target_id, message)
 
     def register_listener(
         self,
@@ -186,6 +173,10 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
+        if self.config.get('socket_mode', False):
+            await self.bot.run_socket(self.config['app_token'])
+            return
+
         # 统一 webhook 模式下，不启动独立的 Quart 应用
         # 保持运行但不启动独立端口
         async def keep_alive():
@@ -195,7 +186,8 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
-        return False
+        await self.bot.close_socket()
+        return True
 
     async def unregister_listener(
         self,

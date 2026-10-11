@@ -277,7 +277,7 @@ async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, re
         description='',
         adapter=saved_adapter,
         adapter_config={},
-        enable=False,
+        enable=True,
         event_bindings=[],
     )
     workspace_service = SimpleNamespace(

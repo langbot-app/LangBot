@@ -127,10 +127,17 @@ test('renders typed and custom events without duplicate text or empty attachment
     .filter({ hasText: 'Open this execution' })
     .click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByText('你好~', { exact: true })).toHaveCount(2);
+  await expect(
+    sheet.getByText('你好~', { exact: true }).filter({ visible: true }),
+  ).toHaveCount(2);
   await expect(sheet.getByText('[Empty message]', { exact: true })).toHaveCount(
     0,
   );
+  for (const details of await sheet
+    .locator('summary')
+    .filter({ hasText: /^Details$/ })
+    .all())
+    await details.click();
   for (const text of [
     'Agent answer',
     'member-42',
@@ -147,7 +154,9 @@ test('renders typed and custom events without duplicate text or empty attachment
     'custom-value',
     'event_reply',
   ]) {
-    await expect(sheet.getByText(text, { exact: true })).toBeVisible();
+    await expect(
+      sheet.getByText(text, { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
   }
   await expect(
     sheet.getByRole('img', { name: 'Message attachment' }),
@@ -222,12 +231,16 @@ test('pages a long trace without dropping inputs and opens related executions', 
     .filter({ hasText: 'Open this execution' })
     .click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByText('Generated but not sent')).toBeVisible();
+  await expect(
+    sheet.getByText('Generated but not sent').filter({ visible: true }),
+  ).toBeVisible();
   await expect(sheet.getByText('Delivery records (0)')).toBeVisible();
   await sheet.getByText('Execution events (1+)', { exact: true }).click();
   await sheet.getByRole('button', { name: 'Load more' }).click();
   await expect(sheet.getByText('run.completed', { exact: true })).toBeVisible();
-  await expect(sheet.getByText('Original input')).toBeVisible();
+  await expect(
+    sheet.getByText('Original input').filter({ visible: true }),
+  ).toBeVisible();
   expect(
     requests.some(
       (query) =>
@@ -236,8 +249,12 @@ test('pages a long trace without dropping inputs and opens related executions', 
   ).toBe(true);
   await sheet.getByText('Related executions (1)', { exact: true }).click();
   await sheet.getByRole('button', { name: /Processor B/ }).click();
-  await expect(sheet.getByText('Sibling input')).toBeVisible();
-  await expect(sheet.getByText('Original input')).toHaveCount(0);
+  await expect(
+    sheet.getByText('Sibling input').filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    sheet.getByText('Original input').filter({ visible: true }),
+  ).toHaveCount(0);
 });
 
 test('shows non-message events without fabricating a reply or a processor', async ({
@@ -298,6 +315,11 @@ test('shows non-message events without fabricating a reply or a processor', asyn
   await expect(
     sheet.getByRole('heading', { name: 'No processor run' }),
   ).toBeVisible();
+  await sheet
+    .locator('summary')
+    .filter({ hasText: /^Details$/ })
+    .first()
+    .click();
   await expect(sheet.getByText(/member-42/)).toBeVisible();
   await expect(sheet.getByText(/No matching route/)).toBeVisible();
   await expect(sheet.getByText('Delivery records (0)')).toBeVisible();
@@ -326,34 +348,33 @@ test('filters all three processor kinds with the sidebar icons', async ({
     route.fulfill({ json: { code: 0, data: { agents: processors } } }),
   );
   await page.goto('/home/monitoring');
-  const filter = page.getByRole('combobox', { name: 'Processor', exact: true });
+  const filter = page.locator('#monitoring-filter-processor');
+  await filter.click();
+  const popup = page.getByRole('dialog');
   for (const processor of processors) {
-    await filter.click();
-    const option = page.getByRole('option', {
+    const option = popup.getByRole('checkbox', {
       name: processor.name,
       exact: true,
     });
     await expect(
-      option.getByText(processor.emoji, { exact: true }),
+      option.locator('..').getByText(processor.emoji, { exact: true }),
     ).toBeVisible();
     const request = page.waitForRequest((req) => {
       const url = new URL(req.url());
       return (
         url.pathname.endsWith('/monitoring/executions') &&
-        url.searchParams.get('pipelineId') === processor.uuid
+        url.searchParams.getAll('pipelineId').includes(processor.uuid)
       );
     });
-    await option.click();
+    await option.check();
     await request;
-    await expect(filter).toContainText(processor.name);
-    await expect(
-      filter.getByText(processor.emoji, { exact: true }),
-    ).toBeVisible();
+    await expect(option).toBeChecked();
   }
-  await filter.click();
-  await page
-    .getByRole('option', { name: 'All Processors', exact: true })
+  await expect(filter).toContainText('3');
+  await popup
+    .getByRole('button', { name: 'All Processors', exact: true })
     .click();
+  await expect(popup.getByRole('checkbox', { checked: true })).toHaveCount(0);
   await expect(filter).toContainText('All Processors');
 });
 
@@ -423,11 +444,24 @@ test('remembers all filters on reload and persists resetting them', async ({
   ];
   for (const [id, label] of selections) {
     await page.locator(`#monitoring-filter-${id}`).click();
-    await page.getByRole('option', { name: label, exact: true }).click();
+    if (id === 'processor') {
+      await page.getByRole('checkbox', { name: label, exact: true }).check();
+      await page.keyboard.press('Escape');
+    } else await page.getByRole('option', { name: label, exact: true }).click();
   }
   await page.reload();
-  for (const [id, label] of selections)
-    await expect(page.locator(`#monitoring-filter-${id}`)).toContainText(label);
+  for (const [id, label] of selections) {
+    if (id === 'processor') {
+      await page.locator('#monitoring-filter-processor').click();
+      await expect(
+        page.getByRole('checkbox', { name: label, exact: true }),
+      ).toBeChecked();
+      await page.keyboard.press('Escape');
+    } else
+      await expect(page.locator(`#monitoring-filter-${id}`)).toContainText(
+        label,
+      );
+  }
   await page
     .getByRole('button', { name: 'Reset Filters', exact: true })
     .click();

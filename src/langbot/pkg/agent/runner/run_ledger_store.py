@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...utils.inflight import inflight_hub
+from ...utils.execution_lease import host_execution_lease
 
 from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 
@@ -136,6 +138,7 @@ class RunLedgerStore:
                 thread_id=thread_id,
                 workspace_id=workspace_id,
                 bot_id=bot_id,
+                **(host_execution_lease() if status == 'running' and queue_name is None else {}),
                 status=status,
                 queue_name=queue_name,
                 priority=priority,
@@ -149,6 +152,7 @@ class RunLedgerStore:
             )
             session.add(run)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def claim_next_run(
@@ -206,6 +210,7 @@ class RunLedgerStore:
             run.last_claimed_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run, include_claim_token=True)
 
     async def renew_claim(
@@ -226,6 +231,7 @@ class RunLedgerStore:
             run.claim_lease_expires_at = as_naive_utc(now + datetime.timedelta(seconds=max(int(lease_seconds), 1)))
             run.updated_at = as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def release_claim(
@@ -254,6 +260,7 @@ class RunLedgerStore:
             if status in TERMINAL_STATUSES:
                 run.finished_at = run.finished_at or as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def release_expired_claims(
@@ -332,6 +339,7 @@ class RunLedgerStore:
             )
             session.add(row)
             await session.commit()
+            inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
     async def append_audit_event(
@@ -366,6 +374,7 @@ class RunLedgerStore:
             )
             session.add(row)
             await session.commit()
+            inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
     async def finalize_run(
@@ -410,6 +419,7 @@ class RunLedgerStore:
                 else:
                     run.metadata_json = _json_dumps(metadata)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def validate_active_claim(
@@ -443,6 +453,7 @@ class RunLedgerStore:
             run.updated_at = as_naive_utc(now)
             run.status_reason = status_reason or run.status_reason
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:

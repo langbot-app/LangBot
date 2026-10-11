@@ -127,8 +127,14 @@ def _workspace_transaction(method):
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         if callable(tenant_uow):
             async with tenant_uow(workspace_uuid):
-                return await method(self, context, *args, **kwargs)
-        return await method(self, context, *args, **kwargs)
+                result = await method(self, context, *args, **kwargs)
+        else:
+            result = await method(self, context, *args, **kwargs)
+        if method.__name__ in {'record_message', 'update_message_status'}:
+            from ....utils.inflight import inflight_hub
+
+            inflight_hub.notify(workspace_uuid)
+        return result
 
     return wrapped
 
@@ -550,7 +556,10 @@ class MonitoringService(ExecutionDetailsMixin):
         run_id = run_id or trace.current_run() or None
         message_id = str(uuid.uuid4())
         message_content = self._sanitize_message_content(message_content)
+        from ....utils.execution_lease import host_execution_lease
+
         message_data = {
+            **(host_execution_lease() if status == 'pending' else {}),
             'id': message_id,
             'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
@@ -1418,6 +1427,28 @@ class MonitoringService(ExecutionDetailsMixin):
             end_time=end_time,
             debug=True if mode == 'debug' else False if mode == 'real' else None,
         )
+        Message = persistence_monitoring.MonitoringMessage
+        pipeline_timing = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(AgentRun.started_at, AgentRun.finished_at)
+            .select_from(Message)
+            .join(
+                AgentRun,
+                sqlalchemy.and_(
+                    AgentRun.workspace_id == workspace_uuid,
+                    AgentRun.run_id == Message.run_id,
+                ),
+            )
+            .where(
+                *pipeline_conditions,
+                Message.status == 'success',
+                AgentRun.started_at.is_not(None),
+                AgentRun.finished_at.is_not(None),
+            )
+            .order_by(Message.timestamp.desc())
+            .limit(self._detail_limit())
+        )
+        durations.extend((row[1] - row[0]).total_seconds() * 1000 for row in pipeline_timing.all() if row[0] and row[1])
+        durations.sort()
         pipeline_status_result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(
                 persistence_monitoring.MonitoringMessage.status,
@@ -1511,6 +1542,7 @@ class MonitoringService(ExecutionDetailsMixin):
         end_time: datetime.datetime | None = None,
         limit: int = 50,
         offset: int = 0,
+        include_summary: bool = True,
     ) -> dict:
         """List executions from both object types (agent runs and pipeline queries)."""
         workspace_uuid = require_workspace_uuid(context)
@@ -1611,6 +1643,8 @@ class MonitoringService(ExecutionDetailsMixin):
                     by_key[(kind, item['id'])] = item
             page = [by_key[(ref.source, ref.id)] for ref in refs if (ref.source, ref.id) in by_key]
             await self.enrich_execution_rows(workspace_uuid, page)
+        if not include_summary:
+            return {'items': page, 'total': total, 'has_more': total > offset + len(page)}
         return {
             'items': page,
             'total': total,
@@ -1638,6 +1672,82 @@ class MonitoringService(ExecutionDetailsMixin):
                 ),
             },
         }
+
+    async def get_inflight_snapshot(self, context: TenantContext, previous: list[dict] | None = None) -> dict:
+        """Bounded Workspace snapshot without dashboard aggregates or token payloads."""
+        from ....utils.inflight import inflight_hub
+
+        workspace = require_workspace_uuid(context)
+        active = await self.get_executions(context, statuses=['running', 'queued'], limit=100, include_summary=False)
+        recent = await self.get_executions(
+            context,
+            start_time=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30),
+            limit=100,
+            include_summary=False,
+        )
+        items = {(r['source'], r['id']): r for r in recent['items'] + active['items'] if r['source'] != 'event'}
+        # Keep the actual terminal state of older runs that just left the active set.
+        for kind, model, column, scope in [
+            (
+                'agent',
+                persistence_agent_run.AgentRun,
+                persistence_agent_run.AgentRun.run_id,
+                persistence_agent_run.AgentRun.workspace_id,
+            ),
+            (
+                'pipeline',
+                persistence_monitoring.MonitoringMessage,
+                persistence_monitoring.MonitoringMessage.id,
+                persistence_monitoring.MonitoringMessage.workspace_uuid,
+            ),
+        ]:
+            missing = [r['id'] for r in (previous or [])[:100] if r['source'] == kind and (kind, r['id']) not in items]
+            if missing:
+                records = await self._execution_rows(
+                    workspace, sqlalchemy.select(model).where(scope == workspace, column.in_(missing))
+                )
+                names = await self._agent_names(workspace, records) if kind == 'agent' else {}
+                for record in records:
+                    row = (
+                        self._serialize_agent_execution(record, names)
+                        if kind == 'agent'
+                        else self._serialize_pipeline_execution(record)
+                    )
+                    items[(kind, row['id'])] = row
+        rows = list(items.values())
+        Run = persistence_agent_run.AgentRun
+        Message = persistence_monitoring.MonitoringMessage
+        agent_ids = [r['id'] for r in rows if r['source'] == 'agent']
+        pipeline_ids = [r['id'] for r in rows if r['source'] == 'pipeline']
+        linked = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Run.run_id, Message.id.label('message_id'))
+            .outerjoin(Message, sqlalchemy.and_(Message.workspace_uuid == workspace, Message.run_id == Run.run_id))
+            .where(
+                Run.workspace_id == workspace, sqlalchemy.or_(Run.run_id.in_(agent_ids), Message.id.in_(pipeline_ids))
+            )
+        )
+        identities = {
+            r.run_id: ('pipeline', r.message_id) if r.message_id in pipeline_ids else ('agent', r.run_id)
+            for r in linked.all()
+        }
+        inflight_hub.track(workspace, identities)
+        Event = persistence_agent_run.AgentRunEvent
+        latest = (
+            sqlalchemy.select(Event.run_id, sqlalchemy.func.max(Event.sequence).label('seq'))
+            .where(Event.run_id.in_(identities))
+            .group_by(Event.run_id)
+            .subquery()
+        )
+        phases = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(Event.run_id, Event.type).join(
+                latest, sqlalchemy.and_(Event.run_id == latest.c.run_id, Event.sequence == latest.c.seq)
+            )
+        )
+        for run_id, event_type in phases.all():
+            row = items.get(identities[run_id])
+            if row is not None:
+                row['progress_event'] = event_type
+        return {'items': rows, 'active_total': active['total'], 'truncated': active['has_more'] or recent['has_more']}
 
     async def get_token_statistics(
         self,
@@ -1862,6 +1972,19 @@ class MonitoringService(ExecutionDetailsMixin):
         """Get messages with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
+        if bot_ids and session_ids and not pipeline_ids and not execution_statuses and mode == 'all':
+            source = self._session_message_source(workspace_uuid, bot_ids)
+            query = sqlalchemy.select(source).where(source.c.session_id.in_(session_ids))
+            if start_time:
+                query = query.where(source.c.timestamp >= start_time)
+            if end_time:
+                query = query.where(source.c.timestamp <= end_time)
+            return await self._session_projection_page(
+                workspace_uuid,
+                query.order_by(source.c.timestamp.desc(), source.c.id.desc()),
+                limit,
+                offset,
+            )
         conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
         conditions.append(
@@ -2102,6 +2225,112 @@ class MonitoringService(ExecutionDetailsMixin):
             total,
         )
 
+    @_workspace_transaction
+    async def reset_session_context(self, context: TenantContext, bot_id: str, session_id: str) -> dict:
+        """Reset model context without deleting monitoring history or other sessions."""
+        from ....agent.runner.context_reset import HOST_RESET_RUNNER, reset_scope
+        from ....entity.persistence.runner_state import RunnerState
+
+        if not isinstance(bot_id, str) or not bot_id or not isinstance(session_id, str) or not session_id:
+            raise ValueError('bot_id and session_id are required')
+        workspace = require_workspace_uuid(context)
+        execute = self.ap.persistence_mgr.execute_async
+        source = self._session_message_source(workspace, [bot_id])
+        exists = (
+            await execute(
+                sqlalchemy.select(source.c.session_id)
+                .where(
+                    source.c.session_id == session_id,
+                )
+                .limit(1)
+            )
+        ).first()
+        if exists is None:
+            session = persistence_monitoring.MonitoringSession
+            exists = (
+                await execute(
+                    sqlalchemy.select(session.session_id)
+                    .where(
+                        session.workspace_uuid == workspace,
+                        session.bot_id == bot_id,
+                        session.session_id == session_id,
+                    )
+                    .limit(1)
+                )
+            ).first()
+        if exists is None:
+            raise LookupError('Session not found')
+        # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
+        conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
+        run = persistence_agent_run.AgentRun
+        busy = (
+            await execute(
+                sqlalchemy.select(run.run_id)
+                .where(
+                    run.workspace_id == workspace,
+                    run.bot_id == bot_id,
+                    run.conversation_id == conversation,
+                    run.status.in_(['created', 'queued', 'claimed', 'running']),
+                )
+                .limit(1)
+            )
+        ).first()
+        message = persistence_monitoring.MonitoringMessage
+        pending = (
+            await execute(
+                sqlalchemy.select(message.id)
+                .where(
+                    message.workspace_uuid == workspace,
+                    message.bot_id == bot_id,
+                    message.session_id.in_([session_id, conversation]),
+                    message.status == 'pending',
+                )
+                .limit(1)
+            )
+        ).first()
+        interaction = persistence_agent_interaction.AgentInteraction
+        waiting = (
+            await execute(
+                sqlalchemy.select(interaction.id)
+                .where(
+                    interaction.workspace_id == workspace,
+                    interaction.bot_id == bot_id,
+                    interaction.conversation_id == conversation,
+                    interaction.status.in_(['pending', 'submitted']),
+                    sqlalchemy.or_(
+                        interaction.expires_at.is_(None), interaction.expires_at > datetime.datetime.utcnow()
+                    ),
+                )
+                .limit(1)
+            )
+        ).first()
+        if busy or pending or waiting:
+            raise RuntimeError('Session is processing a task; wait until it finishes')
+        await execute(
+            sqlalchemy.delete(RunnerState).where(
+                RunnerState.workspace_id == workspace,
+                RunnerState.bot_id == bot_id,
+                RunnerState.conversation_id == conversation,
+                RunnerState.scope == 'conversation',
+            )
+        )
+        generation = str(uuid.uuid4())
+        await execute(
+            sqlalchemy.insert(RunnerState).values(
+                runner_id=HOST_RESET_RUNNER,
+                binding_identity=HOST_RESET_RUNNER,
+                scope='conversation',
+                scope_key=reset_scope(workspace, bot_id, conversation),
+                state_key='generation',
+                value_json=json.dumps(generation),
+                workspace_id=workspace,
+                bot_id=bot_id,
+                conversation_id=conversation,
+                created_at=datetime.datetime.utcnow(),
+            )
+        )
+        return {'reset': True, 'session_id': session_id}
+
     async def get_sessions(
         self,
         context: TenantContext,
@@ -2119,6 +2348,17 @@ class MonitoringService(ExecutionDetailsMixin):
         """Get sessions with filters"""
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
+        if bot_ids and not pipeline_ids and not execution_statuses and mode == 'all':
+            return await self.get_bot_conversation_sessions(
+                workspace_uuid,
+                bot_ids,
+                start_time,
+                end_time,
+                user_query,
+                is_active,
+                limit,
+                offset,
+            )
         conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
         conditions.append(

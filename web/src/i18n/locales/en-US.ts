@@ -1,5 +1,33 @@
+import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  slackSetup,
+  inflight: {
+    autoCollapse: 'Auto-collapse',
+    empty: 'No events are being processed',
+    move: 'Drag vertically; use arrow keys to move',
+    botLogs: 'Robot logs',
+    processorLogs: 'Processor logs',
+
+    title: 'In flight',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    reconnecting: 'Reconnecting; showing the last received state.',
+    details: 'View details',
+    debug: 'Debug event',
+    limited: 'Showing a limited set. Open the dashboard for all executions.',
+    queued: 'Queued',
+    running: 'Processing',
+    waiting: 'Waiting for input',
+    tool: 'Calling a tool',
+    thinking: 'Thinking',
+    replying: 'Preparing reply',
+    generating: 'Generating reply',
+    completed: 'Completed',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    ignored: 'Ignored',
+  },
   assistant: {
     movePosition: 'Move assistant horizontally',
     resizeHeight: 'Resize assistant height',
@@ -9,7 +37,7 @@ const enUS = {
     stopped:
       'Stopped. An in-progress tool may already have taken effect. Check its resource before retrying.',
     setupRequired:
-      'Sign in to LangBot Account to use LangBot Models, or configure your own model provider to start chatting.',
+      'Sign in to LangBot Account or configure a model to start using the workspace assistant.',
     loginAccount: 'Sign in to LangBot Account',
     configureModels: 'Configure models',
     providerCheckFailed: 'Could not check model providers. Please try again.',
@@ -76,6 +104,14 @@ const enUS = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: 'Last {{days}} days',
+        customRange: 'Custom time range',
+        rangeStart: 'Start time',
+        rangeEnd: 'End time',
+        rangeHint: 'Start must precede end. Maximum range: 365 days.',
+        autoRefreshLabel: 'Auto refresh',
+        autoRefreshOff: 'Auto refresh: off',
+        autoRefreshEvery: 'Refresh every {{seconds}} s',
         title: 'Review activity',
         description:
           'Review bot activity, model usage, message volume, and system performance at a glance.',
@@ -157,6 +193,14 @@ const enUS = {
           'Send test messages to check triggers, AI replies, and output processing. Any configuration changes are saved before testing.',
       },
       monitoring: {
+        rangeDays: 'Last {{days}} days',
+        customRange: 'Custom time range',
+        rangeStart: 'Start time',
+        rangeEnd: 'End time',
+        rangeHint: 'Start must precede end. Maximum range: 365 days.',
+        autoRefreshLabel: 'Auto refresh',
+        autoRefreshOff: 'Auto refresh: off',
+        autoRefreshEvery: 'Refresh every {{seconds}} s',
         title: 'Review run history',
         description:
           'Use the tab beside the title to review past conversations, processing steps, and errors when replies are missing or unexpected.',
@@ -324,6 +368,11 @@ const enUS = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'The failure reason was not recorded. Check the bot logs or retry to capture more details.',
+    loadFailedTitle: 'Unable to load this content',
+    loadFailedHint:
+      'Please try again in a moment. If this continues, check your connection and service status.',
     customValue: 'Custom',
     loadFailed: 'Failed to load. Please try again.',
     search: 'Search',
@@ -522,6 +571,9 @@ const enUS = {
     help: 'Get Help',
   },
   models: {
+    starModel: 'Star model (default for new processors)',
+    unstarModel: 'Unstar model',
+    starModelFailed: 'Could not update starred model',
     codex: {
       account: 'ChatGPT subscription',
       description:
@@ -781,10 +833,13 @@ const enUS = {
     deleteConfirmation: 'Are you sure you want to delete this bot?',
     platformAdapter: 'Platform/Adapter Selection',
     selectAdapter: 'Select Adapter',
+    saveAndEnable: 'Save and enable',
+    searchAdapters: 'Search adapters',
+    noMatchingAdapters: 'No matching adapters found',
     legacyAdapters: 'Legacy adapters',
     legacyAdapterBadge: 'Legacy',
     legacyAdaptersHint:
-      'These adapters have newer event-driven counterparts.\nThey are kept only for existing configurations and are not recommended for new bots.',
+      'Legacy adapters mainly send and receive messages and remain available for existing bot configurations.\nNew adapters connect to the same platform using events, including messages and supported friend requests or group changes, routed to processors.\nPrefer the new adapter for new bots. Existing bots can keep using legacy adapters. When switching, review connection settings and event routes; this does not upgrade your platform account.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
     bindPipeline: 'Bind Pipeline',
@@ -797,6 +852,10 @@ const enUS = {
     earlier: 'Earlier',
     dateFormat: '{{month}}/{{day}}',
     setBotEnableError: 'Failed to set bot enable status',
+    enabling: 'Enabling…',
+    disabling: 'Disabling…',
+    enableConfirmed: 'Enabled',
+    disableConfirmed: 'Disabled',
     log: 'Log',
     configuration: 'Configuration',
     logs: 'Logs',
@@ -805,6 +864,28 @@ const enUS = {
     routingConnection: 'Routing & Connection',
     routingConnectionDescription:
       'Bind the pipeline that processes messages for this bot',
+    routingHelp: {
+      title: 'What is event routing?',
+      intro:
+        'Bots receive more than messages: friend requests, group invitations and other events too.',
+      events: 'Incoming events',
+      agents: 'Different agents',
+      message: 'Message received',
+      friend: 'Friend request',
+      group: 'Joined a group',
+      messageAction: 'Reply agent → Answer',
+      friendAction: 'Review agent → Review',
+      groupAction: 'Welcome agent → Greet',
+      rules: 'Your routing rules · Example',
+      instructions:
+        'Agents follow your instructions and use tools to reply, review requests and more.',
+      plugin:
+        'For advanced workflows, plugin processors register events in bulk and handle them with code. Add a plugin processor configuration below.',
+      docs: 'Develop your own plugin processor',
+      runnerDocs: 'Develop your own Agent runner',
+      pause: 'Pause',
+      play: 'Play',
+    },
     eventRouting: 'Event Routing',
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
@@ -843,7 +924,8 @@ const enUS = {
     enabled: 'Enabled',
     eventBindingDescriptionPlaceholder: 'Rule description',
     noEventBindings: 'No event routes',
-    unsupportedPipelineEvent: 'Pipelines can only be used for message.* events',
+    unsupportedPipelineEvent:
+      'Pipelines can only be used for message.received events',
     disable: 'Disable',
     enable: 'Enable',
     disabledBindings: 'Disabled',
@@ -853,6 +935,7 @@ const enUS = {
     advancedEventValues: 'View all',
     eventGroup: 'Group',
     eventGroupNames: {
+      wecomcs: 'WeCom Customer Service',
       bot: 'Bot status',
       feedback: 'Feedback',
       friend: 'Friends',
@@ -867,6 +950,9 @@ const enUS = {
     routeFallbackCatchAll: '{{route}} is the catch-all route.',
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
+    matchRecords: 'Match records',
+    matchRecordsDescription:
+      'Latest result for each rule and recent unmatched events, from bot memory logs. Cleared on restart.',
     testRoute: 'Check route',
     adapterEventDebugAction: 'Test listener',
     adapterEventDebugTitle: 'Platform event debugging',
@@ -952,6 +1038,15 @@ const enUS = {
     eventWildcard: 'All events',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: 'User entered bot chat',
+      wecombot_template_card_event: 'Template card interaction',
+      dingtalk_card_action: 'DingTalk card interaction',
+      wecomcs_enter_session: 'Customer entered conversation',
+      wecomcs_msg_send_fail: 'Customer service message failed',
+      wecomcs_servicer_status_change: 'Representative availability changed',
+      wecomcs_session_status_change: 'Customer service conversation changed',
+      wecomcs_reject_customer_msg_switch_change:
+        'Customer message rejection changed',
       message_received: 'Message received',
       message_edited: 'Message edited',
       message_deleted: 'Message deleted',
@@ -961,6 +1056,7 @@ const enUS = {
       friend_added: 'Friend added',
       group_member_joined: 'Member joined group',
       group_member_left: 'Member left group',
+      group_info_updated: 'Group information updated',
       group_member_banned: 'Member banned',
       bot_invited_to_group: 'Bot invited to group',
       bot_removed_from_group: 'Bot removed from group',
@@ -969,6 +1065,22 @@ const enUS = {
       platform_specific: 'Platform-specific event',
     },
     eventDescriptions: {
+      wecombot_enter_chat:
+        'A user opened the bot chat. Use this event for welcome workflows.',
+      wecombot_template_card_event:
+        'A user clicked or submitted a template card. Managed form callbacks are handled separately.',
+      dingtalk_card_action:
+        'Card clicks and submissions; feedback and managed forms are handled separately.',
+      wecomcs_enter_session:
+        'A customer opened a service link; includes entry source and welcome code.',
+      wecomcs_msg_send_fail:
+        'WeChat reported an outgoing message failure, with message ID and failure type.',
+      wecomcs_servicer_status_change:
+        'A representative started, stopped or suspended service.',
+      wecomcs_session_status_change:
+        'A representative accepted, transferred, closed or reopened a conversation.',
+      wecomcs_reject_customer_msg_switch_change:
+        'A representative enabled or disabled rejection of customer messages.',
       all: 'Matches every event received by this adapter.',
       namespace: 'Matches all {{group}} events.',
       namespace_bot:
@@ -976,7 +1088,7 @@ const enUS = {
       namespace_feedback: 'Matches feedback events from a platform or user.',
       namespace_friend: 'Matches friend requests and friendship changes.',
       namespace_group:
-        'Matches member joins, leaves, removals, and other group events.',
+        'Matches group events such as membership changes and group information updates.',
       namespace_message:
         'Matches received, edited, deleted, and reaction message events.',
       namespace_platform:
@@ -992,6 +1104,8 @@ const enUS = {
       friend_added: 'A friend relationship was created.',
       group_member_joined: 'A member joins a group where the bot is present.',
       group_member_left: 'A member leaves a group where the bot is present.',
+      group_info_updated:
+        'Group details such as its name or owner have changed.',
       group_member_banned: 'A group member is banned or removed.',
       bot_invited_to_group: 'The bot is invited to a group.',
       bot_removed_from_group: 'The bot is removed from a group.',
@@ -1078,6 +1192,14 @@ const enUS = {
     imagesAttached: 'image(s) attached',
     noLogs: 'No logs yet',
     sessionMonitor: {
+      resetContext: 'Reset context',
+      resetDescription:
+        'New messages will start with an empty context. Monitoring history is kept; files and long-term memory are unchanged. Wait for active tasks to finish before resetting.',
+      resetSuccess:
+        'Context reset. New messages will start a fresh conversation.',
+      resetError:
+        'Could not reset context. Wait for active tasks to finish and try again.',
+
       title: 'Sessions',
       sessions: 'Sessions',
       noSessions: 'No sessions found',
@@ -1125,7 +1247,26 @@ const enUS = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Select all',
     monitoring: {
+      rangeDays: 'Last {{days}} days',
+      customRange: 'Custom time range',
+      rangeStart: 'Start time',
+      rangeEnd: 'End time',
+      rangeHint: 'Start must precede end. Maximum range: 365 days.',
+      autoRefreshLabel: 'Auto refresh',
+      autoRefreshOff: 'Auto refresh: off',
+      autoRefreshEvery: 'Refresh every {{seconds}} s',
+      runStatus: 'Run status',
+      toolCalls: 'Tool calls',
+      delivery: 'Message delivery',
+      sendFailed: 'Send failed',
+      sendCount: '{{count}} send calls succeeded',
+      noSend: 'No send recorded',
+      noSteps: 'No execution steps recorded yet.',
+      recipient: 'Recipient',
+      actionCompleted: 'Tool completed successfully.',
+      simulatedAction: 'Simulated action; no real message was sent.',
       description:
         'Follow each task from its triggering event through model output and tool execution.',
       empty:
@@ -1230,6 +1371,9 @@ const enUS = {
       'Handle message events only, with AI generating replies directly and practical features such as knowledge bases and plugins.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
+    selectAgentRunner: 'Select Agent runner',
+    selectProcessorPlugin: 'Select processor plugin',
+    createBasicInfoDescription: 'Set a name, icon and plugin',
     chooseType: 'Choose how it works',
     chooseTypeDescription:
       'Choose the processor model first. You can configure it further after creation.',
@@ -2048,6 +2192,14 @@ const enUS = {
       uploading: 'Uploading...',
     },
     monitoring: {
+      rangeDays: 'Last {{days}} days',
+      customRange: 'Custom time range',
+      rangeStart: 'Start time',
+      rangeEnd: 'End time',
+      rangeHint: 'Start must precede end. Maximum range: 365 days.',
+      autoRefreshLabel: 'Auto refresh',
+      autoRefreshOff: 'Auto refresh: off',
+      autoRefreshEvery: 'Refresh every {{seconds}} s',
       title: 'Run logs',
       workbench: 'Configure & debug',
       description:
@@ -2477,6 +2629,14 @@ const enUS = {
     },
   },
   monitoring: {
+    rangeDays: 'Last {{days}} days',
+    customRange: 'Custom time range',
+    rangeStart: 'Start time',
+    rangeEnd: 'End time',
+    rangeHint: 'Start must precede end. Maximum range: 365 days.',
+    autoRefreshLabel: 'Auto refresh',
+    autoRefreshOff: 'Auto refresh: off',
+    autoRefreshEvery: 'Refresh every {{seconds}} s',
     unified: {
       inputs: 'Event / input',
       outputs: 'Generated results',
@@ -2629,6 +2789,15 @@ const enUS = {
       feedback: 'User Feedback',
       sessions: 'Session Analysis',
       errors: 'Error Logs',
+    },
+    pipelineTrace: {
+      received: 'Received message',
+      processing: 'Processing',
+      replies: 'Replies',
+      noSteps: 'No model or tool calls recorded',
+      success: 'Success',
+      error: 'Failed',
+      pending: 'Pending',
     },
     messageList: {
       timestamp: 'Timestamp',

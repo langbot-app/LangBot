@@ -15,6 +15,103 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 
 
 class LarkEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    STANDARD_EVENT_CALLBACKS: typing.ClassVar[dict[str, str]] = {
+        'im.chat.member.bot.deleted_v1': 'register_p2_im_chat_member_bot_deleted_v1',
+        'im.chat.member.user.added_v1': 'register_p2_im_chat_member_user_added_v1',
+        'im.chat.member.user.deleted_v1': 'register_p2_im_chat_member_user_deleted_v1',
+        'im.chat.updated_v1': 'register_p2_im_chat_updated_v1',
+        'im.message.recalled_v1': 'register_p2_im_message_recalled_v1',
+        'im.message.reaction.created_v1': 'register_p2_im_message_reaction_created_v1',
+        'im.message.reaction.deleted_v1': 'register_p2_im_message_reaction_deleted_v1',
+    }
+
+    @staticmethod
+    def _event_user(identity: dict | None, name: str = '') -> platform_entities.User | None:
+        identity = identity or {}
+        user_id = identity.get('open_id') or identity.get('user_id') or identity.get('union_id')
+        return platform_entities.User(id=user_id, nickname=name) if user_id else None
+
+    @classmethod
+    def standard_events(cls, raw: dict, message_context: dict | None = None) -> list[platform_events.EBAEvent]:
+        data = raw.get('event') or {}
+        header = raw.get('header') or {}
+        event_type = header.get('event_type', '')
+        common = {
+            'adapter_name': ADAPTER_NAME,
+            'timestamp': cls._timestamp(data.get('action_time') or data.get('recall_time') or header.get('create_time'))
+            or time.time(),
+            'source_platform_object': raw,
+        }
+        group = platform_entities.UserGroup(id=data.get('chat_id') or '', name=data.get('name') or '')
+        operator = cls._event_user(data.get('operator_id'))
+        if event_type == 'im.chat.member.bot.deleted_v1':
+            return [platform_events.BotRemovedFromGroupEvent(group=group, operator=operator, **common)]
+        if event_type in {'im.chat.member.user.added_v1', 'im.chat.member.user.deleted_v1'}:
+            events = []
+            for user in data.get('users') or []:
+                member = cls._event_user(user.get('user_id'), user.get('name') or '')
+                if member is None:
+                    continue
+                if event_type == 'im.chat.member.user.added_v1':
+                    inviter = operator if operator and operator.id != member.id else None
+                    events.append(
+                        platform_events.MemberJoinedEvent(
+                            group=group,
+                            member=member,
+                            inviter=inviter,
+                            join_type='invite' if inviter else None,
+                            **common,
+                        )
+                    )
+                else:
+                    events.append(
+                        platform_events.MemberLeftEvent(
+                            group=group,
+                            member=member,
+                            operator=operator,
+                            is_kicked=operator is not None and operator.id != member.id,
+                            **common,
+                        )
+                    )
+            return events
+        if event_type == 'im.chat.updated_v1':
+            after = data.get('after_change') or {}
+            before = data.get('before_change') or {}
+            changed = [key for key in before.keys() | after.keys() if before.get(key) != after.get(key)]
+            if data.get('moderator_list'):
+                changed.append('moderator_list')
+            group.name = after.get('name') or ''
+            group.description = after.get('description')
+            group.avatar_url = after.get('avatar')
+            owner = cls._event_user(after.get('owner_id'))
+            group.owner_id = owner.id if owner else None
+            return [
+                platform_events.GroupInfoUpdatedEvent(
+                    group=group,
+                    operator=operator,
+                    changed_fields=sorted(changed),
+                    **common,
+                )
+            ]
+        context = message_context or {}
+        if event_type == 'im.message.recalled_v1':
+            return [platform_events.MessageDeletedEvent(message_id=data['message_id'], **context, **common)]
+        if event_type in {'im.message.reaction.created_v1', 'im.message.reaction.deleted_v1'}:
+            user = cls._event_user(data.get('user_id'))
+            if user is None:
+                user = platform_entities.User(id=data.get('app_id') or '', is_bot=data.get('operator_type') == 'app')
+            return [
+                platform_events.MessageReactionEvent(
+                    message_id=data['message_id'],
+                    user=user,
+                    reaction=(data.get('reaction_type') or {}).get('emoji_type') or '',
+                    is_add=event_type == 'im.message.reaction.created_v1',
+                    **context,
+                    **common,
+                )
+            ]
+        return []
+
     _processed_thread_quote_cache: typing.ClassVar[dict[str, float]] = {}
     _processed_thread_quote_cache_max_size: typing.ClassVar[int] = 4096
     _processed_thread_quote_cache_ttl_seconds: typing.ClassVar[int] = 86400

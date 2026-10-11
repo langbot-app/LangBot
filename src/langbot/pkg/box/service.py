@@ -577,6 +577,19 @@ class BoxService:
         *,
         skip_host_mount_validation: bool = False,
     ) -> dict:
+        result = await self._execute_spec_payload_result(
+            spec_payload, query, skip_host_mount_validation=skip_host_mount_validation
+        )
+        return self._serialize_result(result)
+
+    async def _execute_spec_payload_result(
+        self,
+        spec_payload: dict,
+        query: pipeline_query.Query,
+        *,
+        skip_host_mount_validation: bool = False,
+    ) -> BoxExecutionResult:
+        """Execute within the bound Workspace and preserve the raw result for file transfers."""
         if not self._available:
             raise BoxError(
                 'Box runtime is not available. Configure an available Box backend before using Box features.'
@@ -635,7 +648,7 @@ class BoxService:
             f'query_id={query.query_id} '
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
-        return self._serialize_result(result)
+        return result
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
         """Use the Box explicitly bound by the current Runner invocation."""
@@ -811,6 +824,10 @@ class BoxService:
         to the sandbox (and vice-versa). It is ``None`` / not a local dir for
         E2B and remote runtimes, where we must fall back to the exec channel.
         """
+        # secure_fs relies on POSIX openat/O_NOFOLLOW. On Windows use the
+        # sandbox execution channel rather than misclassifying EACCES as a link.
+        if os.open not in os.supports_dir_fd or not hasattr(os, 'O_NOFOLLOW'):
+            return None
         root = self._tenant_workspace(self._query_execution_context(query))
         if not root or not os.path.isdir(root) or os.path.islink(root):
             return None
@@ -1220,9 +1237,8 @@ class BoxService:
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
-        Uses ``client.execute`` directly (bypassing ``_serialize_result``)
-        so stdout is NOT truncated by ``output_limit_chars`` - the raw
-        base64 payload can be far larger than the 4000-char display limit.
+        Use the same Workspace-scoped execution path as tools, retaining raw
+        stdout because base64 payloads can exceed the display truncation limit.
         """
         import base64
         import binascii
@@ -1232,9 +1248,9 @@ class BoxService:
 
         binding = binding_for(query)
         query_key = self._attachment_query_key(query)
-        max_file_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        max_file_bytes = self._ATTACHMENT_MAX_BYTES
         max_files = self._ATTACHMENT_MAX_FILES
-        max_total_bytes = min(self._ATTACHMENT_MAX_TOTAL_BYTES, max_file_bytes * max_files)
+        max_total_bytes = self._ATTACHMENT_MAX_TOTAL_BYTES
         # Execute the same fd-relative, bounded reader in the sandbox. Keeping
         # one implementation preserves the host path's no-follow/race defenses.
         script = (
@@ -1255,13 +1271,15 @@ class BoxService:
         if 'extra_mounts' not in spec_payload:
             spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
         try:
-            result = await self.execute_in_context(self._query_execution_context(query), spec_payload)
+            result = await self._execute_spec_payload_result(spec_payload, query)
         except BoxError:
             raise
         except Exception as exc:
             raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
         if not result.ok:
-            raise BoxError('Sandbox outbox read failed; output files were retained')
+            if 'WorkspaceReadLimitError:' in (result.stderr or ''):
+                raise BoxValidationError('Sandbox outbox exceeds the export or traversal limits; files were retained')
+            raise BoxValidationError('Sandbox outbox read failed; output files were retained')
         try:
             entries = json.loads(result.stdout)
             if not isinstance(entries, list) or len(entries) > max_files:
@@ -1280,7 +1298,7 @@ class BoxService:
                 if size > max_file_bytes or total_bytes > max_total_bytes:
                     raise ValueError('File payload exceeds export limits')
         except (TypeError, ValueError, OSError, binascii.Error) as exc:
-            raise BoxError('Invalid sandbox outbox response; output files were retained') from exc
+            raise BoxValidationError('Invalid sandbox outbox response; output files were retained') from exc
         return entries
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:

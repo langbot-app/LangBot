@@ -11,10 +11,10 @@ Workspace identity and generation checks. Both readers use the same bounded,
 descriptor-relative implementation and do not follow symbolic links. Unsafe
 host paths and quota failures do not trigger this permission fallback.
 
-The existing limits remain: up to 20 files and 50 MiB per collection, with a
-10 MiB per-file host limit. Exec transport retains its smaller 256 KiB per-file
-limit and at most 5 MiB per collection. Over-limit output now fails explicitly
-and remains in the outbox so the producer can reduce it and retry.
+Host and exec exports retain the upstream limits: up to 20 files and 50 MiB
+per collection, with a 10 MiB per-file limit. Exec export uses raw stdout;
+the smaller inbound command limit does not apply. Over-limit output fails
+explicitly and remains in the outbox so the producer can reduce it and retry.
 
 Runner export also checks its cumulative 100-file and 50 MiB run limits before
 registering any new file handles or clearing the outbox. Failed reads and

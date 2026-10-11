@@ -105,6 +105,7 @@ async def test_permission_fallback_retries_all_files_once_in_the_bound_box(env, 
         return original_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(secure_fs.os, 'open', denied_open)
+    monkeypatch.setattr(secure_fs.os, 'supports_dir_fd', secure_fs.os.supports_dir_fd | {denied_open})
     box.client.execute = AsyncMock(side_effect=execute_script)
     attachments = await box.collect_outbound_attachments(query)
     assert {a['name']: base64.b64decode(a['base64']) for a in attachments} == {
@@ -136,7 +137,7 @@ async def test_exec_failure_or_malformed_response_never_cleans_outbox(env, failu
         'payload_limit': result(json.dumps([{'name': 'a', 'b64': base64.b64encode(b'large').decode()}])),
     }
     if failure == 'payload_limit':
-        monkeypatch.setattr(box, '_EXEC_FALLBACK_MAX_BYTES', 4)
+        monkeypatch.setattr(box, '_ATTACHMENT_MAX_BYTES', 4)
     box.client.execute = AsyncMock(
         side_effect=RuntimeError('transport failure') if failure == 'transport' else None,
         return_value=replies.get(failure),
@@ -154,7 +155,6 @@ async def test_export_limit_failure_retains_every_file(env, monkeypatch, remote,
     box, query, outbox = env
     if limit == 'file_bytes':
         monkeypatch.setattr(box, '_ATTACHMENT_MAX_BYTES', 3)
-        monkeypatch.setattr(box, '_EXEC_FALLBACK_MAX_BYTES', 3)
     if limit == 'total_bytes':
         monkeypatch.setattr(box, '_ATTACHMENT_MAX_TOTAL_BYTES', 7)
     if limit == 'file_count':
@@ -190,7 +190,6 @@ async def test_exact_limits_succeed_and_other_run_is_untouched(env, monkeypatch,
     box, query, outbox = env
     monkeypatch.setattr(box, '_ATTACHMENT_MAX_FILES', 2)
     monkeypatch.setattr(box, '_ATTACHMENT_MAX_BYTES', 4)
-    monkeypatch.setattr(box, '_EXEC_FALLBACK_MAX_BYTES', 4)
     monkeypatch.setattr(box, '_ATTACHMENT_MAX_TOTAL_BYTES', 8)
     (outbox / 'one').write_bytes(b'1234')
     (outbox / 'two').write_bytes(b'5678')
@@ -226,6 +225,27 @@ async def test_unsafe_host_path_never_uses_privileged_fallback(env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('file_size,file_count', [(300 * 1024, 1), (1024 * 1024, 6)])
+async def test_exec_export_preserves_upstream_large_attachment_limits(env, monkeypatch, file_size, file_count):
+    box, query, outbox = env
+    payload = b'x' * file_size
+    for index in range(file_count):
+        (outbox / f'file-{index}.bin').write_bytes(payload)
+    monkeypatch.setattr(box, '_host_query_dir', lambda *args: None)
+    box.client.execute = AsyncMock(side_effect=execute_script)
+    box.execute_tool = AsyncMock(
+        side_effect=lambda *args: secure_fs.reset_directory(str(outbox.parent.parent), 'outbox', outbox.name)
+    )
+
+    attachments = await box.collect_outbound_attachments(query)
+
+    assert {a['name']: base64.b64decode(a['base64']) for a in attachments} == {
+        f'file-{index}.bin': payload for index in range(file_count)
+    }
+    assert list(outbox.iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_host_io_error_is_not_retried_as_a_permission_failure(env, monkeypatch):
     box, query, outbox = env
     file = outbox / 'answer.txt'
@@ -238,6 +258,7 @@ async def test_host_io_error_is_not_retried_as_a_permission_failure(env, monkeyp
         return original(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(secure_fs.os, 'open', fail_open)
+    monkeypatch.setattr(secure_fs.os, 'supports_dir_fd', secure_fs.os.supports_dir_fd | {fail_open})
     box.client.execute = AsyncMock()
     box._clear_outbox = AsyncMock()
     with pytest.raises(BoxError, match='retained'):

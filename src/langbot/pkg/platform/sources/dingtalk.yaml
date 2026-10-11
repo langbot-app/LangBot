@@ -14,6 +14,7 @@ metadata:
 spec:
   legacy: true
   categories:
+    - popular
     - china
   help_links:
     zh: https://langbot.app/docs/zh/usage/platforms/dingtalk
@@ -26,9 +27,9 @@ spec:
         zh_Hans: 一键创建应用
         zh_Hant: 一鍵建立應用
       description:
-        en_US: "Scan QR code with DingTalk to automatically create an app and fill in credentials. Note: Robot Code cannot be obtained automatically, you need to copy it from the DingTalk Developer Backend manually."
-        zh_Hans: "使用钉钉扫码自动创建应用并填写凭据。注意：机器人代码无法自动获取，需前往钉钉开发者后台手动复制。"
-        zh_Hant: "使用釘釘掃碼自動建立應用並填寫憑證。注意：機器人代碼無法自動取得，需前往釘釘開發者後台手動複製。"
+        en_US: Scan with DingTalk to create an app and automatically fill in credentials. The bot identity is resolved automatically.
+        zh_Hans: 使用钉钉扫码创建应用并自动填写凭据，机器人身份会自动识别。
+        zh_Hant: 使用釘釘掃碼建立應用並自動填寫憑證，機器人身分會自動識別。
       type: qr-code-login
       login_platform: dingtalk
       required: false
@@ -48,78 +49,96 @@ spec:
       type: string
       required: true
       default: ""
-    - name: robot_code
-      label:
-        en_US: Robot Code
-        zh_Hans: 机器人代码
-        zh_Hant: 機器人代碼
-      description:
-        en_US: "Required for image recognition, file upload and other features. Get it from DingTalk Developer Backend > Robot Configuration."
-        zh_Hans: "识图、上传文件等功能必填。请前往钉钉开发者后台 > 机器人配置中获取。"
-        zh_Hant: "識圖、上傳檔案等功能必填。請前往釘釘開發者後台 > 機器人設定中取得。"
-      type: string
-      required: true
-      default: ""
-    - name: robot_name
-      label:
-        en_US: Robot Name
-        zh_Hans: 机器人名称
-        zh_Hant: 機器人名稱
-      type: string
-      required: true
-      default: ""
     - name: markdown_card
       label:
-        en_US: Markdown Card
-        zh_Hans: 是否使用 Markdown 卡片
-        zh_Hant: 是否使用 Markdown 卡片
+        en_US: Use Card Replies
+        zh_Hans: 使用卡片回复
+        zh_Hant: 使用卡片回覆
+      description:
+        en_US: Controls Markdown and streaming card replies. Disable to use plain text while keeping your template settings. When enabled, a configured template automatically enables streaming.
+        zh_Hans: 控制 Markdown 和流式卡片回复。关闭后使用纯文本，保留模板配置；开启且已配置模板时自动使用流式回复。
+        zh_Hant: 控制 Markdown 和串流卡片回覆。關閉後使用純文字，保留範本設定；開啟且已設定範本時自動使用串流回覆。
       type: boolean
       required: false
       default: true
-    - name: enable-stream-reply
-      label:
-        en_US: Enable Stream Reply Mode
-        zh_Hans: 启用钉钉卡片流式回复模式
-        zh_Hant: 啟用釘釘卡片串流回覆模式
-      description:
-        en_US: Used for streaming replies from pipelines or plugins. If enabled, the bot will use the stream of lark reply mode
-        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用钉钉卡片流式方式来回复内容
-        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，將使用釘釘卡片串流方式來回覆內容
-      type: boolean
-      required: true
-      default: false
-    - name: card_auto_layout
-      label:
-        en_US: Card Auto Layout
-        zh_Hans: 卡片宽屏自动布局
-        zh_Hant: 卡片寬螢幕自動佈局
-      type: boolean
-      required: false
-      default: false
     - name: card_template_id
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
       label:
         en_US: card template id
         zh_Hans: 卡片模板ID
         zh_Hant: 卡片範本ID
+      description:
+        en_US: Template for streaming text replies. Save and publish it in DingTalk Card Platform, then paste its ID here to automatically enable streaming while card replies are enabled. Leave empty for ordinary replies. Separate from the human input template.
+        zh_Hans: 用于流式文字回复。在钉钉卡片平台保存并发布模板后，开启卡片回复后，填写 ID 即自动启用流式回复，留空使用普通回复；与人工输入卡片模板分开配置。
+        zh_Hant: 用於串流文字回覆。在釘釘卡片平台儲存並發布範本後，開啟卡片回覆後，填寫 ID 即自動啟用串流回覆，留空使用一般回覆；與人工輸入卡片範本分開設定。
       type: string
-      required: true
-      default: "填写你的卡片template_id"
+      required: false
+      default: ""
+    - name: stream_card_template_download
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
+      label:
+        en_US: Download Streaming Reply Card Template
+        zh_Hans: 下载流式回复卡片模板
+        zh_Hant: 下載串流回覆卡片範本
+      description:
+        en_US: Displays reasoning and the answer separately. Import through More > Import Card Template in the DingTalk AI card editor, save and publish, then paste its ID into Card Template ID above. Respects the pipeline thinking removal setting.
+        zh_Hans: 分开展示思考与正文。在钉钉 AI 卡片编辑器中选择「更多 → 导入卡片模板」，保存并发布后，将 ID 填入上方「卡片模板 ID」。是否保留思考仍由流水线设置控制。
+        zh_Hant: 分開展示思考與正文。在釘釘 AI 卡片編輯器中選擇「更多 → 匯入卡片範本」，儲存並發布後，將 ID 填入上方「卡片範本 ID」。是否保留思考仍由流水線設定控制。
+      type: download-link
+      required: false
+      default: ''
+      url: /api/v1/platform/adapters/dingtalk/stream-card-template
+      download_filename: dingtalk_stream_card.json
+    - name: card_auto_layout
+      show_if:
+        field: markdown_card
+        operator: eq
+        value: true
+      label:
+        en_US: Card Auto Layout
+        zh_Hans: 卡片宽屏自动布局
+        zh_Hant: 卡片寬螢幕自動佈局
+      description:
+        en_US: Enabled by default. Allows supported cards to adapt to wider windows. The LangBot streaming reply template includes the required variables; you can disable this for a narrower layout.
+        zh_Hans: 默认开启，让支持的卡片适应较宽的聊天窗口。LangBot 流式回复模板已包含所需变量；如需较窄布局，可关闭此项。
+        zh_Hant: 預設開啟，讓支援的卡片適應較寬的聊天視窗。LangBot 串流回覆範本已包含所需變數；如需較窄版面，可關閉此項。
+      type: boolean
+      required: false
+      default: true
+    - name: human_input_card_template_id
+      label:
+        en_US: Human Input Card Template ID
+        zh_Hans: 人工输入卡片模板ID
+        zh_Hant: 人工輸入卡片範本ID
+      description:
+        en_US: Optional. Used when a workflow or plugin requests user input, a choice, or confirmation before continuing (for example, a Dify Human Input node). Ordinary chat does not require it. Import the template below and enter its published ID here; streaming text replies use the separate Card Template ID.
+        zh_Hans: 可选。当工作流或插件需要用户填写信息、选择选项或确认后再继续执行时使用，例如 Dify 的人工输入节点。普通聊天无需配置。请导入下方模板，将发布后的 ID 填在这里；流式文字回复使用单独的「卡片模板 ID」。
+        zh_Hant: 可選。當工作流或外掛需要使用者填寫資訊、選擇選項或確認後再繼續執行時使用，例如 Dify 的人工輸入節點。一般聊天無需設定。請匯入下方範本，將發布後的 ID 填在這裡；串流文字回覆使用獨立的「卡片範本 ID」。
+      type: string
+      required: false
+      default: ""
     - name: human_input_card_template_download
       label:
         en_US: Download Human Input Card Template
         zh_Hans: 下载人工输入卡片模板
         zh_Hant: 下載人工輸入卡片範本
       description:
-        en_US: "Used as the only card template ID for the whole conversation turn. Download the built-in template, then import the JSON in DingTalk Open Platform > Card Platform / Card Template Management. After DingTalk creates the template, copy its template ID into the field below. The template already wires `content` (MarkdownBlock) and `btns` (ButtonGroup). Leave empty to fall back to the legacy two-card behavior."
-        zh_Hans: "用作整个对话回合唯一卡片的模板 ID。先下载内置模板，再到钉钉开放平台 > 卡片平台 / 卡片模板管理中导入该 JSON；钉钉生成模板后，将模板 ID 填到这里。模板已预先连好 `content` (MarkdownBlock) 与 `btns` (ButtonGroup)。留空则降级为旧的双卡行为。"
-        zh_Hant: "用作整個對話回合唯一卡片的範本 ID。先下載內建範本，再到釘釘開放平台 > 卡片平台 / 卡片範本管理中匯入該 JSON；釘釘產生範本後，將範本 ID 填到這裡。範本已預先連好 `content` (MarkdownBlock) 與 `btns` (ButtonGroup)。留空則降級為舊的雙卡行為。"
+        en_US: Download the human input template. Create an AI card in DingTalk Card Platform, choose More > Import Card Template in the editor, then save and publish. Paste its ID into the field above.
+        zh_Hans: 下载人工输入模板后，在钉钉卡片平台新建 AI 卡片，在编辑器中选择「更多 → 导入卡片模板」，保存并发布，将 ID 填入上方字段。
+        zh_Hant: 下載人工輸入範本後，在釘釘卡片平台新建 AI 卡片，在編輯器中選擇「更多 → 匯入卡片範本」，儲存並發布，將 ID 填入上方欄位。
       type: download-link
       required: false
       default: ""
       url: /api/v1/platform/adapters/dingtalk/human-input-card-template
       download_filename: dingtalk_human_input_card.json
       help_links:
-        zh: https://open-dev.dingtalk.com/fe/card
+        zh: https://langbot.app/docs/zh/usage/platforms/dingtalk#导入人工输入卡片模板
         en: https://open-dev.dingtalk.com/fe/card
         ja: https://open-dev.dingtalk.com/fe/card
       help_label:
@@ -127,18 +146,6 @@ spec:
         zh_Hans: 导入指引
         zh_Hant: 匯入指引
         ja_JP: インポート手順
-    - name: human_input_card_template_id
-      label:
-        en_US: Human Input Card Template ID
-        zh_Hans: 人工输入卡片模板ID
-        zh_Hant: 人工輸入卡片範本ID
-      description:
-        en_US: "Paste the template ID generated after importing the human input card template."
-        zh_Hans: "填写导入人工输入卡片模板后生成的模板 ID。"
-        zh_Hant: "填寫匯入人工輸入卡片範本後產生的範本 ID。"
-      type: string
-      required: false
-      default: ""
 execution:
   python:
     path: ./dingtalk.py

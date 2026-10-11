@@ -6,6 +6,7 @@ import traceback
 
 
 from .. import handler
+from ..stream_results import coalesce_stream_results
 from ... import entities
 from ... import plugin_diagnostics
 
@@ -132,7 +133,10 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginRunnerWrapper
-                async for result in self.ap.agent_run_orchestrator.run_from_query(query):
+                results = self.ap.agent_run_orchestrator.run_from_query(query)
+                if is_stream:
+                    results = coalesce_stream_results(results)
+                async for result in results:
                     has_result = True
                     self._check_response_size(result)
 
@@ -148,6 +152,11 @@ class ChatMessageHandler(handler.MessageHandler):
                             }
                         )
                         result.attachments = attachments
+
+                    if is_stream and result.tool_calls:
+                        # A model round ending in tool calls does not end the
+                        # reply. Keep the native stream open for the answer.
+                        result = result.model_copy(update={'is_final': False})
 
                     result.resp_message_id = str(resp_message_id)
 
@@ -192,6 +201,11 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     if is_stream:
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                        if result.is_final and not result.tool_calls:
+                            # Native adapters release their card on completion.
+                            # A distinct later message needs a fresh card identity.
+                            is_create_card = False
+                            resp_message_id = uuid.uuid4()
 
                 # Log final summary after streaming completes
                 if is_stream:

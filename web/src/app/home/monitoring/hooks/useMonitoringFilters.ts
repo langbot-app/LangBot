@@ -19,6 +19,9 @@ const timeRanges = [
   'last24Hours',
   'last7Days',
   'last30Days',
+  'last90Days',
+  'last180Days',
+  'last365Days',
   'custom',
 ];
 const statuses = [
@@ -52,7 +55,8 @@ function restore(key: string): FilterState {
       if (
         Number.isFinite(from.getTime()) &&
         Number.isFinite(to.getTime()) &&
-        from <= to
+        from < to &&
+        to.getTime() - from.getTime() <= 365 * 86400000
       )
         state.customDateRange = { from, to };
     }

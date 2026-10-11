@@ -333,6 +333,7 @@ class MonitoringHelper:
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
                 message_content=f'Error: {str(error)}',
+                role='assistant',
                 session_id=session_id,
                 status='error',
                 level='error',

@@ -824,7 +824,7 @@ export default function WizardPage() {
 
       if (!previewPipelineUuid) {
         const pipelineResp = await httpClient.createPipeline({
-          name: `${botName} Pipeline`,
+          name: `${botName} ${t('agents.pipelineType')}`,
           description: botDescription || '',
           config: {},
         });

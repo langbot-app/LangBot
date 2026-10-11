@@ -154,6 +154,7 @@ def make_adapter(config: dict | None = None) -> LarkAdapter:
             },
             DummyLogger(),
         )
+    adapter.message_converter = LarkMessageConverter()
     adapter.api_client = DummyAPIClient()
     adapter.bot = DummyWSClient()
     return adapter
@@ -301,6 +302,7 @@ async def test_lark_event_converter_maps_group_and_private_message():
 @pytest.mark.asyncio
 async def test_lark_adapter_dispatches_and_caches_message_event():
     adapter = make_adapter()
+    adapter._get_bot_open_id = AsyncMock(return_value='bot-open-id')
     calls: list[platform_events.Event] = []
 
     async def listener(event, adapter):
@@ -704,7 +706,9 @@ async def test_lark_streaming_card_uses_strictly_increasing_sequences():
     final_request = adapter.api_client.cardkit.v1.card.aupdate.call_args.args[0]
     assert final_request.request_body.sequence == 3
     final_card = json.loads(final_request.request_body.card.data)
-    assert final_card['body']['elements'] == [{'tag': 'markdown', 'content': 'answer'}]
+    assert final_card['body']['elements'][0] == {'tag': 'markdown', 'content': 'answer'}
+    assert 'header' not in final_card
+    assert final_card['body']['elements'][-1]['columns'][1]['elements'][0]['content'] == '[LangBot](https://langbot.app?utm_source=feishu&utm_medium=bot_card&utm_campaign=langbot)'
     assert not final_card['config'].get('streaming_mode', False)
     assert 'response-1' not in adapter.card_id_dict
     assert 'stream-card-1' not in adapter.card_sequence_dict
@@ -909,3 +913,41 @@ async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
     response = await adapter.handle_unified_webhook('bot-1', '', request)
 
     assert response == {'toast': {'type': 'success', 'content': 'Submitted / 已提交'}}
+
+
+def test_lark_stream_card_separates_multiple_reasoning_rounds():
+    from langbot.pkg.platform.adapters.lark.stream_card import build_card, streaming_text
+    content = '<think>first thought</think>first answer<think>second thought</think>final answer'
+    preview = streaming_text(content)
+    assert '<think>' not in preview and '</think>' not in preview
+    card = build_card(content)
+    panel, answer, footer = card['body']['elements']
+    assert panel['tag'] == 'collapsible_panel'
+    assert panel['expanded'] is False
+    assert panel['elements'][0]['content'] == 'first thought\n\nsecond thought'
+    assert answer['content'] == 'first answer\n\nfinal answer'
+    assert 'AI' in footer['columns'][0]['elements'][0]['content']
+    assert footer['columns'][1]['elements'][0]['icon']['tag'] == 'custom_icon'
+
+
+def test_lark_live_preview_is_bounded_but_final_reasoning_is_complete():
+    from langbot.pkg.platform.adapters.lark.stream_card import build_card, streaming_text
+    thought = 'reasoning ' * 200
+    content = '<think>' + thought + '</thi'
+    assert len(streaming_text(content)) < 450
+    assert '</thi' not in streaming_text(content)
+    card = build_card(content)
+    assert card['body']['elements'][0]['elements'][0]['content'] == thought.strip()
+    assert build_card('plain answer')['body']['elements'][0]['content'] == 'plain answer'
+
+
+@pytest.mark.asyncio
+async def test_lark_stream_card_creation_is_async_and_branded():
+    adapter = make_adapter()
+    await adapter.create_card_id('response-1')
+    request = adapter.api_client.cardkit.v1.card.acreate.await_args.args[0]
+    card = json.loads(request.request_body.data)
+    assert 'header' not in card
+    assert card['body']['elements'][-1]['columns'][1]['elements'][0]['content'] == '[LangBot](https://langbot.app?utm_source=feishu&utm_medium=bot_card&utm_campaign=langbot)'
+    assert card['config']['streaming_mode'] is True
+    assert card['body']['elements'][0]['element_id'] == 'streaming_txt'

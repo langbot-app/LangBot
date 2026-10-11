@@ -22,6 +22,7 @@ import { ControllerRenderProps } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import { httpClient, systemInfo, userInfo } from '@/app/infra/http';
+import { MODEL_CONFIGURATION_CHANGED } from '@/app/infra/http/modelConfigEvents';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import {
   LLMModel,
@@ -306,6 +307,10 @@ export default function DynamicFormItemComponent({
   useEffect(() => {
     if (config.type === DynamicFormItemType.LLM_MODEL_SELECTOR) {
       fetchLlmModels();
+      window.addEventListener(MODEL_CONFIGURATION_CHANGED, fetchLlmModels);
+      return () => {
+        window.removeEventListener(MODEL_CONFIGURATION_CHANGED, fetchLlmModels);
+      };
     }
   }, [config.type]);
 

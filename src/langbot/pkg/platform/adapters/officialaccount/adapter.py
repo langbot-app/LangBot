@@ -56,13 +56,14 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         }
         if mode == 'drop':
             bot = OAClient(**common_kwargs)
-        elif mode == 'passive':
+        elif mode in ('passive', 'auto'):
             bot = OAClientForLongerResponse(
                 **common_kwargs,
                 LoadingMessage=config.get('LoadingMessage', ''),
+                customer_service=mode == 'auto',
             )
         else:
-            raise KeyError('OfficialAccount Mode must be "drop" or "passive"')
+            raise KeyError('OfficialAccount Mode must be "drop", "passive" or "auto"')
 
         super().__init__(
             config=config,
@@ -112,11 +113,12 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         if not isinstance(source, OAEvent):
             raise ValueError('OfficialAccount reply_message requires an OAEvent source object')
         content = await OfficialAccountMessageConverter.yiri2target(message)
-        if self.config.get('Mode') == 'passive':
-            await self.bot.set_message(source.user_id, source.message_id, content)
+        if self.config.get('Mode') in ('passive', 'auto'):
+            queued = await self.bot.set_message(source.user_id, source.message_id, content)
         else:
             await self.bot.set_message(source.message_id, content)
-        return platform_events.MessageResult(message_id=source.message_id, raw={'queued': True})
+            queued = True
+        return platform_events.MessageResult(message_id=source.message_id, raw={'queued': queued})
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         handler = PLATFORM_API_MAP.get(action)

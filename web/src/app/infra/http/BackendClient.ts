@@ -1,10 +1,12 @@
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
+import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
 } from '@/app/infra/entities/api/pipeline-migration';
 import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
 import type {
+  InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
   ExecutionModeFilter,
@@ -148,19 +150,25 @@ export class BackendClient extends BaseHttpClient {
   public createModelProvider(
     provider: Omit<ModelProvider, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/providers', provider);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/providers', provider),
+    );
   }
 
   public updateModelProvider(
     uuid: string,
     provider: Partial<ModelProvider>,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/providers/${uuid}`, provider);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/providers/${uuid}`, provider),
+    );
   }
 
   public deleteModelProvider(uuid: string, cascade = false): Promise<object> {
-    return this.delete(
-      `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(
+        `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+      ),
     );
   }
 
@@ -229,18 +237,24 @@ export class BackendClient extends BaseHttpClient {
   public createProviderLLMModel(
     model: Omit<LLMModel, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/models/llm', model);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/models/llm', model),
+    );
   }
 
   public deleteProviderLLMModel(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/models/llm/${uuid}`);
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(`/api/v1/provider/models/llm/${uuid}`),
+    );
   }
 
   public updateProviderLLMModel(
     uuid: string,
     model: LLMModel,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/models/llm/${uuid}`, model);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/models/llm/${uuid}`, model),
+    );
   }
 
   public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
@@ -357,6 +371,18 @@ export class BackendClient extends BaseHttpClient {
 
   public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
+  }
+
+  public getStarredModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/starred');
+  }
+
+  public setStarredModel(uuid: string | null): Promise<object> {
+    return this.put('/api/v1/provider/models/llm/_/starred', { uuid });
+  }
+
+  public getDefaultModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/default');
   }
 
   public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
@@ -794,6 +820,16 @@ export class BackendClient extends BaseHttpClient {
       queryParams.append('userQuery', options.userQuery);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
+  }
+
+  public resetSessionContext(
+    botId: string,
+    sessionId: string,
+  ): Promise<{ reset: boolean }> {
+    return this.post('/api/v1/monitoring/sessions/reset-context', {
+      bot_id: botId,
+      session_id: sessionId,
+    });
   }
 
   public getSessionAnalysis<T>(
@@ -2176,6 +2212,44 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public async streamInflight(
+    onFrame: (frame: InflightFrame) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const response = await this.instance.get<ReadableStream<Uint8Array>>(
+      '/api/v1/monitoring/in-flight/stream',
+      {
+        adapter: 'fetch',
+        responseType: 'stream',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'text/event-stream' },
+      },
+    );
+    const reader = response.data.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (frame.startsWith('data: '))
+            onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
+        }
+        if (buffer.length > 2_000_000)
+          throw new Error('Monitoring frame exceeds limit');
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
   }
 
   public getExecutions(params: {

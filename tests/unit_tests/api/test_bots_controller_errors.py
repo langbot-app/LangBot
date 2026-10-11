@@ -106,6 +106,7 @@ async def test_runtime_error_redacts_persisted_secrets_on_partial_update():
 
     ap = SimpleNamespace(
         persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=SimpleNamespace(rowcount=1))),
+        sess_mgr=SimpleNamespace(session_list=[]),
         platform_mgr=SimpleNamespace(
             remove_bot=AsyncMock(),
             load_bot=AsyncMock(side_effect=ValueError('Invalid app_secret: persisted-secret-value')),
@@ -113,7 +114,7 @@ async def test_runtime_error_redacts_persisted_secrets_on_partial_update():
     )
     service = BotService(ap)
     service.get_bot = AsyncMock(
-        return_value={'uuid': 'bot-1', 'adapter_config': {'app_secret': 'persisted-secret-value'}}
+        return_value={'uuid': 'bot-1', 'enable': True, 'adapter_config': {'app_secret': 'persisted-secret-value'}}
     )
     with pytest.raises(BotApplyError) as captured:
         await service.update_bot('workspace-test', 'bot-1', {'enable': True})
