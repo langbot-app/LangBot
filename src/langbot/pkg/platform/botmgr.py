@@ -2357,6 +2357,9 @@ class PlatformManager:
                 execution_context=execution_context,
             )
 
+            if hasattr(adapter_inst, 'bind_runtime'):
+                adapter_inst.bind_runtime(runtime_bot)
+
             await runtime_bot.initialize()
 
             bot_key = self._runtime_bot_key(runtime_bot)

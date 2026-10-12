@@ -34,7 +34,7 @@ class DummyLogger(AbstractEventLogger):
 
 
 def make_adapter() -> AiocqhttpAdapter:
-    return AiocqhttpAdapter({'host': '127.0.0.1', 'port': 2280, 'access-token': ''}, DummyLogger())
+    return AiocqhttpAdapter({'host': '127.0.0.1', 'port': 2280, 'access-token': 'test-secret'}, DummyLogger())
 
 
 def manifest() -> dict:
@@ -48,7 +48,7 @@ def manifest() -> dict:
         / 'aiocqhttp'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def onebot_event(payload: dict) -> aiocqhttp.Event:
@@ -255,7 +255,7 @@ async def test_aiocqhttp_event_converter_maps_private_and_group_messages():
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
     assert private_event.type == 'message.received'
-    assert private_event.adapter_name == 'aiocqhttp-omni'
+    assert private_event.adapter_name == 'onebot-v11'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 10001
     assert private_event.sender.nickname == 'Alice'

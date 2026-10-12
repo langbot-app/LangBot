@@ -243,7 +243,8 @@ async def test_reload_stops_and_drops_existing_platform_runtimes():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('saved_adapter', 'registered_adapter'),
-    [('probe', 'probe')] + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
+    [('probe', 'probe'), ('aiocqhttp-eba', 'onebot-v11'), ('aiocqhttp-omni', 'onebot-v11')]
+    + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
 )
 async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, registered_adapter):
     class TenantUow:
