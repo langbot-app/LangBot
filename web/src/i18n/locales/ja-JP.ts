@@ -2581,7 +2581,7 @@ const jaJP = {
     ossSingletonDescription:
       'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
     cloudManagedDescription:
-      'このワークスペースは LangBot Cloud でホストされています。メンバーはここで管理し、請求は Cloud で開きます。',
+      'このワークスペースは LangBot Cloud でホストされています。',
     loadFailed: 'ワークスペース情報の読み込みに失敗しました',
     members: 'メンバー',
     you: 'あなた',

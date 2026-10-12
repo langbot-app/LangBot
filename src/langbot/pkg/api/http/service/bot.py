@@ -16,6 +16,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 from ....utils import httpclient
 from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
+from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
 
 
@@ -696,6 +697,7 @@ class BotService:
 
         # TODO: 检查配置信息格式
         bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
+        await require_workspace_platform(self.ap, workspace_uuid, bot_data['adapter'])
         bot_data['uuid'] = str(uuid.uuid4())
         bot_data['workspace_uuid'] = workspace_uuid
         bot_data.setdefault('event_bindings', [])
@@ -718,6 +720,9 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
         update_data.pop('workspace_uuid', None)
+        if 'adapter' in update_data or update_data.get('enable'):
+            current = await self.get_bot(context, bot_uuid, include_secret=True)
+            await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(

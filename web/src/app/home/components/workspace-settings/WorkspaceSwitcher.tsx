@@ -1,4 +1,4 @@
-import { Building2, Check, Settings } from 'lucide-react';
+import { Building2, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -56,7 +56,10 @@ export default function WorkspaceSwitcher({
           return (
             <DropdownMenuItem
               key={entry.workspace.uuid}
-              className="min-h-11 gap-2 px-2 py-1.5"
+              className={cn(
+                'min-h-11 gap-2 px-2 py-1.5',
+                selected && 'bg-muted',
+              )}
               onClick={() => {
                 if (!selected)
                   void switchWorkspaceAndReload(entry.workspace.uuid);
@@ -71,7 +74,6 @@ export default function WorkspaceSwitcher({
                   {entry.plan_name || t('workspace.planUnavailable')}
                 </span>
               )}
-              {selected && <Check className="size-4" />}
               {selected && (
                 <Button
                   variant="ghost"

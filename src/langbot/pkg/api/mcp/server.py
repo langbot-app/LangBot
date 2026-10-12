@@ -347,7 +347,7 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Create a bot. `bot_data` is a JSON object matching the LangBot '
+                'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
                 'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '

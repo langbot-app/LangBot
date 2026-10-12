@@ -2618,7 +2618,7 @@ const esES = {
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
     cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+      'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',

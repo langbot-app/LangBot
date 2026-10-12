@@ -238,3 +238,7 @@ are not rewritten. Embedding and rerank models are not eligible.
 ### Reset a bot session context
 
 Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.
+
+## Cloud plan platform restrictions
+
+Bot creation and enabling use the same Workspace entitlement policy as HTTP. A disabled platform is rejected even through MCP or plugin calls; do not retry using an Omni or legacy alias to bypass the restriction. The Workspace-scoped HTTP adapter catalog omits disabled platforms.

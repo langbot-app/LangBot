@@ -296,6 +296,8 @@ class RouterGroup(abc.ABC):
                         )
                     if isinstance(e, CodexProviderError):
                         return self.http_status(e.status_code, e.error_code, str(e))
+                    if isinstance(e, EntitlementUnavailableError):
+                        return self.http_status(403, 'entitlement_unavailable', str(e))
                     if isinstance(e, AuthorizationError):
                         return self.http_status(e.status_code, e.error_code, str(e))
                     if isinstance(e, WorkspaceNotFoundError):

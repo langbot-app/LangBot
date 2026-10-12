@@ -225,11 +225,21 @@ export default function WorkspaceSettingsPanel({
 
   return (
     <>
-      <PanelToolbar>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {workspaceInfo?.workspace.name ?? t('workspace.title')}
-          </p>
+      <PanelToolbar className="gap-4 py-4">
+        <div className="min-w-0 flex-1 basis-56 space-y-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-semibold">
+              {workspaceInfo?.workspace.name ?? t('workspace.title')}
+            </p>
+            {workspaceInfo && (
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-[11px] font-normal"
+              >
+                {t(`workspace.roles.${workspaceInfo.membership.role}`)}
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             {t(
               isCloudProjection
@@ -238,18 +248,27 @@ export default function WorkspaceSettingsPanel({
             )}
           </p>
         </div>
-        {workspaceInfo && (
-          <Badge variant="secondary">
-            {t(`workspace.roles.${workspaceInfo.membership.role}`)}
-          </Badge>
-        )}
         {isCloudProjection && workspaceInfo && (
-          <Button asChild size="sm">
-            <a href={cloudPortalURL} target="_blank" rel="noopener noreferrer">
-              {t('workspace.upgradePlan')}
-              <ExternalLink className="size-3.5" />
-            </a>
-          </Button>
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] text-muted-foreground">
+                {t('workspace.currentPlan')}
+              </p>
+              <p className="text-sm font-semibold uppercase">
+                {workspaceInfo.plan_name || t('workspace.planUnavailable')}
+              </p>
+            </div>
+            <Button asChild size="sm" className="shrink-0">
+              <a
+                href={cloudPortalURL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('workspace.upgradePlan')}
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
+          </div>
         )}
       </PanelToolbar>
 

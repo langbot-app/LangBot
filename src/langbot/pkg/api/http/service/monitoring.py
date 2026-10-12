@@ -260,6 +260,9 @@ class MonitoringService(ExecutionDetailsMixin):
             A dict mapping table name to the number of deleted rows.
         """
         workspace_uuid = self._require_write_context(context)
+        from ....cloud.plan_policy import workspace_history_retention_days
+
+        retention_days = await workspace_history_retention_days(self.ap, workspace_uuid, retention_days)
         if retention_days < 1:
             raise ValueError('retention_days must be >= 1')
         if batch_size < 1:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..cloud.plan_policy import require_workspace_platform
+
 from ..i18n import language_scope
 from ..i18n.workspace import get_workspace_language
 
@@ -117,6 +119,7 @@ class RuntimeBot:
     async def assert_execution_active(self) -> None:
         """Fail closed when this long-lived adapter belongs to a stale placement."""
 
+        await require_workspace_platform(self.ap, self.workspace_uuid, self.bot_entity.adapter)
         await self.ap.workspace_service.get_execution_binding(
             self.workspace_uuid,
             expected_generation=self.placement_generation,
@@ -919,6 +922,7 @@ class RuntimeBot:
         from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
 
+        await self.assert_execution_active()
         event.bot_uuid = self.bot_entity.uuid
         execution_id = self._platform_event_execution_id(event)
         if getattr(event, 'adapter_name', None) == 'wecomcs-omni':
@@ -2316,6 +2320,7 @@ class PlatformManager:
             bot_entity = persistence_bot.Bot(**bot_entity)
 
         execution_context = self._normalize_execution_context(context, bot_uuid=bot_entity.uuid)
+        await require_workspace_platform(self.ap, execution_context.workspace_uuid, bot_entity.adapter)
         if bot_entity.workspace_uuid != execution_context.workspace_uuid:
             raise WorkspaceRequiredError('Bot entity Workspace does not match its runtime context')
         if not _binding_validated:
@@ -2405,6 +2410,7 @@ class PlatformManager:
         )
         if bot is None or bot.placement_generation != execution_context.placement_generation:
             return None
+        await require_workspace_platform(self.ap, execution_context.workspace_uuid, bot.bot_entity.adapter)
         return bot
 
     async def resolve_public_bot(self, route_key: str) -> RuntimeBot | None:
