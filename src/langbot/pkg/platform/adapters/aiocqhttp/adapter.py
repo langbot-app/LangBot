@@ -212,6 +212,9 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
 
     async def _handle_native_event(self, event: aiocqhttp.Event):
         self.bot_account_id = str(getattr(event, 'self_id', '') or self.bot_account_id)
+        # Connection metadata belongs to the adapter, never business event routing.
+        if getattr(event, 'type', None) == 'meta_event':
+            return
         if getattr(event, 'type', None) == 'message' and str(getattr(event, 'user_id', '')) == self.bot_account_id:
             return
         try:

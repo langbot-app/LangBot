@@ -34,8 +34,6 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return AiocqhttpEventConverter.notice_to_eba(event, bot_user_id)
         if event_type == 'request':
             return AiocqhttpEventConverter.request_to_eba(event)
-        if event_type == 'meta_event':
-            return AiocqhttpEventConverter.platform_specific(event, f'meta.{getattr(event, "detail_type", "")}')
         return None
 
     @staticmethod
