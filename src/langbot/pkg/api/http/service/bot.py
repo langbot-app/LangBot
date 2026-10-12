@@ -52,13 +52,13 @@ class BotService:
         return None
 
     def _adapter_declares_webhook_url(self, adapter_name: str) -> bool:
-        """Whether the adapter manifest declares a generated webhook URL config item."""
+        """Whether the manifest needs a generated public bot ingress URL."""
         component = self._get_adapter_component(adapter_name)
         if component is None:
             return False
 
         for config_item in component.spec.get('config', []):
-            if config_item.get('type') == 'webhook-url':
+            if config_item.get('type') == 'webhook-url' or config_item.get('name') == '__system.onebot_ws_url':
                 return True
         return False
 

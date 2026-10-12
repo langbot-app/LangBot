@@ -1823,6 +1823,10 @@ function StepBotConfig({
                   systemContext={{
                     is_wizard: true,
                     webhook_url: webhookUrl,
+                    onebot_ws_url: webhookUrl
+                      ? webhookUrl.replace(/^http/, 'ws').replace(/\/$/, '') +
+                        '/onebot/v11/ws'
+                      : '',
                     extra_webhook_url: extraWebhookUrl,
                     outbound_ips: systemInfo.outbound_ips,
                   }}
