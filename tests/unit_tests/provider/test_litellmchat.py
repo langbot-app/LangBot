@@ -379,43 +379,33 @@ class TestInvokeLLMStreamUsage:
         assert ''.join(chunk.content or '' for chunk in collected) == 'Visible answer'
 
     @pytest.mark.asyncio
-    async def test_stream_removes_initial_orphan_think_close(self):
-        """Initial reasoning content without an open tag is removed until </think>."""
-        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
-        import langbot_plugin.api.entities.builtin.provider.message as provider_message
-
+    @pytest.mark.parametrize('separate_reasoning', [False, True])
+    async def test_remove_think_preserves_incremental_plain_text(self, separate_reasoning):
+        """Visible text must arrive before the provider produces the next delta."""
         mock_ap = Mock()
-        mock_ap.tool_mgr = Mock()
         mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
         requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={})
-        model = MockRuntimeModel('minimax-m3', 'test-api-key')
+        model = MockRuntimeModel('gpt-4o', 'test-api-key')
+        consumed = []
 
-        chunks = [
-            self._make_chunk(content='hidden reasoning'),
-            self._make_chunk(content=' still hidden</thi'),
-            self._make_chunk(content='nk>Visible answer', finish_reason='stop'),
-        ]
+        async def provider_stream():
+            if separate_reasoning:
+                reasoning_chunk = self._make_chunk()
+                reasoning_chunk.choices[0].delta.model_dump.return_value['reasoning_content'] = 'hidden reasoning'
+                yield reasoning_chunk
+            for text in ['Hello', ' world']:
+                consumed.append(text)
+                yield self._make_chunk(content=text)
+            yield self._make_chunk(content=None, finish_reason='stop')
 
-        async def _aiter(*args, **kwargs):
-            for c in chunks:
-                yield c
-
-        query = Mock(spec=pipeline_query.Query)
-        query.variables = {}
-        messages = [provider_message.Message(role='user', content='Hi')]
-
-        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
-            collected = [
-                chunk
-                async for chunk in requester.invoke_llm_stream(
-                    query=query,
-                    model=model,
-                    messages=messages,
-                    remove_think=True,
-                )
-            ]
-
-        assert ''.join(chunk.content or '' for chunk in collected) == 'Visible answer'
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: provider_stream())):
+            received = []
+            async for chunk in requester.invoke_llm_stream(query=None, model=model, messages=[], remove_think=True):
+                if chunk.content:
+                    received.append(chunk.content)
+                    assert received == consumed
+                    assert not chunk.is_final
+            assert received == ['Hello', ' world']
 
     @pytest.mark.asyncio
     async def test_stream_removes_non_leading_think_content(self):
@@ -1540,3 +1530,33 @@ class TestScanModels:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestStreamingThinkFilter:
+    @pytest.mark.parametrize(
+        'opening,closing',
+        [
+            ('<think>', '</think>'),
+            ('CRETIRE_REASONING_BEGINk', 'CRETIRE_REASONING_ENDk'),
+        ],
+    )
+    def test_split_tags_and_repeated_blocks(self, opening, closing):
+        state = litellmchat._ThinkStripState()
+        assert state.feed('Before ') == 'Before '
+        for char in opening + 'hidden' + closing:
+            assert state.feed(char) == ''
+        assert state.feed('Answer ') == 'Answer '
+        assert state.feed(opening + 'more hidden' + closing + 'end') == 'end'
+        assert state.flush() == ''
+
+    def test_unclosed_think_is_discarded(self):
+        state = litellmchat._ThinkStripState()
+        assert state.feed('<think>hidden') == ''
+        assert state.flush() == ''
+
+    def test_partial_non_tag_is_released(self):
+        state = litellmchat._ThinkStripState()
+        assert state.feed('Answer <thi') == 'Answer '
+        assert state.feed('ng>') == '<thing>'
+        assert state.feed(' <') == ' '
+        assert state.flush() == '<'
