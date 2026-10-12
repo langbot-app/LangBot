@@ -340,16 +340,12 @@ export default function PipelineMigration({
 
   return (
     <>
-      {(count > 0 || previewError || results.length > 0) && (
+      {(count > 0 || results.length > 0) && (
         <Alert className="mb-4 shrink-0 border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>{t('pipelineMigration.title')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-3 text-amber-800 dark:text-amber-200">
-            <span>
-              {previewError
-                ? t('pipelineMigration.previewError')
-                : t('pipelineMigration.detected', { count })}
-            </span>
+            <span>{t('pipelineMigration.detected', { count })}</span>
             <Button
               variant="outline"
               size="sm"

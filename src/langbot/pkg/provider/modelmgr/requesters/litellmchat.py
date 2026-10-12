@@ -16,7 +16,11 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class _ThinkStripState:
-    """Stateful filter that drops think blocks across chunks."""
+    """Drop explicit think blocks, buffering only possible split tag prefixes.
+
+    Untagged text must stream immediately: an orphan closing tag cannot identify
+    earlier text as reasoning without delaying every ordinary answer until EOF.
+    """
 
     _THINK_OPEN = '<think>'
     _THINK_CLOSE = '</think>'
@@ -31,7 +35,6 @@ class _ThinkStripState:
         self._open_tags = tuple(open_tag for open_tag, _close_tag in self._pairs)
         self._buf = ''
         self._close_tag: str | None = None
-        self._pending_initial = True
 
     def feed(self, chunk: str) -> str:
         """Feed a streaming delta and return user-visible content."""
@@ -64,7 +67,6 @@ class _ThinkStripState:
         if close_idx != -1:
             self._close_tag = None
             self._buf = ''
-            self._pending_initial = False
             return self._process_visible_text(text[close_idx + len(close_tag) :])
 
         self._buf = self._close_prefix(text, close_tag)
@@ -75,37 +77,14 @@ class _ThinkStripState:
         index = 0
 
         while index < len(text):
-            if self._pending_initial:
-                open_idx, open_tag, close_tag = self._find_next_open(text, index)
-                orphan_close_idx, orphan_close_tag = self._find_next_close(text, index)
-
-                if orphan_close_idx != -1 and (open_idx == -1 or orphan_close_idx < open_idx):
-                    self._pending_initial = False
-                    index = orphan_close_idx + len(orphan_close_tag)
-                    continue
-
-                if open_idx == -1:
-                    self._buf = text[index:]
-                    return ''.join(out)
-
-                if open_idx > index:
-                    self._pending_initial = False
-                    out.append(text[index:open_idx])
-                    index = open_idx
-                    continue
-
             open_idx, open_tag, close_tag = self._find_next_open(text, index)
             if open_idx == -1:
                 emit_end = self._visible_emit_end(text, index)
                 out.append(text[index:emit_end])
-                if emit_end > index:
-                    self._pending_initial = False
                 self._buf = text[emit_end:]
                 return ''.join(out)
 
             out.append(text[index:open_idx])
-            if open_idx > index:
-                self._pending_initial = False
             body_start = open_idx + len(open_tag)
             close_idx = text.find(close_tag, body_start)
             if close_idx == -1:
@@ -113,7 +92,6 @@ class _ThinkStripState:
                 self._buf = self._close_prefix(text[body_start:], close_tag)
                 return ''.join(out)
 
-            self._pending_initial = False
             index = close_idx + len(close_tag)
 
         self._buf = ''
@@ -130,16 +108,6 @@ class _ThinkStripState:
                 best_open = open_tag
                 best_close = close_tag
         return best_idx, best_open, best_close
-
-    def _find_next_close(self, text: str, start: int) -> tuple[int, str]:
-        best_idx = -1
-        best_close = ''
-        for _open_tag, close_tag in self._pairs:
-            idx = text.find(close_tag, start)
-            if idx != -1 and (best_idx == -1 or idx < best_idx):
-                best_idx = idx
-                best_close = close_tag
-        return best_idx, best_close
 
     def _visible_emit_end(self, text: str, start: int) -> int:
         visible = text[start:]
