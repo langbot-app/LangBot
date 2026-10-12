@@ -767,7 +767,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(error)
 
-        assert '请求参数错误' in str(exc_info.value)
+        assert 'Invalid request parameters' in str(exc_info.value)
 
     def test_authentication_error(self):
         """Test AuthenticationError translation"""
@@ -778,7 +778,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(error)
 
-        assert 'API key 无效' in str(exc_info.value)
+        assert 'Invalid API key' in str(exc_info.value)
 
     def test_rate_limit_error(self):
         """Test RateLimitError translation"""
@@ -789,7 +789,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(error)
 
-        assert '请求过于频繁' in str(exc_info.value)
+        assert 'Rate limit exceeded' in str(exc_info.value)
 
     def test_timeout_error(self):
         """Test Timeout translation"""
@@ -800,7 +800,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(error)
 
-        assert '请求超时' in str(exc_info.value)
+        assert 'Request timed out' in str(exc_info.value)
 
     def test_context_window_error(self):
         """Test ContextWindowExceededError translation"""
@@ -811,7 +811,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(error)
 
-        assert '上下文长度超限' in str(exc_info.value)
+        assert 'Context length exceeded' in str(exc_info.value)
 
     def test_unknown_error(self):
         """Test unknown error translation"""
@@ -820,7 +820,7 @@ class TestHandleLiteLLMError:
         with pytest.raises(errors.RequesterError) as exc_info:
             requester._handle_litellm_error(Exception('unknown'))
 
-        assert '未知错误' in str(exc_info.value)
+        assert 'Unknown error' in str(exc_info.value)
 
 
 class TestInvokeLLM:
@@ -976,7 +976,7 @@ class TestInvokeLLM:
                     messages=messages,
                 )
 
-            assert 'API key 无效' in str(exc_info.value)
+            assert 'Invalid API key' in str(exc_info.value)
 
 
 class TestInvokeEmbedding:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import t
+
 import uuid
 
 import sqlalchemy
@@ -146,7 +148,13 @@ async def _validate_provider_supports(
     if not support_type:
         return
     if model_type not in support_type:
-        raise ValueError(f'Provider requester "{requester_name}" does not support {model_type} models')
+        raise ValueError(
+            t(
+                'Provider {provider} does not support {model_type} models',
+                provider=requester_name,
+                model_type=model_type,
+            )
+        )
 
 
 async def _require_workspace_provider(

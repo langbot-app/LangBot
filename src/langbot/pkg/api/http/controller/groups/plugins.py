@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .....i18n import t
+
 import asyncio
 import base64
 import collections.abc
@@ -305,7 +307,11 @@ class PluginsRouterGroup(group.RouterGroup):
             mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context)
             total_extensions = len(plugins) + len(mcp_servers)
             if total_extensions >= max_extensions:
-                return self.http_status(400, -1, f'Maximum number of extensions ({max_extensions}) reached')
+                return self.http_status(
+                    400,
+                    -1,
+                    t('Maximum number of {resource} ({limit}) reached', resource=t('extensions'), limit=max_extensions),
+                )
         return None
 
     @staticmethod

@@ -1,6 +1,12 @@
 import slackSetup from './slack-setup/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
+  workspaceLanguage: {
+    label: '工作區語言',
+    description: '用於後端提示和機器人的預設回覆，不影響個人介面語言。',
+    saved: '語言設定已儲存',
+    saveFailed: '語言設定儲存失敗',
+  },
   slackSetup,
   inflight: {
     autoCollapse: '自動摺疊',

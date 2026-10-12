@@ -1,6 +1,13 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  workspaceLanguage: {
+    label: 'ワークスペースの言語',
+    description:
+      'バックエンドの通知とボットの既定の返信に使用します。個人の表示言語には影響しません。',
+    saved: '言語設定を保存しました',
+    saveFailed: '言語設定の保存に失敗しました',
+  },
   slackSetup,
   inflight: {
     autoCollapse: '自動折りたたみ',

@@ -1,6 +1,12 @@
 import slackSetup from './slack-setup/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
 const zhHans = {
+  workspaceLanguage: {
+    label: '工作区语言',
+    description: '用于后端提示和机器人的默认回复，不影响个人界面语言。',
+    saved: '语言设置已保存',
+    saveFailed: '语言设置保存失败',
+  },
   slackSetup,
   inflight: {
     autoCollapse: '自动折叠',

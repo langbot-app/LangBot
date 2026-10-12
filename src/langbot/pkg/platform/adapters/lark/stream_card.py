@@ -2,6 +2,8 @@
 
 import re
 
+from langbot.pkg.i18n import t
+
 
 def split_content(content: str) -> tuple[str, str]:
     reasoning, answer = [], []
@@ -28,7 +30,7 @@ def streaming_text(content: str) -> str:
     if len(reasoning) > 360:
         preview = '…' + preview
     quote = '> ' + preview.replace('\n', '\n> ')
-    return '**思考过程 / Thinking**\n\n' + quote + ('\n\n---\n\n' + answer if answer else '')
+    return '**' + t('Thinking') + '**\n\n' + quote + ('\n\n---\n\n' + answer if answer else '')
 
 
 def build_card(content: str = '', *, streaming: bool = False, finished: bool = True) -> dict:
@@ -42,7 +44,7 @@ def build_card(content: str = '', *, streaming: bool = False, finished: bool = T
                 {
                     'tag': 'collapsible_panel',
                     'expanded': not finished,
-                    'header': {'title': {'tag': 'plain_text', 'content': '思考过程 / Thinking'}},
+                    'header': {'title': {'tag': 'plain_text', 'content': t('Thinking')}},
                     'elements': [{'tag': 'markdown', 'content': reasoning}],
                 }
             )
@@ -58,9 +60,7 @@ def build_card(content: str = '', *, streaming: bool = False, finished: bool = T
                     'width': 'weighted',
                     'weight': 1,
                     'vertical_align': 'center',
-                    'elements': [
-                        {'tag': 'markdown', 'content': '内容由 AI 生成 / AI-generated', 'text_size': 'notation'}
-                    ],
+                    'elements': [{'tag': 'markdown', 'content': t('AI-generated'), 'text_size': 'notation'}],
                 },
                 {
                     'tag': 'column',

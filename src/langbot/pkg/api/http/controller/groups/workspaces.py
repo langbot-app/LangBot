@@ -14,6 +14,8 @@ from .....workspace.errors import WorkspaceNotFoundError
 from .....workspace.invitation_delivery import InvitationDeliveryService
 from .....operation_trace import service as settings_service
 from .. import group
+from .....i18n import SUPPORTED_LANGUAGES
+from .....i18n.workspace import get_workspace_language, set_workspace_language
 
 
 def _workspace_payload(workspace: Workspace) -> dict[str, typing.Any]:
@@ -74,6 +76,34 @@ class WorkspacesRouterGroup(group.RouterGroup):
         return await operation()
 
     async def initialize(self) -> None:
+        @self.route(
+            '/current/language',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_VIEW,
+        )
+        async def get_language(request_context: RequestContext):
+            return self.success(
+                data={
+                    'language': await get_workspace_language(self.ap, request_context.workspace_uuid, refresh=True),
+                    'supported_languages': list(SUPPORTED_LANGUAGES),
+                }
+            )
+
+        @self.route(
+            '/current/language',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def update_language(request_context: RequestContext):
+            body = await quart.request.get_json()
+            locale = body.get('language') if isinstance(body, dict) else None
+            if locale not in SUPPORTED_LANGUAGES:
+                return self.http_status(400, 'invalid_language', 'Unsupported Workspace language')
+            locale = await set_workspace_language(self.ap, request_context.workspace_uuid, locale)
+            return self.success(data={'language': locale})
+
         @self.route('/bootstrap', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> typing.Any:
             """List the active Workspaces available to an authenticated Account.

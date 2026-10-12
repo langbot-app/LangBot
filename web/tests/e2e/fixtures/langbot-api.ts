@@ -750,6 +750,22 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { workspaces: state.workspaces });
   }
 
+  if (path === '/api/v1/workspaces/current/language') {
+    return fulfillJson(route, {
+      language: 'en_US',
+      supported_languages: [
+        'en_US',
+        'zh_Hans',
+        'zh_Hant',
+        'ja_JP',
+        'es_ES',
+        'ru_RU',
+        'th_TH',
+        'vi_VN',
+      ],
+    });
+  }
+
   if (path === '/api/v1/workspaces/current') {
     const selectedWorkspaceUuid = request.headers()['x-workspace-id'];
     const entry = state.workspaces.find(

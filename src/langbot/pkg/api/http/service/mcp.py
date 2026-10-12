@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import t
+
 import copy
 import re
 import uuid
@@ -228,7 +230,9 @@ class MCPService:
                 .where(persistence_plugin.PluginSetting.workspace_uuid == workspace_uuid)
             )
             if (mcp_count_result.scalar() or 0) + (plugin_count_result.scalar() or 0) >= max_extensions:
-                raise ValueError(f'Maximum number of extensions ({max_extensions}) reached')
+                raise ValueError(
+                    t('Maximum number of {resource} ({limit}) reached', resource=t('extensions'), limit=max_extensions)
+                )
 
         payload = dict(server_data)
         payload.pop('workspace_uuid', None)
@@ -246,7 +250,7 @@ class MCPService:
             )
         )
         if existing_result.first() is not None:
-            raise ValueError(f'MCP server already exists: {server_name}')
+            raise ValueError(t('MCP server already exists: {name}', name=server_name))
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(payload))
         created = await self._get_mcp_server_by_uuid_raw(execution_context, payload['uuid'])
@@ -332,7 +336,7 @@ class MCPService:
                 raise ValueError('MCP server name is required')
             duplicate = await self._get_mcp_server_by_name_raw(execution_context, payload['name'])
             if duplicate is not None and duplicate['uuid'] != server_uuid:
-                raise ValueError(f'MCP server already exists: {payload["name"]}')
+                raise ValueError(t('MCP server already exists: {name}', name=payload['name']))
 
         effective_server = {**old_server, **payload}
         # Existing disabled rows remain readable/deletable.  Switching away

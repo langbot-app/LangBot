@@ -1,6 +1,13 @@
 import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  workspaceLanguage: {
+    label: 'Workspace language',
+    description:
+      'Language for backend messages and default bot replies. Your interface language stays independent.',
+    saved: 'Language saved',
+    saveFailed: 'Failed to save language',
+  },
   slackSetup,
   inflight: {
     autoCollapse: 'Auto-collapse',

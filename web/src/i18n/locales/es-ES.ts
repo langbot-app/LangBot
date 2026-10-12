@@ -1,5 +1,12 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
+  workspaceLanguage: {
+    label: 'Idioma del espacio de trabajo',
+    description:
+      'Idioma de los mensajes del servidor y respuestas predeterminadas del bot. No cambia tu interfaz.',
+    saved: 'Idioma guardado',
+    saveFailed: 'No se pudo guardar el idioma',
+  },
   inflight: {
     autoCollapse: 'Plegar auto.',
     empty: 'No hay eventos en proceso',

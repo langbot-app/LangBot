@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import json
 import typing
+import functools
 
 from mcp.server.fastmcp import FastMCP
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
+from ...i18n import language_scope
+from ...i18n.workspace import get_workspace_language, set_workspace_language
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -77,6 +80,20 @@ class LangBotMCPServer:
     def _register_tools(self) -> None:
         ap = self.ap
         mcp = self
+
+        @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
+        async def get_workspace_message_language() -> str:
+            context = _authorized(Permission.WORKSPACE_VIEW)
+            return _dump({'language': await get_workspace_language(ap, context.workspace_uuid, refresh=True)})
+
+        @mcp.tool(
+            description='Set the Workspace message language. Requires workspace.update; does not change personal UI language.'
+        )
+        async def set_workspace_message_language(
+            language: typing.Literal['en_US', 'zh_Hans', 'zh_Hant', 'ja_JP', 'es_ES', 'ru_RU', 'th_TH', 'vi_VN'],
+        ) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
 
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
@@ -571,7 +588,12 @@ class LangBotMCPServer:
         """Register a tool boundary before its authorization and service call."""
 
         def register(fn):
-            observed = fn
+            @functools.wraps(fn)
+            async def observed(*args, **kwargs):
+                context = get_request_context()
+                with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                    return await fn(*args, **kwargs)
+
             return self.mcp.tool(**options)(observed)
 
         return register

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ....i18n import t
+
 import typing
 import asyncio
 
@@ -1037,22 +1039,22 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
         # Check more specific exceptions first (they inherit from base exceptions)
         if isinstance(e, litellm.ContextWindowExceededError):
-            raise errors.RequesterError(f'上下文长度超限: {str(e)}')
+            raise errors.RequesterError(t('Context length exceeded') + f': {e}')
         if isinstance(e, litellm.BadRequestError):
-            raise errors.RequesterError(f'请求参数错误: {str(e)}')
+            raise errors.RequesterError(t('Invalid request parameters') + f': {e}')
         if isinstance(e, litellm.AuthenticationError):
-            raise errors.RequesterError(f'API key 无效: {str(e)}')
+            raise errors.RequesterError(t('Invalid API key') + f': {e}')
         if isinstance(e, litellm.NotFoundError):
-            raise errors.RequesterError(f'模型或路径无效: {str(e)}')
+            raise errors.RequesterError(t('Invalid model or endpoint') + f': {e}')
         if isinstance(e, litellm.RateLimitError):
-            raise errors.RequesterError(f'请求过于频繁或余额不足: {str(e)}')
+            raise errors.RequesterError(t('Rate limit exceeded or insufficient balance') + f': {e}')
         if isinstance(e, litellm.Timeout):
-            raise errors.RequesterError(f'请求超时: {str(e)}')
+            raise errors.RequesterError(t('Request timed out') + f': {e}')
         if isinstance(e, litellm.APIConnectionError):
-            raise errors.RequesterError(f'连接错误: {str(e)}')
+            raise errors.RequesterError(t('Connection failed') + f': {e}')
         if isinstance(e, litellm.APIError):
-            raise errors.RequesterError(f'API 错误: {str(e)}')
-        raise errors.RequesterError(f'未知错误: {str(e)}')
+            raise errors.RequesterError(t('API error') + f': {e}')
+        raise errors.RequesterError(t('Unknown error') + f': {e}')
 
     async def _build_completion_args(
         self,
@@ -1523,9 +1525,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 body = await httpclient.response_text(e.response)
             except Exception:
                 pass
-            raise errors.RequesterError(f'rerank 请求失败 (HTTP {e.response.status_code}): {body or str(e)}')
+            raise errors.RequesterError(t('API error') + f' (HTTP {e.response.status_code}): {body or str(e)}')
         except httpx.HTTPError as e:
-            raise errors.RequesterError(f'rerank 连接错误: {str(e)}')
+            raise errors.RequesterError(t('Connection failed') + f': {e}')
 
         raw_results = data.get('results', []) if isinstance(data, dict) else []
         results = []

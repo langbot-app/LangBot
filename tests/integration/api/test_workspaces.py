@@ -928,3 +928,64 @@ async def test_account_bootstrap_does_not_disclose_non_member_workspaces(workspa
     )
     assert current.status_code == 404
     assert (await current.get_json())['code'] == 'resource_not_found'
+
+
+async def test_workspace_language_persists_and_controls_api_errors(workspace_api):
+    from langbot.pkg.i18n.workspace import get_workspace_language, set_workspace_language
+
+    application, client, engine, owner_token = workspace_api
+    current = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    current = (await current.get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    owner_uuid = current['membership']['account_uuid']
+    headers = {**_auth(owner_token, workspace_uuid), 'X-LangBot-Language': 'ja-JP'}
+    initial = await client.get('/api/v1/workspaces/current/language', headers=headers)
+    assert (await initial.get_json())['data']['language'] == 'en_US'
+
+    updated = await client.put('/api/v1/workspaces/current/language', headers=headers, json={'language': 'zh_Hans'})
+    assert updated.status_code == 200
+    assert await get_workspace_language(application, workspace_uuid) == 'zh_Hans'
+    restarted = SimpleNamespace(persistence_mgr=application.persistence_mgr)
+    assert await get_workspace_language(restarted, workspace_uuid) == 'zh_Hans'
+
+    invalid = await client.put('/api/v1/workspaces/current/language', headers=headers, json={'language': '../bad'})
+    assert invalid.status_code == 400
+    assert await get_workspace_language(application, workspace_uuid, refresh=True) == 'zh_Hans'
+
+    # A second Workspace has independent persisted metadata and cache entries.
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='language-other',
+                instance_uuid='instance-workspace-api',
+                name='Other',
+                slug='language-other',
+                source='cloud_projection',
+                type='team',
+            )
+        )
+    await set_workspace_language(application, 'language-other', 'es_ES')
+    assert await get_workspace_language(application, 'language-other') == 'es_ES'
+    assert await get_workspace_language(application, workspace_uuid) == 'zh_Hans'
+
+    # Read-only members can inspect the setting but cannot modify it. The
+    # verified Workspace setting wins over the browser language hint.
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.update(WorkspaceMembership)
+            .where(
+                WorkspaceMembership.workspace_uuid == workspace_uuid,
+                WorkspaceMembership.account_uuid == owner_uuid,
+            )
+            .values(role='viewer')
+        )
+    denied = await client.put('/api/v1/workspaces/current/language', headers=headers, json={'language': 'ja_JP'})
+    assert denied.status_code == 403
+    assert (await denied.get_json())['msg'] == '没有执行此操作的权限'
+    visible = await client.get('/api/v1/workspaces/current/language', headers=headers)
+    assert visible.status_code == 200
+    assert (await visible.get_json())['data']['language'] == 'zh_Hans'
+
+    # An untrusted selector never causes us to read another tenant's language.
+    unauthorized = await client.get('/api/v1/workspaces/current/language', headers=_auth(owner_token, 'language-other'))
+    assert unauthorized.status_code in (403, 404)

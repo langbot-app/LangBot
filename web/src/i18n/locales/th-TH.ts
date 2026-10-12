@@ -1,5 +1,12 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
+  workspaceLanguage: {
+    label: 'ภาษาของพื้นที่ทำงาน',
+    description:
+      'ใช้สำหรับข้อความจากระบบและคำตอบเริ่มต้นของบอต โดยไม่เปลี่ยนภาษาอินเทอร์เฟซของคุณ',
+    saved: 'บันทึกภาษาแล้ว',
+    saveFailed: 'บันทึกภาษาไม่สำเร็จ',
+  },
   inflight: {
     autoCollapse: 'ยุบอัตโนมัติ',
     empty: 'ไม่มีเหตุการณ์ที่กำลังประมวลผล',

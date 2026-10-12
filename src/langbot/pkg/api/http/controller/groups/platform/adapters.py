@@ -1,3 +1,5 @@
+from langbot.pkg.i18n import t, DEFAULT_LANGUAGE
+from langbot.pkg.i18n.workspace import get_workspace_language
 import asyncio
 import dataclasses
 import mimetypes
@@ -213,16 +215,20 @@ class AdaptersRouterGroup(group.RouterGroup):
 
         @self.route('/slack/setup/callback', methods=['GET'], auth_type=group.AuthType.NONE)
         async def slack_callback():
+            session = slack_setup.sessions.get(quart.request.args.get('state', ''))
+            locale = DEFAULT_LANGUAGE
+            if session is not None:
+                locale = await get_workspace_language(self.ap, session['context'].workspace_uuid)
             try:
                 await slack_setup.finish(
                     quart.request.args.get('state', ''),
                     quart.request.args.get('code', ''),
                     quart.request.args.get('error'),
                 )
-                message = 'Slack authorization completed. Return to LangBot to finish setup. / Slack 授权完成，请返回 LangBot 完成配置。'
+                message = t('Slack authorization completed. Return to LangBot to finish setup.', locale=locale)
                 status = 200
             except SlackSetupError:
-                message = 'Slack authorization failed or expired. Return to LangBot for details. / Slack 授权失败或已过期，请返回 LangBot 查看详情。'
+                message = t('Slack authorization failed or expired. Return to LangBot for details.', locale=locale)
                 status = 400
             return quart.Response(
                 message,

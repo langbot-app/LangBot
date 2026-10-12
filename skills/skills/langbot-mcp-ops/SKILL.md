@@ -212,6 +212,18 @@ Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
 
+### Workspace message language
+
+`get_workspace_message_language` reads the current Workspace's backend language
+(`workspace.view`). `set_workspace_message_language(language)` requires
+`workspace.update`; supported values are `en_US`, `zh_Hans`, `zh_Hant`, `ja_JP`,
+`es_ES`, `ru_RU`, `th_TH`, `vi_VN`. HTTP equivalents are GET/PUT
+`/api/v1/workspaces/current/language` (PUT body: `{"language":"ja_JP"}`).
+The API key's Workspace remains authoritative. The setting controls new backend
+messages and default bot notices, independently of personal UI language.
+Pipeline `output.misc` hint fields override defaults; empty values inherit this
+setting. Existing custom text and historical logs are not rewritten.
+
 ### Workspace default LLM model
 
 `get_starred_model` reads the Workspace-wide favorite. `set_starred_model`

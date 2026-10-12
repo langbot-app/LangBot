@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
+
 import asyncio
 import contextlib
 import dataclasses
@@ -1713,21 +1716,22 @@ class RuntimeBot:
         def tenant_scoped_listener(listener):
             @functools.wraps(listener)
             async def wrapped(*args, **kwargs):
-                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
-                cloud_runtime = (
-                    getattr(
-                        getattr(self.ap.persistence_mgr, 'mode', None),
-                        'value',
-                        None,
+                with language_scope(await get_workspace_language(self.ap, self.workspace_uuid)):
+                    tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                    cloud_runtime = (
+                        getattr(
+                            getattr(self.ap.persistence_mgr, 'mode', None),
+                            'value',
+                            None,
+                        )
+                        == 'cloud_runtime'
                     )
-                    == 'cloud_runtime'
-                )
-                if cloud_runtime:
-                    if not callable(tenant_scope):
-                        raise RuntimeError('Cloud platform callbacks require a tenant scope')
-                    async with tenant_scope(self.workspace_uuid):
-                        return await listener(*args, **kwargs)
-                return await listener(*args, **kwargs)
+                    if cloud_runtime:
+                        if not callable(tenant_scope):
+                            raise RuntimeError('Cloud platform callbacks require a tenant scope')
+                        async with tenant_scope(self.workspace_uuid):
+                            return await listener(*args, **kwargs)
+                    return await listener(*args, **kwargs)
 
             return wrapped
 

@@ -1,5 +1,12 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
+  workspaceLanguage: {
+    label: 'Ngôn ngữ không gian làm việc',
+    description:
+      'Dùng cho thông báo máy chủ và phản hồi mặc định của bot. Không thay đổi ngôn ngữ giao diện cá nhân.',
+    saved: 'Đã lưu ngôn ngữ',
+    saveFailed: 'Không thể lưu ngôn ngữ',
+  },
   inflight: {
     autoCollapse: 'Tự thu gọn',
     empty: 'Không có sự kiện đang xử lý',

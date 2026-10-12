@@ -11,6 +11,7 @@ import {
 } from './workspaceContext';
 import { setCurrentWorkspaceSnapshot } from './currentWorkspaceStore';
 import { clearWorkspaceBootstrapSnapshot } from './workspaceBootstrapStore';
+import i18n from 'i18next';
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null;
 interface JSONObject {

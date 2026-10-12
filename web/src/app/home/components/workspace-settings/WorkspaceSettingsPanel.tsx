@@ -51,6 +51,17 @@ const ASSIGNABLE_ROLES: Exclude<WorkspaceRole, 'owner'>[] = [
   'viewer',
 ];
 
+const MESSAGE_LANGUAGES: Record<string, string> = {
+  en_US: 'English',
+  zh_Hans: '简体中文',
+  zh_Hant: '繁體中文',
+  ja_JP: '日本語',
+  es_ES: 'Español',
+  ru_RU: 'Русский',
+  th_TH: 'ไทย',
+  vi_VN: 'Tiếng Việt',
+};
+
 export default function WorkspaceSettingsPanel({
   active,
 }: WorkspaceSettingsPanelProps) {
@@ -61,6 +72,9 @@ export default function WorkspaceSettingsPanel({
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [messageLanguage, setMessageLanguage] = useState('en_US');
+  const [supportedLanguages, setSupportedLanguages] = useState<string[]>([]);
+  const [savingLanguage, setSavingLanguage] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] =
     useState<Exclude<WorkspaceRole, 'owner'>>('viewer');
@@ -86,8 +100,13 @@ export default function WorkspaceSettingsPanel({
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const current = await backendClient.getCurrentWorkspace();
+      const [current, languageSettings] = await Promise.all([
+        backendClient.getCurrentWorkspace(),
+        backendClient.getWorkspaceLanguage(),
+      ]);
       setWorkspaceInfo(current);
+      setMessageLanguage(languageSettings.language);
+      setSupportedLanguages(languageSettings.supported_languages);
 
       const [memberResponse, invitationResponse] = await Promise.all([
         current.permissions.includes('member.view')
@@ -105,6 +124,19 @@ export default function WorkspaceSettingsPanel({
       setLoading(false);
     }
   }, [t]);
+
+  async function saveLanguage(locale: string) {
+    setSavingLanguage(true);
+    try {
+      const result = await backendClient.setWorkspaceLanguage(locale);
+      setMessageLanguage(result.language);
+      toast.success(t('workspaceLanguage.saved'));
+    } catch {
+      toast.error(t('workspaceLanguage.saveFailed'));
+    } finally {
+      setSavingLanguage(false);
+    }
+  }
 
   useEffect(() => {
     if (active) void loadWorkspace();
@@ -222,6 +254,41 @@ export default function WorkspaceSettingsPanel({
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
+        <section className="space-y-3">
+          <div>
+            <h3 id="workspace-language-label" className="text-sm font-semibold">
+              {t('workspaceLanguage.label')}
+            </h3>
+            <p
+              id="workspace-language-description"
+              className="text-xs text-muted-foreground"
+            >
+              {t('workspaceLanguage.description')}
+            </p>
+          </div>
+          <Select
+            value={messageLanguage}
+            onValueChange={saveLanguage}
+            disabled={
+              loading || savingLanguage || !permissions.has('workspace.update')
+            }
+          >
+            <SelectTrigger
+              className="w-full sm:w-64"
+              aria-labelledby="workspace-language-label"
+              aria-describedby="workspace-language-description"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {supportedLanguages.map((locale) => (
+                <SelectItem key={locale} value={locale}>
+                  {MESSAGE_LANGUAGES[locale] || locale}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </section>
         {canInvite && (
           <section className="space-y-3">
             <div>

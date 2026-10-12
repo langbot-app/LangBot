@@ -1,5 +1,12 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 const ruRU = {
+  workspaceLanguage: {
+    label: 'Язык рабочего пространства',
+    description:
+      'Язык сообщений сервера и стандартных ответов бота. Язык интерфейса не меняется.',
+    saved: 'Язык сохранён',
+    saveFailed: 'Не удалось сохранить язык',
+  },
   inflight: {
     autoCollapse: 'Автосворачивание',
     empty: 'Нет событий в обработке',
