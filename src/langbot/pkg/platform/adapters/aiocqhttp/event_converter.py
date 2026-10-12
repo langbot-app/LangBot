@@ -111,11 +111,17 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 type='message.deleted',
                 adapter_name='onebot-v11',
                 message_id=getattr(event, 'message_id', ''),
-                operator=AiocqhttpEventConverter.user(getattr(event, 'operator_id', None)),
+                operator=AiocqhttpEventConverter.user(
+                    getattr(event, 'user_id', None)
+                    if notice_type == 'friend_recall'
+                    else getattr(event, 'operator_id', None)
+                ),
                 chat_type=platform_entities.ChatType.GROUP
                 if notice_type == 'group_recall'
                 else platform_entities.ChatType.PRIVATE,
-                chat_id=getattr(event, 'group_id', getattr(event, 'user_id', '')),
+                chat_id=getattr(event, 'group_id', '')
+                if notice_type == 'group_recall'
+                else getattr(event, 'user_id', ''),
                 group=AiocqhttpEventConverter.group_from_event(event) if notice_type == 'group_recall' else None,
                 timestamp=float(getattr(event, 'time', 0) or 0),
                 source_platform_object=event,

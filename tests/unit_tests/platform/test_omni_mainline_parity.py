@@ -39,7 +39,12 @@ def chain(text):
 def test_omni_config_contains_mainline_options_and_help(name):
     legacy = yaml.safe_load((PLATFORM / 'sources' / f'{name}.yaml').read_text())['spec']
     omni = yaml.safe_load((PLATFORM / 'adapters' / name / 'manifest.yaml').read_text())['spec']
-    retired = {'bot_name'} if name == 'lark' else set()
+    retired = {'lark': {'bot_name'}, 'aiocqhttp': {'host', 'port'}}.get(name, set())
+    if name == 'aiocqhttp':
+        # The new adapter uses the Core HTTP port or an outbound WS URL.
+        fields = {c['name'] for c in omni['config']}
+        assert {'connection_mode', 'ws_url'} <= fields
+        assert not {'host', 'port'} & fields
     assert {c['name'] for c in legacy['config']} - retired <= {c['name'] for c in omni['config']}
     assert omni['help_links'] == legacy['help_links']
 
