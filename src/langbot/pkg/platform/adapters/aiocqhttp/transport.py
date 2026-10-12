@@ -39,7 +39,7 @@ class OneBotConnection:
                     await self.validate()
                     await self.send(json.dumps({'action': action, 'params': params, 'echo': echo}))
                 result = await future
-            if result.get('status') not in ('ok', 'async') or result.get('retcode') not in (0, 1):
+            if (result.get('status'), result.get('retcode')) not in (('ok', 0), ('async', 1)):
                 raise ActionFailed(result)
             return result.get('data')
         finally:
