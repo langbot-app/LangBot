@@ -230,7 +230,7 @@ class TestTraceRecording:
         _, counters = make_counters(trace_config())
         binding = trace.bind()
         try:
-            counters.record(CONTEXT, **{**STAGE, 'operation': 'x' * 200})
+            counters.record(CONTEXT, **{**STAGE, 'operation': 'x' * 513})
             counters.record(CONTEXT, **{**STAGE, 'family': 'not-a-family'})
         finally:
             trace.unbind_root(binding)
