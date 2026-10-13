@@ -3,6 +3,7 @@ import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { collectMdxDocuments } from "../scripts/prepare-fumapress.mjs";
+import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const publicRoot = path.join(root, "dist/public");
@@ -45,7 +46,7 @@ function staticHtmlForUrlPath(urlPath) {
 
 test("all canonical localized documents have static HTML", async () => {
   const documents = await collectMdxDocuments(root);
-  assert.equal(documents.length, 329);
+  assert.equal(documents.length, 332);
   const missing = [];
   for (const document of documents) {
     try {
@@ -204,6 +205,7 @@ test("canonical sitemap preserves legacy routes and includes current documents",
     legacy.add(`/${locale}/usage/platforms/mattermost`);
     legacy.add(`/${locale}/plugin/certified-plugins`);
   }
+  for (const route of zhOnlyArticleRoutes) legacy.add(`/zh/${route}`);
   const sitemap = await readFile(path.join(publicRoot, "sitemap.xml"), "utf8");
   const actual = new Set([...sitemap.matchAll(/<loc>https:\/\/langbot\.app\/docs(\/[^<]+)<\/loc>/g)]
     .map((match) => decodeURIComponent(match[1]).replace(/\/$/, "")));
@@ -217,6 +219,7 @@ test("canonical sitemap preserves legacy routes and includes current documents",
 const locales = ["en", "zh", "ja"];
 const hreflangByLocale = { en: "en", zh: "zh-CN", ja: "ja" };
 const zhOnlyRoutes = [
+  ...zhOnlyArticleRoutes,
   "develop/adapter/discord/README",
   "develop/adapter/discord/api_reference",
   "develop/adapter/discord/design",
@@ -353,7 +356,7 @@ test("the Chinese quick-start navigation keeps the incumbent troubleshooting pag
   assert.doesNotMatch(sidebar, /href="\/docs\/zh\/develop\/adapter\/discord\/troubleshooting"/);
 });
 
-test("the exact 14 zh-only sources publish no fallback en or ja routes", async () => {
+test("the exact 17 zh-only sources publish no fallback en or ja routes", async () => {
   const documents = await collectMdxDocuments(root);
   const byLocale = Object.fromEntries(locales.map((locale) => [
     locale,

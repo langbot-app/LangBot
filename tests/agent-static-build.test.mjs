@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
+import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const output = process.env.AGENT_TEST_OUTPUT ?? path.join(root, "dist/public");
@@ -22,7 +23,7 @@ function links(node, result = []) {
 }
 
 test("every sitemap page has meaningful canonical Markdown and HTML discovery", async () => {
-  assert.equal(urls.length, 506);
+  assert.equal(urls.length, 506 + zhOnlyArticleRoutes.length);
   for (const url of urls) {
     const route = relative(url);
     const text = await read(`${route}.md`);
