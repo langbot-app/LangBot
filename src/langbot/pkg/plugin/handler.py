@@ -2805,7 +2805,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.APPLY_PLUGIN_INSTALLATION,
                 request.model_dump(exclude_none=True),
-                timeout=120,
+                timeout=600,  # dependency install can be slow
             )
 
     async def remove_plugin_installation(
@@ -2829,7 +2829,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'install_source': install_source,
                 'install_info': install_info,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:
@@ -2843,7 +2843,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:
