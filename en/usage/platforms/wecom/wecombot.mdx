@@ -126,6 +126,21 @@ Click `Company-Created`, select the created bot, and enter the chat interface.
 
 Similarly, if you want to invite the bot to a group chat, click the add member button in the group chat and add the bot from there.
 
+### Orchestration events
+
+The new WeCom AI Bot adapter exposes these business events in both WebSocket and Webhook modes. Choose a processor for each event in the bot's event routing settings.
+
+| Event | Use case and data |
+| --- | --- |
+| `message.received` | Handle incoming user messages for conversations or tasks. |
+| `wecombot.enter_chat` | Start a welcome or onboarding workflow when a user enters the bot chat. Includes the user, chat ID, and raw event data. |
+| `wecombot.template_card_event` | Handle card clicks and submissions, branching on `task_id`, `event_key`, or `selected_items`. Includes card type, user, chat, and raw event data. |
+| `feedback.received` | Collect feedback on bot replies. |
+
+WeCom sends the chat-entry event; it does not mean that a friend was added. Welcome replies must complete within the platform's 5-second window. Prefer a fast, fixed text response. LangBot uses the dedicated welcome API for text event replies and reports an expired window explicitly. Avoid slow model calls to generate welcome messages.
+
+LangBot interaction forms and Dify forms continue through their existing callback flows, without also triggering a card business event. Connection, authentication, and reconnection states are not orchestration events.
+
 ### Effect Images
 
 ![Effect Image 1](/images/zh/deploy/bots/wecom/wecombot/wecombot_7.png)

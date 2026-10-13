@@ -64,12 +64,15 @@ Box can run in **local containers**, in a **cloud sandbox**, or as a **process o
 
 | Profile | Network | Mounts | Resources | When to use |
 |---------|---------|--------|-----------|-------------|
-| `default` | Off | Read-write | Default limits | Default choice |
+| `default` | On | Read-write | Default limits | Default choice, including API access or dependency downloads |
+| `offline` | Off | Read-write | Default limits | Offline tasks; preserves the previous default configuration |
 | `offline_readonly` | Off | Read-only | Stricter | Reading untrusted files |
 | `network_basic` | Basic network | Read-write | Default limits | API access or dependency install |
 | `network_extended` | Full network | Read-write | Relaxed | Development, debugging, complex tasks |
 
-Prefer least privilege: skip the network unless you need it (`default` / `offline_readonly`); only add necessary directories to `allowed_mount_roots`.
+`network_basic` is retained for compatibility and has the same settings as `default`.
+
+Prefer least privilege: skip the network unless you need it (`offline` / `offline_readonly`); only add necessary directories to `allowed_mount_roots`.
 
 <Note>
 The Host backend does not enforce these isolation policies. A configured profile, CPU / memory / PID limit, read-only rootfs, or disabled network does not create a sandbox boundary around host processes.

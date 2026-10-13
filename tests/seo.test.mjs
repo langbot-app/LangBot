@@ -222,9 +222,10 @@ test("guide preserves the introduction and adds ordered navigation plus a copyab
     assert.doesNotMatch(guide, /^### \d+\.|127\.0\.0\.1:5300|<Steps>/m);
     const prompt = guide.slice(assistant).match(/```text\n([\s\S]*?)\n```/);
     assert.ok(prompt, `${locale}: missing copyable prompt`);
-    assert.ok(prompt[1].includes(`https://langbot.app/docs/${locale}/llms.txt`));
+    assert.ok(prompt[1].includes("https://langbot.app/llms.txt"));
+    assert.ok(prompt[1].includes("CLI"));
+    assert.doesNotMatch(prompt[1], /https:\/\/langbot.app\/docs\//);
     for (const page of ["insight/features", "insight/platform-features", "usage/platforms/readme", "usage/models/readme", "usage/pipelines/readme"]) {
-      assert.ok(prompt[1].includes(`https://langbot.app/docs/${locale}/${page}.md`));
       await readFile(new URL(`${locale}/${page}.mdx`, repoRoot), "utf8");
     }
     for (const [, href] of guide.matchAll(/(?<!!)\]\((\/[^)]+)\)/g)) {

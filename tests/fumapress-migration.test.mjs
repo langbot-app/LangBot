@@ -170,8 +170,8 @@ test("MDX compatibility normalization removes internal .html route suffixes", ()
 test("canonical MDX and nested OpenAPI sources are discovered", async () => {
   const docs = JSON.parse(await readFile(path.join(root, "docs.json"), "utf8"));
   const pages = await collectMdxDocuments(root);
-  assert.equal(pages.length, 320);
-  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), { en: 101, zh: 118, ja: 101 });
+  assert.equal(pages.length, 332);
+  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), { en: 105, zh: 122, ja: 105 });
   assert.deepEqual(collectOpenApiSources(docs), [
     { locale: "en", source: "openapi/service-api-en.json", directory: "en/api-reference" },
     { locale: "zh", source: "openapi/service-api-zh.json", directory: "zh/api-reference" },
@@ -216,7 +216,7 @@ test("prebuild is deterministic and preserves local assets and SEO files", async
     const first = await prepareFumapress({ root, outRoot: temp });
     const second = await prepareFumapress({ root, outRoot: temp });
     assert.deepEqual(first, second);
-    assert.equal(first.documents, 320);
+    assert.equal(first.documents, 332);
     assert.equal(first.fallbackDefaults, 0);
     assert.equal(first.localeOnlyDocuments, 17);
     assert.equal(first.redirects, 103);
@@ -239,7 +239,7 @@ test("prebuild is deterministic and preserves local assets and SEO files", async
     assert.match(troubleshooting, /```dotenv\nLANGBOT_BOX_ROOT=/);
     assert.doesNotMatch(troubleshooting, /```env(?:\s|$)/m);
     const dingtalk = await readFile(path.join(temp, "content/docs/usage/platforms/dingtalk.mdx"), "utf8");
-    assert.match(dingtalk, /!\[Don.t modify\]\(\/images\/zh\/deploy\/bots\/dingtalk\/dingtalk13\.png\)/);
+    assert.match(dingtalk, /!\[DingTalk Open Platform\]\(\/images\/zh\/deploy\/bots\/dingtalk\/dingtalk1\.png\)/);
     assert.doesNotMatch(dingtalk, /\]\(\.\.\/\.\.\/\.\.\/images\//);
     await readFile(path.join(temp, "public/images/platforms/qq.svg"));
     await readFile(path.join(temp, "public/images/zh/plugin/dev/dist/github_release.png"));

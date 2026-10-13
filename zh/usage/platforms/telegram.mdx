@@ -6,28 +6,75 @@ icon: "/images/platforms/telegram.svg"
 
 ## 创建机器人
 
-前往 [Telegram 机器人创建页面](https://t.me/botfather)，按照提示操作，创建一个机器人。
+在 Telegram 打开官方 [BotFather](https://t.me/BotFather)，发送 `/newbot`，依次设置名称和以 `bot` 结尾的用户名。保存 BotFather 返回的 Token，不要把它发到群里或放入截图。
 
-![Telegram 机器人创建](/images/zh/deploy/bots/telegram/telegram_01.png)
+本文适用于 LangBot 4.11 的新版 Telegram 适配器（内部名称 `telegram-omni`）。不要选择标记为过时的旧版适配器。
 
-![Telegram 机器人创建](/images/zh/deploy/bots/telegram/telegram_02.png)
+## 配置并启用
 
-创建完成后，BotFather 会返回一个 API Token，请妥善保存。接下来关闭`Privacy Mode`，以便在群聊中使用。
+1. 在 LangBot 配置可用的模型供应商和模型，再创建 Pipeline、Agent 或插件处理器。
+2. 在「机器人」中新建机器人，选择 Telegram，填写 Token。
+3. 为 `message.received` 配置消息处理器。Pipeline 适合现有对话流程；Agent 通过事件与工具处理任务。插件处理器也可以独立订阅事件。
+4. 根据需要打开 Markdown 和流式回复，启用机器人并保存。修改处理器绑定后也要保存。
+5. 在 Telegram 私聊机器人，点击 **Start**，发送一条测试消息；同时在 LangBot 的处理器运行记录中检查状态和回复工具结果。
 
-![Telegram 机器人 API Token](/images/zh/deploy/bots/telegram/telegram_03.png)
+适配器通过长轮询连接 Telegram，需要 LangBot 所在环境能访问 `api.telegram.org`。不需要为收消息额外暴露入站 Webhook。一个 Token 只应由一个轮询实例使用；不要同时在另一套 LangBot 中启用同一个机器人。
 
-## 对接 LangBot
+### 选择处理器
 
-打开 LangBot Webui 页面，创建一个新机器人
+| 方式 | 配置与检查 |
+| --- | --- |
+| Pipeline | 配置模型和触发条件。群聊的 @、前缀等触发条件仍需满足；开启流式回复后，支持流式的处理器可逐步更新 Telegram 消息。 |
+| Agent | 配置模型、指令及事件工具。要求 Agent 使用 `event_reply` 等工具回复；模型生成了文本不等于消息已发送到 Telegram。 |
+| 插件处理器 | 安装并创建相应插件处理器，将它绑定到机器人并保存。独立订阅可与主处理器并行，因此同一条消息可能产生两份回复。 |
 
-![对接 LangBot](/images/zh/deploy/bots/telegram/connect_to_langbot.png)
+需要读写附件时，为相应处理器启用 Box，并使用其沙盒工具和附件发送能力。Box 必须处于可用状态。外部文件系统 MCP 与 Box 不是同一个文件系统。图片理解还需要支持视觉的模型。
 
-填写完成后启动 LangBot，若成功配置，日志中会出现`[02-02 16:48:15.263] manager.py (68) - [INFO] : 初始化平台适配器 1: telegram`的字样，保持 LangBot 运行。
+机器人上的流式开关不会把所有工具调用都变成逐字输出。Agent 的一次 `event_reply` 是一次完整发送；插件是否流式取决于插件实现。请分别核对 Telegram 中的实际更新和处理器日志，不能只看开关。
 
-## 使用机器人
+## 私聊与群聊
 
-现在在群里或者私聊机器人都可以正常使用了。
+私聊应先点击 **Start**。群聊则先把机器人加入测试群，再按处理器触发规则发送消息，例如发给机器人的命令或回复机器人的消息。
 
-![Telegram 机器人使用](/images/zh/deploy/bots/telegram/telegram_04.png)
+不必为了所有群聊场景都关闭 **Privacy Mode**。隐私模式会影响 Telegram 向机器人投递哪些消息；定向命令、回复和管理员身份的行为与普通群消息不同。如果需要接收群内普通消息，可以在 BotFather 中调整隐私模式，按 Telegram 的提示重新添加机器人，或按需要授予管理员身份。详见 [Telegram 官方隐私模式说明](https://core.telegram.org/bots/features#privacy-mode)。
 
-![Telegram 机器人使用](/images/zh/deploy/bots/telegram/telegram_05.png)
+接收成员状态、表情等更新时，需要满足 Telegram 对相应更新的管理员要求。只授予实际功能需要的权限；不要为了接收事件直接打开删除消息、封禁成员、添加管理员等全部权限。Telegram 侧投递规则和 LangBot 处理器触发条件需要同时满足。
+
+普通群升级为超级群后，群 ID 会改变。事件日志中的 Bot API 群 ID 与 Telegram Web 地址栏中的 ID 也不一定相同，不要直接从网页地址拼接群 ID。
+
+## 图片、文件与流式回复
+
+图片和文件可以作为消息附件进入处理器。测试时发送带有明确问题的图片、内容可校验的文本文件，并检查真实返回的图片或文件，而不仅是“已发送”的文本。
+
+流式文本在 Telegram 中通过持续更新消息展示；附件在结束时单独发送。生成文件必须使用处理器提供的附件输出机制，不能只返回沙盒路径。Telegram 无法作为照片处理的图片会尝试以文件发送，便于保留原始内容。
+
+![真实群聊验收：Agent 识别图片、读取文件并返回文件和生成的图片。](/images/telegram/agent-group-media.jpg)
+
+## 其他事件
+
+在机器人中为所需事件绑定 Agent 或插件处理器。Pipeline 主要用于消息流程，不应把所有非消息事件都当作普通聊天测试。
+
+| 事件 | 触发与含义 |
+| --- | --- |
+| `message.received` | 收到私聊或群聊消息，包括支持的附件。 |
+| `message.edited` | 编辑已发送的消息。 |
+| `message.reaction` | 用户新增或移除消息表情；`is_add` 区分方向，`reaction` 保留被移除的表情。 |
+| `group.member_joined` | 成员加入群。 |
+| `group.member_left` | 成员离开或被移出；检查 `is_kicked`。 |
+| `group.member_banned` | 成员权限受到限制，例如禁言；不代表成员已被移出。 |
+| `bot.invited_to_group` | 机器人被加入群。 |
+| `bot.removed_from_group` | 机器人被移出群，包括此前处于受限状态的机器人。 |
+| `bot.muted` | 机器人失去发送消息权限。永久限制的 `duration` 为 `null`。 |
+| `bot.unmuted` | 机器人恢复发送消息权限，即使仍受其他权限限制。 |
+| `platform.specific` | 其他平台事件，例如权限状态变化或回调。根据 `action` 和 `data` 处理。 |
+
+先用只记录事件的插件处理器确认投递，再添加回复或管理操作。机器人被禁言或移出时，收到事件并不意味着仍有权限在原群回复。权限不足的发送失败应与事件接收成功分别判断。
+
+## 排查问题
+
+- **无响应**：检查机器人启用状态、保存后的绑定、私聊 Start、群隐私模式和触发规则，然后查看对应处理器运行记录。
+- **消息发出了但运行失败**：展开运行记录核对工具返回值；仅有 Telegram 消息不是整次任务成功的证明。
+- **模型报错或超时**：检查供应商和模型。上游模型错误与 Telegram 投递问题分别排查。
+- **附件只有路径**：检查 Box、模型工具权限，以及是否真正调用了附件发送工具。
+- **重复回复**：检查主处理器与独立订阅是否同时处理同一事件，以及是否有多个轮询实例。
+- **收不到表情或成员事件**：检查机器人管理员身份和事件绑定；先在专用测试群操作，避免影响真实成员。

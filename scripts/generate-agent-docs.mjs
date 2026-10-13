@@ -167,10 +167,13 @@ export function renderOperation(spec, apiPath, method, locale) {
   return { route, title: operation.summary, description: `${method.toUpperCase()} ${apiPath}`, url, markdown };
 }
 
+import { deploymentGuidance } from "./deployment-guidance.mjs";
+
 function indexText(pages, locale) {
   const languages = locale ? [locale] : LOCALES;
   const prefix = locale ? `${locale}/` : "";
   const lines = ["# LangBot Documentation", "", "> Canonical documentation for LangBot: deployment, messaging integrations, plugins, development and HTTP API reference.", "", "## Agent resources", "", `- [Complete documentation text](${BASE}/${prefix}llms-full.txt)`, `- [All-language index](${BASE}/llms.txt)`, ""];
+  lines.push(deploymentGuidance(locale), "");
   for (const language of languages) {
     lines.push(`## ${language}`, "", `- [${language} documentation index](${BASE}/${language}/llms.txt)`, `- [${language} complete documentation text](${BASE}/${language}/llms-full.txt)`, `- [${language} OpenAPI specification](${BASE}/openapi/service-api-${language}.json)`, "");
     for (const page of pages.filter((page) => page.route.startsWith(`${language}/`))) {
@@ -214,7 +217,7 @@ export async function generateAgentDocs({ root = ROOT, output = path.join(root, 
     const index = indexText(selected, locale);
     await writeFile(path.join(output, `${prefix}llms.txt`), index);
     await writeFile(path.join(output, `${prefix}llm.txt`), index);
-    await writeFile(path.join(output, `${prefix}llms-full.txt`), `${selected.map((page) => page.markdown.trim()).join("\n\n---\n\n")}\n`);
+    await writeFile(path.join(output, `${prefix}llms-full.txt`), `${deploymentGuidance(locale)}\n${selected.map((page) => page.markdown.trim()).join("\n\n---\n\n")}\n`);
   }
   return { pages: pages.length, documents: documents.length, operations: pages.length - documents.length };
 }

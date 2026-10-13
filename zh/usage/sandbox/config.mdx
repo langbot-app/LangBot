@@ -64,12 +64,15 @@ Box 可以跑在**本机容器**、**云端沙箱**，也可以直接使用 **Bo
 
 | Profile | 网络 | 挂载 | 资源 | 建议场景 |
 |---------|------|------|------|----------|
-| `default` | 关闭 | 读写 | 默认限制 | 默认选择 |
+| `default` | 开启 | 读写 | 默认限制 | 默认选择，可访问 API 或下载依赖 |
+| `offline` | 关闭 | 读写 | 默认限制 | 无需联网的任务，保留原 default 配置 |
 | `offline_readonly` | 关闭 | 只读 | 更严格 | 读取不可信文件 |
 | `network_basic` | 开启基础网络 | 读写 | 默认限制 | 需要访问 API 或下载依赖 |
 | `network_extended` | 开启完整网络 | 读写 | 更宽松 | 开发、调试、复杂任务 |
 
-优先使用最小权限：不需要网络就用 `default` 或 `offline_readonly`；只把必要目录加入 `allowed_mount_roots`。
+`network_basic` 保留兼容，其配置与 `default` 相同。
+
+优先使用最小权限：不需要网络就用 `offline` 或 `offline_readonly`；只把必要目录加入 `allowed_mount_roots`。
 
 <Note>
 Host 后端不执行这些隔离策略。即使配置了 profile、CPU / 内存 / PID 限制、只读 rootfs 或网络关闭，主机进程也不受这些沙箱边界保护。

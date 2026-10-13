@@ -41,11 +41,37 @@ If you choose an existing app, a list of your apps will be shown:
 
 ![Config Success](/images/zh/deploy/bots/lark/lark_config_success.png)
 
-7. **Manually fill in the bot name** — it must match the Feishu bot name, otherwise the bot won't receive messages in groups
+7. The new adapter identifies the bot automatically; no bot name is needed to recognize group mentions. If the legacy adapter still shows this field, enter the same name as the Feishu bot.
 
 ![Fill Bot Name](/images/zh/deploy/bots/lark/lark_fill_bot_name.png)
 
 8. Click **Submit** to complete
+
+### Additional permissions and event subscriptions
+
+<Note>
+An app created or authorized by QR code may not have all the permissions and event subscriptions your use case requires. Sending and receiving messages does not mean member join/leave events are subscribed. You can update the existing app in the developer console without creating another bot.
+</Note>
+
+1. Open the [Feishu developer console](https://open.feishu.cn/app) or [Lark developer console](https://open.larksuite.com/app). Select the app you created or authorized, using its App ID to confirm.
+2. Under **Permissions**, add the permissions required for your features. Permissions control which data and operations the bot can access.
+3. Under **Events & Callbacks > Event Configuration**, subscribe to the events you need. Subscriptions control which notifications are sent to LangBot; granting permissions does not automatically subscribe to events.
+4. Save the changes and complete any release or administrator approval requested by the platform. Once effective, trigger a new event to verify delivery; earlier actions are not replayed by adding a subscription.
+
+<Warning>
+**Remember to publish a new app version after adding events.** Complete the release under **Version Management & Release**, and wait for administrator approval if required. Adding and saving an event does not activate changes that are still pending release. LangBot may show a healthy connection while these events are not delivered.
+</Warning>
+
+If member join/leave events still do not arrive after subscribing, first check for changes pending release or approval. Once the new version is effective, have a member join or leave a group containing the bot again, then check the event records in LangBot.
+
+To receive group membership changes, the bot must be in the group and the app must subscribe to:
+
+| Feature | Feishu event |
+| --- | --- |
+| User joins a group | `im.chat.member.user.added_v1` |
+| User leaves or is removed from a group | `im.chat.member.user.deleted_v1` |
+
+The bot joining a group (`im.chat.member.bot.added_v1`) is a separate event and does not cover other members. Also configure **Event Routing** in LangBot to send these events to an Agent or plugin processor; pipelines only process message events.
 
 ---
 

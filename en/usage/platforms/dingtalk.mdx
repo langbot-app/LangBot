@@ -28,17 +28,57 @@ LangBot supports one-click DingTalk app creation with automatic credential filli
 
 ![Config Success](/images/zh/deploy/bots/dingtalk/dingtalk_config_success.png)
 
-7. **Manually fill in the bot name** (must match the DingTalk bot name), and the **Robot Code** (required for image/file features — get it from DingTalk Developer Console > Bot Configuration)
-
-![Fill Name and Code](/images/zh/deploy/bots/dingtalk/dingtalk_fill_name_and_code.png)
-
-8. Click **Submit** to complete
+7. Click **Submit** to complete. LangBot automatically identifies the bot.
 
 <Warning>
-After one-click setup, normal text chat works immediately. However:
-- **Image/File support**: Requires the Robot Code (RobotCode) to be filled in. If not filled during one-click setup, get it from DingTalk Developer Console > Bot Configuration
-- **Streaming replies**: Requires manually configuring a card template ID — see the Card Template section below
+One-click setup fills in app credentials but does not create card templates. For streaming replies, import the LangBot streaming reply template, enable Use Card Replies and set Card Template ID to automatically enable streaming replies. Turn off the switch for plain text without deleting the template ID. For human input interactions, import the separate human input template and set Human Input Card Template ID. Enable the required card permissions in your DingTalk app.
 </Warning>
+
+## Configure card templates (use the LangBot templates)
+
+For card replies, import the templates supplied by LangBot instead of building components and binding variables manually. Enable the required card permissions for your DingTalk app, then choose the template for your use case:
+
+| Purpose | Download | LangBot field |
+| --- | --- | --- |
+| Streaming replies with separate reasoning and answer regions | `dingtalk_stream_card.json` | Card Template ID |
+| Pause for user input, a choice, or confirmation | `dingtalk_human_input_card.json` | Human Input Card Template ID |
+
+### Create and import the streaming reply template
+
+1. In the DingTalk adapter configuration, click **Download Streaming Reply Card Template** below **Card Template ID**.
+2. Open [DingTalk Card Platform](https://open-dev.dingtalk.com/fe/card), select the same organization as your bot app, and click **New Template**.
+3. Enter a name. Set **Card Type** to **Message Card**, **Template Scenario** to **AI Card**, associate your bot app, and select **Build from Blank**. Click **Create Blank Template**. The screenshot shows these options in the Chinese interface.
+
+![Create a message card with the AI Card scenario, associated bot app, and blank creation mode](/images/zh/deploy/bots/dingtalk/create_ai_card_template.png)
+
+4. In the card editor, choose **More → Import Card Template** and select `dingtalk_stream_card.json`.
+
+![Import Card Template in the card editor's More menu](/images/zh/deploy/bots/dingtalk/import_card_template.png)
+
+<Note>
+The import option is inside the editor, not on the template list page. Importing replaces the current template contents, so use a new blank template. Keep the imported components, variables, and event bindings.
+</Note>
+
+5. Review the preview, **save and publish** the template, and copy its ID. Saving a draft is insufficient: `param.templateUnpublished` means the template has not been published.
+6. Enable **Use Card Replies**, paste the ID into **Card Template ID** in LangBot, and save to enable streaming replies. Turning off the switch uses plain text and hides but preserves the template settings for later use.
+
+The template includes LangBot branding and separate reasoning and answer regions. Reasoning is expanded during generation and collapsed by default when finished; users can expand it again. The footer offers answer copying, thumbs-up/down controls, and an AI-generated content label. The pipeline still controls whether reasoning is removed. If removed, the reasoning region is hidden. Ordinary messages with reasoning retained show literal `<think>` and `</think>` markers separated from the answer by blank lines.
+
+Card Auto Layout is enabled by default; the supplied streaming reply template includes the required variables. For an existing bot saved with this option off, enable it and save the configuration. You can keep it off for a narrower card.
+
+To update, download and import the latest template, then save and publish again. If you create a different template, also replace its ID in LangBot. Existing templates bound only to `content` remain compatible but do not offer the new separate reasoning region.
+
+## Import the human input card template
+
+Human input is used when a workflow or plugin waits for information, a choice, or confirmation before continuing, such as a Dify Human Input node. Ordinary chat and streaming replies alone do not require this template.
+
+1. Next to **Human Input Card Template ID**, click **Download Human Input Card Template** to save `dingtalk_human_input_card.json`.
+2. Follow the creation steps above to create a separate **Message Card → AI Card → Build from Blank** template associated with your bot app.
+3. Choose **More → Import Card Template** in the editor and import the human input JSON. Keep its input fields, buttons, variables, and event bindings.
+4. **Save and publish**, enter this template's ID into **Human Input Card Template ID** in LangBot, and save the bot configuration.
+
+Import the two templates separately and use their corresponding fields. The human input template does not replace the streaming reply template or automatically enable streaming replies.
+
 
 ---
 
@@ -71,45 +111,16 @@ If card streaming is needed, you must apply for card permissions in the permissi
 
 ![After applying for card permissions](/images/zh/deploy/bots/dingtalk/dingtalk7.png)
 
-Additionally, for card messages you mainly need to create a card template and record the template ID to fill in the configuration, the process is as follows:
-> The card content template ID can be obtained by logging into the developer backend > [Card Platform](https://open-dev.dingtalk.com/fe/card?spm=ding_open_doc.document.0.0.33cf2281L0fXsV)
-
-Fill in information when creating a new template, as shown:
-![Fill in information for new template](/images/zh/deploy/bots/dingtalk/dingtalk8.png)
-
-Select a preset template (just choose the first one and modify the template content later), as shown:
-![Select preset template](/images/zh/deploy/bots/dingtalk/dingtalk9.png)
-Click Use
-![Click](/images/zh/deploy/bots/dingtalk/dingtalk10.png)
-Create
-![Create](/images/zh/deploy/bots/dingtalk/dingtalk11.png)
-
-After clicking Create you'll be redirected to edit the template. As shown, you can freely edit your desired card message:
-![Edit template](/images/zh/deploy/bots/dingtalk/dingtalk12.png)
-
-For the main content, keep the default 'content' unchanged:
-![Don't modify](../../../images/zh/deploy/bots/dingtalk/dingtalk13.png)
-
-Widescreen configuration parameters, you need to add . in the template variables. See [DingTalk Widescreen Configuration](https://open.dingtalk.com/document/development/configure-widescreen-cards)
-![Widescreen Configuration](../../../images/zh/deploy/bots/dingtalk/dingtalk16.png)
-
-After editing and confirming everything is correct, save it and copy the template ID to fill in the configuration file:
-![Save](../../../images/zh/deploy/bots/dingtalk/dingtalk14.png)
-![Copy template ID](../../../images/zh/deploy/bots/dingtalk/dingtalk15.png)
+For card templates, follow the steps above to import and publish the templates supplied by LangBot.
 
 ### Fill in Configuration Information
 
-Click `Credentials and Basic Information`, record `Client ID` and `Client Secret`,
-Click `Application Capabilities`, `Robot`, record the RobotCode and Robot Name.
-`markdown_card` is whether to enable Markdown form replies. When this configuration item is disabled, the `@Sender` configuration switch will not take effect.
+Click `Credentials and Basic Information`, record `Client ID` and `Client Secret`, and enter these credentials in the LangBot adapter configuration.
+`markdown_card` (Use Card Replies) controls both Markdown and streaming card replies. When enabled, a configured template enables streaming; otherwise ordinary Markdown is used. Disable it for plain text without clearing template settings. Human input cards are configured separately for workflow interactions.
 Record the above configuration items and fill them in the LangBot bot configuration form
 
 Click [Card Platform](https://open-dev.dingtalk.com/fe/card?spm=ding_open_doc.document.0.0.33cf2281L0fXsV), copy the corresponding bound template ID from the template list, and fill it into the card template ID field.
 
-![Connect to LangBot](/images/zh/deploy/bots/dingtalk/connect_to_langbot.png)
-
-Streaming related:
-![img.png](../../../images/zh/deploy/bots/dingtalk/dingtalk17.png)
 
 **Start LangBot**.
 
@@ -121,3 +132,16 @@ This article uses DingTalk Windows desktop version as an example, click `Search`
 Click on the bot to chat with it.
 
 If you want to add it to a group, click `Group Management`, `Robots`, `Add Robot` in the DingTalk group, then search for the bot name to use it in the group.
+
+## Event subscriptions
+
+Select Stream mode under Event Subscriptions in the DingTalk app console and enable the required events. This is separate from the robot message callback setting.
+
+- `chat_add_member` maps to `group.member_joined`, once per affected member.
+- `chat_remove_member` / `chat_quit` map to `group.member_left`, distinguishing removal from voluntary departure.
+- `chat_update_title` / `chat_update_owner` map to `group.info_updated`.
+- Ordinary card interactions emit `dingtalk.card_action`. Recognized feedback uses `feedback.received`; managed input forms retain their existing interaction flow without duplicate triggers.
+- Group disbanding and other subscribed events use `platform.specific`, preserving the native event name in `action` and the original headers and payload in `data`.
+
+Group events depend on application permissions and supported group types. Member notifications containing only unionId remain platform-specific; unionId is not treated as a messaging user ID. Message editing, recall, reactions, friend requests and bot mute events are not advertised without a confirmed corresponding push capability.
+
