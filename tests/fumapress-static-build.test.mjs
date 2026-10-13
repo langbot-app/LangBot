@@ -45,7 +45,7 @@ function staticHtmlForUrlPath(urlPath) {
 
 test("all canonical localized documents have static HTML", async () => {
   const documents = await collectMdxDocuments(root);
-  assert.equal(documents.length, 317);
+  assert.equal(documents.length, 329);
   const missing = [];
   for (const document of documents) {
     try {

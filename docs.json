@@ -667,6 +667,15 @@
                   "en/plugin/plugin-intro",
                   "en/plugin/compatibility"
                 ]
+              },
+              {
+                "group": "Enterprise support",
+                "pages": [
+                  "en/enterprise/overview",
+                  "en/enterprise/service-scope",
+                  "en/enterprise/submit-ticket",
+                  "en/enterprise/procurement"
+                ]
               }
             ]
           },
@@ -974,6 +983,15 @@
                   "zh/plugin/plugin-intro",
                   "zh/plugin/compatibility"
                 ]
+              },
+              {
+                "group": "企业支持",
+                "pages": [
+                  "zh/enterprise/overview",
+                  "zh/enterprise/service-scope",
+                  "zh/enterprise/submit-ticket",
+                  "zh/enterprise/procurement"
+                ]
               }
             ]
           },
@@ -1275,6 +1293,15 @@
                 "pages": [
                   "ja/plugin/plugin-intro",
                   "ja/plugin/compatibility"
+                ]
+              },
+              {
+                "group": "企業サポート",
+                "pages": [
+                  "ja/enterprise/overview",
+                  "ja/enterprise/service-scope",
+                  "ja/enterprise/submit-ticket",
+                  "ja/enterprise/procurement"
                 ]
               }
             ]
