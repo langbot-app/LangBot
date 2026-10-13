@@ -59,6 +59,9 @@ _RUNTIME_POLICY_DEFAULTS = {
             'restart_failure_window_seconds': 30.0,
             'restart_circuit_open_seconds': 60.0,
             'require_hard_limits': False,
+            # Cloud-only optional overrides; null inherits the unified policy.
+            'dedicated': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
+            'shared': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
         },
     },
     'mcp': {'stdio': {'enabled': True}},
