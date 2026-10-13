@@ -1,24 +1,49 @@
 ---
-title: "Submit a support ticket"
-description: "LangBot Enterprise Support — Submit a support ticket"
+title: "Submit a ticket"
+description: "How subscribers report issues or book consultations in LangBot Space."
 ---
 
-[Subscriber? Submit a ticket](https://space.langbot.app/profile?tab=tickets&language=en)
+<Tip>
+[Open LangBot Space tickets →](https://space.langbot.app/profile?tab=tickets&language=en)
+</Tip>
 
-Sign in with the Space account registered in your contract. Open Profile → Tickets and choose Enterprise Support: issue intake or Enterprise Assurance: upgrade and consultation. Templates are available to signed-in users; staff verify the contract, registered account and service dates before confirming enterprise entitlements. A subscription number is not proof of identity.
+## Steps
 
-## Information to provide
+1. Sign in with the Space account registered in your contract.
+2. Go to **Profile → Tickets** and pick a template:
+   - **Enterprise Support: issue intake**: report a suspected LangBot Core defect
+   - **Enterprise Support: upgrade and consultation**: upgrade compatibility, consultation booking (Assurance), documentation and procurement materials
+3. Enter your subscription/contract ID and organization name, then complete the form.
 
-- Subscription/contract number, organization, request type and summary.
-- Defects: LangBot version, deployment method, expected and actual behavior, reproduction steps and business impact.
-- Redacted log excerpts; explain if unavailable. Do not include tokens, passwords, full conversations, personal customer data or raw configuration files.
-- Upgrade/consultation: registered instance, current/target versions where relevant, goals and preferred meeting times.
-- Documentation or procurement-material questions do not require invented logs or reproduction steps. Use the consultation form to describe the request; technical consultation sessions are an Assurance benefit.
+We verify the contract, registered account and service term before confirming entitlements. A subscription ID alone doesn't prove identity.
 
-Forms collect text and do not automatically collect instance data or generate a diagnostic archive. Only attach necessary, redacted screenshots. Do not post vulnerability details in public GitHub issues.
+## What to include
 
-## What happens next
+**Issue intake**
 
-The team checks the subscription and scope, then provides documentation guidance, asks for information, schedules an eligible consultation, identifies a public Core defect, or explains an exclusion. Automatic email notifications are not a first human response.
+- LangBot version and deployment method
+- Expected vs. actual behavior
+- Reproduction steps
+- Redacted logs (explain if unavailable)
+- Business impact
 
-Only necessary, redacted reproduction details for confirmed general defects enter public maintenance. Contracts, customer logs and business information are not automatically copied to GitHub. Continue in the same ticket instead of duplicating requests across channels.
+**Upgrade and consultation**
+
+- Registered instance and current version, target version if relevant
+- Goals and context
+- Preferred times, if a meeting is needed
+
+<Warning>
+Don't submit access tokens, passwords, full chat histories, personal data or raw configuration files. Redact screenshots. Never post vulnerability details in a public GitHub issue.
+</Warning>
+
+## After you submit
+
+Once your subscription is verified, we triage the request and may:
+
+- Point you to documentation or ask for more information
+- Book a consultation (Assurance)
+- Confirm a LangBot Core defect and move it into public maintenance
+- Explain that the request is out of scope
+
+For confirmed general defects, only the minimum redacted reproduction details go into public maintenance. Contracts, logs and business information are never synced to public GitHub. Please reply in the same ticket rather than opening duplicates elsewhere.
