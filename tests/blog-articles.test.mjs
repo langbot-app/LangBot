@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const docs = JSON.parse(readFileSync(path.join(root, "docs.json"), "utf8"));
@@ -11,6 +12,11 @@ const localeConfig = {
   en: { language: "en", tab: "Articles" },
   zh: { language: "cn", tab: "文章" },
   ja: { language: "jp", tab: "記事" },
+};
+const extraArticlePages = {
+  en: [],
+  zh: zhOnlyArticleRoutes.map((route) => `zh/${route}`),
+  ja: [],
 };
 
 test("all canonical Blog slugs are published in every Wiki locale", () => {
@@ -24,14 +30,23 @@ test("all canonical Blog slugs are published in every Wiki locale", () => {
   assert.deepEqual(slugsByLocale.get("ja"), slugsByLocale.get("en"));
 });
 
-test("article tabs group every generated page exactly once", () => {
+test("article tabs group every generated Blog page exactly once", () => {
   for (const [locale, config] of Object.entries(localeConfig)) {
     const language = docs.navigation.languages.find((item) => item.language === config.language);
     const matchingTabs = language.tabs.filter((item) => item.tab === config.tab);
     assert.equal(matchingTabs.length, 1, `${locale} must have exactly one ${config.tab} tab`);
     const tab = matchingTabs[0];
     const pages = tab.groups.flatMap((group) => group.pages).filter((page) => page !== `${locale}/articles/index`);
-    const expected = manifest.articles.filter((article) => article.locale === locale).map((article) => article.page);
+    const manifestPages = manifest.articles
+      .filter((article) => article.locale === locale)
+      .map((article) => article.page);
+    const extras = extraArticlePages[locale];
+    assert.deepEqual(
+      extras.filter((page) => manifestPages.includes(page)),
+      [],
+      `${locale} extra article pages must not overlap with the synchronized manifest`,
+    );
+    const expected = [...new Set(manifestPages.concat(extras))];
     assert.deepEqual([...pages].sort(), [...expected].sort());
     assert.equal(new Set(pages).size, pages.length, `${locale} has duplicate article navigation entries`);
   }

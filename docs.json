@@ -1078,6 +1078,14 @@
                 ]
               },
               {
+                "group": "在线体验",
+                "pages": [
+                  "zh/articles/langbot-wecom-customer-service-knowledge-base",
+                  "zh/articles/langbot-telegram-sandbox-agent",
+                  "zh/articles/langbot-wechat-official-account"
+                ]
+              },
+              {
                 "group": "技术解析",
                 "pages": [
                   "zh/articles/langbot-v4100-sandbox-skills",
