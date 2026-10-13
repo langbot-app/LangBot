@@ -1,9 +1,5 @@
 export type WorkspaceRole =
-  | 'owner'
-  | 'admin'
-  | 'developer'
-  | 'operator'
-  | 'viewer';
+  'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
 
 export interface Workspace {
   uuid: string;

@@ -329,7 +329,7 @@ class TestModelEndpoints:
         assert response.status_code == 400
         data = await response.get_json()
         assert data['code'] == 'model_test_failed'
-        assert data['msg'] == '模型请求失败: API key invalid'
+        assert data['msg'] == 'Model request failed: API key invalid'
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

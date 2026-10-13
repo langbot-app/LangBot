@@ -243,7 +243,11 @@ class AdaptersRouterGroup(group.RouterGroup):
             snapshot = await workspace_entitlement(self.ap, request_context.workspace_uuid)
             adapters = self.ap.platform_mgr.get_available_adapters_info()
             if snapshot is not None:
-                adapters = [a for a in adapters if not any(snapshot.features.get(f) is False for f in platform_feature_names(a['name']))]
+                adapters = [
+                    a
+                    for a in adapters
+                    if not any(snapshot.features.get(f) is False for f in platform_feature_names(a['name']))
+                ]
             return self.success(data={'adapters': adapters})
 
         @self.route('/<adapter_name>', methods=['GET'])

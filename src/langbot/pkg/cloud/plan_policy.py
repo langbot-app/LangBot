@@ -7,8 +7,8 @@ from ..platform.adapter_names import canonical_adapter_name
 def platform_feature_names(adapter: str) -> set[str]:
     canonical = canonical_adapter_name(adapter)
     names = {adapter, canonical}
-    if adapter.lower() == "line":
-        names.update({"line", "LINE"})
+    if adapter.lower() == 'line':
+        names.update({'line', 'LINE'})
     if canonical.endswith('-omni'):
         names.add(canonical[:-5])
         names.add(canonical[:-5] + '-eba')

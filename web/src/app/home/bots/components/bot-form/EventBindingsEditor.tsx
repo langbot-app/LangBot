@@ -144,17 +144,9 @@ interface EventBindingsEditorProps {
 }
 
 type FilterField =
-  | 'chat_type'
-  | 'chat_id'
-  | 'message_text'
-  | 'message_element_types';
+  'chat_type' | 'chat_id' | 'message_text' | 'message_element_types';
 type FilterOperator =
-  | 'eq'
-  | 'neq'
-  | 'contains'
-  | 'not_contains'
-  | 'starts_with'
-  | 'regex';
+  'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'regex';
 
 interface FilterRow {
   field: FilterField;

@@ -129,7 +129,7 @@ function launchWidget() {
   FakeWebSocket.instances = [];
   const document = new FakeDocument();
   const window = {
-    location: {href: "https://embed.test/"},
+    location: { href: 'https://embed.test/' },
     crypto: { randomUUID: () => '00000000-0000-4000-8000-000000000000' },
     sessionStorage: { getItem: () => null, setItem: () => {} },
   };

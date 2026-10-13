@@ -35,6 +35,7 @@ async def box_security_api():
         'owner-token': SimpleNamespace(uuid='owner-account', user='owner@example.com'),
     }
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False)
     application.persistence_mgr = SimpleNamespace(tenant_uow=None)
     application.user_service.get_authenticated_account = AsyncMock(side_effect=lambda token: accounts[token])

@@ -272,8 +272,7 @@ function executionText(raw: unknown): string {
 /** Derive the unified execution list from a mocked monitoring payload. */
 export function buildExecutionList(monitoringData: unknown) {
   const payload = monitoringData as
-    | { messages?: RawMonitoringMessage[] }
-    | undefined;
+    { messages?: RawMonitoringMessage[] } | undefined;
   const items = (payload?.messages ?? [])
     .filter((message) => message.role !== 'assistant')
     .map((message) => {

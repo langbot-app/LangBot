@@ -391,8 +391,7 @@ export default function WizardPage() {
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
             setExtraWebhookUrl(
               (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -735,8 +734,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(resp.uuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -902,8 +900,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(createdBotUuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',

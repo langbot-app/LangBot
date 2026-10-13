@@ -2406,8 +2406,7 @@ const zhHans = {
     upgradePlan: '切换或升级计划',
     ossSingletonDescription:
       '当前自托管实例只有一个工作区，但可以包含多个用户。',
-    cloudManagedDescription:
-      '此工作区托管于 LangBot Cloud。',
+    cloudManagedDescription: '此工作区托管于 LangBot Cloud。',
     loadFailed: '加载工作区信息失败',
     members: '成员',
     you: '你',

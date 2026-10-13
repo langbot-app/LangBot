@@ -427,7 +427,10 @@ class Application:
 
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            monitoring_enabled = auto_cleanup_cfg.get('enabled', True) or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            monitoring_enabled = (
+                auto_cleanup_cfg.get('enabled', True)
+                or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            )
             retention_days = self._get_positive_int_config(
                 auto_cleanup_cfg.get('retention_days', 30),
                 default=30,
