@@ -2185,7 +2185,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", specifier = "==0.7.11rc4" },
+    { name = "langbot-plugin", specifier = "==0.7.11rc5" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2255,7 +2255,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.11rc4"
+version = "0.7.11rc5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2276,9 +2276,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/1c/6161476312d727d7597db1be25db05bb0e55fdfb3cbf3e5814d743395164/langbot_plugin-0.7.11rc4.tar.gz", hash = "sha256:edb9b9d775b94b341ab1392a37c290f7f6b16255e20876d9dbeae6931684d0ab", size = 697204, upload-time = "2026-10-13T03:17:49.891Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/88/bc8f1af2f3d58ad83e18d9bcdff1e09b5a1c5192bb30daf9eeb547122de5/langbot_plugin-0.7.11rc5.tar.gz", hash = "sha256:b018f45eae0b224cc125e98bc15c22b564d92d313c744aee6db40a5e9708f7bd", size = 697482, upload-time = "2026-10-13T05:01:55.325Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/f6/73af295201ccbbace6cbcc609d3eae1c4001750c7a26b69d99e5f0783811/langbot_plugin-0.7.11rc4-py3-none-any.whl", hash = "sha256:7ed643457260b435e20d684329fdc071d0faced16c88679b2face2081258c976", size = 447841, upload-time = "2026-10-13T03:17:47.875Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/de/8fab16ea4859e567f34f3ff121de0855445003d5125fbac03c737a5b9d0a/langbot_plugin-0.7.11rc5-py3-none-any.whl", hash = "sha256:c32e3577055ec6b8393e5b136677e99af27c33d74b0778e588ad4dd2c47458e2", size = 447896, upload-time = "2026-10-13T05:01:53.591Z" },
 ]
 
 [[package]]
