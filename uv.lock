@@ -2059,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.11.0rc3"
+version = "4.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -2185,7 +2185,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", specifier = "==0.7.11rc5" },
+    { name = "langbot-plugin", specifier = "==0.7.11" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2255,7 +2255,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.11rc5"
+version = "0.7.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2276,9 +2276,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/88/bc8f1af2f3d58ad83e18d9bcdff1e09b5a1c5192bb30daf9eeb547122de5/langbot_plugin-0.7.11rc5.tar.gz", hash = "sha256:b018f45eae0b224cc125e98bc15c22b564d92d313c744aee6db40a5e9708f7bd", size = 697482, upload-time = "2026-10-13T05:01:55.325Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/c4/ed01dd73ab5047c75a0563dd38b88146d5d509b889197d5ec47fc27541e5/langbot_plugin-0.7.11.tar.gz", hash = "sha256:19f57a020d435fd414b02cbc477a70f880a462cba73e4ec767fb7dbbffb1bc56", size = 697187, upload-time = "2026-10-14T07:41:24.85Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/de/8fab16ea4859e567f34f3ff121de0855445003d5125fbac03c737a5b9d0a/langbot_plugin-0.7.11rc5-py3-none-any.whl", hash = "sha256:c32e3577055ec6b8393e5b136677e99af27c33d74b0778e588ad4dd2c47458e2", size = 447896, upload-time = "2026-10-13T05:01:53.591Z" },
+    { url = "https://files.pythonhosted.org/packages/53/5b/959ca0b62eac62a95f7740ba3f7c36dd34a1d7ae8499eff17e417b5d2706/langbot_plugin-0.7.11-py3-none-any.whl", hash = "sha256:234d31a8ed4df7e3d8c648735062e8ceba90ac81dfa51a6c678be5a872b505fe", size = 447857, upload-time = "2026-10-14T07:41:23.14Z" },
 ]
 
 [[package]]
