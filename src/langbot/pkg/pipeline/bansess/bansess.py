@@ -31,9 +31,16 @@ class BanSessionCheckStage(stage.PipelineStage):
                     found = True
                     break
                 # 使用 *_id 来表示加白/拉黑某用户的私聊和群聊场景
-                if sess.startswith('*_') and (sess[2:] == query.launcher_id or sess[2:] == query.sender_id):
-                    found = True
-                    break
+                # Config entries are strings; OneBot and other adapters may pass int ids.
+                # Skip None so str(None) cannot match, and ignore a bare "*_" (empty suffix).
+                if sess.startswith('*_'):
+                    suffix = sess[2:]
+                    if suffix and (
+                        (query.launcher_id is not None and suffix == str(query.launcher_id))
+                        or (query.sender_id is not None and suffix == str(query.sender_id))
+                    ):
+                        found = True
+                        break
 
         ctn = False
 
