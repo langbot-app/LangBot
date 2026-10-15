@@ -237,3 +237,49 @@ async def test_cancelling_tls_initialization_leaks_no_http_client(monkeypatch):
         assert pool.client is None and pool.active == 0
     finally:
         release.set()
+
+
+@pytest.mark.asyncio
+async def test_real_openai_stream_close_disconnects_upstream(monkeypatch):
+    monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
+    disconnected = asyncio.Event()
+
+    async def handle(request):
+        await request.read()
+        response = web.StreamResponse(headers={'Content-Type': 'text/event-stream'})
+        await response.prepare(request)
+        await response.write(
+            b'data: {"id":"r","object":"chat.completion.chunk","created":1,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n'
+        )
+        for _ in range(100):
+            if request.transport is None or request.transport.is_closing():
+                disconnected.set()
+                break
+            await asyncio.sleep(0.02)
+        return response
+
+    app = web.Application()
+    app.router.add_post('/chat/completions', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    adapter = LiteLLMRequester(
+        SimpleNamespace(logger=Mock()),
+        {
+            'custom_llm_provider': 'openai',
+            'base_url': f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}',
+        },
+    )
+    await adapter.initialize()
+    model = _runtime_model(adapter, name='gpt-4o')
+    model.provider.token_mgr.get_token = lambda: 'test'
+    stream = adapter.invoke_llm_stream(None, model, [])
+    try:
+        assert (await anext(stream)).content == 'hello'
+        await stream.aclose()
+        await asyncio.wait_for(disconnected.wait(), 3)
+    finally:
+        await stream.aclose()
+        await adapter.aclose()
+        await runner.cleanup()

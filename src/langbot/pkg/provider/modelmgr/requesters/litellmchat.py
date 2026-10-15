@@ -317,6 +317,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _get_custom_llm_provider(self) -> str | None:
         return self.requester_cfg.get('custom_llm_provider') or None
 
+    def _uses_openrouter_protocol(self) -> bool:
+        # OpenRouter's shipped metadata also serves OpenAI-compatible non-chat
+        # operations. Select gateway chat semantics independently of it.
+        return (
+            self._get_custom_llm_provider() == 'openrouter'
+            or self.requester_cfg.get('requester_name') == 'openrouter-chat-completions'
+        )
+
     def _safe_litellm_bool_helper(self, helper_name: str, model_name: str) -> bool:
         """Call a LiteLLM boolean capability helper without letting metadata gaps fail requests."""
         return self._cached_metadata(
@@ -689,7 +697,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         }
         if family == 'qwen' and 'disabled' in capabilities['levels'] and 'enabled' not in capabilities['levels']:
             capabilities['legacy_levels'] = ['enabled']
-        if self._get_custom_llm_provider() == 'openrouter':
+        if self._uses_openrouter_protocol():
             capabilities['budget_tokens'] = {'min': 1, 'max': 32768}
         elif family == 'anthropic' and not self._is_anthropic_adaptive_model(normalized_name):
             if normalized_name.rsplit('/', 1)[-1].startswith(
@@ -720,7 +728,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         family = self._reasoning_family(model.model_entity.name, model)
         budget = config.get('budget_tokens')
         if budget is not None:
-            if self._get_custom_llm_provider() == 'openrouter':
+            if self._uses_openrouter_protocol():
                 return {'extra_body': {'reasoning': {'max_tokens': budget}}}
             if family == 'qwen':
                 return {'extra_body': {'enable_thinking': True, 'thinking_budget': budget}}
@@ -1311,7 +1319,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             )
             if cache_preparation:
                 state.prepared[message_key] = copy.deepcopy(req_messages)
-        model_name = self._build_litellm_model_name(model.model_entity.name)
+        # OpenRouter shares requester metadata with OpenAI-compatible non-chat
+        # operations, but chat needs its own adapter to preserve cache markers.
+        chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        model_name = self._build_litellm_model_name(model.model_entity.name, chat_provider)
         api_key = model.provider.token_mgr.get_token()
 
         args = {
@@ -1323,6 +1334,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             args['stream'] = True
             args['stream_options'] = {'include_usage': True}
         self._build_common_args(args)
+
+        if chat_provider == 'openrouter':
+            args['custom_llm_provider'] = chat_provider
 
         # Apply model-level extra_args first, then call-level extra_args
         if model.model_entity.extra_args:
@@ -1354,7 +1368,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 args['allowed_openai_params'] = list(dict.fromkeys([*allowed_openai_params, 'reasoning_effort']))
 
         budget = model.reasoning_config_override.get('budget_tokens')
-        if budget is not None and reasoning_family == 'anthropic' and self._get_custom_llm_provider() != 'openrouter':
+        if budget is not None and reasoning_family == 'anthropic' and not self._uses_openrouter_protocol():
             output_limit = args.get('max_completion_tokens', args.get('max_tokens'))
             if type(output_limit) is not int or output_limit <= budget:
                 raise errors.RequesterError(

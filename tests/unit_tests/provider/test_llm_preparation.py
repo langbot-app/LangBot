@@ -4,12 +4,14 @@ import asyncio
 import copy
 import threading
 import json
+from pathlib import Path
 from collections import OrderedDict
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
+import yaml
 from aiohttp import web
 
 from langbot.pkg.provider.modelmgr import reasoning
@@ -334,7 +336,7 @@ async def test_gateway_transport_never_retries_or_closes_borrowed_client():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('provider', ['anthropic', 'openrouter'])
+@pytest.mark.parametrize('provider', ['anthropic', 'openrouter', 'openrouter-metadata'])
 async def test_anthropic_cache_and_budget_reach_upstream(provider):
     bodies = []
 
@@ -366,7 +368,16 @@ async def test_anthropic_cache_and_budget_reach_upstream(provider):
             }
         return httpx.Response(200, json=payload)
 
-    adapter = _requester(provider)
+    adapter = _requester('openai' if provider == 'openrouter-metadata' else provider)
+    if provider == 'openrouter-metadata':
+        metadata = yaml.safe_load(
+            (
+                Path(__file__).parents[3] / 'src/langbot/pkg/provider/modelmgr/requesters/openrouterchatcmpl.yaml'
+            ).read_text(encoding='utf-8')
+        )
+        adapter.requester_cfg.update(
+            requester_name=metadata['metadata']['name'], custom_llm_provider=metadata['spec']['litellm_provider']
+        )
     name = 'claude-sonnet-4-5' if provider == 'anthropic' else 'anthropic/claude-sonnet-4.5'
     model = _runtime_model(adapter, name=name)
     model.provider.token_mgr.get_token = Mock(return_value='test')

@@ -5,6 +5,12 @@ The Core owns chat-call deadlines and retry decisions. The existing SDK
 No SDK or Runner upgrade is required. This policy does not add automatic tool
 replay, model fallback, key rotation, or embedding/rerank retries.
 
+The public API remains compatible with existing plugins. Full-chain testing
+identified a pre-existing SDK <=0.7.11 early-close defect: prompt remote
+cancellation through public plugin/Runner wrappers requires the companion
+[SDK fix](https://github.com/langbot-app/langbot-plugin-sdk/pull/177).
+See [E2E acceptance results](LLM_REQUEST_E2E.md) for tested versions and scope.
+
 ## Configuration
 
 Instance defaults live in `data/config.yaml` under `llm_request_policy`; restart
