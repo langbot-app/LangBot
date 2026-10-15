@@ -246,3 +246,6 @@ is opt-in through model/call `extra_args.prompt_caching`; use provider-specific
 modes documented in `docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
 not evidence of hits; read the actual usage counters. `preparation_ms` measures
 request construction and `preparation_cache_hits` counts retry preparation reuse.
+`transport_setup_ms` measures managed pool acquisition, including first-use TLS
+initialization; it is not network TTFT. See `docs/LLM_LATENCY_BENCHMARK.md` for
+controlled request-layer measurements and their scope.

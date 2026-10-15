@@ -61,7 +61,7 @@ HTTP monitoring and `get_monitoring_records(kind="llm_calls")` return additive
 Older records have null details. Existing top-level token counters remain intact.
 Migration `0038_llm_call_details` adds a nullable JSON column and preserves rows.
 
-Timing offsets use a monotonic clock, in milliseconds from invocation start:
+Timing offsets use a high-resolution monotonic clock, in milliseconds from invocation start:
 
 | Field | Meaning |
 | --- | --- |
@@ -76,6 +76,7 @@ Timing offsets use a monotonic clock, in milliseconds from invocation start:
 | `total_ms` | Invocation duration, excluding the subsequent monitoring write |
 | `attempts`, `retry_wait_ms` | Host attempts and total backoff wait |
 | `preparation_ms` | Cumulative LiteLLM request-building time across attempts |
+| `transport_setup_ms` | Cumulative managed HTTP pool acquisition, including first-use TLS setup |
 | `preparation_cache_hits` | Message preparation reused within a retrying invocation |
 
 Missing fields mean not observed or not instrumented, not zero latency. The Core
@@ -159,6 +160,14 @@ their own transport handling; custom LiteLLM transport/TLS settings, explicit ca
 are preserved. Bare OpenAI names on OpenRouter retain LiteLLM's alternate routing;
 use OpenRouter's fully qualified names such as `openai/gpt-4o`.
 
+Each pool loads its TLS context once in a worker thread, preserving HTTPX
+certificate and proxy environment settings. Concurrent initialization is serialized;
+cancellation or retirement during certificate loading creates no HTTP client.
+
+OpenAI-compatible streams drain HTTP framing after the SSE `[DONE]` record
+(at most 50 ms / 64 KiB) so the SDK can return healthy connections to the pool.
+Early close and cancellation never trigger this drain; late usage preceding
+`[DONE]` remains available. OpenRouter already consumes EOF in its generic adapter.
 Codex briefly drains the HTTP tail after a completion event (at most 50 ms) to
 release a healthy connection for reuse. Incomplete/cancelled streams are closed.
 Capability lookups use a bounded requester-local cache (128 entries, five minutes).
@@ -235,3 +244,5 @@ References checked on 2026-10-15:
 - https://platform.claude.com/docs/en/build-with-claude/extended-thinking
 - https://ai.google.dev/gemini-api/docs/generate-content/thinking
 - https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+
+See [the latency benchmark](LLM_LATENCY_BENCHMARK.md) for measured results and limitations.

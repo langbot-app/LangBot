@@ -162,7 +162,7 @@ class RuntimeProvider:
         try:
             while True:
                 state.metrics['attempts'] += 1
-                state.attempt_start = time.monotonic()
+                state.attempt_start = time.perf_counter()
                 try:
                     result = await state.wait(
                         lambda: self.requester.invoke_llm(
@@ -213,7 +213,7 @@ class RuntimeProvider:
         try:
             while True:
                 state.metrics['attempts'] += 1
-                state.attempt_start = time.monotonic()
+                state.attempt_start = time.perf_counter()
                 try:
                     async with aclosing(
                         self.requester.invoke_llm_stream(

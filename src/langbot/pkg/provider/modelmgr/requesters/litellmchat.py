@@ -225,7 +225,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     async def initialize(self):
         """Initialize LiteLLM client settings."""
-        self._http_pool = RequesterHTTPPool(follow_redirects=True)
+        self._http_pool = RequesterHTTPPool(
+            follow_redirects=True, drain_sse=self._get_custom_llm_provider() == 'openai'
+        )
 
     async def aclose(self):
         if getattr(self, '_http_pool', None) is not None:
@@ -258,7 +260,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         if provider == 'openrouter' and model_name in litellm.open_ai_chat_completion_models:
             yield args  # Preserve LiteLLM's alternate bare-model routing.
             return
+        transport_started = time.perf_counter()
         async with pool.lease() as client:
+            state = current_call.get()
+            if state:
+                state.metrics['transport_setup_ms'] = round(
+                    state.metrics.get('transport_setup_ms', 0) + (time.perf_counter() - transport_started) * 1000, 3
+                )
             if provider == 'openrouter' or get_secret_bool('EXPERIMENTAL_OPENAI_BASE_LLM_HTTP_HANDLER'):
                 yield {**args, 'client': _LeasedHTTPHandler(client, args.get('timeout', 120))}
                 return
@@ -1282,7 +1290,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         stream: bool = False,
     ) -> dict:
         """Build common completion arguments for invoke_llm and invoke_llm_stream."""
-        preparation_start = time.monotonic()
+        preparation_start = time.perf_counter()
         state = current_call.get()
         cache_preparation = state is not None and state.policy.retries > 0
         scoped_model = copy.copy(model)
@@ -1377,7 +1385,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         self._apply_transport(args, model, extra_args)
         if state:
             state.metrics['preparation_ms'] = round(
-                state.metrics.get('preparation_ms', 0) + (time.monotonic() - preparation_start) * 1000, 3
+                state.metrics.get('preparation_ms', 0) + (time.perf_counter() - preparation_start) * 1000, 3
             )
         return args
 

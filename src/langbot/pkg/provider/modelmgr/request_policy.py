@@ -80,7 +80,7 @@ class CallState:
     def __init__(self, policy, conversation_id=None):
         self.policy = policy
         self.conversation_id = conversation_id
-        self.start = time.monotonic()
+        self.start = time.perf_counter()
         self.attempt_start = self.start
         self.metrics = {'attempts': 0, 'retry_wait_ms': 0}
         self.raw_started = False
@@ -89,12 +89,12 @@ class CallState:
         self.prepared = {}
 
     def mark(self, name):
-        self.metrics.setdefault(name, round((time.monotonic() - self.start) * 1000, 3))
+        self.metrics.setdefault(name, round((time.perf_counter() - self.start) * 1000, 3))
 
     async def wait(self, operation, phase, limit):
-        remaining = self.policy.total_timeout - (time.monotonic() - self.start)
+        remaining = self.policy.total_timeout - (time.perf_counter() - self.start)
         if phase == 'first_event':
-            limit = min(limit, self.policy.first_event_timeout - (time.monotonic() - self.attempt_start))
+            limit = min(limit, self.policy.first_event_timeout - (time.perf_counter() - self.attempt_start))
         token = current_call.set(self)
         try:
             # timeout(0) only cancels at a scheduling point. Buffered SDK
@@ -122,12 +122,12 @@ class CallState:
             0, min(self.policy.backoff_max, self.policy.backoff_base * 2 ** (self.metrics['attempts'] - 1))
         )
         delay = max(delay, error.retry_after or 0)
-        remaining = self.policy.total_timeout - (time.monotonic() - self.start)
+        remaining = self.policy.total_timeout - (time.perf_counter() - self.start)
         if delay >= remaining:
             return False
-        started = time.monotonic()
+        started = time.perf_counter()
         await asyncio.sleep(delay)
-        self.metrics['retry_wait_ms'] += round((time.monotonic() - started) * 1000, 3)
+        self.metrics['retry_wait_ms'] += round((time.perf_counter() - started) * 1000, 3)
         return True
 
 
