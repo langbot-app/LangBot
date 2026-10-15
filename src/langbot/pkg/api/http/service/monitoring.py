@@ -1691,9 +1691,14 @@ class MonitoringService(ExecutionDetailsMixin):
 
         workspace = require_workspace_uuid(context)
         active = await self.get_executions(context, statuses=['running', 'queued'], limit=100, include_summary=False)
+        # Execution timestamps are stored as UTC without a timezone. asyncpg
+        # rejects aware datetimes for these columns, even though SQLite accepts them.
+        recent_start = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
+            seconds=30
+        )
         recent = await self.get_executions(
             context,
-            start_time=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30),
+            start_time=recent_start,
             limit=100,
             include_summary=False,
         )

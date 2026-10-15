@@ -7,7 +7,11 @@ No payloads or subscriptions survive the final viewer disconnecting.
 
 import asyncio
 import contextlib
+import logging
 import time
+
+
+logger = logging.getLogger(__name__)
 
 
 class InflightHub:
@@ -75,6 +79,8 @@ class InflightHub:
                 snapshot = await loader()
                 frame = {'kind': 'snapshot', 'data': snapshot}
             except Exception:
+                if previous is None or previous['kind'] != 'unavailable':
+                    logger.exception('Failed to load in-flight monitoring snapshot')
                 frame = {'kind': 'unavailable'}
             # Heartbeats are sent separately; unchanged snapshots generate no traffic.
             if frame != previous:
