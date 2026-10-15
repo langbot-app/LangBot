@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import typing
 import asyncio
+import httpx
+from urllib.parse import urlsplit
+from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
 from litellm import acompletion, aembedding, arerank
@@ -130,6 +133,8 @@ class _ThinkStripState:
 
 class LiteLLMRequester(requester.ProviderAPIRequester):
     """LiteLLM unified API requester supporting chat, embedding, and rerank."""
+
+    reports_raw_timing = True
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
@@ -1027,7 +1032,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         if include_retry_params:
             if self.requester_cfg.get('drop_params'):
                 args['drop_params'] = self.requester_cfg['drop_params']
-            if self.requester_cfg.get('num_retries'):
+            if self.requester_cfg.get('num_retries') is not None:
                 args['num_retries'] = self.requester_cfg['num_retries']
             if self.requester_cfg.get('api_version'):
                 args['api_version'] = self.requester_cfg['api_version']
@@ -1035,24 +1040,102 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     def _handle_litellm_error(self, e: Exception) -> None:
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
-        # Check more specific exceptions first (they inherit from base exceptions)
-        if isinstance(e, litellm.ContextWindowExceededError):
-            raise errors.RequesterError(f'上下文长度超限: {str(e)}')
-        if isinstance(e, litellm.BadRequestError):
-            raise errors.RequesterError(f'请求参数错误: {str(e)}')
-        if isinstance(e, litellm.AuthenticationError):
-            raise errors.RequesterError(f'API key 无效: {str(e)}')
-        if isinstance(e, litellm.NotFoundError):
-            raise errors.RequesterError(f'模型或路径无效: {str(e)}')
-        if isinstance(e, litellm.RateLimitError):
-            raise errors.RequesterError(f'请求过于频繁或余额不足: {str(e)}')
-        if isinstance(e, litellm.Timeout):
-            raise errors.RequesterError(f'请求超时: {str(e)}')
-        if isinstance(e, litellm.APIConnectionError):
-            raise errors.RequesterError(f'连接错误: {str(e)}')
-        if isinstance(e, litellm.APIError):
-            raise errors.RequesterError(f'API 错误: {str(e)}')
-        raise errors.RequesterError(f'未知错误: {str(e)}')
+        if isinstance(e, errors.RequesterError):
+            raise e
+        metadata = error_metadata(e)
+        mappings = (
+            (litellm.ContextWindowExceededError, 'context_length', '上下文长度超限', False),
+            (litellm.AuthenticationError, 'authentication', 'API key 无效', False),
+            (litellm.NotFoundError, 'not_found', '模型或路径无效', False),
+            (litellm.RateLimitError, 'rate_limit', '请求过于频繁或余额不足', True),
+            (litellm.Timeout, 'timeout', '请求超时', True),
+            (litellm.APIConnectionError, 'connection', '连接错误', True),
+            (litellm.BadRequestError, 'bad_request', '请求参数错误', False),
+        )
+        for exception_type, code, message, retryable in mappings:
+            if isinstance(e, exception_type):
+                body = getattr(e, 'body', None)
+                body = body if isinstance(body, dict) else {}
+                upstream_error = body.get('error', body)
+                upstream_code = upstream_error.get('code') if isinstance(upstream_error, dict) else None
+                if upstream_code in ('insufficient_quota', 'quota_exceeded', 'billing_hard_limit_reached'):
+                    code, retryable = 'quota_exceeded', False
+                raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
+        status = metadata['status_code']
+        raise errors.RequesterError(
+            'API 错误' if isinstance(e, litellm.APIError) else '未知错误',
+            code='upstream_error',
+            retryable=status in (408, 409, 429, 500, 502, 503, 504),
+            **metadata,
+        ) from e
+
+    def _apply_transport(self, args, model, extra_args):
+        state = current_call.get()
+        policy = (
+            state.policy
+            if state
+            else RequestPolicy.resolve(self.requester_cfg, model.model_entity.extra_args, extra_args)
+        )
+        args.pop('request_policy', None)
+        if state:
+            # The Host owns retries; do not multiply attempts in nested SDKs.
+            args['num_retries'] = 0
+            args['max_retries'] = 0
+            args['timeout'] = httpx.Timeout(
+                connect=policy.connect_timeout,
+                read=policy.read_timeout,
+                write=policy.write_timeout,
+                pool=policy.pool_timeout,
+            )
+            state.mark('request_prepared_ms')
+        base = args.get('api_base', '')
+        is_openrouter = urlsplit(base).hostname == 'openrouter.ai' or (
+            not base and self._get_custom_llm_provider() == 'openrouter'
+        )
+        headers = dict(args.get('extra_headers') or {})
+        existing = {key.lower() for key in headers}
+        if policy.attribution and is_openrouter:
+            if 'http-referer' not in existing:
+                headers['HTTP-Referer'] = 'https://langbot.app'
+            if not {'x-title', 'x-openrouter-title'} & existing:
+                headers['X-OpenRouter-Title'] = 'LangBot'
+        conversation_header = policy.conversation_header or ('x-session-id' if is_openrouter else None)
+        if state and state.conversation_id and conversation_header and conversation_header not in existing:
+            headers[conversation_header] = state.conversation_id
+        if headers:
+            args['extra_headers'] = headers
+
+    async def _completion(self, args):
+        state = current_call.get()
+        if state:
+            state.mark('request_started_ms')
+            result = await state.wait(
+                lambda: acompletion(**args),
+                'first_event' if args.get('stream') else 'response',
+                state.policy.first_event_timeout if args.get('stream') else state.policy.total_timeout,
+            )
+            state.mark('response_open_ms')
+            return result
+        return await acompletion(**args)
+
+    async def _raw_chunks(self, response):
+        state = current_call.get()
+        iterator = response.__aiter__()
+        while True:
+            try:
+                if state:
+                    chunk = await state.wait(
+                        lambda: anext(iterator),
+                        'stream_idle' if state.raw_started else 'first_event',
+                        state.policy.stream_idle_timeout if state.raw_started else state.policy.first_event_timeout,
+                    )
+                    state.raw_started = True
+                    state.mark('first_event_ms')
+                else:
+                    chunk = await anext(iterator)
+            except StopAsyncIteration:
+                return
+            yield chunk
 
     async def _build_completion_args(
         self,
@@ -1121,6 +1204,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 # and imports proxy-only dependencies such as FastAPI.
                 args['_skip_mcp_handler'] = True
 
+        self._apply_transport(args, model, extra_args)
         return args
 
     async def count_tokens(
@@ -1163,7 +1247,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         args = await self._build_completion_args(model, messages, funcs, extra_args, stream=False)
 
         try:
-            response = await acompletion(**args)
+            response = await self._completion(args)
 
             message_data = response.choices[0].message.model_dump()
             if 'role' not in message_data or message_data['role'] is None:
@@ -1189,6 +1273,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
             message = provider_message.Message(**message_data)
             usage_info = self._extract_usage(response)
+            if current_call.get():
+                current_call.get().usage = usage_info
 
             return message, usage_info
 
@@ -1217,8 +1303,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         response = None
 
         try:
-            response = await acompletion(**args)
-            async for chunk in response:
+            response = await self._completion(args)
+            async for chunk in self._raw_chunks(response):
                 # Capture usage whenever a chunk carries it.
                 #
                 # Important: many OpenAI-compatible gateways (e.g. new-api) and
@@ -1229,6 +1315,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 # We therefore capture usage independently of `choices`, and then
                 # fall through to also process any content this chunk may carry.
                 if getattr(chunk, 'usage', None):
+                    if current_call.get():
+                        current_call.get().usage = self._extract_usage(chunk)
                     usage_info = self._normalize_usage(chunk.usage)
                     if query is not None:
                         if query.variables is None:
@@ -1245,6 +1333,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 if 'role' in delta and delta['role']:
                     role = delta['role']
 
+                state = current_call.get()
+                if state and delta.get('content'):
+                    state.mark('first_content_ms')
+                if state and (delta.get('reasoning_content') or delta.get('thinking_blocks')):
+                    state.mark('first_reasoning_ms')
                 delta_content = delta.get('content') or ''
                 reasoning_content = delta.get('reasoning_content') or ''
                 provider_fields = dict(delta.get('provider_specific_fields') or {})
