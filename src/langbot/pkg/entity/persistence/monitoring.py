@@ -70,6 +70,8 @@ class MonitoringLLMCall(Base):
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
+    details = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
+
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_llm_calls_workspace_timestamp', 'workspace_uuid', 'timestamp'),
         sqlalchemy.Index('ix_monitoring_llm_calls_workspace_session', 'workspace_uuid', 'session_id'),

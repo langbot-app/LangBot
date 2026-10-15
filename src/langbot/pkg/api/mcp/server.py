@@ -165,7 +165,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -513,7 +513,13 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_models(context, include_secret=False))
 
-        @mcp.tool(description='Get a single LLM model by UUID.')
+        @mcp.tool(
+            description=(
+                'Get a single LLM model by UUID, including reasoning capabilities. '
+                'Optional budget_tokens min/max describes numeric thinking-budget support; '
+                'reasoning_config and extra_args retain the existing model API shape.'
+            )
+        )
         async def get_llm_model(model_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_model(context, model_uuid, include_secret=False))

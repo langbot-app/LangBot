@@ -226,3 +226,26 @@ are not rewritten. Embedding and rerank models are not eligible.
 ### Reset a bot session context
 
 Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.
+
+## LLM request diagnostics
+
+`get_monitoring_records(kind="llm_calls")` includes nullable `details` on each call.
+Read `details.timing`, `details.usage`, and `details.error` to distinguish provider
+latency, retry waits, cached/reasoning tokens, and failures. Timing values are
+milliseconds since invocation start; `first_event_ms` includes reasoning/control
+frames, while `first_content_ms` measures the first upstream content delta.
+`first_visible_chunk_ms` may contain displayed reasoning, not just answer text.
+Old records have no details. Do not equate total duration with provider TTFT.
+See `docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
+
+`get_llm_model` also exposes optional `reasoning_capabilities.budget_tokens`
+min/max bounds. Numeric thinking budgets use `reasoning_config.budget_tokens`
+with level `enabled`; do not combine budgets with effort levels or native thinking
+arguments. Existing Runner reasoning overrides take precedence. Prompt caching
+is opt-in through model/call `extra_args.prompt_caching`; use provider-specific
+modes documented in `docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
+not evidence of hits; read the actual usage counters. `preparation_ms` measures
+request construction and `preparation_cache_hits` counts retry preparation reuse.
+`transport_setup_ms` measures managed pool acquisition, including first-use TLS
+initialization; it is not network TTFT. See `docs/LLM_LATENCY_BENCHMARK.md` for
+controlled request-layer measurements and their scope.

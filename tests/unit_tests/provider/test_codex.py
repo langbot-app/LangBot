@@ -1,6 +1,7 @@
 """Replay synthetic HTTP/SSE traffic through the real Codex requester."""
 
 import json
+import asyncio
 from collections import OrderedDict
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -14,6 +15,32 @@ from langbot.pkg.provider.modelmgr.requesters.codex import CodexRequester, sse_e
 
 TOKENS = {'access_token': 'access-secret', 'account_id': 'account', 'connection_id': 'connection'}
 MODEL = SimpleNamespace(model_entity=SimpleNamespace(name='codex-test', extra_args={}, reasoning_config=None))
+
+
+@pytest.mark.asyncio
+async def test_response_headers_obey_host_first_event_deadline(monkeypatch):
+    from langbot.pkg.provider.modelmgr.errors import RequesterError
+    from langbot.pkg.provider.modelmgr.request_policy import CallState, RequestPolicy, current_call
+
+    cancelled = asyncio.Event()
+
+    async def handler(request):
+        try:
+            await asyncio.sleep(10)
+        finally:
+            cancelled.set()
+
+    obj = requester(monkeypatch, handler)
+    state = CallState(RequestPolicy(first_event_timeout=0.02))
+    token = current_call.set(state)
+    try:
+        with pytest.raises(RequesterError) as caught:
+            await obj.invoke_llm(None, MODEL, [])
+    finally:
+        current_call.reset(token)
+    assert caught.value.code == 'timeout'
+    assert caught.value.phase == 'first_event'
+    assert cancelled.is_set()
 
 
 def requester(monkeypatch, handler):
@@ -198,3 +225,51 @@ def test_advanced_parameters_cannot_override_transport(monkeypatch, key):
     obj = requester(monkeypatch, lambda request: httpx.Response(200))
     with pytest.raises(ValueError, match='Unsupported Codex advanced'):
         obj._body(None, MODEL, [], None, {key: 'secret'}, TOKENS)
+
+
+@pytest.mark.asyncio
+async def test_early_close_releases_nested_http_stream(monkeypatch):
+    closed = asyncio.Event()
+
+    class Body(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'data: {"type":"response.output_text.delta","delta":"first"}\n\n'
+            await asyncio.Event().wait()
+
+        async def aclose(self):
+            closed.set()
+
+    obj = requester(monkeypatch, lambda request: httpx.Response(200, stream=Body()))
+    stream = obj.invoke_llm_stream(None, MODEL, [])
+    assert (await anext(stream)).content == 'first'
+    await stream.aclose()
+    assert closed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_host_deadline_does_not_cancel_suspended_consumer(monkeypatch, runtime_provider, runtime_llm_model):
+    from langbot.pkg.provider.modelmgr.errors import RequesterError
+    from tests.unit_tests.provider.conftest import TEST_EXECUTION_CONTEXT
+
+    runtime_provider.requester = requester(
+        monkeypatch,
+        lambda request: stream(
+            [
+                {'type': 'response.output_text.delta', 'delta': 'first'},
+                {'type': 'response.completed', 'response': {'status': 'completed', 'output': []}},
+            ]
+        ),
+    )
+    runtime_llm_model.model_entity.extra_args = {}
+    result = runtime_provider.invoke_llm_stream(
+        None,
+        runtime_llm_model,
+        [],
+        extra_args={'request_policy': {'total_timeout': 0.05}},
+        execution_context=TEST_EXECUTION_CONTEXT,
+    )
+    assert (await anext(result)).content == 'first'
+    await asyncio.sleep(0.07)
+    with pytest.raises(RequesterError) as caught:
+        await anext(result)
+    assert caught.value.phase == 'total'
