@@ -22,6 +22,7 @@ new Function(
 )(m, m.exports);
 const {
   cloudPlanCheckoutURL,
+  cloudSubscriptionManagementURL,
   cloudPlanPrice,
   localizedPlanText,
   fetchPublicCloudPlans,
@@ -40,7 +41,7 @@ test('checkout links preserve the workspace and selection, never source credenti
   assert.equal(url.pathname, '/prefix/cloud');
   assert.equal(url.hash, '');
   assert.deepEqual(Object.fromEntries(url.searchParams), {
-    environment: 'beta',
+    environment: 'new',
     step: 'plan',
     workspace: 'workspace-1',
     plan: 'pro & team',
@@ -178,4 +179,15 @@ test('plan currency follows the current UI language', () => {
     'vi-VN',
   ])
     assert.equal(m.exports.cloudPlanCurrencyForLanguage(locale), 'USD');
+});
+
+test('subscription management links use the production environment', () => {
+  const url = new URL(
+    cloudSubscriptionManagementURL('https://space.example', 'w'),
+  );
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    environment: 'new',
+    step: 'subscription',
+    workspace: 'w',
+  });
 });

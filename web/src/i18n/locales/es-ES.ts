@@ -3764,14 +3764,5 @@ const esES = {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',
   },
-  beta_banner: {
-    message:
-      'Este entorno está en fase beta. La estabilidad del servicio no está garantizada. Considera usar',
-    cloud_link: 'LangBot Cloud (entorno dedicado)',
-    or: 'o',
-    oss_link: 'la versión de código abierto autoalojada',
-    period: '.',
-    dismiss: 'Cerrar',
-  },
 };
 export default esES;

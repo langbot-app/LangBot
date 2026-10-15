@@ -104,7 +104,7 @@ export function cloudPlanCheckoutURL(
 ): string {
   const url = spaceURL(base, '/cloud');
   url.search = new URLSearchParams({
-    environment: 'beta',
+    environment: 'new',
     step: 'plan',
     workspace,
     plan,
@@ -121,7 +121,7 @@ export function cloudSubscriptionManagementURL(
 ): string {
   const url = spaceURL(base, '/cloud');
   url.search = new URLSearchParams({
-    environment: 'beta',
+    environment: 'new',
     step: 'subscription',
     workspace,
   }).toString();
