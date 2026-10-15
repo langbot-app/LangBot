@@ -379,7 +379,7 @@ class RuntimeLLMModel:
     provider: RuntimeProvider
     """提供商实例"""
 
-    reasoning_config_override: dict[str, str] | None
+    reasoning_config_override: dict[str, typing.Any] | None
     """Request-scoped reasoning policy supplied by the active pipeline."""
 
     def __init__(
@@ -387,7 +387,7 @@ class RuntimeLLMModel:
         execution_context: ExecutionContext,
         model_entity: persistence_model.LLMModel,
         provider: RuntimeProvider,
-        reasoning_config_override: dict[str, str] | None = None,
+        reasoning_config_override: dict[str, typing.Any] | None = None,
     ):
         _ensure_same_execution_scope(provider.execution_context, execution_context, resource='LLM model')
         if model_entity.workspace_uuid != execution_context.workspace_uuid:

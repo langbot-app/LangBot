@@ -513,7 +513,13 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_models(context, include_secret=False))
 
-        @mcp.tool(description='Get a single LLM model by UUID.')
+        @mcp.tool(
+            description=(
+                'Get a single LLM model by UUID, including reasoning capabilities. '
+                'Optional budget_tokens min/max describes numeric thinking-budget support; '
+                'reasoning_config and extra_args retain the existing model API shape.'
+            )
+        )
         async def get_llm_model(model_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_model(context, model_uuid, include_secret=False))

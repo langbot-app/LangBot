@@ -86,6 +86,7 @@ class CallState:
         self.raw_started = False
         self.error = None
         self.usage = None
+        self.prepared = {}
 
     def mark(self, name):
         self.metrics.setdefault(name, round((time.monotonic() - self.start) * 1000, 3))

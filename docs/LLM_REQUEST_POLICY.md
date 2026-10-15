@@ -75,6 +75,8 @@ Timing offsets use a monotonic clock, in milliseconds from invocation start:
 | `response_completed_ms` | Host finished consuming the response |
 | `total_ms` | Invocation duration, excluding the subsequent monitoring write |
 | `attempts`, `retry_wait_ms` | Host attempts and total backoff wait |
+| `preparation_ms` | Cumulative LiteLLM request-building time across attempts |
+| `preparation_cache_hits` | Message preparation reused within a retrying invocation |
 
 Missing fields mean not observed or not instrumented, not zero latency. The Core
 does not label these measurements as network-only TTFT. Usage preserves nested
@@ -145,3 +147,91 @@ Sources checked on 2026-10-15:
 - https://docs.litellm.ai/docs/routing
 - https://github.com/QuantumNous/new-api/blob/main/relay/channel/openai/adaptor.go
 - https://github.com/QuantumNous/new-api/blob/main/relay/channel/api_request.go
+
+## Connection and preparation reuse
+
+Initialized OpenAI-compatible, OpenRouter and native Codex requesters own a lazy
+HTTP pool per runtime Provider. Keys, headers and timeout budgets stay request-local.
+The pool holds at most 100 connections, with 20 idle keepalive connections and a
+30-second idle expiry. Provider retirement rejects new leases and closes its pool
+after existing streams finish or are cancelled. Native LiteLLM providers retain
+their own transport handling; custom LiteLLM transport/TLS settings, explicit caller clients and redirected model routes
+are preserved. Bare OpenAI names on OpenRouter retain LiteLLM's alternate routing;
+use OpenRouter's fully qualified names such as `openai/gpt-4o`.
+
+Codex briefly drains the HTTP tail after a completion event (at most 50 ms) to
+release a healthy connection for reuse. Incomplete/cancelled streams are closed.
+Capability lookups use a bounded requester-local cache (128 entries, five minutes).
+Message/tool conversion is reused only within an invocation that permits retries,
+with independent copies for each attempt. No conversation content is cached across
+invocations. Token counting runs in the application's executor instead of blocking
+the event loop. These reduce local overhead; they do not guarantee faster upstream
+inference or a cache hit.
+
+## Unified thinking budgets
+
+Existing effort levels and Runner/SDK signatures remain unchanged. Model
+`reasoning_config` accepts an optional positive integer `budget_tokens`:
+
+```json
+{"reasoning_config": {"level": "enabled", "budget_tokens": 2048}}
+```
+
+Old SDKs can send the same object inside their existing call `extra_args`.
+Precedence is persisted model configuration, model `extra_args.reasoning_config`,
+call `extra_args.reasoning_config`, then the existing Runner override. Each object
+replaces the previous one; a Runner effort override clears a lower-priority budget.
+Omitting `level` with a budget means `enabled`. Budgets cannot be combined with an
+effort level, `disabled`, or native thinking arguments. Unsupported budgets fail
+before the network call; they are never silently converted into an effort level.
+
+Numeric budgets map to Anthropic `thinking.budget_tokens`, Gemini 2.5 thinking
+configuration, supported Qwen `thinking_budget`, or OpenRouter
+`reasoning.max_tokens`. Direct OpenAI/Codex and adaptive-only Claude models keep
+effort-based control. Query `reasoning_capabilities.budget_tokens` for the Core's
+accepted bounds; upstream models/gateways may impose additional limits. OpenRouter
+may translate numeric budgets to effort for models without native numeric support.
+Direct Anthropic calls require an explicit `max_tokens` greater than the budget;
+Core never silently raises the output limit. Existing UI effort selectors are
+unchanged; numeric budgets can be configured through the model API or extra args.
+
+## Prompt caching
+
+Default behavior remains provider-controlled. `extra_args.prompt_caching` is a
+Core-only object and is stripped before sending the request. Call-level objects
+replace model-level objects. There is no local generated-response cache.
+
+```json
+{"prompt_caching": {"mode": "openai", "retention": "in_memory"}}
+```
+
+OpenAI mode adds an opaque conversation-and-model-scoped `prompt_cache_key` when
+conversation context exists. `retention` is optional (`in_memory` or `24h`) and
+must be supported by the destination model/gateway. Native explicit
+`prompt_cache_key`, `prompt_cache_retention`, and newer `prompt_cache_options`
+take precedence. Routing keys are hints, not cache-hit guarantees; current models
+may route caching automatically or use newer native options instead. This mode
+supports OpenAI-compatible/OpenRouter OpenAI models; forwarding through gateways
+must be verified separately.
+
+```json
+{"prompt_caching": {"mode": "anthropic", "ttl": "5m"}}
+```
+
+Anthropic mode supports native Claude and OpenRouter Claude. It adds one ephemeral
+breakpoint to the last text block in the leading system/developer prefix, without
+reordering tools/history or marking user messages. TTL is `5m` (default) or `1h`.
+If any native cache-control marker exists, Core preserves it without adding more.
+With no eligible prefix, no marker is inserted. Provider minimum prefix lengths,
+TTL pricing and eligibility still apply. Explicit `provider_default` adds no fields.
+Codex's restricted Responses body does not accept this caching object; its existing
+server-managed caching behavior is preserved. Gemini explicit cache resource
+creation/lifecycle and general Responses migration are outside this batch.
+
+References checked on 2026-10-15:
+
+- https://developers.openai.com/api/docs/guides/prompt-caching
+- https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+- https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+- https://ai.google.dev/gemini-api/docs/generate-content/thinking
+- https://openrouter.ai/docs/guides/best-practices/reasoning-tokens

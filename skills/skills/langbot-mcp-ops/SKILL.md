@@ -237,3 +237,12 @@ frames, while `first_content_ms` measures the first upstream content delta.
 `first_visible_chunk_ms` may contain displayed reasoning, not just answer text.
 Old records have no details. Do not equate total duration with provider TTFT.
 See `docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
+
+`get_llm_model` also exposes optional `reasoning_capabilities.budget_tokens`
+min/max bounds. Numeric thinking budgets use `reasoning_config.budget_tokens`
+with level `enabled`; do not combine budgets with effort levels or native thinking
+arguments. Existing Runner reasoning overrides take precedence. Prompt caching
+is opt-in through model/call `extra_args.prompt_caching`; use provider-specific
+modes documented in `docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
+not evidence of hits; read the actual usage counters. `preparation_ms` measures
+request construction and `preparation_cache_hits` counts retry preparation reuse.

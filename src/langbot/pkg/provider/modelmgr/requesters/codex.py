@@ -15,6 +15,7 @@ import langbot_plugin.api.entities.builtin.provider.message as pm
 
 from .. import requester, reasoning
 from ..request_policy import current_call
+from ..http_pool import RequesterHTTPPool, requester_http_client
 from ..errors import RequesterError
 from ..codex_auth import BASE_URL, CodexAuth, LOGIN_REQUIRED
 from ..codex_errors import CodexProviderError
@@ -24,7 +25,8 @@ async def sse_events(response):
     """Decode SSE records, including CRLF, comments, and multiline data."""
     data = []
     size = 0
-    async for line in response.aiter_lines():
+    lines = response.aiter_lines()
+    async for line in lines:
         if not line:
             if data:
                 text = '\n'.join(data)
@@ -36,6 +38,18 @@ async def sse_events(response):
                         raise ValueError
                 except ValueError:
                     raise ValueError('Codex returned an invalid stream event') from None
+                if event.get('type') == 'response.completed':
+                    # Finish the HTTP body so a healthy connection can return
+                    # to the pool. Never wait indefinitely for a broken SSE
+                    # server after it has already sent the terminal result.
+                    try:
+                        async with asyncio.timeout(0.05):
+                            async for _ in lines:
+                                pass
+                    except (TimeoutError, httpx.HTTPError):
+                        pass
+                    yield event
+                    return
                 yield event
             data, size = [], 0
         elif line.startswith('data:'):
@@ -101,6 +115,7 @@ class CodexRequester(requester.ProviderAPIRequester):
     reports_raw_timing = True
 
     async def initialize(self):
+        self._http_pool = RequesterHTTPPool()
         self.auth = CodexAuth(self.ap)
         self.workspace = self.requester_cfg['workspace_uuid']
         self.provider = self.requester_cfg['provider_uuid']
@@ -110,6 +125,8 @@ class CodexRequester(requester.ProviderAPIRequester):
 
     async def aclose(self):
         self._replay.clear()
+        if getattr(self, '_http_pool', None) is not None:
+            await self._http_pool.aclose()
 
     def get_reasoning_capabilities(self, model):
         return {
@@ -191,6 +208,7 @@ class CodexRequester(requester.ProviderAPIRequester):
     def _body(self, query, model, messages, funcs, extra_args, tokens):
         args = {**(model.model_entity.extra_args or {}), **(extra_args or {})}
         args.pop('request_policy', None)
+        args.pop('reasoning_config', None)
         # Never permit credentials, transport overrides, store/history or arbitrary
         # SDK kwargs to be smuggled through model advanced parameters.
         allowed = {'reasoning', 'text', 'parallel_tool_calls', 'tool_choice'}
@@ -242,13 +260,11 @@ class CodexRequester(requester.ProviderAPIRequester):
             'stream': True,
             'include': ['reasoning.encrypted_content'],
         }
-        reasoning_config = getattr(model, 'reasoning_config_override', None)
-        if reasoning_config is None:
-            reasoning_config = getattr(model.model_entity, 'reasoning_config', None)
-        level = reasoning.normalize_reasoning_config(reasoning_config)['level']
+        reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
+        level = reasoning_config['level']
         if level != 'provider_default':
             reasoning.validate_reasoning_capabilities(
-                {'level': level}, self.get_reasoning_capabilities(model), model.model_entity.name
+                reasoning_config, self.get_reasoning_capabilities(model), model.model_entity.name
             )
             body['reasoning'] = {'effort': level, 'summary': 'auto'}
         if funcs:
@@ -276,7 +292,7 @@ class CodexRequester(requester.ProviderAPIRequester):
         try:
             async with (
                 asyncio.timeout(None if state else 300),
-                httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client,
+                requester_http_client(self) as client,
             ):
                 for attempt in range(2):
                     body = self._body(query, model, messages, funcs, extra_args, tokens)
@@ -285,7 +301,11 @@ class CodexRequester(requester.ProviderAPIRequester):
                         state.mark('request_started_ms')
                     async with AsyncExitStack() as stack:
                         response_context = client.stream(
-                            'POST', BASE_URL + '/responses', json=body, headers=self._headers(tokens, stream=True)
+                            'POST',
+                            BASE_URL + '/responses',
+                            json=body,
+                            headers=self._headers(tokens, stream=True),
+                            timeout=timeout,
                         )
                         if state:
                             response = await state.wait(
@@ -437,11 +457,12 @@ class CodexRequester(requester.ProviderAPIRequester):
     async def scan_models(self, api_key=None):
         tokens = await self.auth.access(self.workspace, self.provider)
         try:
-            async with asyncio.timeout(90), httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            async with asyncio.timeout(90), requester_http_client(self) as client:
                 for attempt in range(2):
                     response = await client.get(
                         BASE_URL + '/models',
                         params={'client_version': langbot.__version__},
+                        timeout=30,
                         headers=self._headers(tokens),
                     )
                     if response.status_code == 401 and attempt == 0:
