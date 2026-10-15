@@ -346,17 +346,20 @@ def test_details_migration_preserves_existing_records_and_is_idempotent():
 
     migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0038_llm_call_details')
     engine = sa.create_engine('sqlite://')
-    with engine.begin() as connection:
-        connection.exec_driver_sql('CREATE TABLE monitoring_llm_calls (id TEXT PRIMARY KEY)')
-        connection.exec_driver_sql("INSERT INTO monitoring_llm_calls (id) VALUES ('old')")
-        with Operations.context(MigrationContext.configure(connection)):
-            migration.upgrade()
-            migration.upgrade()
-        assert connection.exec_driver_sql('SELECT id, details FROM monitoring_llm_calls').one() == ('old', None)
-        table = sa.Table('monitoring_llm_calls', sa.MetaData(), autoload_with=connection)
-        payload = {'usage': {'completion_tokens_details': {'reasoning_tokens': 8}}, 'timing': {'first_event_ms': 1}}
-        connection.execute(table.insert().values(id='new', details=payload))
-        assert connection.execute(sa.select(table.c.details).where(table.c.id == 'new')).scalar() == payload
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql('CREATE TABLE monitoring_llm_calls (id TEXT PRIMARY KEY)')
+            connection.exec_driver_sql("INSERT INTO monitoring_llm_calls (id) VALUES ('old')")
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.upgrade()
+                migration.upgrade()
+            assert connection.exec_driver_sql('SELECT id, details FROM monitoring_llm_calls').one() == ('old', None)
+            table = sa.Table('monitoring_llm_calls', sa.MetaData(), autoload_with=connection)
+            payload = {'usage': {'completion_tokens_details': {'reasoning_tokens': 8}}, 'timing': {'first_event_ms': 1}}
+            connection.execute(table.insert().values(id='new', details=payload))
+            assert connection.execute(sa.select(table.c.details).where(table.c.id == 'new')).scalar() == payload
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.asyncio
