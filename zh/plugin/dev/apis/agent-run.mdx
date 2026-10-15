@@ -19,6 +19,8 @@ title: "上下文 API"
 
 `EventContext`、`ExecuteContext` 和 `Session` 还会携带 `instance_uuid`、`workspace_uuid` 和 `placement_generation`。这些字段用于标识当前执行所在的实例和工作区，不应作为插件自行鉴权的依据。
 
+重试、超时、数字思考预算、prompt caching、请求头和流式取消见 [LLM 请求配置](/zh/plugin/dev/apis/llm-requests)。
+
 ## EventListener
 
 EventListener 处理流水线事件。事件处理函数接收 `EventContext`：

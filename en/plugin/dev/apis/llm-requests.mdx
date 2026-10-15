@@ -1,0 +1,134 @@
+---
+title: "LLM request configuration"
+description: "Retries, deadlines, reasoning budgets, caching and stream cancellation for plugins and Runners"
+---
+
+These options require a Core build containing [Core #2661](https://github.com/langbot-app/LangBot/pull/2661). A merged PR does not imply a published release. Pass them through the existing `extra_args`; plugin and Runner signatures, message types and authorization remain unchanged. See [LangBot API](/en/plugin/dev/apis/common) and [Context APIs](/en/plugin/dev/apis/agent-run).
+
+## Retries and timeouts
+
+The following non-streaming example configures the request and reads complete usage:
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    timeout=110,
+    extra_args={
+        "request_policy": {
+            "retries": 1,
+            "total_timeout": 90,
+            "first_event_timeout": 30,
+            "stream_idle_timeout": 30,
+            "connect_timeout": 10,
+            "read_timeout": 60,
+        },
+    },
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.model_dump())
+```
+
+Runner `ctx.api.invoke_llm*` accepts the same `extra_args`, subject to run authorization and remaining time. Calls through `self.plugin` also inherit these restrictions inside a run context.
+
+`timeout=` is the SDK/RPC waiting limit (120 seconds by default for non-streaming calls). Core's `request_policy` controls the inner request. Keep its total budget within the enclosing RPC/Runner deadline; raising it cannot extend that deadline. Streaming methods have no `timeout=` argument and remain bounded by SDK/Runner waiting limits.
+
+| `request_policy` field | Default | Meaning |
+| --- | --- | --- |
+| `retries` | `0` | Additional attempts after the first, integer 0–5 |
+| `total_timeout` | `300` | Whole invocation budget, including backoff |
+| `first_event_timeout` | `120` | Wait for the first upstream event, not the first visible text |
+| `stream_idle_timeout` | `120` | Idle time between stream events |
+| `connect_timeout` | `10` | Connection timeout |
+| `read_timeout` | `120` | Transport read timeout |
+| `write_timeout` | `30` | Transport write timeout |
+| `pool_timeout` | `10` | Connection pool acquisition timeout |
+| `backoff_base` / `backoff_max` | `0.5` / `8` | Exponential backoff base and cap, with full jitter |
+| `attribution` | `True` | Automatic application attribution headers |
+| `conversation_header` | `None` | Generated session header name, described below |
+
+Times are seconds; timeouts must be finite and positive. Unknown policy fields are rejected. Precedence: instance `llm_request_policy`, model `extra_args`, then call `extra_args`. Within one layer, `request_policy.retries` wins over legacy `num_retries` / `max_retries`. A call-level legacy value still overrides model policy; `0` disables retries. Legacy numeric `extra_args["timeout"]` sets read, first-event and stream-idle limits without extending the total budget.
+
+Authentication, invalid-request and exhausted-quota failures are not retried. Retries stop after any upstream event, including reasoning or usage. `Retry-After` is bounded by the remaining budget. Core disables LiteLLM and provider SDK retries for managed calls; gateways may independently retry. This adds no tool replay, model fallback or embedding/rerank retries. Legacy third-party requesters still own their transport configuration.
+
+## Reasoning budgets
+
+Existing `reasoning_level` behavior is unchanged. For a numeric budget, pass this object as `extra_args` or save it in model advanced parameters. Omitting `level` means `enabled`:
+
+```json
+{
+  "reasoning_config": {"budget_tokens": 2048},
+  "max_tokens": 4096
+}
+```
+
+Do not combine a budget with an effort level such as `medium`, `disabled`, or native reasoning parameters. Direct Anthropic calls require explicit `max_tokens` greater than the budget; Core never raises that limit automatically.
+
+Precedence: persisted model `reasoning_config`, model `extra_args.reasoning_config`, call `extra_args.reasoning_config`, then an explicit Runner level override. Each object replaces the previous one; an effort override clears a lower-priority budget.
+
+Numeric budgets map to native Anthropic, Gemini 2.5, supported Qwen models and OpenRouter routes. Direct OpenAI/Codex and adaptive-only Claude models retain effort control. Check the model's `reasoning_capabilities.budget_tokens` for support and bounds. Unsupported budgets fail before HTTP. Providers/gateways may impose stricter limits; OpenRouter may translate a numeric budget into effort.
+
+## Prompt caching
+
+`extra_args.prompt_caching` is consumed by Core, not forwarded unchanged. Call configuration replaces model configuration. The default `{"mode": "provider_default"}` adds no fields. This is not a local response cache.
+
+| Configuration | Behavior |
+| --- | --- |
+| `{"mode": "openai", "retention": "in_memory"}` | Generates a model-and-conversation-scoped `prompt_cache_key` when conversation context exists; optional `retention` also accepts `24h` if supported by the target |
+| `{"mode": "anthropic", "ttl": "5m"}` | Adds an ephemeral breakpoint to the last text block of the leading system/developer prefix; `ttl` accepts `5m` or `1h` |
+
+OpenAI mode applies to compatible routes and OpenRouter OpenAI models supporting these options. Explicit native `prompt_cache_key`, `prompt_cache_retention` and `prompt_cache_options` win. Anthropic mode supports native Claude and OpenRouter Claude. Existing native cache markers are preserved without adding duplicates. Core does not reorder tools/history or mark user messages, and inserts nothing without an eligible prefix.
+
+Hints do not guarantee hits. Inspect `usage.model_dump()` for provider fields such as `prompt_tokens_details.cached_tokens` or `cache_read_input_tokens`; missing counts are not zero. Minimum prefix lengths, retention eligibility and pricing are provider-controlled. Codex's restricted Responses body does not accept this configuration object; existing server caching remains. General Responses migration and Gemini explicit cache-resource management are outside this change.
+
+## Application and session headers
+
+Direct OpenRouter calls receive `HTTP-Referer: https://langbot.app`, `X-OpenRouter-Title: LangBot`, and, with conversation context, `x-session-id: lb-<opaque scoped hash>`. Custom gateway addresses do not automatically inherit these headers. `request_policy.attribution=False` disables only automatic application attribution. Explicit `extra_headers` remain and take precedence case-insensitively.
+
+A gateway can use an explicitly configured session header:
+
+```json
+{
+  "request_policy": {"conversation_header": "x-litellm-session-id"},
+  "extra_headers": {
+    "HTTP-Referer": "https://langbot.app",
+    "X-OpenRouter-Title": "LangBot"
+  }
+}
+```
+
+Supported names: `x-session-id`, `x-litellm-session-id`, `x-langbot-conversation-id`. The last is a custom convention, not a universal provider standard, and provides no automatic routing or caching benefit. Generated identifiers are scoped by workspace/bot/pipeline/session and contain no raw session ID or prompt. They are pseudonymous, not a guarantee of anonymization, and are omitted without context. New API and other gateways may filter or rewrite headers; verify forwarding rules and actual outbound requests.
+
+## Stream cancellation and compatibility
+
+Use `aclosing` when leaving a stream early. Allow task cancellation exceptions to propagate:
+
+```python
+from contextlib import aclosing
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+async with aclosing(self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    extra_args={"request_policy": {"retries": 0, "total_timeout": 90}},
+)) as events:
+    async for event in events:
+        if event.usage is not None:
+            print(event.usage.model_dump())
+        if event.chunk is not None and event.chunk.content:
+            print(event.chunk.content)
+            break
+```
+
+This example intentionally stops after the first nonempty content chunk and may miss final usage. For a complete response, remove `break`; a final event can have usage without a chunk. `invoke_llm` still returns `Message`, and `invoke_llm_stream` still yields `MessageChunk`. Choose `invoke_llm_with_usage` or `invoke_llm_stream_events` for accounting. Usage may be `None`; nested cache/reasoning counts and provider-specific fields are preserved.
+
+SDK ≤0.7.11 has a proxy-layer defect that delays upstream cancellation on early close. Deterministic close requires **langbot-plugin ≥0.7.12**, which publishes the fix from [SDK #177](https://github.com/langbot-app/langbot-plugin-sdk/pull/177). A Core dependency pin does not automatically upgrade a separately deployed Runtime or plugin development environment; upgrade those executing environments too. Ordinary signatures, payloads and return types remain compatible. Total deadlines include consumer time, but cannot interrupt a consumer while the generator is suspended at `yield`; expiration is enforced on the next pull.
+
+## Diagnostics
+
+Core monitoring records expose `details.timing`, complete `usage` and structured `error`; legacy SDK exception transport is unchanged. Structured errors include `code`, `status_code`, `retryable`, `retry_after`, `request_id` and `phase`. Do not assume these fields exist on legacy exceptions received by plugins.
+
+Millisecond timings include `preparation_ms`, `transport_setup_ms`, `first_event_ms`, `first_reasoning_ms`, `first_content_ms`, `first_visible_chunk_ms`, `total_ms`, plus `attempts` and `retry_wait_ms`. The first event may be reasoning/control, and the first visible chunk may include reasoning. `request_started_ms` marks the SDK call, not a packet leaving the socket. Missing fields mean unobserved, not zero. Monitoring retains partial usage received before cancellation but cannot reconstruct missing upstream accounting.

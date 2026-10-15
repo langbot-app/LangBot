@@ -2080,6 +2080,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/common" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/plugin/dev/apis/llm-requests</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/plugin/dev/apis/llm-requests</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/plugin/dev/apis/llm-requests</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/llm-requests" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/llm-requests" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/plugin/dev/apis/messages</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/messages" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/messages" />

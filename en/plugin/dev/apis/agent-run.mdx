@@ -19,6 +19,8 @@ This page covers the data and methods available through these contexts. Use `sel
 
 `EventContext`, `ExecuteContext`, and `Session` also carry `instance_uuid`, `workspace_uuid`, and `placement_generation`. These fields identify the current instance and workspace for execution; plugins must not treat them as authorization data.
 
+See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, timeouts, numeric reasoning budgets, prompt caching, headers and stream cancellation.
+
 ## EventListener
 
 EventListener handles Pipeline events. Its event handler receives an `EventContext`:

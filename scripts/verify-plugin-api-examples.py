@@ -7,6 +7,7 @@ This checks SDK calls and result shapes, not external platform delivery.
 from __future__ import annotations
 
 import asyncio
+import argparse
 import ast
 import inspect
 import re
@@ -34,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Host:
     def __init__(self):
         self.calls = []
+        self.closed_streams = 0
 
     async def call_action(self, action, data, timeout=15):
         name = action.value
@@ -74,9 +76,13 @@ class Host:
 
     async def call_action_generator(self, action, data, timeout=15):
         assert action.value == "invoke_llm_stream"
-        yield {"chunk": {"role": "assistant", "content": "Hello", "is_final": False}}
-        yield {"chunk": {"role": "assistant", "content": "!", "is_final": True}}
-        yield {"usage": {"total_tokens": 8}}
+        self.calls.append((action.value, data))
+        try:
+            yield {"chunk": {"role": "assistant", "content": "Hello", "is_final": False}}
+            yield {"chunk": {"role": "assistant", "content": "!", "is_final": True}}
+            yield {"usage": {"total_tokens": 8}}
+        finally:
+            self.closed_streams += 1
 
 
 def context():
@@ -111,7 +117,7 @@ def context():
 
 
 def snippets(locale, page):
-    source = (ROOT / locale / f"plugin/dev/apis/{page}.mdx").read_text()
+    source = (ROOT / locale / f"plugin/dev/apis/{page}.mdx").read_text(encoding="utf-8")
     if page == "common":
         headings = {
             "zh": ("### 模型流式输出与用量", "## 其他资源 API"),
@@ -125,7 +131,7 @@ def snippets(locale, page):
 
 
 def verify_context_reference():
-    source = (ROOT / "zh/plugin/dev/apis/agent-run.mdx").read_text()
+    source = (ROOT / "zh/plugin/dev/apis/agent-run.mdx").read_text(encoding="utf-8")
     query_methods = {
         "reply",
         "get_bot_uuid",
@@ -217,10 +223,10 @@ async def execute(block, namespace):
     await namespace["example"]()
 
 
-async def main():
+async def main(pages):
     verify_context_reference()
     total = 0
-    for page in ("common", "agent-run", "platform"):
+    for page in pages:
         blocks = snippets("zh", page)
         for locale in ("en", "ja"):
             assert blocks == snippets(locale, page), f"{page}: {locale} code differs"
@@ -260,6 +266,13 @@ async def main():
             }
             with bind_invocation(host, api):
                 await execute(block, namespace)
+            if page == "llm-requests":
+                expected = 0 if "aclosing" in block else 1
+                llm_calls = [data for name, data in host.calls if name.startswith("invoke_llm")]
+                assert len(llm_calls) == 1
+                assert llm_calls[0]["extra_args"]["request_policy"]["retries"] == expected
+                if "aclosing" in block:
+                    assert host.closed_streams == 1, "Early close did not reach the Host stream"
             for name, data in host.calls:
                 if name in {"reply_message", "set_query_var"}:
                     expected_query = 42 if "event_context" in block else 43
@@ -297,4 +310,11 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--page", action="append",
+        choices=("common", "agent-run", "platform", "llm-requests"),
+        help="Verify selected pages (repeatable); defaults to all pages.",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(args.page or ("common", "agent-run", "platform", "llm-requests")))

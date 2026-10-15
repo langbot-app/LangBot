@@ -1,0 +1,134 @@
+---
+title: "LLM リクエスト設定"
+description: "プラグインと Runner のリトライ、タイムアウト、思考予算、キャッシュ、ストリーム終了"
+---
+
+本ページの設定には [Core #2661](https://github.com/langbot-app/LangBot/pull/2661) を含む Core が必要です。マージとリリースは別です。既存の `extra_args` で指定し、プラグインと Runner のシグネチャ、メッセージ型、権限確認は変わりません。[LangBot API](/ja/plugin/dev/apis/common) と[コンテキスト API](/ja/plugin/dev/apis/agent-run)も参照してください。
+
+## リトライとタイムアウト
+
+非ストリーミング呼び出しでリクエスト設定と完全な使用量を扱う例です：
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    timeout=110,
+    extra_args={
+        "request_policy": {
+            "retries": 1,
+            "total_timeout": 90,
+            "first_event_timeout": 30,
+            "stream_idle_timeout": 30,
+            "connect_timeout": 10,
+            "read_timeout": 60,
+        },
+    },
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.model_dump())
+```
+
+Runner の `ctx.api.invoke_llm*` でも同じ `extra_args` を使えますが、実行の権限と残り時間に制限されます。実行コンテキスト内の `self.plugin` 呼び出しにも同じ制限が適用されます。
+
+`timeout=` は SDK/RPC の待機期限（非ストリーミングでは既定 120 秒）です。`request_policy` は Core 内部のリクエストを制御します。総予算は外側の RPC/Runner の期限内に収めてください。Core の予算を増やしても外側の期限は延長されません。ストリーミングメソッドには `timeout=` 引数がなく、SDK/Runner の待機期限が適用されます。
+
+| `request_policy` フィールド | 既定値 | 意味 |
+| --- | --- | --- |
+| `retries` | `0` | 初回以外の追加試行数、整数 0–5 |
+| `total_timeout` | `300` | リトライ待機を含む呼び出し全体の予算 |
+| `first_event_timeout` | `120` | 最初の表示文字ではなく、最初の上流イベントを待つ期限 |
+| `stream_idle_timeout` | `120` | ストリームイベント間の待機期限 |
+| `connect_timeout` | `10` | 接続タイムアウト |
+| `read_timeout` | `120` | 読み取りタイムアウト |
+| `write_timeout` | `30` | 書き込みタイムアウト |
+| `pool_timeout` | `10` | 接続プールの待機期限 |
+| `backoff_base` / `backoff_max` | `0.5` / `8` | full jitter を使う指数バックオフの基数と上限 |
+| `attribution` | `True` | アプリ識別ヘッダーの自動付与 |
+| `conversation_header` | `None` | 生成するセッションヘッダー名（後述） |
+
+時間は秒単位で、タイムアウトは有限の正数です。未知のフィールドは拒否されます。優先順位はインスタンスの `llm_request_policy`、モデルの `extra_args`、呼び出しの `extra_args` の順です。同じ階層では `request_policy.retries` が旧 `num_retries` / `max_retries` より優先されます。呼び出し側の旧パラメーターでもモデル設定を上書きでき、`0` でリトライを無効化できます。旧数値 `extra_args["timeout"]` は読み取り、最初のイベント、ストリーム待機を設定し、総予算は延長しません。
+
+認証失敗、不正なリクエスト、クォータ不足はリトライしません。思考や usage を含む上流イベントを受信した後も再試行しません。`Retry-After` は残りの総予算内に制限されます。Core は管理対象の LiteLLM/プロバイダー SDK 内蔵リトライを無効化しますが、中継サービスは独自に再試行する場合があります。ツール再実行、モデル切り替え、embedding/rerank のリトライは追加しません。旧サードパーティ requester の内部通信設定はその実装が管理します。
+
+## 思考予算
+
+既存の `reasoning_level` は変わりません。数値予算は以下を `extra_args` またはモデルの詳細パラメーターに指定します。`level` を省略すると `enabled` です：
+
+```json
+{
+  "reasoning_config": {"budget_tokens": 2048},
+  "max_tokens": 4096
+}
+```
+
+予算と effort レベル（例：`medium`）、`disabled`、プロバイダー独自の思考パラメーターを併用しないでください。Anthropic 直結では予算より大きい `max_tokens` を明示する必要があり、Core は出力上限を自動で増やしません。
+
+優先順位は保存済みモデル `reasoning_config`、モデル `extra_args.reasoning_config`、呼び出し `extra_args.reasoning_config`、明示的な Runner レベル指定です。各オブジェクトが前の設定を全置換し、effort 指定は低優先度の数値予算を削除します。
+
+数値予算はネイティブ Anthropic、Gemini 2.5、対応 Qwen、OpenRouter 経由に変換されます。OpenAI/Codex 直結と adaptive のみの Claude は effort を使います。モデルの `reasoning_capabilities.budget_tokens` で対応と範囲を確認してください。未対応なら HTTP 送信前にエラーになります。上流の制限がより厳しい場合や、OpenRouter が予算を effort に変換する場合もあります。
+
+## Prompt caching
+
+`extra_args.prompt_caching` は Core 専用で、そのまま上流には送信されません。呼び出し設定がモデル設定を全置換します。既定の `{"mode": "provider_default"}` はフィールドを追加しません。ローカルの回答キャッシュではありません。
+
+| 設定 | 動作 |
+| --- | --- |
+| `{"mode": "openai", "retention": "in_memory"}` | 会話コンテキストがあるとモデルと会話別の `prompt_cache_key` を生成。`retention` は省略可能で、対応モデルでは `24h` も指定可能 |
+| `{"mode": "anthropic", "ttl": "5m"}` | 先頭の system/developer 接頭辞の最後のテキストブロックに一時キャッシュマーカーを追加。`ttl` は `5m` または `1h` |
+
+OpenAI モードは対応する互換ルートおよび OpenRouter の OpenAI モデル向けです。明示したネイティブ `prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options` が優先されます。Anthropic モードはネイティブ Claude と OpenRouter Claude に対応します。既存マーカーがあれば追加せず、ツール/履歴の並べ替えやユーザーメッセージへの追加もしません。適切な接頭辞がなければ何も追加しません。
+
+キャッシュヒントはヒットを保証しません。`usage.model_dump()` の `prompt_tokens_details.cached_tokens`、`cache_read_input_tokens` などで確認します。未提供はゼロではありません。最小接頭辞長、保持期間の対応、料金はプロバイダー次第です。Codex の制限付き Responses ボディはこの設定を受け付けず、既存のサーバー側キャッシュを維持します。汎用 Responses 移行と Gemini 明示的キャッシュリソース管理は今回の対象外です。
+
+## アプリとセッションのヘッダー
+
+OpenRouter 直結では `HTTP-Referer: https://langbot.app`、`X-OpenRouter-Title: LangBot`、会話コンテキストがあれば `x-session-id: lb-<opaque scoped hash>` を自動付与します。独自の中継 URL には自動付与しません。`request_policy.attribution=False` は自動アプリ識別のみを無効化します。明示した `extra_headers` は保持され、大文字小文字を区別せず優先されます。
+
+中継サービスに合わせてセッションヘッダーを指定できます：
+
+```json
+{
+  "request_policy": {"conversation_header": "x-litellm-session-id"},
+  "extra_headers": {
+    "HTTP-Referer": "https://langbot.app",
+    "X-OpenRouter-Title": "LangBot"
+  }
+}
+```
+
+対応名は `x-session-id`、`x-litellm-session-id`、`x-langbot-conversation-id` です。最後は独自規約であり共通標準ではなく、自動的なルーティングやキャッシュ効果はありません。生成値は workspace/bot/pipeline/session ごとに分離され、生の ID やプロンプトを含みませんが、仮名化であり匿名化保証ではありません。コンテキストがなければ生成しません。New API などはヘッダーを削除・上書きする可能性があるため、転送設定と実際の出力を確認してください。
+
+## ストリーム終了と互換性
+
+途中でループを抜けるときは `aclosing` で生成器を確実に閉じ、タスクのキャンセル例外は伝播させてください：
+
+```python
+from contextlib import aclosing
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+async with aclosing(self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    extra_args={"request_policy": {"retries": 0, "total_timeout": 90}},
+)) as events:
+    async for event in events:
+        if event.usage is not None:
+            print(event.usage.model_dump())
+        if event.chunk is not None and event.chunk.content:
+            print(event.chunk.content)
+            break
+```
+
+この例は最初の空でない内容で停止するため、最後の usage を受け取れない場合があります。全文取得では `break` を除きます。最後のイベントが chunk なしの usage のみの場合もあります。`invoke_llm` は引き続き `Message`、`invoke_llm_stream` は `MessageChunk` を返します。使用量には `invoke_llm_with_usage` または `invoke_llm_stream_events` を使います。usage は `None` の場合があり、ネストしたキャッシュ/思考使用量や上流独自フィールドは保持されます。
+
+SDK ≤0.7.11 には、プロキシの早期終了が上流へ即時伝播しない問題があります。確実な終了には **langbot-plugin ≥0.7.12** が必要です。この公開版は [SDK #177](https://github.com/langbot-app/langbot-plugin-sdk/pull/177) の修正を含みます。Core の依存固定だけでは別配置の Runtime やプラグイン開発環境は更新されないため、実行する各環境も更新してください。通常のシグネチャ、ペイロード、戻り値は互換です。総期限は消費時間も含みますが、生成器が `yield` で停止中に消費側を中断せず、次の読み取りで期限切れを確認します。
+
+## 診断
+
+Core の監視レコード `details` に `timing`、完全な `usage`、構造化 `error` を記録します。旧 SDK の例外伝送形式は変更しません。構造化エラーは `code`、`status_code`、`retryable`、`retry_after`、`request_id`、`phase` を含みますが、プラグインが受け取る旧例外にこれらがあるとは限りません。
+
+時間はミリ秒で、`preparation_ms`、`transport_setup_ms`、`first_event_ms`、`first_reasoning_ms`、`first_content_ms`、`first_visible_chunk_ms`、`total_ms`、`retry_wait_ms`、および試行数 `attempts` を記録します。最初のイベントは思考や制御の場合があり、最初の表示チャンクも思考を含む場合があります。`request_started_ms` は SDK 呼び出し時刻で、パケット送信時刻ではありません。欠落は未観測でありゼロではありません。キャンセル前の部分 usage は監視に保持されますが、未提供の使用量は復元できません。

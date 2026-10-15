@@ -19,6 +19,8 @@ title: "コンテキスト API"
 
 `EventContext`、`ExecuteContext`、`Session` には `instance_uuid`、`workspace_uuid`、`placement_generation` も含まれます。これらは現在の実行に対応するインスタンスとワークスペースを示すためのもので、プラグイン側の認可情報として使用しないでください。
 
+リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
+
 ## EventListener
 
 EventListener はパイプラインイベントを処理します。イベントハンドラーは `EventContext` を受け取ります。

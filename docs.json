@@ -718,6 +718,7 @@
                 "pages": [
                   "en/plugin/dev/apis/agent-run",
                   "en/plugin/dev/apis/common",
+                  "en/plugin/dev/apis/llm-requests",
                   "en/plugin/dev/apis/platform",
                   "en/plugin/dev/apis/pipeline-events",
                   "en/plugin/dev/apis/messages",
@@ -1034,6 +1035,7 @@
                 "pages": [
                   "zh/plugin/dev/apis/agent-run",
                   "zh/plugin/dev/apis/common",
+                  "zh/plugin/dev/apis/llm-requests",
                   "zh/plugin/dev/apis/platform",
                   "zh/plugin/dev/apis/pipeline-events",
                   "zh/plugin/dev/apis/messages",
@@ -1353,6 +1355,7 @@
                 "pages": [
                   "ja/plugin/dev/apis/agent-run",
                   "ja/plugin/dev/apis/common",
+                  "ja/plugin/dev/apis/llm-requests",
                   "ja/plugin/dev/apis/platform",
                   "ja/plugin/dev/apis/pipeline-events",
                   "ja/plugin/dev/apis/messages",
