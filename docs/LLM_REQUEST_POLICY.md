@@ -7,8 +7,10 @@ replay, model fallback, key rotation, or embedding/rerank retries.
 
 The public API remains compatible with existing plugins. Full-chain testing
 identified a pre-existing SDK <=0.7.11 early-close defect: prompt remote
-cancellation through public plugin/Runner wrappers requires the companion
-[SDK fix](https://github.com/langbot-app/langbot-plugin-sdk/pull/177).
+cancellation through public plugin/Runner wrappers requires SDK 0.7.12 or later,
+which includes the [SDK fix](https://github.com/langbot-app/langbot-plugin-sdk/pull/177).
+Core now pins 0.7.12; separately deployed Runtime and plugin development
+environments must also install a version containing the fix.
 See [E2E acceptance results](LLM_REQUEST_E2E.md) for tested versions and scope.
 
 ## Configuration
