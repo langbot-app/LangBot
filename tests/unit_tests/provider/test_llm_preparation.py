@@ -287,6 +287,19 @@ def test_explicit_cache_settings_win_and_default_does_nothing():
     assert args == {'messages': [{'role': 'system', 'content': 'same'}]}
 
 
+def test_native_cache_options_bypass_model_filter_without_legacy_hints():
+    args = {
+        'model': 'openai/gpt-test',
+        'prompt_cache_options': {'mode': 'implicit', 'ttl': '30m'},
+        'prompt_caching': {'mode': 'openai', 'retention': '24h'},
+    }
+    apply_prompt_caching(args, CallState(RequestPolicy(), 'lb-scoped'), provider='openai', family='openai')
+    assert args == {
+        'model': 'openai/gpt-test',
+        'extra_body': {'prompt_cache_options': {'mode': 'implicit', 'ttl': '30m'}},
+    }
+
+
 @pytest.mark.parametrize(
     'config',
     [

@@ -35,9 +35,19 @@ def apply_prompt_caching(args, state, *, provider, family):
         body = copy.deepcopy(args.get('extra_body') or {})
         if not isinstance(body, dict):
             raise RequesterError('extra_body must be an object', code='invalid_policy')
+        # Bypass LiteLLM's model-specific parameter filter for explicit opt-in
+        # caching fields as well as generated hints. The SDK's extra_body wins
+        # when the same native field appears in both locations.
+        for key in ('prompt_cache_key', 'prompt_cache_retention', 'prompt_cache_options'):
+            if key in args:
+                body.setdefault(key, args.pop(key))
         # Explicit provider-native settings win. A key is a routing hint only;
         # it neither enables caching nor guarantees a hit.
-        if state and state.conversation_id and 'prompt_cache_key' not in args and 'prompt_cache_key' not in body:
+        if (
+            state
+            and state.conversation_id
+            and not any(key in body for key in ('prompt_cache_key', 'prompt_cache_options'))
+        ):
             scope = f'{state.conversation_id}:{args["model"]}'
             body['prompt_cache_key'] = 'lb-' + hashlib.sha256(scope.encode()).hexdigest()
         if config.get('retention') and not any(
