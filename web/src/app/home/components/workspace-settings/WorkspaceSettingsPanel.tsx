@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Copy,
-  ExternalLink,
+  ArrowRight,
   Loader2,
   Trash2,
   UserPlus,
@@ -39,6 +46,9 @@ import {
   PanelBody,
   PanelToolbar,
 } from '@/app/home/components/settings-dialog/panel-layout';
+import WorkspacePlanBadge from './WorkspacePlanBadge';
+
+const CloudPlansDialog = lazy(() => import('./CloudPlansDialog'));
 
 interface WorkspaceSettingsPanelProps {
   active: boolean;
@@ -66,6 +76,7 @@ export default function WorkspaceSettingsPanel({
   active,
 }: WorkspaceSettingsPanelProps) {
   const { t } = useTranslation();
+  const [plansOpen, setPlansOpen] = useState(false);
   const [workspaceInfo, setWorkspaceInfo] = useState<CurrentWorkspace | null>(
     null,
   );
@@ -93,9 +104,6 @@ export default function WorkspaceSettingsPanel({
   const canInvite = permissions.has('member.invite');
   const canUpdateMembers = permissions.has('member.update_role');
   const canRemoveMembers = permissions.has('member.remove');
-  const cloudPortalURL = workspaceInfo
-    ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}&step=plan`
-    : '';
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -254,19 +262,15 @@ export default function WorkspaceSettingsPanel({
               <p className="text-[11px] text-muted-foreground">
                 {t('workspace.currentPlan')}
               </p>
-              <p className="text-sm font-semibold uppercase">
-                {workspaceInfo.plan_name || t('workspace.planUnavailable')}
-              </p>
+              <WorkspacePlanBadge planName={workspaceInfo.plan_name} />
             </div>
-            <Button asChild size="sm" className="shrink-0">
-              <a
-                href={cloudPortalURL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {t('workspace.upgradePlan')}
-                <ExternalLink className="size-3.5" />
-              </a>
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => setPlansOpen(true)}
+            >
+              {t('cloudPlans.title')}
+              <ArrowRight className="size-3.5" />
             </Button>
           </div>
         )}
@@ -490,6 +494,17 @@ export default function WorkspaceSettingsPanel({
           </section>
         )}
       </PanelBody>
+      {isCloudProjection && workspaceInfo && plansOpen && (
+        <Suspense fallback={null}>
+          <CloudPlansDialog
+            key={workspaceInfo.workspace.uuid}
+            open={plansOpen}
+            onOpenChange={setPlansOpen}
+            workspace={workspaceInfo}
+            spaceURL={systemInfo.cloud_service_url}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

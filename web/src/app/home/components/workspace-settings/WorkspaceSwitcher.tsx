@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import WorkspacePlanBadge from './WorkspacePlanBadge';
 
 export const OPEN_WORKSPACE_SETTINGS_EVENT = 'langbot:open-workspace-settings';
 
@@ -70,9 +71,7 @@ export default function WorkspaceSwitcher({
                 {entry.workspace.name}
               </span>
               {entry.workspace.source === 'cloud_projection' && (
-                <span className="rounded-md border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase text-muted-foreground">
-                  {entry.plan_name || t('workspace.planUnavailable')}
-                </span>
+                <WorkspacePlanBadge planName={entry.plan_name} />
               )}
               {selected && (
                 <Button
