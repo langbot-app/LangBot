@@ -1,6 +1,9 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
   cloudPlans: {
+    subscriptionUnavailable: 'ยังไม่เปิดรับการสมัคร',
+    subscriptionUnavailableHint:
+      'แผนนี้ยังไม่รับการสมัครใหม่ โปรดเลือกแผนอื่น การสมัครเดิมและการต่ออายุอัตโนมัติจะไม่ได้รับผลกระทบ',
     platformNames: {
       qqofficial: 'QQ Official API',
       dingtalk: 'DingTalk',

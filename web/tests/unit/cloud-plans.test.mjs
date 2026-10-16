@@ -85,6 +85,7 @@ test('public catalog fetch omits cookies and authorization, hides inactive plans
     price_usd: '5',
     price_jpy: '800',
     is_active: true,
+    subscription_disabled: true,
   };
   t.mock.method(globalThis, 'fetch', async (u, o) => {
     url = u;

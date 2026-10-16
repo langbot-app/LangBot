@@ -13,6 +13,7 @@ export interface PublicCloudPlan {
   limits: Record<string, number>;
   features: string[];
   is_active: boolean;
+  subscription_disabled?: boolean;
   sort_order: number;
   highlight: boolean;
   chat_history_retention_days: number;

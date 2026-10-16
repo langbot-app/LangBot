@@ -1,6 +1,9 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
   cloudPlans: {
+    subscriptionUnavailable: 'Chưa thể đăng ký',
+    subscriptionUnavailableHint:
+      'Gói này hiện không nhận đăng ký mới. Vui lòng chọn gói khác. Đăng ký hiện có và gia hạn tự động không bị ảnh hưởng.',
     platformNames: {
       qqofficial: 'QQ Official API',
       dingtalk: 'DingTalk',

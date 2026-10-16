@@ -1,6 +1,9 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 const ruRU = {
   cloudPlans: {
+    subscriptionUnavailable: 'Подписка недоступна',
+    subscriptionUnavailableHint:
+      'Этот план не принимает новые подписки. Выберите другой план. Текущие подписки и автоматические продления не затронуты.',
     platformNames: {
       qqofficial: 'QQ Official API',
       dingtalk: 'DingTalk',

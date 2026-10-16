@@ -1,6 +1,9 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
   cloudPlans: {
+    subscriptionUnavailable: 'Suscripción no disponible',
+    subscriptionUnavailableHint:
+      'Este plan no acepta nuevas suscripciones. Elige otro plan. Las suscripciones existentes y sus renovaciones automáticas no se ven afectadas.',
     platformNames: {
       qqofficial: 'QQ Official API',
       dingtalk: 'DingTalk',

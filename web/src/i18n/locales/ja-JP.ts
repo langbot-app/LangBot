@@ -2,6 +2,9 @@ import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
   cloudPlans: {
+    subscriptionUnavailable: '現在お申し込みできません',
+    subscriptionUnavailableHint:
+      'このプランは新規申込を停止しています。他のプランをお選びください。既存の契約と自動更新には影響しません。',
     platformNames: {
       qqofficial: 'QQ公式API',
       dingtalk: 'DingTalk',

@@ -2,6 +2,9 @@ import slackSetup from './slack-setup/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
 const zhHant = {
   cloudPlans: {
+    subscriptionUnavailable: '暫不可訂閱',
+    subscriptionUnavailableHint:
+      '此方案暫不接受新訂閱，請選擇其他方案。既有訂閱和已簽約的自動續費不受影響。',
     platformNames: {
       qqofficial: 'QQ 官方 API',
       dingtalk: '釘釘',

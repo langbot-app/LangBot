@@ -430,7 +430,20 @@ export default function CloudPlansDialog({
                       <div className="flex-1">
                         <Benefits plan={plan} spaceURL={spaceURL} />
                       </div>
-                      {downgradeBlocked ? null : !canManage ? (
+                      {plan.subscription_disabled && (
+                        <p className="mt-4 text-xs text-muted-foreground">
+                          {t('cloudPlans.subscriptionUnavailableHint')}
+                        </p>
+                      )}
+                      {plan.subscription_disabled && !current ? (
+                        <Button
+                          className="mt-6 w-full"
+                          variant="outline"
+                          disabled
+                        >
+                          {t('cloudPlans.subscriptionUnavailable')}
+                        </Button>
+                      ) : downgradeBlocked ? null : !canManage ? (
                         <Button
                           className="mt-6 w-full"
                           variant="outline"

@@ -2,6 +2,9 @@ import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
   cloudPlans: {
+    subscriptionUnavailable: 'Not available to subscribe',
+    subscriptionUnavailableHint:
+      'This plan is not accepting new subscriptions. Please choose another plan. Existing subscriptions and scheduled automatic renewals are unaffected.',
     platformNames: {
       qqofficial: 'QQ Official API',
       dingtalk: 'DingTalk',
