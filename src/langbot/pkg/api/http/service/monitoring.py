@@ -608,6 +608,7 @@ class MonitoringService(ExecutionDetailsMixin):
         cost: float | None = None,
         error_message: str | None = None,
         message_id: str | None = None,
+        details: dict | None = None,
     ) -> str:
         """Record an LLM call"""
         workspace_uuid = self._require_write_context(context)
@@ -619,7 +620,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'model_name': model_name,
             'input_tokens': input_tokens,
             'output_tokens': output_tokens,
-            'total_tokens': input_tokens + output_tokens,
+            'total_tokens': ((details or {}).get('usage') or {}).get('total_tokens') or (input_tokens + output_tokens),
             'duration': duration,
             'cost': cost,
             'status': status,
@@ -630,6 +631,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'session_id': session_id,
             'error_message': error_message,
             'message_id': message_id,
+            'details': details,
         }
 
         await self.ap.persistence_mgr.execute_async(
