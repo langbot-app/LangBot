@@ -94,7 +94,8 @@ const jaJP = {
     annualNote: '月額 {{price}} 相当',
     ownerOnly: '所有者または管理者のみ',
     choose: '支払いに進む',
-    handoff: 'Space でログインしてお支払いください。選択内容は保持されます。',
+    handoff:
+      'LangBot アカウントでログインしてお支払いください。選択内容は保持されます。',
     quotas: 'ワークスペースの上限',
     unlimited: '無制限',
     retention: 'メッセージ履歴 · {{count}} 日間',
