@@ -43,7 +43,7 @@ def test_policy_precedence_zero_and_no_mutation():
     ],
 )
 def test_invalid_policy(policy):
-    with pytest.raises(RequesterError, match='模型请求失败'):
+    with pytest.raises(RequesterError, match='Model request failed|模型请求失败'):
         RequestPolicy.resolve({'request_policy': policy})
 
 

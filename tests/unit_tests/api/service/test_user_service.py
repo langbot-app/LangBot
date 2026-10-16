@@ -357,7 +357,7 @@ class TestUserServiceAuthenticate:
         service = UserService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='用户不存在'):
+        with pytest.raises(ValueError, match='Resource not found'):
             await service.authenticate('nonexistent@example.com', 'password')
 
     async def test_authenticate_space_user_without_password_raises_error(self):
@@ -377,7 +377,7 @@ class TestUserServiceAuthenticate:
         service = UserService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='请使用 LangBot 账号登录'):
+        with pytest.raises(ValueError, match='Please sign in with your LangBot Account'):
             await service.authenticate('space@example.com', 'password')
 
 
@@ -416,7 +416,6 @@ class TestUserServiceGenerateJwtToken:
 
         # Verify
         assert token is not None
-
 
 
 class TestUserServiceVerifyJwtToken:

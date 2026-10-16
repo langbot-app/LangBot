@@ -498,8 +498,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         .then((res) => {
           const bot = res.bot;
           const runtimeValues = bot.adapter_runtime_values as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           resolve({
             adapter: bot.adapter,
             description: bot.description,
@@ -509,11 +508,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             event_bindings: bot.event_bindings ?? [],
             plugin_processors: bot.plugin_processors ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
           });
         })
         .catch((err) => {

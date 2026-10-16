@@ -99,7 +99,11 @@ async def test_extensions_route_redacts_plugin_secrets_without_mutating_runtime_
 
 @pytest.mark.asyncio
 async def test_extensions_parallel_reads_open_explicit_child_task_scopes():
+    from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
+
     engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as connection:
+        await connection.run_sync(WorkspaceMetadata.__table__.create)
     account = SimpleNamespace(uuid='account-a', user='owner@example.com')
     ap = SimpleNamespace()
     ap.persistence_mgr = PersistenceManager(ap)

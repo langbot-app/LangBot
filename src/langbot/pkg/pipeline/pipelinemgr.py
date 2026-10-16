@@ -20,6 +20,8 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
@@ -414,6 +416,11 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
+        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+            return await self._process_query_with_language(query)
+
+    async def _process_query_with_language(self, query: pipeline_query.Query):
         from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
         from ..telemetry.execution import record as record_execution

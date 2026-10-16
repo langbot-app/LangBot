@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import t
+
 import dataclasses
 import enum
 import json
@@ -1490,7 +1492,7 @@ class RuntimeMCPSession:
             # Raw transport exceptions may echo command arguments, headers, or
             # environment values. Detailed diagnostics belong in AUDIT_VIEW
             # logs; resource-list responses expose only a stable status.
-            'error_message': 'MCP runtime failed' if self.error_message else None,
+            'error_message': t('MCP runtime failed') if self.error_message else None,
             'error_code': self._public_error_code if self.error_message else None,
             'error_phase': self.error_phase.value if self.error_phase else None,
             'retry_count': self.retry_count,

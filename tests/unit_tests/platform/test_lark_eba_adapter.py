@@ -881,9 +881,9 @@ async def test_lark_webhook_dispatches_native_form_submission():
 
     response = await adapter.handle_unified_webhook('bot-1', '', request)
 
-    assert response['toast'] == {'type': 'success', 'content': 'Submitted / 已提交'}
+    assert response['toast'] == {'type': 'success', 'content': 'Submitted'}
     assert response['card']['type'] == 'raw'
-    assert response['card']['data']['elements'][0]['text']['content'] == '**Submitted / 已提交**'
+    assert response['card']['data']['elements'][0]['text']['content'] == '**Submitted**'
     assert len(calls) == 1
     assert calls[0].action == 'interaction.submitted'
     assert calls[0].data['callback_token'] == 'callback-token'
@@ -912,7 +912,7 @@ async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
 
     response = await adapter.handle_unified_webhook('bot-1', '', request)
 
-    assert response == {'toast': {'type': 'success', 'content': 'Submitted / 已提交'}}
+    assert response == {'toast': {'type': 'success', 'content': 'Submitted'}}
 
 
 def test_lark_stream_card_separates_multiple_reasoning_rounds():

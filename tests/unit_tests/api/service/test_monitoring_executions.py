@@ -820,3 +820,27 @@ async def test_inflight_viewers_share_work_and_cleanup():
     assert 'one' not in hub.channels and 'run' not in hub.run_workspaces
     await other.aclose()
     assert not hub.channels
+
+
+@pytest.mark.asyncio
+async def test_inflight_snapshot_failure_is_logged_and_recovers(caplog):
+    import asyncio
+    from unittest.mock import AsyncMock
+    from langbot.pkg.utils.inflight import InflightHub
+
+    hub = InflightHub()
+    snapshot = {'items': [], 'active_total': 0, 'truncated': False}
+    loader = AsyncMock(side_effect=[RuntimeError('snapshot database failure'), snapshot])
+    stream = hub.watch('workspace', loader)
+    try:
+        assert await asyncio.wait_for(anext(stream), 2) == {'kind': 'unavailable'}
+        errors = [
+            record for record in caplog.records if record.message == 'Failed to load in-flight monitoring snapshot'
+        ]
+        assert len(errors) == 1
+        assert errors[0].exc_info[0] is RuntimeError
+        hub.notify('workspace')
+        assert await asyncio.wait_for(anext(stream), 2) == {'kind': 'snapshot', 'data': snapshot}
+    finally:
+        await stream.aclose()
+    assert not hub.channels

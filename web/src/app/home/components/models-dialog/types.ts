@@ -28,8 +28,7 @@ export interface ProviderModels {
 }
 
 export type TestResult =
-  | { success: true; duration: number }
-  | { success: false; message: string };
+  { success: true; duration: number } | { success: false; message: string };
 
 export type SelectedScannedModel = {
   model: ScannedProviderModel;

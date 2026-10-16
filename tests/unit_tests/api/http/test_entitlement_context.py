@@ -76,3 +76,21 @@ def test_execution_context_preserves_entitlement_revision():
     )
 
     assert ExecutionContext.from_request(request).entitlement_revision == 11
+
+
+@pytest.mark.asyncio
+async def test_handler_entitlement_denial_is_403_not_internal_error():
+    from langbot.pkg.api.http.controller.group import AuthType
+    from langbot.pkg.cloud.entitlements import EntitlementFeatureUnavailableError
+
+    router = _router(SimpleNamespace(mode='cloud'))
+    router.path = '/policy'
+    router.name = 'policy'
+
+    @router.route('', methods=['GET'], auth_type=AuthType.NONE)
+    async def denied():
+        raise EntitlementFeatureUnavailableError('platform.telegram', entitlement_revision=2)
+
+    response = await router.quart_app.test_client().get('/policy')
+    assert response.status_code == 403
+    assert (await response.get_json())['code'] == 'entitlement_unavailable'

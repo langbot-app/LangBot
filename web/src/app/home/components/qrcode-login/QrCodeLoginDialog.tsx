@@ -19,11 +19,7 @@ import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import { getBackendBaseUrl } from '@/app/infra/http/backendUrl';
 
 export type QrLoginPlatform =
-  | 'feishu'
-  | 'weixin'
-  | 'dingtalk'
-  | 'wecombot'
-  | 'qqofficial';
+  'feishu' | 'weixin' | 'dingtalk' | 'wecombot' | 'qqofficial';
 
 interface PlatformConfig {
   titleKey: string;

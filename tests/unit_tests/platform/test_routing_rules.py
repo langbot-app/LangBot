@@ -38,6 +38,7 @@ class TestEventRouteTrace:
         bot = object.__new__(RuntimeBot)
         bot.bot_entity = SimpleNamespace(
             uuid='bot-1',
+            adapter='aiocqhttp',
             workspace_uuid=TEST_CONTEXT.workspace_uuid,
             event_bindings=event_bindings,
         )
@@ -703,7 +704,10 @@ async def test_installed_event_processor_never_receives_unbound_events():
     from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
     bot = TestEventRouteTrace._make_bot([])
-    bot.ap = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=AsyncMock()))
+    bot.ap = SimpleNamespace(
+        workspace_service=active_workspace_service(),
+        plugin_connector=SimpleNamespace(emit_event=AsyncMock()),
+    )
     bot._record_adapter_event = AsyncMock()
     await bot._handle_platform_event(MemberJoinedEvent(), Mock())
     bot.ap.plugin_connector.emit_event.assert_not_called()

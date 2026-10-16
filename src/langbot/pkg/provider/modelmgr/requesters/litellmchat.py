@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ....i18n import t
+
 import typing
 import copy
 import time
@@ -1196,13 +1198,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             raise e
         metadata = error_metadata(e)
         mappings = (
-            (litellm.ContextWindowExceededError, 'context_length', '上下文长度超限', False),
-            (litellm.AuthenticationError, 'authentication', 'API key 无效', False),
-            (litellm.NotFoundError, 'not_found', '模型或路径无效', False),
-            (litellm.RateLimitError, 'rate_limit', '请求过于频繁或余额不足', True),
-            (litellm.Timeout, 'timeout', '请求超时', True),
-            (litellm.APIConnectionError, 'connection', '连接错误', True),
-            (litellm.BadRequestError, 'bad_request', '请求参数错误', False),
+            (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
+            (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
+            (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
+            (litellm.Timeout, 'timeout', t('Request timed out'), True),
+            (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
+            (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
@@ -1215,7 +1217,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
         status = metadata['status_code']
         raise errors.RequesterError(
-            'API 错误' if isinstance(e, litellm.APIError) else '未知错误',
+            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
             code='upstream_error',
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
@@ -1814,9 +1816,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 body = await httpclient.response_text(e.response)
             except Exception:
                 pass
-            raise errors.RequesterError(f'rerank 请求失败 (HTTP {e.response.status_code}): {body or str(e)}')
+            raise errors.RequesterError(t('API error') + f' (HTTP {e.response.status_code}): {body or str(e)}')
         except httpx.HTTPError as e:
-            raise errors.RequesterError(f'rerank 连接错误: {str(e)}')
+            raise errors.RequesterError(t('Connection failed') + f': {e}')
 
         raw_results = data.get('results', []) if isinstance(data, dict) else []
         results = []

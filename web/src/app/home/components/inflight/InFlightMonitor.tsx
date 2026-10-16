@@ -166,7 +166,7 @@ function WorkspaceMonitor() {
       <aside
         ref={dock.panel}
         style={{ width: collapsed ? 26 : 'min(320px, calc(100vw - 24px))' }}
-        className={`fixed top-0 right-0 z-40 max-h-[calc(100dvh-24px)] overflow-y-auto rounded-l-xl border border-r-0 bg-popover text-popover-foreground shadow-lg ${styles.panel}`}
+        className={`fixed top-0 right-0 z-40 max-h-[calc(100dvh-24px)] ${collapsed ? 'overflow-hidden' : 'overflow-y-auto'} rounded-l-xl border border-r-0 bg-popover text-popover-foreground shadow-lg ${styles.panel}`}
         aria-label={t('inflight.title')}
       >
         <div

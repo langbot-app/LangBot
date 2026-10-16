@@ -1,6 +1,128 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  planRevision: {
+    subscribedOn: '契約日：{{date}}',
+    latestQuota: 'このプランの最新の利用枠',
+    showLatest: 'このプランの最新クォータを表示',
+    showCurrent: '現在のサブスクリプションを表示',
+    latestTab: '最新',
+    currentTab: '現在',
+    cancelToSubscribe:
+      '現在のサブスクリプションをキャンセルすると、次期から最新のクォータに登録できます',
+
+    current: '現在の契約：{{plan}} · revision {{revision}}',
+    owned: '購入済み revision {{revision}}',
+    latest: '最新 revision {{revision}}',
+    changed:
+      '購入済みの特典と最新バージョンに違いがあります。変更箇所を強調表示しています。',
+    same: '特典は最新 revision {{revision}} と同じです。購入済みバージョンは変更されません。',
+    unavailable:
+      '最新プランは現在利用できません。購入済みの特典は引き続き有効です。',
+    benefit: '特典',
+    change: '変更あり',
+    enabled: '有効',
+    disabled: '無効',
+    monthlyCredits: '毎月のボーナスクレジット',
+    retention: 'チャット履歴の保存日数',
+    unknown:
+      '現在の契約情報を取得できません。再読み込みするか Space で契約を管理してください。最新カタログの特典は購入済み特典ではありません。',
+    handoff:
+      'Space で契約を管理してください。新バージョンの購入前に自動更新を解除してください。前払い契約は期限前に更新しなければ自動終了します。',
+    cancelFirst:
+      'まず契約管理で自動更新を解除してください。支払済みの特典は期間終了まで保持され、返金はありません。解除の確認後、最新バージョンを購入でき、決済成功時に新しい特典が有効になります。',
+    canceled:
+      '更新は解除済みです。支払済みの特典は期間終了まで保持され、返金はありません。新しい購入の特典は決済成功時に有効になります。',
+    prepaid:
+      'この前払い契約は期間終了時に自動終了します。期限前は現在の内容で更新でき、期限後は各プランの最新の利用枠でのみ契約できます。',
+    renew: '現在の契約を更新',
+    buying: 'revision {{revision}} を購入します。',
+    fields: {
+      bots_max: 'ボット',
+      members_max: 'メンバー',
+      pipelines_max: 'プロセッサー',
+      plugins_max: '拡張機能',
+      knowledge_bases_max: 'ナレッジベース',
+      managed_sandbox_sessions_max: 'サンドボックスセッション',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: '現在お申し込みできません',
+    subscriptionUnavailableHint:
+      'このプランは新規申込を停止しています。他のプランをお選びください。既存の契約と自動更新には影響しません。',
+    platformNames: {
+      qqofficial: 'QQ公式API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComカスタマーサービス',
+      officialaccount: 'WeChat公式アカウント',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'サブスクリプションを管理',
+    downgradeUnavailable: '無料プランへの変更はできません',
+    features: {
+      multiUserWorkspace: '複数ユーザーのワークスペース',
+      remoteE2BSandbox: 'リモート E2B サンドボックスの設定',
+      communitySupport: 'コミュニティサポート',
+      everythingInFree: '無料プランのすべての機能',
+      alwaysOnSandbox: '常時稼働のグローバルサンドボックス 1 個',
+      higherWorkspaceLimits: 'ワークスペースの上限を拡大',
+    },
+    title: 'プランを比較',
+    description: '{{workspace}} のプランを選択',
+    billing: '請求周期',
+    monthly: '月払い',
+    annual: '年払い',
+    currency: '通貨',
+    loading: 'プランを読み込み中…',
+    error: 'プランを読み込めませんでした',
+    retry: '再試行',
+    empty: '利用可能なプランはありません',
+    current: '現在のプラン',
+    recommended: 'おすすめ',
+    free: '無料',
+    annualNote: '月額 {{price}} 相当',
+    ownerOnly: '所有者または管理者のみ',
+    choose: '支払いに進む',
+    handoff:
+      'LangBot アカウントでログインしてお支払いください。選択内容は保持されます。',
+    quotas: 'ワークスペースの上限',
+    unlimited: '無制限',
+    retention: 'メッセージ履歴 · {{count}} 日間',
+    retentionLabel: 'メッセージ履歴の保存期間',
+    retentionHelp: '保存期間を過ぎた履歴は自動的に削除されます。',
+    credits: '毎月 {{count}} クレジット',
+    creditsLabel: '毎月のクレジット',
+    creditsHelp: '年払いでも、契約の各月にクレジットが付与されます。',
+    platforms: '主要プラットフォームに対応',
+    excludedPlatforms: '対象外：{{platforms}}',
+    allPlatforms: '現在利用可能なすべてのプラットフォーム',
+    limits: {
+      bots: 'ボット',
+      pipelines: 'プロセッサー',
+      knowledge_bases: 'ナレッジベース',
+      plugins: '拡張機能',
+      members: 'メンバー',
+      managed_sandbox_sessions: '管理サンドボックスセッション',
+    },
+  },
+  workspaceLanguage: {
+    label: 'ワークスペースの言語',
+    description:
+      'バックエンドの通知とボットの既定の返信に使用します。個人の表示言語には影響しません。',
+    saved: '言語設定を保存しました',
+    saveFailed: '言語設定の保存に失敗しました',
+  },
   slackSetup,
   inflight: {
     autoCollapse: '自動折りたたみ',
@@ -2574,7 +2696,7 @@ const jaJP = {
     ossSingletonDescription:
       'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
     cloudManagedDescription:
-      'このワークスペースは LangBot Cloud でホストされています。メンバーはここで管理し、請求は Cloud で開きます。',
+      'このワークスペースは LangBot Cloud でホストされています。',
     loadFailed: 'ワークスペース情報の読み込みに失敗しました',
     members: 'メンバー',
     you: 'あなた',
@@ -3631,14 +3753,6 @@ const jaJP = {
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',
-  },
-  beta_banner: {
-    message: 'この環境はベータテスト中です。サービスの安定性は保証されません。',
-    cloud_link: 'LangBot Cloud（専用環境）',
-    or: 'または',
-    oss_link: 'セルフホスト版',
-    period: 'をご検討ください。',
-    dismiss: '閉じる',
   },
 };
 export default jaJP;

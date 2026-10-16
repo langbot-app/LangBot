@@ -23,6 +23,7 @@ from ...api.http.context import PrincipalType, RequestContext
 from ...api.http.authz import Permission, has_permission
 from ...api.http.service.tenant import require_workspace_uuid
 from ...workspace.errors import WorkspaceNotFoundError
+from ...i18n import t
 
 REQUESTER = 'openai-codex'
 BASE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -77,7 +78,7 @@ def _tokens(data: dict, previous: dict | None = None) -> dict:
         or not math.isfinite(expires_at)
         or expires_at <= time.time()
     ):
-        raise ValueError('ChatGPT returned an incomplete authorization. Please sign in again.')
+        raise ValueError(t('ChatGPT returned an incomplete authorization. Please sign in again.'))
     return {
         'access_token': access,
         'refresh_token': refresh,
@@ -99,7 +100,7 @@ class CodexAuth:
         try:
             return await self.ap.persistence_mgr.execute_async(statement)
         except Exception:
-            raise ValueError('ChatGPT credential storage failed. Please retry.') from None
+            raise ValueError(t('ChatGPT credential storage failed. Please retry.')) from None
 
     async def _read(self, workspace: str, provider: str) -> dict | None:
         result = await self._execute(sa.select(CodexCredential).where(*self._where(workspace, provider)))
@@ -107,7 +108,7 @@ class CodexAuth:
             row = result.first()
             return dict(row._mapping) if row is not None else None
         except Exception:
-            raise ValueError('ChatGPT credential storage failed. Please retry.') from None
+            raise ValueError(t('ChatGPT credential storage failed. Please retry.')) from None
 
     async def _provider(self, context, provider: str, *, user: bool = False) -> str:
         workspace = require_workspace_uuid(context)
@@ -117,7 +118,7 @@ class CodexAuth:
             or not context.account_uuid
             or not has_permission(context, Permission.PROVIDER_SECRET_MANAGE)
         ):
-            raise ValueError('ChatGPT authorization requires an authorized workspace user')
+            raise ValueError(t('ChatGPT authorization requires an authorized workspace user'))
         result = await self._execute(
             sa.select(ModelProvider.requester).where(
                 ModelProvider.workspace_uuid == workspace, ModelProvider.uuid == provider
@@ -147,9 +148,9 @@ class CodexAuth:
             if result.rowcount == 1:
                 break
             if await self._read(workspace, provider) is None:
-                raise ValueError(LOGIN_REQUIRED)
+                raise ValueError(t(LOGIN_REQUIRED))
             if time.monotonic() >= deadline:
-                raise ValueError('ChatGPT authorization is busy. Please retry shortly.')
+                raise ValueError(t('ChatGPT authorization is busy. Please retry shortly.'))
             await asyncio.sleep(0.1)
         try:
             yield owner
@@ -171,7 +172,7 @@ class CodexAuth:
             .values(payload=payload, version=CodexCredential.version + 1)
         )
         if result.rowcount != 1:
-            raise ValueError('ChatGPT authorization was cancelled or replaced. Please retry.')
+            raise ValueError(t('ChatGPT authorization was cancelled or replaced. Please retry.'))
 
     async def _post(self, path: str, *, data=None, json_body=None) -> httpx.Response:
         try:
@@ -186,7 +187,7 @@ class CodexAuth:
                     25,
                 )
         except (httpx.HTTPError, TimeoutError):
-            raise ValueError('ChatGPT authorization network error. Please retry.') from None
+            raise ValueError(t('ChatGPT authorization network error. Please retry.')) from None
 
     @staticmethod
     def _json(response: httpx.Response) -> dict:
@@ -196,7 +197,7 @@ class CodexAuth:
                 raise ValueError
             return value
         except ValueError:
-            raise ValueError('ChatGPT returned an invalid authorization response') from None
+            raise ValueError(t('ChatGPT returned an invalid authorization response')) from None
 
     async def status(self, context, provider: str) -> dict:
         workspace = await self._provider(context, provider, user=True)
@@ -215,7 +216,9 @@ class CodexAuth:
         async with self._lease(workspace, provider) as owner:
             response = await self._post('/api/accounts/deviceauth/usercode', json_body={'client_id': CLIENT_ID})
             if response.status_code != 200:
-                raise ValueError('Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.')
+                raise ValueError(
+                    t('Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.')
+                )
             data = self._json(response)
             try:
                 code = data.get('user_code') or data['usercode']
@@ -224,7 +227,7 @@ class CodexAuth:
                 if not isinstance(code, str) or not isinstance(device, str) or not code or not device:
                     raise ValueError
             except (KeyError, ValueError, TypeError):
-                raise ValueError('ChatGPT returned an invalid device code') from None
+                raise ValueError(t('ChatGPT returned an invalid device code')) from None
             now = time.time()
             try:
                 expiry = data.get('expires_at')
@@ -241,7 +244,7 @@ class CodexAuth:
                     raise ValueError
                 expires_at = min(now + 900, expires_at)
             except (ValueError, TypeError):
-                raise ValueError('ChatGPT returned an invalid device code expiry') from None
+                raise ValueError(t('ChatGPT returned an invalid device code expiry')) from None
             pending = {
                 'authorization_id': secrets.token_urlsafe(32),
                 'user_code': code,
@@ -306,12 +309,12 @@ class CodexAuth:
             if response.status_code != 200:
                 payload.pop('pending', None)
                 await self._save(workspace, provider, owner, payload)
-                raise ValueError('ChatGPT device authorization failed. Please start again.')
+                raise ValueError(t('ChatGPT device authorization failed. Please start again.'))
             data = self._json(response)
             if not data.get('authorization_code') or not data.get('code_verifier'):
                 payload.pop('pending', None)
                 await self._save(workspace, provider, owner, payload)
-                raise ValueError('ChatGPT returned an incomplete device authorization')
+                raise ValueError(t('ChatGPT returned an incomplete device authorization'))
             # Keep an attempt tombstone so cancel can preempt exchange, but never replay a code.
             pending['consumed'] = True
             await self._save(workspace, provider, owner, payload)
@@ -326,7 +329,7 @@ class CodexAuth:
                 },
             )
             if response.status_code != 200:
-                raise ValueError('ChatGPT token exchange failed. Please start sign-in again.')
+                raise ValueError(t('ChatGPT token exchange failed. Please start sign-in again.'))
             tokens = _tokens(self._json(response))
             await self._save(
                 workspace,
@@ -384,7 +387,7 @@ class CodexAuth:
         payload = row['payload'] if row else {}
         tokens = payload.get('tokens')
         if not tokens or payload.get('invalid'):
-            raise ValueError(LOGIN_REQUIRED)
+            raise ValueError(t(LOGIN_REQUIRED))
         if tokens['expires_at'] > time.time() + 120 and tokens['access_token'] != rejected_token:
             return tokens
         async with self._lease(workspace, provider, refresh=True) as owner:
@@ -392,7 +395,7 @@ class CodexAuth:
             payload = dict(row['payload'])
             tokens = payload.get('tokens')
             if not tokens or payload.get('invalid'):
-                raise ValueError(LOGIN_REQUIRED)
+                raise ValueError(t(LOGIN_REQUIRED))
             if tokens['expires_at'] > time.time() + 120 and tokens['access_token'] != rejected_token:
                 return tokens
             response = await self._post(
@@ -411,9 +414,9 @@ class CodexAuth:
                 payload.pop('tokens', None)
                 payload.pop('completed', None)
                 await self._save(workspace, provider, owner, payload)
-                raise ValueError(LOGIN_REQUIRED)
+                raise ValueError(t(LOGIN_REQUIRED))
             if response.status_code != 200:
-                raise ValueError('ChatGPT token refresh temporarily failed. Please retry.')
+                raise ValueError(t('ChatGPT token refresh temporarily failed. Please retry.'))
             refreshed = _tokens(self._json(response), tokens)
             payload['tokens'] = refreshed
             await self._save(workspace, provider, owner, payload)

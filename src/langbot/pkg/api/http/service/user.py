@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import t
+
 import sqlalchemy
 import argon2
 import jwt
@@ -423,12 +425,12 @@ class UserService:
 
         user_obj = await self.get_user_by_email(user_email)
         if user_obj is None:
-            raise ValueError('用户不存在')
+            raise ValueError(t('Resource not found'))
         self._require_active_account(user_obj)
 
         # Check if this user has a local password set
         if not user_obj.password:
-            raise ValueError('请使用 LangBot 账号登录')
+            raise ValueError(t('Please sign in with your LangBot Account'))
 
         await self._verify_password(user_obj.password, password)
 

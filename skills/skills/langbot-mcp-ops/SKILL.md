@@ -212,6 +212,18 @@ Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
 
+### Workspace message language
+
+`get_workspace_message_language` reads the current Workspace's backend language
+(`workspace.view`). `set_workspace_message_language(language)` requires
+`workspace.update`; supported values are `en_US`, `zh_Hans`, `zh_Hant`, `ja_JP`,
+`es_ES`, `ru_RU`, `th_TH`, `vi_VN`. HTTP equivalents are GET/PUT
+`/api/v1/workspaces/current/language` (PUT body: `{"language":"ja_JP"}`).
+The API key's Workspace remains authoritative. The setting controls new backend
+messages and default bot notices, independently of personal UI language.
+Pipeline `output.misc` hint fields override defaults; empty values inherit this
+setting. Existing custom text and historical logs are not rewritten.
+
 ### Workspace default LLM model
 
 `get_starred_model` reads the Workspace-wide favorite. `set_starred_model`
@@ -226,6 +238,10 @@ are not rewritten. Embedding and rerank models are not eligible.
 ### Reset a bot session context
 
 Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.
+
+## Cloud plan platform restrictions
+
+Bot creation and enabling use the same Workspace entitlement policy as HTTP. A disabled platform is rejected even through MCP or plugin calls; do not retry using an Omni or legacy alias to bypass the restriction. The Workspace-scoped HTTP adapter catalog omits disabled platforms.
 
 ## LLM request diagnostics
 

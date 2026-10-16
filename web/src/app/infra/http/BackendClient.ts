@@ -111,6 +111,17 @@ import type {
  * 负责与后端 API 的所有交互
  */
 export class BackendClient extends BaseHttpClient {
+  public getWorkspaceLanguage(): Promise<{
+    language: string;
+    supported_languages: string[];
+  }> {
+    return this.get('/api/v1/workspaces/current/language');
+  }
+
+  public setWorkspaceLanguage(language: string): Promise<{ language: string }> {
+    return this.put('/api/v1/workspaces/current/language', { language });
+  }
+
   constructor(baseURL: string) {
     super(baseURL, false);
   }
