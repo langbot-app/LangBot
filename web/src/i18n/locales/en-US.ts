@@ -1,6 +1,51 @@
 import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  planRevision: {
+    subscribedOn: 'Subscribed on {{date}}',
+    latestQuota: 'Latest quotas for this plan',
+    showLatest: 'Show latest quotas for this plan',
+    showCurrent: 'Show your current subscription',
+    latestTab: 'Latest',
+    currentTab: 'Current',
+    cancelToSubscribe:
+      'Cancel your subscription to subscribe to the latest quota next period',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Renew current subscription',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
   cloudPlans: {
     subscriptionUnavailable: 'Not available to subscribe',
     subscriptionUnavailableHint:

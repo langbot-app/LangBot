@@ -24,6 +24,14 @@ export interface WorkspaceMembership {
 }
 
 export interface CurrentWorkspace {
+  current_plan?: {
+    subscription_started_at?: number | null;
+    name: string;
+    revision: number;
+    limits: Record<string, number>;
+    entitlement_features: Record<string, boolean>;
+    monthly_bonus_credits: number;
+  } | null;
   workspace: Workspace;
   membership: WorkspaceMembership;
   permissions: string[];

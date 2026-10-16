@@ -32,12 +32,15 @@ import {
   cloudSubscriptionManagementURL,
   cloudPlanPrice,
   cloudPlanCurrencyForLanguage,
+  fetchCloudPlanRevision,
   fetchPublicCloudPlans,
   localizedPlanText,
   type CloudPlanBillingCycle,
   type PublicCloudPlan,
 } from './cloud-plans';
+import { revisionRows } from './plan-revisions';
 import { supportedPlanPlatforms } from './cloud-plan-platforms';
+import PlanRevisionStack from './PlanRevisionStack';
 
 function PlanIcon({ name }: { name?: string }) {
   const key = name
@@ -68,9 +71,9 @@ function Help({ label, children }: { label: string; children: ReactNode }) {
         <button
           type="button"
           aria-label={label}
-          className="shrink-0 text-muted-foreground"
+          className="flex h-5 shrink-0 items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <Info className="size-3.5" />
+          <Info className="size-3.5" aria-hidden />
         </button>
       </TooltipTrigger>
       <TooltipContent className="max-w-80 whitespace-pre-line">
@@ -84,7 +87,15 @@ function Benefits({
   plan,
   spaceURL,
 }: {
-  plan: PublicCloudPlan;
+  plan: Pick<
+    PublicCloudPlan,
+    | 'limits'
+    | 'features'
+    | 'disabled_adapters'
+    | 'display_config'
+    | 'chat_history_retention_days'
+    | 'monthly_bonus_credits'
+  >;
   spaceURL: string;
 }) {
   const { t, i18n } = useTranslation();
@@ -116,37 +127,39 @@ function Benefits({
     quota_summary: (
       <>
         <Layers className="size-4 shrink-0 text-blue-500" />
-        <span className="min-w-0 flex-1">{quotaLabel}</span>
+        <span className="min-w-0 break-words">{quotaLabel}</span>
         <Help label={quotaLabel}>
           {text(config?.tooltips?.quota_summary) && (
             <p className="mb-2">{text(config?.tooltips?.quota_summary)}</p>
           )}
           <ul className="space-y-2">
-            {Object.entries(plan.limits).map(([key, limit]) => {
-              const resource = key.replace(/\.max$/, '');
-              const label =
-                text(config?.quotas?.[key]?.label) ||
-                t(`cloudPlans.limits.${resource}`, {
-                  defaultValue: resource.replace(/_/g, ' '),
-                });
-              return (
-                <li key={key}>
-                  <div className="flex justify-between gap-5">
-                    <span>{label}</span>
-                    <span>
-                      {limit < 0
-                        ? t('cloudPlans.unlimited')
-                        : limit.toLocaleString()}
-                    </span>
-                  </div>
-                  {text(config?.quotas?.[key]?.tooltip) && (
-                    <p className="mt-1 opacity-75">
-                      {text(config?.quotas?.[key]?.tooltip)}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
+            {Object.entries(plan.limits)
+              .filter(([key]) => key !== 'chat_history.retention_days')
+              .map(([key, limit]) => {
+                const resource = key.replace(/\.max$/, '');
+                const label =
+                  text(config?.quotas?.[key]?.label) ||
+                  t(`cloudPlans.limits.${resource}`, {
+                    defaultValue: resource.replace(/_/g, ' '),
+                  });
+                return (
+                  <li key={key}>
+                    <div className="flex justify-between gap-5">
+                      <span>{label}</span>
+                      <span>
+                        {limit < 0
+                          ? t('cloudPlans.unlimited')
+                          : limit.toLocaleString()}
+                      </span>
+                    </div>
+                    {text(config?.quotas?.[key]?.tooltip) && (
+                      <p className="mt-1 opacity-75">
+                        {text(config?.quotas?.[key]?.tooltip)}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
         </Help>
       </>
@@ -154,7 +167,7 @@ function Benefits({
     retention: (
       <>
         <PlanIcon name="ri-history-line" />
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 break-words">
           {t('cloudPlans.retention', {
             count: plan.chat_history_retention_days,
           })}
@@ -167,7 +180,7 @@ function Benefits({
     monthly_credits: (
       <>
         <PlanIcon name="ri-coin-line" />
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 break-words">
           {t('cloudPlans.credits', { count: plan.monthly_bonus_credits })}
         </span>
         <Help label={t('cloudPlans.creditsLabel')}>
@@ -179,7 +192,7 @@ function Benefits({
     supported_platforms: (
       <>
         <PlanIcon name="ri-apps-2-line" />
-        <span className="min-w-0 flex-1">{t('cloudPlans.platforms')}</span>
+        <span className="min-w-0 break-words">{t('cloudPlans.platforms')}</span>
         <Tooltip>
           <TooltipTrigger
             type="button"
@@ -234,7 +247,7 @@ function Benefits({
     rows[`item:${index}`] = (
       <>
         <PlanIcon name={item.icon} />
-        <span className="min-w-0 flex-1 whitespace-pre-line">{label}</span>
+        <span className="min-w-0 whitespace-pre-line break-words">{label}</span>
         {text(item.tooltip) && <Help label={label}>{text(item.tooltip)}</Help>}
       </>
     );
@@ -303,6 +316,94 @@ export default function CloudPlansDialog({
       window.clearTimeout(timeout);
     };
   }, [open, spaceURL, attempt]);
+  const owned = workspace.current_plan;
+  const latest = plans.find((plan) => plan.name === owned?.name);
+  // Catalog copy of the purchased revision, so its card renders exactly like
+  // the latest one. Benefits still come from the entitlement snapshot below.
+  const [ownedRevision, setOwnedRevision] = useState<PublicCloudPlan | null>(
+    null,
+  );
+  const ownedName = owned?.name;
+  const ownedRevisionNumber = owned?.revision;
+  const needsOwnedRevision =
+    !!latest && !!ownedName && latest.revision !== ownedRevisionNumber;
+  useEffect(() => {
+    setOwnedRevision(null);
+    if (!open || !needsOwnedRevision || !ownedName || !ownedRevisionNumber)
+      return;
+    const controller = new AbortController();
+    fetchCloudPlanRevision(
+      spaceURL,
+      ownedName,
+      ownedRevisionNumber,
+      controller.signal,
+    )
+      .then(setOwnedRevision)
+      // Fall back to the snapshot-only card when the revision is unavailable.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open, spaceURL, needsOwnedRevision, ownedName, ownedRevisionNumber]);
+  const rows = owned ? revisionRows(owned, latest) : [];
+  const distinct =
+    !!owned &&
+    (!latest ||
+      (owned.revision !== latest.revision && rows.some((row) => row.changed)));
+  const entries: (PublicCloudPlan | 'owned')[] = [...plans];
+  if (distinct) {
+    const index = entries.findIndex(
+      (plan) => plan !== 'owned' && plan.name === owned.name,
+    );
+    entries.splice(index < 0 ? 0 : index, 0, 'owned');
+  }
+  // Copy, prices and display items come from the purchased revision itself;
+  // limits, platforms, retention and credits come only from the workspace
+  // entitlement snapshot, never from the latest revision.
+  const ownedCatalog =
+    ownedRevision?.revision === owned?.revision ? ownedRevision : null;
+  const ownedPlan: PublicCloudPlan | null =
+    distinct && owned
+      ? {
+          uuid: `owned-${owned.name}-${owned.revision}`,
+          name: owned.name,
+          revision: owned.revision,
+          display_name:
+            ownedCatalog?.display_name ?? latest?.display_name ?? {},
+          description: ownedCatalog?.description ?? {},
+          price_cny: ownedCatalog?.price_cny ?? '0',
+          price_usd: ownedCatalog?.price_usd ?? '0',
+          price_jpy: ownedCatalog?.price_jpy ?? '0',
+          limits: owned.limits,
+          features: ownedCatalog?.features ?? [],
+          is_active: true,
+          sort_order: latest?.sort_order ?? 0,
+          highlight: ownedCatalog?.highlight ?? false,
+          chat_history_retention_days:
+            owned.limits['chat_history.retention_days'] ?? 30,
+          monthly_bonus_credits: owned.monthly_bonus_credits,
+          disabled_adapters: Object.entries(owned.entitlement_features)
+            .filter(([key, enabled]) => key.startsWith('platform.') && !enabled)
+            .map(([key]) => key.slice(9)),
+          display_config: ownedCatalog?.display_config
+            ? ownedCatalog.display_config
+            : latest?.display_config
+              ? {
+                  icon: latest.display_config.icon,
+                  order: latest.display_config.order,
+                  tooltips: latest.display_config.tooltips,
+                  quotas: latest.display_config.quotas,
+                  items: [],
+                }
+              : { items: [] },
+        }
+      : null;
+  const subscribedOn = owned?.subscription_started_at
+    ? t('planRevision.subscribedOn', {
+        interpolation: { escapeValue: false },
+        date: new Date(owned.subscription_started_at * 1000).toLocaleDateString(
+          i18n.language.replace('_', '-'),
+        ),
+      })
+    : null;
   const formatPrice = (price: number) =>
     new Intl.NumberFormat(i18n.language.replace('_', '-'), {
       style: 'currency',
@@ -344,6 +445,15 @@ export default function CloudPlansDialog({
           </div>
         </div>
         <div className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+          {!loading && (
+            <>
+              {!workspace.current_plan && (
+                <p className="mb-4 text-sm" role="status">
+                  {t('planRevision.unknown')}
+                </p>
+              )}
+            </>
+          )}
           {loading ? (
             <div
               className="flex min-h-48 items-center justify-center"
@@ -363,7 +473,7 @@ export default function CloudPlansDialog({
                 {t('cloudPlans.retry')}
               </Button>
             </div>
-          ) : !plans.length ? (
+          ) : !entries.length ? (
             <p className="py-10 text-center text-muted-foreground">
               {t('cloudPlans.empty')}
             </p>
@@ -371,120 +481,197 @@ export default function CloudPlansDialog({
             <TooltipProvider delayDuration={200}>
               <div
                 className={cn(
-                  'grid gap-4 p-1 sm:grid-cols-2',
-                  plans.length > 2 && 'lg:grid-cols-3',
+                  'flex gap-4 overflow-x-auto p-1 [&>*]:w-72 [&>*]:shrink-0 [&>*]:grow',
                 )}
               >
-                {plans.map((plan) => {
-                  const current = workspace.plan_name === plan.name;
-                  const downgradeBlocked =
-                    Boolean(
-                      workspace.plan_name && workspace.plan_name !== 'free',
-                    ) && plan.name === 'free';
-                  const price = cloudPlanPrice(plan, cycle, currency);
-                  const name =
-                    localizedPlanText(plan.display_name, i18n.language) ||
-                    plan.name.toUpperCase();
-                  return (
-                    <article
-                      key={plan.uuid}
-                      className={cn(
-                        'flex min-w-0 flex-col rounded-xl border p-5',
-                        current && 'border-blue-500/50 bg-blue-500/5',
-                      )}
-                      aria-label={name}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="flex items-center gap-2 font-semibold">
-                          <PlanIcon name={plan.display_config?.icon} />
-                          {name}
-                        </h3>
-                        {current ? (
-                          <Badge variant="secondary">
-                            {t('cloudPlans.current')}
-                          </Badge>
-                        ) : plan.highlight ? (
-                          <Badge>{t('cloudPlans.recommended')}</Badge>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {localizedPlanText(plan.description, i18n.language)}
-                      </p>
-                      <p className="mt-5 text-2xl font-semibold">
-                        {price === 0
-                          ? t('cloudPlans.free')
-                          : formatPrice(price)}
-                        {price > 0 && (
-                          <span className="ml-1 text-xs font-normal text-muted-foreground">
-                            / {t(`cloudPlans.${cycle}`)}
-                          </span>
+                {entries.map((plan) => {
+                  const renderCard = (
+                    plan: PublicCloudPlan,
+                    ownedCard = false,
+                  ) => {
+                    const samePlan = workspace.plan_name === plan.name;
+                    const current =
+                      ownedCard || (samePlan && !distinct && !!owned);
+                    // Both stacked revisions share one card style; only the
+                    // badge text tells them apart.
+                    const stacked = distinct && plan.name === owned?.name;
+                    const downgradeBlocked =
+                      Boolean(
+                        workspace.plan_name && workspace.plan_name !== 'free',
+                      ) && plan.name === 'free';
+                    const price = cloudPlanPrice(plan, cycle, currency);
+                    const name =
+                      localizedPlanText(plan.display_name, i18n.language) ||
+                      plan.name.toUpperCase();
+                    return (
+                      <article
+                        key={plan.uuid}
+                        data-owned-plan={ownedCard || undefined}
+                        className={cn(
+                          'flex min-w-0 flex-col rounded-xl border p-5',
+                          current &&
+                            !stacked &&
+                            'border-blue-500/50 bg-blue-500/5',
                         )}
-                      </p>
-                      <p className="mb-5 mt-1 min-h-4 text-xs text-muted-foreground">
-                        {cycle === 'annual' && price > 0
-                          ? t('cloudPlans.annualNote', {
-                              price: formatPrice(price / 12),
-                            })
-                          : ''}
-                      </p>
-                      <div className="flex-1">
-                        <Benefits plan={plan} spaceURL={spaceURL} />
-                      </div>
-                      {plan.subscription_disabled && (
-                        <p className="mt-4 text-xs text-muted-foreground">
-                          {t('cloudPlans.subscriptionUnavailableHint')}
-                        </p>
-                      )}
-                      {plan.subscription_disabled && !current ? (
-                        <Button
-                          className="mt-6 w-full"
-                          variant="outline"
-                          disabled
-                        >
-                          {t('cloudPlans.subscriptionUnavailable')}
-                        </Button>
-                      ) : downgradeBlocked ? null : !canManage ? (
-                        <Button
-                          className="mt-6 w-full"
-                          variant="outline"
-                          disabled
-                        >
-                          {t('cloudPlans.ownerOnly')}
-                        </Button>
-                      ) : (
-                        <Button
-                          asChild
-                          className="mt-6 w-full"
-                          variant={plan.highlight ? 'default' : 'outline'}
-                        >
-                          <a
-                            href={
-                              current
-                                ? cloudSubscriptionManagementURL(
-                                    spaceURL,
-                                    workspace.workspace.uuid,
-                                  )
-                                : cloudPlanCheckoutURL(
-                                    spaceURL,
-                                    workspace.workspace.uuid,
-                                    plan.name,
-                                    cycle,
-                                    currency,
-                                  )
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {t(
-                              current
-                                ? 'cloudPlans.manageSubscription'
-                                : 'cloudPlans.choose',
+                        aria-label={name}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="flex items-center gap-2 font-semibold">
+                            <PlanIcon name={plan.display_config?.icon} />
+                            {name}
+                          </h3>
+                          {current ? (
+                            <Badge variant={stacked ? 'default' : 'secondary'}>
+                              {t('cloudPlans.current')}
+                            </Badge>
+                          ) : plan.highlight ? (
+                            <Badge>{t('cloudPlans.recommended')}</Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {localizedPlanText(plan.description, i18n.language)}
+                          {distinct &&
+                            !ownedCard &&
+                            plan.name === owned?.name && (
+                              <span className="block" data-latest-quota>
+                                {t('planRevision.latestQuota')}
+                              </span>
                             )}
-                            <ArrowRight className="size-4" />
-                          </a>
-                        </Button>
-                      )}
-                    </article>
+                          {ownedCard && subscribedOn && (
+                            <span className="block" data-subscribed-on>
+                              {subscribedOn}
+                            </span>
+                          )}
+                        </p>
+                        {ownedCard && !ownedCatalog ? (
+                          <div className="mb-5" />
+                        ) : (
+                          <>
+                            <p className="mt-5 text-2xl font-semibold">
+                              {price === 0
+                                ? t('cloudPlans.free')
+                                : formatPrice(price)}
+                              {price > 0 && (
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                  / {t(`cloudPlans.${cycle}`)}
+                                </span>
+                              )}
+                            </p>
+                            <p className="mb-5 mt-1 min-h-4 text-xs text-muted-foreground">
+                              {cycle === 'annual' && price > 0
+                                ? t('cloudPlans.annualNote', {
+                                    price: formatPrice(price / 12),
+                                  })
+                                : ''}
+                            </p>
+                          </>
+                        )}
+                        <div className="flex-1">
+                          <Benefits plan={plan} spaceURL={spaceURL} />
+                        </div>
+                        {plan.subscription_disabled && (
+                          <p className="mt-4 text-xs text-muted-foreground">
+                            {t('cloudPlans.subscriptionUnavailableHint')}
+                          </p>
+                        )}
+                        {plan.subscription_disabled && !current ? (
+                          <Button
+                            className="mt-6 w-full"
+                            variant="outline"
+                            disabled
+                          >
+                            {t('cloudPlans.subscriptionUnavailable')}
+                          </Button>
+                        ) : downgradeBlocked ? null : !canManage ? (
+                          <Button
+                            className="mt-6 w-full"
+                            variant="outline"
+                            disabled
+                          >
+                            {t('cloudPlans.ownerOnly')}
+                          </Button>
+                        ) : distinct &&
+                          !ownedCard &&
+                          plan.name === owned?.name ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                asChild
+                                className="mt-6 w-full"
+                                variant={plan.highlight ? 'default' : 'outline'}
+                              >
+                                <a
+                                  href={cloudSubscriptionManagementURL(
+                                    spaceURL,
+                                    workspace.workspace.uuid,
+                                  )}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {t('cloudPlans.manageSubscription')}
+                                  <ArrowRight className="size-4" />
+                                </a>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t('planRevision.cancelToSubscribe')}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            asChild
+                            className="mt-6 w-full"
+                            variant={plan.highlight ? 'default' : 'outline'}
+                          >
+                            <a
+                              href={
+                                workspace.plan_name &&
+                                workspace.plan_name !== 'free'
+                                  ? cloudSubscriptionManagementURL(
+                                      spaceURL,
+                                      workspace.workspace.uuid,
+                                    )
+                                  : cloudPlanCheckoutURL(
+                                      spaceURL,
+                                      workspace.workspace.uuid,
+                                      plan.name,
+                                      cycle,
+                                      currency,
+                                    )
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {t(
+                                workspace.plan_name &&
+                                  workspace.plan_name !== 'free'
+                                  ? 'cloudPlans.manageSubscription'
+                                  : 'cloudPlans.choose',
+                              )}
+                              <ArrowRight className="size-4" />
+                            </a>
+                          </Button>
+                        )}
+                        {ownedCard && !latest && (
+                          <p className="mt-4 text-sm">
+                            {t('planRevision.unavailable')}
+                          </p>
+                        )}
+                      </article>
+                    );
+                  };
+                  if (plan === 'owned')
+                    return ownedPlan && !latest
+                      ? renderCard(ownedPlan, true)
+                      : null;
+                  return ownedPlan && latest === plan ? (
+                    <PlanRevisionStack
+                      key={plan.uuid}
+                      current={renderCard(ownedPlan, true)}
+                      latest={renderCard(plan)}
+                    />
+                  ) : (
+                    renderCard(plan)
                   );
                 })}
               </div>

@@ -824,6 +824,9 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
                 not_before=1,
                 expires_at=4102444800,
                 plan_name='free',
+                plan_revision=3,
+                monthly_bonus_credits=12,
+                subscription_started_at=1720000000,
                 limits={'bots.max': 2, 'pipelines.max': 3, 'plugins.max': 4, 'knowledge_bases.max': 5},
             )
 
@@ -845,6 +848,10 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
     assert current['placement_generation'] == 12
     assert current['plan_name'] == 'free'
     assert current['limitation']['max_bots'] == 2
+    assert current['current_plan']['subscription_started_at'] == 1720000000
+    assert current['current_plan']['revision'] == 3
+    assert current['current_plan']['monthly_bonus_credits'] == 12
+    assert current['current_plan']['limits']['bots.max'] == 2
 
     create_workspace = await client.post(
         '/api/v1/workspaces',

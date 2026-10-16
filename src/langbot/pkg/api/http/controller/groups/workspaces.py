@@ -160,6 +160,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
             plan_name: str | None = None
             limitation = None
+            current_plan = None
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
@@ -167,6 +168,15 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     minimum_revision=request_context.entitlement_revision,
                 )
                 plan_name = entitlement.plan_name
+                if entitlement.plan_revision is not None and entitlement.monthly_bonus_credits is not None:
+                    current_plan = {
+                        'name': entitlement.plan_name,
+                        'subscription_started_at': entitlement.subscription_started_at,
+                        'revision': entitlement.plan_revision,
+                        'monthly_bonus_credits': entitlement.monthly_bonus_credits,
+                        'limits': entitlement.limits,
+                        'entitlement_features': entitlement.features,
+                    }
                 from ...service.workspace_limits import LIMIT_KEYS
 
                 limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
@@ -188,6 +198,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'permissions': sorted(request_context.workspace.permissions),
                         'placement_generation': request_context.placement_generation,
                         'plan_name': plan_name,
+                        'current_plan': current_plan,
                         'limitation': limitation,
                     }
                 )
@@ -205,6 +216,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     'permissions': sorted(request_context.workspace.permissions),
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
+                    'current_plan': current_plan,
                     'limitation': limitation,
                 }
             )

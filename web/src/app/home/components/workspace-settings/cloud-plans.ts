@@ -2,6 +2,7 @@ export type CloudPlanBillingCycle = 'monthly' | 'annual';
 export type CloudPlanCurrency = 'CNY' | 'USD' | 'JPY';
 export type PlanLocalizedText = Partial<Record<string, string>>;
 export interface PublicCloudPlan {
+  entitlement_features?: Record<string, boolean>;
   uuid: string;
   name: string;
   revision: number;
@@ -157,4 +158,26 @@ export async function fetchPublicCloudPlans(
       cloudPlanPrice(plan, 'monthly', currency);
   }
   return plans.sort((a, b) => a.sort_order - b.sort_order);
+}
+
+// Catalog metadata (copy, prices, display items) of one historical revision.
+export async function fetchCloudPlanRevision(
+  base: string,
+  name: string,
+  revision: number,
+  signal: AbortSignal,
+): Promise<PublicCloudPlan> {
+  const response = await fetch(
+    spaceURL(
+      base,
+      `/api/v1/cloud/v2/plans/${encodeURIComponent(name)}/revisions/${revision}`,
+    ),
+    { credentials: 'omit', referrerPolicy: 'no-referrer', signal },
+  );
+  if (!response.ok) throw new Error('Could not load plan revision');
+  const result = await response.json();
+  const plan = result?.data as PublicCloudPlan | undefined;
+  if (result?.code !== 0 || !plan?.name || plan.name !== name)
+    throw new Error('Invalid plan revision');
+  return plan;
 }

@@ -1,6 +1,48 @@
 import slackSetup from './slack-setup/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
 const zhHans = {
+  planRevision: {
+    subscribedOn: '订阅日期：{{date}}',
+    latestQuota: '该计划最新配额',
+    showLatest: '查看该计划最新配额',
+    showCurrent: '查看当前订阅',
+    latestTab: '最新配额',
+    currentTab: '当前订阅',
+    cancelToSubscribe: '取消本期订阅，下一期即可订阅最新配额',
+
+    current: '当前订阅：{{plan}} · revision {{revision}}',
+    owned: '已购买 revision {{revision}}',
+    latest: '最新 revision {{revision}}',
+    changed: '已购买权益与最新版本存在差异，高亮行标示变动。',
+    same: '权益与最新 revision {{revision}} 相同，已购买版本保持不变。',
+    unavailable: '最新计划暂不可用，已购买权益继续有效。',
+    benefit: '权益',
+    change: '有变化',
+    enabled: '启用',
+    disabled: '禁用',
+    monthlyCredits: '每月赠送额度',
+    retention: '聊天记录保留天数',
+    unknown:
+      '当前订阅详情不可用。请刷新或前往 Space 管理订阅；最新目录权益不代表已购买权益。',
+    handoff:
+      '请在 Space 管理订阅。自动续费需先取消后才能购买新版本；预付订阅到期自动结束，除非到期前手动续订。',
+    cancelFirst:
+      '请先在订阅管理中取消自动续费。取消后保留本期已付权益，不退款。服务端确认取消后可重新购买最新版本，付款成功后新权益生效。',
+    canceled:
+      '续费已取消。本期已付权益保留至到期，不退款；重新购买的权益在付款成功后生效。',
+    prepaid:
+      '本预付订阅到期自动结束。到期前可续订当前方案；到期后只能按各计划的最新配额订阅。',
+    renew: '续订当前订阅',
+    buying: '正在购买 revision {{revision}}。',
+    fields: {
+      bots_max: '机器人',
+      members_max: '成员',
+      pipelines_max: '处理器',
+      plugins_max: '扩展',
+      knowledge_bases_max: '知识库',
+      managed_sandbox_sessions_max: '沙箱会话',
+    },
+  },
   cloudPlans: {
     subscriptionUnavailable: '暂不可订阅',
     subscriptionUnavailableHint:

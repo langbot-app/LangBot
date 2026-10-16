@@ -1,5 +1,50 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
+  planRevision: {
+    subscribedOn: 'Ngày đăng ký: {{date}}',
+    latestQuota: 'Hạn mức mới nhất của gói này',
+    showLatest: 'Xem hạn mức mới nhất của gói này',
+    showCurrent: 'Xem gói đăng ký hiện tại',
+    latestTab: 'Mới nhất',
+    currentTab: 'Hiện tại',
+    cancelToSubscribe:
+      'Hủy gói hiện tại để đăng ký hạn mức mới nhất vào kỳ tiếp theo',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Gia hạn gói đăng ký hiện tại',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
   cloudPlans: {
     subscriptionUnavailable: 'Chưa thể đăng ký',
     subscriptionUnavailableHint:

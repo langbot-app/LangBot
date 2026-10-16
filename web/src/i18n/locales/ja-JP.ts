@@ -1,6 +1,51 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  planRevision: {
+    subscribedOn: '契約日：{{date}}',
+    latestQuota: 'このプランの最新の利用枠',
+    showLatest: 'このプランの最新クォータを表示',
+    showCurrent: '現在のサブスクリプションを表示',
+    latestTab: '最新',
+    currentTab: '現在',
+    cancelToSubscribe:
+      '現在のサブスクリプションをキャンセルすると、次期から最新のクォータに登録できます',
+
+    current: '現在の契約：{{plan}} · revision {{revision}}',
+    owned: '購入済み revision {{revision}}',
+    latest: '最新 revision {{revision}}',
+    changed:
+      '購入済みの特典と最新バージョンに違いがあります。変更箇所を強調表示しています。',
+    same: '特典は最新 revision {{revision}} と同じです。購入済みバージョンは変更されません。',
+    unavailable:
+      '最新プランは現在利用できません。購入済みの特典は引き続き有効です。',
+    benefit: '特典',
+    change: '変更あり',
+    enabled: '有効',
+    disabled: '無効',
+    monthlyCredits: '毎月のボーナスクレジット',
+    retention: 'チャット履歴の保存日数',
+    unknown:
+      '現在の契約情報を取得できません。再読み込みするか Space で契約を管理してください。最新カタログの特典は購入済み特典ではありません。',
+    handoff:
+      'Space で契約を管理してください。新バージョンの購入前に自動更新を解除してください。前払い契約は期限前に更新しなければ自動終了します。',
+    cancelFirst:
+      'まず契約管理で自動更新を解除してください。支払済みの特典は期間終了まで保持され、返金はありません。解除の確認後、最新バージョンを購入でき、決済成功時に新しい特典が有効になります。',
+    canceled:
+      '更新は解除済みです。支払済みの特典は期間終了まで保持され、返金はありません。新しい購入の特典は決済成功時に有効になります。',
+    prepaid:
+      'この前払い契約は期間終了時に自動終了します。期限前は現在の内容で更新でき、期限後は各プランの最新の利用枠でのみ契約できます。',
+    renew: '現在の契約を更新',
+    buying: 'revision {{revision}} を購入します。',
+    fields: {
+      bots_max: 'ボット',
+      members_max: 'メンバー',
+      pipelines_max: 'プロセッサー',
+      plugins_max: '拡張機能',
+      knowledge_bases_max: 'ナレッジベース',
+      managed_sandbox_sessions_max: 'サンドボックスセッション',
+    },
+  },
   cloudPlans: {
     subscriptionUnavailable: '現在お申し込みできません',
     subscriptionUnavailableHint:
