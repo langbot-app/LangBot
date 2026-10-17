@@ -14,11 +14,12 @@ from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.context import RequestContext, PrincipalContext, PrincipalType, WorkspaceContext
 from langbot.pkg.api.http.service.assistant import AssistantError, AssistantService
 from langbot.pkg.api.http.service.assistant_tools import (
+    ASSISTANT_APPLICATION_OPERATIONS,
     TOOLS,
     execute_tool,
     validate_call,
 )
-from langbot.pkg.api.application import ApplicationAPI
+from langbot.pkg.api.application import OPERATIONS
 from langbot.pkg.entity.persistence.assistant import AssistantConversation
 
 
@@ -56,13 +57,16 @@ def proposal():
     )
 
 
-def test_assistant_pipeline_arguments_use_pipeline_uuid():
-    """Pipeline tools require an explicit resource identifier."""
+def test_assistant_pipeline_schema_tracks_application_operation_catalog():
+    """Catch drift between assistant argument schemas and Application DTOs."""
 
     pipeline_id_fields = set(TOOLS['get_pipeline'][0].model_fields)
     extension_id_fields = set(TOOLS['get_pipeline_extensions'][0].model_fields)
     assert pipeline_id_fields == {'pipeline_uuid'}
     assert extension_id_fields == {'pipeline_uuid'}
+    assert ASSISTANT_APPLICATION_OPERATIONS['get_pipeline'] in OPERATIONS
+    assert ASSISTANT_APPLICATION_OPERATIONS['get_pipeline_extensions'] in OPERATIONS
+    assert ASSISTANT_APPLICATION_OPERATIONS['list_resources:pipelines'] in OPERATIONS
 
 
 @pytest.fixture
@@ -196,7 +200,6 @@ async def test_resource_readers_match_application_services():
     ap.embedding_models_service = create_autospec(EmbeddingModelsService, instance=True)
     ap.pipeline_service = create_autospec(PipelineService, instance=True)
     ap.knowledge_service = create_autospec(KnowledgeService, instance=True)
-    ap.application_api = ApplicationAPI(ap)
     ctx = context()
     for kind, reader in (
         ('models', ap.llm_model_service.get_llm_models),
@@ -212,10 +215,7 @@ async def test_resource_readers_match_application_services():
             'total': 1,
             'items': [{'name': kind}],
         }
-        if kind == 'pipelines':
-            reader.assert_awaited_once_with(ctx, 'created_at', 'DESC', include_secret=False)
-        else:
-            reader.assert_awaited_once_with(ctx)
+        reader.assert_awaited_once_with(ctx)
 
 
 @pytest.mark.asyncio

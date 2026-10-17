@@ -11,10 +11,6 @@ from __future__ import annotations
 
 import json
 import pytest
-
-from langbot.pkg.api.application import ApplicationAPI
-from langbot.pkg.api.http.service.pipeline import PipelineService
-from types import MethodType
 from unittest.mock import MagicMock, AsyncMock, Mock
 from types import SimpleNamespace
 
@@ -162,11 +158,6 @@ def fake_pipeline_app():
     # Plugin connector (for extensions endpoint)
     app.plugin_connector.list_plugins = AsyncMock(return_value=[])
 
-    app.pipeline_service.ap = app
-    app.pipeline_service.get_pipeline_extensions = MethodType(
-        PipelineService.get_pipeline_extensions, app.pipeline_service
-    )
-    app.application_api = ApplicationAPI(app)
     return app
 
 

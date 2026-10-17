@@ -2,6 +2,7 @@ import quart
 from urllib.parse import unquote
 
 from .....application import (
+    ApplicationAPI,
     ApplicationAPIException,
     KnowledgeEngineListInput,
     KnowledgeEngineSchemaInput,
@@ -9,6 +10,11 @@ from .....application import (
 from ....authz import Permission
 from ....context import RequestContext
 from ... import group
+
+
+def _application_api(ap) -> ApplicationAPI:
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('knowledge_engines', '/api/v1/knowledge/engines')
@@ -27,7 +33,7 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             This is used by the frontend to render the knowledge base creation wizard.
             """
             try:
-                output = await self.ap.application_api.execute(
+                output = await _application_api(self.ap).execute(
                     'knowledge.engine.list',
                     request_context,
                     KnowledgeEngineListInput(),
@@ -54,7 +60,7 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             if '/' not in plugin_id:
                 return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
             try:
-                output = await self.ap.application_api.execute(
+                output = await _application_api(self.ap).execute(
                     'knowledge.engine.schema.get',
                     request_context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='creation'),
@@ -82,7 +88,7 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
             if '/' not in plugin_id:
                 return self.http_status(400, -1, 'Invalid plugin_id format. Expected author/name.')
             try:
-                output = await self.ap.application_api.execute(
+                output = await _application_api(self.ap).execute(
                     'knowledge.engine.schema.get',
                     request_context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='retrieval'),

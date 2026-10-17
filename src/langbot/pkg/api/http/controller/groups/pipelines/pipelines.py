@@ -3,6 +3,7 @@ from __future__ import annotations
 import quart
 
 from .....application import (
+    ApplicationAPI,
     ApplicationAPIException,
     PipelineExtensionsGetInput,
     PipelineExtensionsUpdateInput,
@@ -21,6 +22,20 @@ from ......pipeline.extension_preferences import (
 )
 
 
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared facade without evaluating an eager fallback.
+
+    Test and migration graphs may not attach ``application_api`` yet.  Build a
+    small compatibility facade around the existing PipelineService in that
+    case; using ``getattr(..., ap.pipeline_service)`` directly evaluates the
+    fallback eagerly and also assumes legacy services expose ``list_pipelines``
+    (the service contract is ``get_pipelines``).
+    """
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
+
+
 @group.group_class('pipelines', '/api/v1/pipelines')
 class PipelinesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -34,7 +49,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             sort_by = quart.request.args.get('sort_by', 'created_at')
             sort_order = quart.request.args.get('sort_order', 'DESC')
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
-            application_api = self.ap.application_api
+            application_api = _application_api(self.ap)
             try:
                 output = await application_api.execute(
                     'pipeline.list',
@@ -80,7 +95,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            application_api = self.ap.application_api
+            application_api = _application_api(self.ap)
             try:
                 output = await application_api.execute(
                     'pipeline.get',
@@ -152,7 +167,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            application_api = self.ap.application_api
+            application_api = _application_api(self.ap)
             pipeline = await application_api.get_pipeline(request_context, pipeline_uuid)
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
@@ -232,7 +247,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                         'mcp_resources': 'bound_mcp_resources',
                     },
                 )
-                application_api = self.ap.application_api
+                application_api = _application_api(self.ap)
                 await application_api.execute(
                     'pipeline.extensions.update',
                     request_context,

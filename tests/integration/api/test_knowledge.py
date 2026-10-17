@@ -9,8 +9,6 @@ Run: uv run pytest tests/integration/api/test_knowledge.py -q
 from __future__ import annotations
 
 import pytest
-
-from langbot.pkg.api.application import ApplicationAPI
 from unittest.mock import MagicMock, AsyncMock, Mock
 from types import SimpleNamespace
 
@@ -132,7 +130,6 @@ def fake_knowledge_app():
     # RAG manager
     app.rag_mgr = Mock()
 
-    app.application_api = ApplicationAPI(app)
     return app
 
 

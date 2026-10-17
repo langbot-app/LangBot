@@ -7,10 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-from langbot.pkg.api.application import ApplicationAPI
-from langbot.pkg.api.http.service.pipeline import PipelineService
-from types import MethodType
 import quart
 
 core_app_module = types.ModuleType('langbot.pkg.core.app')
@@ -54,9 +50,6 @@ async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
         ),
         **extra_ap,
     )
-    pipeline_service.ap = ap
-    pipeline_service.get_pipeline_extensions = MethodType(PipelineService.get_pipeline_extensions, pipeline_service)
-    ap.application_api = ApplicationAPI(ap)
     router_class = import_module('langbot.pkg.api.http.controller.groups.pipelines.pipelines').PipelinesRouterGroup
     group = router_class(ap, app)
     await group.initialize()
@@ -217,7 +210,9 @@ async def test_pipeline_extensions_get_normalizes_malformed_enable_all_flags(inv
 @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
 async def test_pipeline_extensions_get_malformed_root_is_fail_closed(invalid_preferences):
     pipeline_service = SimpleNamespace(
-        get_pipeline=AsyncMock(return_value={'extensions_preferences': invalid_preferences}),
+        get_pipeline=AsyncMock(
+            return_value={'extensions_preferences': invalid_preferences}
+        ),
     )
     client = await _create_test_client(
         pipeline_service,

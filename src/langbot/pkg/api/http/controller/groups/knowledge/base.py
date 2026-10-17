@@ -1,6 +1,7 @@
 import quart
 
 from .....application import (
+    ApplicationAPI,
     ApplicationAPIException,
     KnowledgeBaseGetInput,
     KnowledgeBaseListInput,
@@ -9,6 +10,11 @@ from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
 from ... import group
+
+
+def _application_api(ap) -> ApplicationAPI:
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('knowledge_base', '/api/v1/knowledge/bases')
@@ -21,7 +27,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def handle_knowledge_bases(request_context: RequestContext) -> quart.Response:
-            application_api = self.ap.application_api
+            application_api = _application_api(self.ap)
             try:
                 output = await application_api.execute(
                     'knowledge.base.list',
@@ -59,7 +65,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> quart.Response:
-            application_api = self.ap.application_api
+            application_api = _application_api(self.ap)
             try:
                 output = await application_api.execute(
                     'knowledge.base.get',
