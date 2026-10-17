@@ -1,7 +1,7 @@
 """E2E coverage for the official Local Agent runner with fake Host resources.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
-load the consolidated ``langbot-plugin-demo/Runner/LocalAgent`` plugin, and verify Local Agent paths
+load the pinned official ``langbot-plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
 that must cross Host run-scoped APIs without calling any external provider.
 """
 
@@ -13,6 +13,7 @@ import os
 import shutil
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,7 +24,7 @@ from typing import Any
 import pytest
 
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
-from tests.e2e.utils.process_manager import find_project_root
+from tests.utils.legacy_plugin_contract import verified_plugin_root
 
 pytestmark = pytest.mark.e2e
 
@@ -43,16 +44,15 @@ def _free_port() -> int:
 
 
 def _local_agent_repo() -> Path:
-    """Return the sibling local-agent repository used by this workspace E2E."""
-    project_root = find_project_root()
-    return project_root.parent / 'langbot-plugin-demo' / 'Runner' / 'LocalAgent'
+    """Use the same official source pin as the plugin identity contracts."""
+    return verified_plugin_root(files_key='local_agent_files') / 'Runner' / 'LocalAgent'
 
 
 def _package_local_agent_plugin(tmpdir: Path) -> Path:
-    """Package the sibling Local Agent plugin for the real local-install flow."""
+    """Package the verified official plugin for the real local-install flow."""
     local_agent_src = _local_agent_repo()
     if not (local_agent_src / 'manifest.yaml').exists():
-        pytest.skip(f'local-agent repository not found at {local_agent_src}')
+        pytest.fail(f'LocalAgent manifest not found at {local_agent_src}', pytrace=False)
 
     package_source = tmpdir / 'local-agent-package'
     ignore = shutil.ignore_patterns(
@@ -275,7 +275,12 @@ def local_agent_e2e_tmpdir():
     """Create temporary directory for Local Agent E2E testing."""
     tmpdir = Path(tempfile.mkdtemp(prefix='langbot_local_agent_e2e_'))
     yield tmpdir
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    # The runtime seals its artifact/dependency directories as read-only.
+    # Restore only this fixture's own directories so teardown removes them.
+    for path in tmpdir.rglob('*'):
+        if path.is_dir() and not path.is_symlink():
+            path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    shutil.rmtree(tmpdir)
 
 
 @pytest.fixture(scope='session')
@@ -1050,6 +1055,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             super().__init__()
             self.box = box
             self.bindings = []
+            self.outboxes = []
 
         async def get_resolved_tool_catalog(self, *args, **kwargs):
             return [{'name': 'exec', 'source': 'native', 'source_id': None}]
@@ -1066,19 +1072,31 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             self.bindings.append((binding.session_id, binding.run_id))
             source = next(iter(binding.imported.values()))['path']
             outbox = f'/workspace/outbox/{binding.io_scope}'
+            self.outboxes.append(outbox)
             # Shell arguments are Host-issued paths, never model input.
             import shlex
 
+            directory_mode = '-m 700 ' if len(self.bindings) == 2 else ''
             result = await self.box.execute_tool(
                 {
-                    'command': f'mkdir -p {shlex.quote(outbox)} && cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")}'
+                    'command': (
+                        f'mkdir {directory_mode}-p {shlex.quote(outbox)} && '
+                        f'cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")} && '
+                        f"stat -c '%u %a' {shlex.quote(outbox)} {shlex.quote(outbox + '/answer.txt')}"
+                    )
                 },
                 query,
             )
             assert result['ok'], result
+            ownership = result['stdout'].strip().splitlines()
+            assert ownership[-1] == '0 600', ownership
+            if len(self.bindings) == 2:
+                assert ownership[0] == '0 700', ownership
             return result
 
     async def probe(ap):
+        import shlex
+
         backend = TestDockerBackend(ap.logger)
         if not await backend.is_available():
             pytest.skip('Docker is required for the real Box probe')
@@ -1120,6 +1138,12 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                 output = [component for message in messages for component in (message.attachments or [])]
                 assert len(output) == 1, messages
                 assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
+                inspection = await box.execute_in_context(
+                    context,
+                    {'cmd': f'ls -A {shlex.quote(manager.outboxes[-1])}', 'session_id': manager.bindings[-1][0]},
+                )
+                assert inspection.exit_code == 0, inspection
+                assert inspection.stdout.strip() == '', inspection.stdout
                 status = await RunnerBoxService(box).status(context)
                 assert status['used'] == 1 and status['remaining'] == 0, status
             assert manager.bindings[0][0] == manager.bindings[1][0]
@@ -1129,6 +1153,18 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             with pytest.raises(BoxCapacityExceededError):
                 await RunnerBoxService(box).acquire(context, {'reuse_key': 'different'})
         finally:
-            await box.shutdown()
+            try:
+                if manager.bindings:
+                    # Only this fixture's temporary Workspace is mounted here.
+                    cleanup = await box.execute_in_context(
+                        context,
+                        {
+                            'cmd': f'chown -hR {os.getuid()}:{os.getgid()} /workspace/outbox',
+                            'session_id': manager.bindings[-1][0],
+                        },
+                    )
+                    assert cleanup.exit_code == 0, cleanup
+            finally:
+                await box.shutdown()
 
     _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
