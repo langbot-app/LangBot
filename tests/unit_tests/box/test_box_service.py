@@ -2063,9 +2063,9 @@ class TestInboundOutboundRoundTrip:
         assert len(attachments) == 1
         assert attachments[0]['type'] == 'Image'
         assert attachments[0]['name'] == 'out.png'
-        # cleanup (rm -rf) must have been issued after a successful collection
+        # Cleanup uses the bounded sandbox walker after collection.
         service.execute_tool.assert_awaited_once()
-        assert 'rm -rf' in service.execute_tool.await_args.args[0]['command']
+        assert 'clear_directory' in service.execute_tool.await_args.args[0]['command']
 
     @pytest.mark.asyncio
     async def test_collect_outbound_empty_still_clears(self):
@@ -2102,9 +2102,9 @@ class TestInboundOutboundRoundTrip:
         service.client.execute = AsyncMock(side_effect=fake_client_execute)
         service.execute_tool = AsyncMock(return_value={'ok': True, 'stdout': '', 'stderr': ''})
         assert await service.collect_outbound_attachments(query) == []
-        # cleanup (rm -rf) is issued unconditionally now
+        # Cleanup is issued even when the outbox is empty.
         service.execute_tool.assert_awaited_once()
-        assert 'rm -rf' in service.execute_tool.await_args.args[0]['command']
+        assert 'clear_directory' in service.execute_tool.await_args.args[0]['command']
 
     @pytest.mark.asyncio
     async def test_passthrough_noop_when_unavailable(self):
