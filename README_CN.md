@@ -92,6 +92,7 @@ docker compose --profile all up -d
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
+[![Deploy on ZopDay](https://zop.dev/deploytozopday-inkhard.svg)](https://zop.dev/zopday/app/deploy?image=rockchin/langbot:latest&port=5300)
 
 **更多方式：** [Docker](https://langbot.app/docs/zh/deploy/langbot/docker) · [手动部署](https://langbot.app/docs/zh/deploy/langbot/manual) · [宝塔面板](https://langbot.app/docs/zh/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
