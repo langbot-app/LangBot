@@ -505,7 +505,11 @@ const PipelineFormComponent = forwardRef<
         toast.success(t('pipelines.createSuccess'));
       })
       .catch((err) => {
-        toast.error(t('pipelines.createError') + err.msg);
+        toast.error(
+          err.msg === 'pipeline_runner_not_authorized'
+            ? t('pipelines.runnerNotAuthorized')
+            : t('pipelines.createError') + err.msg,
+        );
       })
       .finally(() => {
         isSavingRef.current = false;
@@ -559,7 +563,11 @@ const PipelineFormComponent = forwardRef<
         typeof err === 'object' && err && 'msg' in err
           ? String((err as { msg?: string }).msg || '')
           : '';
-      toast.error(t('pipelines.saveError') + message);
+      toast.error(
+        message === 'pipeline_runner_not_authorized'
+          ? t('pipelines.runnerNotAuthorized')
+          : t('pipelines.saveError') + message,
+      );
       return false;
     } finally {
       isSavingRef.current = false;
@@ -860,7 +868,11 @@ const PipelineFormComponent = forwardRef<
           onCancel?.();
         })
         .catch((err) => {
-          toast.error(t('pipelines.createError') + err.msg);
+          toast.error(
+            err.msg === 'pipeline_runner_not_authorized'
+              ? t('pipelines.runnerNotAuthorized')
+              : t('pipelines.createError') + err.msg,
+          );
         });
     }
   };
