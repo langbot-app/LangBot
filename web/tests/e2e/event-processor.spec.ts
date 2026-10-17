@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { installLangBotApiMocks } from './fixtures/langbot-api';
 
-test('create first, select a plugin in the header, debug beside scrollable logs', async ({
+test('select a plugin before creation and retain debug state while browsing run logs', async ({
   page,
 }) => {
   await installLangBotApiMocks(page, { authenticated: true });
@@ -45,11 +45,7 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
     ) {
       const payload = route.request().postDataJSON();
       creations.push(payload);
-      Object.assign(processor, payload, {
-        component_ref: null,
-        config: {},
-        supported_event_patterns: [],
-      });
+      Object.assign(processor, payload);
       await route.fulfill({
         json: { code: 0, data: { uuid: processor.uuid, kind: processor.kind } },
       });
@@ -222,6 +218,8 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   await page
     .getByRole('textbox', { name: 'Name', exact: false })
     .fill('Welcome processor');
+  await page.locator('#agent-create-form').getByRole('combobox').click();
+  await page.getByRole('option').filter({ hasText: 'Welcome' }).click();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect(page).toHaveURL(/id=processor-qa/);
   expect(creations).toHaveLength(1);
@@ -229,35 +227,33 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
     kind: 'event_processor',
     name: 'Welcome processor',
   });
-  expect(creations[0]).not.toHaveProperty('component_ref');
+  expect(creations[0]).toHaveProperty('component_ref', ref);
   expect(creations[0]).not.toHaveProperty('config');
   const panel = page.getByRole('region', { name: 'Event Debug' });
-  const logs = page.getByRole('region', { name: 'Plugin processor' });
+  const settings = page.getByRole('region', { name: 'Plugin processor' });
+  const logs = page.getByRole('region', { name: 'Run logs', exact: true });
+  const configTab = page.getByRole('tab', {
+    name: /^Configure & debug/,
+  });
+  const logsTab = page.getByRole('tab', { name: 'Run logs', exact: true });
   await expect(panel).toBeVisible();
-  await expect(logs).toBeVisible();
-  await expect(logs.getByRole('tab')).toHaveCount(2);
-  await expect(
-    logs.getByRole('tab', { name: 'Configuration', exact: true }),
-  ).toHaveAttribute('data-state', 'active');
+  await expect(settings).toBeVisible();
+  await expect(configTab).toHaveAttribute('data-state', 'active');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'Run test' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Run test' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Plugin processor' }).click();
   await page.getByRole('option').filter({ hasText: 'Welcome' }).click();
   await expect(
     panel.getByRole('combobox', { name: 'Event type' }),
   ).toContainText('group.member_joined');
-  const settings = logs.getByRole('tabpanel', {
-    name: 'Configuration',
-    exact: true,
-  });
   await expect(settings.getByText('Greeting *', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Plugin settings', exact: true }),
   ).toHaveCount(0);
   await settings.getByRole('textbox').fill('Welcome');
-  await logs.getByRole('tab', { name: 'Logs', exact: true }).click();
+  await logsTab.click();
   await expect(settings).toBeHidden();
-  await logs.getByRole('tab', { name: 'Configuration', exact: true }).click();
+  await configTab.click();
   await expect(settings.getByRole('textbox')).toHaveValue('Welcome');
   await panel
     .getByRole('textbox', { name: 'Member ID' })
@@ -265,9 +261,9 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   await panel.getByRole('button', { name: 'Save and run' }).click();
   await expect(panel.getByText('Debug handler invoked once')).toBeVisible();
   expect(operations).toEqual(['save', 'debug']);
-  await expect(
-    logs.getByRole('tab', { name: 'Logs', exact: true }),
-  ).toHaveAttribute('data-state', 'active');
+  await expect(configTab).toHaveAttribute('data-state', 'active');
+  await logsTab.click();
+  await expect(logs).toBeVisible();
   expect(debugRequests).toHaveLength(1);
   expect(debugRequests[0]).toMatchObject({
     event_type: 'group.member_joined',
@@ -298,10 +294,8 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   await logs.getByText('Final log after pagination').scrollIntoViewIfNeeded();
   await expect(logs.getByText('Final log after pagination')).toBeInViewport();
   expect(cursors).toContain('100');
+  await configTab.click();
   await expect(panel.getByText('Debug handler invoked once')).toBeVisible();
-  const debugBox = await panel.boundingBox();
-  const logBox = await logs.boundingBox();
-  expect(debugBox!.x).toBeLessThan(logBox!.x);
   await page.setViewportSize({ width: 390, height: 700 });
   await panel
     .getByRole('button', { name: 'Run test' })
@@ -309,6 +303,7 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   await expect(
     panel.getByRole('button', { name: 'Run test' }),
   ).toBeInViewport();
+  await logsTab.click();
   await logs.getByText('Final log after pagination').scrollIntoViewIfNeeded();
   await expect(logs.getByText('Final log after pagination')).toBeInViewport();
 });

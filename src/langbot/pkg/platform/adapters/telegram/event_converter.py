@@ -6,6 +6,7 @@ Converts all Telegram Update types to unified EBA events, not just messages.
 from __future__ import annotations
 
 import typing
+import datetime
 
 import telegram
 from telegram import Update
@@ -15,6 +16,13 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 
 from langbot.pkg.platform.adapters.telegram.message_converter import TelegramMessageConverter
+
+
+def _restriction_duration(until_date: datetime.datetime | None, event_date: datetime.datetime) -> int | None:
+    """Telegram uses Unix epoch zero for an indefinite restriction."""
+    if until_date is None or until_date.timestamp() <= 0:
+        return None
+    return max(0, int(until_date.timestamp() - event_date.timestamp()))
 
 
 def _make_user(tg_user: telegram.User) -> platform_entities.User:
@@ -229,9 +237,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if new_status == 'restricted' and cm.new_chat_member:
             restricted = cm.new_chat_member
             if hasattr(restricted, 'can_send_messages') and not restricted.can_send_messages:
-                duration = None
-                if hasattr(restricted, 'until_date') and restricted.until_date:
-                    duration = int(restricted.until_date.timestamp() - time.time())
+                duration = _restriction_duration(restricted.until_date, cm.date)
                 return platform_events.MemberBannedEvent(
                     type='group.member_banned',
                     timestamp=cm.date.timestamp() if cm.date else time.time(),
@@ -283,7 +289,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
 
         # Bot removed from group
-        if old_status in ('member', 'administrator', 'creator') and new_status in ('left', 'kicked'):
+        if old_status in ('member', 'administrator', 'creator', 'restricted') and new_status in ('left', 'kicked'):
             return platform_events.BotRemovedFromGroupEvent(
                 type='bot.removed_from_group',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
@@ -297,9 +303,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if new_status == 'restricted' and mcm.new_chat_member:
             restricted = mcm.new_chat_member
             if hasattr(restricted, 'can_send_messages') and not restricted.can_send_messages:
-                duration = None
-                if hasattr(restricted, 'until_date') and restricted.until_date:
-                    duration = int(restricted.until_date.timestamp() - time.time())
+                duration = _restriction_duration(restricted.until_date, mcm.date)
                 return platform_events.BotMutedEvent(
                     type='bot.muted',
                     timestamp=mcm.date.timestamp() if mcm.date else time.time(),
@@ -310,7 +314,11 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                     source_platform_object=update,
                 )
 
-        if old_status == 'restricted' and new_status in ('member', 'administrator') and mcm.new_chat_member:
+        was_muted = old_status == 'restricted' and not mcm.old_chat_member.can_send_messages
+        can_send = new_status in ('member', 'administrator') or (
+            new_status == 'restricted' and mcm.new_chat_member.can_send_messages
+        )
+        if was_muted and can_send:
             return platform_events.BotUnmutedEvent(
                 type='bot.unmuted',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
@@ -341,14 +349,18 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         reaction = update.message_reaction
         chat = reaction.chat
 
-        # Extract newly added emojis
-        new_emojis = []
-        if reaction.new_reaction:
-            for r in reaction.new_reaction:
-                if hasattr(r, 'emoji'):
-                    new_emojis.append(r.emoji)
-                elif hasattr(r, 'custom_emoji_id'):
-                    new_emojis.append(str(r.custom_emoji_id))
+        def emojis(items):
+            return [
+                str(r.emoji if hasattr(r, 'emoji') else r.custom_emoji_id)
+                for r in items
+                if hasattr(r, 'emoji') or hasattr(r, 'custom_emoji_id')
+            ]
+
+        old_emojis = emojis(reaction.old_reaction or [])
+        new_emojis = emojis(reaction.new_reaction or [])
+        added = [emoji for emoji in new_emojis if emoji not in old_emojis]
+        removed = [emoji for emoji in old_emojis if emoji not in new_emojis]
+        changed = added or removed
 
         user = platform_entities.User(id='')
         if reaction.user:
@@ -363,8 +375,8 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             adapter_name='telegram-omni',
             message_id=reaction.message_id,
             user=user,
-            reaction=new_emojis[0] if new_emojis else '',
-            is_add=len(new_emojis) > 0,
+            reaction=changed[0] if changed else '',
+            is_add=bool(added),
             chat_type=ct,
             chat_id=chat.id,
             group=group,

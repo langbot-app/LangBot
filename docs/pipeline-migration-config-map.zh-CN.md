@@ -18,7 +18,7 @@
 - Dify/Coze/N8n 迁移显式选择 `user-id-source=legacy-session`，Tbox 选择 `legacy-bot`；新建插件配置仍默认 `sender`。旧身份来自 Host 的可信会话/事件/机器人上下文，缺失时失败，不猜测为发送者。
 - Dify/N8n 的旧身份使用原 `query.session`，Coze 使用原 `query`；不能在群聊、不同会话策略或恢复交互时把这两者混同。
 - Coze、Langflow 等现代持久化远端会话机制保留；旧远端会话 ID 不跨账户、端点、Workspace 或 Runner 导入。
-- DashScope 引用字段别名、Langflow 输入输出字段别名、Coze 历史开关别名分别归一化；冲突值阻断，而非靠字段出现顺序决定。
+- DashScope 引用字段别名、Langflow 输入输出字段别名、Coze 历史开关别名分别归一化；冲突时固定采用当前规范字段的值并给出提示，不靠字段出现顺序决定。
 - N8n 的 ignore 响应模式、认证和保留身份字段要维持明确语义。普通业务变量保留支持的 JSON 值，内部/权限/敏感变量不无条件转发。
 - `remove-think` 保留原输出策略，并与支持该字段的 Runner 参数同步；仅用户实际修改才传播，不把表单挂载默认值视为修改。
 - 空字符串、缺失和显式 null 区分处理。WeKnora 的 agent-id 不得在打开/保存其他字段时被默认值替换；未知字段/类型不能靠 truthiness 静默接受。
@@ -28,19 +28,35 @@
 
 以下是迁移器要求的插件最低版本，不是认证版本清单。已发布的专属运行版本不等于已认证可跨工作区共享；旧版本即使名称相同，也不能作为当前 Cloud 迁移能力的证明。认证须由精确制品的有效签名及 `shared-runtime-v1`、`stateless-v1` 声明证明。
 
-- `local-agent` → `LocalAgent` **0.1.10**。
-- `dify-service-api` → `DifyAgent` **0.1.10**。
-- `coze-api` → `CozeAgent` **0.1.10**。
-- `dashscope-app-api` → `DashScopeAgent` **0.1.10**。
-- `n8n-service-api` → `N8nAgent` **0.1.10**。
-- `langflow-api` → `LangflowAgent` **0.1.10**。
-- `deerflow-api` → `DeerFlowAgent` **0.1.10**。
-- `tbox-app-api` → `TboxAgent` **0.1.8**。
-- `weknora-api` → `WeKnoraAgent` **0.1.10**。
+- `local-agent` → `LocalAgent` **0.2.1**。
+- `dify-service-api` → `DifyAgent` **0.2.3**。
+- `coze-api` → `CozeAgent` **0.2.0**。
+- `dashscope-app-api` → `DashScopeAgent` **0.2.2**。
+- `n8n-service-api` → `N8nAgent` **0.2.0**。
+- `langflow-api` → `LangflowAgent` **0.2.2**。
+- `deerflow-api` → `DeerFlowAgent` **0.2.1**。
+- `tbox-app-api` → `TboxAgent` **0.2.1**。
+- `weknora-api` → `WeKnoraAgent` **0.2.1**。
+
+版本号是经过审阅的最低版本：安装时优先安装该版本；若扩展市场已下架该版本则回退安装最新版。已安装的更高版本不会被降级，迁移执行前仍以运行时 Runner schema 校验迁移结果。
+
+## 宽松迁移规则（planner v5）
+
+迁移器尽量自动修复，只在无法安全运行时阻断：
+
+- 仍然阻断：配置不是对象/不是合法 JSON；必填凭据或端点缺失/为空（api-key、base-url、webhook-url、app-id、bot-id、flow-id、LocalAgent 缺少主模型）；n8n header 名称非法或 basic 认证凭据不是 latin-1；Coze api-base 含凭据、查询串或片段。
+- 自动修复并提示：
+  - 字符串形式的布尔/数字（如 `"true"`、`"30"`）按字段类型转换；无法转换时使用默认值（`migration.value_coerced` / `migration.invalid_value_defaulted`）。
+  - 缺失字段按 4.10 界面默认值补齐（`migration.missing_default_filled`）。
+  - 未知字段与残留的其他 Runner 配置段从活动配置移除，原值保存在迁移备份（`migration.unknown_field_dropped` / `migration.unknown_section_archived`）。
+  - 别名冲突固定取规范字段（`migration.alias_conflict_resolved`）；同时存在 `runner.id` 与旧 `runner.runner` 时采用可用的一项（`migration.mixed_runner_selection`）。
+  - 扩展设置非法时忽略；仅启用部分插件时自动加入目标 Runner 插件（`extensions.runner_added`）。
+- 旧版自定义 Runner（非内置 9 类）标记为 `unsupported_runner`：不迁移、不算失败，需改写为插件 Runner 后再绑定，参见 https://langbot.app/docs/zh/plugin/dev/tutor 。
+- 诊断只包含代码和字段路径，不包含任何值或凭据。
 
 ## 逐字段完整清单
 
-共 9 类 Runner、104 条字段条目；按消费者展开共享字段。未知部署自定义键不冒充已穷举字段，遇到时阻断并保留原值。
+共 9 类 Runner、104 条字段条目；按消费者展开共享字段。未知部署自定义键不冒充已穷举字段，遇到时从活动配置移除、原值保留在迁移备份中并给出提示。
 
 目标路径缩写 `R` 表示 `config.ai.runner_config[当前插件 Runner ID]`；`extensions_preferences` 是流水线的 Host 扩展策略，不是插件全局配置。
 

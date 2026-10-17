@@ -14,6 +14,26 @@ MODEL_TEST_ERROR_CODE = 'model_test_failed'
 @group.group_class('models/llm', '/api/v1/provider/models/llm')
 class LLMModelsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        @self.route('/_/starred', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def get_starred(request_context: RequestContext) -> str:
+            return self.success(data={'uuid': await self.ap.llm_model_service.get_starred_model(request_context)})
+
+        @self.route('/_/starred', methods=['PUT'], permission=Permission.PROVIDER_SECRET_MANAGE)
+        async def set_starred(request_context: RequestContext) -> str:
+            body = await quart.request.json
+            model_uuid = body.get('uuid')
+            if model_uuid is not None and not isinstance(model_uuid, str):
+                return self.http_status(400, -1, 'uuid must be a string or null')
+            try:
+                await self.ap.llm_model_service.set_starred_model(request_context, model_uuid)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={})
+
+        @self.route('/_/default', methods=['GET'], permission=Permission.RESOURCE_MANAGE)
+        async def get_default(request_context: RequestContext) -> str:
+            return self.success(data={'uuid': await self.ap.llm_model_service.get_default_model(request_context)})
+
         @self.route(
             '',
             methods=['GET'],

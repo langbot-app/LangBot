@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ChevronRight, ScrollText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,38 +46,50 @@ export default function PluginProcessorTrace({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       {events.map((event, index) =>
         event.type === 'processor.log' ? (
-          <Alert
+          <div
             key={event.sequence ?? index}
-            variant={event.data.level === 'error' ? 'destructive' : 'default'}
+            className="min-w-0 overflow-hidden rounded-lg border bg-background"
           >
-            <AlertDescription className="flex min-w-0 items-start gap-2">
-              <Badge variant="outline">{String(event.data.level)}</Badge>
-              <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                {String(event.data.text)}
+            <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-3">
+              <ScrollText className="size-4 text-muted-foreground" />
+              <span className="flex-1 text-sm font-medium">
+                {t('agents.eventProcessor.logsTab')}
               </span>
-            </AlertDescription>
-          </Alert>
+              <Badge status={String(event.data.level)}>
+                {String(event.data.level)}
+              </Badge>
+            </div>
+            <p
+              className={`min-w-0 whitespace-pre-wrap break-words p-4 text-sm leading-7 [overflow-wrap:anywhere] ${event.data.level === 'error' ? 'text-destructive' : ''}`}
+            >
+              {String(event.data.text)}
+            </p>
+          </div>
         ) : (
-          <ProcessorPayload
+          <div
             key={event.sequence ?? index}
-            title={
-              <>
-                {t(
-                  `agents.eventProcessor.trace_${event.type.replaceAll('.', '_')}`,
-                  { defaultValue: event.type },
-                )}
-                {typeof event.data.tool_name === 'string' && (
-                  <span className="ml-2 text-muted-foreground">
-                    {toolLabels[event.data.tool_name] || event.data.tool_name}
-                  </span>
-                )}
-              </>
-            }
-            value={event.data}
-          />
+            className="rounded-lg border bg-background p-3"
+          >
+            <ProcessorPayload
+              title={
+                <>
+                  {t(
+                    `agents.eventProcessor.trace_${event.type.replaceAll('.', '_')}`,
+                    { defaultValue: event.type },
+                  )}
+                  {typeof event.data.tool_name === 'string' && (
+                    <span className="ml-2 text-muted-foreground">
+                      {toolLabels[event.data.tool_name] || event.data.tool_name}
+                    </span>
+                  )}
+                </>
+              }
+              value={event.data}
+            />
+          </div>
         ),
       )}
     </div>

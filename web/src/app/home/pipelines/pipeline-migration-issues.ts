@@ -31,6 +31,21 @@ const issueKeys: Record<string, string> = {
   runner_schema_incompatible: 'schemaChanged',
   plugin_version_incompatible: 'pluginVersion',
   'runtime.pending_interaction': 'pendingInteraction',
+  'legacy.custom_runner_unsupported': 'customRunner',
+  'migration.unknown_field_dropped': 'fieldDropped',
+  'migration.unknown_section_archived': 'fieldDropped',
+  'migration.value_coerced': 'valueRepaired',
+  'migration.invalid_value_defaulted': 'valueRepaired',
+  'migration.missing_default_filled': 'valueRepaired',
+  'migration.alias_conflict_resolved': 'aliasRepaired',
+  'local.prompt_normalized': 'valueRepaired',
+  'local.reasoning_dropped': 'valueRepaired',
+  'local.box_template_defaulted': 'valueRepaired',
+  'langflow.tweaks_invalid_defaulted': 'valueRepaired',
+  'migration.mixed_runner_selection': 'mixedRunner',
+  'migration.runner_config_replaced': 'runnerConfigReplaced',
+  'extensions.runner_added': 'runnerAdded',
+  invalid_extension_preferences: 'extensionPrefs',
 };
 
 /** Only locally reviewed codes may select localized copy. */

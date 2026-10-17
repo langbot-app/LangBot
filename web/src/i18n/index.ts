@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enUS from './locales/en-US';
+import botSetup from './locales/bot-setup';
 import zhHans from './locales/zh-Hans';
 import zhHant from './locales/zh-Hant';
 import jaJP from './locales/ja-JP';
@@ -17,28 +18,28 @@ i18n
   .init({
     resources: {
       'en-US': {
-        translation: enUS,
+        translation: { ...enUS, botSetup: botSetup['en-US'] },
       },
       'zh-Hans': {
-        translation: zhHans,
+        translation: { ...zhHans, botSetup: botSetup['zh-Hans'] },
       },
       'zh-Hant': {
-        translation: zhHant,
+        translation: { ...zhHant, botSetup: botSetup['zh-Hant'] },
       },
       'ja-JP': {
-        translation: jaJP,
+        translation: { ...jaJP, botSetup: botSetup['ja-JP'] },
       },
       'th-TH': {
-        translation: thTH,
+        translation: { ...thTH, botSetup: botSetup['th-TH'] },
       },
       'vi-VN': {
-        translation: viVN,
+        translation: { ...viVN, botSetup: botSetup['vi-VN'] },
       },
       'es-ES': {
-        translation: esES,
+        translation: { ...esES, botSetup: botSetup['es-ES'] },
       },
       'ru-RU': {
-        translation: ruRU,
+        translation: { ...ruRU, botSetup: botSetup['ru-RU'] },
       },
     },
     fallbackLng: 'zh-Hans',

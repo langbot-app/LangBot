@@ -88,6 +88,12 @@ class MockApplication:
     def _create_mock_persistence_manager(self):
         persistence_mgr = AsyncMock()
         persistence_mgr.execute_async = AsyncMock()
+        result = Mock(scalar_one_or_none=Mock(return_value=None))
+        uow = AsyncMock()
+        uow.execute = AsyncMock(return_value=result)
+        boundary = AsyncMock()
+        boundary.__aenter__.return_value = uow
+        persistence_mgr.tenant_uow = Mock(return_value=boundary)
         return persistence_mgr
 
     def _create_mock_query_pool(self):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -46,12 +47,14 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             platform_message.Source(id=event.message_id, time=datetime.datetime.now()),
         ]
         if event.type == 'group' and event.ai_bot_id:
+            # Group callbacks identify the mentioned bot by ID, independently
+            # of its display name or the optional text-cleanup configuration.
             components.append(platform_message.At(target=event.ai_bot_id))
 
         if event.content:
             content = event.content
-            if bot_name:
-                content = content.replace(f'@{bot_name}', '').strip()
+            if event.type == 'group' and bot_name:
+                content = re.sub(rf'(?<!\S)@{re.escape(bot_name)}(?=\s|$)', '', content).strip()
             if content:
                 components.append(platform_message.Plain(text=content))
 

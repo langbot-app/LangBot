@@ -423,3 +423,21 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
         assert remaining == 3
     finally:
         await engine.dispose()
+
+
+async def test_cloud_cleanup_uses_plan_retention_and_isolates_workspaces(service):
+    from unittest.mock import AsyncMock
+
+    service.ap.deployment = SimpleNamespace(mode='cloud')
+    service.ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=SimpleNamespace(limits={'chat_history.retention_days': 7})))
+    old = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(days=10)
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        await service.ap.persistence_mgr.execute_async(sqlalchemy.insert(MonitoringMessage).values(
+            id=f'policy-{workspace}', workspace_uuid=workspace, timestamp=old,
+            bot_id='bot', bot_name='Bot', pipeline_id='pipeline', pipeline_name='Pipeline',
+            message_content='history', session_id='session', status='success', level='info',
+        ))
+    deleted = await service.cleanup_expired_records(_context(WORKSPACE_A), retention_days=90)
+    assert deleted['monitoring_messages'] == 1
+    rows = await service.ap.persistence_mgr.execute_async(sqlalchemy.select(MonitoringMessage.workspace_uuid))
+    assert rows.scalars().all() == [WORKSPACE_B]

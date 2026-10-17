@@ -272,8 +272,7 @@ function executionText(raw: unknown): string {
 /** Derive the unified execution list from a mocked monitoring payload. */
 export function buildExecutionList(monitoringData: unknown) {
   const payload = monitoringData as
-    | { messages?: RawMonitoringMessage[] }
-    | undefined;
+    { messages?: RawMonitoringMessage[] } | undefined;
   const items = (payload?.messages ?? [])
     .filter((message) => message.role !== 'assistant')
     .map((message) => {
@@ -748,6 +747,22 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   if (path === '/api/v1/workspaces/bootstrap') {
     return fulfillJson(route, { workspaces: state.workspaces });
+  }
+
+  if (path === '/api/v1/workspaces/current/language') {
+    return fulfillJson(route, {
+      language: 'en_US',
+      supported_languages: [
+        'en_US',
+        'zh_Hans',
+        'zh_Hant',
+        'ja_JP',
+        'es_ES',
+        'ru_RU',
+        'th_TH',
+        'vi_VN',
+      ],
+    });
   }
 
   if (path === '/api/v1/workspaces/current') {

@@ -39,6 +39,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot = object.__new__(RuntimeBot)
     bot.bot_entity = SimpleNamespace(
         uuid='bot-1',
+        adapter='aiocqhttp',
         workspace_uuid=TEST_CONTEXT.workspace_uuid,
         event_bindings=event_bindings,
         plugin_processors=[],
@@ -49,6 +50,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot.logger = SimpleNamespace(info=AsyncMock(), warning=AsyncMock(), error=AsyncMock(), debug=AsyncMock())
     bot.adapter = FakeAdapter()
     bot.ap = SimpleNamespace(
+        workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()),
         telemetry=SimpleNamespace(execution=counters),
         agent_service=SimpleNamespace(get_agent=AsyncMock(return_value=agent)),
         pipeline_service=SimpleNamespace(get_pipeline=AsyncMock(return_value=None)),
@@ -505,11 +507,13 @@ async def test_pending_event_cancelled_during_dispatch_never_uploads():
 
     bot._dispatch_eba_event_to_processor = waiting_dispatch
     task = asyncio.create_task(bot._handle_platform_event(message_received_event(), FakeAdapter()))
-    await started.wait()
-    await counters.flush()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await counters.flush()
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
     await assert_no_upload(counters, manager)
 
 

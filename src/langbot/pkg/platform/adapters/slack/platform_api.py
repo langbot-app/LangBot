@@ -5,7 +5,8 @@ import typing
 
 async def get_mode(adapter, params: dict) -> dict:
     return {
-        'webhook': True,
+        'webhook': not adapter.config.get('socket_mode', False),
+        'socket_mode': adapter.config.get('socket_mode', False),
         'bot_account_id': adapter.bot_account_id,
     }
 

@@ -336,7 +336,7 @@ test.describe('monitoring request contracts', () => {
     });
     await page.goto('/home/monitoring');
     await expect.poll(() => pending.length).toBe(2);
-    await page.getByRole('combobox').last().click();
+    await page.locator('#monitoring-filter-time').click();
     await page.getByRole('option', { name: /Last 7 days/i }).click();
     await expect.poll(() => pending.length).toBe(3);
     await respond(pending[2], 'Latest filter data');
@@ -362,7 +362,7 @@ test.describe('monitoring request contracts', () => {
     await expect(
       page.getByText('Obsolete filter data', { exact: true }),
     ).toHaveCount(0);
-    await page.getByRole('combobox').last().click();
+    await page.locator('#monitoring-filter-time').click();
     await page.getByRole('option', { name: /Last 24 hours/i }).click();
     await expect.poll(() => pending.length).toBe(5);
     await respond(pending[4], 'Current result');
@@ -636,9 +636,15 @@ test.describe('monitoring conversation turn grouping', () => {
     await expect(
       sheet.locator('span.break-all').filter({ hasText: /^repo_search$/ }),
     ).toBeVisible();
-    await sheet.getByText('Errors (1)', { exact: true }).click();
-    await expect(sheet.getByText('Tool retry failed').first()).toBeVisible();
+    await expect(
+      sheet.getByText('Errors (1)', { exact: true }).locator('..'),
+    ).toHaveAttribute('open', '');
+    await expect(
+      sheet.getByText('Tool retry failed').filter({ visible: true }).first(),
+    ).toBeVisible();
     await sheet.getByText('Conversation context (6)', { exact: true }).click();
-    await expect(sheet.getByText('Rollback plan ready')).toBeVisible();
+    await expect(
+      sheet.getByText('Rollback plan ready').filter({ visible: true }),
+    ).toBeVisible();
   });
 });

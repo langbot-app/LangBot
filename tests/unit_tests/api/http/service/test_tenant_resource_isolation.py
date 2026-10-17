@@ -294,7 +294,7 @@ async def test_cross_workspace_parent_references_are_rejected(tenant_services):
             {
                 'event_bindings': [
                     {
-                        'event_pattern': 'message.*',
+                        'event_pattern': 'message.received',
                         'target_type': 'pipeline',
                         'target_uuid': 'pipeline-b',
                     }

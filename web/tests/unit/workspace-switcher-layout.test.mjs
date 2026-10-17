@@ -90,9 +90,8 @@ test('keeps workspace plan and settings controls on the workspace row', () => {
 });
 
 test('moves Cloud plan upgrades into Workspace Settings', () => {
-  assert.match(workspaceSettingsPanelSource, /workspace\.upgradePlan/);
-  assert.match(workspaceSettingsPanelSource, /cloudPortalURL/);
-  assert.match(workspaceSettingsPanelSource, /step=plan/);
+  assert.match(workspaceSettingsPanelSource, /cloudPlans\.title/);
+  assert.match(workspaceSettingsPanelSource, /<CloudPlansDialog/);
   assert.match(workspaceSettingsPanelSource, /systemInfo\.cloud_service_url/);
 });
 

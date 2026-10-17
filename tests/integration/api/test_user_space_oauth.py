@@ -27,6 +27,7 @@ async def space_oauth_api():
         execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=1),
     )
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False, mode='oss')
     application.directory_projection_service = None
     application.persistence_mgr = None

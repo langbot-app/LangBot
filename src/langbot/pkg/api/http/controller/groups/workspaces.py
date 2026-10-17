@@ -14,6 +14,8 @@ from .....workspace.errors import WorkspaceNotFoundError
 from .....workspace.invitation_delivery import InvitationDeliveryService
 from .....operation_trace import service as settings_service
 from .. import group
+from .....i18n import SUPPORTED_LANGUAGES
+from .....i18n.workspace import get_workspace_language, set_workspace_language
 
 
 def _workspace_payload(workspace: Workspace) -> dict[str, typing.Any]:
@@ -74,6 +76,34 @@ class WorkspacesRouterGroup(group.RouterGroup):
         return await operation()
 
     async def initialize(self) -> None:
+        @self.route(
+            '/current/language',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_VIEW,
+        )
+        async def get_language(request_context: RequestContext):
+            return self.success(
+                data={
+                    'language': await get_workspace_language(self.ap, request_context.workspace_uuid, refresh=True),
+                    'supported_languages': list(SUPPORTED_LANGUAGES),
+                }
+            )
+
+        @self.route(
+            '/current/language',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def update_language(request_context: RequestContext):
+            body = await quart.request.get_json()
+            locale = body.get('language') if isinstance(body, dict) else None
+            if locale not in SUPPORTED_LANGUAGES:
+                return self.http_status(400, 'invalid_language', 'Unsupported Workspace language')
+            locale = await set_workspace_language(self.ap, request_context.workspace_uuid, locale)
+            return self.success(data={'language': locale})
+
         @self.route('/bootstrap', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> typing.Any:
             """List the active Workspaces available to an authenticated Account.
@@ -129,6 +159,8 @@ class WorkspacesRouterGroup(group.RouterGroup):
             membership = quart.g.workspace_membership
             workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
             plan_name: str | None = None
+            limitation = None
+            current_plan = None
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
@@ -136,6 +168,18 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     minimum_revision=request_context.entitlement_revision,
                 )
                 plan_name = entitlement.plan_name
+                if entitlement.plan_revision is not None and entitlement.monthly_bonus_credits is not None:
+                    current_plan = {
+                        'name': entitlement.plan_name,
+                        'subscription_started_at': entitlement.subscription_started_at,
+                        'revision': entitlement.plan_revision,
+                        'monthly_bonus_credits': entitlement.monthly_bonus_credits,
+                        'limits': entitlement.limits,
+                        'entitlement_features': entitlement.features,
+                    }
+                from ...service.workspace_limits import LIMIT_KEYS
+
+                limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
             if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
                 return self.success(
                     data={
@@ -154,6 +198,8 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'permissions': sorted(request_context.workspace.permissions),
                         'placement_generation': request_context.placement_generation,
                         'plan_name': plan_name,
+                        'current_plan': current_plan,
+                        'limitation': limitation,
                     }
                 )
             account = await self.ap.user_service.get_user_by_uuid(request_context.account_uuid)
@@ -170,6 +216,8 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     'permissions': sorted(request_context.workspace.permissions),
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
+                    'current_plan': current_plan,
+                    'limitation': limitation,
                 }
             )
 

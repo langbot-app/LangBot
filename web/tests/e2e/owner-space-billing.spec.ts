@@ -56,8 +56,9 @@ test('an OSS local-only owner is prompted to bind before using LangBot Models', 
   await page.goto('/home?action=showModelSettings');
 
   await expect(
-    page.getByRole('button', {
-      name: 'The Workspace owner must connect a LangBot Account for LangBot Models.',
-    }),
+    page.getByText(
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
+      { exact: true },
+    ),
   ).toBeVisible();
 });

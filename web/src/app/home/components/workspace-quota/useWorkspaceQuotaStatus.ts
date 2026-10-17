@@ -1,3 +1,4 @@
+import { useCurrentWorkspace } from '@/app/infra/http';
 import { systemInfo } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 
@@ -46,27 +47,28 @@ export function useWorkspaceQuotaStatus(): WorkspaceQuotaStatus {
     skills,
     quotaDataLoaded,
   } = useSidebarData();
-  const limitation = systemInfo.limitation;
+  const currentWorkspace = useCurrentWorkspace();
+  const cloud = currentWorkspace?.workspace.source === 'cloud_projection';
+  const limitation = cloud
+    ? currentWorkspace.limitation
+    : systemInfo.limitation;
+  const loaded = quotaDataLoaded && (!cloud || limitation != null);
 
-  const botQuota = quotaItem(
-    bots.length,
-    limitation?.max_bots,
-    quotaDataLoaded,
-  );
+  const botQuota = quotaItem(bots.length, limitation?.max_bots, loaded);
   const pipelineQuota = quotaItem(
     pipelines.length,
     limitation?.max_pipelines,
-    quotaDataLoaded,
+    loaded,
   );
   const knowledgeBaseQuota = quotaItem(
     knowledgeBases.length,
     limitation?.max_knowledge_bases,
-    quotaDataLoaded,
+    loaded,
   );
   const extensionQuota = quotaItem(
     pluginCount + mcpServers.length + skills.length,
     limitation?.max_extensions,
-    quotaDataLoaded,
+    loaded,
   );
 
   return {

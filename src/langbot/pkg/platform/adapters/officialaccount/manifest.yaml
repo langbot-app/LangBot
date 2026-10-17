@@ -34,6 +34,22 @@ spec:
       type: array[string]
       required: false
       default: []
+    - name: AppID
+      label:
+        en_US: App ID
+        zh_Hans: 应用 ID
+        zh_Hant: 應用 ID
+      type: string
+      required: true
+      default: ""
+    - name: AppSecret
+      label:
+        en_US: App Secret
+        zh_Hans: 应用密钥
+        zh_Hant: 應用密鑰
+      type: string
+      required: true
+      default: ""
     - name: webhook_url
       label:
         en_US: Webhook Callback URL
@@ -62,32 +78,32 @@ spec:
       type: string
       required: true
       default: ""
-    - name: AppID
-      label:
-        en_US: App ID
-        zh_Hans: 应用 ID
-        zh_Hant: 應用 ID
-      type: string
-      required: true
-      default: ""
-    - name: AppSecret
-      label:
-        en_US: App Secret
-        zh_Hans: 应用密钥
-        zh_Hant: 應用密鑰
-      type: string
-      required: true
-      default: ""
     - name: Mode
       label:
         en_US: Mode
         zh_Hans: 接入模式
         zh_Hant: 接入模式
       description:
-        en_US: "drop replies within the current callback; passive returns a loading message first and queues the real reply for the user's next message."
-        zh_Hans: "drop 会在当前回调内等待回复；passive 会先返回加载提示，并将真实回复排队到用户下一条消息。"
-        zh_Hant: "drop 會在目前回調內等待回覆；passive 會先回傳載入提示，並將真實回覆排隊到使用者下一則訊息。"
-      type: string
+        en_US: "Auto uses customer service messaging when available, falling back to next-message retrieval for permission, window or quota limits. Passive always waits for the next message. Drop requires a reply within 5 seconds."
+        zh_Hans: "自动模式在生成完成后通过客服接口回复；无权限、超出回复窗口或额度不足时，改为下一条消息领取。passive 始终由下一条消息领取；drop 需要在 5 秒内完成回复。客服接口通常需企业主体认证，以微信实际权限为准。"
+        zh_Hant: "自動模式在生成完成後透過客服介面回覆；無權限、超出回覆時限或額度不足時，改為下一則訊息領取。passive 始終由下一則訊息領取；drop 需要在 5 秒內完成回覆。客服介面通常需企業主體認證，以微信實際權限為準。"
+      type: select
+      options:
+        - name: auto
+          label:
+            en_US: Automatic reply with fallback (auto)
+            zh_Hans: 自动回复，受限时转为领取（auto）
+            zh_Hant: 自動回覆，受限時轉為領取（auto）
+        - name: drop
+          label:
+            en_US: Reply in current callback (drop)
+            zh_Hans: 当前回调内回复（drop）
+            zh_Hant: 目前回調內回覆（drop）
+        - name: passive
+          label:
+            en_US: Queue reply for next message (passive)
+            zh_Hans: 下一条消息时返回回复（passive）
+            zh_Hant: 下一則訊息時傳回回覆（passive）
       required: true
       default: "drop"
     - name: LoadingMessage

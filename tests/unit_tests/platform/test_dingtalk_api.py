@@ -46,7 +46,7 @@ def test_dingtalk_card_param_map_stringifies_unregistered_structures():
 
 
 async def test_create_card_embeds_layout_config_as_template_parameter(monkeypatch):
-    response = type('Response', (), {'status_code': 200})()
+    response = type('Response', (), {'status_code': 200, 'json': lambda self: {}})()
     post = AsyncMock(return_value=response)
 
     @asynccontextmanager
@@ -78,6 +78,7 @@ async def test_create_card_embeds_layout_config_as_template_parameter(monkeypatc
         'cardParamMap': {
             'content': 'hello',
             'config': '{"autoLayout": true}',
+            'autoLayout': 'true',
         }
     }
     assert original_params == {'content': 'hello'}

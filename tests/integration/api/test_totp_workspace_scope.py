@@ -46,6 +46,7 @@ async def _resolve(account_uuid: str, _workspace_uuid: str | None) -> SimpleName
 async def totp_admin_api():
     accounts = {'member-token': SimpleNamespace(uuid=MEMBER_UUID, user='member@example.com')}
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False)
     application.instance_config.data = {'system': {'allow_modify_login_info': True}}
     application.persistence_mgr = SimpleNamespace(tenant_uow=None)

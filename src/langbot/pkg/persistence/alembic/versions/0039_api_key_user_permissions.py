@@ -3,8 +3,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0035_api_key_user_permissions'
-down_revision = '0034_monitoring_execution_links'
+revision = '0039_api_key_user_permissions'
+down_revision = '0038_llm_call_details'
 branch_labels = None
 depends_on = None
 

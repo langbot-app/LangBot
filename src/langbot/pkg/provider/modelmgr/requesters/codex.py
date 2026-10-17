@@ -7,12 +7,16 @@ import json
 import secrets
 import time
 from collections import OrderedDict
+from contextlib import AsyncExitStack, aclosing
 
 import httpx
 import langbot
 import langbot_plugin.api.entities.builtin.provider.message as pm
 
 from .. import requester, reasoning
+from ..request_policy import current_call
+from ..http_pool import RequesterHTTPPool, requester_http_client
+from ..errors import RequesterError
 from ..codex_auth import BASE_URL, CodexAuth, LOGIN_REQUIRED
 from ..codex_errors import CodexProviderError
 
@@ -21,7 +25,8 @@ async def sse_events(response):
     """Decode SSE records, including CRLF, comments, and multiline data."""
     data = []
     size = 0
-    async for line in response.aiter_lines():
+    lines = response.aiter_lines()
+    async for line in lines:
         if not line:
             if data:
                 text = '\n'.join(data)
@@ -33,6 +38,18 @@ async def sse_events(response):
                         raise ValueError
                 except ValueError:
                     raise ValueError('Codex returned an invalid stream event') from None
+                if event.get('type') == 'response.completed':
+                    # Finish the HTTP body so a healthy connection can return
+                    # to the pool. Never wait indefinitely for a broken SSE
+                    # server after it has already sent the terminal result.
+                    try:
+                        async with asyncio.timeout(0.05):
+                            async for _ in lines:
+                                pass
+                    except (TimeoutError, httpx.HTTPError):
+                        pass
+                    yield event
+                    return
                 yield event
             data, size = [], 0
         elif line.startswith('data:'):
@@ -85,6 +102,7 @@ def _tool(item):
 def _usage(response):
     usage = response.get('usage') or {}
     return {
+        **usage,
         'prompt_tokens': usage.get('input_tokens', 0),
         'completion_tokens': usage.get('output_tokens', 0),
         'total_tokens': usage.get('total_tokens', usage.get('input_tokens', 0) + usage.get('output_tokens', 0)),
@@ -94,7 +112,10 @@ def _usage(response):
 
 
 class CodexRequester(requester.ProviderAPIRequester):
+    reports_raw_timing = True
+
     async def initialize(self):
+        self._http_pool = RequesterHTTPPool()
         self.auth = CodexAuth(self.ap)
         self.workspace = self.requester_cfg['workspace_uuid']
         self.provider = self.requester_cfg['provider_uuid']
@@ -104,6 +125,8 @@ class CodexRequester(requester.ProviderAPIRequester):
 
     async def aclose(self):
         self._replay.clear()
+        if getattr(self, '_http_pool', None) is not None:
+            await self._http_pool.aclose()
 
     def get_reasoning_capabilities(self, model):
         return {
@@ -184,6 +207,8 @@ class CodexRequester(requester.ProviderAPIRequester):
 
     def _body(self, query, model, messages, funcs, extra_args, tokens):
         args = {**(model.model_entity.extra_args or {}), **(extra_args or {})}
+        args.pop('request_policy', None)
+        args.pop('reasoning_config', None)
         # Never permit credentials, transport overrides, store/history or arbitrary
         # SDK kwargs to be smuggled through model advanced parameters.
         allowed = {'reasoning', 'text', 'parallel_tool_calls', 'tool_choice'}
@@ -235,13 +260,11 @@ class CodexRequester(requester.ProviderAPIRequester):
             'stream': True,
             'include': ['reasoning.encrypted_content'],
         }
-        reasoning_config = getattr(model, 'reasoning_config_override', None)
-        if reasoning_config is None:
-            reasoning_config = getattr(model.model_entity, 'reasoning_config', None)
-        level = reasoning.normalize_reasoning_config(reasoning_config)['level']
+        reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
+        level = reasoning_config['level']
         if level != 'provider_default':
             reasoning.validate_reasoning_capabilities(
-                {'level': level}, self.get_reasoning_capabilities(model), model.model_entity.name
+                reasoning_config, self.get_reasoning_capabilities(model), model.model_entity.name
             )
             body['reasoning'] = {'effort': level, 'summary': 'auto'}
         if funcs:
@@ -259,13 +282,39 @@ class CodexRequester(requester.ProviderAPIRequester):
 
     async def _events(self, query, model, messages, funcs, extra_args):
         tokens = await self.auth.access(self.workspace, self.provider)
+        state = current_call.get()
+        timeout = 120
+        if state:
+            p = state.policy
+            timeout = httpx.Timeout(
+                connect=p.connect_timeout, read=p.read_timeout, write=p.write_timeout, pool=p.pool_timeout
+            )
         try:
-            async with asyncio.timeout(300), httpx.AsyncClient(timeout=120, follow_redirects=False) as client:
+            async with (
+                asyncio.timeout(None if state else 300),
+                requester_http_client(self) as client,
+            ):
                 for attempt in range(2):
                     body = self._body(query, model, messages, funcs, extra_args, tokens)
-                    async with client.stream(
-                        'POST', BASE_URL + '/responses', json=body, headers=self._headers(tokens, stream=True)
-                    ) as response:
+                    if state:
+                        state.mark('request_prepared_ms')
+                        state.mark('request_started_ms')
+                    async with AsyncExitStack() as stack:
+                        response_context = client.stream(
+                            'POST',
+                            BASE_URL + '/responses',
+                            json=body,
+                            headers=self._headers(tokens, stream=True),
+                            timeout=timeout,
+                        )
+                        if state:
+                            response = await state.wait(
+                                lambda: stack.enter_async_context(response_context),
+                                'first_event',
+                                state.policy.first_event_timeout,
+                            )
+                        else:
+                            response = await stack.enter_async_context(response_context)
                         if response.status_code == 401 and attempt == 0:
                             tokens = await self.auth.access(
                                 self.workspace, self.provider, rejected_token=tokens['access_token']
@@ -273,85 +322,117 @@ class CodexRequester(requester.ProviderAPIRequester):
                             continue
                         if response.status_code != 200:
                             raise await self._response_error(response)
-                        async for event in sse_events(response):
+                        if state:
+                            state.mark('response_open_ms')
+                        events = sse_events(response)
+                        while True:
+                            try:
+                                if state:
+                                    event = await state.wait(
+                                        lambda: anext(events),
+                                        'stream_idle' if state.raw_started else 'first_event',
+                                        state.policy.stream_idle_timeout
+                                        if state.raw_started
+                                        else state.policy.first_event_timeout,
+                                    )
+                                else:
+                                    event = await anext(events)
+                            except StopAsyncIteration:
+                                break
+                            if state:
+                                state.raw_started = True
+                                state.mark('first_event_ms')
+                                kind = event.get('type', '')
+                                if kind == 'response.output_text.delta' and event.get('delta'):
+                                    state.mark('first_content_ms')
+                                elif 'reasoning' in kind and event.get('delta'):
+                                    state.mark('first_reasoning_ms')
                             yield event, tokens
                         return
-        except (httpx.HTTPError, TimeoutError):
-            raise ValueError('ChatGPT Codex network error or timeout. Please retry.') from None
+        except (httpx.HTTPError, TimeoutError) as exc:
+            raise RequesterError(
+                'ChatGPT Codex network error or timeout. Please retry.',
+                code='timeout' if isinstance(exc, (httpx.TimeoutException, TimeoutError)) else 'connection',
+                retryable=True,
+            ) from None
 
     async def _chunks(self, query, model, messages, funcs, extra_args, remove_think, usage_out):
         text = ''
         seen_calls = set()
         output_items = {}
         response_id = None
-        async for event, tokens in self._events(query, model, messages, funcs, extra_args):
-            kind = event.get('type')
-            response = event.get('response') or {}
-            response_id = response.get('id') or response_id
-            if kind in ('error', 'response.failed', 'response.incomplete'):
-                raise CodexProviderError('ChatGPT Codex response failed or was incomplete. Please retry.')
-            if kind == 'response.output_text.delta':
-                delta = event.get('delta', '')
-                text += delta
-                yield pm.MessageChunk(role='assistant', content=delta, resp_message_id=response_id)
-            elif kind in ('response.reasoning_summary_text.delta', 'response.reasoning_text.delta'):
-                if not remove_think:
-                    yield pm.MessageChunk(
-                        role='assistant',
-                        content='',
-                        provider_specific_fields={'reasoning_content': event.get('delta', '')},
-                    )
-            elif kind == 'response.output_item.done':
-                item = event.get('item') or {}
-                output_items[event.get('output_index', len(output_items))] = item
-                if item.get('type') == 'function_call' and item.get('call_id') not in seen_calls:
-                    seen_calls.add(item.get('call_id'))
-                    yield pm.MessageChunk(role='assistant', content='', tool_calls=[_tool(item)])
-            elif kind in ('response.completed', 'response.done'):
-                if response.get('status') not in (None, 'completed'):
-                    raise CodexProviderError('ChatGPT Codex response was not completed')
-                output = response.get('output') or [output_items[k] for k in sorted(output_items)]
-                for item in output:
+        async with aclosing(self._events(query, model, messages, funcs, extra_args)) as events:
+            async for event, tokens in events:
+                kind = event.get('type')
+                response = event.get('response') or {}
+                response_id = response.get('id') or response_id
+                if kind in ('error', 'response.failed', 'response.incomplete'):
+                    raise CodexProviderError('ChatGPT Codex response failed or was incomplete. Please retry.')
+                if kind == 'response.output_text.delta':
+                    delta = event.get('delta', '')
+                    text += delta
+                    yield pm.MessageChunk(role='assistant', content=delta, resp_message_id=response_id)
+                elif kind in ('response.reasoning_summary_text.delta', 'response.reasoning_text.delta'):
+                    if not remove_think:
+                        yield pm.MessageChunk(
+                            role='assistant',
+                            content='',
+                            provider_specific_fields={'reasoning_content': event.get('delta', '')},
+                        )
+                elif kind == 'response.output_item.done':
+                    item = event.get('item') or {}
+                    output_items[event.get('output_index', len(output_items))] = item
                     if item.get('type') == 'function_call' and item.get('call_id') not in seen_calls:
                         seen_calls.add(item.get('call_id'))
                         yield pm.MessageChunk(role='assistant', content='', tool_calls=[_tool(item)])
-                # Some servers send only the terminal output, without text deltas.
-                final_text = ''.join(
-                    p.get('text', '')
-                    for item in output
-                    if item.get('type') == 'message'
-                    for p in item.get('content', [])
-                    if p.get('type') == 'output_text'
-                )
-                if not text and final_text:
-                    text = final_text
-                    yield pm.MessageChunk(role='assistant', content=text, resp_message_id=response_id)
-                usage_out.update(_usage(response))
-                if query is not None:
-                    if query.variables is None:
-                        query.variables = {}
-                    query.variables[requester.STREAM_USAGE_QUERY_VARIABLE] = dict(usage_out)
-                fields = None
-                if query is not None and output:
-                    handle = secrets.token_urlsafe(24)
-                    self._replay[handle] = (self._scope(query, model, tokens), time.time() + 3600, output)
-                    while len(self._replay) > 64:
-                        self._replay.popitem(last=False)
-                    fields = {'codex_replay_id': handle}
-                yield pm.MessageChunk(
-                    role='assistant',
-                    content='',
-                    all_content=text,
-                    is_final=True,
-                    resp_message_id=response_id,
-                    provider_specific_fields=fields,
-                )
-                return
+                elif kind in ('response.completed', 'response.done'):
+                    if response.get('status') not in (None, 'completed'):
+                        raise CodexProviderError('ChatGPT Codex response was not completed')
+                    output = response.get('output') or [output_items[k] for k in sorted(output_items)]
+                    for item in output:
+                        if item.get('type') == 'function_call' and item.get('call_id') not in seen_calls:
+                            seen_calls.add(item.get('call_id'))
+                            yield pm.MessageChunk(role='assistant', content='', tool_calls=[_tool(item)])
+                    # Some servers send only the terminal output, without text deltas.
+                    final_text = ''.join(
+                        p.get('text', '')
+                        for item in output
+                        if item.get('type') == 'message'
+                        for p in item.get('content', [])
+                        if p.get('type') == 'output_text'
+                    )
+                    if not text and final_text:
+                        text = final_text
+                        yield pm.MessageChunk(role='assistant', content=text, resp_message_id=response_id)
+                    usage_out.update(_usage(response))
+                    if current_call.get():
+                        current_call.get().usage = dict(usage_out)
+                    if query is not None:
+                        if query.variables is None:
+                            query.variables = {}
+                        query.variables[requester.STREAM_USAGE_QUERY_VARIABLE] = dict(usage_out)
+                    fields = None
+                    if query is not None and output:
+                        handle = secrets.token_urlsafe(24)
+                        self._replay[handle] = (self._scope(query, model, tokens), time.time() + 3600, output)
+                        while len(self._replay) > 64:
+                            self._replay.popitem(last=False)
+                        fields = {'codex_replay_id': handle}
+                    yield pm.MessageChunk(
+                        role='assistant',
+                        content='',
+                        all_content=text,
+                        is_final=True,
+                        resp_message_id=response_id,
+                        provider_specific_fields=fields,
+                    )
+                    return
         raise CodexProviderError('ChatGPT Codex stream ended before completion. Please retry.')
 
     async def invoke_llm_stream(self, query, model, messages, funcs=None, extra_args=None, remove_think=False):
-        async for chunk in self._chunks(query, model, messages, funcs, extra_args, remove_think, {}):
-            yield chunk
+        async with aclosing(self._chunks(query, model, messages, funcs, extra_args, remove_think, {})) as chunks:
+            async for chunk in chunks:
+                yield chunk
 
     async def invoke_llm(self, query, model, messages, funcs=None, extra_args=None, remove_think=False):
         usage = {}
@@ -376,11 +457,12 @@ class CodexRequester(requester.ProviderAPIRequester):
     async def scan_models(self, api_key=None):
         tokens = await self.auth.access(self.workspace, self.provider)
         try:
-            async with asyncio.timeout(90), httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            async with asyncio.timeout(90), requester_http_client(self) as client:
                 for attempt in range(2):
                     response = await client.get(
                         BASE_URL + '/models',
                         params={'client_version': langbot.__version__},
+                        timeout=30,
                         headers=self._headers(tokens),
                     )
                     if response.status_code == 401 and attempt == 0:

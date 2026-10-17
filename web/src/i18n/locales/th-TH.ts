@@ -1,5 +1,151 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
+  planRevision: {
+    subscribedOn: 'วันที่สมัคร: {{date}}',
+    latestQuota: 'โควตาล่าสุดของแผนนี้',
+    showLatest: 'ดูโควตาล่าสุดของแผนนี้',
+    showCurrent: 'ดูการสมัครสมาชิกปัจจุบัน',
+    latestTab: 'ล่าสุด',
+    currentTab: 'ปัจจุบัน',
+    cancelToSubscribe: 'ยกเลิกการสมัครสมาชิกเพื่อรับโควต้าล่าสุดในรอบถัดไป',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'ต่ออายุการสมัครปัจจุบัน',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'ยังไม่เปิดรับการสมัคร',
+    subscriptionUnavailableHint:
+      'แผนนี้ยังไม่รับการสมัครใหม่ โปรดเลือกแผนอื่น การสมัครเดิมและการต่ออายุอัตโนมัติจะไม่ได้รับผลกระทบ',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'จัดการการสมัครสมาชิก',
+    downgradeUnavailable: 'ไม่สามารถลดระดับเป็นแผนฟรีได้',
+    features: {
+      multiUserWorkspace: 'พื้นที่ทำงานสำหรับผู้ใช้หลายคน',
+      remoteE2BSandbox: 'การตั้งค่าแซนด์บ็อกซ์ E2B ระยะไกล',
+      communitySupport: 'การสนับสนุนจากชุมชน',
+      everythingInFree: 'ฟีเจอร์ทั้งหมดในแผนฟรี',
+      alwaysOnSandbox: 'แซนด์บ็อกซ์ส่วนกลางที่ทำงานตลอดเวลา 1 รายการ',
+      higherWorkspaceLimits: 'โควตาพื้นที่ทำงานที่สูงขึ้น',
+    },
+    title: 'เปรียบเทียบแผน',
+    description: 'เลือกแผนสำหรับ {{workspace}}',
+    billing: 'รอบการเรียกเก็บเงิน',
+    monthly: 'รายเดือน',
+    annual: 'รายปี',
+    currency: 'สกุลเงิน',
+    loading: 'กำลังโหลดแผน…',
+    error: 'ไม่สามารถโหลดแผนได้',
+    retry: 'ลองอีกครั้ง',
+    empty: 'ไม่มีแผนที่ใช้ได้',
+    current: 'แผนปัจจุบัน',
+    recommended: 'แนะนำ',
+    free: 'ฟรี',
+    annualNote: 'เทียบเท่า {{price}} / เดือน',
+    ownerOnly: 'เฉพาะเจ้าของหรือผู้ดูแลระบบ',
+    choose: 'ดำเนินการชำระเงิน',
+    handoff: 'เข้าสู่ระบบและชำระเงินใน Space โดยจะเก็บตัวเลือกของคุณไว้',
+    quotas: 'โควตาพื้นที่ทำงาน',
+    unlimited: 'ไม่จำกัด',
+    retention: 'ประวัติข้อความ · {{count}} วัน',
+    retentionLabel: 'ระยะเวลาเก็บประวัติข้อความ',
+    retentionHelp: 'ประวัติข้อความจะถูกลบโดยอัตโนมัติเมื่อเกินระยะเวลานี้',
+    credits: '{{count}} เครดิตต่อเดือน',
+    creditsLabel: 'เครดิตรายเดือน',
+    creditsHelp: 'ได้รับเครดิตทุกเดือนของการสมัคร รวมถึงแผนรายปี',
+    platforms: 'รองรับแพลตฟอร์มหลัก',
+    excludedPlatforms: 'ไม่รองรับ: {{platforms}}',
+    allPlatforms: 'ทุกแพลตฟอร์มที่พร้อมใช้งาน',
+    limits: {
+      bots: 'บอต',
+      pipelines: 'ตัวประมวลผล',
+      knowledge_bases: 'ฐานความรู้',
+      plugins: 'ส่วนขยาย',
+      members: 'สมาชิก',
+      managed_sandbox_sessions: 'เซสชันแซนด์บ็อกซ์ที่จัดการ',
+    },
+  },
+  workspaceLanguage: {
+    label: 'ภาษาของพื้นที่ทำงาน',
+    description:
+      'ใช้สำหรับข้อความจากระบบและคำตอบเริ่มต้นของบอต โดยไม่เปลี่ยนภาษาอินเทอร์เฟซของคุณ',
+    saved: 'บันทึกภาษาแล้ว',
+    saveFailed: 'บันทึกภาษาไม่สำเร็จ',
+  },
+  inflight: {
+    autoCollapse: 'ยุบอัตโนมัติ',
+    empty: 'ไม่มีเหตุการณ์ที่กำลังประมวลผล',
+    move: 'ลากขึ้นลงหรือใช้ปุ่มลูกศรเพื่อย้าย',
+    botLogs: 'บันทึกบอต',
+    processorLogs: 'บันทึกตัวประมวลผล',
+
+    title: 'กำลังดำเนินการ',
+    expand: 'ขยาย',
+    collapse: 'ย่อ',
+    reconnecting: 'กำลังเชื่อมต่อใหม่ แสดงสถานะล่าสุดที่ได้รับ',
+    details: 'ดูรายละเอียด',
+    debug: 'เหตุการณ์ทดสอบ',
+    limited: 'แสดงบางรายการ ดูทั้งหมดได้ที่แดชบอร์ด',
+    queued: 'อยู่ในคิว',
+    running: 'กำลังประมวลผล',
+    waiting: 'รอข้อมูล',
+    tool: 'กำลังเรียกเครื่องมือ',
+    thinking: 'กำลังคิด',
+    replying: 'กำลังเตรียมคำตอบ',
+    generating: 'กำลังสร้างคำตอบ',
+    completed: 'เสร็จสิ้น',
+    failed: 'ล้มเหลว',
+    cancelled: 'ยกเลิกแล้ว',
+    ignored: 'ละเว้นแล้ว',
+  },
   assistant: {
     movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
     resizeHeight: 'ปรับความสูงของผู้ช่วย',
@@ -9,7 +155,7 @@ const thTH = {
     stopped:
       'หยุดแล้ว เครื่องมืออาจดำเนินการไปแล้ว โปรดตรวจสอบทรัพยากรก่อนลองอีกครั้ง',
     setupRequired:
-      'เข้าสู่ระบบ LangBot Account เพื่อใช้ LangBot Models หรือตั้งค่าผู้ให้บริการโมเดลของคุณเพื่อเริ่มสนทนา',
+      'เข้าสู่ระบบด้วยบัญชี LangBot หรือตั้งค่าโมเดลเพื่อเริ่มใช้ผู้ช่วยพื้นที่ทำงาน',
     loginAccount: 'เข้าสู่ระบบ LangBot Account',
     configureModels: 'ตั้งค่าโมเดล',
     providerCheckFailed: 'ไม่สามารถตรวจสอบผู้ให้บริการโมเดลได้ โปรดลองอีกครั้ง',
@@ -75,6 +221,14 @@ const thTH = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: '{{days}} วันที่ผ่านมา',
+        customRange: 'กำหนดช่วงเวลาเอง',
+        rangeStart: 'เวลาเริ่มต้น',
+        rangeEnd: 'เวลาสิ้นสุด',
+        rangeHint: 'เวลาเริ่มต้องก่อนเวลาสิ้นสุด สูงสุด 365 วัน',
+        autoRefreshLabel: 'รีเฟรชอัตโนมัติ',
+        autoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+        autoRefreshEvery: 'รีเฟรชทุก {{seconds}} วินาที',
         title: 'ดูภาพรวมการทำงาน',
         description:
           'ดูการทำงานของบอท การใช้โมเดล ปริมาณข้อความ และประสิทธิภาพระบบ',
@@ -155,6 +309,14 @@ const thTH = {
           'ส่งข้อความทดสอบเพื่อตรวจเงื่อนไข คำตอบ AI และการประมวลผลผลลัพธ์ การเปลี่ยนแปลงจะถูกบันทึกก่อนทดสอบ',
       },
       monitoring: {
+        rangeDays: '{{days}} วันที่ผ่านมา',
+        customRange: 'กำหนดช่วงเวลาเอง',
+        rangeStart: 'เวลาเริ่มต้น',
+        rangeEnd: 'เวลาสิ้นสุด',
+        rangeHint: 'เวลาเริ่มต้องก่อนเวลาสิ้นสุด สูงสุด 365 วัน',
+        autoRefreshLabel: 'รีเฟรชอัตโนมัติ',
+        autoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+        autoRefreshEvery: 'รีเฟรชทุก {{seconds}} วินาที',
         title: 'ดูประวัติการทำงาน',
         description:
           'ใช้แท็บข้างชื่อเพื่อดูบทสนทนา ขั้นตอนการประมวลผล และข้อผิดพลาด เมื่อไม่มีคำตอบหรือได้คำตอบที่ไม่คาดคิด',
@@ -319,6 +481,11 @@ const thTH = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'ไม่ได้บันทึกสาเหตุของข้อผิดพลาด โปรดตรวจสอบบันทึกของบอตหรือส่งข้อความอีกครั้งเพื่อดูรายละเอียด',
+    loadFailedTitle: 'ไม่สามารถโหลดเนื้อหาได้',
+    loadFailedHint:
+      'โปรดลองอีกครั้ง หากยังโหลดไม่ได้ ให้ตรวจสอบการเชื่อมต่อและสถานะบริการ',
     customValue: 'กำหนดเอง',
     loadFailed: 'โหลดไม่สำเร็จ โปรดลองอีกครั้ง',
     search: 'ค้นหา',
@@ -511,6 +678,9 @@ const thTH = {
     help: 'ขอความช่วยเหลือ',
   },
   models: {
+    starModel: 'ติดดาวเพื่อใช้เป็นค่าเริ่มต้นสำหรับตัวประมวลผลใหม่',
+    unstarModel: 'ยกเลิกดาว',
+    starModelFailed: 'อัปเดตโมเดลที่ติดดาวไม่สำเร็จ',
     codex: {
       account: 'การสมัครสมาชิก ChatGPT',
       description:
@@ -766,10 +936,13 @@ const thTH = {
     deleteConfirmation: 'คุณแน่ใจหรือไม่ว่าต้องการลบ Bot นี้?',
     platformAdapter: 'การเลือกแพลตฟอร์ม/อะแดปเตอร์',
     selectAdapter: 'เลือกอะแดปเตอร์',
+    saveAndEnable: 'บันทึกและเปิดใช้งาน',
+    searchAdapters: 'ค้นหาอะแดปเตอร์',
+    noMatchingAdapters: 'ไม่พบอะแดปเตอร์ที่ตรงกัน',
     legacyAdapters: 'อะแดปเตอร์รุ่นเก่า',
     legacyAdapterBadge: 'เก่า',
     legacyAdaptersHint:
-      'อะแดปเตอร์เหล่านี้มีรุ่นใหม่แบบขับเคลื่อนด้วยเหตุการณ์แล้ว\nและเก็บไว้เพื่อความเข้ากันได้กับการตั้งค่าเดิมเท่านั้น ไม่แนะนำสำหรับ Bot ใหม่',
+      'อะแดปเตอร์รุ่นเก่าเน้นรับส่งข้อความ และคงไว้เพื่อรองรับการตั้งค่าบอทเดิม\nรุ่นใหม่เชื่อมต่อแพลตฟอร์มเดียวกันผ่านเหตุการณ์ ทั้งข้อความ คำขอเป็นเพื่อนหรือการเปลี่ยนแปลงกลุ่มที่รองรับ แล้วส่งให้ตัวประมวลผล\nแนะนำรุ่นใหม่สำหรับบอทใหม่ บอทเดิมยังใช้รุ่นเก่าได้ เมื่อเปลี่ยนให้ตรวจการเชื่อมต่อและเส้นทางเหตุการณ์ ไม่ใช่การอัปเกรดบัญชีแพลตฟอร์ม',
     adapterConfig: 'การกำหนดค่าอะแดปเตอร์',
     viewAdapterDocs: 'ดูเอกสาร',
     bindPipeline: 'ผูก Pipeline',
@@ -782,6 +955,10 @@ const thTH = {
     earlier: 'ก่อนหน้า',
     dateFormat: '{{day}}/{{month}}',
     setBotEnableError: 'ไม่สามารถตั้งค่าสถานะเปิดใช้งาน Bot ได้',
+    enabling: 'กำลังเปิดใช้งาน…',
+    disabling: 'กำลังปิดใช้งาน…',
+    enableConfirmed: 'เปิดใช้งานแล้ว',
+    disableConfirmed: 'ปิดใช้งานแล้ว',
     log: 'บันทึก',
     configuration: 'การกำหนดค่า',
     logs: 'บันทึก',
@@ -790,6 +967,27 @@ const thTH = {
     routingConnection: 'การกำหนดเส้นทางและการเชื่อมต่อ',
     routingConnectionDescription:
       'ผูก Pipeline ที่ประมวลผลข้อความสำหรับ Bot นี้',
+    routingHelp: {
+      title: 'การกำหนดเส้นทางเหตุการณ์คืออะไร?',
+      intro: 'บอทรับได้ทั้งข้อความ คำขอเป็นเพื่อน และเหตุการณ์เข้าร่วมกลุ่ม',
+      events: 'เหตุการณ์ที่ได้รับ',
+      agents: 'Agent แต่ละตัว',
+      message: 'ได้รับข้อความ',
+      friend: 'คำขอเป็นเพื่อน',
+      group: 'เข้าร่วมกลุ่ม',
+      messageAction: 'Agent ตอบคำถาม',
+      friendAction: 'Agent ตรวจคำขอ',
+      groupAction: 'Agent ต้อนรับ',
+      rules: 'ตามกฎที่คุณตั้ง · ตัวอย่าง',
+      instructions:
+        'Agent ทำตามคำสั่งของคุณและใช้เครื่องมือเพื่อตอบข้อความหรือตรวจคำขอ',
+      plugin:
+        'สำหรับงานขั้นสูง ตัวประมวลผลปลั๊กอินลงทะเบียนหลายเหตุการณ์และจัดการด้วยโค้ดได้ เพิ่มการตั้งค่าตัวประมวลผลปลั๊กอินด้านล่าง',
+      docs: 'พัฒนาตัวประมวลผลปลั๊กอินของคุณเอง',
+      runnerDocs: 'พัฒนารันเนอร์ Agent ของคุณเอง',
+      pause: 'หยุดชั่วคราว',
+      play: 'เล่น',
+    },
     eventRouting: 'การกำหนดเส้นทางเหตุการณ์',
     eventRoutingDescription:
       'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือ Pipeline ที่เกี่ยวข้อง โดย Pipeline รองรับเฉพาะเหตุการณ์ข้อความ',
@@ -828,7 +1026,8 @@ const thTH = {
     enabled: 'เปิดใช้งาน',
     eventBindingDescriptionPlaceholder: 'คำอธิบายกฎ',
     noEventBindings: 'ไม่มีเส้นทางเหตุการณ์',
-    unsupportedPipelineEvent: 'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.* เท่านั้น',
+    unsupportedPipelineEvent:
+      'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.received เท่านั้น',
     disable: 'ปิดใช้งาน',
     enable: 'เปิดใช้งาน',
     disabledBindings: 'ปิดใช้งาน',
@@ -838,6 +1037,7 @@ const thTH = {
     advancedEventValues: 'ดูทั้งหมด',
     eventGroup: 'กลุ่ม',
     eventGroupNames: {
+      wecomcs: 'บริการลูกค้า WeCom',
       bot: 'สถานะบอท',
       feedback: 'ข้อเสนอแนะ',
       friend: 'เพื่อน',
@@ -852,6 +1052,9 @@ const thTH = {
     routeFallbackCatchAll: '{{route}} เป็นเส้นทางรับทุกเหตุการณ์',
     routeFallbackIgnored:
       'เหตุการณ์ที่ไม่ตรงกับเส้นทางจะถูกละเว้น เพิ่มเส้นทางรับทั้งหมดเฉพาะเมื่อต้องกำหนดผลลัพธ์ให้ทุกเหตุการณ์',
+    matchRecords: 'บันทึกการจับคู่',
+    matchRecordsDescription:
+      'แสดงผลล่าสุดของแต่ละกฎและเหตุการณ์ล่าสุดที่ไม่ตรงกัน บันทึกในหน่วยความจำจะถูกล้างเมื่อรีสตาร์ท',
     testRoute: 'ตรวจเส้นทาง',
     adapterEventDebugAction: 'ทดสอบการรับเหตุการณ์',
     adapterEventDebugTitle: 'ดีบักเหตุการณ์แพลตฟอร์ม',
@@ -933,6 +1136,15 @@ const thTH = {
     eventWildcard: 'ทุกเหตุการณ์',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: 'ผู้ใช้เข้าสู่แชตบอต',
+      wecombot_template_card_event: 'การโต้ตอบกับการ์ด',
+      dingtalk_card_action: 'การโต้ตอบกับการ์ด DingTalk',
+      wecomcs_enter_session: 'ลูกค้าเข้าสู่การสนทนา',
+      wecomcs_msg_send_fail: 'ส่งข้อความบริการลูกค้าไม่สำเร็จ',
+      wecomcs_servicer_status_change: 'สถานะเจ้าหน้าที่เปลี่ยนแปลง',
+      wecomcs_session_status_change: 'สถานะการสนทนาบริการลูกค้าเปลี่ยนแปลง',
+      wecomcs_reject_customer_msg_switch_change:
+        'การปฏิเสธข้อความลูกค้าเปลี่ยนแปลง',
       message_received: 'ได้รับข้อความ',
       message_edited: 'แก้ไขข้อความ',
       message_deleted: 'ลบข้อความ',
@@ -942,6 +1154,7 @@ const thTH = {
       friend_added: 'เพิ่มเพื่อน',
       group_member_joined: 'สมาชิกเข้าร่วมกลุ่ม',
       group_member_left: 'สมาชิกออกจากกลุ่ม',
+      group_info_updated: 'อัปเดตข้อมูลกลุ่ม',
       group_member_banned: 'สมาชิกถูกแบน',
       bot_invited_to_group: 'บอตได้รับเชิญเข้ากลุ่ม',
       bot_removed_from_group: 'บอตถูกนำออกจากกลุ่ม',
@@ -950,14 +1163,28 @@ const thTH = {
       platform_specific: 'เหตุการณ์เฉพาะแพลตฟอร์ม',
     },
     eventDescriptions: {
+      wecombot_enter_chat: 'ผู้ใช้เปิดแชตบอต ใช้สำหรับขั้นตอนต้อนรับและแนะนำ',
+      wecombot_template_card_event:
+        'ผู้ใช้คลิกหรือส่งการ์ด การตอบกลับแบบฟอร์มที่ระบบจัดการจะประมวลผลแยกกัน',
+      dingtalk_card_action:
+        'การคลิกและส่งการ์ด ความคิดเห็นและแบบฟอร์มที่ระบบจัดการจะประมวลผลแยกกัน',
+      wecomcs_enter_session:
+        'ลูกค้าเปิดลิงก์บริการ พร้อมข้อมูลแหล่งที่มาและรหัสต้อนรับ',
+      wecomcs_msg_send_fail:
+        'WeChat แจ้งการส่งล้มเหลว พร้อม ID ข้อความและประเภทข้อผิดพลาด',
+      wecomcs_servicer_status_change:
+        'เจ้าหน้าที่เริ่ม หยุด หรือพักการให้บริการ',
+      wecomcs_session_status_change:
+        'เจ้าหน้าที่รับ โอน ปิด หรือเปิดการสนทนาอีกครั้ง',
+      wecomcs_reject_customer_msg_switch_change:
+        'เจ้าหน้าที่เปิดหรือปิดการปฏิเสธข้อความลูกค้า',
       all: 'ตรงกับทุกเหตุการณ์ที่อะแดปเตอร์นี้ได้รับ',
       namespace: 'ตรงกับทุกเหตุการณ์ของ {{group}}',
       namespace_bot:
         'ตรงกับการเชิญ การนำบอทออก การปิดเสียง และเหตุการณ์สถานะอื่น',
       namespace_feedback: 'ตรงกับเหตุการณ์ข้อเสนอแนะจากแพลตฟอร์มหรือผู้ใช้',
       namespace_friend: 'ตรงกับคำขอเป็นเพื่อนและการเปลี่ยนแปลงความสัมพันธ์',
-      namespace_group:
-        'ตรงกับการเข้ากลุ่ม ออกจากกลุ่ม ถูกนำออก และเหตุการณ์กลุ่มอื่น',
+      namespace_group: 'ตรงกับการเปลี่ยนแปลงสมาชิกและการอัปเดตข้อมูลกลุ่ม',
       namespace_message: 'ตรงกับการรับ แก้ไข ลบข้อความ และแสดงปฏิกิริยา',
       namespace_platform: 'ตรงกับเหตุการณ์เฉพาะแพลตฟอร์มที่อะแดปเตอร์ให้มา',
       custom: 'เหตุการณ์กำหนดเองหรือยังไม่มีคำอธิบาย',
@@ -970,6 +1197,8 @@ const thTH = {
       friend_added: 'สร้างความสัมพันธ์เพื่อนแล้ว',
       group_member_joined: 'สมาชิกเข้าร่วมกลุ่มที่มีบอท',
       group_member_left: 'สมาชิกออกจากกลุ่มที่มีบอท',
+      group_info_updated:
+        'ข้อมูลกลุ่ม เช่น ชื่อหรือเจ้าของกลุ่ม มีการเปลี่ยนแปลง',
       group_member_banned: 'สมาชิกกลุ่มถูกแบนหรือนำออก',
       bot_invited_to_group: 'บอทได้รับเชิญเข้ากลุ่ม',
       bot_removed_from_group: 'บอทถูกนำออกจากกลุ่ม',
@@ -1056,6 +1285,13 @@ const thTH = {
     imagesAttached: 'รูปภาพที่แนบ',
     noLogs: 'ยังไม่มีบันทึก',
     sessionMonitor: {
+      resetContext: 'รีเซ็ตบริบท',
+      resetDescription:
+        'ข้อความใหม่จะเริ่มด้วยบริบทว่าง ประวัติการตรวจสอบ ไฟล์ และความจำระยะยาวจะยังคงอยู่ โปรดรอให้งานที่กำลังทำอยู่เสร็จก่อน',
+      resetSuccess: 'รีเซ็ตบริบทแล้ว',
+      resetError:
+        'รีเซ็ตไม่สำเร็จ โปรดรอให้งานที่กำลังทำอยู่เสร็จแล้วลองอีกครั้ง',
+
       title: 'เซสชัน',
       sessions: 'เซสชัน',
       noSessions: 'ไม่พบเซสชัน',
@@ -1103,7 +1339,26 @@ const thTH = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'เลือกทั้งหมด',
     monitoring: {
+      rangeDays: '{{days}} วันที่ผ่านมา',
+      customRange: 'กำหนดช่วงเวลาเอง',
+      rangeStart: 'เวลาเริ่มต้น',
+      rangeEnd: 'เวลาสิ้นสุด',
+      rangeHint: 'เวลาเริ่มต้องก่อนเวลาสิ้นสุด สูงสุด 365 วัน',
+      autoRefreshLabel: 'รีเฟรชอัตโนมัติ',
+      autoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+      autoRefreshEvery: 'รีเฟรชทุก {{seconds}} วินาที',
+      runStatus: 'สถานะการทำงาน',
+      toolCalls: 'การเรียกเครื่องมือ',
+      delivery: 'การส่งข้อความ',
+      sendFailed: 'ส่งไม่สำเร็จ',
+      sendCount: 'เรียกส่งสำเร็จ {{count}} ครั้ง',
+      noSend: 'ไม่มีบันทึกการส่ง',
+      noSteps: 'ยังไม่มีบันทึกขั้นตอนการทำงาน',
+      recipient: 'ผู้รับ',
+      actionCompleted: 'เครื่องมือทำงานสำเร็จ',
+      simulatedAction: 'การจำลอง ไม่ได้ส่งข้อความจริง',
       description:
         'ดูเหตุการณ์เริ่มต้น ผลลัพธ์โมเดล และการเรียกเครื่องมือของแต่ละงาน',
       empty: 'ยังไม่มีการทำงาน เริ่มเหตุการณ์หรือทดสอบการดีบักเพื่อดูบันทึก',
@@ -1205,6 +1460,9 @@ const thTH = {
       'ทำงานตามขั้นตอนที่กำหนด: รับข้อความ เรียก AI และตอบกลับผู้ใช้ พร้อมตั้งค่าฐานความรู้และปลั๊กอินได้ รองรับเฉพาะเหตุการณ์ข้อความ เหมาะกับงานที่มีขั้นตอนชัดเจนและต้องการควบคุมกระบวนการประมวลผล',
     allEvents: 'รองรับทุกเหตุการณ์',
     messageEventsOnly: 'เฉพาะเหตุการณ์ข้อความ',
+    selectAgentRunner: 'เลือกรันเนอร์ Agent',
+    selectProcessorPlugin: 'เลือกปลั๊กอินประมวลผล',
+    createBasicInfoDescription: 'ตั้งชื่อ ไอคอน และเลือกปลั๊กอิน',
     chooseType: 'เลือกวิธีทำงาน',
     chooseTypeDescription:
       'เลือกประเภทตัวประมวลผลก่อน แล้วตั้งค่าเพิ่มเติมหลังสร้าง',
@@ -2008,6 +2266,14 @@ const thTH = {
       uploading: 'กำลังอัปโหลด...',
     },
     monitoring: {
+      rangeDays: '{{days}} วันที่ผ่านมา',
+      customRange: 'กำหนดช่วงเวลาเอง',
+      rangeStart: 'เวลาเริ่มต้น',
+      rangeEnd: 'เวลาสิ้นสุด',
+      rangeHint: 'เวลาเริ่มต้องก่อนเวลาสิ้นสุด สูงสุด 365 วัน',
+      autoRefreshLabel: 'รีเฟรชอัตโนมัติ',
+      autoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+      autoRefreshEvery: 'รีเฟรชทุก {{seconds}} วินาที',
       title: 'บันทึกการทำงาน',
       workbench: 'กำหนดค่าและดีบัก',
       description:
@@ -2355,8 +2621,7 @@ const thTH = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2425,6 +2690,14 @@ const thTH = {
     },
   },
   monitoring: {
+    rangeDays: '{{days}} วันที่ผ่านมา',
+    customRange: 'กำหนดช่วงเวลาเอง',
+    rangeStart: 'เวลาเริ่มต้น',
+    rangeEnd: 'เวลาสิ้นสุด',
+    rangeHint: 'เวลาเริ่มต้องก่อนเวลาสิ้นสุด สูงสุด 365 วัน',
+    autoRefreshLabel: 'รีเฟรชอัตโนมัติ',
+    autoRefreshOff: 'รีเฟรชอัตโนมัติ: ปิด',
+    autoRefreshEvery: 'รีเฟรชทุก {{seconds}} วินาที',
     unified: {
       inputs: 'เหตุการณ์และข้อมูลเข้า',
       outputs: 'ผลลัพธ์ที่สร้าง',
@@ -2577,6 +2850,15 @@ const thTH = {
       feedback: 'ความคิดเห็นผู้ใช้',
       sessions: 'การวิเคราะห์เซสชัน',
       errors: 'บันทึกข้อผิดพลาด',
+    },
+    pipelineTrace: {
+      received: 'ข้อความที่ได้รับ',
+      processing: 'ขั้นตอนการประมวลผล',
+      replies: 'ข้อความตอบกลับ',
+      noSteps: 'ไม่มีบันทึกการเรียกโมเดลหรือเครื่องมือ',
+      success: 'สำเร็จ',
+      error: 'ล้มเหลว',
+      pending: 'รอดำเนินการ',
     },
     messageList: {
       timestamp: 'เวลา',
@@ -3386,15 +3668,6 @@ const thTH = {
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',
-  },
-  beta_banner: {
-    message:
-      'สภาพแวดล้อมนี้อยู่ระหว่างการทดสอบเบต้า ไม่รับประกันความเสถียรของบริการ โปรดพิจารณาใช้',
-    cloud_link: 'LangBot Cloud (สภาพแวดล้อมเฉพาะ)',
-    or: 'หรือ',
-    oss_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
-    period: '',
-    dismiss: 'ปิด',
   },
 };
 export default thTH;

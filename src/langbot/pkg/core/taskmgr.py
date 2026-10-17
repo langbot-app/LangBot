@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..i18n import t
+
 import asyncio
 import json
 import typing
@@ -202,7 +204,7 @@ class TaskWrapper:
         """Return the stable task projection exposed to API-key callers."""
         if self.task.cancelled():
             status = 'cancelled'
-            error = {'type': 'task_cancelled', 'message': 'Task was cancelled'}
+            error = {'type': 'task_cancelled', 'message': t('Task was cancelled')}
             result = None
         elif not self.task.done():
             status = 'running'
@@ -212,7 +214,7 @@ class TaskWrapper:
             exception = self.assume_exception()
             if exception is not None:
                 status = 'failed'
-                error = {'type': 'task_failed', 'message': 'Task execution failed'}
+                error = {'type': 'task_failed', 'message': t('Task execution failed')}
                 result = None
             else:
                 status = 'succeeded'

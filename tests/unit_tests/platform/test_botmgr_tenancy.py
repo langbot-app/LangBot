@@ -38,6 +38,7 @@ def _runtime(application, workspace_uuid: str, bot_uuid: str) -> RuntimeBot:
         uuid=bot_uuid,
         workspace_uuid=workspace_uuid,
         name='Same Name',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )
@@ -243,7 +244,8 @@ async def test_reload_stops_and_drops_existing_platform_runtimes():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('saved_adapter', 'registered_adapter'),
-    [('probe', 'probe')] + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
+    [('probe', 'probe'), ('aiocqhttp-eba', 'onebot-v11'), ('aiocqhttp-omni', 'onebot-v11')]
+    + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
 )
 async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, registered_adapter):
     class TenantUow:
@@ -277,7 +279,7 @@ async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, re
         description='',
         adapter=saved_adapter,
         adapter_config={},
-        enable=False,
+        enable=True,
         event_bindings=[],
     )
     workspace_service = SimpleNamespace(
@@ -326,6 +328,7 @@ def test_runtime_bot_rejects_workspace_mismatch():
         uuid=BOT_A,
         workspace_uuid=WORKSPACE_A,
         name='Bot',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )
@@ -385,6 +388,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
         uuid=BOT_A,
         workspace_uuid=WORKSPACE_A,
         name='Bot',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )

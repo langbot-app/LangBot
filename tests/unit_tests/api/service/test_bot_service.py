@@ -390,14 +390,14 @@ class TestBotServiceCreateBot:
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
-            if call_count <= 2:
-                return pipeline_result  # First call: check pipeline
-            elif call_count == 3:
-                return Mock()  # Insert
+            if call_count == 1:
+                return Mock()  # Insert; there is no legacy pipeline lookup
             return bot_result  # Get bot
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid', 'name': 'New Bot'})
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'new-uuid', 'name': 'New Bot', 'adapter': 'telegram', 'enable': False}
+        )
 
         service = BotService(ap)
 
@@ -672,8 +672,8 @@ class TestBotServiceDeleteBot:
 class TestBotServiceListEventLogs:
     """Tests for list_event_logs method."""
 
-    async def test_list_event_logs_bot_not_found_raises(self):
-        """Raises Exception when runtime bot not found."""
+    async def test_list_event_logs_inactive_bot_returns_empty(self):
+        """A saved bot without an active runtime has no event logs."""
         # Setup
         ap = SimpleNamespace()
         ap.platform_mgr = SimpleNamespace()
@@ -683,8 +683,7 @@ class TestBotServiceListEventLogs:
         service.get_bot = AsyncMock(return_value={'uuid': 'nonexistent-uuid'})
 
         # Execute & Verify
-        with pytest.raises(Exception, match='Bot not found'):
-            await service.list_event_logs(WORKSPACE_UUID, 'nonexistent-uuid', 0, 10)
+        assert await service.list_event_logs(WORKSPACE_UUID, 'nonexistent-uuid', 0, 10) == ([], 0)
 
     async def test_list_event_logs_returns_logs(self):
         """Returns logs from runtime bot logger."""

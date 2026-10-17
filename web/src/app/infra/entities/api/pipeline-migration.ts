@@ -4,6 +4,7 @@ export type PipelineMigrationState =
   | 'blocked'
   | 'already_current'
   | 'not_legacy'
+  | 'unsupported_runner'
   | 'activation_pending';
 
 export interface PipelineMigrationIssue {

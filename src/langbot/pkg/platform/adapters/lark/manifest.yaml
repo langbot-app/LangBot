@@ -108,20 +108,6 @@ spec:
       type: string
       required: true
       default: ""
-    - name: bot_name
-      label:
-        en_US: Bot Name
-        zh_Hans: 机器人名称
-        zh_Hant: 機器人名稱
-        ja_JP: ボット名
-      description:
-        en_US: Must match the Lark bot name so group mentions can be recognized.
-        zh_Hans: 必须与飞书机器人名称一致，否则机器人将无法在群内正常识别 @。
-        zh_Hant: 必須與飛書機器人名稱一致，否則機器人將無法在群組內正常識別 @。
-        ja_JP: グループメンションを認識するには Lark のボット名と一致する必要があります。
-      type: string
-      required: true
-      default: ""
     - name: enable-webhook
       label:
         en_US: Enable Webhook Mode
@@ -216,6 +202,12 @@ spec:
   supported_events:
     - message.received
     - bot.invited_to_group
+    - bot.removed_from_group
+    - group.member_joined
+    - group.member_left
+    - group.info_updated
+    - message.deleted
+    - message.reaction
     - platform.specific
 
   supported_apis:

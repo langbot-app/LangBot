@@ -231,6 +231,7 @@ export default function DebugDialog({
         wsClient
           .onConnected(() => {
             if (wsClientRef.current !== wsClient) return;
+            errorReported = false;
             setIsConnected(true);
             isInitializingRef.current = false;
           })
@@ -261,11 +262,12 @@ export default function DebugDialog({
           })
           .onError((error) => {
             if (wsClientRef.current !== wsClient) return;
+            const notify = !errorReported;
             errorReported = true;
             console.error('WebSocket error:', error);
             setIsConnected(false);
             isInitializingRef.current = false;
-            toast.error(t('pipelines.debugDialog.connectionError'));
+            if (notify) toast.error(t('pipelines.debugDialog.connectionError'));
           })
           .onClose(() => {
             if (wsClientRef.current !== wsClient) return;
@@ -332,7 +334,22 @@ export default function DebugDialog({
       loadMessages(selectedPipelineId);
       initWebSocket(selectedPipelineId);
     }
-  }, [sessionType, selectedPipelineId, open, loadMessages, initWebSocket]);
+    return () => {
+      invalidateHistoryRequests();
+      const client = wsClientRef.current;
+      wsClientRef.current = null;
+      client?.disconnect();
+      isInitializingRef.current = false;
+      setIsConnected(false);
+    };
+  }, [
+    invalidateHistoryRequests,
+    sessionType,
+    selectedPipelineId,
+    open,
+    loadMessages,
+    initWebSocket,
+  ]);
 
   // Notify parent of connection status changes
   useEffect(() => {

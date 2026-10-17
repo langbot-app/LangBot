@@ -159,6 +159,7 @@ class TelemetryManager:
                         else:
                             # Detect application-level errors inside HTTP 200 responses
                             app_err = False
+                            j = None
                             try:
                                 j = await httpclient.parse_json_response(resp)
                                 app_code = j.get('code') if isinstance(j, dict) else None
@@ -181,6 +182,19 @@ class TelemetryManager:
                                     f'Telemetry posted to {url}, status {resp.status_code} - response: {body}'
                                 )
                             if not app_err:
+                                if isinstance(sanitized.get('records'), list):
+                                    ack = j.get('data') if isinstance(j, dict) else None
+                                    if (
+                                        not isinstance(ack, dict)
+                                        or type(ack.get('stored')) is not int
+                                        or type(ack.get('rejected')) is not int
+                                        or ack['rejected'] != 0
+                                        or ack['stored'] != len(sanitized['records'])
+                                    ):
+                                        self.ap.logger.warning(
+                                            'Telemetry batch was not fully acknowledged; retaining records'
+                                        )
+                                        return False
                                 return True
                     except asyncio.TimeoutError:
                         self.ap.logger.debug(f'Telemetry post to {url} timed out')

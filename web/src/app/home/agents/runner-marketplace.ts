@@ -20,9 +20,7 @@ const RUNNER_INSTALL_INTENT_KEY_PREFIX = 'langbot-runner-install';
 const RUNNER_INSTALL_INTENT_EVENT = 'langbot-runner-install-change';
 
 export type RunnerMarketplaceErrorCode =
-  | 'version-unavailable'
-  | 'install-timeout'
-  | 'registration-timeout';
+  'version-unavailable' | 'install-timeout' | 'registration-timeout';
 
 export class RunnerMarketplaceError extends Error {
   constructor(public readonly code: RunnerMarketplaceErrorCode) {

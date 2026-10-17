@@ -32,7 +32,7 @@ preconditions:
   - "The LangBot virtualenv includes the websockets package used by the local OneBot probe."
 steps:
   - "Open Quick Start and choose Welcome new members with the OneBot v11 channel."
-  - "Create and enable a temporary OneBot Bot on an available local port."
+  - "Create and enable a temporary OneBot Bot using the main-port reverse WS URL and a generated access token."
   - "Select Local Agent and confirm the editable welcome prompt is prefilled."
   - "Choose QA Deterministic Runner and finish the wizard."
   - "Connect a local OneBot reverse WebSocket and send a group_increase notice."

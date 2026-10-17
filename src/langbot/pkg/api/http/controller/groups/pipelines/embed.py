@@ -21,6 +21,8 @@ import httpx
 import quart
 
 from ... import group
+from ......i18n import language, t
+from ......i18n.workspace import get_workspace_language
 from ......utils import httpclient, paths
 from ......platform.sources.websocket_manager import WebSocketScope, is_valid_session_id, ws_connection_manager
 from .websocket_chat import create_scoped_duplex_tasks, wait_for_duplex_tasks
@@ -73,6 +75,7 @@ class EmbedRouterGroup(group.RouterGroup):
         bot = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
         pipeline_uuid = bot.get_pipeline_target_for_event_type('message.received') if bot is not None else None
         if bot is not None and bot.bot_entity.adapter == 'web_page_bot' and bot.bot_entity.enable and pipeline_uuid:
+            language.set(await get_workspace_language(self.ap, bot.execution_context.workspace_uuid))
             return bot, pipeline_uuid
         return None, None
 
@@ -284,7 +287,7 @@ class EmbedRouterGroup(group.RouterGroup):
                     return self.http_status(404, -1, 'WebSocket adapter not found')
 
                 websocket_adapter.reset_session(pipeline_uuid, session_type, session_id)
-                return self.success(data={'message': 'Session reset successfully'})
+                return self.success(data={'message': t('Session reset successfully')})
 
             except Exception as e:
                 logger.error(f'Failed to reset embed session: {e}', exc_info=True)
@@ -338,7 +341,9 @@ class EmbedRouterGroup(group.RouterGroup):
 
             runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
-                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Bot not found or not available'}))
+                await quart.websocket.send(
+                    json.dumps({'type': 'error', 'message': t('Bot not found or not available')})
+                )
                 return
 
             session_type = quart.websocket.args.get('session_type', 'person')
@@ -357,13 +362,15 @@ class EmbedRouterGroup(group.RouterGroup):
                 await self._authenticate_websocket(runtime_bot)
                 await self._assert_execution_active(runtime_bot)
             except Exception:
-                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Unauthorized'}))
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': t('Unauthorized')}))
                 return
             try:
                 proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(runtime_bot.execution_context)
                 websocket_adapter = proxy_bot.adapter
                 if not websocket_adapter:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
+                    await quart.websocket.send(
+                        json.dumps({'type': 'error', 'message': t('WebSocket adapter not found')})
+                    )
                     return
 
                 connection = await ws_connection_manager.add_connection(
@@ -428,7 +435,7 @@ class EmbedRouterGroup(group.RouterGroup):
             except Exception as e:
                 logger.error(f'Embed WebSocket connection error: {e}', exc_info=True)
                 try:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Internal server error'}))
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': t('Internal server error')}))
                 except Exception:
                     pass
 
@@ -451,7 +458,7 @@ class EmbedRouterGroup(group.RouterGroup):
                         try:
                             current_bot = await self._resolve_connected_bot(owner_bot, pipeline_uuid)
                         except Exception:
-                            await connection.send_queue.put({'type': 'error', 'message': 'Bot is unavailable'})
+                            await connection.send_queue.put({'type': 'error', 'message': t('Bot is unavailable')})
                             break
                         await websocket_adapter.handle_websocket_message(connection, data, owner_bot=current_bot)
                     elif message_type == 'disconnect':
@@ -460,7 +467,7 @@ class EmbedRouterGroup(group.RouterGroup):
                         pass
 
                 except json.JSONDecodeError:
-                    await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
+                    await connection.send_queue.put({'type': 'error', 'message': t('Invalid JSON format')})
 
         except Exception as e:
             logger.error(f'Embed receive error: {e}', exc_info=True)

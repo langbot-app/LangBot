@@ -12,8 +12,16 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 
 
 class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
-    def __init__(self, bot_token: str = ''):
+    def __init__(self, bot_token: str = '', bot_user_id: str = ''):
         self.bot_token = bot_token
+        self.bot_user_id = bot_user_id
+        self.private_chats: dict[str, str] = {}
+
+    def remember_private_chat(self, channel_id: str, user_id: str):
+        if channel_id and user_id:
+            self.private_chats[channel_id] = user_id
+            while len(self.private_chats) > 4096:
+                self.private_chats.pop(next(iter(self.private_chats)))
 
     @staticmethod
     async def yiri2target(event: platform_events.Event) -> typing.Any:
@@ -54,9 +62,93 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
         )
 
     async def target2yiri(self, event: SlackEvent) -> platform_events.Event:
-        if event.type in {'im', 'channel'}:
+        raw = event.get('event', {})
+        kind = raw.get('type', '')
+        subtype = raw.get('subtype', '')
+        common = dict(
+            adapter_name=ADAPTER_NAME,
+            timestamp=_timestamp_value(event),
+            source_platform_object=SlackEvent(_public_payload(dict(event))),
+        )
+        channel = raw.get('channel', '') or raw.get('item', {}).get('channel', '')
+        channel_info = channel if isinstance(channel, dict) else {'id': channel}
+        channel_id = channel_info.get('id', '')
+        group = platform_entities.UserGroup(id=channel_id, name=channel_info.get('name', channel_id))
+
+        def user(uid):
+            return platform_entities.User(id=uid, nickname=uid) if uid else None
+
+        private = raw.get('channel_type') == 'im' or str(channel_id).startswith('D')
+        chat = dict(
+            chat_type=platform_entities.ChatType.PRIVATE if private else platform_entities.ChatType.GROUP,
+            chat_id=self.private_chats.get(channel_id, channel_id) if private else channel_id,
+            group=None if private else group,
+        )
+        if kind == 'message' and subtype == 'message_changed':
+            message = raw.get('message', {})
+            updated = SlackEvent({**event, 'event': {**raw, **message}})
+            return platform_events.MessageEditedEvent(
+                **common,
+                **chat,
+                message_id=message.get('ts', ''),
+                editor=user(message.get('edited', {}).get('user') or message.get('user')) or user('unknown'),
+                new_content=await SlackMessageConverter.target2yiri(updated, self.bot_token),
+            )
+        if kind == 'message' and subtype == 'message_deleted':
+            return platform_events.MessageDeletedEvent(**common, **chat, message_id=raw.get('deleted_ts', ''))
+        if kind in {'reaction_added', 'reaction_removed'} and raw.get('item', {}).get('type') == 'message':
+            return platform_events.MessageReactionEvent(
+                **common,
+                **chat,
+                message_id=raw['item'].get('ts', ''),
+                user=user(raw.get('user')) or user('unknown'),
+                reaction=raw.get('reaction', ''),
+                is_add=kind == 'reaction_added',
+            )
+        if kind in {'member_joined_channel', 'member_left_channel'}:
+            member = user(raw.get('user')) or user('unknown')
+            inviter = user(raw.get('inviter'))
+            if self.bot_user_id and raw.get('user') == self.bot_user_id:
+                if kind == 'member_joined_channel' and inviter:
+                    return platform_events.BotInvitedToGroupEvent(**common, group=group, inviter=inviter)
+                if kind == 'member_left_channel':
+                    return platform_events.BotRemovedFromGroupEvent(**common, group=group)
+            if kind == 'member_joined_channel':
+                return platform_events.MemberJoinedEvent(
+                    **common,
+                    group=group,
+                    member=member,
+                    inviter=inviter,
+                    join_type='invite' if inviter else 'direct',
+                )
+            return platform_events.MemberLeftEvent(**common, group=group, member=member)
+        fields = {
+            'channel_rename': 'name',
+            'group_rename': 'name',
+            'channel_archive': 'archived',
+            'channel_unarchive': 'archived',
+            'group_archive': 'archived',
+            'group_unarchive': 'archived',
+            'channel_topic': 'topic',
+            'group_topic': 'topic',
+            'channel_purpose': 'purpose',
+            'group_purpose': 'purpose',
+        }
+        change = subtype if kind == 'message' else kind
+        if change in fields:
+            return platform_events.GroupInfoUpdatedEvent(
+                **common,
+                group=group,
+                operator=user(raw.get('user')),
+                changed_fields=[fields[change]],
+            )
+        if (
+            kind in {'message', 'app_mention'}
+            and subtype in {'', 'file_share', 'thread_broadcast'}
+            and event.type in {'im', 'channel'}
+        ):
             return await self.message_to_eba(event)
-        return self.platform_specific(event, f'slack.{event.type or "unknown"}')
+        return self.platform_specific(event, f'slack.{subtype or kind or event.get("type") or event.type or "unknown"}')
 
     async def message_to_eba(self, event: SlackEvent) -> platform_events.MessageReceivedEvent:
         sender_id = event.user_id or ''
@@ -67,6 +159,8 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
         chat_type = platform_entities.ChatType.PRIVATE
         chat_id = sender_id
         group = None
+        if event.type == 'im':
+            self.remember_private_chat(event.channel_id, sender_id)
         if event.type == 'channel':
             chat_type = platform_entities.ChatType.GROUP
             chat_id = event.channel_id or ''
@@ -82,7 +176,7 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
             chat_id=chat_id or '',
             group=group,
             timestamp=_timestamp_value(event),
-            source_platform_object=event,
+            source_platform_object=SlackEvent(_public_payload(dict(event))),
         )
 
     @staticmethod
@@ -91,15 +185,28 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
             type='platform.specific',
             adapter_name=ADAPTER_NAME,
             action=action,
-            data=dict(event),
+            data=_public_payload(dict(event)),
             timestamp=_timestamp_value(event),
-            source_platform_object=event,
+            source_platform_object=SlackEvent(_public_payload(dict(event))),
         )
 
 
 def _timestamp_value(event: SlackEvent) -> float:
-    raw_ts = event.get('event', {}).get('ts') or event.get('event', {}).get('event_ts')
+    raw_ts = event.get('event', {}).get('event_ts') or event.get('event', {}).get('ts') or event.get('event_time')
     try:
         return float(raw_ts)
     except (TypeError, ValueError):
         return time.time()
+
+
+def _public_payload(value):
+    """Keep callback credentials out of event data and monitoring records."""
+    if isinstance(value, dict):
+        return {
+            key: _public_payload(item)
+            for key, item in value.items()
+            if key not in {'token', 'response_url', 'response_urls'}
+        }
+    if isinstance(value, list):
+        return [_public_payload(item) for item in value]
+    return value

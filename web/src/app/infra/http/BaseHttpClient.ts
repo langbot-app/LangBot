@@ -4,6 +4,7 @@ import axios, {
   AxiosResponse,
   AxiosError,
 } from 'axios';
+import i18n from 'i18next';
 import {
   clearActiveWorkspaceUuid,
   getActiveWorkspaceUuid,
@@ -79,6 +80,12 @@ export abstract class BaseHttpClient {
     // 请求拦截
     this.instance.interceptors.request.use(
       async (config) => {
+        // Account-only endpoints have no selected Workspace. Workspace routes
+        // resolve their persisted language and override this presentation hint.
+        // This is a LangBot backend hint, not part of the public Space API.
+        if (!this.disableToken) {
+          config.headers['X-LangBot-Language'] = i18n.language || 'en-US';
+        }
         // 客户端添加认证头
         if (typeof window !== 'undefined' && !this.disableToken) {
           const session = this.getSessionSync();

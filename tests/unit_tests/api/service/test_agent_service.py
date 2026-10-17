@@ -13,6 +13,7 @@ from langbot.pkg.api.http.service.agent import (
     PIPELINE_EVENT_PATTERNS,
     AgentService,
 )
+from langbot.pkg.api.http.service.model import LLMModelsService
 
 
 pytestmark = pytest.mark.asyncio
@@ -82,6 +83,7 @@ def _compiled_update_values(statement):
 
 def _make_app():
     app = SimpleNamespace()
+    app.llm_model_service = LLMModelsService(app)
     app.persistence_mgr = SimpleNamespace(
         execute_async=AsyncMock(),
         serialize_model=Mock(side_effect=_serialize_agent),
@@ -877,7 +879,9 @@ async def test_event_processor_rejects_invalid_component_and_missing_parameters(
         )
     )
     with pytest.raises(ValueError, match='Required processor parameter'):
-        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c'})
+        await service.create_agent(
+            WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c', 'parameters': {}}
+        )
 
 
 async def test_unavailable_event_processor_can_still_be_renamed():

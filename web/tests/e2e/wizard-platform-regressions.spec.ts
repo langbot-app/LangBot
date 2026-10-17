@@ -715,6 +715,8 @@ test.describe('wizard and QR platform regressions', () => {
     await expect(dialog.getByRole('button', { name: 'Retry' })).toBeEnabled();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^Save$/ })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Save(?: and enable)?$/ }),
+    ).toBeVisible();
   });
 });

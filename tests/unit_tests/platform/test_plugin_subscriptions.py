@@ -14,8 +14,13 @@ from langbot.pkg.persistence.tenant_uow import PersistenceScope, PersistenceScop
 
 def make_bot(subscriptions):
     bot = object.__new__(RuntimeBot)
-    bot.bot_entity = SimpleNamespace(uuid='bot', event_bindings=[], plugin_processors=subscriptions)
+    bot.bot_entity = SimpleNamespace(
+        uuid='bot', adapter='aiocqhttp', event_bindings=[], plugin_processors=subscriptions
+    )
     bot.execution_context = 'workspace'
+    bot.workspace_uuid = 'workspace'
+    bot.placement_generation = 1
+    bot.ap = SimpleNamespace(workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()))
     bot._record_adapter_event = AsyncMock()
     bot._record_event_route_trace = AsyncMock()
     bot.logger = SimpleNamespace(error=AsyncMock())
@@ -124,7 +129,8 @@ async def test_cloud_deliveries_own_their_scope_and_preserve_parent(primary_fail
         )
 
     bot.ap = SimpleNamespace(
-        persistence_mgr=SimpleNamespace(mode=SimpleNamespace(value='cloud_runtime'), tenant_scope=tenant_scope)
+        workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()),
+        persistence_mgr=SimpleNamespace(mode=SimpleNamespace(value='cloud_runtime'), tenant_scope=tenant_scope),
     )
     seen = []
 

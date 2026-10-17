@@ -929,7 +929,7 @@ class TestPostgreSQLTenantRuntime:
                                 description='',
                                 adapter='capacity-probe',
                                 adapter_config={},
-                                enable=False,
+                                enable=True,
                                 event_bindings=[],
                             ),
                             persistence_pipeline.LegacyPipeline(

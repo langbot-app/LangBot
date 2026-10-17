@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .....i18n import t
+
 import asyncio
 import base64
 import collections.abc
@@ -296,14 +298,20 @@ class PluginsRouterGroup(group.RouterGroup):
     async def _check_extensions_limit(self, request_context: RequestContext) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         await self.ap.plugin_connector.require_workspace_context(request_context)
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from ...service.workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, request_context.workspace_uuid)
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
             plugins = await self.ap.plugin_connector.list_plugins()
             mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context)
             total_extensions = len(plugins) + len(mcp_servers)
             if total_extensions >= max_extensions:
-                return self.http_status(400, -1, f'Maximum number of extensions ({max_extensions}) reached')
+                return self.http_status(
+                    400,
+                    -1,
+                    t('Maximum number of {resource} ({limit}) reached', resource=t('extensions'), limit=max_extensions),
+                )
         return None
 
     @staticmethod

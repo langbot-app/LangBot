@@ -255,7 +255,7 @@ class ExecutionCounters:
             if family not in FAMILIES or mode not in MODES or outcome not in OUTCOMES:
                 return
             # Only code-defined identifiers are accepted; never pass user values.
-            if any(not isinstance(v, str) or len(v) > 160 for v in (operation, adapter, runner, node)):
+            if any(not isinstance(v, str) or len(v.encode('utf-8')) > 512 for v in (operation, adapter, runner, node)):
                 return
             state = trace_mod.current()
             if state is None:
@@ -602,7 +602,7 @@ def ingress(
             ap,
             context,
             family='platform_event',
-            operation=str(synthetic_event)[:160],
+            operation=str(synthetic_event)[:512],
             outcome='success',
             synthetic=True,
             node=node,

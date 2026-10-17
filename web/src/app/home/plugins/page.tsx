@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useEffect } from 'react';
@@ -54,6 +55,8 @@ function PluginListView() {
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState(false);
+  const [statusRevision, setStatusRevision] = useState(0);
   const [debugInfo, setDebugInfo] = useState<{
     debug_url: string;
     plugin_debug_key: string;
@@ -70,10 +73,12 @@ function PluginListView() {
     const fetchPluginSystemStatus = async () => {
       try {
         setStatusLoading(true);
+        setStatusError(false);
         const status = await httpClient.getPluginSystemStatus();
         setPluginSystemStatus(status);
       } catch (error) {
         console.error('Failed to fetch plugin system status:', error);
+        setStatusError(true);
         toast.error(t('plugins.failedToGetStatus'));
       } finally {
         setStatusLoading(false);
@@ -81,7 +86,7 @@ function PluginListView() {
     };
 
     void fetchPluginSystemStatus();
-  }, [t]);
+  }, [t, statusRevision]);
 
   useEffect(() => {
     const onComplete = (
@@ -141,13 +146,13 @@ function PluginListView() {
   );
 
   const renderPluginConnectionErrorState = () => (
-    <div className="flex justify-center pt-[10vh] px-4">
-      <Alert variant="destructive" className="max-w-md">
-        <Unlink />
-        <AlertTitle>{t('plugins.connectionError')}</AlertTitle>
-        <AlertDescription>{t('plugins.connectionErrorDesc')}</AlertDescription>
-      </Alert>
-    </div>
+    <LoadErrorState
+      className="pt-[10vh]"
+      icon={<Unlink className="size-5" aria-hidden="true" />}
+      title={t('plugins.connectionError')}
+      description={t('plugins.connectionErrorDesc')}
+      onRetry={() => setStatusRevision((value) => value + 1)}
+    />
   );
 
   const renderLoadingState = () => (
@@ -160,6 +165,15 @@ function PluginListView() {
 
   if (statusLoading) {
     return renderLoadingState();
+  }
+
+  if (statusError) {
+    return (
+      <LoadErrorState
+        title={t('plugins.failedToGetStatus')}
+        onRetry={() => setStatusRevision((value) => value + 1)}
+      />
+    );
   }
 
   if (!pluginSystemStatus?.is_enable) {

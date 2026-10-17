@@ -391,8 +391,7 @@ export default function WizardPage() {
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
             setExtraWebhookUrl(
               (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -735,8 +734,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(resp.uuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -824,7 +822,7 @@ export default function WizardPage() {
 
       if (!previewPipelineUuid) {
         const pipelineResp = await httpClient.createPipeline({
-          name: `${botName} Pipeline`,
+          name: `${botName} ${t('agents.pipelineType')}`,
           description: botDescription || '',
           config: {},
         });
@@ -902,8 +900,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(createdBotUuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -1062,10 +1059,7 @@ export default function WizardPage() {
 
   if (isLoading) {
     return (
-      <div
-        style={{ top: 'var(--beta-banner-height, 0px)' }}
-        className="fixed inset-x-0 bottom-0 z-50 bg-background flex items-center justify-center"
-      >
+      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <LoadingSpinner text={t('wizard.loading')} />
       </div>
     );
@@ -1079,10 +1073,7 @@ export default function WizardPage() {
   ];
 
   return (
-    <div
-      style={{ top: 'var(--beta-banner-height, 0px)' }}
-      className="fixed inset-x-0 bottom-0 z-50 bg-background flex flex-col"
-    >
+    <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Top bar: Skip button */}
       <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 border-b">
         <div className="flex items-center gap-2">
@@ -1823,6 +1814,10 @@ function StepBotConfig({
                   systemContext={{
                     is_wizard: true,
                     webhook_url: webhookUrl,
+                    onebot_ws_url: webhookUrl
+                      ? webhookUrl.replace(/^http/, 'ws').replace(/\/$/, '') +
+                        '/onebot/v11/ws'
+                      : '',
                     extra_webhook_url: extraWebhookUrl,
                     outbound_ips: systemInfo.outbound_ips,
                   }}

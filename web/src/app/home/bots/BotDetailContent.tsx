@@ -1,10 +1,10 @@
 import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,14 @@ import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-ses
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  Settings,
+  FileText,
+  Users,
+  RefreshCw,
+  Trash2,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { showBotError } from './bot-error';
@@ -56,7 +63,23 @@ export default function BotDetailContent({ id }: { id: string }) {
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, bots, setDetailEntityName, t]);
 
-  const [activeTab, setActiveTab] = useState('config');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab =
+    !isCreateMode &&
+    canViewMonitoring &&
+    ['logs', 'sessions'].includes(requestedTab || '')
+      ? requestedTab!
+      : 'config';
+  const setActiveTab = (tab: string) =>
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('tab', tab);
+        return next;
+      },
+      { replace: true },
+    );
   const [adapterLabel, setAdapterLabel] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
@@ -72,6 +95,7 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   // Enable state managed here so the header switch works
   const [botEnabled, setBotEnabled] = useState(true);
+  const [isTogglingEnable, setIsTogglingEnable] = useState(false);
   const [enableLoaded, setEnableLoaded] = useState(false);
 
   // Fetch bot enable state
@@ -91,20 +115,27 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   const handleEnableToggle = useCallback(
     async (checked: boolean) => {
+      if (isTogglingEnable) return;
       const prev = botEnabled;
+      setIsTogglingEnable(true);
       setBotEnabled(checked);
       try {
         await httpClient.updateBot(id, { enable: checked });
         setBot((current) =>
           current ? { ...current, enable: checked } : current,
         );
+        toast.success(
+          t(checked ? 'bots.enableConfirmed' : 'bots.disableConfirmed'),
+        );
         refreshBots();
       } catch (error) {
         setBotEnabled(prev);
         showBotError(error, t('bots.setBotEnableError'), t);
+      } finally {
+        setIsTogglingEnable(false);
       }
     },
-    [id, botEnabled, refreshBots, t],
+    [id, botEnabled, isTogglingEnable, refreshBots, t],
   );
 
   function handleFormSubmit() {
@@ -210,36 +241,68 @@ export default function BotDetailContent({ id }: { id: string }) {
             </div>
             {enableLoaded && (
               <div className="flex items-center gap-2">
+                <Badge
+                  status={
+                    isTogglingEnable
+                      ? 'pending'
+                      : botEnabled
+                        ? 'enabled'
+                        : 'disabled'
+                  }
+                  className="gap-1.5 rounded-full"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {isTogglingEnable ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <span
+                      className="size-1.5 rounded-full bg-current"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {t(
+                    isTogglingEnable
+                      ? botEnabled
+                        ? 'bots.enabling'
+                        : 'bots.disabling'
+                      : botEnabled
+                        ? 'bots.enableConfirmed'
+                        : 'bots.disableConfirmed',
+                  )}
+                </Badge>
                 <Switch
                   id="bot-enable-switch"
                   checked={botEnabled}
                   onCheckedChange={handleEnableToggle}
-                  disabled={!canManage}
+                  disabled={!canManage || isTogglingEnable}
+                  aria-label={t('common.enable')}
+                  aria-busy={isTogglingEnable}
                 />
-                <Label
-                  htmlFor="bot-enable-switch"
-                  className="text-sm text-muted-foreground cursor-pointer"
-                >
-                  {t('common.enable')}
-                </Label>
               </div>
             )}
           </div>
           {canManage && (
             <div className="flex shrink-0 items-center gap-2">
-              <AdapterEventDebugDialog
-                key={id}
-                botId={id}
-                adapterLabel={adapterLabel}
-              />
+              {activeTab === 'config' && (
+                <AdapterEventDebugDialog
+                  key={id}
+                  botId={id}
+                  adapterLabel={adapterLabel}
+                />
+              )}
               <Button
                 type="submit"
                 form="bot-form"
-                disabled={!formDirty}
+                disabled={!enableLoaded || !formDirty || isTogglingEnable}
                 className={activeTab !== 'config' ? 'invisible' : ''}
                 data-guide="bot-config-save"
               >
-                {t('common.save')}
+                {t(
+                  formDirty && !botEnabled
+                    ? 'bots.saveAndEnable'
+                    : 'common.save',
+                )}
               </Button>
               <Button
                 type="button"

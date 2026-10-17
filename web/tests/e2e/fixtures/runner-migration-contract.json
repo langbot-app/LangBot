@@ -1,5 +1,5 @@
 {
-  "planner_version": "4",
+  "planner_version": "5",
   "fixture_only": true,
   "legacy_sections": {
     "local-agent": {
@@ -86,7 +86,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "LocalAgent",
-          "version": "0.1.10",
+          "version": "0.2.1",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/LocalAgent",
           "label": {
             "en_US": "Local Agent",
@@ -124,6 +124,8 @@
           "pages": []
         },
         "execution": {
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1",
           "python": {
             "path": "main.py",
             "attr": "LocalAgentPlugin"
@@ -152,8 +154,8 @@
             {
               "name": "model",
               "description": {
-                "en_US": "Primary/fallback model UUIDs and per-model reasoning levels. Host validates and applies reasoning for every request; this is per-pipeline configuration.",
-                "zh_Hans": "主模型/备用模型 UUID 与各模型推理等级。由 Host 对每次请求校验并应用，属于流水线独立配置。"
+                "en_US": "Choose a primary model and optional fallback models, and set the reasoning level for each model.",
+                "zh_Hans": "选择主模型和备用模型，并设置各模型的推理等级。"
               },
               "label": {
                 "en_US": "Model",
@@ -217,14 +219,9 @@
                 "zh_Hans": "选择沙箱文件和环境的共享方式。自定义模板使用 {变量名} 插值，如 {launcher_type}_{launcher_id}_{sender_id}；插值结果相同就复用同一个沙箱，{global} 表示在工作区内全局共享。可用变量：{launcher_type}（会话类型）、{launcher_id}（会话 ID）、{sender_id}（用户 ID）、{conversation_id}（对话上下文 ID）、{bot_id}（机器人 ID）、{query_id}（请求 ID）、{run_id}（运行 ID）、{event_id}（事件 ID）、{event_type}（事件类型），也可引用公开请求变量。仅支持变量名，不支持运算或属性访问；变量不可用时会报错。"
               },
               "type": "select",
+              "allow_custom": true,
               "required": true,
               "default": "{launcher_type}_{launcher_id}",
-              "show_if": {
-                "field": "box-enabled",
-                "operator": "eq",
-                "value": true
-              },
-              "allow_custom": true,
               "options": [
                 {
                   "name": "{global}",
@@ -291,7 +288,12 @@
                     "ru_RU": "По сообщению (изолированно)"
                   }
                 }
-              ]
+              ],
+              "show_if": {
+                "field": "box-enabled",
+                "operator": "eq",
+                "value": true
+              }
             },
             {
               "name": "advanced-settings",
@@ -578,8 +580,8 @@
           }
         }
       },
-      "package_sha256": "52780785960722cbc0f2a9335c48a852cf631a32e4d04ce1e1ff601af7c0b599",
-      "schema_sha256": "cdb336b8655b53dec482cfe9e191d0ed1d409929423584e5848255aabe499338"
+      "package_sha256": "2d2ce17055d70dd7736e6902595be3262992fd1598a00bd9d79d19fef1c16329",
+      "schema_sha256": "c1364cf0f211162bb701e27ed92b351fd9ff4cfa0b4469cfeb83ad58136cdf47"
     },
     "dify-agent": {
       "manifest": {
@@ -588,7 +590,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "DifyAgent",
-          "version": "0.1.10",
+          "version": "0.2.3",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dify-agent",
           "label": {
             "en_US": "Dify Agent",
@@ -629,7 +631,9 @@
           "python": {
             "path": "main.py",
             "attr": "DifyAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -948,7 +952,7 @@
           }
         }
       },
-      "package_sha256": "6fc89a8d127b338b6f8d2deca78001b7dbaccfe9862c88c0d2ce95bd1df1ebb2",
+      "package_sha256": "6fb3c388e713449ff0db4c4491cf4bf89173b2a8de69d5c4c2e0c1fb21a3f4a8",
       "schema_sha256": "dccc4b7df7730c4e5e2cfc2ca2e67db5ea9195ad9720a79a329bc11fdcaeb840"
     },
     "coze-agent": {
@@ -958,7 +962,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "CozeAgent",
-          "version": "0.1.10",
+          "version": "0.2.0",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/coze-agent",
           "label": {
             "en_US": "Coze Agent",
@@ -999,7 +1003,9 @@
           "python": {
             "path": "main.py",
             "attr": "CozeAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -1259,7 +1265,7 @@
           }
         }
       },
-      "package_sha256": "c8e48659a0358bd8291137379f6159e61f2b1dbe72766772d81c9af49f7a8317",
+      "package_sha256": "d17917c8fcdbb5e044cdae7ba4c7c966835ade4350c97f9b38184a17de9d79b2",
       "schema_sha256": "3f7c4d4e5c8a7ace3e804f0ca02739c48439abcc8f360bfc17394b9cf6660674"
     },
     "dashscope-agent": {
@@ -1269,7 +1275,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "DashScopeAgent",
-          "version": "0.1.10",
+          "version": "0.2.2",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dashscope-agent",
           "label": {
             "en_US": "Dashscope Agent",
@@ -1310,7 +1316,9 @@
           "python": {
             "path": "main.py",
             "attr": "DashScopeAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -1552,7 +1560,7 @@
           }
         }
       },
-      "package_sha256": "cd4e28e53eb986b906d6aa92d26b49d8ad4a9514fcc764f359bbdb84ad1a3f00",
+      "package_sha256": "200450d94da2173acd58239e4565c3d4a9cd4830a09173ff35bb24aa31bdd8a4",
       "schema_sha256": "aadfce3fe0157b124235437f251c24fbfea0e498ece4be8f9de6028b97573937"
     },
     "n8n-agent": {
@@ -1562,7 +1570,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "N8nAgent",
-          "version": "0.1.10",
+          "version": "0.2.0",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/n8n-agent",
           "label": {
             "en_US": "N8n Agent",
@@ -1603,7 +1611,9 @@
           "python": {
             "path": "main.py",
             "attr": "N8nAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -2028,7 +2038,7 @@
           }
         }
       },
-      "package_sha256": "507af9773690ff90c8ce2cdf8c3660ca01050e195eeb954cb631ea0116fe680c",
+      "package_sha256": "a83807decf3f62d2bd9a8c5515849c867140e22b3377ba248cb1e594757a5961",
       "schema_sha256": "9e492577b0e8d197fd792cd1456771e5ff1731ebf897a128c70f4850b4dfece0"
     },
     "langflow-agent": {
@@ -2038,7 +2048,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "LangflowAgent",
-          "version": "0.1.10",
+          "version": "0.2.2",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/langflow-agent",
           "label": {
             "en_US": "Langflow Agent",
@@ -2079,7 +2089,9 @@
           "python": {
             "path": "main.py",
             "attr": "LangflowAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -2306,7 +2318,7 @@
           }
         }
       },
-      "package_sha256": "93fee3064505d0a69d8b16d8aceb4a171ffdffed63a36278eef635267681f5a1",
+      "package_sha256": "f82975125ec6916fdf88876e93a3020d23728f96fec36c4980dd0670cfaa6608",
       "schema_sha256": "c7d940674bae9acab993801c6957da778bbdb3fa8734bfad9cda96dbb57f5fee"
     },
     "deerflow-agent": {
@@ -2316,7 +2328,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "DeerFlowAgent",
-          "version": "0.1.10",
+          "version": "0.2.1",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/deerflow-agent",
           "label": {
             "en_US": "DeerFlow Agent",
@@ -2357,7 +2369,9 @@
           "python": {
             "path": "main.py",
             "attr": "DeerFlowAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -2588,7 +2602,7 @@
           }
         }
       },
-      "package_sha256": "10c93fec92e2d34c791baa541b71debf060e80aaa5fb64c386dc25fbc6b510a5",
+      "package_sha256": "6413462042008652f4a0fd4ed0514c4943ceefbbdcea36c9a58a9cbf080168d9",
       "schema_sha256": "8a865320f37e367095a1f332bcc490cad8c0af273bc82baf768015242457c8f6"
     },
     "tbox-agent": {
@@ -2598,7 +2612,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "TboxAgent",
-          "version": "0.1.8",
+          "version": "0.2.1",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/tbox-agent",
           "label": {
             "en_US": "Tbox Agent",
@@ -2639,7 +2653,9 @@
           "python": {
             "path": "main.py",
             "attr": "TboxAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -2756,7 +2772,7 @@
           }
         }
       },
-      "package_sha256": "ed9c7a3f7c904a1fc6a95e8e7de0253f85282bf159250e355480fdcc91b4f629",
+      "package_sha256": "d88a3d14f2996383fab27a6fa1adf089f3bd575c2aa7a2c76c09f4eef682a9ff",
       "schema_sha256": "ac34c6a84859728328aa8d554aadbd1bef9b92c35ce4524812a541bac58c5088"
     },
     "weknora-agent": {
@@ -2766,7 +2782,7 @@
         "metadata": {
           "author": "langbot-team",
           "name": "WeKnoraAgent",
-          "version": "0.1.10",
+          "version": "0.2.1",
           "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/weknora-agent",
           "label": {
             "en_US": "WeKnora Agent",
@@ -2807,7 +2823,9 @@
           "python": {
             "path": "main.py",
             "attr": "WeKnoraAgentPlugin"
-          }
+          },
+          "sharedRuntime": "shared-runtime-v1",
+          "componentModel": "stateless-v1"
         }
       },
       "component": {
@@ -3002,7 +3020,7 @@
           }
         }
       },
-      "package_sha256": "63841513ad9a0272f1e9863ab70a280989651a26db421b3f0df634972978135b",
+      "package_sha256": "41cb9bd32b3f794fad95a7d20cf8d9f52f81da1e1e4b3049f4b5f1c51581b980",
       "schema_sha256": "78d6d36d38f3991cc1a0bfc057d09a18a43c55e6af45b6ed61908d66bf475aa2"
     }
   },
@@ -3155,7 +3173,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "LocalAgent",
-          "version": "0.1.10"
+          "version": "0.2.1"
         },
         "config": {
           "trigger": {
@@ -3197,8 +3215,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/LocalAgent/default"
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -3220,9 +3238,9 @@
                 "tools": [],
                 "knowledge-bases": [],
                 "model": {
+                  "primary": "synthetic-model",
                   "fallbacks": [],
-                  "reasoning": {},
-                  "primary": "synthetic-model"
+                  "reasoning": {}
                 },
                 "prompt": [
                   {
@@ -3256,6 +3274,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -3459,7 +3478,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "DifyAgent",
-          "version": "0.1.10"
+          "version": "0.2.3"
         },
         "config": {
           "trigger": {
@@ -3501,17 +3520,17 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/DifyAgent/default"
+              "id": "plugin:langbot-team/DifyAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/DifyAgent/default": {
                 "timeout": 30,
                 "advanced-settings": false,
-                "base-url": "https://dify.invalid/v1",
                 "api-key": "synthetic-key",
                 "app-type": "chat",
                 "base-prompt": "Synthetic prompt",
+                "base-url": "https://dify.invalid/v1",
                 "user-id-source": "legacy-session",
                 "enable-all-tools": false,
                 "tools": [],
@@ -3543,6 +3562,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -3742,7 +3762,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "CozeAgent",
-          "version": "0.1.10"
+          "version": "0.2.0"
         },
         "config": {
           "trigger": {
@@ -3784,16 +3804,16 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/CozeAgent/default"
+              "id": "plugin:langbot-team/CozeAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/CozeAgent/default": {
                 "auto-save-history": false,
                 "advanced-settings": false,
+                "api-base": "https://api.coze.cn",
                 "api-key": "synthetic-key",
                 "bot-id": "synthetic-bot",
-                "api-base": "https://api.coze.cn",
                 "timeout": 120,
                 "user-id-source": "legacy-session",
                 "enable-all-tools": false,
@@ -3826,6 +3846,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -4025,7 +4046,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "DashScopeAgent",
-          "version": "0.1.10"
+          "version": "0.2.2"
         },
         "config": {
           "trigger": {
@@ -4067,8 +4088,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/DashScopeAgent/default"
+              "id": "plugin:langbot-team/DashScopeAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/DashScopeAgent/default": {
@@ -4108,6 +4129,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -4299,7 +4321,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "N8nAgent",
-          "version": "0.1.10"
+          "version": "0.2.0"
         },
         "config": {
           "trigger": {
@@ -4341,8 +4363,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/N8nAgent/default"
+              "id": "plugin:langbot-team/N8nAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/N8nAgent/default": {
@@ -4389,6 +4411,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -4584,7 +4607,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "LangflowAgent",
-          "version": "0.1.10"
+          "version": "0.2.2"
         },
         "config": {
           "trigger": {
@@ -4626,8 +4649,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/LangflowAgent/default"
+              "id": "plugin:langbot-team/LangflowAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/LangflowAgent/default": {
@@ -4635,8 +4658,8 @@
                 "output-type": "chat",
                 "tweaks": {},
                 "advanced-settings": false,
-                "base-url": "https://langflow.invalid",
                 "api-key": "synthetic-key",
+                "base-url": "https://langflow.invalid",
                 "flow-id": "synthetic-flow",
                 "enable-all-tools": false,
                 "tools": [],
@@ -4667,6 +4690,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -4862,7 +4886,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "DeerFlowAgent",
-          "version": "0.1.10"
+          "version": "0.2.1"
         },
         "config": {
           "trigger": {
@@ -4904,8 +4928,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/DeerFlowAgent/default"
+              "id": "plugin:langbot-team/DeerFlowAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/DeerFlowAgent/default": {
@@ -4948,6 +4972,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -5131,7 +5156,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "TboxAgent",
-          "version": "0.1.8"
+          "version": "0.2.1"
         },
         "config": {
           "trigger": {
@@ -5173,8 +5198,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/TboxAgent/default"
+              "id": "plugin:langbot-team/TboxAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/TboxAgent/default": {
@@ -5211,6 +5236,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -5402,7 +5428,7 @@
         "target_plugin": {
           "author": "langbot-team",
           "name": "WeKnoraAgent",
-          "version": "0.1.10"
+          "version": "0.2.1"
         },
         "config": {
           "trigger": {
@@ -5444,8 +5470,8 @@
           },
           "ai": {
             "runner": {
-              "expire-time": 0,
-              "id": "plugin:langbot-team/WeKnoraAgent/default"
+              "id": "plugin:langbot-team/WeKnoraAgent/default",
+              "expire-time": 0
             },
             "runner_config": {
               "plugin:langbot-team/WeKnoraAgent/default": {
@@ -5456,9 +5482,9 @@
                 "timeout": 120,
                 "base-prompt": "请回答用户的问题。",
                 "advanced-settings": false,
-                "base-url": "https://weknora.invalid/api/v1",
                 "api-key": "synthetic-key",
                 "app-type": "agent",
+                "base-url": "https://weknora.invalid/api/v1",
                 "enable-all-tools": false,
                 "tools": [],
                 "knowledge-bases": [],
@@ -5488,6 +5514,7 @@
             }
           }
         },
+        "extensions_preferences": null,
         "changed_paths": [
           "ai.runner.runner",
           "ai.runner.id",
@@ -5738,12 +5765,110 @@
               "zh_Hans": "失败提示文本"
             },
             "description": {
-              "en_US": "The text to display when a request fails. Only effective when Exception Handling Strategy is set to \"Show Failure Hint\"",
-              "zh_Hans": "请求失败时显示的提示文本，仅在异常处理策略设置为\"仅文字提示\"时生效"
+              "en_US": "Leave empty to use the Workspace language. Used for request and runner execution failures; custom text is not translated.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。用于请求和运行器执行失败；自定义文本不会自动翻译。"
             },
             "type": "string",
             "required": false,
-            "default": "Request failed."
+            "default": ""
+          },
+          {
+            "name": "rate-limit-hint",
+            "label": {
+              "en_US": "Rate Limit Hint",
+              "zh_Hans": "限速提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "content-filter-hint",
+            "label": {
+              "en_US": "Content Filter Hint",
+              "zh_Hans": "内容过滤提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "content-filter-error-hint",
+            "label": {
+              "en_US": "Content Check Failure Hint",
+              "zh_Hans": "内容检查失败提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "tool-call-hint",
+            "label": {
+              "en_US": "Tool Call Hint",
+              "zh_Hans": "工具调用提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language. Use {tools} for tool names. Requires Track Function Calls.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。 可用 {tools} 插入工具名称，需开启跟踪函数调用。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "runner-not-found-hint",
+            "label": {
+              "en_US": "Runner Missing Hint",
+              "zh_Hans": "运行器不存在提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language. Use {runner} for the runner ID.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。 可用 {runner} 插入运行器 ID。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "runner-not-authorized-hint",
+            "label": {
+              "en_US": "Runner Authorization Hint",
+              "zh_Hans": "运行器未授权提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
+          },
+          {
+            "name": "runner-unavailable-hint",
+            "label": {
+              "en_US": "Runner Unavailable Hint",
+              "zh_Hans": "运行器不可用提示"
+            },
+            "description": {
+              "en_US": "Leave empty to use the Workspace language.",
+              "zh_Hans": "留空时使用工作区语言的默认提示。"
+            },
+            "type": "string",
+            "required": false,
+            "default": ""
           },
           {
             "name": "at-sender",

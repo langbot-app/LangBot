@@ -1,5 +1,155 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
+  planRevision: {
+    subscribedOn: 'Fecha de suscripción: {{date}}',
+    latestQuota: 'Cuotas más recientes de este plan',
+    showLatest: 'Ver las cuotas más recientes de este plan',
+    showCurrent: 'Ver tu suscripción actual',
+    latestTab: 'Más reciente',
+    currentTab: 'Actual',
+    cancelToSubscribe:
+      'Cancela tu suscripción para acceder a las últimas cuotas el próximo período',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Renovar la suscripción actual',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Suscripción no disponible',
+    subscriptionUnavailableHint:
+      'Este plan no acepta nuevas suscripciones. Elige otro plan. Las suscripciones existentes y sus renovaciones automáticas no se ven afectadas.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Cuenta Oficial',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Gestionar suscripción',
+    downgradeUnavailable: 'No se puede cambiar al plan gratuito',
+    features: {
+      multiUserWorkspace: 'Espacio de trabajo multiusuario',
+      remoteE2BSandbox: 'Configuración de sandbox E2B remoto',
+      communitySupport: 'Soporte de la comunidad',
+      everythingInFree: 'Todas las funciones del plan gratuito',
+      alwaysOnSandbox: 'Un sandbox global siempre activo',
+      higherWorkspaceLimits: 'Límites superiores del espacio de trabajo',
+    },
+    title: 'Comparar planes',
+    description: 'Elige un plan para {{workspace}}',
+    billing: 'Ciclo de facturación',
+    monthly: 'Mensual',
+    annual: 'Anual',
+    currency: 'Moneda',
+    loading: 'Cargando planes…',
+    error: 'No se pudieron cargar los planes',
+    retry: 'Reintentar',
+    empty: 'No hay planes disponibles',
+    current: 'Plan actual',
+    recommended: 'Recomendado',
+    free: 'Gratis',
+    annualNote: 'Equivale a {{price}} / mes',
+    ownerOnly: 'Solo propietario o administrador',
+    choose: 'Continuar al pago',
+    handoff: 'Inicia sesión y paga en Space. Se conservará tu selección.',
+    quotas: 'Cuotas del espacio',
+    unlimited: 'Sin límite',
+    retention: 'Historial · {{count}} días',
+    retentionLabel: 'Retención del historial',
+    retentionHelp:
+      'El historial se elimina automáticamente al superar este periodo.',
+    credits: '{{count}} créditos al mes',
+    creditsLabel: 'Créditos mensuales',
+    creditsHelp:
+      'Los créditos se conceden cada mes de suscripción, también en los planes anuales.',
+    platforms: 'Plataformas principales compatibles',
+    excludedPlatforms: 'No compatibles: {{platforms}}',
+    allPlatforms: 'Todas las plataformas disponibles',
+    limits: {
+      bots: 'Bots',
+      pipelines: 'Procesadores',
+      knowledge_bases: 'Bases de conocimiento',
+      plugins: 'Extensiones',
+      members: 'Miembros',
+      managed_sandbox_sessions: 'Sesiones de sandbox gestionado',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Idioma del espacio de trabajo',
+    description:
+      'Idioma de los mensajes del servidor y respuestas predeterminadas del bot. No cambia tu interfaz.',
+    saved: 'Idioma guardado',
+    saveFailed: 'No se pudo guardar el idioma',
+  },
+  inflight: {
+    autoCollapse: 'Plegar auto.',
+    empty: 'No hay eventos en proceso',
+    move: 'Arrastra verticalmente o usa las flechas',
+    botLogs: 'Registros del bot',
+    processorLogs: 'Registros del procesador',
+
+    title: 'En curso',
+    expand: 'Expandir',
+    collapse: 'Contraer',
+    reconnecting: 'Reconectando; se muestra el último estado recibido.',
+    details: 'Ver detalles',
+    debug: 'Evento de depuración',
+    limited:
+      'Se muestra un subconjunto. Consulte todas las ejecuciones en el panel.',
+    queued: 'En cola',
+    running: 'Procesando',
+    waiting: 'Esperando entrada',
+    tool: 'Ejecutando herramienta',
+    thinking: 'Pensando',
+    replying: 'Preparando respuesta',
+    generating: 'Generando respuesta',
+    completed: 'Completado',
+    failed: 'Fallido',
+    cancelled: 'Cancelado',
+    ignored: 'Ignorado',
+  },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
     resizeHeight: 'Ajustar la altura del asistente',
@@ -9,7 +159,7 @@ const esES = {
     stopped:
       'Detenido. Una herramienta en curso puede haber surtido efecto. Comprueba el recurso antes de reintentar.',
     setupRequired:
-      'Inicia sesión en LangBot Account para usar LangBot Models o configura tu proveedor de modelos para empezar a conversar.',
+      'Inicia sesión con tu cuenta de LangBot o configura un modelo para empezar a usar el asistente del espacio de trabajo.',
     loginAccount: 'Iniciar sesión en LangBot Account',
     configureModels: 'Configurar modelos',
     providerCheckFailed:
@@ -79,6 +229,14 @@ const esES = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
         title: 'Revisar la actividad',
         description:
           'Consulta la actividad de los bots, el uso de modelos, los mensajes y el rendimiento del sistema.',
@@ -160,6 +318,14 @@ const esES = {
           'Envía mensajes de prueba para comprobar los activadores, las respuestas de IA y el procesamiento de salida. Los cambios se guardan antes de la prueba.',
       },
       monitoring: {
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
         title: 'Revisar el historial',
         description:
           'Usa la pestaña junto al título para revisar conversaciones, pasos de procesamiento y errores cuando falten respuestas o sean inesperadas.',
@@ -327,6 +493,11 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
+    loadFailedTitle: 'No se pudo cargar el contenido',
+    loadFailedHint:
+      'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
     customValue: 'Personalizado',
     loadFailed: 'No se pudo cargar. Inténtalo de nuevo.',
     search: 'Buscar',
@@ -527,6 +698,9 @@ const esES = {
     help: 'Obtener ayuda',
   },
   models: {
+    starModel: 'Marcar como favorito para nuevos procesadores',
+    unstarModel: 'Quitar de favoritos',
+    starModelFailed: 'No se pudo actualizar el modelo favorito',
     codex: {
       account: 'Suscripción de ChatGPT',
       description:
@@ -795,10 +969,13 @@ const esES = {
     deleteConfirmation: '¿Estás seguro de que deseas eliminar este Bot?',
     platformAdapter: 'Selección de plataforma/adaptador',
     selectAdapter: 'Seleccionar adaptador',
+    saveAndEnable: 'Guardar y activar',
+    searchAdapters: 'Buscar adaptadores',
+    noMatchingAdapters: 'No se encontraron adaptadores coincidentes',
     legacyAdapters: 'Adaptadores heredados',
     legacyAdapterBadge: 'Heredado',
     legacyAdaptersHint:
-      'Estos adaptadores tienen versiones nuevas orientadas a eventos.\nSe mantienen solo para configuraciones existentes y no se recomiendan para Bots nuevos.',
+      'Los adaptadores antiguos se centran en mensajes y conservan la compatibilidad con bots existentes.\nLos nuevos conectan la misma plataforma mediante eventos, incluidos mensajes y solicitudes de amistad o cambios de grupo compatibles.\nUsa los nuevos para bots nuevos. Los existentes pueden seguir con los antiguos. Al cambiar, revisa la conexión y las rutas; no se actualiza la cuenta de la plataforma.',
     adapterConfig: 'Configuración del adaptador',
     viewAdapterDocs: 'Ver documentación',
     bindPipeline: 'Vincular Pipeline',
@@ -811,6 +988,10 @@ const esES = {
     earlier: 'Anterior',
     dateFormat: '{{day}}/{{month}}',
     setBotEnableError: 'Error al establecer el estado de activación del Bot',
+    enabling: 'Activando…',
+    disabling: 'Desactivando…',
+    enableConfirmed: 'Activado',
+    disableConfirmed: 'Desactivado',
     log: 'Registro',
     configuration: 'Configuración',
     logs: 'Registros',
@@ -819,6 +1000,28 @@ const esES = {
     routingConnection: 'Enrutamiento y conexión',
     routingConnectionDescription:
       'Vincula el Pipeline que procesa los mensajes de este Bot',
+    routingHelp: {
+      title: '¿Qué es el enrutamiento de eventos?',
+      intro:
+        'Los bots reciben mensajes, solicitudes de amistad y eventos como unirse a un grupo.',
+      events: 'Eventos recibidos',
+      agents: 'Distintos agentes',
+      message: 'Mensaje recibido',
+      friend: 'Solicitud de amistad',
+      group: 'Entrada a un grupo',
+      messageAction: 'Agente de respuestas',
+      friendAction: 'Agente de revisión',
+      groupAction: 'Agente de bienvenida',
+      rules: 'Según tus reglas · Ejemplo',
+      instructions:
+        'Los agentes siguen tus instrucciones y usan herramientas para responder o revisar solicitudes.',
+      plugin:
+        'Para casos avanzados, los procesadores de plugins registran eventos en lote y los gestionan con código. Añade su configuración abajo.',
+      docs: 'Desarrolla tu propio procesador de plugins',
+      runnerDocs: 'Desarrolla tu propio ejecutor de Agent',
+      pause: 'Pausar',
+      play: 'Reproducir',
+    },
     eventRouting: 'Enrutamiento de eventos',
     eventRoutingDescription:
       'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',
@@ -859,7 +1062,8 @@ const esES = {
     enabled: 'Activado',
     eventBindingDescriptionPlaceholder: 'Descripción de la regla',
     noEventBindings: 'No hay rutas de eventos',
-    unsupportedPipelineEvent: 'Los flujos solo admiten eventos message.*',
+    unsupportedPipelineEvent:
+      'Los flujos solo admiten eventos message.received',
     disable: 'Desactivar',
     enable: 'Activar',
     disabledBindings: 'Desactivado',
@@ -869,6 +1073,7 @@ const esES = {
     advancedEventValues: 'Ver todos',
     eventGroup: 'Grupo',
     eventGroupNames: {
+      wecomcs: 'Atención al cliente de WeCom',
       bot: 'Estado del bot',
       feedback: 'Comentarios',
       friend: 'Amigos',
@@ -883,6 +1088,9 @@ const esES = {
     routeFallbackCatchAll: '{{route}} es la ruta general.',
     routeFallbackIgnored:
       'Se ignoran los eventos sin ruta coincidente. Añade una ruta general solo si todos los eventos necesitan un resultado explícito.',
+    matchRecords: 'Registros de coincidencias',
+    matchRecordsDescription:
+      'Último resultado de cada regla y eventos recientes sin coincidencia. Los registros en memoria se borran al reiniciar.',
     testRoute: 'Comprobar ruta',
     adapterEventDebugAction: 'Probar escucha',
     adapterEventDebugTitle: 'Depuración de eventos de plataforma',
@@ -969,6 +1177,15 @@ const esES = {
     eventWildcard: 'Todos los eventos',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: 'Usuario entró al chat del bot',
+      wecombot_template_card_event: 'Interacción con tarjeta',
+      dingtalk_card_action: 'Interacción con tarjeta de DingTalk',
+      wecomcs_enter_session: 'Cliente entró en la conversación',
+      wecomcs_msg_send_fail: 'Fallo de envío de atención al cliente',
+      wecomcs_servicer_status_change: 'Disponibilidad del agente modificada',
+      wecomcs_session_status_change: 'Estado de conversación modificado',
+      wecomcs_reject_customer_msg_switch_change:
+        'Rechazo de mensajes modificado',
       message_received: 'Mensaje recibido',
       message_edited: 'Mensaje editado',
       message_deleted: 'Mensaje eliminado',
@@ -978,6 +1195,7 @@ const esES = {
       friend_added: 'Amigo añadido',
       group_member_joined: 'Miembro unido al grupo',
       group_member_left: 'Miembro salió del grupo',
+      group_info_updated: 'Información del grupo actualizada',
       group_member_banned: 'Miembro bloqueado',
       bot_invited_to_group: 'Bot invitado al grupo',
       bot_removed_from_group: 'Bot eliminado del grupo',
@@ -986,6 +1204,22 @@ const esES = {
       platform_specific: 'Evento específico de la plataforma',
     },
     eventDescriptions: {
+      wecombot_enter_chat:
+        'Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.',
+      wecombot_template_card_event:
+        'Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.',
+      dingtalk_card_action:
+        'Clics y envíos de tarjetas; las valoraciones y los formularios gestionados se procesan por separado.',
+      wecomcs_enter_session:
+        'Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.',
+      wecomcs_msg_send_fail:
+        'WeChat notificó un fallo de envío con el ID y el tipo de error.',
+      wecomcs_servicer_status_change:
+        'Un agente inició, detuvo o suspendió la atención.',
+      wecomcs_session_status_change:
+        'Un agente aceptó, transfirió, cerró o reabrió la conversación.',
+      wecomcs_reject_customer_msg_switch_change:
+        'Un agente activó o desactivó el rechazo de mensajes del cliente.',
       all: 'Coincide con todos los eventos recibidos por este adaptador.',
       namespace: 'Coincide con todos los eventos de {{group}}.',
       namespace_bot:
@@ -994,7 +1228,7 @@ const esES = {
         'Coincide con comentarios recibidos de la plataforma o de usuarios.',
       namespace_friend: 'Coincide con solicitudes y cambios de amistad.',
       namespace_group:
-        'Coincide con entradas, salidas, expulsiones y otros eventos de grupo.',
+        'Coincide con cambios de miembros y actualizaciones de información del grupo.',
       namespace_message:
         'Coincide con mensajes recibidos, editados, eliminados y reacciones.',
       namespace_platform:
@@ -1011,6 +1245,8 @@ const esES = {
       friend_added: 'Se ha creado una relación de amistad.',
       group_member_joined: 'Un miembro se une a un grupo donde está el bot.',
       group_member_left: 'Un miembro abandona un grupo donde está el bot.',
+      group_info_updated:
+        'Han cambiado datos del grupo, como su nombre o propietario.',
       group_member_banned: 'Un miembro del grupo es bloqueado o expulsado.',
       bot_invited_to_group: 'El bot es invitado a un grupo.',
       bot_removed_from_group: 'El bot es expulsado de un grupo.',
@@ -1098,6 +1334,13 @@ const esES = {
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
     sessionMonitor: {
+      resetContext: 'Restablecer contexto',
+      resetDescription:
+        'Los mensajes nuevos comenzarán sin contexto previo. Se conservan el historial de monitoreo, los archivos y la memoria a largo plazo. Espere a que terminen las tareas activas.',
+      resetSuccess: 'Contexto restablecido.',
+      resetError:
+        'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
+
       title: 'Sesiones',
       sessions: 'Sesiones',
       noSessions: 'No se encontraron sesiones',
@@ -1145,7 +1388,26 @@ const esES = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Seleccionar todo',
     monitoring: {
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+      runStatus: 'Estado de ejecución',
+      toolCalls: 'Llamadas a herramientas',
+      delivery: 'Envío de mensajes',
+      sendFailed: 'Error de envío',
+      sendCount: '{{count}} llamadas de envío correctas',
+      noSend: 'Sin envíos registrados',
+      noSteps: 'Aún no hay pasos registrados.',
+      recipient: 'Destinatario',
+      actionCompleted: 'Herramienta ejecutada correctamente.',
+      simulatedAction: 'Acción simulada; no se envió ningún mensaje real.',
       description:
         'Consulta el evento, la salida del modelo y las herramientas de cada tarea.',
       empty:
@@ -1252,6 +1514,9 @@ const esES = {
       'Sigue un flujo fijo: recibir un mensaje, consultar a la IA y responder al usuario, con bases de conocimiento y plugins configurables. Solo procesa eventos de mensaje, para tareas con pasos claros y control del proceso.',
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
+    selectAgentRunner: 'Seleccionar ejecutor de Agent',
+    selectProcessorPlugin: 'Seleccionar plugin de procesamiento',
+    createBasicInfoDescription: 'Configura el nombre, icono y plugin',
     chooseType: 'Elegir cómo funciona',
     chooseTypeDescription:
       'Elige primero el tipo de procesador. Podrás configurarlo después de crearlo.',
@@ -2083,6 +2348,14 @@ const esES = {
       uploading: 'Subiendo...',
     },
     monitoring: {
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
       title: 'Registros de ejecución',
       workbench: 'Configurar y depurar',
       description:
@@ -2458,8 +2731,7 @@ const esES = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2528,6 +2800,14 @@ const esES = {
     },
   },
   monitoring: {
+    rangeDays: 'Últimos {{days}} días',
+    customRange: 'Periodo personalizado',
+    rangeStart: 'Inicio',
+    rangeEnd: 'Fin',
+    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+    autoRefreshLabel: 'Actualización automática',
+    autoRefreshOff: 'Actualización: desactivada',
+    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
     unified: {
       inputs: 'Evento y entrada',
       outputs: 'Resultados generados',
@@ -2681,6 +2961,15 @@ const esES = {
       feedback: 'Comentarios de usuarios',
       sessions: 'Análisis de sesiones',
       errors: 'Registros de errores',
+    },
+    pipelineTrace: {
+      received: 'Mensaje recibido',
+      processing: 'Procesamiento',
+      replies: 'Respuestas',
+      noSteps: 'No se registraron llamadas a modelos o herramientas',
+      success: 'Correcto',
+      error: 'Error',
+      pending: 'Pendiente',
     },
     messageList: {
       timestamp: 'Marca de tiempo',
@@ -3520,15 +3809,6 @@ const esES = {
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',
-  },
-  beta_banner: {
-    message:
-      'Este entorno está en fase beta. La estabilidad del servicio no está garantizada. Considera usar',
-    cloud_link: 'LangBot Cloud (entorno dedicado)',
-    or: 'o',
-    oss_link: 'la versión de código abierto autoalojada',
-    period: '.',
-    dismiss: 'Cerrar',
   },
 };
 export default esES;

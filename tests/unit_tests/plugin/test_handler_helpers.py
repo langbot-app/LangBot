@@ -10,6 +10,27 @@ from __future__ import annotations
 import pytest
 from unittest.mock import Mock, AsyncMock
 from importlib import import_module
+from types import SimpleNamespace
+
+
+@pytest.mark.parametrize(
+    'call_args',
+    [
+        {'num_retries': 0},
+        {'max_retries': 0},
+        {'timeout': 3},
+        {'request_policy': {'stream_idle_timeout': 2}},
+    ],
+)
+def test_llm_bridge_keeps_model_and_call_policy_layers_separate(call_args):
+    from langbot.pkg.provider.modelmgr.request_policy import RequestPolicy
+
+    model_args = {'temperature': 0.2, 'request_policy': {'retries': 2, 'read_timeout': 90}}
+    model = SimpleNamespace(model_entity=SimpleNamespace(extra_args=model_args))
+    merged = get_handler_module()._merge_model_extra_args(model, call_args, llm_policy=True)
+    assert RequestPolicy.resolve(model_args, merged) == RequestPolicy.resolve(model_args, call_args)
+    assert merged['temperature'] == 0.2
+    assert model_args['request_policy'] == {'retries': 2, 'read_timeout': 90}
 
 
 def get_handler_module():

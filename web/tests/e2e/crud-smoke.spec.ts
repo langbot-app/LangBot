@@ -6,7 +6,7 @@ import {
 } from './fixtures/langbot-api';
 
 async function save(page: Page) {
-  const button = page.getByRole('button', { name: /^Save$/ });
+  const button = page.getByRole('button', { name: /^Save(?: and enable)?$/ });
   await expect(button).toBeEnabled();
   await button.click();
 }
@@ -127,10 +127,10 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await page.goto('/home/agents?id=new');
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Viewer Pipeline');
-    await page
-      .locator('input[name="description"]')
-      .fill('Viewer monitoring permission regression.');
+
     await submit(page);
     await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
@@ -218,6 +218,7 @@ test.describe('frontend CRUD smoke flows', () => {
       'data-slot',
       'toggle-group-item',
     );
+    await agentTypeCard.click();
     await expect(agentTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('agent-diagram')).toBeVisible();
     await expect(
@@ -238,6 +239,8 @@ test.describe('frontend CRUD smoke flows', () => {
       '0.5',
     );
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
     await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
     await expect(
@@ -246,9 +249,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
     await expect(page.locator('input[name="name"]')).toBeVisible();
     await page.locator('input[name="name"]').fill('Escalation Pipeline');
-    await page
-      .locator('input[name="description"]')
-      .fill('Routes urgent customer issues.');
+
     await submit(page);
 
     await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
@@ -550,10 +551,13 @@ test.describe('bot advanced flows', () => {
     );
     await page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: 'Refresh status' }).hover();
+    await page
+      .getByRole('button', { name: 'Match records', exact: true })
+      .click();
     await expect(
       page.getByText('Failed to refresh route status.'),
     ).toBeVisible();
+    await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Check route' }).click();
     const routeDialog = page.getByRole('dialog');
@@ -612,7 +616,7 @@ test.describe('bot advanced flows', () => {
     });
     const listenBox = await listenButton.boundingBox();
     const saveBox = await page
-      .getByRole('button', { name: /^Save$/ })
+      .getByRole('button', { name: /^Save(?: and enable)?$/ })
       .boundingBox();
     expect(listenBox).not.toBeNull();
     expect(saveBox).not.toBeNull();
@@ -741,6 +745,7 @@ test.describe('bot advanced flows', () => {
 
     // Select an adapter but leave the required name empty.
     await selectPlaywrightAdapter(page);
+    await page.locator('input[name="name"]').fill('');
     await submit(page);
 
     await expect(page.getByText(/cannot be empty/i)).toBeVisible();
@@ -790,6 +795,8 @@ test.describe('pipeline advanced flows', () => {
     // Create a pipeline
     await page.goto('/home/agents?id=new');
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Tab Test Pipeline');
     await submit(page);
 
@@ -820,6 +827,8 @@ test.describe('pipeline advanced flows', () => {
     // Create a pipeline
     await page.goto('/home/agents?id=new');
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
     await submit(page);
 
@@ -842,8 +851,11 @@ test.describe('pipeline advanced flows', () => {
 
     await page.goto('/home/agents?id=new');
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
 
-    // Submit without filling name
+    // Clear the name suggested by the selected runner.
+    await page.locator('input[name="name"]').fill('');
     await submit(page);
 
     // Should show validation error for name (zod validation)
@@ -1415,6 +1427,8 @@ test.describe('cross-resource flows', () => {
     // Create a pipeline first
     await page.goto('/home/agents?id=new');
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Production Pipeline');
     await submit(page);
     await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);

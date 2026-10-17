@@ -103,20 +103,28 @@ async def test_valid_local_resources_and_real_descriptor_options(local):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('resource', ['model', 'kb', 'mcp', 'tool'])
-async def test_foreign_or_unresolved_resource_is_denied(local, resource):
+async def test_foreign_or_unresolved_model_is_denied(local):
     env, _, config, plan = local
-    if resource == 'model':
-        config['model']['primary'] = 'model_foreign'
-    elif resource == 'kb':
+    config['model']['primary'] = 'model_foreign'
+    async with env.pm.tenant_scope(WS):
+        with pytest.raises(env.m.MigrationError, match='runner_resource_unavailable'):
+            await env.svc._verify_runtime(ExecutionContext.from_request(context()), plan)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('resource', ['kb', 'mcp', 'tool'])
+async def test_foreign_or_unresolved_reference_is_pruned(local, resource):
+    env, _, config, plan = local
+    if resource == 'kb':
         config['knowledge-bases'] = ['kb_foreign']
     elif resource == 'mcp':
         config['mcp-resources'][0]['server_uuid'] = 'mcp_foreign'
     else:
         config['tools'] = ['foreign_tool']
     async with env.pm.tenant_scope(WS):
-        with pytest.raises(env.m.MigrationError, match='runner_resource_unavailable'):
-            await env.svc._verify_runtime(ExecutionContext.from_request(context()), plan)
+        await env.svc._verify_runtime(ExecutionContext.from_request(context()), plan)
+    key = {'kb': 'knowledge-bases', 'mcp': 'mcp-resources', 'tool': 'tools'}[resource]
+    assert config[key] == []
 
 
 @pytest.mark.asyncio

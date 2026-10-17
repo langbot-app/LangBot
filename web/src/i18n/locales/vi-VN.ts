@@ -1,5 +1,154 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
+  planRevision: {
+    subscribedOn: 'Ngày đăng ký: {{date}}',
+    latestQuota: 'Hạn mức mới nhất của gói này',
+    showLatest: 'Xem hạn mức mới nhất của gói này',
+    showCurrent: 'Xem gói đăng ký hiện tại',
+    latestTab: 'Mới nhất',
+    currentTab: 'Hiện tại',
+    cancelToSubscribe:
+      'Hủy gói hiện tại để đăng ký hạn mức mới nhất vào kỳ tiếp theo',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Gia hạn gói đăng ký hiện tại',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Chưa thể đăng ký',
+    subscriptionUnavailableHint:
+      'Gói này hiện không nhận đăng ký mới. Vui lòng chọn gói khác. Đăng ký hiện có và gia hạn tự động không bị ảnh hưởng.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Quản lý đăng ký',
+    downgradeUnavailable: 'Không thể hạ cấp xuống gói miễn phí',
+    features: {
+      multiUserWorkspace: 'Không gian làm việc nhiều người dùng',
+      remoteE2BSandbox: 'Cấu hình sandbox E2B từ xa',
+      communitySupport: 'Hỗ trợ từ cộng đồng',
+      everythingInFree: 'Tất cả tính năng của gói miễn phí',
+      alwaysOnSandbox: 'Một sandbox toàn cục luôn hoạt động',
+      higherWorkspaceLimits: 'Hạn mức không gian làm việc cao hơn',
+    },
+    title: 'So sánh gói',
+    description: 'Chọn gói cho {{workspace}}',
+    billing: 'Chu kỳ thanh toán',
+    monthly: 'Hàng tháng',
+    annual: 'Hàng năm',
+    currency: 'Tiền tệ',
+    loading: 'Đang tải gói…',
+    error: 'Không thể tải các gói',
+    retry: 'Thử lại',
+    empty: 'Không có gói khả dụng',
+    current: 'Gói hiện tại',
+    recommended: 'Đề xuất',
+    free: 'Miễn phí',
+    annualNote: 'Tương đương {{price}} / tháng',
+    ownerOnly: 'Chỉ chủ sở hữu hoặc quản trị viên',
+    choose: 'Tiếp tục thanh toán',
+    handoff:
+      'Đăng nhập và thanh toán tại Space. Lựa chọn của bạn sẽ được giữ lại.',
+    quotas: 'Hạn mức không gian',
+    unlimited: 'Không giới hạn',
+    retention: 'Lịch sử tin nhắn · {{count}} ngày',
+    retentionLabel: 'Thời gian lưu tin nhắn',
+    retentionHelp: 'Tin nhắn được tự động xóa sau thời gian này.',
+    credits: '{{count}} tín dụng mỗi tháng',
+    creditsLabel: 'Tín dụng hàng tháng',
+    creditsHelp: 'Tín dụng được cấp mỗi tháng đăng ký, kể cả gói năm.',
+    platforms: 'Hỗ trợ nền tảng phổ biến',
+    excludedPlatforms: 'Không hỗ trợ: {{platforms}}',
+    allPlatforms: 'Tất cả nền tảng hiện có',
+    limits: {
+      bots: 'Bot',
+      pipelines: 'Bộ xử lý',
+      knowledge_bases: 'Kho kiến thức',
+      plugins: 'Tiện ích mở rộng',
+      members: 'Thành viên',
+      managed_sandbox_sessions: 'Phiên sandbox được quản lý',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Ngôn ngữ không gian làm việc',
+    description:
+      'Dùng cho thông báo máy chủ và phản hồi mặc định của bot. Không thay đổi ngôn ngữ giao diện cá nhân.',
+    saved: 'Đã lưu ngôn ngữ',
+    saveFailed: 'Không thể lưu ngôn ngữ',
+  },
+  inflight: {
+    autoCollapse: 'Tự thu gọn',
+    empty: 'Không có sự kiện đang xử lý',
+    move: 'Kéo lên xuống hoặc dùng phím mũi tên',
+    botLogs: 'Nhật ký bot',
+    processorLogs: 'Nhật ký bộ xử lý',
+
+    title: 'Đang thực hiện',
+    expand: 'Mở rộng',
+    collapse: 'Thu gọn',
+    reconnecting: 'Đang kết nối lại; hiển thị trạng thái nhận được gần nhất.',
+    details: 'Xem chi tiết',
+    debug: 'Sự kiện gỡ lỗi',
+    limited:
+      'Chỉ hiển thị một phần. Xem bảng điều khiển để biết tất cả lượt chạy.',
+    queued: 'Đang chờ',
+    running: 'Đang xử lý',
+    waiting: 'Chờ nhập liệu',
+    tool: 'Đang gọi công cụ',
+    thinking: 'Đang suy nghĩ',
+    replying: 'Chuẩn bị trả lời',
+    generating: 'Đang tạo câu trả lời',
+    completed: 'Hoàn tất',
+    failed: 'Thất bại',
+    cancelled: 'Đã hủy',
+    ignored: 'Đã bỏ qua',
+  },
   assistant: {
     movePosition: 'Di chuyển trợ lý theo chiều ngang',
     resizeHeight: 'Điều chỉnh chiều cao trợ lý',
@@ -9,7 +158,7 @@ const viVN = {
     stopped:
       'Đã dừng. Công cụ có thể đã thực hiện thay đổi. Kiểm tra tài nguyên trước khi thử lại.',
     setupRequired:
-      'Đăng nhập LangBot Account để dùng LangBot Models hoặc cấu hình nhà cung cấp mô hình riêng để bắt đầu trò chuyện.',
+      'Đăng nhập bằng tài khoản LangBot hoặc cấu hình mô hình để bắt đầu sử dụng trợ lý không gian làm việc.',
     loginAccount: 'Đăng nhập LangBot Account',
     configureModels: 'Cấu hình mô hình',
     providerCheckFailed: 'Không thể kiểm tra nhà cung cấp. Vui lòng thử lại.',
@@ -77,6 +226,14 @@ const viVN = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: '{{days}} ngày qua',
+        customRange: 'Khoảng thời gian tùy chỉnh',
+        rangeStart: 'Bắt đầu',
+        rangeEnd: 'Kết thúc',
+        rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+        autoRefreshLabel: 'Tự động làm mới',
+        autoRefreshOff: 'Tự động làm mới: tắt',
+        autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
         title: 'Xem hoạt động',
         description:
           'Xem hoạt động bot, mức sử dụng mô hình, lượng tin nhắn và hiệu suất hệ thống.',
@@ -157,6 +314,14 @@ const viVN = {
           'Gửi tin nhắn thử để kiểm tra điều kiện kích hoạt, câu trả lời AI và xử lý đầu ra. Thay đổi cấu hình được lưu trước khi thử.',
       },
       monitoring: {
+        rangeDays: '{{days}} ngày qua',
+        customRange: 'Khoảng thời gian tùy chỉnh',
+        rangeStart: 'Bắt đầu',
+        rangeEnd: 'Kết thúc',
+        rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+        autoRefreshLabel: 'Tự động làm mới',
+        autoRefreshOff: 'Tự động làm mới: tắt',
+        autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
         title: 'Xem lịch sử chạy',
         description:
           'Dùng thẻ cạnh tiêu đề để xem cuộc trò chuyện, các bước xử lý và lỗi khi không có phản hồi hoặc phản hồi không đúng dự kiến.',
@@ -323,6 +488,11 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'Chưa lưu nguyên nhân lỗi. Hãy kiểm tra nhật ký bot hoặc gửi lại tin nhắn để biết thêm chi tiết.',
+    loadFailedTitle: 'Không thể tải nội dung',
+    loadFailedHint:
+      'Vui lòng thử lại sau. Nếu vẫn không tải được, hãy kiểm tra kết nối và trạng thái dịch vụ.',
     customValue: 'Tùy chỉnh',
     loadFailed: 'Không tải được. Vui lòng thử lại.',
     search: 'Tìm kiếm',
@@ -517,6 +687,9 @@ const viVN = {
     help: 'Trợ giúp',
   },
   models: {
+    starModel: 'Đánh dấu làm mô hình mặc định cho bộ xử lý mới',
+    unstarModel: 'Bỏ đánh dấu',
+    starModelFailed: 'Không thể cập nhật mô hình được đánh dấu',
     codex: {
       account: 'Gói đăng ký ChatGPT',
       description:
@@ -780,10 +953,13 @@ const viVN = {
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    saveAndEnable: 'Lưu và bật',
+    searchAdapters: 'Tìm kiếm adapter',
+    noMatchingAdapters: 'Không tìm thấy adapter phù hợp',
     legacyAdapters: 'Adapter cũ',
     legacyAdapterBadge: 'Cũ',
     legacyAdaptersHint:
-      'Các adapter này đã có phiên bản hướng sự kiện mới hơn.\nChúng chỉ được giữ lại để tương thích với cấu hình hiện có và không được khuyến nghị cho Bot mới.',
+      'Adapter cũ chủ yếu gửi và nhận tin nhắn, được giữ để tương thích với cấu hình bot hiện có.\nAdapter mới kết nối cùng nền tảng qua sự kiện, gồm tin nhắn và các yêu cầu kết bạn hoặc thay đổi nhóm được hỗ trợ, rồi chuyển đến bộ xử lý.\nƯu tiên bản mới khi tạo bot. Bot hiện có vẫn dùng được bản cũ. Khi chuyển đổi, kiểm tra kết nối và tuyến sự kiện; tài khoản nền tảng không được nâng cấp.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
     bindPipeline: 'Liên kết Pipeline',
@@ -796,6 +972,10 @@ const viVN = {
     earlier: 'Trước đó',
     dateFormat: '{{day}}/{{month}}',
     setBotEnableError: 'Thiết lập trạng thái bật Bot thất bại',
+    enabling: 'Đang bật…',
+    disabling: 'Đang tắt…',
+    enableConfirmed: 'Đã bật',
+    disableConfirmed: 'Đã tắt',
     log: 'Nhật ký',
     configuration: 'Cấu hình',
     logs: 'Nhật ký',
@@ -804,6 +984,28 @@ const viVN = {
     routingConnection: 'Định tuyến & Kết nối',
     routingConnectionDescription:
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    routingHelp: {
+      title: 'Định tuyến sự kiện là gì?',
+      intro:
+        'Bot nhận tin nhắn, lời mời kết bạn và các sự kiện như tham gia nhóm.',
+      events: 'Sự kiện đến',
+      agents: 'Các Agent khác nhau',
+      message: 'Nhận tin nhắn',
+      friend: 'Lời mời kết bạn',
+      group: 'Tham gia nhóm',
+      messageAction: 'Agent trả lời',
+      friendAction: 'Agent xét duyệt',
+      groupAction: 'Agent chào mừng',
+      rules: 'Theo quy tắc của bạn · Ví dụ',
+      instructions:
+        'Agent làm theo chỉ dẫn của bạn và gọi công cụ để trả lời, xét duyệt yêu cầu và thực hiện thao tác khác.',
+      plugin:
+        'Với nhu cầu nâng cao, bộ xử lý plugin đăng ký hàng loạt sự kiện và xử lý bằng mã. Thêm cấu hình bộ xử lý plugin bên dưới.',
+      docs: 'Phát triển bộ xử lý plugin của riêng bạn',
+      runnerDocs: 'Phát triển trình chạy Agent của riêng bạn',
+      pause: 'Tạm dừng',
+      play: 'Phát',
+    },
     eventRouting: 'Định tuyến sự kiện',
     eventRoutingDescription:
       'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
@@ -843,7 +1045,7 @@ const viVN = {
     enabled: 'Đã bật',
     eventBindingDescriptionPlaceholder: 'Mô tả quy tắc',
     noEventBindings: 'Chưa có tuyến sự kiện',
-    unsupportedPipelineEvent: 'Pipeline chỉ hỗ trợ sự kiện message.*',
+    unsupportedPipelineEvent: 'Pipeline chỉ hỗ trợ sự kiện message.received',
     disable: 'Tắt',
     enable: 'Bật',
     disabledBindings: 'Đã tắt',
@@ -853,6 +1055,7 @@ const viVN = {
     advancedEventValues: 'Xem tất cả',
     eventGroup: 'Nhóm',
     eventGroupNames: {
+      wecomcs: 'Dịch vụ khách hàng WeCom',
       bot: 'Trạng thái bot',
       feedback: 'Phản hồi',
       friend: 'Bạn bè',
@@ -867,6 +1070,9 @@ const viVN = {
     routeFallbackCatchAll: '{{route}} là tuyến nhận mọi sự kiện.',
     routeFallbackIgnored:
       'Sự kiện không khớp tuyến nào sẽ bị bỏ qua. Chỉ thêm tuyến nhận tất cả khi mọi sự kiện cần kết quả rõ ràng.',
+    matchRecords: 'Lịch sử khớp',
+    matchRecordsDescription:
+      'Kết quả gần nhất của mỗi quy tắc và các sự kiện không khớp gần đây. Nhật ký trong bộ nhớ được xóa khi khởi động lại.',
     testRoute: 'Kiểm tra tuyến',
     adapterEventDebugAction: 'Kiểm tra lắng nghe',
     adapterEventDebugTitle: 'Gỡ lỗi sự kiện nền tảng',
@@ -950,6 +1156,15 @@ const viVN = {
     eventWildcard: 'Tất cả sự kiện',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: 'Người dùng vào cuộc trò chuyện với bot',
+      wecombot_template_card_event: 'Tương tác thẻ mẫu',
+      dingtalk_card_action: 'Tương tác thẻ DingTalk',
+      wecomcs_enter_session: 'Khách hàng vào hội thoại',
+      wecomcs_msg_send_fail: 'Gửi tin nhắn hỗ trợ thất bại',
+      wecomcs_servicer_status_change: 'Trạng thái nhân viên thay đổi',
+      wecomcs_session_status_change: 'Trạng thái hội thoại hỗ trợ thay đổi',
+      wecomcs_reject_customer_msg_switch_change:
+        'Cài đặt từ chối tin nhắn thay đổi',
       message_received: 'Nhận tin nhắn',
       message_edited: 'Tin nhắn được chỉnh sửa',
       message_deleted: 'Tin nhắn bị xóa',
@@ -959,6 +1174,7 @@ const viVN = {
       friend_added: 'Đã thêm bạn',
       group_member_joined: 'Thành viên tham gia nhóm',
       group_member_left: 'Thành viên rời nhóm',
+      group_info_updated: 'Thông tin nhóm được cập nhật',
       group_member_banned: 'Thành viên bị cấm tham gia nhóm',
       bot_invited_to_group: 'Bot được mời vào nhóm',
       bot_removed_from_group: 'Bot bị xóa khỏi nhóm',
@@ -967,6 +1183,22 @@ const viVN = {
       platform_specific: 'Sự kiện riêng của nền tảng',
     },
     eventDescriptions: {
+      wecombot_enter_chat:
+        'Người dùng mở cuộc trò chuyện với bot. Dùng cho quy trình chào mừng.',
+      wecombot_template_card_event:
+        'Người dùng nhấp hoặc gửi thẻ. Phản hồi biểu mẫu do hệ thống quản lý được xử lý riêng.',
+      dingtalk_card_action:
+        'Nhấp và gửi thẻ; phản hồi và biểu mẫu được quản lý được xử lý riêng.',
+      wecomcs_enter_session:
+        'Khách hàng mở liên kết hỗ trợ; gồm nguồn truy cập và mã chào mừng.',
+      wecomcs_msg_send_fail:
+        'WeChat thông báo gửi thất bại, gồm ID tin nhắn và loại lỗi.',
+      wecomcs_servicer_status_change:
+        'Nhân viên bắt đầu, dừng hoặc tạm dừng tiếp nhận.',
+      wecomcs_session_status_change:
+        'Nhân viên tiếp nhận, chuyển, kết thúc hoặc mở lại hội thoại.',
+      wecomcs_reject_customer_msg_switch_change:
+        'Nhân viên bật hoặc tắt từ chối tin nhắn khách hàng.',
       all: 'Khớp mọi sự kiện bộ chuyển đổi này nhận được.',
       namespace: 'Khớp mọi sự kiện {{group}}.',
       namespace_bot:
@@ -974,7 +1206,7 @@ const viVN = {
       namespace_feedback: 'Khớp sự kiện phản hồi từ nền tảng hoặc người dùng.',
       namespace_friend: 'Khớp yêu cầu kết bạn và thay đổi quan hệ bạn bè.',
       namespace_group:
-        'Khớp sự kiện tham gia, rời, bị xóa khỏi nhóm và sự kiện nhóm khác.',
+        'Khớp các thay đổi thành viên và cập nhật thông tin nhóm.',
       namespace_message: 'Khớp sự kiện nhận, sửa, xóa và thả cảm xúc tin nhắn.',
       namespace_platform:
         'Khớp sự kiện riêng của nền tảng do bộ chuyển đổi cung cấp.',
@@ -988,6 +1220,7 @@ const viVN = {
       friend_added: 'Đã tạo quan hệ bạn bè.',
       group_member_joined: 'Thành viên tham gia nhóm có bot.',
       group_member_left: 'Thành viên rời nhóm có bot.',
+      group_info_updated: 'Thông tin nhóm như tên hoặc chủ sở hữu đã thay đổi.',
       group_member_banned: 'Thành viên nhóm bị cấm hoặc xóa.',
       bot_invited_to_group: 'Bot được mời vào nhóm.',
       bot_removed_from_group: 'Bot bị xóa khỏi nhóm.',
@@ -1074,6 +1307,13 @@ const viVN = {
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
     sessionMonitor: {
+      resetContext: 'Đặt lại ngữ cảnh',
+      resetDescription:
+        'Tin nhắn mới sẽ bắt đầu với ngữ cảnh trống. Lịch sử giám sát, tệp và bộ nhớ dài hạn được giữ lại. Hãy đợi các tác vụ đang chạy hoàn tất.',
+      resetSuccess: 'Đã đặt lại ngữ cảnh.',
+      resetError:
+        'Không thể đặt lại. Hãy đợi các tác vụ đang chạy hoàn tất rồi thử lại.',
+
       title: 'Phiên',
       sessions: 'Phiên',
       noSessions: 'Không tìm thấy phiên nào',
@@ -1121,7 +1361,26 @@ const viVN = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Chọn tất cả',
     monitoring: {
+      rangeDays: '{{days}} ngày qua',
+      customRange: 'Khoảng thời gian tùy chỉnh',
+      rangeStart: 'Bắt đầu',
+      rangeEnd: 'Kết thúc',
+      rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+      autoRefreshLabel: 'Tự động làm mới',
+      autoRefreshOff: 'Tự động làm mới: tắt',
+      autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
+      runStatus: 'Trạng thái thực thi',
+      toolCalls: 'Lượt gọi công cụ',
+      delivery: 'Gửi tin nhắn',
+      sendFailed: 'Gửi thất bại',
+      sendCount: '{{count}} lượt gọi gửi thành công',
+      noSend: 'Chưa ghi nhận lượt gửi',
+      noSteps: 'Chưa ghi nhận bước thực thi.',
+      recipient: 'Người nhận',
+      actionCompleted: 'Công cụ đã thực thi thành công.',
+      simulatedAction: 'Thao tác mô phỏng; không gửi tin nhắn thật.',
       description:
         'Xem sự kiện kích hoạt, đầu ra mô hình và quá trình gọi công cụ của mỗi tác vụ.',
       empty: 'Chưa có lượt chạy. Kích hoạt sự kiện hoặc chạy thử gỡ lỗi.',
@@ -1224,6 +1483,9 @@ const viVN = {
       'Chạy theo quy trình cố định: nhận tin nhắn, gọi AI và trả lời người dùng, với cơ sở tri thức và plugin có thể cấu hình. Chỉ xử lý sự kiện tin nhắn, phù hợp với tác vụ có các bước rõ ràng và cần kiểm soát quá trình xử lý.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
+    selectAgentRunner: 'Chọn trình chạy Agent',
+    selectProcessorPlugin: 'Chọn plugin xử lý',
+    createBasicInfoDescription: 'Đặt tên, biểu tượng và chọn plugin',
     chooseType: 'Chọn cách hoạt động',
     chooseTypeDescription:
       'Chọn loại bộ xử lý trước. Bạn có thể cấu hình thêm sau khi tạo.',
@@ -2038,6 +2300,14 @@ const viVN = {
       uploading: 'Đang tải lên...',
     },
     monitoring: {
+      rangeDays: '{{days}} ngày qua',
+      customRange: 'Khoảng thời gian tùy chỉnh',
+      rangeStart: 'Bắt đầu',
+      rangeEnd: 'Kết thúc',
+      rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+      autoRefreshLabel: 'Tự động làm mới',
+      autoRefreshOff: 'Tự động làm mới: tắt',
+      autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
       title: 'Nhật ký chạy',
       workbench: 'Cấu hình và gỡ lỗi',
       description: 'Xem nhật ký thực thi và lỗi của Pipeline này (24 giờ qua)',
@@ -2391,8 +2661,7 @@ const viVN = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2461,6 +2730,14 @@ const viVN = {
     },
   },
   monitoring: {
+    rangeDays: '{{days}} ngày qua',
+    customRange: 'Khoảng thời gian tùy chỉnh',
+    rangeStart: 'Bắt đầu',
+    rangeEnd: 'Kết thúc',
+    rangeHint: 'Bắt đầu phải trước kết thúc. Tối đa 365 ngày.',
+    autoRefreshLabel: 'Tự động làm mới',
+    autoRefreshOff: 'Tự động làm mới: tắt',
+    autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
     unified: {
       inputs: 'Sự kiện và đầu vào',
       outputs: 'Kết quả tạo ra',
@@ -2613,6 +2890,15 @@ const viVN = {
       feedback: 'Phản hồi người dùng',
       sessions: 'Phân tích phiên',
       errors: 'Nhật ký lỗi',
+    },
+    pipelineTrace: {
+      received: 'Tin nhắn nhận được',
+      processing: 'Quá trình xử lý',
+      replies: 'Phản hồi',
+      noSteps: 'Không có bản ghi gọi mô hình hoặc công cụ',
+      success: 'Thành công',
+      error: 'Thất bại',
+      pending: 'Đang chờ',
     },
     messageList: {
       timestamp: 'Thời gian',
@@ -3435,15 +3721,6 @@ const viVN = {
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
-  },
-  beta_banner: {
-    message:
-      'Môi trường này đang trong giai đoạn thử nghiệm beta. Độ ổn định của dịch vụ không được đảm bảo. Hãy cân nhắc sử dụng',
-    cloud_link: 'LangBot Cloud (môi trường riêng)',
-    or: 'hoặc',
-    oss_link: 'phiên bản mã nguồn mở tự lưu trữ',
-    period: '.',
-    dismiss: 'Đóng',
   },
 };
 export default viVN;

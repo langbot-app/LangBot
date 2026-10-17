@@ -2,7 +2,6 @@
 
 OMNI_ADAPTER_NAMES = frozenset(
     {
-        'aiocqhttp',
         'telegram',
         'discord',
         'qqofficial',
@@ -20,6 +19,8 @@ OMNI_ADAPTER_NAMES = frozenset(
 
 def canonical_adapter_name(name: str) -> str:
     """Accept previous built-in IDs without renaming legacy or custom adapters."""
+    if name in ('aiocqhttp-omni', 'aiocqhttp-eba'):
+        return 'onebot-v11'
     if name.endswith('-eba') and name[:-4] in OMNI_ADAPTER_NAMES:
         return f'{name[:-4]}-omni'
     return name

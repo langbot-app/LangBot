@@ -20,6 +20,7 @@ metadata:
   icon: line.png
 spec:
   categories:
+    - popular
     - global
   help_links:
     zh: https://langbot.app/docs/zh/usage/platforms/line

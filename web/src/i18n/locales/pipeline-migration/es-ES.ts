@@ -36,6 +36,20 @@ export default {
     'Tras comprobar el entorno, actualiza, selecciona esta canalización y confirma para reintentar solo la activación. No se volverá a migrar la configuración guardada.',
   details: 'Detalles de migración',
   notices: {
+    customRunner:
+      'Los runners personalizados antiguos deben reescribirse como runners de plugin antes de vincularlos. Consulta la documentación de plugins: https://langbot.app/docs/en/plugin/dev/tutor',
+    fieldDropped:
+      'Los campos o secciones antiguos no reconocidos se eliminaron de la configuración activa; los valores originales se conservan en la copia de seguridad.',
+    valueRepaired:
+      'Los valores mal formados o ausentes se repararon con los valores predeterminados de 4.10. Revísalos tras la migración.',
+    mixedRunner:
+      'Existen una selección de runner nueva y otra antigua; se conservó la utilizable.',
+    runnerConfigReplaced:
+      'La configuración de runner nueva existente se reemplaza por el resultado de la migración; la original se conserva en la copia de seguridad.',
+    runnerAdded:
+      'Se añadió el plugin de runner necesario a la lista de extensiones de esta pipeline.',
+    extensionPrefs:
+      'Se ignoraron entradas no válidas de la configuración de extensiones.',
     runtimeUnavailable:
       'El entorno de plugins está desconectado. Restablece la conexión y reintenta, o migra solo los datos.',
     executionFailed:
@@ -124,6 +138,7 @@ export default {
     blocked: 'Bloqueado',
     already_current: 'Ya actualizado',
     not_legacy: 'No es antiguo',
+    unsupported_runner: 'Runner no compatible',
     activation_pending: 'Activación pendiente',
     pending: 'Pendiente',
     migrated: 'Migrado',

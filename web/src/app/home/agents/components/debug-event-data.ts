@@ -90,6 +90,90 @@ const DEBUG_EVENT_DEFINITIONS: Record<string, DebugEventDefinition> = {
     messageField: 'text',
   },
   'message.deleted': deletion,
+  'dingtalk.card_action': {
+    fields: [user],
+    defaults: {
+      space_id: 'dtv1.card//IM_GROUP.debug-group',
+      card_instance_id: 'debug-card',
+      action: 'confirm',
+      data: {},
+    },
+  },
+  'wecombot.enter_chat': {
+    fields: [user],
+    defaults: {
+      chat_id: 'debug-user',
+      chat_type: 'private',
+      message_id: 'debug-entry',
+      data: {},
+    },
+  },
+  'wecombot.template_card_event': {
+    fields: [user],
+    defaults: {
+      chat_id: 'debug-user',
+      chat_type: 'private',
+      message_id: 'debug-card-click',
+      task_id: 'debug-card',
+      event_key: 'confirm',
+      card_type: 'button_interaction',
+      selected_items: [],
+      data: {},
+    },
+  },
+  'wecomcs.enter_session': {
+    fields: [user],
+    defaults: {
+      open_kfid: 'debug-kf',
+      external_userid: 'debug-user',
+      chat_id: 'debug-user|debug-kf',
+      scene: 'debug',
+      scene_param: '',
+      welcome_code: '',
+      wechat_channels: {},
+    },
+  },
+  'wecomcs.msg_send_fail': {
+    fields: [user],
+    defaults: {
+      open_kfid: 'debug-kf',
+      external_userid: 'debug-user',
+      chat_id: 'debug-user|debug-kf',
+      fail_msgid: 'debug-message',
+      fail_type: 4,
+    },
+  },
+  'wecomcs.servicer_status_change': {
+    fields: [],
+    defaults: {
+      open_kfid: 'debug-kf',
+      servicer_userid: 'debug-servicer',
+      status: 2,
+      stop_type: 0,
+    },
+  },
+  'wecomcs.session_status_change': {
+    fields: [user],
+    defaults: {
+      open_kfid: 'debug-kf',
+      external_userid: 'debug-user',
+      chat_id: 'debug-user|debug-kf',
+      change_type: 2,
+      old_servicer_userid: 'debug-servicer-1',
+      new_servicer_userid: 'debug-servicer-2',
+      msg_code: '',
+    },
+  },
+  'wecomcs.reject_customer_msg_switch_change': {
+    fields: [user],
+    defaults: {
+      open_kfid: 'debug-kf',
+      external_userid: 'debug-user',
+      chat_id: 'debug-user|debug-kf',
+      servicer_userid: 'debug-servicer',
+      reject_switch: 1,
+    },
+  },
   'message.recalled': deletion,
   'message.reaction': {
     fields: [

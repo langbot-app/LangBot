@@ -9,7 +9,7 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 
 
 class SlackAPIMixin:
-    _message_cache: dict[str, platform_events.MessageReceivedEvent]
+    _message_cache: dict[tuple[str, str], platform_events.MessageReceivedEvent]
     _user_cache: dict[str, platform_entities.User]
     _group_cache: dict[str, platform_entities.UserGroup]
     _member_cache: dict[tuple[str, str], platform_entities.UserGroupMember]
@@ -20,7 +20,7 @@ class SlackAPIMixin:
         chat_id: typing.Union[int, str],
         message_id: typing.Union[int, str],
     ) -> platform_events.MessageReceivedEvent:
-        event = self._message_cache.get(str(message_id))
+        event = self._message_cache.get((str(chat_id), str(message_id)))
         if event is None:
             raise NotSupportedError('get_message:message_not_cached')
         return event

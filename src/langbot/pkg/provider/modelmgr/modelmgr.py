@@ -743,6 +743,7 @@ class ModelManager:
         config = {
             'base_url': provider_entity.base_url,
             'requester_name': provider_entity.requester,
+            'request_policy': self.ap.instance_config.data.get('llm_request_policy', {}),
         }
 
         if provider_entity.requester == 'openai-codex':

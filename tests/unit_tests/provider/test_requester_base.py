@@ -563,7 +563,7 @@ def test_requester_error_message_format():
     """Test RequesterError message format."""
     error = RequesterError('API returned 500')
 
-    assert '模型请求失败' in str(error)
+    assert 'Model request failed' in str(error)
     assert 'API returned 500' in str(error)
 
 

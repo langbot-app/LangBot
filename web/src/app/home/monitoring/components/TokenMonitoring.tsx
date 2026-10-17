@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { MetricCard } from './overview-cards/MetricCard';
-import { Alert, AlertTitle } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { TabState } from './TabState';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getErrorMessage } from '../utils';
@@ -168,15 +168,18 @@ export default function TokenMonitoring({
     }));
   }, [stats]);
 
-  if (loading) {
+  if (loading && !stats) {
     return <TabState loading rows={6} />;
   }
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>{t('monitoring.tokens.loadError', { error })}</AlertTitle>
-      </Alert>
+      <LoadErrorState
+        title={t('monitoring.loadError')}
+        description={error}
+        onRetry={fetchStats}
+        busy={loading}
+      />
     );
   }
 

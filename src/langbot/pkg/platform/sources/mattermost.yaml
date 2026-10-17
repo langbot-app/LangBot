@@ -22,7 +22,6 @@ metadata:
 spec:
   categories:
     - global
-    - popular
   config:
     - name: server_url
       label:

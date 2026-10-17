@@ -48,20 +48,27 @@ _CONFLICTING_EXTRA_BODY_ARGS = {
 }
 
 
-def normalize_reasoning_config(value: typing.Any) -> dict[str, str]:
+def normalize_reasoning_config(value: typing.Any) -> dict[str, typing.Any]:
     """Return the canonical model reasoning configuration."""
     if value is None:
         return dict(DEFAULT_REASONING_CONFIG)
     if not isinstance(value, dict):
         raise ValueError('reasoning_config must be an object')
 
-    unknown_fields = set(value) - {'level'}
+    unknown_fields = set(value) - {'level', 'budget_tokens'}
     if unknown_fields:
         raise ValueError(f'Unsupported reasoning_config fields: {", ".join(sorted(unknown_fields))}')
 
-    level = value.get('level', 'provider_default')
+    budget = value.get('budget_tokens')
+    level = value.get('level', 'enabled' if budget is not None else 'provider_default')
     if level not in REASONING_LEVELS:
         raise ValueError(f'Unsupported reasoning level: {level}')
+    if budget is not None:
+        if type(budget) is not int or budget <= 0:
+            raise ValueError('budget_tokens must be a positive integer')
+        if level != 'enabled':
+            raise ValueError('budget_tokens requires level enabled; do not combine a token budget with an effort level')
+        return {'level': level, 'budget_tokens': budget}
     return {'level': typing.cast(str, level)}
 
 
@@ -69,7 +76,7 @@ def validate_reasoning_config(
     value: typing.Any,
     abilities: typing.Iterable[str] | None,
     extra_args: typing.Any,
-) -> dict[str, str]:
+) -> dict[str, typing.Any]:
     """Validate a model-facing reasoning config and conflicting raw arguments."""
     config = normalize_reasoning_config(value)
     if config['level'] == 'provider_default':
@@ -101,7 +108,13 @@ def validate_reasoning_capabilities(
     model_name: str,
 ) -> None:
     """Ensure an explicit reasoning level can be honored by the requester."""
-    level = normalize_reasoning_config(config)['level']
+    config = normalize_reasoning_config(config)
+    level = config['level']
+    if 'budget_tokens' in config:
+        limits = capabilities.get('budget_tokens')
+        if not isinstance(limits, dict) or not limits['min'] <= config['budget_tokens'] <= limits['max']:
+            raise ValueError(f'Unsupported reasoning token budget for model {model_name}: {config["budget_tokens"]}')
+        return
     if level == 'provider_default':
         return
 
@@ -154,3 +167,17 @@ def model_with_reasoning_level(
     scoped_model = copy.copy(model)
     scoped_model.reasoning_config_override = copy.deepcopy(config)
     return scoped_model
+
+
+def resolve_reasoning_config(model, extra_args=None):
+    """Runner policy wins; a call object replaces, rather than merges, a model policy."""
+    value = getattr(model.model_entity, 'reasoning_config', None)
+    if value is not None and not isinstance(value, (dict, str, int, float, bool, list, tuple)):
+        value = None
+    for args in (model.model_entity.extra_args, extra_args):
+        if isinstance(args, dict) and 'reasoning_config' in args:
+            value = args['reasoning_config']
+    override = getattr(model, 'reasoning_config_override', None)
+    if override is not None:
+        value = override
+    return normalize_reasoning_config(value)

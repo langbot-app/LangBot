@@ -169,27 +169,36 @@ test.describe('pipeline monitoring conversation turns', () => {
     await expect(
       page.getByText('Pipeline single user message without reply'),
     ).toBeVisible();
-    await expect(
-      page.getByText('Pipeline needs a deployment plan'),
-    ).toBeVisible();
-    await expect(
-      page.getByText('Pipeline agent step 1: inspect repository'),
-    ).toBeVisible();
-    await expect(page.getByText('Assistant +2')).toBeVisible();
-    await expect(page.getByText('2 tools')).toBeVisible();
-
-    const agentTurn = page
-      .locator('div[role="button"]')
-      .filter({ hasText: 'Pipeline needs a deployment plan' });
-    await expect(agentTurn).toHaveCount(1);
+    const agentTurn = page.getByRole('button', {
+      name: /Pipeline Bot Success Pipeline needs a deployment plan/,
+    });
     await agentTurn.click();
-
-    await expect(page.getByText('Tool Calls (2)')).toBeVisible();
-    await expect(page.getByText('#1 repo_search')).toBeVisible();
-    await expect(page.getByText('#2 run_tests')).toBeVisible();
-    await expect(page.getByText('Arguments')).toHaveCount(0);
-    await page.getByText('#1 repo_search').click();
-    await expect(page.getByText('Arguments')).toBeVisible();
-    await expect(page.getByText('Result')).toBeVisible();
+    const detail = page.getByRole('article');
+    await expect(
+      detail.getByText('Pipeline needs a deployment plan', { exact: true }),
+    ).toBeVisible();
+    for (const text of [
+      'Pipeline agent step 1: inspect repository',
+      'Pipeline agent step 2: run tests',
+      'Pipeline final answer: deployment ready',
+    ])
+      await expect(detail.getByText(text, { exact: true })).toBeVisible();
+    await expect(
+      detail.getByText('Tool Calls 2', { exact: true }),
+    ).toBeVisible();
+    const search = detail
+      .getByRole('listitem')
+      .filter({ hasText: 'repo_search' });
+    await expect(
+      search.getByText('repo_search', { exact: true }),
+    ).toBeVisible();
+    await expect(detail.getByText('run_tests', { exact: true })).toBeVisible();
+    await expect(search.getByText(/"query"/)).toHaveCount(0);
+    await search
+      .getByRole('button', { name: 'Arguments', exact: true })
+      .click();
+    await expect(search.getByText(/"query"/)).toBeVisible();
+    await search.getByRole('button', { name: 'Result', exact: true }).click();
+    await expect(search.getByText(/"ok"/)).toBeVisible();
   });
 });

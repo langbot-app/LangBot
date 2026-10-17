@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Copy,
-  ExternalLink,
+  ArrowRight,
   Loader2,
   Trash2,
   UserPlus,
@@ -39,6 +46,9 @@ import {
   PanelBody,
   PanelToolbar,
 } from '@/app/home/components/settings-dialog/panel-layout';
+import WorkspacePlanBadge from './WorkspacePlanBadge';
+
+const CloudPlansDialog = lazy(() => import('./CloudPlansDialog'));
 
 interface WorkspaceSettingsPanelProps {
   active: boolean;
@@ -51,16 +61,31 @@ const ASSIGNABLE_ROLES: Exclude<WorkspaceRole, 'owner'>[] = [
   'viewer',
 ];
 
+const MESSAGE_LANGUAGES: Record<string, string> = {
+  en_US: 'English',
+  zh_Hans: '简体中文',
+  zh_Hant: '繁體中文',
+  ja_JP: '日本語',
+  es_ES: 'Español',
+  ru_RU: 'Русский',
+  th_TH: 'ไทย',
+  vi_VN: 'Tiếng Việt',
+};
+
 export default function WorkspaceSettingsPanel({
   active,
 }: WorkspaceSettingsPanelProps) {
   const { t } = useTranslation();
+  const [plansOpen, setPlansOpen] = useState(false);
   const [workspaceInfo, setWorkspaceInfo] = useState<CurrentWorkspace | null>(
     null,
   );
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [messageLanguage, setMessageLanguage] = useState('en_US');
+  const [supportedLanguages, setSupportedLanguages] = useState<string[]>([]);
+  const [savingLanguage, setSavingLanguage] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] =
     useState<Exclude<WorkspaceRole, 'owner'>>('viewer');
@@ -79,15 +104,17 @@ export default function WorkspaceSettingsPanel({
   const canInvite = permissions.has('member.invite');
   const canUpdateMembers = permissions.has('member.update_role');
   const canRemoveMembers = permissions.has('member.remove');
-  const cloudPortalURL = workspaceInfo
-    ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}&step=plan`
-    : '';
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const current = await backendClient.getCurrentWorkspace();
+      const [current, languageSettings] = await Promise.all([
+        backendClient.getCurrentWorkspace(),
+        backendClient.getWorkspaceLanguage(),
+      ]);
       setWorkspaceInfo(current);
+      setMessageLanguage(languageSettings.language);
+      setSupportedLanguages(languageSettings.supported_languages);
 
       const [memberResponse, invitationResponse] = await Promise.all([
         current.permissions.includes('member.view')
@@ -105,6 +132,19 @@ export default function WorkspaceSettingsPanel({
       setLoading(false);
     }
   }, [t]);
+
+  async function saveLanguage(locale: string) {
+    setSavingLanguage(true);
+    try {
+      const result = await backendClient.setWorkspaceLanguage(locale);
+      setMessageLanguage(result.language);
+      toast.success(t('workspaceLanguage.saved'));
+    } catch {
+      toast.error(t('workspaceLanguage.saveFailed'));
+    } finally {
+      setSavingLanguage(false);
+    }
+  }
 
   useEffect(() => {
     if (active) void loadWorkspace();
@@ -193,11 +233,21 @@ export default function WorkspaceSettingsPanel({
 
   return (
     <>
-      <PanelToolbar>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {workspaceInfo?.workspace.name ?? t('workspace.title')}
-          </p>
+      <PanelToolbar className="gap-4 py-4">
+        <div className="min-w-0 flex-1 basis-56 space-y-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-semibold">
+              {workspaceInfo?.workspace.name ?? t('workspace.title')}
+            </p>
+            {workspaceInfo && (
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-[11px] font-normal"
+              >
+                {t(`workspace.roles.${workspaceInfo.membership.role}`)}
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             {t(
               isCloudProjection
@@ -206,22 +256,62 @@ export default function WorkspaceSettingsPanel({
             )}
           </p>
         </div>
-        {workspaceInfo && (
-          <Badge variant="secondary">
-            {t(`workspace.roles.${workspaceInfo.membership.role}`)}
-          </Badge>
-        )}
         {isCloudProjection && workspaceInfo && (
-          <Button asChild size="sm">
-            <a href={cloudPortalURL} target="_blank" rel="noopener noreferrer">
-              {t('workspace.upgradePlan')}
-              <ExternalLink className="size-3.5" />
-            </a>
-          </Button>
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+            <div className="space-y-1 text-right">
+              <p className="text-[11px] text-muted-foreground">
+                {t('workspace.currentPlan')}
+              </p>
+              <WorkspacePlanBadge planName={workspaceInfo.plan_name} />
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => setPlansOpen(true)}
+            >
+              {t('cloudPlans.title')}
+              <ArrowRight className="size-3.5" />
+            </Button>
+          </div>
         )}
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
+        <section className="space-y-3">
+          <div>
+            <h3 id="workspace-language-label" className="text-sm font-semibold">
+              {t('workspaceLanguage.label')}
+            </h3>
+            <p
+              id="workspace-language-description"
+              className="text-xs text-muted-foreground"
+            >
+              {t('workspaceLanguage.description')}
+            </p>
+          </div>
+          <Select
+            value={messageLanguage}
+            onValueChange={saveLanguage}
+            disabled={
+              loading || savingLanguage || !permissions.has('workspace.update')
+            }
+          >
+            <SelectTrigger
+              className="w-full sm:w-64"
+              aria-labelledby="workspace-language-label"
+              aria-describedby="workspace-language-description"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {supportedLanguages.map((locale) => (
+                <SelectItem key={locale} value={locale}>
+                  {MESSAGE_LANGUAGES[locale] || locale}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </section>
         {canInvite && (
           <section className="space-y-3">
             <div>
@@ -404,6 +494,17 @@ export default function WorkspaceSettingsPanel({
           </section>
         )}
       </PanelBody>
+      {isCloudProjection && workspaceInfo && plansOpen && (
+        <Suspense fallback={null}>
+          <CloudPlansDialog
+            key={workspaceInfo.workspace.uuid}
+            open={plansOpen}
+            onOpenChange={setPlansOpen}
+            workspace={workspaceInfo}
+            spaceURL={systemInfo.cloud_service_url}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

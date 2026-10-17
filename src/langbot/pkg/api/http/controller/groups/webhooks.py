@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import quart
+import quart_cors
 import traceback
 
 from .. import group
@@ -10,6 +11,35 @@ from .....utils import bounded_executor
 @group.group_class('webhooks', '/bots')
 class WebhookRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        @self.quart_app.websocket(self.path + '/<bot_uuid>/onebot/v11/ws')
+        @quart_cors.cors_exempt
+        async def onebot_websocket(bot_uuid: str):
+            # Protocol clients omit Origin; bearer authentication protects this endpoint.
+            from .....platform.adapters.aiocqhttp.adapter import AiocqhttpAdapter
+
+            runtime = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
+            if runtime is None or not runtime.enable or not isinstance(runtime.adapter, AiocqhttpAdapter):
+                quart.abort(404)
+            adapter = runtime.adapter
+            socket = quart.websocket._get_current_object()
+            if adapter.config['connection_mode'] != 'reverse_ws':
+                quart.abort(409)
+            if not adapter.authenticate(socket.headers):
+                quart.abort(401)
+            if socket.headers.get('X-Client-Role', '').lower() != 'universal':
+                quart.abort(400)
+            self_id = socket.headers.get('X-Self-ID', '')
+            expected = str(adapter.config.get('self_id', '') or '')
+            if not self_id or (expected and self_id != expected):
+                quart.abort(400)
+            if adapter.bot.connection is not None:
+                quart.abort(409)
+            await socket.accept()
+            try:
+                await adapter.serve_connection(socket.send, socket.receive, socket.close, self_id)
+            except Exception:
+                await socket.close(1011)
+
         @self.route('/<bot_uuid>', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
         async def handle_webhook(bot_uuid: str):
             """处理 bot webhook 回调（无子路径）"""
@@ -31,6 +61,11 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
+            setup = getattr(self.ap, 'slack_setup_service', None)
+            if setup is not None and not path and quart.request.method == 'POST':
+                challenge = await setup.challenge(bot_uuid, quart.request)
+                if challenge is not None:
+                    return quart.jsonify(challenge)
             # Public ingress never accepts X-Workspace-Id.  The opaque bot UUID
             # is resolved against the already-bound runtime resource, which
             # carries the trusted Workspace and placement generation.

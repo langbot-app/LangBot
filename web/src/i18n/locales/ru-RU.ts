@@ -1,5 +1,155 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 const ruRU = {
+  planRevision: {
+    subscribedOn: 'Дата подписки: {{date}}',
+    latestQuota: 'Актуальные квоты этого плана',
+    showLatest: 'Показать актуальные квоты этого тарифа',
+    showCurrent: 'Показать текущую подписку',
+    latestTab: 'Новые',
+    currentTab: 'Текущая',
+    cancelToSubscribe:
+      'Отмените подписку, чтобы получить доступ к новым квотам со следующего периода',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Продлить текущую подписку',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Подписка недоступна',
+    subscriptionUnavailableHint:
+      'Этот план не принимает новые подписки. Выберите другой план. Текущие подписки и автоматические продления не затронуты.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Управление подпиской',
+    downgradeUnavailable: 'Переход на бесплатный план недоступен',
+    features: {
+      multiUserWorkspace: 'Многопользовательское рабочее пространство',
+      remoteE2BSandbox: 'Настройка удалённой песочницы E2B',
+      communitySupport: 'Поддержка сообщества',
+      everythingInFree: 'Все возможности бесплатного плана',
+      alwaysOnSandbox: 'Одна постоянно работающая глобальная песочница',
+      higherWorkspaceLimits: 'Повышенные лимиты рабочего пространства',
+    },
+    title: 'Сравнить планы',
+    description: 'Выберите план для {{workspace}}',
+    billing: 'Период оплаты',
+    monthly: 'За месяц',
+    annual: 'За год',
+    currency: 'Валюта',
+    loading: 'Загрузка планов…',
+    error: 'Не удалось загрузить планы',
+    retry: 'Повторить',
+    empty: 'Нет доступных планов',
+    current: 'Текущий план',
+    recommended: 'Рекомендуем',
+    free: 'Бесплатно',
+    annualNote: 'Эквивалент {{price}} / месяц',
+    ownerOnly: 'Только владелец или администратор',
+    choose: 'Перейти к оплате',
+    handoff: 'Войдите в Space и оплатите. Ваш выбор будет сохранён.',
+    quotas: 'Лимиты рабочего пространства',
+    unlimited: 'Без ограничений',
+    retention: 'История сообщений · {{count}} дней',
+    retentionLabel: 'Срок хранения сообщений',
+    retentionHelp:
+      'По истечении этого срока сообщения автоматически удаляются.',
+    credits: '{{count}} кредитов в месяц',
+    creditsLabel: 'Ежемесячные кредиты',
+    creditsHelp:
+      'Кредиты начисляются каждый месяц подписки, в том числе при годовой оплате.',
+    platforms: 'Поддержка популярных платформ',
+    excludedPlatforms: 'Недоступны: {{platforms}}',
+    allPlatforms: 'Все доступные платформы',
+    limits: {
+      bots: 'Боты',
+      pipelines: 'Обработчики',
+      knowledge_bases: 'Базы знаний',
+      plugins: 'Расширения',
+      members: 'Участники',
+      managed_sandbox_sessions: 'Управляемые сеансы песочницы',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Язык рабочего пространства',
+    description:
+      'Язык сообщений сервера и стандартных ответов бота. Язык интерфейса не меняется.',
+    saved: 'Язык сохранён',
+    saveFailed: 'Не удалось сохранить язык',
+  },
+  inflight: {
+    autoCollapse: 'Автосворачивание',
+    empty: 'Нет событий в обработке',
+    move: 'Перетащите по вертикали или используйте стрелки',
+    botLogs: 'Журнал бота',
+    processorLogs: 'Журнал обработчика',
+
+    title: 'В работе',
+    expand: 'Развернуть',
+    collapse: 'Свернуть',
+    reconnecting: 'Переподключение; показано последнее полученное состояние.',
+    details: 'Подробнее',
+    debug: 'Отладочное событие',
+    limited:
+      'Показана часть запусков. Все запуски доступны на панели мониторинга.',
+    queued: 'В очереди',
+    running: 'Обработка',
+    waiting: 'Ожидание ввода',
+    tool: 'Вызов инструмента',
+    thinking: 'Размышление',
+    replying: 'Подготовка ответа',
+    generating: 'Генерация ответа',
+    completed: 'Завершено',
+    failed: 'Ошибка',
+    cancelled: 'Отменено',
+    ignored: 'Пропущено',
+  },
   assistant: {
     movePosition: 'Переместить помощника по горизонтали',
     resizeHeight: 'Изменить высоту помощника',
@@ -9,7 +159,7 @@ const ruRU = {
     stopped:
       'Остановлено. Инструмент мог уже внести изменения. Проверьте ресурс перед повтором.',
     setupRequired:
-      'Войдите в LangBot Account для доступа к LangBot Models или настройте своего провайдера моделей, чтобы начать диалог.',
+      'Войдите в аккаунт LangBot или настройте модель, чтобы начать пользоваться помощником рабочего пространства.',
     loginAccount: 'Войти в LangBot Account',
     configureModels: 'Настроить модели',
     providerCheckFailed:
@@ -77,6 +227,14 @@ const ruRU = {
   sidebarGuide: {
     steps: {
       monitoring: {
+        rangeDays: 'Последние {{days}} дней',
+        customRange: 'Свой период',
+        rangeStart: 'Начало',
+        rangeEnd: 'Конец',
+        rangeHint: 'Начало должно быть раньше конца. Максимум 365 дней.',
+        autoRefreshLabel: 'Автообновление',
+        autoRefreshOff: 'Автообновление: выкл.',
+        autoRefreshEvery: 'Обновлять каждые {{seconds}} с',
         title: 'Проверьте активность',
         description:
           'Просматривайте активность ботов, использование моделей, объём сообщений и производительность системы.',
@@ -158,6 +316,14 @@ const ruRU = {
           'Отправьте тестовые сообщения, чтобы проверить условия запуска, ответы ИИ и обработку вывода. Изменения сохраняются перед тестом.',
       },
       monitoring: {
+        rangeDays: 'Последние {{days}} дней',
+        customRange: 'Свой период',
+        rangeStart: 'Начало',
+        rangeEnd: 'Конец',
+        rangeHint: 'Начало должно быть раньше конца. Максимум 365 дней.',
+        autoRefreshLabel: 'Автообновление',
+        autoRefreshOff: 'Автообновление: выкл.',
+        autoRefreshEvery: 'Обновлять каждые {{seconds}} с',
         title: 'Посмотрите историю запусков',
         description:
           'На вкладке рядом с заголовком доступны прошлые диалоги, этапы обработки и ошибки для диагностики отсутствующих или неожиданных ответов.',
@@ -326,6 +492,11 @@ const ruRU = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'Причина сбоя не сохранена. Проверьте журнал бота или отправьте сообщение повторно для получения подробностей.',
+    loadFailedTitle: 'Не удалось загрузить данные',
+    loadFailedHint:
+      'Повторите попытку позже. Если проблема остаётся, проверьте подключение и состояние сервиса.',
     customValue: 'Свой вариант',
     loadFailed: 'Не удалось загрузить. Попробуйте ещё раз.',
     search: 'Поиск',
@@ -523,6 +694,9 @@ const ruRU = {
     help: 'Помощь',
   },
   models: {
+    starModel: 'Отметить модель для новых обработчиков',
+    unstarModel: 'Снять отметку',
+    starModelFailed: 'Не удалось изменить избранную модель',
     codex: {
       account: 'Подписка ChatGPT',
       description:
@@ -790,10 +964,13 @@ const ruRU = {
     deleteConfirmation: 'Вы уверены, что хотите удалить этого бота?',
     platformAdapter: 'Выбор платформы/адаптера',
     selectAdapter: 'Выберите адаптер',
+    saveAndEnable: 'Сохранить и включить',
+    searchAdapters: 'Поиск адаптеров',
+    noMatchingAdapters: 'Подходящие адаптеры не найдены',
     legacyAdapters: 'Устаревшие адаптеры',
     legacyAdapterBadge: 'Устаревший',
     legacyAdaptersHint:
-      'У этих адаптеров есть новые событийные версии.\nОни сохранены только для существующих конфигураций и не рекомендуются для новых ботов.',
+      'Старые адаптеры в основном обмениваются сообщениями и сохраняются для совместимости.\nНовые подключают ту же платформу через события: сообщения, поддерживаемые запросы в друзья и изменения в группах, направляя их обработчикам.\nДля новых ботов выбирайте новые адаптеры. Старые боты могут работать как прежде. При переходе проверьте подключение и маршруты; аккаунт платформы не обновляется.',
     adapterConfig: 'Настройка адаптера',
     viewAdapterDocs: 'Документация',
     bindPipeline: 'Привязать конвейер',
@@ -806,6 +983,10 @@ const ruRU = {
     earlier: 'Ранее',
     dateFormat: '{{day}}.{{month}}',
     setBotEnableError: 'Не удалось изменить статус бота',
+    enabling: 'Включение…',
+    disabling: 'Отключение…',
+    enableConfirmed: 'Включён',
+    disableConfirmed: 'Отключён',
     log: 'Журнал',
     configuration: 'Настройки',
     logs: 'Журналы',
@@ -814,6 +995,28 @@ const ruRU = {
     routingConnection: 'Маршрутизация и подключение',
     routingConnectionDescription:
       'Привяжите конвейер, обрабатывающий сообщения для этого бота',
+    routingHelp: {
+      title: 'Что такое маршрутизация событий?',
+      intro:
+        'Бот получает сообщения, запросы в друзья и события вступления в группу.',
+      events: 'Входящие события',
+      agents: 'Разные агенты',
+      message: 'Сообщение',
+      friend: 'Запрос в друзья',
+      group: 'Вступление в группу',
+      messageAction: 'Агент ответов',
+      friendAction: 'Агент проверки',
+      groupAction: 'Агент приветствия',
+      rules: 'По вашим правилам · Пример',
+      instructions:
+        'Агенты следуют вашим инструкциям и вызывают инструменты для ответов и обработки запросов.',
+      plugin:
+        'Для сложных задач обработчики плагинов регистрируют события пакетно и обрабатывают их кодом. Добавьте конфигурацию обработчика ниже.',
+      docs: 'Разработать свой обработчик плагина',
+      runnerDocs: 'Разработать свой исполнитель Agent',
+      pause: 'Пауза',
+      play: 'Воспроизвести',
+    },
     eventRouting: 'Маршрутизация событий',
     eventRoutingDescription:
       'Выберите обработчик для каждого события бота. Изменяйте логику в настройках соответствующего Agent или Pipeline. Pipeline поддерживает только события сообщений.',
@@ -854,7 +1057,8 @@ const ruRU = {
     enabled: 'Включено',
     eventBindingDescriptionPlaceholder: 'Описание правила',
     noEventBindings: 'Нет маршрутов событий',
-    unsupportedPipelineEvent: 'Конвейеры поддерживают только события message.*',
+    unsupportedPipelineEvent:
+      'Конвейеры поддерживают только события message.received',
     disable: 'Отключить',
     enable: 'Включить',
     disabledBindings: 'Отключено',
@@ -864,6 +1068,7 @@ const ruRU = {
     advancedEventValues: 'Показать все',
     eventGroup: 'Группа',
     eventGroupNames: {
+      wecomcs: 'Поддержка WeCom',
       bot: 'Состояние бота',
       feedback: 'Обратная связь',
       friend: 'Друзья',
@@ -878,6 +1083,9 @@ const ruRU = {
     routeFallbackCatchAll: '{{route}} — маршрут для всех событий.',
     routeFallbackIgnored:
       'События без подходящего маршрута игнорируются. Добавляйте общий маршрут, только если каждое событие требует явного результата.',
+    matchRecords: 'История совпадений',
+    matchRecordsDescription:
+      'Последний результат каждого правила и недавние события без совпадений. Журнал в памяти очищается при перезапуске.',
     testRoute: 'Проверить маршрут',
     adapterEventDebugAction: 'Тест прослушивания',
     adapterEventDebugTitle: 'Отладка событий платформы',
@@ -965,6 +1173,15 @@ const ruRU = {
     eventWildcard: 'Все события',
     eventNamespaceWildcard: '{{namespace}}.*',
     eventNames: {
+      wecombot_enter_chat: 'Пользователь открыл чат бота',
+      wecombot_template_card_event: 'Взаимодействие с карточкой',
+      dingtalk_card_action: 'Взаимодействие с карточкой DingTalk',
+      wecomcs_enter_session: 'Клиент вошёл в диалог',
+      wecomcs_msg_send_fail: 'Ошибка отправки сообщения поддержки',
+      wecomcs_servicer_status_change: 'Статус оператора изменён',
+      wecomcs_session_status_change: 'Статус диалога поддержки изменён',
+      wecomcs_reject_customer_msg_switch_change:
+        'Приём сообщений клиента изменён',
       message_received: 'Получено сообщение',
       message_edited: 'Сообщение изменено',
       message_deleted: 'Сообщение удалено',
@@ -974,6 +1191,7 @@ const ruRU = {
       friend_added: 'Друг добавлен',
       group_member_joined: 'Участник вступил в группу',
       group_member_left: 'Участник покинул группу',
+      group_info_updated: 'Информация о группе обновлена',
       group_member_banned: 'Участник заблокирован',
       bot_invited_to_group: 'Бот приглашён в группу',
       bot_removed_from_group: 'Бот удалён из группы',
@@ -982,6 +1200,22 @@ const ruRU = {
       platform_specific: 'Событие конкретной платформы',
     },
     eventDescriptions: {
+      wecombot_enter_chat:
+        'Пользователь открыл чат бота. Событие подходит для сценариев приветствия.',
+      wecombot_template_card_event:
+        'Пользователь нажал или отправил карточку. Ответы управляемых форм обрабатываются отдельно.',
+      dingtalk_card_action:
+        'Нажатия и отправка карточек; отзывы и управляемые формы обрабатываются отдельно.',
+      wecomcs_enter_session:
+        'Клиент открыл ссылку поддержки; событие содержит источник и код приветствия.',
+      wecomcs_msg_send_fail:
+        'WeChat сообщил об ошибке отправки с ID сообщения и типом ошибки.',
+      wecomcs_servicer_status_change:
+        'Оператор начал, остановил или приостановил приём обращений.',
+      wecomcs_session_status_change:
+        'Оператор принял, передал, завершил или возобновил диалог.',
+      wecomcs_reject_customer_msg_switch_change:
+        'Оператор включил или отключил отказ в приёме сообщений клиента.',
       all: 'Соответствует всем событиям, полученным адаптером.',
       namespace: 'Соответствует всем событиям {{group}}.',
       namespace_bot:
@@ -990,8 +1224,7 @@ const ruRU = {
         'Соответствует обратной связи от платформы или пользователя.',
       namespace_friend:
         'Соответствует заявкам в друзья и изменениям дружеских связей.',
-      namespace_group:
-        'Соответствует вступлениям, выходам, удалениям участников и другим событиям группы.',
+      namespace_group: 'Соответствует изменениям состава и информации группы.',
       namespace_message:
         'Соответствует получению, редактированию, удалению сообщений и реакциям.',
       namespace_platform:
@@ -1010,6 +1243,8 @@ const ruRU = {
       friend_added: 'Установлена дружеская связь.',
       group_member_joined: 'Участник вступает в группу, где есть бот.',
       group_member_left: 'Участник покидает группу, где есть бот.',
+      group_info_updated:
+        'Изменились сведения о группе, например название или владелец.',
       group_member_banned: 'Участник группы заблокирован или удалён.',
       bot_invited_to_group: 'Бот приглашён в группу.',
       bot_removed_from_group: 'Бот удалён из группы.',
@@ -1096,6 +1331,13 @@ const ruRU = {
     imagesAttached: 'изображений прикреплено',
     noLogs: 'Журналов пока нет',
     sessionMonitor: {
+      resetContext: 'Сбросить контекст',
+      resetDescription:
+        'Новые сообщения начнутся с пустого контекста. История мониторинга, файлы и долговременная память сохранятся. Дождитесь завершения активных задач.',
+      resetSuccess: 'Контекст сброшен.',
+      resetError:
+        'Не удалось сбросить контекст. Дождитесь завершения активных задач и повторите попытку.',
+
       title: 'Сессии',
       sessions: 'Сессии',
       noSessions: 'Сессии не найдены',
@@ -1143,7 +1385,27 @@ const ruRU = {
     },
   },
   agents: {
+    apiToolsSelectAll: 'Выбрать все',
     monitoring: {
+      rangeDays: 'Последние {{days}} дней',
+      customRange: 'Свой период',
+      rangeStart: 'Начало',
+      rangeEnd: 'Конец',
+      rangeHint: 'Начало должно быть раньше конца. Максимум 365 дней.',
+      autoRefreshLabel: 'Автообновление',
+      autoRefreshOff: 'Автообновление: выкл.',
+      autoRefreshEvery: 'Обновлять каждые {{seconds}} с',
+      runStatus: 'Статус выполнения',
+      toolCalls: 'Вызовы инструментов',
+      delivery: 'Отправка сообщений',
+      sendFailed: 'Ошибка отправки',
+      sendCount: 'Успешных вызовов отправки: {{count}}',
+      noSend: 'Отправки не зарегистрированы',
+      noSteps: 'Шаги выполнения ещё не зарегистрированы.',
+      recipient: 'Получатель',
+      actionCompleted: 'Инструмент выполнен успешно.',
+      simulatedAction:
+        'Действие смоделировано; реальное сообщение не отправлено.',
       description:
         'Просмотр события, ответа модели и вызовов инструментов для каждой задачи.',
       empty:
@@ -1248,6 +1510,9 @@ const ruRU = {
       'Работает по заданному процессу: получить сообщение, вызвать AI и ответить пользователю. Поддерживает настройку баз знаний и плагинов; обрабатывает только события сообщений и подходит для задач с четкими шагами и контролем обработки.',
     allEvents: 'Поддерживает все события',
     messageEventsOnly: 'Только события сообщений',
+    selectAgentRunner: 'Выберите исполнитель Agent',
+    selectProcessorPlugin: 'Выберите плагин обработки',
+    createBasicInfoDescription: 'Задайте имя, значок и плагин',
     chooseType: 'Выберите способ работы',
     chooseTypeDescription:
       'Сначала выберите тип обработчика. Остальные настройки доступны после создания.',
@@ -2073,6 +2338,14 @@ const ruRU = {
       uploading: 'Загрузка...',
     },
     monitoring: {
+      rangeDays: 'Последние {{days}} дней',
+      customRange: 'Свой период',
+      rangeStart: 'Начало',
+      rangeEnd: 'Конец',
+      rangeHint: 'Начало должно быть раньше конца. Максимум 365 дней.',
+      autoRefreshLabel: 'Автообновление',
+      autoRefreshOff: 'Автообновление: выкл.',
+      autoRefreshEvery: 'Обновлять каждые {{seconds}} с',
       title: 'Журнал выполнения',
       workbench: 'Настройка и отладка',
       description:
@@ -2430,8 +2703,7 @@ const ruRU = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2500,6 +2772,14 @@ const ruRU = {
     },
   },
   monitoring: {
+    rangeDays: 'Последние {{days}} дней',
+    customRange: 'Свой период',
+    rangeStart: 'Начало',
+    rangeEnd: 'Конец',
+    rangeHint: 'Начало должно быть раньше конца. Максимум 365 дней.',
+    autoRefreshLabel: 'Автообновление',
+    autoRefreshOff: 'Автообновление: выкл.',
+    autoRefreshEvery: 'Обновлять каждые {{seconds}} с',
     unified: {
       inputs: 'Событие и ввод',
       outputs: 'Сгенерированные результаты',
@@ -2652,6 +2932,15 @@ const ruRU = {
       feedback: 'Обратная связь',
       sessions: 'Анализ сессий',
       errors: 'Журнал ошибок',
+    },
+    pipelineTrace: {
+      received: 'Входящее сообщение',
+      processing: 'Обработка',
+      replies: 'Ответы',
+      noSteps: 'Вызовы моделей и инструментов не зарегистрированы',
+      success: 'Успешно',
+      error: 'Ошибка',
+      pending: 'Ожидание',
     },
     messageList: {
       timestamp: 'Время',
@@ -3478,15 +3767,6 @@ const ruRU = {
   pluginPages: {
     selectFromSidebar: 'Выберите страницу плагина на боковой панели',
     invalidPage: 'Недопустимая страница плагина',
-  },
-  beta_banner: {
-    message:
-      'Эта среда находится в стадии бета-тестирования. Стабильность сервиса не гарантируется. Рекомендуем использовать',
-    cloud_link: 'LangBot Cloud (выделенная среда)',
-    or: 'или',
-    oss_link: 'версию с открытым исходным кодом на своём сервере',
-    period: '.',
-    dismiss: 'Закрыть',
   },
 };
 export default ruRU;

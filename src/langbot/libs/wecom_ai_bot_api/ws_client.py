@@ -11,6 +11,7 @@ Official Node.js SDK: https://github.com/WecomTeam/aibot-node-sdk
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import secrets
 import time
@@ -134,6 +135,9 @@ class WecomBotWsClient:
         self._stream_ids: dict[str, str] = {}  # msg_id -> req_id|stream_id
         # Dedup: skip sending when content hasn't changed
         self._stream_last_content: dict[str, str] = {}  # msg_id -> last content sent
+        # Preserve completion identity after removing active stream mappings.
+        # A runner may emit both a final delta and a completed message snapshot.
+        self._completed_stream_content: dict[str, str] = {}
         # Stream session info for feedback tracking
         self._stream_sessions: dict[str, dict] = {}  # msg_id -> session info
         # Feedback tracking: feedback_id -> session info
@@ -146,6 +150,7 @@ class WecomBotWsClient:
         # context on click).
         # task_id -> {form_data, msg_id, user_id, chat_id, stream_id, req_id}
         self._pending_forms_by_task: dict[str, dict] = {}
+        self._handled_form_tasks: dict[str, float] = {}
         # Reverse: msg_id -> task_id (for cleanup when stream finishes).
         self._task_id_by_msg: dict[str, str] = {}
         # Optional card-action callback registered by the adapter.
@@ -319,6 +324,12 @@ class WecomBotWsClient:
             'stream': stream_payload,
         }
         return await self._send_reply(req_id, body)
+
+    async def reply_welcome(self, req_id: str, content: str) -> Optional[dict]:
+        """Reply to enter_chat using the dedicated welcome command."""
+        return await self._send_reply(
+            req_id, {'msgtype': 'text', 'text': {'content': content}}, cmd=CMD_RESPOND_WELCOME
+        )
 
     async def reply_text(self, req_id: str, content: str) -> Optional[dict]:
         """Send a non-streaming text reply.
@@ -661,16 +672,15 @@ class WecomBotWsClient:
         """
         key = self._stream_ids.get(msg_id)
         if not key:
+            if is_final and self._completed_stream_content.get(msg_id) == hashlib.sha256(content.encode()).hexdigest():
+                return True
             return False
         req_id, stream_id = key.split('|', 1)
         try:
             previous_content = self._stream_last_content.get(msg_id, '')
-            if previous_content and content.startswith(previous_content):
-                next_content = content
-            elif previous_content and not content:
-                next_content = previous_content
-            else:
-                next_content = previous_content + content if previous_content else content
+            # Pipeline delivery provides complete snapshots, including edits
+            # that need not start with the previous text (e.g. reasoning tags).
+            next_content = content or previous_content
             if len(next_content) > _MAX_STREAM_CONTENT_CHARS:
                 next_content = next_content[-_MAX_STREAM_CONTENT_CHARS:]
 
@@ -720,6 +730,8 @@ class WecomBotWsClient:
             await self.reply_stream(req_id, stream_id, next_content, finish=is_final, feedback_id=feedback_id)
             self._stream_last_content[msg_id] = next_content
             if is_final:
+                self._completed_stream_content[msg_id] = hashlib.sha256(next_content.encode()).hexdigest()
+                self._cap_mapping(self._completed_stream_content, _STREAM_CACHE_MAX)
                 self._stream_ids.pop(msg_id, None)
                 self._stream_last_content.pop(msg_id, None)
                 self._stream_sessions.pop(msg_id, None)
@@ -981,6 +993,7 @@ class WecomBotWsClient:
                 await self.logger.debug(f'Received event_callback event_type={event_type}')
 
             message_data = {
+                **body,
                 'msgtype': 'event',
                 'type': body.get('chattype', 'single'),
                 'event': event_info,
@@ -1064,15 +1077,35 @@ class WecomBotWsClient:
             f'Received template_card_event (ws): task_id={task_id} event_key={event_key!r} card_type={card_type}'
         )
 
+        now = time.monotonic()
+        self._handled_form_tasks = {key: seen for key, seen in self._handled_form_tasks.items() if now - seen < 3600}
+        if task_id in self._handled_form_tasks:
+            return
         pending = self._pending_forms_by_task.get(task_id)
         if pending is None:
-            await self.logger.warning(f'No pending_form found for task_id={task_id} (ws); card event ignored')
+            # Expired managed forms must not start a new business execution.
+            if task_id.startswith('dify-'):
+                return
+            event = wecombotevent.WecomBotEvent(
+                {
+                    **body,
+                    'type': body.get('chattype', 'single'),
+                    'msgtype': 'event',
+                    'eventtype': 'template_card_event',
+                    'req_id': frame.get('headers', {}).get('req_id', ''),
+                }
+            )
+            for handler in self._message_handlers.get('template_card_event', []):
+                await handler(event)
             return
         if time.monotonic() - float(pending.get('created_at', 0.0)) > _PENDING_FORM_TTL_SECONDS:
             self._drop_pending_form_task(task_id, pending)
             await self.logger.warning(f'Pending form expired for task_id={task_id} (ws)')
             return
 
+        self._handled_form_tasks[task_id] = now
+        if len(self._handled_form_tasks) > 2048:
+            self._handled_form_tasks.pop(next(iter(self._handled_form_tasks)))
         req_id_for_update = frame.get('headers', {}).get('req_id', '')
         form_data = pending.get('form_data', {}) or {}
         selections = extract_template_card_selections(tce, form_data)
@@ -1120,6 +1153,9 @@ class WecomBotWsClient:
         self._drop_pending_form_task(task_id, pending)
 
     def _drop_pending_form_task(self, task_id: str, pending: dict) -> None:
+        self._handled_form_tasks[task_id] = time.monotonic()
+        if len(self._handled_form_tasks) > 2048:
+            self._handled_form_tasks.pop(next(iter(self._handled_form_tasks)))
         self._pending_forms_by_task.pop(task_id, None)
         msg_id = pending.get('msg_id', '')
         if msg_id:

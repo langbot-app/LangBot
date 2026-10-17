@@ -12,8 +12,7 @@ export interface CallLinkSource {
 
 /** A record the dashboard can open for a recorded model or tool call. */
 export type CallTarget =
-  | { kind: 'execution'; row: ExecutionRow }
-  | { kind: 'message'; id: string };
+  { kind: 'execution'; row: ExecutionRow } | { kind: 'message'; id: string };
 
 /** Calls are matched against a run's window; clock skew must not lose the link. */
 const WINDOW_SLACK_MS = 2000;

@@ -333,6 +333,7 @@ class MonitoringHelper:
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
                 message_content=f'Error: {str(error)}',
+                role='assistant',
                 session_id=session_id,
                 status='error',
                 level='error',
@@ -379,6 +380,7 @@ class MonitoringHelper:
         cost: float | None = None,
         error_message: str | None = None,
         message_id: str | None = None,
+        details: dict | None = None,
     ):
         """Record LLM call"""
         try:
@@ -399,6 +401,7 @@ class MonitoringHelper:
                 cost=cost,
                 error_message=error_message,
                 message_id=message_id,
+                details=details,
             )
         except Exception as e:
             ap.logger.error(f'Failed to record LLM call: {e}')

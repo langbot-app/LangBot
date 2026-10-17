@@ -4,6 +4,7 @@ import datetime
 
 from langbot.libs.slack_api.slackevent import SlackEvent
 from langbot.pkg.utils import image
+from langbot.libs.slack_api.media import download_media
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
@@ -55,15 +56,24 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         if event.type == 'channel':
             components.append(platform_message.At(target='SlackBot'))
 
-        if event.pic_url:
-            try:
+        for file in event.get('event', {}).get('files', []):
+            url = file.get('url_private_download') or file.get('url_private')
+            if not url:
+                raise ValueError('Slack attachment is missing its download URL')
+            data, mime = await download_media(url, bot_token)
+            mime = file.get('mimetype') or mime
+            encoded = await image.encode_base64(data)
+            if mime.startswith('image/') and mime != 'image/svg+xml':
+                components.append(platform_message.Image(base64=f'data:{mime};base64,{encoded}'))
+            else:
                 components.append(
-                    platform_message.Image(
-                        url=event.pic_url, base64=await image.get_slack_image_to_base64(event.pic_url, bot_token)
+                    platform_message.File(
+                        id=file.get('id', ''),
+                        name=file.get('name') or file.get('title') or 'attachment',
+                        size=len(data),
+                        base64=encoded,
                     )
                 )
-            except Exception:
-                components.append(platform_message.Image(url=event.pic_url))
 
         if event.text:
             components.append(platform_message.Plain(text=event.text))

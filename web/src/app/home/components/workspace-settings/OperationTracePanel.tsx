@@ -495,8 +495,7 @@ export default function OperationTracePanel({
       });
       const response = await backendClient.downloadFile(url);
       const disposition = response.headers['content-disposition'] as
-        | string
-        | undefined;
+        string | undefined;
       const match = disposition?.match(/filename="?([^";\n]+)"?/);
       const filename = match?.[1] ?? `operation-logs-${Date.now()}.csv`;
       const blob = new Blob([response.data], {

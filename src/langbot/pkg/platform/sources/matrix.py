@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n import t
+from langbot.pkg.i18n.adapters import localized_adapter
+
 import typing
 import asyncio
 import traceback
@@ -666,25 +669,26 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         except Exception:
             await self.logger.error(f'[{bridge.user_id}] Bridge status check fatal error: {traceback.format_exc()}')
 
+    @localized_adapter
     async def _handle_relogin_command(self, room_id: str):
         """Handle !relogin command: logout then re-login all bridges."""
         if not self._bridges:
             await self.client.room_send(
                 room_id=room_id,
                 message_type='m.room.message',
-                content={'msgtype': 'm.text', 'body': '没有配置任何桥。'},
+                content={'msgtype': 'm.text', 'body': t('No bridges configured.')},
             )
             return
 
-        lines = ['开始重新登录所有桥...']
+        lines = [t('Signing in to all bridges again...')]
         for bridge in self._bridges:
             if not bridge.login_command or not bridge.dm_room_id:
-                lines.append(f'[{bridge.user_id}] 跳过（未配置登录命令或无DM房间）')
+                lines.append(t('Bridge {bridge}: skipped (login command or DM room missing).', bridge=bridge.user_id))
                 continue
 
             # Use configured logout command, fallback to deriving from login command
             logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
-            lines.append(f'[{bridge.user_id}] 发送 "{logout_cmd}"...')
+            lines.append(t('Bridge {bridge}: sending {command}...', bridge=bridge.user_id, command=logout_cmd))
 
             # Cancel existing tasks
             if bridge.login_task and not bridge.login_task.done():
@@ -700,14 +704,14 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     content={'msgtype': 'm.text', 'body': logout_cmd},
                 )
             except Exception as e:
-                lines.append(f'[{bridge.user_id}] logout 发送失败: {e}')
+                lines.append(t('Bridge {bridge}: sign-out failed.', bridge=bridge.user_id) + f' {e}')
 
             await asyncio.sleep(2)
 
             # Reset state and restart login
             bridge.logged_in = False
             self._restart_bridge_login(bridge)
-            lines.append(f'[{bridge.user_id}] 已触发重新登录')
+            lines.append(t('Bridge {bridge}: sign-in started.', bridge=bridge.user_id))
 
         await self.client.room_send(
             room_id=room_id,
@@ -715,20 +719,21 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             content={'msgtype': 'm.text', 'body': '\n'.join(lines)},
         )
 
+    @localized_adapter
     async def _handle_status_command(self, room_id: str):
         """Handle !status command: show bridge states."""
         if not self._bridges:
             await self.client.room_send(
                 room_id=room_id,
                 message_type='m.room.message',
-                content={'msgtype': 'm.text', 'body': '没有配置任何桥。'},
+                content={'msgtype': 'm.text', 'body': t('No bridges configured.')},
             )
             return
 
-        lines = ['桥状态:']
+        lines = [t('Bridge status:')]
         for bridge in self._bridges:
-            status = '已登录 ✓' if bridge.logged_in else '未登录 ✗'
-            dm = bridge.dm_room_id or '无'
+            status = t('Signed in ✓') if bridge.logged_in else t('Not signed in ✗')
+            dm = bridge.dm_room_id or t('None')
             lines.append(f'• {bridge.user_id}: {status} (DM: {dm})')
         await self.client.room_send(
             room_id=room_id,

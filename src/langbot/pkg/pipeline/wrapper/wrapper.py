@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...i18n import pipeline_notice
+
 import typing
 
 from .. import entities
@@ -175,7 +177,9 @@ class ResponseWrapper(stage.PipelineStage):
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
 
-                        reply_text = f'Call {".".join(function_names)}...'
+                        reply_text = pipeline_notice(
+                            query, 'tool-call-hint', 'Calling {tools}...', tools=', '.join(function_names)
+                        )
 
                         # Only surface the tool-call notice when the pipeline option
                         # is enabled. Emitting it unconditionally would become the

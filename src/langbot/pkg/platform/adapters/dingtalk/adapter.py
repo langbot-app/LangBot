@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import time
 import traceback
 import typing
 
 import dingtalk_stream
 import pydantic
 
-from langbot.libs.dingtalk_api.api import DingTalkClient
+from .subscriptions import DingTalkSubscriptionHandler
+
+from langbot.libs.dingtalk_api.api import DingTalkClient, is_stream_card_configured
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
@@ -39,6 +42,7 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
             {
                 'conversation_type': 'CardCallback',
                 'Type': 'card_callback',
+                'timestamp': float(message.headers.time or 0) / 1000,
                 'CardCallback': {
                     'extension': callback.extension,
                     'corp_id': callback.corp_id,
@@ -75,7 +79,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         arbitrary_types_allowed = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
-        required_keys = ['client_id', 'client_secret', 'robot_name', 'robot_code']
+        required_keys = ['client_id', 'client_secret']
         missing_keys = [key for key in required_keys if key not in config]
         if missing_keys:
             raise Exception('钉钉缺少相关配置项，请查看文档或联系管理员')
@@ -83,8 +87,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         bot = DingTalkClient(
             client_id=config['client_id'],
             client_secret=config['client_secret'],
-            robot_name=config['robot_name'],
-            robot_code=config['robot_code'],
+            robot_name=config.get('robot_name', ''),
+            robot_code=config.get('robot_code', ''),
             markdown_card=config.get('markdown_card', True),
             logger=logger,
         )
@@ -92,7 +96,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             config=config,
             logger=logger,
             card_instance_id_dict={},
-            bot_account_id=config['robot_name'],
+            bot_account_id=config['client_id'],
             bot=bot,
             listeners={},
             _message_cache={},
@@ -106,6 +110,10 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return [
             'message.received',
             'feedback.received',
+            'group.member_joined',
+            'group.member_left',
+            'group.info_updated',
+            'dingtalk.card_action',
             'platform.specific',
         ]
 
@@ -158,12 +166,27 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         assert isinstance(message_source.source_platform_object, DingTalkEvent)
         incoming_message = message_source.source_platform_object.incoming_message
         markdown_enabled = self.config.get('markdown_card', False)
-        content, at = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
+        text_message = platform_message.MessageChain(
+            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+        )
+        content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         raw = await self.bot.send_message(content, incoming_message, at)
+        await self._send_attachments(message, incoming_message)
         return platform_events.MessageResult(
             message_id=getattr(incoming_message, 'message_id', None),
             raw=raw if isinstance(raw, dict) else {'result': raw},
         )
+
+    async def _send_attachments(self, message, incoming_message):
+        failures = []
+        for part in message:
+            if isinstance(part, (platform_message.Image, platform_message.File)):
+                try:
+                    await self.bot.send_attachment(part, incoming_message)
+                except Exception as exc:
+                    failures.append(str(exc))
+        if failures:
+            raise RuntimeError('; '.join(failures))
 
     async def reply_message_chunk(
         self,
@@ -174,12 +197,19 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         is_final: bool = False,
     ):
         message_id = bot_message.resp_message_id
-        msg_seq = bot_message.msg_sequence
-        if (msg_seq - 1) % 8 != 0 and not is_final:
+        now = time.monotonic()
+        last_updates = getattr(self, '_card_last_updates', None)
+        if last_updates is None:
+            self._card_last_updates = last_updates = {}
+        if not is_final and now - last_updates.get(message_id, 0) < 0.35:
             return
+        last_updates[message_id] = now
 
         markdown_enabled = self.config.get('markdown_card', False)
-        content, _ = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
+        text_message = platform_message.MessageChain(
+            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+        )
+        content, _ = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         card_instance, card_instance_id = self.card_instance_id_dict[message_id]
         if not content and bot_message.content:
             content = bot_message.content
@@ -187,13 +217,17 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
         if is_final and bot_message.tool_calls is None:
             self.card_instance_id_dict.pop(message_id)
+            last_updates.pop(message_id, None)
+            await self._send_attachments(message, message_source.source_platform_object.incoming_message)
 
     async def create_message_card(self, message_id, event):
         while len(self.card_instance_id_dict) >= 1000:
-            self.card_instance_id_dict.pop(next(iter(self.card_instance_id_dict)), None)
-        card_template_id = self.config['card_template_id']
+            oldest_id = next(iter(self.card_instance_id_dict))
+            self.card_instance_id_dict.pop(oldest_id, None)
+            getattr(self, '_card_last_updates', {}).pop(oldest_id, None)
+        card_template_id = self.config['card_template_id'].strip()
         incoming_message = event.source_platform_object.incoming_message
-        card_auto_layout = self.config.get('card_auto_layout', False)
+        card_auto_layout = self.config.get('card_auto_layout', True)
         card_instance, card_instance_id = await self.bot.create_and_card(
             card_template_id,
             incoming_message,
@@ -203,7 +237,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return True
 
     async def is_stream_output_supported(self) -> bool:
-        return bool(self.config.get('enable-stream-reply', False))
+        return is_stream_card_configured(self.config)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request' and action in self.get_supported_apis():
@@ -253,6 +287,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         async def on_message(event: DingTalkEvent):
             await self._handle_native_event(event)
 
+        self.bot.client.register_all_event_handler(DingTalkSubscriptionHandler(self))
         self.bot.on_message('FriendMessage')(on_message)
         self.bot.on_message('GroupMessage')(on_message)
         self.bot.client.register_callback_handler(
@@ -262,6 +297,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     async def _handle_native_event(self, event: DingTalkEvent):
         try:
+            self.bot_account_id = getattr(event.incoming_message, 'chatbot_user_id', None) or self.bot_account_id
             interaction_event = interaction_event_from_native(event, self.interaction_callback_contexts)
             if interaction_event is not None:
                 await self._dispatch_eba_event(interaction_event)
@@ -270,14 +306,16 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 'DingTalk event received: '
                 f'conversation={event.conversation}, message_id={getattr(event.incoming_message, "message_id", None)}'
             )
-            if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
-                legacy_event = await self.event_converter.target2legacy(event, self.config['robot_name'])
+            if event.conversation in {'FriendMessage', 'GroupMessage'} and (
+                platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners
+            ):
+                legacy_event = await self.event_converter.target2legacy(event, self.bot_account_id)
                 if legacy_event:
                     callback = self.listeners.get(type(legacy_event))
                     if callback:
                         await callback(legacy_event, self)
 
-            eba_event = await self.event_converter.target2yiri(event, self.config['robot_name'])
+            eba_event = await self.event_converter.target2yiri(event, self.bot_account_id)
             if eba_event:
                 self._cache_event(eba_event)
                 await self._dispatch_eba_event(eba_event)

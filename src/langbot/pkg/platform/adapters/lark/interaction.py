@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from langbot.pkg.i18n import t
+
 import json
 import time
 import typing
@@ -61,8 +63,7 @@ def _field_form_elements(
     component_name = 'lbi_field_0'
     label = str(field.get('label') or field_id)
     placeholder = str(
-        field.get('placeholder')
-        or ('Select an option / 请选择' if field_type == 'select' else 'Enter a value / 请输入')
+        field.get('placeholder') or (t('Select an option') if field_type == 'select' else t('Enter a value'))
     )
     required = bool(field.get('required'))
     if field_type == 'select':
@@ -122,7 +123,7 @@ def _field_form_elements(
     submit_button = {
         'tag': 'button',
         'name': 'lbi_submit',
-        'text': {'tag': 'plain_text', 'content': 'Submit / 提交'},
+        'text': {'tag': 'plain_text', 'content': t('Submit')},
         'type': 'primary',
         'width': 'fill',
         'form_action_type': 'submit',

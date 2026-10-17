@@ -334,6 +334,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         ):
             if field_name in PluginWorkerPolicy.model_fields and field_name in worker:
                 policy_data[field_name] = worker.get(field_name)
+        if self.runtime_profile == 'shared':
+            for mode in ('dedicated', 'shared'):
+                overrides = worker.get(mode)
+                if isinstance(overrides, dict):
+                    overrides = dict(overrides)
+                    for name, value in overrides.items():
+                        # Optional leaves start as null, so env loading preserves
+                        # strings. Parse only these trusted numeric config fields.
+                        if isinstance(value, str) and name in (
+                            'max_cpus',
+                            'max_memory_mb',
+                            'max_pids',
+                            'max_open_files',
+                            'max_file_size_mb',
+                        ):
+                            overrides[name] = float(value) if name == 'max_cpus' else int(value)
+                if overrides is not None:
+                    policy_data[mode] = overrides
         return PluginWorkerPolicy.model_validate(policy_data)
 
     def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:

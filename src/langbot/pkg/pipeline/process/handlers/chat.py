@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from ....i18n import pipeline_notice
+
 import uuid
 import typing
 import traceback
 
 
 from .. import handler
+from ..stream_results import coalesce_stream_results
 from ... import entities
 from ... import plugin_diagnostics
 
@@ -132,7 +135,10 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginRunnerWrapper
-                async for result in self.ap.agent_run_orchestrator.run_from_query(query):
+                results = self.ap.agent_run_orchestrator.run_from_query(query)
+                if is_stream:
+                    results = coalesce_stream_results(results)
+                async for result in results:
                     has_result = True
                     self._check_response_size(result)
 
@@ -148,6 +154,11 @@ class ChatMessageHandler(handler.MessageHandler):
                             }
                         )
                         result.attachments = attachments
+
+                    if is_stream and result.tool_calls:
+                        # A model round ending in tool calls does not end the
+                        # reply. Keep the native stream open for the answer.
+                        result = result.model_copy(update={'is_final': False})
 
                     result.resp_message_id = str(resp_message_id)
 
@@ -192,6 +203,11 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     if is_stream:
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                        if result.is_final and not result.tool_calls:
+                            # Native adapters release their card on completion.
+                            # A distinct later message needs a fresh card identity.
+                            is_create_card = False
+                            resp_message_id = uuid.uuid4()
 
                 # Log final summary after streaming completes
                 if is_stream:
@@ -224,14 +240,20 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Handle specific runner errors with appropriate messages
                 if isinstance(e, RunnerNotFoundError):
-                    user_notice = f'Agent runner not found: {e.runner_id}'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-found-hint', 'Agent runner not found: {runner}', runner=e.runner_id
+                    )
                 elif isinstance(e, RunnerNotAuthorizedError):
-                    user_notice = 'Agent runner not authorized for this pipeline'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                    )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:
-                        user_notice = 'Agent runner temporarily unavailable. Please try again.'
+                        user_notice = pipeline_notice(
+                            query, 'runner-unavailable-hint', 'Agent runner temporarily unavailable. Please try again.'
+                        )
                     else:
-                        user_notice = 'Agent runner execution failed.'
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
                     # Use existing exception handling
                     exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
@@ -239,7 +261,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     if exception_handling == 'show-error':
                         user_notice = f'{e}'
                     elif exception_handling == 'show-hint':
-                        user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
                     else:  # hide
                         user_notice = None
 

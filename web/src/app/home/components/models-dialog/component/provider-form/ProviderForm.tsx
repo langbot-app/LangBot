@@ -1,3 +1,4 @@
+import LoadErrorState from '@/components/LoadErrorState';
 import { useEffect, useState, useRef } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
@@ -270,9 +271,7 @@ export default function ProviderForm({
             <LoadingSpinner text={t('common.loading')} />
           </div>
         ) : (
-          <p role="alert" className="py-8 text-sm text-destructive">
-            {t('models.loadError')}
-          </p>
+          <LoadErrorState compact title={t('models.loadError')} />
         )}
         <DialogFooter>
           {loadState === 'error' && (

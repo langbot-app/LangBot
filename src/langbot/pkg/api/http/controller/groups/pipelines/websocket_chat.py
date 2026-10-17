@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from ......i18n import language, t
+from ......i18n.workspace import get_workspace_language
+
 import asyncio
 import datetime
 import json
@@ -217,8 +220,9 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             try:
                 request_context, token = await self._authenticate_websocket()
             except Exception:
-                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Unauthorized'}))
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': t('Unauthorized')}))
                 return
+            language.set(await get_workspace_language(self.ap, request_context.workspace_uuid))
             session_type = quart.websocket.args.get('session_type', 'person')
             if session_type not in ['person', 'group']:
                 await quart.websocket.send(
@@ -229,7 +233,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             try:
                 websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
                 if websocket_adapter is None:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Pipeline not found'}))
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': t('Pipeline not found')}))
                     return
 
                 connection = await ws_connection_manager.add_connection(
@@ -294,7 +298,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             except Exception:
                 logger.error('Dashboard WebSocket connection error', exc_info=True)
                 try:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Internal server error'}))
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': t('Internal server error')}))
                 except Exception:
                     pass
 
@@ -419,7 +423,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                         try:
                             request_context = await self._revalidate_websocket_authorization(request_context, token)
                         except Exception:
-                            await connection.send_queue.put({'type': 'error', 'message': 'Unauthorized'})
+                            await connection.send_queue.put({'type': 'error', 'message': t('Unauthorized')})
                             break
                         await websocket_adapter.handle_websocket_message(connection, data)
                     elif message_type == 'disconnect':
@@ -427,7 +431,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     else:
                         logger.warning(f'Unknown WebSocket message type: {message_type}')
                 except json.JSONDecodeError:
-                    await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
+                    await connection.send_queue.put({'type': 'error', 'message': t('Invalid JSON format')})
 
         except Exception:
             logger.error('Dashboard WebSocket receive error', exc_info=True)

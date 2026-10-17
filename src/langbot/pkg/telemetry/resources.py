@@ -29,8 +29,8 @@ import json
 import typing
 
 MAX_ITEMS_PER_LIST = 64
-MAX_NAME_CHARS = 160
-MAX_RESOURCES_BYTES = 8 * 1024
+MAX_NAME_CHARS = 512
+MAX_RESOURCES_BYTES = 32 * 1024
 
 _resources: contextvars.ContextVar[dict[str, typing.Any] | None] = contextvars.ContextVar(
     'telemetry_resources', default=None

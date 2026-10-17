@@ -402,7 +402,7 @@ box:
         workspace_quota_mb: 0
         readiness_cache_sec: 15
     local:
-        profile: 'default'
+        profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
@@ -452,3 +452,20 @@ space:
     # Complete execution records are batched as {"records": [...]}; records are
     # removed from the buffer only once the sender accepted them.
     telemetry_flush_seconds: 180
+
+# Host-owned LLM policy. Models/calls may override through extra_args.request_policy.
+llm_request_policy:
+    retries: 0
+    total_timeout: 300
+    first_event_timeout: 120
+    stream_idle_timeout: 120
+    connect_timeout: 10
+    read_timeout: 120
+    write_timeout: 30
+    pool_timeout: 10
+    backoff_base: 0.5
+    backoff_max: 8
+    attribution: true
+    # Optional: x-session-id, x-litellm-session-id, x-langbot-conversation-id.
+    # OpenRouter uses x-session-id automatically; other providers default to none.
+    conversation_header: null

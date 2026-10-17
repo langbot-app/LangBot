@@ -984,10 +984,10 @@ async def test_monitoring_json_casts_are_limited_to_journal_metadata() -> None:
     from langbot.pkg.entity.persistence.agent_run import AgentRun
     from langbot.pkg.entity.persistence.event_log import EventLog
 
-    for column in (AgentRun.metadata_json, EventLog.metadata_json):
+    for column in (AgentRun.metadata_json, EventLog.metadata_json, EventLog.input_json):
         statement = sa.select(sa.cast(column, sa.JSON)['status'].as_string())
         _validate_scoped_statement_call((statement,), {})
-    for column in (AgentRun.authorization_json, EventLog.input_json, sa.literal('{}')):
+    for column in (AgentRun.authorization_json, sa.literal('{}')):
         with pytest.raises(ScopedSessionTransactionError, match='casts'):
             _validate_scoped_statement_call((sa.select(sa.cast(column, sa.JSON)),), {})
 

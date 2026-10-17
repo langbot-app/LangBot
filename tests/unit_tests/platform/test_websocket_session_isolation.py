@@ -596,7 +596,8 @@ def test_widget_sends_stable_session_id_to_all_conversation_endpoints():
     assert 'window.sessionStorage' in widget
     assert 'window.localStorage' not in widget
     assert 'session_id=' in widget
-    assert widget.count('encodeURIComponent(state.sessionId)') >= 3
+    assert widget.count('encodeURIComponent(state.sessionId)') >= 2
+    assert 'endpoint.searchParams.set("session_id", state.sessionId)' in widget
     assert 'loadHistory(true)' in widget
     assert 'messageVersion !== state.messageVersion' in widget
     assert 'scheduleHistoryReload();' in widget

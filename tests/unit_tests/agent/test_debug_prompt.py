@@ -27,6 +27,7 @@ from langbot.pkg.agent.runner.host_models import AgentBinding, AgentEventEnvelop
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot.pkg.agent.runner.session_registry import get_session_registry
+from langbot.pkg.api.http.service.model import LLMModelsService
 from langbot.pkg.api.http.context import (
     ExecutionContext,
     PrincipalContext,
@@ -151,6 +152,7 @@ async def harness():
         runner_registry=ScopedRunnerRegistry(),
     )
     ap.plugin_connector = PromptPullConnector(ap)
+    ap.llm_model_service = LLMModelsService(ap)
     ap.agent_run_orchestrator = AgentRunOrchestrator(ap, ap.runner_registry)
     ap.agent_service = AgentService(ap)
     try:
@@ -315,4 +317,4 @@ async def test_non_debug_query_keeps_effective_prompt_instead_of_static_config(h
         assert query.prompt is original
         assert pulled == [message.model_dump(mode='json') for message in original.messages]
     else:
-        assert pulled == []
+        assert pulled == [Message(**message).model_dump(mode='json') for message in DEFAULT_PROMPT]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .....i18n import t
+
 import asyncio
 import contextlib
 import json
@@ -45,20 +47,20 @@ def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> q
                 if isinstance(exc, RunnerExecutionError):
                     code, message = exc.error_code or 'runner_execution_failed', exc.message
                 elif isinstance(exc, RunnerNotFoundError):
-                    code, message = 'runner_not_found', 'The configured Agent runner is unavailable'
+                    code, message = 'runner_not_found', t('Agent runner temporarily unavailable. Please try again.')
                 elif isinstance(exc, RunnerNotAuthorizedError):
-                    code, message = 'runner_not_authorized', 'The configured Agent runner is not authorized'
+                    code, message = 'runner_not_authorized', t('Agent runner not authorized for this pipeline.')
                 elif isinstance(exc, RunnerProtocolError):
-                    code, message = 'runner_protocol_error', 'The Agent runner returned an invalid response'
+                    code, message = 'runner_protocol_error', t('The Agent runner returned an invalid response.')
                 elif isinstance(exc, ValueError):
                     code, message = 'invalid_request', str(exc)
                 elif isinstance(exc, RunnerError):
-                    code, message = 'runner_error', 'The Agent runner could not complete this test'
+                    code, message = 'runner_error', t('Agent runner execution failed.')
                 else:
                     logger = getattr(application, 'logger', None)
                     if logger is not None:
                         logger.exception('Agent debug stream execution failed')
-                    code, message = 'runner_error', 'The Agent debug execution failed'
+                    code, message = 'runner_error', t('Agent runner execution failed.')
                 await queue.put({'kind': 'error', 'code': code, 'msg': message})
 
         task = asyncio.create_task(execute())

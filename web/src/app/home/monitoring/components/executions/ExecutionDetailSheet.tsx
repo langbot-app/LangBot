@@ -1,3 +1,4 @@
+import LoadErrorState from '@/components/LoadErrorState';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -20,14 +21,14 @@ import type {
   ExecutionRow,
   ExecutionSection,
 } from '@/app/infra/entities/api/monitoring-executions';
-import { ExecutionValue as Value } from './ExecutionValue';
+import { ExecutionValue as Value, hasExecutionValue } from './ExecutionValue';
 import { formatRunDuration } from '@/app/home/agents/components/processor-run-timing';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
   executionKindLabel,
+  ExecutionKindBadge,
   executionProcessorLabel,
   executionStatusLabel,
-  executionStatusVariant,
 } from './ExecutionTable';
 
 export type ExecutionSelection = Pick<ExecutionRow, 'id'> & {
@@ -35,6 +36,34 @@ export type ExecutionSelection = Pick<ExecutionRow, 'id'> & {
 };
 
 const mainSections: ExecutionSection[] = ['inputs', 'outputs', 'deliveries'];
+
+// Keep transport metadata in the payload disclosure, not in the message body.
+function messageBody(value: unknown): unknown {
+  if (typeof value === 'string') {
+    if (/^\s*[\[{]/.test(value)) {
+      try {
+        return messageBody(JSON.parse(value));
+      } catch {
+        /* Plain text. */
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value))
+    return value.map(messageBody).filter((item) => item != null && item !== '');
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Record<string, unknown>;
+  if (
+    ['Image', 'File', 'Voice', 'At', 'AtAll', 'Quote'].includes(
+      String(data.type),
+    )
+  )
+    return value;
+  for (const key of ['text', 'content', 'message_chain', 'message', 'root']) {
+    if (data[key] != null) return messageBody(data[key]);
+  }
+  return null;
+}
 const secondarySections: ExecutionSection[] = [
   'related',
   'conversation',
@@ -65,13 +94,19 @@ export default function ExecutionDetailSheet({
   const [refresh, setRefresh] = useState(0);
   const request = useRef(0);
   const identity = `${workspace}:${row?.source}:${row?.id}`;
+  const requestedIdentity = useRef('');
   const [loadedIdentity, setLoadedIdentity] = useState('');
   const visible = loadedIdentity === identity ? detail : null;
   const id = row?.id;
   const source = row?.source;
   useEffect(() => {
     const version = ++request.current;
-    setDetail(null);
+    // Refresh the current trace in place so its scroll position and expanded
+    // disclosures survive polling. Only a different selection starts empty.
+    if (requestedIdentity.current !== identity) {
+      setDetail(null);
+      requestedIdentity.current = identity;
+    }
     setError(false);
     setSectionError(null);
     setBusy(null);
@@ -157,7 +192,7 @@ export default function ExecutionDetailSheet({
             {executionProcessorLabel(related)} ·{' '}
             {executionKindLabel(related, t)}
           </span>
-          <Badge variant={executionStatusVariant(related.status_group)}>
+          <Badge status={related.status_group}>
             {executionStatusLabel(related, t)}
           </Badge>
         </Button>
@@ -169,6 +204,7 @@ export default function ExecutionDetailSheet({
       'deliveries',
       'conversation',
     ].includes(section);
+    const body = messageBody(item.content);
     const title = content
       ? [
           item.actor_name || item.actor_id,
@@ -188,7 +224,7 @@ export default function ExecutionDetailSheet({
             item.id,
         );
     return (
-      <div className="min-w-0 space-y-2 rounded-lg border p-3">
+      <div className="min-w-0 space-y-3 rounded-lg border bg-background p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="break-all">{title}</span>
           <span>
@@ -199,20 +235,25 @@ export default function ExecutionDetailSheet({
                 : ''}
           </span>
           {item.status && (
-            <Badge
-              variant={executionStatusVariant(
-                ['error', 'failed'].includes(item.status)
-                  ? 'failed'
-                  : item.status,
+            <Badge status={item.status}>
+              {t(
+                `monitoring.execution.status.${['success', 'delivered'].includes(item.status) ? 'completed' : item.status}`,
+                { defaultValue: item.status },
               )}
-            >
-              {item.status}
             </Badge>
           )}
         </div>
         {content ? (
           <>
-            <Value value={item.content} />
+            <div className="text-sm leading-7">
+              {hasExecutionValue(body) ? (
+                <Value value={body} />
+              ) : (
+                <p className="text-muted-foreground">
+                  {t('monitoring.unified.noRecords')}
+                </p>
+              )}
+            </div>
             <Value value={item.attachments} />
             {item.origin === 'generated' && section === 'conversation' && (
               <Badge variant="outline">{t('monitoring.unified.outputs')}</Badge>
@@ -222,9 +263,14 @@ export default function ExecutionDetailSheet({
                 {String(item.delivery.delivery_error)}
               </p>
             ) : null}
-            {Array.isArray(item.metadata?.routes) && (
-              <Value value={item.metadata.routes} />
-            )}
+            <details className="border-t pt-2">
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                {t('monitoring.unified.payload')}
+              </summary>
+              <div className="mt-3 max-h-80 overflow-auto rounded-md bg-muted/40 p-3">
+                <Value value={item} />
+              </div>
+            </details>
           </>
         ) : (
           <>
@@ -273,9 +319,11 @@ export default function ExecutionDetailSheet({
           <div key={`${item.id}-${i}`}>{renderItem(section, item)}</div>
         ))}
         {sectionError === section && (
-          <p role="alert" className="text-sm text-destructive">
-            {t('monitoring.execution.detail.loadError')}
-          </p>
+          <LoadErrorState
+            compact
+            title={t('monitoring.execution.detail.loadError')}
+            onRetry={() => loadMore(section)}
+          />
         )}
         {page.has_more && (
           <Button
@@ -291,12 +339,21 @@ export default function ExecutionDetailSheet({
     );
     const title = `${t(`monitoring.unified.${section}`)} (${page.items.length}${page.has_more ? '+' : ''})`;
     return primary ? (
-      <section key={section}>
-        <h3 className="text-sm font-semibold">{title}</h3>
+      <section key={section} className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
+            {mainSections.indexOf(section) + 1}
+          </span>
+          {title}
+        </h3>
         {body}
       </section>
     ) : (
-      <details key={section} className="rounded-lg border p-3">
+      <details
+        key={section}
+        open={section === 'errors' ? true : undefined}
+        className={`rounded-lg border p-3 ${section === 'errors' ? 'border-red-500/25 bg-red-500/5' : ''}`}
+      >
         <summary className="cursor-pointer text-sm font-medium">
           {title}
         </summary>
@@ -341,28 +398,34 @@ export default function ExecutionDetailSheet({
                 size="icon"
                 disabled={loading}
                 aria-label={t('monitoring.refreshData')}
+                title={
+                  error
+                    ? t('monitoring.execution.detail.loadError')
+                    : t('monitoring.refreshData')
+                }
                 onClick={() => setRefresh((value) => value + 1)}
               >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? 'animate-spin' : ''} ${error ? 'text-destructive' : ''}`}
+                />
               </Button>
             </div>
-            {loading && <Skeleton className="h-36 w-full" />}
-            {error && (
-              <p role="alert" className="text-destructive">
-                {t('monitoring.execution.detail.loadError')}
-              </p>
+            {loading && !visible && <Skeleton className="h-36 w-full" />}
+            {error && !visible && (
+              <LoadErrorState
+                title={t('monitoring.execution.detail.loadError')}
+                onRetry={() => setRefresh((value) => value + 1)}
+              />
             )}
             {record && (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={executionStatusVariant(record.status_group)}>
+                  <Badge status={record.status_group}>
                     {executionStatusLabel(record, t)}
                   </Badge>
-                  <Badge variant="outline">
-                    {executionKindLabel(record, t)}
-                  </Badge>
+                  <ExecutionKindBadge row={record} />
                   {record.debug && (
-                    <Badge variant="secondary">
+                    <Badge status="debug">
                       {t('monitoring.execution.debug')}
                     </Badge>
                   )}
@@ -383,11 +446,50 @@ export default function ExecutionDetailSheet({
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
-                {record.status_reason && (
-                  <p className="rounded-md bg-muted p-3 text-sm">
-                    {record.status_reason}
-                  </p>
-                )}
+                <div className="grid grid-cols-3 divide-x rounded-lg border bg-muted/20">
+                  <div className="space-y-1 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t('monitoring.execution.detail.duration')}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {record.duration_ms != null
+                        ? formatRunDuration(record.duration_ms)
+                        : '—'}
+                    </p>
+                  </div>
+                  <div className="space-y-1 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t('monitoring.llmCalls.totalTokens')}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {record.usage?.total_tokens?.toLocaleString() ?? '—'}
+                    </p>
+                  </div>
+                  <div className="space-y-1 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t('monitoring.unified.deliveries')}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {visible?.pages.deliveries?.items.length ?? 0}
+                      {visible?.pages.deliveries?.has_more ? '+' : ''}
+                    </p>
+                  </div>
+                </div>
+                {record.status_reason &&
+                  !['stop', 'completed', 'success'].includes(
+                    record.status_reason,
+                  ) && (
+                    <p className="rounded-md bg-muted p-3 text-sm">
+                      {record.status_reason
+                        .split('; ')
+                        .map((reason) =>
+                          reason === 'failure_reason_not_recorded'
+                            ? t('common.failureReasonNotRecorded')
+                            : reason,
+                        )
+                        .join('; ')}
+                    </p>
+                  )}
                 {mainSections.map((section) => renderSection(section, true))}
                 {secondarySections.map((section) => renderSection(section))}
                 <details className="rounded-lg border p-3">
