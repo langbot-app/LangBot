@@ -125,7 +125,7 @@ def fake_bot_app():
             'webhook_url': 'https://example.com/webhook/test-bot-uuid',
         }
     )
-    app.bot_service.create_bot = AsyncMock(return_value={'uuid': 'new-bot-uuid'})
+    app.bot_service.create_bot = AsyncMock(return_value='new-bot-uuid')
     app.bot_service.update_bot = AsyncMock(return_value={})
     app.bot_service.delete_bot = AsyncMock()
     app.bot_service.list_event_logs = AsyncMock(return_value=([{'uuid': 'log-1', 'message': 'test log'}], 1))
@@ -179,6 +179,11 @@ def fake_bot_app():
     return app
 
 
+@pytest.fixture(autouse=True)
+def reset_service_calls(fake_bot_app):
+    fake_bot_app.bot_service.reset_mock()
+
+
 @pytest.fixture(scope='module')
 async def quart_test_client(fake_bot_app, http_controller_cls):
     """Create Quart test client (module scope to avoid route re-registration)."""
@@ -211,7 +216,7 @@ class TestBotEndpoints:
         ]
 
     @pytest.mark.asyncio
-    async def test_create_bot_success(self, quart_test_client):
+    async def test_create_bot_success(self, quart_test_client, fake_bot_app):
         """POST /api/v1/platform/bots creates new bot."""
         response = await quart_test_client.post(
             '/api/v1/platform/bots',
@@ -224,8 +229,17 @@ class TestBotEndpoints:
         assert data['code'] == 0
         assert 'uuid' in data['data']
 
+        called = fake_bot_app.bot_service.create_bot
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == (
+            {'name': 'New Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline'},
+        )
+        assert called.await_args.kwargs == {}
+        assert data['data'] == {'uuid': 'new-bot-uuid'}
+
     @pytest.mark.asyncio
-    async def test_get_single_bot_success(self, quart_test_client):
+    async def test_get_single_bot_success(self, quart_test_client, fake_bot_app):
         """GET /api/v1/platform/bots/{uuid} returns bot with runtime info."""
         response = await quart_test_client.get(
             '/api/v1/platform/bots/test-bot-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -236,8 +250,21 @@ class TestBotEndpoints:
         assert data['code'] == 0
         assert 'bot' in data['data']
 
+        called = fake_bot_app.bot_service.get_runtime_bot_info
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid',)
+        assert called.await_args.kwargs == {'include_secret': True}
+        assert data['data']['bot'] == {
+            'uuid': 'test-bot-uuid',
+            'name': 'Test Bot',
+            'platform': 'telegram',
+            'pipeline_uuid': 'test-pipeline-uuid',
+            'webhook_url': 'https://example.com/webhook/test-bot-uuid',
+        }
+
     @pytest.mark.asyncio
-    async def test_update_bot_success(self, quart_test_client):
+    async def test_update_bot_success(self, quart_test_client, fake_bot_app):
         """PUT /api/v1/platform/bots/{uuid} updates bot."""
         response = await quart_test_client.put(
             '/api/v1/platform/bots/test-bot-uuid',
@@ -249,8 +276,14 @@ class TestBotEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
 
+        called = fake_bot_app.bot_service.update_bot
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid', {'name': 'Updated Bot'})
+        assert called.await_args.kwargs == {}
+
     @pytest.mark.asyncio
-    async def test_delete_bot_success(self, quart_test_client):
+    async def test_delete_bot_success(self, quart_test_client, fake_bot_app):
         """DELETE /api/v1/platform/bots/{uuid} deletes bot."""
         response = await quart_test_client.delete(
             '/api/v1/platform/bots/test-bot-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -258,13 +291,20 @@ class TestBotEndpoints:
 
         assert response.status_code == 200
 
+        called = fake_bot_app.bot_service.delete_bot
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid',)
+        assert called.await_args.kwargs == {}
+        assert (await response.get_json())['code'] == 0
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestBotLogsEndpoint:
     """Tests for bot logs endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_bot_logs_success(self, quart_test_client):
+    async def test_get_bot_logs_success(self, quart_test_client, fake_bot_app):
         """POST /api/v1/platform/bots/{uuid}/logs returns logs."""
         response = await quart_test_client.post(
             '/api/v1/platform/bots/test-bot-uuid/logs',
@@ -277,6 +317,13 @@ class TestBotLogsEndpoint:
         assert data['code'] == 0
         assert 'logs' in data['data']
         assert 'total_count' in data['data']
+
+        called = fake_bot_app.bot_service.list_event_logs
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid', -1, 10)
+        assert called.await_args.kwargs == {}
+        assert data['data'] == {'logs': [{'uuid': 'log-1', 'message': 'test log'}], 'total_count': 1}
 
     @pytest.mark.asyncio
     async def test_viewer_can_read_ordinary_bot_logs(self, quart_test_client, fake_bot_app):
@@ -372,7 +419,7 @@ class TestBotSendMessageEndpoint:
     """Tests for bot send message endpoint."""
 
     @pytest.mark.asyncio
-    async def test_send_message_success(self, quart_test_client):
+    async def test_send_message_success(self, quart_test_client, fake_bot_app):
         """POST /api/v1/platform/bots/{uuid}/send_message sends message."""
         response = await quart_test_client.post(
             '/api/v1/platform/bots/test-bot-uuid/send_message',
@@ -388,6 +435,12 @@ class TestBotSendMessageEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert data['data']['sent'] is True
+
+        called = fake_bot_app.bot_service.send_message
+        called.assert_awaited_once()
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid', 'person', 'user123', [{'type': 'text', 'text': 'Hello'}])
+        assert called.await_args.kwargs == {}
 
     @pytest.mark.asyncio
     async def test_send_message_missing_target_type(self, quart_test_client):
