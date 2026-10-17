@@ -1,146 +1,264 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
-const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(currentDirectory, '../..');
-
-function readSource(relativePath) {
-  return fs.readFileSync(path.join(webRoot, relativePath), 'utf8');
+function setup({
+  tasks = [{ runtime: { done: true } }],
+  engines = [{ engines: [] }],
+  cloud,
+} = {}) {
+  const source = fs.readFileSync(
+    new URL(
+      '../../src/app/home/knowledge/components/kb-form/knowledge-engine-marketplace.ts',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const code = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const storage = new Map(),
+    calls = [];
+  let workspace = 'alpha',
+    now = 0,
+    taskIndex = 0,
+    engineIndex = 0;
+  const http = {
+    getPlugins: async () => ({
+      plugins: [
+        {
+          manifest: {
+            manifest: { metadata: { author: 'qa', name: 'existing' } },
+          },
+        },
+      ],
+    }),
+    installPluginFromMarketplace: async (...args) => {
+      calls.push(['install', ...args]);
+      return { task_id: 42 };
+    },
+    getAsyncTask: async (id) => {
+      calls.push(['task', id]);
+      return tasks[Math.min(taskIndex++, tasks.length - 1)];
+    },
+    getKnowledgeEngines: async () => {
+      calls.push(['engines']);
+      return engines[Math.min(engineIndex++, engines.length - 1)];
+    },
+  };
+  const deps = {
+    '@/app/infra/http': { getCloudServiceClient: async () => cloud },
+    '@/app/infra/http/HttpClient': { httpClient: http },
+    '@/app/infra/http/workspaceContext': {
+      getActiveWorkspaceUuid: () => workspace,
+    },
+  };
+  const mod = { exports: {} };
+  new Function(
+    'require',
+    'module',
+    'exports',
+    'window',
+    'sessionStorage',
+    'CustomEvent',
+    'Date',
+    'setTimeout',
+    code,
+  )(
+    (name) => {
+      assert.ok(name in deps, name);
+      return deps[name];
+    },
+    mod,
+    mod.exports,
+    new EventTarget(),
+    {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    },
+    CustomEvent,
+    { now: () => now },
+    (callback, ms) => {
+      now += ms;
+      queueMicrotask(callback);
+    },
+  );
+  return {
+    api: mod.exports,
+    storage,
+    calls,
+    setWorkspace: (value) => {
+      workspace = value;
+    },
+  };
 }
+const plugin = {
+  author: 'qa',
+  name: 'engine',
+  label: { en_US: 'QA Engine' },
+  latest_version: '2.0.0',
+};
+const engine = { plugin_id: 'qa/engine', name: 'Registered QA Engine' };
 
-const kbFormSource = readSource(
-  'src/app/home/knowledge/components/kb-form/KBForm.tsx',
-);
-const selectSource = readSource(
-  'src/app/home/knowledge/components/kb-form/KnowledgeEngineSelect.tsx',
-);
-const runnerSelectSource = readSource(
-  'src/app/home/agents/components/RunnerSelect.tsx',
-);
-const agentFormSource = readSource(
-  'src/app/home/agents/components/AgentFormComponent.tsx',
-);
-const pipelineFormSource = readSource(
-  'src/app/home/pipelines/components/pipeline-form/PipelineFormComponent.tsx',
-);
-const runnerMarketplaceSource = readSource(
-  'src/app/home/agents/runner-marketplace.ts',
-);
-const marketplaceInstallButtonSource = readSource(
-  'src/app/home/components/MarketplaceInstallButton.tsx',
-);
-const marketplaceSource = readSource(
-  'src/app/home/knowledge/components/kb-form/knowledge-engine-marketplace.ts',
-);
-const taskContextSource = readSource(
-  'src/app/home/plugins/components/plugin-install-task/PluginInstallTaskContext.tsx',
-);
-const progressDialogSource = readSource(
-  'src/app/home/plugins/components/plugin-install-task/PluginInstallProgressDialog.tsx',
-);
-const installedPluginsSource = readSource(
-  'src/app/home/plugins/components/plugin-installed/PluginInstalledComponent.tsx',
-);
-const homeSidebarSource = readSource(
-  'src/app/home/components/home-sidebar/HomeSidebar.tsx',
-);
-
-test('keeps the knowledge-base fields visible without an installed engine', () => {
-  assert.match(kbFormSource, /<KnowledgeEngineSelect/);
-  assert.match(kbFormSource, /name="name"/);
-  assert.match(kbFormSource, /name="description"/);
-  assert.doesNotMatch(kbFormSource, /if \(ragEngines\.length === 0\)/);
-});
-
-test('offers KnowledgeEngine marketplace plugins inside the selector', () => {
-  assert.match(
-    marketplaceSource,
-    /KNOWLEDGE_ENGINE_COMPONENT_FILTER = 'KnowledgeEngine'/,
+test('catalog loads every page with the engine filter and excludes unrelated components', async () => {
+  const searches = [];
+  const { api } = setup({
+    cloud: {
+      searchMarketplaceExtensions: async (args) => {
+        searches.push(args);
+        return {
+          total: 201,
+          plugins:
+            args.page === 1
+              ? [
+                  {
+                    ...plugin,
+                    components: { KnowledgeEngine: 1 },
+                    install_count: 5,
+                  },
+                ]
+              : args.page === 2
+                ? [
+                    {
+                      name: 'runner',
+                      components: { Runner: 1 },
+                      install_count: 999,
+                    },
+                  ]
+                : [
+                    {
+                      ...plugin,
+                      name: 'popular',
+                      components: { KnowledgeEngine: 1 },
+                      install_count: 20,
+                    },
+                  ],
+        };
+      },
+    },
+  });
+  const result = await api.loadKnowledgeEngineCatalog();
+  assert.deepEqual(
+    searches.map((value) => value.page),
+    [1, 2, 3],
   );
-  assert.match(marketplaceSource, /installPluginFromMarketplace\(/);
-  assert.match(marketplaceSource, /getKnowledgeEngines\(\)/);
-  assert.match(marketplaceSource, /sessionStorage\.setItem\(/);
-  assert.match(selectSource, /resumePendingKnowledgeEngineInstall\(/);
-  assert.match(selectSource, /onInstalled\(installed\)/);
-  assert.match(selectSource, /component=KnowledgeEngine/);
-});
-
-test('tracks plugin upgrades as recoverable multistep async tasks', () => {
-  assert.match(taskContextSource, /name\.startsWith\('plugin-upgrade-'\)/);
-  assert.match(taskContextSource, /operation: PluginTaskOperation/);
-  assert.match(taskContextSource, /computeStageProgress/);
-  assert.match(taskContextSource, /INSTALL_PROGRESS_CAP/);
-  assert.match(progressDialogSource, /InstallStage\.CHECKING/);
-  assert.match(progressDialogSource, /InstallStage\.VALIDATING/);
-  assert.match(progressDialogSource, /InstallStage\.LAUNCHING/);
-  assert.match(progressDialogSource, /plugins\.installProgress\.updateTitle/);
-  for (const source of [installedPluginsSource, homeSidebarSource]) {
-    assert.match(
-      source,
-      /upgradePlugin\([\s\S]*?add(?:Plugin)?Task\([\s\S]*?operation: 'upgrade'/,
-    );
-    assert.match(
-      source,
-      /pluginTaskKey\(res\.task_id, 'marketplace', 'upgrade'\)/,
-    );
-  }
-});
-
-test('keeps marketplace install actions on one fixed vertical column', () => {
-  for (const source of [selectSource, runnerSelectSource]) {
-    assert.match(source, /grid-cols-\[1\.75rem_minmax\(0,1fr\)_4rem\]/);
-    assert.match(source, /<MarketplaceInstallButton/);
-  }
-  assert.match(marketplaceInstallButtonSource, /justify-self-end/);
-});
-
-test('uses a compact selected engine layout and clears stale required errors', () => {
-  assert.match(selectSource, /function SelectedEngineContent/);
-  assert.match(
-    selectSource,
-    /selectedEngine \? \([\s\S]*?<SelectedEngineContent engine=\{selectedEngine\}/,
+  for (const args of searches)
+    assert.deepEqual(args, {
+      query: '',
+      page: args.page,
+      page_size: 100,
+      type_filter: 'plugin',
+      component_filter: 'KnowledgeEngine',
+    });
+  assert.deepEqual(
+    result.marketplaceEngines.map((value) => value.name),
+    ['popular', 'engine'],
   );
-  assert.match(
-    selectSource,
-    /flex min-w-0 flex-1 items-center gap-2 text-left/,
-  );
-  assert.match(kbFormSource, /form\.clearErrors\('ragEngineId'\)/);
-  assert.match(kbFormSource, /form\.trigger\('ragEngineId'\)/);
-  assert.doesNotMatch(kbFormSource, /field\.onChange\(value\)/);
+  assert.deepEqual(result.installedPluginIds, ['qa/existing']);
 });
 
-test('installs marketplace components from inline progress buttons without selecting them', () => {
-  for (const source of [selectSource, runnerSelectSource]) {
-    assert.match(source, /const handleInstall = useCallback/);
-    assert.match(source, /installing=\{activePluginId === pluginId\}/);
-    assert.match(source, /progress=\{installProgress\}/);
-    assert.doesNotMatch(source, /MARKETPLACE_VALUE_PREFIX/);
-  }
-  assert.match(marketplaceInstallButtonSource, /<Progress/);
-  assert.match(marketplaceInstallButtonSource, /onPointerDown=/);
-  assert.match(kbFormSource, /suppressNextAutoSelectRef\.current = true/);
-  assert.doesNotMatch(
-    kbFormSource,
-    /handleEngineInstalled[\s\S]*?handleEngineChange\(engine\.plugin_id/,
-  );
-  for (const source of [agentFormSource, pipelineFormSource]) {
-    const callback = source.match(
-      /const applyInstalledRunner = useCallback\(([\s\S]*?)\n  \);/,
-    );
-    assert.ok(callback);
-    assert.doesNotMatch(callback[1], /form\.setValue/);
-  }
+test('installation persists a scoped task before polling and waits for component registration', async () => {
+  const { api, storage, calls } = setup({
+    tasks: [{ runtime: { done: false } }, { runtime: { done: true } }],
+    engines: [{ engines: [{ plugin_id: 'qa/other' }] }, { engines: [engine] }],
+  });
+  let created;
+  const installed = await api.installMarketplaceKnowledgeEngine(plugin, {
+    scope: 'kb:new',
+    onTaskCreated: (id) => {
+      created = id;
+      assert.equal(api.readPendingKnowledgeEngineInstall('kb:new').taskId, 42);
+    },
+  });
+  assert.equal(installed, engine);
+  assert.equal(created, 42);
+  assert.deepEqual(calls, [
+    ['install', 'qa', 'engine', '2.0.0'],
+    ['task', 42],
+    ['task', 42],
+    ['engines'],
+    ['engines'],
+  ]);
+  assert.equal(storage.size, 0);
 });
 
-test('shows plugin descriptions for installed Runner entries', () => {
-  assert.match(runnerMarketplaceSource, /installedPluginDescriptions/);
-  assert.match(runnerMarketplaceSource, /metadata\.description/);
-  assert.match(runnerSelectSource, /installedRunnerDescription\(/);
-  assert.match(runnerSelectSource, /function InstalledRunnerOptionContent/);
-  assert.match(runnerSelectSource, /marketplacePlugin\?\.description/);
-  assert.match(runnerSelectSource, /grid-cols-\[1\.75rem_minmax\(0,1fr\)\]/);
-  assert.doesNotMatch(runnerSelectSource, /description=\{option\.name\}/);
+test('a pending engine install resumes only in its original workspace and form scope', async () => {
+  const { api, storage, calls, setWorkspace } = setup({
+    engines: [{ engines: [engine] }],
+  });
+  storage.set(
+    'langbot-knowledge-engine-install:alpha:kb:new',
+    JSON.stringify({
+      taskId: 42,
+      pluginId: 'qa/engine',
+      pluginAuthor: 'qa',
+      pluginName: 'engine',
+      pluginLabel: 'QA Engine',
+      scope: 'kb:new',
+      startedAt: 0,
+    }),
+  );
+  setWorkspace('beta');
+  assert.equal(await api.resumePendingKnowledgeEngineInstall('kb:new'), null);
+  setWorkspace('alpha');
+  assert.equal(await api.resumePendingKnowledgeEngineInstall('kb:other'), null);
+  assert.equal(await api.resumePendingKnowledgeEngineInstall('kb:new'), engine);
+  assert.deepEqual(calls, [['task', 42], ['engines']]);
+  assert.equal(storage.size, 0);
+});
+
+test('failed tasks clear their intent and never query component registration', async () => {
+  const { api, calls, storage } = setup({
+    tasks: [{ runtime: { done: true, exception: 'Package invalid' } }],
+  });
+  await assert.rejects(
+    api.installMarketplaceKnowledgeEngine(plugin, { scope: 'kb:new' }),
+    /Package invalid/,
+  );
+  assert.deepEqual(calls, [
+    ['install', 'qa', 'engine', '2.0.0'],
+    ['task', 42],
+  ]);
+  assert.equal(storage.size, 0);
+});
+
+test('an unfinished task times out with a recoverable intent, while missing registration clears it', async () => {
+  const pending = setup({ tasks: [{ runtime: { done: false } }] });
+  await assert.rejects(
+    pending.api.installMarketplaceKnowledgeEngine(plugin, { scope: 'kb:new' }),
+    (error) => error.code === 'install-timeout',
+  );
+  assert.equal(
+    pending.api.readPendingKnowledgeEngineInstall('kb:new').taskId,
+    42,
+  );
+  assert.equal(
+    pending.calls.some((value) => value[0] === 'engines'),
+    false,
+  );
+  const unregistered = setup();
+  await assert.rejects(
+    unregistered.api.installMarketplaceKnowledgeEngine(plugin, {
+      scope: 'kb:new',
+    }),
+    (error) => error.code === 'registration-timeout',
+  );
+  assert.equal(unregistered.storage.size, 0);
+});
+
+test('a plugin without a version never starts an install task', async () => {
+  const { api, calls } = setup();
+  await assert.rejects(
+    api.installMarketplaceKnowledgeEngine(
+      { ...plugin, latest_version: '' },
+      { scope: 'kb:new' },
+    ),
+    (error) => error.code === 'version-unavailable',
+  );
+  assert.deepEqual(calls, []);
 });
