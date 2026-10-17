@@ -123,6 +123,7 @@ class TestExtractDepsMetadata:
 
         # Should find requirements.txt in subdirectory
         assert task_context.metadata['deps_total'] == 2
+        assert task_context.metadata['deps_list'] == ['pytest', 'black']
 
     def test_archive_preview_rejects_extreme_compression_ratio(self):
         from langbot.pkg.plugin.connector import inspect_plugin_archive_metadata

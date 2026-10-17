@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from copy import deepcopy
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -132,6 +133,24 @@ class TestStateScopeHelpers:
         assert keys['subject'].startswith('subject:v2:')
         assert keys['runner'].startswith('runner:v2:')
         assert len(set(keys.values())) == len(keys)
+        for dimension, value in [
+            ('workspace_id', 'ws_other'),
+            ('bot_id', 'bot_other'),
+        ]:
+            other = deepcopy(event)
+            setattr(other, dimension, value)
+            for scope in VALID_STATE_SCOPES:
+                assert build_state_scope_key(scope, other, binding, descriptor) != keys[scope]
+        for scope, dimension, value in [
+            ('conversation', 'conversation_id', 'conv_other'),
+            ('conversation', 'thread_id', 'thread_other'),
+            ('actor', 'actor_id', 'user_other'),
+            ('subject', 'subject_id', 'msg_other'),
+        ]:
+            other = deepcopy(event)
+            owner = other.actor if scope == 'actor' else other.subject if scope == 'subject' else other
+            setattr(owner, dimension, value)
+            assert build_state_scope_key(scope, other, binding, descriptor) != keys[scope]
 
     def test_scope_key_missing_identity_returns_none(self):
         descriptor = make_descriptor()
