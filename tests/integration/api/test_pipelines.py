@@ -377,7 +377,31 @@ class TestPipelineExtensionsEndpoint:
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestPipelineDashboardWebSocket:
     @pytest.mark.asyncio
-    async def test_websocket_authenticates_before_registering(self, quart_test_client, fake_pipeline_app):
+    async def test_websocket_authenticates_before_registering(self, quart_test_client, fake_pipeline_app, monkeypatch):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        authenticated = False
+        original_authenticate = chat.WebSocketChatRouterGroup._authenticate_websocket
+        original_add = chat.ws_connection_manager.add_connection
+        proxy = fake_pipeline_app.platform_mgr.get_websocket_proxy_bot
+
+        async def authenticate(router):
+            nonlocal authenticated
+            result = await original_authenticate(router)
+            authenticated = True
+            return result
+
+        async def get_proxy(*_args, **_kwargs):
+            assert authenticated, 'Runtime lookup must follow authentication'
+            return proxy.return_value
+
+        async def add_connection(*args, **kwargs):
+            assert authenticated, 'Connection registration must follow authentication'
+            return await original_add(*args, **kwargs)
+
+        monkeypatch.setattr(chat.WebSocketChatRouterGroup, '_authenticate_websocket', authenticate)
+        monkeypatch.setattr(proxy, 'side_effect', get_proxy)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
         async with quart_test_client.websocket(
             '/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person',
             headers={'Origin': 'http://localhost'},
@@ -403,7 +427,13 @@ class TestPipelineDashboardWebSocket:
         fake_pipeline_app.platform_mgr.get_websocket_proxy_bot.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_websocket_rejects_non_auth_first_frame(self, quart_test_client):
+    async def test_websocket_rejects_non_auth_first_frame(self, quart_test_client, fake_pipeline_app, monkeypatch):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        proxy = fake_pipeline_app.platform_mgr.get_websocket_proxy_bot
+        proxy.reset_mock()
+        add_connection = AsyncMock(wraps=chat.ws_connection_manager.add_connection)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
         async with quart_test_client.websocket(
             '/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person',
             headers={'Origin': 'http://localhost'},
@@ -411,6 +441,9 @@ class TestPipelineDashboardWebSocket:
             await websocket.send(json.dumps({'type': 'message', 'message': []}))
             response = json.loads(await websocket.receive())
             assert response == {'type': 'error', 'message': 'Unauthorized'}
+
+        proxy.assert_not_awaited()
+        add_connection.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_websocket_rechecks_revocable_membership_before_each_message(
