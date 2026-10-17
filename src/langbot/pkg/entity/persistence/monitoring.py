@@ -40,6 +40,12 @@ class MonitoringMessage(Base):
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_messages_workspace_timestamp', 'workspace_uuid', 'timestamp'),
         sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_status_lease',
+            'workspace_uuid',
+            'status',
+            'execution_lease_expires_at',
+        ),
     )
 
 
