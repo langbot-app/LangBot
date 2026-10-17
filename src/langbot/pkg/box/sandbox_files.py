@@ -37,11 +37,9 @@ def outbox_script(
 
         def read_directory(fd, prefix='', depth=0):
             if depth > 8:
-                return
+                raise RuntimeError('Sandbox outbox exceeds the depth limit')
             with os.scandir(fd) as entries:
                 for entry in entries:
-                    if len(out) >= settings['max_files']:
-                        return
                     if budget['entries'] <= 0:
                         raise RuntimeError('Sandbox outbox exceeds the directory-entry limit')
                     budget['entries'] -= 1
@@ -71,6 +69,8 @@ def outbox_script(
                             continue
                         if not stat.S_ISREG(metadata.st_mode):
                             continue
+                        if len(out) >= settings['max_files']:
+                            raise RuntimeError('Sandbox outbox exceeds the file-count limit')
                         remaining = settings['max_total_bytes'] - budget['bytes']
                         if metadata.st_size > settings['max_file_bytes'] or metadata.st_size > remaining:
                             raise RuntimeError('Sandbox output attachment exceeds the export size limit')

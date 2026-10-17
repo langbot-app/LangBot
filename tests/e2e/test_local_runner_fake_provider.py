@@ -554,7 +554,14 @@ def _run_local_agent_probe(tmpdir: Path, probe):
             platform_utils.standalone_runtime = previous_standalone_runtime
             os.chdir(previous_cwd)
 
-    return asyncio.run(_run())
+    # Source installs resolve data from the checkout, not the current working
+    # directory. Scope the override to this probe, without leaking to other E2Es.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('LANGBOT_DATA_ROOT', str(tmpdir / 'data'))
+        # Do not replace pytest-asyncio's policy loop when this synchronous
+        # probe follows async integration tests in the same pytest process.
+        with asyncio.Runner(loop_factory=asyncio.new_event_loop) as runner:
+            return runner.run(_run())
 
 
 def test_local_runner_uses_host_fake_provider_and_persists_ledger(
@@ -1021,6 +1028,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
+    capfd,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
@@ -1092,6 +1100,8 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             assert ownership[-1] == '0 600', ownership
             if len(self.bindings) == 2:
                 assert ownership[0] == '0 700', ownership
+            with capfd.disabled():
+                print(f'Core uid={os.geteuid()}; LocalAgent Docker ownership: {ownership}', flush=True)
             return result
 
     async def probe(ap):
