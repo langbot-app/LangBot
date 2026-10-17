@@ -1118,6 +1118,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Query with query_id {query_id} not found',
                 )
 
+            from ..agent.runner.context_reset import reset_runner_context
+            from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
+            conversation_id = QueryEntryAdapter._build_conversation_context(query).conversation_id
+            async with self.ap.persistence_mgr.tenant_uow(action_context.workspace_uuid):
+                await reset_runner_context(
+                    self.ap.persistence_mgr, action_context.workspace_uuid, query.bot_uuid, conversation_id
+                )
             query.session.using_conversation = None
 
             return handler.ActionResponse.success(

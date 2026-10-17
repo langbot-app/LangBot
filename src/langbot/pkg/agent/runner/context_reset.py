@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import datetime
+import uuid
 
 import sqlalchemy as sa
 
@@ -12,6 +14,32 @@ HOST_RESET_RUNNER = '__langbot_context_reset__'
 
 def reset_scope(workspace, bot, conversation):
     return 'host-reset:' + hashlib.sha256(json.dumps([workspace, bot, conversation]).encode()).hexdigest()
+
+
+async def reset_runner_context(persistence, workspace, bot, conversation):
+    """Reset scoped Runner state and history visibility within the caller's transaction."""
+    await persistence.execute_async(
+        sa.delete(RunnerState).where(
+            RunnerState.workspace_id == workspace,
+            RunnerState.bot_id == bot,
+            RunnerState.conversation_id == conversation,
+            RunnerState.scope == 'conversation',
+        )
+    )
+    await persistence.execute_async(
+        sa.insert(RunnerState).values(
+            runner_id=HOST_RESET_RUNNER,
+            binding_identity=HOST_RESET_RUNNER,
+            scope='conversation',
+            scope_key=reset_scope(workspace, bot, conversation),
+            state_key='generation',
+            value_json=json.dumps(str(uuid.uuid4())),
+            workspace_id=workspace,
+            bot_id=bot,
+            conversation_id=conversation,
+            created_at=datetime.datetime.utcnow(),
+        )
+    )
 
 
 async def get_reset_generation(engine, workspace, bot, conversation):

@@ -60,7 +60,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             'Call this tool to send a message; Agent output text is not sent automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
-        ('message.*', 'friend.*', 'group.*', 'feedback.*'),
+        ('message.*', 'friend.*', 'group.*', 'feedback.*', 'interaction.submitted'),
         'reply_target',
     ),
     PlatformToolDefinition(

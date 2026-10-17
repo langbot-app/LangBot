@@ -234,7 +234,8 @@ class TestPreProcessorImageSegment:
     """Tests for image segment handling."""
 
     @pytest.mark.asyncio
-    async def test_image_with_vision_model(self):
+    @pytest.mark.parametrize('image_source', ['base64', 'url'])
+    async def test_image_with_vision_model(self, image_source):
         """Image should be included when model supports vision."""
         preproc = get_preproc_module()
 
@@ -268,7 +269,13 @@ class TestPreProcessorImageSegment:
         chain = platform_message.MessageChain(
             [
                 platform_message.Plain(text='look at this'),
-                platform_message.Image(base64='data:image/png;base64,abc123'),
+                platform_message.Image(
+                    **(
+                        {'base64': 'data:image/png;base64,abc123'}
+                        if image_source == 'base64'
+                        else {'url': 'https://cdn.example/image.png'}
+                    )
+                ),
             ]
         )
         query.message_chain = chain
@@ -278,6 +285,15 @@ class TestPreProcessorImageSegment:
         assert result.result_type == preproc.entities.ResultType.CONTINUE
         # User message should have content
         assert result.new_query.user_message.content is not None
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+
+        contents = [part.model_dump() for part in result.new_query.user_message.content]
+        attachments = QueryEntryAdapter._build_attachments(result.new_query, contents)
+        assert len(attachments) == 1
+        if image_source == 'url':
+            assert attachments[0]['url'] == 'https://cdn.example/image.png'
+        else:
+            assert attachments[0].get('content') or attachments[0].get('url')
 
     @pytest.mark.asyncio
     async def test_image_without_vision_model(self):
