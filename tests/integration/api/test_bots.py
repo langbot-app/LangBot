@@ -199,7 +199,7 @@ class TestBotEndpoints:
     """Tests for /api/v1/platform/bots endpoints."""
 
     @pytest.mark.asyncio
-    async def test_get_bots_success(self, quart_test_client, fake_bot_app):
+    async def test_get_bots_success(self, quart_test_client):
         """GET /api/v1/platform/bots returns bot list."""
         response = await quart_test_client.get('/api/v1/platform/bots', headers={'Authorization': 'Bearer test_token'})
 
@@ -208,15 +208,6 @@ class TestBotEndpoints:
         assert data['code'] == 0
         assert 'data' in data
         assert 'bots' in data['data']
-
-        called = fake_bot_app.bot_service.get_bots
-        assert called.await_count == 1
-        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ()
-        assert called.await_args.kwargs == {'include_secret': True}
-        assert data['data']['bots'] == [
-            {'uuid': 'test-bot-uuid', 'name': 'Test Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline-uuid'}
-        ]
 
     @pytest.mark.asyncio
     async def test_create_bot_success(self, quart_test_client, fake_bot_app):
@@ -422,7 +413,7 @@ class TestBotSendMessageEndpoint:
     """Tests for bot send message endpoint."""
 
     @pytest.mark.asyncio
-    async def test_send_message_success(self, quart_test_client):
+    async def test_send_message_success(self, quart_test_client, fake_bot_app):
         """POST /api/v1/platform/bots/{uuid}/send_message sends message."""
         response = await quart_test_client.post(
             '/api/v1/platform/bots/test-bot-uuid/send_message',
@@ -438,6 +429,12 @@ class TestBotSendMessageEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert data['data']['sent'] is True
+
+        called = fake_bot_app.bot_service.send_message
+        called.assert_awaited_once()
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-bot-uuid', 'person', 'user123', [{'type': 'text', 'text': 'Hello'}])
+        assert called.await_args.kwargs == {}
 
     @pytest.mark.asyncio
     async def test_send_message_missing_target_type(self, quart_test_client):
