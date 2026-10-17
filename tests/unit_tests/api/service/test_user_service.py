@@ -13,6 +13,7 @@ Source: src/langbot/pkg/api/http/service/user.py
 
 from __future__ import annotations
 
+import asyncio
 import pytest
 import jwt
 import datetime
@@ -28,6 +29,7 @@ from langbot.pkg.api.http.service.user import (
     UserService,
 )
 from langbot.pkg.entity.persistence.user import AccountSource, AccountStatus, User
+from langbot.pkg.entity.persistence.workspace import WorkspaceMembership, MembershipRole, MembershipStatus
 from langbot.pkg.entity.errors.account import (
     AccountEmailMismatchError,
     SpaceAccountBindingRequiredError,
@@ -269,6 +271,8 @@ class TestUserServiceGetUserByEmail:
         # Verify
         assert result is not None
         assert result.user == 'found@example.com'
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.whereclause.compare(User.normalized_email == 'found@example.com')
 
     async def test_get_user_by_email_not_found(self):
         """Returns None when user not found."""
@@ -327,6 +331,8 @@ class TestUserServiceGetUserBySpaceAccountUuid:
         # Verify
         assert result is not None
         assert result.space_account_uuid == 'space-uuid-123'
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.whereclause.compare(User.space_account_uuid == 'space-uuid-123')
 
     async def test_get_user_by_space_uuid_not_found(self):
         """Returns None when Space UUID not found."""
@@ -621,6 +627,16 @@ class TestUserServiceSetPassword:
             await service.set_password('haspass@example.com', 'new_password')
 
 
+def _space_user_write(persistence, operation, credentials):
+    persistence.execute_async.assert_awaited_once()
+    statement = persistence.execute_async.await_args.args[0]
+    assert getattr(statement, f'is_{operation}')
+    assert statement.table.name == User.__tablename__
+    values = statement.compile().params
+    assert {key: values.get(key) for key in credentials} == credentials
+    return statement, values
+
+
 class TestUserServiceCreateOrUpdateSpaceUser:
     """Tests for create_or_update_space_user method."""
 
@@ -657,7 +673,17 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         )
 
         # Verify - update was called and user returned
-        ap.persistence_mgr.execute_async.assert_called()
+        statement, values = _space_user_write(
+            ap.persistence_mgr,
+            'update',
+            {
+                'space_access_token': 'new_access_token',
+                'space_refresh_token': 'new_refresh_token',
+                'space_api_key': 'new_api_key',
+            },
+        )
+        assert statement.whereclause.compare(User.space_account_uuid == 'existing-space-uuid')
+        assert isinstance(values['space_access_token_expires_at'], datetime.datetime)
         assert updated_user.space_account_uuid == 'existing-space-uuid'
 
     async def test_cloud_login_updates_only_the_projected_space_account(self):
@@ -690,7 +716,23 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         )
 
         assert result is projected
-        persistence.execute_async.assert_awaited_once()
+        statement, values = _space_user_write(
+            persistence,
+            'update',
+            {
+                'space_access_token': 'access-token',
+                'space_refresh_token': 'refresh-token',
+                'space_api_key': 'api-key',
+            },
+        )
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(
+                User.uuid == 'projected-space-uuid',
+                User.space_account_uuid == 'projected-space-uuid',
+                User.source == AccountSource.CLOUD_PROJECTION.value,
+            )
+        )
+        assert isinstance(values['space_access_token_expires_at'], datetime.datetime)
 
     async def test_cloud_login_never_creates_an_unprojected_account(self):
         persistence = SimpleNamespace(execute_async=AsyncMock())
@@ -770,6 +812,20 @@ class TestUserServiceCreateOrUpdateSpaceUser:
 
         # Verify
         assert result.space_account_uuid == 'new-space-uuid'
+        _space_user_write(
+            ap.persistence_mgr,
+            'insert',
+            {
+                'user': 'newspace@example.com',
+                'normalized_email': 'newspace@example.com',
+                'password': '',
+                'account_type': 'space',
+                'space_account_uuid': 'new-space-uuid',
+                'space_access_token': 'access_token',
+                'space_refresh_token': 'refresh_token',
+                'space_api_key': 'api_key',
+            },
+        )
 
     async def test_create_or_update_space_user_already_initialized_reports_unknown_space_email(self):
         """Unknown Space email is distinct from an existing local Account collision."""
@@ -914,6 +970,17 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         # Verify
         assert result is not None
         assert result.space_account_uuid == 'noexpiry-uuid'
+        _space_user_write(
+            ap.persistence_mgr,
+            'insert',
+            {
+                'space_account_uuid': 'noexpiry-uuid',
+                'space_access_token': 'token',
+                'space_refresh_token': 'refresh',
+                'space_api_key': 'key',
+                'space_access_token_expires_at': None,
+            },
+        )
 
     async def test_bind_space_account_rejects_different_email(self):
         service = UserService(SimpleNamespace())
@@ -941,13 +1008,23 @@ class TestUserServiceCreateOrUpdateSpaceUser:
     async def test_get_workspace_owner_returns_user_object_from_core_connection_result(self):
         service = UserService(SimpleNamespace())
         owner = _create_mock_user('owner@example.com', password='pw')
-        service.ap.persistence_mgr = SimpleNamespace(
-            current_session=lambda: SimpleNamespace(scalar=AsyncMock(return_value=owner)),
-        )
+        session = SimpleNamespace(scalar=AsyncMock(return_value=owner))
+        service.ap.persistence_mgr = SimpleNamespace(current_session=lambda: session)
 
         resolved = await service.get_workspace_owner('workspace-1')
 
         assert resolved is owner
+        session.scalar.assert_awaited_once()
+        statement = session.scalar.await_args.args[0]
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(
+                WorkspaceMembership.workspace_uuid == 'workspace-1',
+                WorkspaceMembership.role == MembershipRole.OWNER.value,
+                WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
+                User.status == AccountStatus.ACTIVE.value,
+            )
+        )
+        assert statement.get_final_froms()[0].onclause.compare(WorkspaceMembership.account_uuid == User.uuid)
 
 
 class TestUserServiceLoginCapabilities:
@@ -980,4 +1057,5 @@ class TestUserServiceCreateUserLock:
 
         # Verify lock exists
         assert hasattr(service, '_create_user_lock')
-        assert service._create_user_lock is not None
+        assert isinstance(service._create_user_lock, asyncio.Lock)
+        assert not service._create_user_lock.locked()
