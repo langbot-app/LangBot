@@ -126,6 +126,87 @@ test('Space OAuth bootstraps a singleton before entering home', async ({
   expect(selectedWorkspaceHeaders).toContain('workspace-playwright');
 });
 
+test('support-admin launch keeps its Workspace scope without Account bootstrap', async ({
+  page,
+}) => {
+  const workspaceUuid = 'workspace-support-admin';
+  const currentWorkspaceRequests: {
+    workspace?: string;
+    authorization?: string;
+  }[] = [];
+  let accountBootstrapRequests = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/workspaces/current') {
+      currentWorkspaceRequests.push({
+        workspace: request.headers()['x-workspace-id'],
+        authorization: request.headers().authorization,
+      });
+    }
+  });
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    storage: {
+      langbot_active_workspace_uuid: 'workspace-from-another-account',
+    },
+    workspaces: [makeWorkspaceEntry(workspaceUuid, 'Support Workspace')],
+  });
+  await page.route('**/api/v1/user/space/callback', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          token: 'support-admin-token',
+          principal_type: 'support_admin',
+          workspace_uuid: workspaceUuid,
+        },
+      },
+    }),
+  );
+  await page.route('**/api/v1/workspaces/bootstrap', (route) => {
+    accountBootstrapRequests += 1;
+    return route.fulfill({ status: 403, json: { code: 403 } });
+  });
+  await page.route('**/api/v1/system/info', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          edition: 'cloud',
+          cloud_service_url: 'https://space.langbot.app',
+          wizard_status: 'none',
+          limitation: { max_bots: -1, max_pipelines: -1, max_extensions: -1 },
+        },
+      },
+    }),
+  );
+
+  await page.goto(
+    `/auth/space/callback#workspace_uuid=${workspaceUuid}&launch_assertion=support-launch`,
+  );
+
+  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
+  await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
+  expect(currentWorkspaceRequests.length).toBeGreaterThan(0);
+  for (const request of currentWorkspaceRequests) {
+    expect(request).toEqual({
+      workspace: workspaceUuid,
+      authorization: 'Bearer support-admin-token',
+    });
+  }
+  expect(accountBootstrapRequests).toBe(0);
+  expect(
+    await page.evaluate(() => ({
+      token: localStorage.getItem('token'),
+      principalType: localStorage.getItem('authPrincipalType'),
+      workspace: localStorage.getItem('langbot_active_workspace_uuid'),
+    })),
+  ).toEqual({
+    token: 'support-admin-token',
+    principalType: 'support_admin',
+    workspace: workspaceUuid,
+  });
+});
+
 test('Space OAuth sends a multi-Workspace Account to the chooser', async ({
   page,
 }) => {
