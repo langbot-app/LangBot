@@ -73,12 +73,8 @@ These settings do not belong in an application configuration.
 
 - The monitoring PostgreSQL unit regression is separately selected by the
   Migrations (PostgreSQL) job in `.github/workflows/test-migrations.yml`
-- Eight legacy-identity cross-repository cases require a sibling plugin-source
-  checkout named `langbot-plugins-411-migration`
-- The compiled CLI HTTP contract needs `LANGBOT_CLI_BIN` pointing to a real
-  `lbctl` binary from the separate `langbot-cli` repository
-- Embedded SeekDB has two slow tests and an optional `pyseekdb` dependency; a
-  missing dependency appears as one module-level skip before marker filtering
+- For plugin identity, compiled CLI and embedded SeekDB prerequisites, see
+  [the dependency contract setup in PR #2636](https://github.com/langbot-app/LangBot/pull/2636).
 
 These remaining prerequisites should be reported explicitly rather than treated
 as passing tests. The four chat-handler logging tests now initialize the normal
