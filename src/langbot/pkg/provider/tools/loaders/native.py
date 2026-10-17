@@ -747,10 +747,18 @@ class NativeToolLoader(loader.ToolLoader):
         return f'{str(base).rstrip("/")}/{relative}'
 
     async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
-        # Sandbox images built from a host rootfs may only ship `python3`, and a
-        # read-only /usr prevents creating a `python` shim inside the jail, so
-        # resolve the interpreter instead of assuming its name.
-        command = f'PYTHON_BIN=$(command -v python3 || command -v python); "$PYTHON_BIN" - <<\'PY\'\n{script}\nPY'
+        # Box file tools need Python 3 (f-strings, etc.). Prefer `python3` and
+        # never fall back to unversioned `python`, which may still be Python 2
+        # on host-rootfs nsjail mounts (LangBot #2603). Missing python3 yields a
+        # clear JSON error instead of a SyntaxError tool result.
+        command = (
+            'PYTHON_BIN=$(command -v python3 || true); '
+            'if [ -z "$PYTHON_BIN" ]; then '
+            "printf '%s\\n' '{\"ok\": false, \"error\": \"Python 3 interpreter not found in Box (python3 required for native file tools)\"}'; "
+            'exit 0; '
+            'fi; '
+            f'"$PYTHON_BIN" - <<\'PY\'\n{script}\nPY'
+        )
         result = await self.ap.box_service.execute_tool(
             {
                 'command': command,

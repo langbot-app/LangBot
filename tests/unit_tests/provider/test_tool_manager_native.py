@@ -866,7 +866,7 @@ async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch
 
 @pytest.mark.asyncio
 async def test_workspace_file_script_resolves_the_sandbox_interpreter():
-    """Sandboxes built from a host rootfs may only ship `python3`."""
+    """Native file tools must use python3 and never fall back to python2."""
 
     captured: dict = {}
 
@@ -892,5 +892,7 @@ async def test_workspace_file_script_resolves_the_sandbox_interpreter():
 
     assert result == {'ok': True}
     command = captured['command']
-    assert command.startswith('PYTHON_BIN=$(command -v python3 || command -v python)')
+    assert 'command -v python3 || true' in command
+    assert 'python3 required for native file tools' in command
     assert command.endswith(' - <<\'PY\'\nprint("x")\nPY')
+    assert '|| command -v python)' not in command
