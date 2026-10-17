@@ -46,4 +46,29 @@ def test_migrate_duplicate_routes_and_preserve_primary_and_disabled(column_exist
             assert conn.execute(sa.select(migrated)).mappings().one() == row
             migration.downgrade()
             assert 'plugin_processors' not in {c['name'] for c in sa.inspect(conn).get_columns('bots')}
+            restored = sa.Table('bots', sa.MetaData(), autoload_with=conn)
+            bindings = conn.execute(sa.select(restored.c.event_bindings)).scalar_one()
+            assert bindings == [
+                primary,
+                {
+                    'id': 'plugin_processor:one',
+                    'event_pattern': '*',
+                    'target_type': 'event_processor',
+                    'target_uuid': 'one',
+                    'enabled': True,
+                    'filters': [],
+                    'priority': 0,
+                    'order': 1,
+                },
+                {
+                    'id': 'plugin_processor:two',
+                    'event_pattern': '*',
+                    'target_type': 'event_processor',
+                    'target_uuid': 'two',
+                    'enabled': False,
+                    'filters': [],
+                    'priority': 0,
+                    'order': 2,
+                },
+            ]
     engine.dispose()

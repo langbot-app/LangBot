@@ -42,11 +42,11 @@ class TestStageClassDecorator:
         with isolated_sys_modules(mocks):
             from langbot.pkg.core.stage import stage_class
 
-            @stage_class('TestStage')
             class TestStage:
                 value = 42
 
-            # Class attributes should be preserved
+            decorated = stage_class('TestStage')(TestStage)
+            assert decorated is TestStage
             assert TestStage.value == 42
 
     def test_stage_class_multiple_stages(self):
