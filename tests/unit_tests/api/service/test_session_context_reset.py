@@ -86,11 +86,19 @@ async def test_reset_preserves_logs_and_isolates_context(context_service):
     async with engine.connect() as conn:
         assert (await conn.execute(sa.select(sa.func.count()).select_from(Transcript))).scalar() == 2
         assert (await conn.execute(sa.select(sa.func.count()).select_from(MonitoringSession))).scalar() == 1
-        assert (
+        remaining = (
             await conn.execute(
-                sa.select(sa.func.count()).select_from(RunnerState).where(RunnerState.runner_id == 'runner')
+                sa.select(
+                    RunnerState.workspace_id, RunnerState.bot_id, RunnerState.conversation_id, RunnerState.scope
+                ).where(RunnerState.runner_id == 'runner')
             )
-        ).scalar() == 4
+        ).all()
+        assert set(remaining) == {
+            ('w', 'b2', 'person_u', 'conversation'),
+            ('w2', 'b', 'person_u', 'conversation'),
+            ('w', 'b', 'person_other', 'conversation'),
+            ('w', 'b', 'person_u', 'actor'),
+        }
     page = await store.page_transcript('person_u', bot_id='b', workspace_id='w')
     assert not page[0]
     assert (await store.page_transcript('person_u', bot_id='b2', workspace_id='w'))[0]
@@ -143,6 +151,6 @@ async def test_reset_starts_new_external_runner_conversation(context_service):
     ] == 'remote-old'
     await service.reset_session_context('w', 'b', 'person_u')
     snapshot = await store.build_snapshot_from_event(event, binding, descriptor)
-    assert snapshot['conversation']['external.conversation_id'] == await get_reset_generation(
-        engine, 'w', 'b', 'person_u'
-    )
+    generation = await get_reset_generation(engine, 'w', 'b', 'person_u')
+    assert isinstance(generation, str) and generation and generation not in {'remote-old', 'person_u'}
+    assert snapshot['conversation']['external.conversation_id'] == generation
