@@ -41,6 +41,9 @@ class MonitoringMessage(Base):
         sqlalchemy.Index('ix_monitoring_messages_workspace_timestamp', 'workspace_uuid', 'timestamp'),
         sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
         sqlalchemy.Index(
+            'ix_monitoring_messages_conversation_page', 'workspace_uuid', 'bot_id', 'session_id', 'timestamp', 'id'
+        ),
+        sqlalchemy.Index(
             'ix_monitoring_messages_workspace_status_lease',
             'workspace_uuid',
             'status',

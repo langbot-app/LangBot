@@ -408,6 +408,35 @@ class ExecutionDetailsMixin:
             'next_offset': offset + min(len(rows), limit),
         }
 
+    async def _conversation_message_page(self, workspace, statement, offset, limit):
+        """Select a page from the covering index before loading its payloads."""
+        message = models.MonitoringMessage
+        identities = list(
+            (
+                await self._execution_query(
+                    workspace, statement.with_only_columns(message.id).offset(offset).limit(limit + 1)
+                )
+            ).scalars()
+        )
+        selected = identities[:limit]
+        records = {}
+        if selected:
+            # Equality joins keep SQLite on the primary key even for multiple IDs.
+            page = sa.union_all(*[sa.select(sa.literal(identity).label('id')) for identity in selected]).subquery()
+            rows = await self._execution_rows(
+                workspace,
+                sa.select(message)
+                .select_from(page)
+                .join(message, message.id == page.c.id)
+                .where(message.workspace_uuid == workspace),
+            )
+            records = {row.id: row for row in rows}
+        return {
+            'items': [message_item(records[identity]) for identity in selected if identity in records],
+            'has_more': len(identities) > limit,
+            'next_offset': offset + len(selected),
+        }
+
     def _unhandled_event_conditions(self, workspace, bot_ids=None, start_time=None, end_time=None):
         # Absorbed steering events belong to an existing run, too.
         conditions = [
@@ -590,8 +619,13 @@ class ExecutionDetailsMixin:
             'tool_calls',
             'errors',
         }
-        if section is not None and section not in sections:
+        if section is not None and section not in sections | {'overview'}:
             raise ValueError('Unknown execution section')
+        requested = (
+            sections
+            if section is None
+            else ({'inputs', 'outputs', 'deliveries', 'errors'} if section == 'overview' else {section})
+        )
 
         run = message = event = None
         if source in {'agent', 'auto'}:
@@ -758,8 +792,12 @@ class ExecutionDetailsMixin:
 
         pages = {}
         for name, (query, convert) in statements.items():
-            if section is None or section == name:
-                pages[name] = await self._execution_page(workspace, query, convert, offset, limit)
+            if name in requested:
+                pages[name] = (
+                    await self._conversation_message_page(workspace, query, offset, limit)
+                    if name == 'conversation' and message
+                    else await self._execution_page(workspace, query, convert, offset, limit)
+                )
         if run:
             meta = parsed(run.metadata_json, {})
             for item in pages.get('inputs', {}).get('items', []):
@@ -767,17 +805,12 @@ class ExecutionDetailsMixin:
                 # Do not apply the root snapshot to later steering events.
                 if item['id'] == run.event_id and not item.get('metadata', {}).get('input_event'):
                     item['content'] = event_content(item['content'], meta.get('input_event'))
-        if message and (section is None or section == 'inputs'):
+        if message and 'inputs' in requested:
             # The original rich message is authoritative even when the event
             # log is absent or only retained a compact event summary.
             if offset == 0:
                 pages['inputs']['items'].insert(0, message_item(message))
-        if (
-            run
-            and not pages.get('inputs', {}).get('items')
-            and offset == 0
-            and (section is None or section == 'inputs')
-        ):
+        if run and not pages.get('inputs', {}).get('items') and offset == 0 and 'inputs' in requested:
             meta = parsed(run.metadata_json, {})
             content = event_content(meta.get('input'), meta.get('input_event'))
             if content:
@@ -785,7 +818,7 @@ class ExecutionDetailsMixin:
                     {'id': run.event_id or run.run_id, 'content': content, 'timestamp_ms': epoch(run.created_at)}
                 ]
 
-        if section is None or section == 'related':
+        if 'related' in requested:
             # Union of ledger executions and legacy pipeline roots. SQL paging
             # avoids silently dropping siblings on highly fanned-out events.
             related_runs = sa.select(

@@ -424,6 +424,99 @@ async def test_execution_detail_for_agent_and_pipeline(engine, service):
 
 
 @pytest.mark.asyncio
+async def test_detail_overview_does_not_query_collapsed_sections(engine, service, monkeypatch):
+    await _seed(engine)
+    page = service._execution_page
+    converters = []
+
+    async def capture(workspace, statement, convert, offset, limit):
+        converters.append(convert.__name__)
+        return await page(workspace, statement, convert, offset, limit)
+
+    async def reject_history(*args, **kwargs):
+        pytest.fail('Collapsed conversation history must not be loaded')
+
+    monkeypatch.setattr(service, '_execution_page', capture)
+    monkeypatch.setattr(service, '_conversation_message_page', reject_history)
+    detail = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user', section='overview')
+
+    assert set(detail['pages']) == {'inputs', 'outputs', 'deliveries', 'errors'}
+    assert detail['pages']['inputs']['items'][0]['id'] == 'msg-user'
+    assert len(converters) == 4
+    assert 'events' not in detail
+
+
+@pytest.mark.asyncio
+async def test_conversation_pages_identities_from_covering_index_before_payloads(engine, service):
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    message = persistence_monitoring.MonitoringMessage
+    payload = 'historical inline media ' * 4096
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(message),
+            [
+                dict(
+                    id=f'history-{index:02d}',
+                    workspace_uuid=workspace,
+                    bot_id=bot,
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    session_id='session-1',
+                    timestamp=_dt(12),
+                    role='user',
+                    message_content=payload,
+                    variables=payload,
+                    status='success',
+                    level='info',
+                )
+                for index, (workspace, bot) in enumerate(
+                    [(WORKSPACE, 'bot-1')] * 5 + [(WORKSPACE, 'other-bot'), ('other-workspace', 'bot-1')]
+                )
+            ],
+        )
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('SELECT'):
+            statements.append((statement, parameters))
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        first = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user', section='conversation', limit=2)
+        second = await service.get_execution_detail(
+            WORKSPACE, 'pipeline', 'msg-user', section='conversation', limit=2, offset=2
+        )
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    page = first['pages']['conversation']
+    assert [row['id'] for row in page['items']] == ['history-04', 'history-03']
+    assert page['has_more'] and page['next_offset'] == 2
+    assert all(row['content'] == payload for row in page['items'])
+    assert [row['id'] for row in second['pages']['conversation']['items']] == ['history-02', 'history-01']
+    identities = [(sql, params) for sql, params in statements if sql.startswith('SELECT monitoring_messages.id \n')]
+    assert len(identities) == 2
+    async with engine.connect() as connection:
+        for sql, params in identities:
+            assert 'message_content' not in sql and 'variables' not in sql
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, params)).all()
+            assert any('COVERING INDEX ix_monitoring_messages_conversation_page' in row[3] for row in plan), plan
+            assert not any('TEMP B-TREE' in row[3] for row in plan), plan
+        payload_queries = [(sql, params) for sql, params in statements if 'JOIN monitoring_messages ON' in sql]
+        assert len(payload_queries) == 2
+        assert {value for value in payload_queries[0][1] if str(value).startswith('history-')} == {
+            'history-04',
+            'history-03',
+        }
+        for sql, params in payload_queries:
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, params)).all()
+            assert any('sqlite_autoindex_monitoring_messages_1 (id=?)' in row[3] for row in plan), plan
+
+
+@pytest.mark.asyncio
 async def test_explicit_deliveries_context_and_tenant_isolation(engine, service):
     import sqlalchemy as sa
 
