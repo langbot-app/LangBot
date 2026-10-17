@@ -1184,7 +1184,9 @@ class RuntimeBot:
                     event,
                     adapter,
                     pipeline_uuid=event_binding.get('target_uuid'),
-                    routed_by_event_binding=True,
+                    # A catch-all binding replaces the legacy default pipeline,
+                    # not an explicit matching rule. Preserve its response gate.
+                    routed_by_event_binding=bool(event_binding.get('filters')),
                 )
             return await self._record_event_route_trace(
                 event_type=event_type,

@@ -481,6 +481,20 @@ async def test_admission_does_not_override_telemetry_opt_out(monkeypatch, editio
     await assert_no_upload(counters, manager)
 
 
+@pytest.mark.parametrize(
+    'filters,bypass', [([], False), ([{'field': 'chat_type', 'operator': 'eq', 'value': 'person'}], True)]
+)
+async def test_pipeline_default_route_preserves_response_gate(filters, bypass):
+    bot, manager, counters = make_bot([business_route(target_type='pipeline', filters=filters)])
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+    try:
+        await bot._handle_platform_event(message_received_event(), FakeAdapter())
+        bot._dispatch_eba_message_to_pipeline.assert_awaited_once()
+        assert bot._dispatch_eba_message_to_pipeline.await_args.kwargs['routed_by_event_binding'] is bypass
+    finally:
+        await counters.shutdown()
+
+
 async def test_unrelated_broken_subscription_does_not_poison_matched_delivery():
     bot, manager, counters = make_bot([business_route(target_type='pipeline')])
     bot._dispatch_eba_message_to_pipeline = AsyncMock()

@@ -18,4 +18,10 @@ class RandomRespRule(rule_model.GroupRespondRule):
     ) -> entities.RuleJudgeResult:
         random_rate = rule_dict['random']
 
-        return entities.RuleJudgeResult(matching=random.random() < random_rate, replacement=message_chain)
+        # A busy query may be checked for steering several times before its
+        # normal pipeline turn. Draw once so queue wakeups do not increase
+        # its chance of being admitted.
+        key = '_group_response_random_draw'
+        if key not in query.variables:
+            query.variables[key] = random.random()
+        return entities.RuleJudgeResult(matching=query.variables[key] < random_rate, replacement=message_chain)
