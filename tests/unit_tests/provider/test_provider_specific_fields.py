@@ -148,6 +148,64 @@ def test_convert_messages_preserves_message_provider_specific_fields():
     assert out[0]['provider_specific_fields']['thought_signatures'] == ['sig1', 'sig2']
 
 
+@pytest.mark.parametrize('family', ['', 'openai', 'gemini', 'groq'])
+def test_response_finish_reason_is_not_replayed(family):
+    req = _make_requester()
+    msg = provider_message.Message(
+        role='assistant', content='Hello', provider_specific_fields={'finish_reason': 'stop'}
+    )
+
+    assert req._convert_messages([msg], reasoning_family=family) == [{'role': 'assistant', 'content': 'Hello'}]
+    assert msg.provider_specific_fields == {'finish_reason': 'stop'}
+
+
+def test_response_metadata_removal_preserves_gemini_signatures():
+    req = _make_requester()
+    msg = provider_message.Message(
+        role='assistant',
+        content='Hello',
+        provider_specific_fields={'finish_reason': 'stop', 'thought_signatures': ['signature']},
+    )
+
+    out = req._convert_messages([msg], reasoning_family='gemini')
+
+    assert out[0]['provider_specific_fields'] == {'thought_signatures': ['signature']}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+async def test_groq_completion_drops_provider_metadata_from_replayed_messages(stream):
+    req = _make_configured_requester()
+    req.requester_cfg['custom_llm_provider'] = 'groq'
+    model = _make_runtime_model()
+    model.model_entity.name = 'openai/gpt-oss-120b'
+    msg = provider_message.Message(
+        role='assistant',
+        content='Hello',
+        provider_specific_fields={'finish_reason': 'tool_calls', 'other_response_metadata': True},
+        tool_calls=[
+            provider_message.ToolCall(
+                id='call-1',
+                type='function',
+                function=provider_message.FunctionCall(name='search', arguments='{}'),
+                provider_specific_fields={'thought_signature': 'signature'},
+            )
+        ],
+    )
+
+    args = await req._build_completion_args(model, [msg], None, {}, stream=stream)
+
+    assert args['model'] == 'groq/openai/gpt-oss-120b'
+    assert args['messages'] == [
+        {
+            'role': 'assistant',
+            'content': 'Hello',
+            'tool_calls': [{'id': 'call-1', 'type': 'function', 'function': {'name': 'search', 'arguments': '{}'}}],
+        }
+    ]
+    assert msg.provider_specific_fields['finish_reason'] == 'tool_calls'
+
+
 def test_normalize_stream_tool_calls_preserves_provider_specific_fields():
     """Streaming tool calls should retain provider_specific_fields."""
     req = _make_requester()
