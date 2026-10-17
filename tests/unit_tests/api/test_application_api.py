@@ -9,7 +9,6 @@ from langbot.pkg.api.application import (
     APPLICATION_API_VERSION,
     ApplicationAPI,
     ApplicationAPIException,
-    ApplicationSurface,
     PipelineListInput,
     PipelineExtensionsUpdateInput,
     KnowledgeBaseListInput,
@@ -56,7 +55,7 @@ async def test_pipeline_operation_rejects_missing_permission():
 
 
 @pytest.mark.asyncio
-async def test_execute_requires_typed_input_and_enforces_surface():
+async def test_execute_requires_typed_input_and_permission():
     service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[]))
     api = ApplicationAPI(SimpleNamespace(pipeline_service=service))
     context = _context(Permission.RESOURCE_VIEW.value)
@@ -65,14 +64,12 @@ async def test_execute_requires_typed_input_and_enforces_surface():
         await api.execute('pipeline.list', context, {'sort_by': 'created_at'})
     assert invalid.value.error.code == 'invalid_input'
 
-    with pytest.raises(ApplicationAPIException) as denied:
+    with pytest.raises(PermissionDeniedError):
         await api.execute(
             'pipeline.extensions.update',
             context,
             PipelineExtensionsUpdateInput('p1', []),
-            surface=ApplicationSurface.ASSISTANT,
         )
-    assert denied.value.error.code == 'surface_not_allowed'
 
 
 @pytest.mark.asyncio
@@ -99,17 +96,6 @@ def test_catalog_is_versioned_and_workspace_scoped():
     assert catalog['knowledge.engine.schema.get']['input_type'] == 'KnowledgeEngineSchemaInput'
     assert catalog['knowledge.base.list']['output_type'] == 'KnowledgeBaseListOutput'
     assert catalog['knowledge.base.get']['output_type'] == 'KnowledgeBaseGetOutput'
-    assert set(catalog['knowledge.engine.list']['allowed_surfaces']) == {
-        ApplicationSurface.HTTP.value,
-        ApplicationSurface.MCP.value,
-        ApplicationSurface.ASSISTANT.value,
-    }
-    assert set(catalog['pipeline.get']['allowed_surfaces']) == {
-        ApplicationSurface.HTTP.value,
-        ApplicationSurface.MCP.value,
-        ApplicationSurface.ASSISTANT.value,
-        ApplicationSurface.CLI.value,
-    }
 
 
 def test_update_pipeline_extensions_has_explicit_typed_parameters():
@@ -153,9 +139,7 @@ async def test_knowledge_read_operations_delegate_with_typed_outputs():
     context = _context(Permission.RESOURCE_VIEW.value)
 
     listed = await api.execute('knowledge.base.list', context, KnowledgeBaseListInput())
-    fetched = await api.execute(
-        'knowledge.base.get', context, KnowledgeBaseGetInput('kb-1'), surface=ApplicationSurface.ASSISTANT
-    )
+    fetched = await api.execute('knowledge.base.get', context, KnowledgeBaseGetInput('kb-1'))
     engines = await api.execute('knowledge.engine.list', context, KnowledgeEngineListInput())
     schema = await api.execute(
         'knowledge.engine.schema.get',

@@ -3,7 +3,6 @@ import quart
 from .....application import (
     ApplicationAPI,
     ApplicationAPIException,
-    ApplicationSurface,
     KnowledgeBaseGetInput,
     KnowledgeBaseListInput,
 )
@@ -34,7 +33,6 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                     'knowledge.base.list',
                     request_context,
                     KnowledgeBaseListInput(include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE)),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -76,7 +74,6 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                         knowledge_base_uuid=knowledge_base_uuid,
                         include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
                     ),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)

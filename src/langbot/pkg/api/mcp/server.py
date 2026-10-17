@@ -26,7 +26,6 @@ from mcp.server.fastmcp import FastMCP
 from ..application import (
     ApplicationAPI,
     ApplicationAPIException,
-    ApplicationSurface,
     KnowledgeBaseGetInput,
     KnowledgeBaseListInput,
     KnowledgeEngineListInput,
@@ -133,7 +132,6 @@ class LangBotMCPServer:
                     'knowledge.engine.list',
                     context,
                     KnowledgeEngineListInput(),
-                    surface=ApplicationSurface.MCP,
                 )
                 return _dump(output.engines)
             except ApplicationAPIException as exc:
@@ -147,7 +145,6 @@ class LangBotMCPServer:
                     'knowledge.engine.schema.get',
                     context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind=kind),
-                    surface=ApplicationSurface.MCP,
                 )
                 return _dump(output.schema)
             except ApplicationAPIException as exc:
@@ -162,7 +159,7 @@ class LangBotMCPServer:
             try:
                 return _dump(
                     await _application_api(ap).get_pipeline_extensions(
-                        _authorized(Permission.RESOURCE_VIEW), pipeline_uuid, surface=ApplicationSurface.MCP
+                        _authorized(Permission.RESOURCE_VIEW), pipeline_uuid
                     )
                 )
             except ApplicationAPIException as exc:
@@ -196,13 +193,8 @@ class LangBotMCPServer:
                         enable_all_skills=enable_all_skills,
                         mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
                     ),
-                    surface=ApplicationSurface.MCP,
                 )
-                return _dump(
-                    await _application_api(ap).get_pipeline_extensions(
-                        context, pipeline_uuid, surface=ApplicationSurface.MCP
-                    )
-                )
+                return _dump(await _application_api(ap).get_pipeline_extensions(context, pipeline_uuid))
             except ApplicationAPIException as exc:
                 return _application_error(exc)
 
@@ -516,7 +508,6 @@ class LangBotMCPServer:
                     'knowledge.base.list',
                     context,
                     KnowledgeBaseListInput(),
-                    surface=ApplicationSurface.MCP,
                 )
                 return _dump(output.bases)
             except ApplicationAPIException as exc:
@@ -530,7 +521,6 @@ class LangBotMCPServer:
                     'knowledge.base.get',
                     context,
                     KnowledgeBaseGetInput(knowledge_base_uuid=kb_uuid),
-                    surface=ApplicationSurface.MCP,
                 )
             except ApplicationAPIException as exc:
                 return _application_error(exc)

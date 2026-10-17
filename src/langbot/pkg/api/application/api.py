@@ -21,22 +21,12 @@ from ..secrets import redact_secrets
 APPLICATION_API_VERSION = 'v1'
 
 
-class ApplicationSurface(enum.StrEnum):
-    """Protocol surface allowed to invoke an application operation."""
-
-    HTTP = 'http'
-    MCP = 'mcp'
-    ASSISTANT = 'assistant'
-    CLI = 'cli'
-
-
 class ApplicationErrorCode(enum.StrEnum):
     """Stable machine-readable errors emitted by the application boundary."""
 
     INVALID_INPUT = 'invalid_input'
     INVALID_OUTPUT = 'invalid_output'
     UNKNOWN_OPERATION = 'unknown_operation'
-    SURFACE_NOT_ALLOWED = 'surface_not_allowed'
     PERMISSION_DENIED = 'permission_denied'
     INVALID_AUTHENTICATION = 'invalid_authentication'
     WORKSPACE_REQUIRED = 'workspace_required'
@@ -70,7 +60,6 @@ _ERROR_STATUS_BY_CODE: dict[str, int] = {
     'invalid_input': 400,
     'invalid_output': 500,
     'unknown_operation': 404,
-    'surface_not_allowed': 403,
     'permission_denied': 403,
     'invalid_authentication': 401,
     'workspace_required': 400,
@@ -142,15 +131,6 @@ class KnowledgeBaseListInput:
     include_secret: bool | None = None
 
 
-_READ_ONLY_ADAPTER_SURFACES = frozenset(
-    {
-        ApplicationSurface.HTTP,
-        ApplicationSurface.MCP,
-        ApplicationSurface.ASSISTANT,
-    }
-)
-
-
 @dataclasses.dataclass(frozen=True, slots=True)
 class KnowledgeBaseListOutput:
     bases: list[dict]
@@ -203,7 +183,6 @@ class OperationSpec:
     input_type: type = dict
     output_type: type = dict
     error_type: type = ApplicationAPIError
-    allowed_surfaces: frozenset[ApplicationSurface] = frozenset()
 
     def as_dict(self) -> dict[str, typing.Any]:
         """Return JSON-safe metadata for capability discovery."""
@@ -217,7 +196,6 @@ class OperationSpec:
             'input_type': self.input_type.__name__,
             'output_type': self.output_type.__name__,
             'error_type': self.error_type.__name__,
-            'allowed_surfaces': sorted(surface.value for surface in self.allowed_surfaces),
         }
 
 
@@ -228,7 +206,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=PipelineListInput,
         output_type=PipelineListOutput,
-        allowed_surfaces=frozenset(ApplicationSurface),
     ),
     'pipeline.get': OperationSpec(
         'pipeline.get',
@@ -236,7 +213,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=PipelineGetInput,
         output_type=PipelineGetOutput,
-        allowed_surfaces=frozenset(ApplicationSurface),
     ),
     'pipeline.extensions.get': OperationSpec(
         'pipeline.extensions.get',
@@ -244,7 +220,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=PipelineExtensionsGetInput,
         output_type=PipelineExtensionsGetOutput,
-        allowed_surfaces=frozenset(ApplicationSurface),
     ),
     'pipeline.extensions.update': OperationSpec(
         'pipeline.extensions.update',
@@ -253,13 +228,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         side_effect=True,
         input_type=PipelineExtensionsUpdateInput,
         output_type=PipelineExtensionsUpdateOutput,
-        allowed_surfaces=frozenset(
-            {
-                ApplicationSurface.HTTP,
-                ApplicationSurface.MCP,
-                ApplicationSurface.CLI,
-            }
-        ),
     ),
     'knowledge.base.list': OperationSpec(
         'knowledge.base.list',
@@ -267,7 +235,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=KnowledgeBaseListInput,
         output_type=KnowledgeBaseListOutput,
-        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
     ),
     'knowledge.base.get': OperationSpec(
         'knowledge.base.get',
@@ -275,7 +242,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=KnowledgeBaseGetInput,
         output_type=KnowledgeBaseGetOutput,
-        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
     ),
     'knowledge.engine.list': OperationSpec(
         'knowledge.engine.list',
@@ -283,7 +249,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=KnowledgeEngineListInput,
         output_type=KnowledgeEngineListOutput,
-        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
     ),
     'knowledge.engine.schema.get': OperationSpec(
         'knowledge.engine.schema.get',
@@ -291,7 +256,6 @@ OPERATIONS: dict[str, OperationSpec] = {
         Permission.RESOURCE_VIEW,
         input_type=KnowledgeEngineSchemaInput,
         output_type=KnowledgeEngineSchemaOutput,
-        allowed_surfaces=_READ_ONLY_ADAPTER_SURFACES,
     ),
 }
 
@@ -317,15 +281,6 @@ class ApplicationAPI:
     def _authorize(context: RequestContext, operation_id: str) -> None:
         spec = OPERATIONS[operation_id]
         require_permission(context, spec.permission)
-
-    @staticmethod
-    def _surface(surface: ApplicationSurface | str) -> ApplicationSurface:
-        try:
-            return surface if isinstance(surface, ApplicationSurface) else ApplicationSurface(surface)
-        except (TypeError, ValueError) as exc:
-            raise ApplicationAPIException(
-                ApplicationAPIError('surface_not_allowed', f'Unknown application surface: {surface}', 403)
-            ) from exc
 
     @staticmethod
     def _type_name(value: typing.Any) -> str:
@@ -445,10 +400,8 @@ class ApplicationAPI:
         operation_id: str,
         context: RequestContext,
         input: typing.Any,
-        *,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> typing.Any:
-        """Execute a versioned operation with strict DTO and surface checks.
+        """Execute a versioned operation with strict DTO and Workspace permission checks.
 
         Protocol adapters receive the typed output DTO and are responsible for
         unwrapping it into their wire representation.  No adapter object or
@@ -459,15 +412,6 @@ class ApplicationAPI:
         if spec is None:
             raise ApplicationAPIException(
                 ApplicationAPIError('unknown_operation', 'Unknown application operation', 404)
-            )
-        resolved_surface = self._surface(surface)
-        if resolved_surface not in spec.allowed_surfaces:
-            raise ApplicationAPIException(
-                ApplicationAPIError(
-                    'surface_not_allowed',
-                    f'Operation {operation_id} is not available on the {resolved_surface.value} surface',
-                    403,
-                )
             )
         self._validate_input(input, spec.input_type)
         # Keep authorization errors as AuthorizationError instances for the
@@ -511,12 +455,10 @@ class ApplicationAPI:
         operation_id: str,
         context: RequestContext,
         input: typing.Any,
-        *,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> typing.Any:
         """Alias for :meth:`execute` used by adapters that prefer verb syntax."""
 
-        return await self.execute(operation_id, context, input, surface=surface)
+        return await self.execute(operation_id, context, input)
 
     async def _list_pipelines(self, context: RequestContext, input: PipelineListInput) -> PipelineListOutput:
         # Secret-bearing pipeline configuration must never be exposed merely
@@ -711,7 +653,6 @@ class ApplicationAPI:
         sort_order: str = 'DESC',
         *,
         include_secret: bool | None = None,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> list[dict]:
         """Compatibility helper returning the unwrapped list payload."""
 
@@ -719,7 +660,6 @@ class ApplicationAPI:
             'pipeline.list',
             context,
             PipelineListInput(sort_by=sort_by, sort_order=sort_order, include_secret=include_secret),
-            surface=surface,
         )
         return output.pipelines
 
@@ -729,7 +669,6 @@ class ApplicationAPI:
         pipeline_uuid: str,
         *,
         include_secret: bool = False,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> dict | None:
         """Compatibility helper returning the unwrapped Pipeline payload."""
 
@@ -737,7 +676,6 @@ class ApplicationAPI:
             'pipeline.get',
             context,
             PipelineGetInput(pipeline_uuid=pipeline_uuid, include_secret=include_secret),
-            surface=surface,
         )
         return output.pipeline
 
@@ -745,8 +683,6 @@ class ApplicationAPI:
         self,
         context: RequestContext,
         pipeline_uuid: str,
-        *,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> dict:
         """Compatibility helper returning the unwrapped extension payload."""
 
@@ -754,7 +690,6 @@ class ApplicationAPI:
             'pipeline.extensions.get',
             context,
             PipelineExtensionsGetInput(pipeline_uuid=pipeline_uuid),
-            surface=surface,
         )
         return output.extensions
 
@@ -762,9 +697,7 @@ class ApplicationAPI:
         self,
         context: RequestContext,
         input: PipelineExtensionsUpdateInput,
-        *,
-        surface: ApplicationSurface | str = ApplicationSurface.HTTP,
     ) -> PipelineExtensionsUpdateOutput:
         """Compatibility helper preserving the typed write output."""
 
-        return await self.execute('pipeline.extensions.update', context, input, surface=surface)
+        return await self.execute('pipeline.extensions.update', context, input)

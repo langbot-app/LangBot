@@ -5,7 +5,6 @@ import quart
 from .....application import (
     ApplicationAPI,
     ApplicationAPIException,
-    ApplicationSurface,
     PipelineExtensionsGetInput,
     PipelineExtensionsUpdateInput,
     PipelineGetInput,
@@ -56,7 +55,6 @@ class PipelinesRouterGroup(group.RouterGroup):
                     'pipeline.list',
                     request_context,
                     PipelineListInput(sort_by=sort_by, sort_order=sort_order, include_secret=include_secret),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -106,7 +104,6 @@ class PipelinesRouterGroup(group.RouterGroup):
                         pipeline_uuid=pipeline_uuid,
                         include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
                     ),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -179,7 +176,6 @@ class PipelinesRouterGroup(group.RouterGroup):
                     'pipeline.extensions.get',
                     request_context,
                     PipelineExtensionsGetInput(pipeline_uuid=pipeline_uuid),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -266,7 +262,6 @@ class PipelinesRouterGroup(group.RouterGroup):
                         bound_mcp_resources=json_data.get('bound_mcp_resources'),
                         mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
                     ),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 # Preserve the legacy Service API validation envelope while

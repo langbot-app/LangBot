@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 
-from ...application import ApplicationAPI, ApplicationSurface
+from ...application import ApplicationAPI
 
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext
@@ -289,7 +289,7 @@ async def execute_tool(ap, context, name: str, arguments: dict):
             'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
         }
         if args['kind'] == 'pipelines':
-            resources = await _application_api(ap).list_pipelines(context, surface=ApplicationSurface.ASSISTANT)
+            resources = await _application_api(ap).list_pipelines(context)
         else:
             resources = await readers[args['kind']](context)
         if args['kind'] != 'knowledge_engines':
@@ -315,13 +315,9 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         compact['query'] = {key: args[key] for key in ('search', 'action', 'resource_type', 'actor') if args.get(key)}
         return compact
     if name == 'get_pipeline':
-        return await _application_api(ap).get_pipeline(
-            context, args['pipeline_uuid'], surface=ApplicationSurface.ASSISTANT
-        )
+        return await _application_api(ap).get_pipeline(context, args['pipeline_uuid'])
     if name == 'get_pipeline_extensions':
-        return await _application_api(ap).get_pipeline_extensions(
-            context, args['pipeline_uuid'], surface=ApplicationSurface.ASSISTANT
-        )
+        return await _application_api(ap).get_pipeline_extensions(context, args['pipeline_uuid'])
     if name == 'get_knowledge_schema':
         return {
             'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),

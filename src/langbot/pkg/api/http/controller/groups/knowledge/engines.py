@@ -4,7 +4,6 @@ from urllib.parse import unquote
 from .....application import (
     ApplicationAPI,
     ApplicationAPIException,
-    ApplicationSurface,
     KnowledgeEngineListInput,
     KnowledgeEngineSchemaInput,
 )
@@ -38,7 +37,6 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
                     'knowledge.engine.list',
                     request_context,
                     KnowledgeEngineListInput(),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -66,7 +64,6 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
                     'knowledge.engine.schema.get',
                     request_context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='creation'),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
@@ -95,7 +92,6 @@ class KnowledgeEnginesRouterGroup(group.RouterGroup):
                     'knowledge.engine.schema.get',
                     request_context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind='retrieval'),
-                    surface=ApplicationSurface.HTTP,
                 )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
