@@ -1867,3 +1867,185 @@ async def test_embedding_api_rejects_model_outside_runner_grants():
     assert response.code != 0
     assert 'not authorized' in response.message
     app.model_mgr.get_embedding_model_by_uuid.assert_not_awaited()
+
+
+@pytest.fixture
+def knowledge_host(monkeypatch):
+    from langbot.pkg.agent.runner import session_registry
+    from langbot.pkg.entity.persistence.rag import KnowledgeBase
+    from langbot.pkg.rag.knowledge.kbmgr import RAGManager, RuntimeKnowledgeBase
+
+    registry = session_registry.AgentRunSessionRegistry()
+    monkeypatch.setattr(session_registry, '_global_registry', registry)
+    app = SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=SimpleNamespace(),
+        plugin_connector=SimpleNamespace(
+            require_workspace_context=AsyncMock(side_effect=lambda context: context),
+            call_rag_retrieve=AsyncMock(
+                return_value={
+                    'results': [
+                        {
+                            'id': 'document-a',
+                            'content': [{'type': 'text', 'text': 'selected document'}],
+                            'metadata': {},
+                            'distance': 0.1,
+                        }
+                    ]
+                }
+            ),
+        ),
+    )
+    runtime = make_handler(app)
+    app.rag_mgr = RAGManager(app)
+    for kb_id, workspace_uuid in [('kb-a', 'workspace-a'), ('kb-unselected', 'workspace-a'), ('kb-b', 'workspace-b')]:
+        context = ExecutionContext(instance_uuid='instance-a', workspace_uuid=workspace_uuid, placement_generation=1)
+        entity = KnowledgeBase(
+            uuid=kb_id,
+            workspace_uuid=workspace_uuid,
+            name=kb_id,
+            knowledge_engine_plugin_id='author/engine',
+            collection_id=kb_id,
+            retrieval_settings={},
+        )
+        app.rag_mgr._cache_runtime(RuntimeKnowledgeBase(app, entity, context))
+    app.rag_mgr.get_knowledge_base_by_uuid = AsyncMock(wraps=app.rag_mgr.get_knowledge_base_by_uuid)
+    return SimpleNamespace(app=app, runtime=runtime, registry=registry)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+@pytest.mark.parametrize('denial', [None, 'unselected', 'operation', 'expired', 'plugin'])
+async def test_knowledge_actions_enforce_run_grants_before_resource_access(knowledge_host, action, denial):
+    host = knowledge_host
+    await host.registry.register(
+        run_id='run-a',
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='other/plugin' if denial == 'plugin' else 'test-author/test-plugin',
+        workspace_id='workspace-a',
+        resources=make_agent_resources(
+            knowledge_bases=[{'kb_id': 'kb-a', 'operations': ['list'] if denial == 'operation' else ['retrieve']}]
+        ),
+    )
+    response = await host.runtime.actions[action.value](
+        {
+            'run_id': 'expired' if denial == 'expired' else 'run-a',
+            'kb_id': 'kb-unselected' if denial == 'unselected' else 'kb-a',
+            'query_text': 'hello',
+        }
+    )
+    if denial is None:
+        assert response.code == 0
+        assert [item['id'] for item in response.data['results']] == ['document-a']
+        host.app.plugin_connector.call_rag_retrieve.assert_awaited_once()
+    else:
+        assert response.code != 0
+        assert (
+            response.message
+            == {
+                'unselected': 'knowledge_base kb-unselected is not authorized for operation retrieve for this agent run',
+                'operation': 'knowledge_base kb-a is not authorized for operation retrieve for this agent run',
+                'expired': 'Run session expired not found or expired',
+                'plugin': 'Plugin identity mismatch: caller test-author/test-plugin is not authorized for run_id run-a',
+            }[denial]
+        )
+        assert not response.data
+        host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
+        host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledge_host, action):
+    host = knowledge_host
+    await host.registry.register(
+        run_id='run-b',
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        workspace_id='workspace-b',
+        resources=make_agent_resources(knowledge_bases=[{'kb_id': 'kb-b'}]),
+    )
+    response = await host.runtime.actions[action.value](
+        {'run_id': 'run-b', 'kb_id': 'kb-b', 'query_text': 'hello', 'workspace_uuid': 'workspace-b'}
+    )
+    assert response.code != 0
+    assert response.message == 'Knowledge base kb-b not found'
+    assert not response.data
+    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'kb-b')
+    host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('selected', [True, False])
+@pytest.mark.parametrize('scope_source', ['preprocessed', 'custom_runner'])
+async def test_pipeline_knowledge_action_enforces_query_scope(knowledge_host, selected, scope_source):
+    from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
+
+    host = knowledge_host
+    runner_id = 'plugin:custom/runner/default'
+    query_context = ExecutionContext(
+        instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1, bot_uuid='bot-a'
+    )
+    query = SimpleNamespace(
+        _execution_context=query_context,
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        variables={'_knowledge_base_uuids': ['kb-a']} if scope_source == 'preprocessed' else {},
+        pipeline_config={
+            'ai': {
+                'runner': {'id': runner_id},
+                'runner_config': {
+                    runner_id: {'custom-kb-selector': ['kb-unselected' if scope_source == 'preprocessed' else 'kb-a']}
+                },
+            }
+        },
+        session=SimpleNamespace(launcher_type=SimpleNamespace(value='person'), launcher_id='conversation-a'),
+        bot_uuid='bot-a',
+        sender_id='user-a',
+    )
+    host.app.runner_registry = SimpleNamespace(
+        get=AsyncMock(
+            return_value=RunnerDescriptor(
+                usages=['agent'],
+                id=runner_id,
+                source='plugin',
+                label={'en_US': 'Custom Runner'},
+                plugin_author='custom',
+                plugin_name='runner',
+                runner_name='default',
+                config_schema=[{'name': 'custom-kb-selector', 'type': 'knowledge-base-multi-selector', 'default': []}],
+                capabilities={'knowledge_retrieval': True},
+                permissions={'knowledge_bases': ['list', 'retrieve']},
+            )
+        )
+    )
+    host.app.query_pool = SimpleNamespace(get_query=AsyncMock(return_value=query))
+    response = await host.runtime.actions[PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE.value](
+        {
+            'query_uuid': 'query-a',
+            'query_id': 1,
+            'kb_id': 'kb-a' if selected else 'kb-unselected',
+            'query_text': 'hello',
+        }
+    )
+    host.app.query_pool.get_query.assert_awaited_once_with('workspace-a', 'query-a')
+    if scope_source == 'custom_runner':
+        host.app.runner_registry.get.assert_awaited_once_with(query_context, runner_id, None)
+    else:
+        host.app.runner_registry.get.assert_not_awaited()
+    if selected:
+        assert response.code == 0
+        assert [item['id'] for item in response.data['results']] == ['document-a']
+        host.app.plugin_connector.call_rag_retrieve.assert_awaited_once()
+    else:
+        assert response.code != 0
+        assert 'not configured for this pipeline' in response.message
+        host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
+        host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
