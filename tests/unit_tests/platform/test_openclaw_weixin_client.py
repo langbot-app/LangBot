@@ -11,12 +11,20 @@ from langbot.libs.openclaw_weixin_api.client import (
 from langbot.libs.openclaw_weixin_api.types import ApiError
 
 
-def test_cdn_crypto_helpers_round_trip():
-    original = b'tenant-media' * 128
+def test_cdn_crypto_helpers_round_trip(monkeypatch):
+    # AES-128-ECB with PKCS7 padding, independently generated using OpenSSL.
+    key = bytes.fromhex('2b7e151628aed2a6abf7158809cf4f3c')
+    original = bytes.fromhex('6bc1bee22e409f96e93d7e117393172a')
+    expected_ciphertext = bytes.fromhex('3ad77bb40d7a3660a89ecaf32466ef97a254be88e037ddd9d79fb6411c3f9df8')
+    monkeypatch.setattr('langbot.libs.openclaw_weixin_api.client.os.urandom', lambda size: key)
 
-    aes_key_hex, _encoded_key, encrypted, _raw_md5 = _encrypt_cdn_payload(original)
+    aes_key_hex, encoded_key, encrypted, raw_md5 = _encrypt_cdn_payload(original)
 
-    assert _decrypt_cdn_payload(encrypted, bytes.fromhex(aes_key_hex)) == original
+    assert aes_key_hex == '2b7e151628aed2a6abf7158809cf4f3c'
+    assert encoded_key == 'MmI3ZTE1MTYyOGFlZDJhNmFiZjcxNTg4MDljZjRmM2M='
+    assert encrypted == expected_ciphertext
+    assert raw_md5 == 'f2ecfb66e72f88f217e659ac75b1075f'
+    assert _decrypt_cdn_payload(expected_ciphertext, key) == original
 
 
 @pytest.mark.asyncio

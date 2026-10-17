@@ -367,6 +367,8 @@ class TestCommandHandlerReal:
         assert len(msg.content) == 2
         assert msg.content[0].type == 'text'
         assert msg.content[1].type == 'image_url'
+        assert msg.content[0].text == 'Here is the image:'
+        assert msg.content[1].image_url.url == 'https://example.com/image.png'
 
     @pytest.mark.asyncio
     async def test_command_result_empty_interrupts(self, fake_app, mock_event_ctx, mock_execute_factory):
@@ -410,4 +412,4 @@ class TestCommandHandlerHelper:
         command = get_command_handler()
         handler = command.CommandHandler(fake_app)
         result = handler.cut_str('first line\nsecond line')
-        assert '...' in result
+        assert result == 'first line...'

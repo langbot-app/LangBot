@@ -119,12 +119,11 @@ class TestApplyEnvOverridesToConfig:
         """Test that '1', 'yes', 'on' are treated as true."""
         load_config = get_load_config_module()
 
-        cfg = {'system': {'flag': False}}
-
         for true_val in ['1', 'yes', 'on', 'TRUE']:
+            cfg = {'system': {'flag': False}}
             env = {'SYSTEM__FLAG': true_val}
             with patch.dict(os.environ, env, clear=True):
-                result = load_config._apply_env_overrides_to_config(cfg.copy())
+                result = load_config._apply_env_overrides_to_config(cfg)
                 assert result['system']['flag'] is True
 
     def test_override_float_value(self):
@@ -237,7 +236,7 @@ class TestApplyEnvOverridesToConfig:
         with patch.dict(os.environ, env, clear=True):
             result = load_config._apply_env_overrides_to_config(cfg)
 
-        assert result['system']['name'] == 'default'
+        assert result == {'system': {'name': 'default'}}
 
     def test_skip_env_vars_with_empty_path_segments(self, capsys):
         """Platform variables such as __CF_USER_TEXT_ENCODING are not config."""
@@ -249,7 +248,7 @@ class TestApplyEnvOverridesToConfig:
         with patch.dict(os.environ, env, clear=True):
             result = load_config._apply_env_overrides_to_config(cfg)
 
-        assert result == cfg
+        assert result == {'system': {'name': 'default'}}
         assert capsys.readouterr().out == ''
 
     def test_nested_config_path(self):
@@ -299,7 +298,7 @@ class TestApplyEnvOverridesToConfig:
         with patch.dict(os.environ, env, clear=True):
             result = load_config._apply_env_overrides_to_config(cfg)
 
-        assert result == cfg
+        assert result == {'system': {'name': 'default'}}
 
     def test_multiple_env_vars_override(self):
         """Test multiple env vars applied in order."""

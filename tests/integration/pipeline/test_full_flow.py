@@ -353,6 +353,9 @@ class TestPreProcessorStage:
         # Check user_message content
         assert result.new_query.user_message is not None
         assert result.new_query.user_message.role == 'user'
+        assert [(part.type, part.text) for part in result.new_query.user_message.content] == [
+            ('text', 'test message content')
+        ]
 
 
 @pytest.mark.usefixtures('load_pipeline_modules')
@@ -370,6 +373,14 @@ class TestProcessorStage:
 
         # Create query
         query = text_query('hello')
+        from langbot_plugin.api.entities.builtin.provider.session import Session
+
+        query.session = Session(
+            launcher_type=query.launcher_type,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            using_conversation=await pipeline_app.sess_mgr.get_conversation(),
+        )
         query.adapter = adapter
         query.pipeline_config = create_minimal_pipeline_config()
         query.resp_messages = []
@@ -390,9 +401,13 @@ class TestProcessorStage:
         # Collect results using helper
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
-        assert len(results) >= 1
-        # Check that resp_messages was populated
-        assert len(query.resp_messages) >= 1
+        from langbot.pkg.pipeline import entities
+
+        assert pipeline_app.agent_run_orchestrator.observed_queries == [query]
+        assert [result.result_type for result in results] == [entities.ResultType.CONTINUE]
+        assert [(message.role, message.content) for message in query.resp_messages] == [
+            ('assistant', 'LANGBOT_FAKE_PONG')
+        ]
 
     @pytest.mark.asyncio
     async def test_processor_prevent_default_without_reply_interrupts(self, pipeline_app, fake_platform_adapter):

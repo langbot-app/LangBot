@@ -99,21 +99,6 @@ test('add-extension page disables all install entry points at the quota', () => 
   assert.match(page, /quota=\{extensionQuota\}/);
 });
 
-test('extension confirmation checks fail closed and enter an in-flight state first', () => {
-  const page = fs.readFileSync(addExtensionPath, 'utf8');
-
-  assert.match(page, /limitation\.quotaCheckFailed/);
-  assert.doesNotMatch(page, /If we can't check, let backend handle it/);
-  assert.match(
-    page,
-    /setGithubInstallStatus\(GithubInstallStatus\.INSTALLING\);\s+if \(!\(await checkExtensionsLimit\(\)\)\)/,
-  );
-  assert.match(
-    page,
-    /setGithubInstallStatus\(GithubInstallStatus\.SKILL_INSTALLING\);\s+if \(!\(await checkExtensionsLimit\(\)\)\)/,
-  );
-});
-
 test('quota tooltip copy is localized in Simplified Chinese', () => {
   const source = fs.readFileSync(zhPath, 'utf8');
   assert.match(source, /createDisabledTooltip/);

@@ -22,7 +22,7 @@ async function setup(page: Page) {
   await page.route('**/api/v1/plugins/qa/loading**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const data = path.endsWith('/config')
-      ? { config: {} }
+      ? { config: { support_text: 'Restored plugin configuration' } }
       : path.endsWith('/readme')
         ? { readme: '# Loaded documentation' }
         : {
@@ -35,7 +35,16 @@ async function setup(page: Page) {
                     label: { en_US: 'Loading test plugin' },
                     description: { en_US: 'Test' },
                   },
-                  spec: { config: [] },
+                  spec: {
+                    config: [
+                      {
+                        name: 'support_text',
+                        label: { en_US: 'Plugin greeting' },
+                        type: 'text',
+                        default: '',
+                      },
+                    ],
+                  },
                 },
               },
               components: [],
@@ -179,8 +188,8 @@ const cases = [
     name: 'plugin configuration',
     url: '/home/extensions?id=qa/loading',
     endpoint: '/plugins/qa/loading/config',
-    form: '[data-slot="card-title"]',
-    readyText: 'Plugin Configuration',
+    form: 'textarea[name="support_text"]',
+    readyValue: 'Restored plugin configuration',
   },
 ];
 
@@ -225,7 +234,9 @@ for (const scenario of cases) {
   test(`${scenario.name}: failed request can be retried`, async ({ page }) => {
     await setup(page);
     let fail = true;
+    let requests = 0;
     await page.route(`**/api/v1${scenario.endpoint}`, async (route) => {
+      requests++;
       if (fail)
         await route.fulfill({
           status: 503,
@@ -242,9 +253,19 @@ for (const scenario of cases) {
       .getByRole('alert')
       .filter({ hasText: 'Unable to load this content' });
     await expect(error).toBeVisible();
+    const requestsBeforeRetry = requests;
     fail = false;
     await error.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect.poll(() => requests).toBeGreaterThan(requestsBeforeRetry);
     await expect(error).toHaveCount(0);
+    if (scenario.readyText)
+      await expect(
+        page.getByText(scenario.readyText, { exact: true }).first(),
+      ).toBeVisible();
+    if (scenario.readyValue)
+      await expect(page.locator(scenario.form)).toHaveValue(
+        scenario.readyValue,
+      );
     await expect(page.locator(scenario.form).first()).toBeAttached();
     await expect(
       page.getByRole('status').filter({ hasText: 'Loading...' }),

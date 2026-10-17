@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import sqlalchemy
 import pytest
 from unittest.mock import AsyncMock, Mock, MagicMock
 from types import SimpleNamespace
@@ -97,6 +98,22 @@ def _create_mock_result(items: list = None, first_item=None, *, scalar_value=0, 
     return result
 
 
+def _write_statement(ap, operation):
+    statements = [
+        call.args[0]
+        for call in ap.persistence_mgr.execute_async.await_args_list
+        if getattr(call.args[0], f'is_{operation}')
+    ]
+    assert len(statements) == 1
+    statement = statements[0]
+    assert statement.table.name == MCPServer.__tablename__
+    if operation != 'insert':
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(MCPServer.uuid == 'test-uuid', MCPServer.workspace_uuid == _CONTEXT.workspace_uuid)
+        )
+    return statement
+
+
 class TestMCPServiceGetRuntimeInfo:
     """Tests for get_runtime_info method."""
 
@@ -118,7 +135,8 @@ class TestMCPServiceGetRuntimeInfo:
 
         # Verify
         assert result is not None
-        assert result['status'] == 'running'
+        assert result == {'status': 'running', 'tools': 5}
+        ap.tool_mgr.mcp_tool_loader.get_session.assert_called_once_with(_CONTEXT, 'test-server')
 
     async def test_get_runtime_info_session_not_exists(self):
         """Returns None when session not exists."""
@@ -400,6 +418,8 @@ class TestMCPServiceCreateMCPServer:
         # Execute & Verify - 2 plugins + new server would exceed limit
         with pytest.raises(ValueError, match='Maximum number of extensions'):
             await service.create_mcp_server(_CONTEXT, {'name': 'New Server'})
+        assert all(not call.args[0].is_insert for call in ap.persistence_mgr.execute_async.await_args_list)
+        ap.tool_mgr.mcp_tool_loader.get_session.assert_not_called()
 
     async def test_create_mcp_server_no_limit(self):
         """Creates MCP server without limit when max_extensions=-1."""
@@ -427,7 +447,11 @@ class TestMCPServiceCreateMCPServer:
 
         # Verify
         assert server_uuid is not None
-        assert len(server_uuid) == 36  # UUID format
+        assert uuid.UUID(server_uuid).version == 4
+        values = _write_statement(ap, 'insert').compile().params
+        assert values['uuid'] == server_uuid
+        assert values['workspace_uuid'] == _CONTEXT.workspace_uuid
+        assert values['name'] == 'New Server'
 
     async def test_create_mcp_server_duplicate_name_raises(self):
         """Rejects duplicate MCP server names."""
@@ -485,7 +509,14 @@ class TestMCPServiceCreateMCPServer:
         await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
 
         # Verify - host_mcp_server was called
-        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
+        values = _write_statement(ap, 'insert').compile().params
+        assert values['workspace_uuid'] == _CONTEXT.workspace_uuid
+        assert values['name'] == 'New Server'
+        assert values['enable'] is True
+        await asyncio.gather(*ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks)
+        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_awaited_once_with(
+            _CONTEXT, {'uuid': 'new-uuid', 'name': 'New Server', 'enable': True}
+        )
 
     async def test_create_mcp_server_does_not_start_host_until_transaction_commits(self):
         """The Runtime must not observe a server row that can still roll back."""
@@ -536,25 +567,36 @@ class TestMCPServiceCreateMCPServer:
         ]
 
     async def test_create_mcp_server_disabled_no_load(self):
-        """Does not load server when disabled."""
+        """Persists and passes disabled configuration to the runtime loader."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_extensions': -1}}}
-        ap.tool_mgr = None
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(host_mcp_server=AsyncMock(), _hosted_mcp_tasks=[])
+        )
 
-        mock_result = _create_mock_result([])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid'})
+        server = _create_mock_mcp_server(server_uuid='new-uuid', name='New Server', enable=False)
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[_create_mock_result(), _create_mock_result(), _create_mock_result(first_item=server)]
+        )
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'new-uuid', 'name': 'New Server', 'enable': False}
+        )
 
         service = _service(ap)
 
         # Execute with enable=False
         server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': False})
 
-        # Verify - no tool_mgr load attempt
-        assert server_uuid is not None
+        # Verify the persisted flag and the configuration passed to the loader
+        assert uuid.UUID(server_uuid).version == 4
+        assert _write_statement(ap, 'insert').compile().params['enable'] is False
+        await asyncio.gather(*ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks)
+        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_awaited_once_with(
+            _CONTEXT, {'uuid': 'new-uuid', 'name': 'New Server', 'enable': False}
+        )
 
 
 class TestMCPServiceGetMCPServerByName:
@@ -585,6 +627,12 @@ class TestMCPServiceGetMCPServerByName:
         # Verify
         assert result is not None
         assert result['name'] == 'Found Server'
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(MCPServer.name == 'Found Server', MCPServer.workspace_uuid == _CONTEXT.workspace_uuid)
+        )
+        ap.persistence_mgr.serialize_model.assert_called_once_with(MCPServer, server)
+        ap.tool_mgr.mcp_tool_loader.get_session.assert_called_once_with(_CONTEXT, 'Found Server')
 
     async def test_get_mcp_server_by_name_not_found(self):
         """Returns None when MCP server not found."""
@@ -647,7 +695,9 @@ class TestMCPServiceUpdateMCPServer:
         await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': False})
 
         # Verify - server was removed
-        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once()
+        values = _write_statement(ap, 'update').compile().params
+        assert values['enable'] is False
+        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_awaited_once_with(_CONTEXT, 'Old Server')
 
     async def test_update_mcp_server_enable_disabled_server(self):
         """Loads server when enabling previously disabled server."""
@@ -687,7 +737,12 @@ class TestMCPServiceUpdateMCPServer:
         await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': True})
 
         # Verify - server was loaded
-        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
+        values = _write_statement(ap, 'update').compile().params
+        assert values['enable'] is True
+        await asyncio.gather(*ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks)
+        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_awaited_once_with(
+            _CONTEXT, {'uuid': 'test-uuid', 'name': 'Old Server', 'enable': True}
+        )
 
     async def test_update_mcp_server_update_enabled_server(self):
         """Removes and reloads server when updating enabled server."""
@@ -725,7 +780,13 @@ class TestMCPServiceUpdateMCPServer:
 
         # Verify - remove and reload
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with(_CONTEXT, 'Old Server')
-        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
+        values = _write_statement(ap, 'update').compile().params
+        assert values['enable'] is True
+        assert values.get('extra_args') == {'new': 'args'}
+        await asyncio.gather(*ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks)
+        ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_awaited_once_with(
+            _CONTEXT, {'uuid': 'test-uuid', 'name': 'Old Server', 'enable': True}
+        )
 
     async def test_update_mcp_server_no_tool_mgr(self):
         """Updates persistence without tool_mgr operations."""
@@ -763,7 +824,8 @@ class TestMCPServiceUpdateMCPServer:
         await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': False})
 
         # Verify - persistence was called
-        assert ap.persistence_mgr.execute_async.call_count >= 2
+        values = _write_statement(ap, 'update').compile().params
+        assert values['enable'] is False
 
     async def test_update_restores_existing_masked_secrets_and_preserves_explicit_changes(self):
         ap = SimpleNamespace()
@@ -884,7 +946,7 @@ class TestMCPServiceDeleteMCPServer:
 
         # Verify
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with(_CONTEXT, 'Server to Delete')
-        ap.persistence_mgr.execute_async.assert_called()
+        _write_statement(ap, 'delete')
 
     async def test_delete_mcp_server_not_in_sessions(self):
         """Does not attempt remove if server not in sessions."""
@@ -923,7 +985,8 @@ class TestMCPServiceDeleteMCPServer:
         await service.delete_mcp_server(_CONTEXT, 'test-uuid')
 
         # Verify - remove not called (server not in sessions)
-        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_not_called()
+        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_not_awaited()
+        _write_statement(ap, 'delete')
 
     async def test_delete_mcp_server_nonexistent_uuid(self):
         """Delete operation completes even for nonexistent UUID."""
@@ -989,6 +1052,7 @@ class TestMCPServiceTestMCPServer:
         mock_session = MagicMock()
         mock_session.status = MCPSessionStatus.ERROR
         mock_session.start = AsyncMock()
+        mock_session.get_runtime_info_dict.return_value = {'status': 'connected', 'tools': 3}
         mock_session.refresh = AsyncMock()
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=mock_session)
 
@@ -997,8 +1061,10 @@ class TestMCPServiceTestMCPServer:
         service = _service(ap)
         service._require_server = AsyncMock(return_value=(_CONTEXT, {'name': 'existing-server'}))
 
-        def create_user_task(coroutine, **_kwargs):
-            coroutine.close()
+        captured = {}
+
+        def create_user_task(coroutine, **kwargs):
+            captured.update(coroutine=coroutine, context=kwargs['context'])
             return SimpleNamespace(id=123)
 
         ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
@@ -1007,7 +1073,11 @@ class TestMCPServiceTestMCPServer:
         task_id = await service.test_mcp_server(_CONTEXT, 'existing-server', {})
 
         # Verify - returns task ID
+        ap.tool_mgr.mcp_tool_loader.get_session.assert_called_once_with(_CONTEXT, 'existing-server')
         assert task_id == 123
+        await captured['coroutine']
+        mock_session.start.assert_awaited_once_with()
+        assert captured['context'].metadata['runtime_info'] == {'status': 'connected', 'tools': 3}
 
     @pytest.mark.parametrize('refresh_first', [False, True])
     async def test_persisted_test_preserves_failure_details(self, refresh_first):
@@ -1064,14 +1134,18 @@ class TestMCPServiceTestMCPServer:
 
         mock_session = MagicMock()
         mock_session.start = AsyncMock()
+        mock_session.shutdown = AsyncMock()
+        mock_session.get_runtime_info_dict.return_value = {'status': 'connected', 'tools': 3}
         ap.tool_mgr.mcp_tool_loader.load_mcp_server = AsyncMock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
 
         service = _service(ap)
 
-        def create_user_task(coroutine, **_kwargs):
-            coroutine.close()
+        captured = {}
+
+        def create_user_task(coroutine, **kwargs):
+            captured.update(coroutine=coroutine, context=kwargs['context'])
             return SimpleNamespace(id=456)
 
         ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
@@ -1080,8 +1154,14 @@ class TestMCPServiceTestMCPServer:
         task_id = await service.test_mcp_server(_CONTEXT, '_', {'name': 'New Server'})
 
         # Verify - load_mcp_server called
-        ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_called_once()
+        ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_awaited_once_with(
+            _CONTEXT, {'name': 'New Server', 'workspace_uuid': _CONTEXT.workspace_uuid}
+        )
         assert task_id == 456
+        await captured['coroutine']
+        mock_session.start.assert_awaited_once_with()
+        mock_session.shutdown.assert_awaited_once_with()
+        assert captured['context'].metadata['runtime_info'] == {'status': 'connected', 'tools': 3}
 
     async def test_transient_test_preserves_runtime_info_after_connection_failure(self):
         runtime_info = {

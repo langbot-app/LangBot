@@ -128,10 +128,10 @@ def fake_pipeline_app():
             'config': {},
         }
     )
-    app.pipeline_service.create_pipeline = AsyncMock(return_value={'uuid': 'new-pipeline-uuid'})
+    app.pipeline_service.create_pipeline = AsyncMock(return_value='new-pipeline-uuid')
     app.pipeline_service.update_pipeline = AsyncMock(return_value={})
     app.pipeline_service.delete_pipeline = AsyncMock()
-    app.pipeline_service.copy_pipeline = AsyncMock(return_value={'uuid': 'copied-pipeline-uuid'})
+    app.pipeline_service.copy_pipeline = AsyncMock(return_value='copied-pipeline-uuid')
 
     # Bot service
     app.bot_service = Mock()
@@ -161,6 +161,11 @@ def fake_pipeline_app():
     return app
 
 
+@pytest.fixture(autouse=True)
+def reset_service_calls(fake_pipeline_app):
+    fake_pipeline_app.pipeline_service.reset_mock()
+
+
 @pytest.fixture(scope='module')
 async def quart_test_client(fake_pipeline_app, http_controller_cls):
     """Create Quart test client (module scope to avoid route re-registration)."""
@@ -179,7 +184,7 @@ class TestPipelineMetadataEndpoint:
     """Tests for /api/v1/pipelines/_/metadata endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_pipeline_metadata_success(self, quart_test_client):
+    async def test_get_pipeline_metadata_success(self, quart_test_client, fake_pipeline_app):
         """GET /api/v1/pipelines/_/metadata returns metadata list."""
         response = await quart_test_client.get(
             '/api/v1/pipelines/_/metadata', headers={'Authorization': 'Bearer test_token'}
@@ -190,6 +195,13 @@ class TestPipelineMetadataEndpoint:
         assert data['code'] == 0
         assert 'data' in data
         assert isinstance(data['data'], dict)
+
+        called = fake_pipeline_app.pipeline_service.get_pipeline_metadata
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {}
+        assert data['data'] == {'configs': [{'name': 'trigger', 'stages': []}, {'name': 'ai', 'stages': []}]}
 
     @pytest.mark.asyncio
     async def test_get_pipeline_metadata_requires_auth(self, quart_test_client):
@@ -203,7 +215,7 @@ class TestPipelinesListEndpoint:
     """Tests for /api/v1/pipelines endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_pipelines_success(self, quart_test_client):
+    async def test_get_pipelines_success(self, quart_test_client, fake_pipeline_app):
         """GET /api/v1/pipelines returns pipeline list."""
         response = await quart_test_client.get('/api/v1/pipelines', headers={'Authorization': 'Bearer test_token'})
 
@@ -212,16 +224,38 @@ class TestPipelinesListEndpoint:
         assert data['code'] == 0
         assert 'data' in data
 
+        called = fake_pipeline_app.pipeline_service.get_pipelines
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('created_at', 'DESC')
+        assert called.await_args.kwargs == {'include_secret': True}
+        assert data['data']['pipelines'] == [
+            {
+                'uuid': 'test-pipeline-uuid',
+                'name': 'Test Pipeline',
+                'description': 'Test description',
+                'created_at': '2024-01-01T00:00:00',
+                'updated_at': '2024-01-01T00:00:00',
+                'is_default': False,
+            }
+        ]
+
     @pytest.mark.asyncio
-    async def test_get_pipelines_with_sort_param(self, quart_test_client):
+    async def test_get_pipelines_with_sort_param(self, quart_test_client, fake_pipeline_app):
         """GET pipelines with sort parameter."""
         response = await quart_test_client.get(
-            '/api/v1/pipelines?sort_by=created_at&sort_order=DESC', headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/pipelines?sort_by=name&sort_order=ASC', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+
+        called = fake_pipeline_app.pipeline_service.get_pipelines
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('name', 'ASC')
+        assert called.await_args.kwargs == {'include_secret': True}
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -229,7 +263,7 @@ class TestPipelinesCRUDEndpoints:
     """Tests for pipeline CRUD operations."""
 
     @pytest.mark.asyncio
-    async def test_get_single_pipeline_success(self, quart_test_client):
+    async def test_get_single_pipeline_success(self, quart_test_client, fake_pipeline_app):
         """GET /api/v1/pipelines/{uuid} returns pipeline."""
         response = await quart_test_client.get(
             '/api/v1/pipelines/test-pipeline-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -240,8 +274,15 @@ class TestPipelinesCRUDEndpoints:
         assert data['code'] == 0
         assert 'data' in data
 
+        called = fake_pipeline_app.pipeline_service.get_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
+        assert called.await_args.kwargs == {'include_secret': True}
+        assert data['data']['pipeline'] == {'uuid': 'test-pipeline-uuid', 'name': 'Test Pipeline', 'config': {}}
+
     @pytest.mark.asyncio
-    async def test_create_pipeline_success(self, quart_test_client):
+    async def test_create_pipeline_success(self, quart_test_client, fake_pipeline_app):
         """POST /api/v1/pipelines creates new pipeline."""
         response = await quart_test_client.post(
             '/api/v1/pipelines',
@@ -253,6 +294,13 @@ class TestPipelinesCRUDEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'uuid' in data['data']
+
+        called = fake_pipeline_app.pipeline_service.create_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ({'name': 'New Pipeline', 'config': {}},)
+        assert called.await_args.kwargs == {'default': False}
+        assert data['data'] == {'uuid': 'new-pipeline-uuid'}
 
     @pytest.mark.asyncio
     async def test_create_default_pipeline_forwards_default_flag(self, quart_test_client, fake_pipeline_app):
@@ -271,7 +319,7 @@ class TestPipelinesCRUDEndpoints:
         assert call.args[1]['is_default'] is True
 
     @pytest.mark.asyncio
-    async def test_update_pipeline_success(self, quart_test_client):
+    async def test_update_pipeline_success(self, quart_test_client, fake_pipeline_app):
         """PUT /api/v1/pipelines/{uuid} updates pipeline."""
         response = await quart_test_client.put(
             '/api/v1/pipelines/test-pipeline-uuid',
@@ -283,8 +331,14 @@ class TestPipelinesCRUDEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
 
+        called = fake_pipeline_app.pipeline_service.update_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-pipeline-uuid', {'name': 'Updated Pipeline'})
+        assert called.await_args.kwargs == {}
+
     @pytest.mark.asyncio
-    async def test_delete_pipeline_success(self, quart_test_client):
+    async def test_delete_pipeline_success(self, quart_test_client, fake_pipeline_app):
         """DELETE /api/v1/pipelines/{uuid} deletes pipeline."""
         response = await quart_test_client.delete(
             '/api/v1/pipelines/test-pipeline-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -294,8 +348,14 @@ class TestPipelinesCRUDEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
 
+        called = fake_pipeline_app.pipeline_service.delete_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
+        assert called.await_args.kwargs == {}
+
     @pytest.mark.asyncio
-    async def test_copy_pipeline_success(self, quart_test_client):
+    async def test_copy_pipeline_success(self, quart_test_client, fake_pipeline_app):
         """POST /api/v1/pipelines/{uuid}/copy copies pipeline."""
         response = await quart_test_client.post(
             '/api/v1/pipelines/test-pipeline-uuid/copy', headers={'Authorization': 'Bearer test_token'}
@@ -306,14 +366,24 @@ class TestPipelinesCRUDEndpoints:
         assert data['code'] == 0
         assert 'uuid' in data['data']
 
+        called = fake_pipeline_app.pipeline_service.copy_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
+        assert called.await_args.kwargs == {}
+        assert data['data'] == {'uuid': 'copied-pipeline-uuid'}
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestPipelineExtensionsEndpoint:
     """Tests for pipeline extensions."""
 
     @pytest.mark.asyncio
-    async def test_get_extensions(self, quart_test_client):
+    async def test_get_extensions(self, quart_test_client, fake_pipeline_app):
         """GET /api/v1/pipelines/{uuid}/extensions."""
+        fake_pipeline_app.plugin_connector.list_plugins.return_value = [{'name': 'extension-plugin'}]
+        fake_pipeline_app.mcp_service.get_mcp_servers.return_value = [{'uuid': 'extension-mcp'}]
+        fake_pipeline_app.skill_service.list_skills.return_value = [{'name': 'extension-skill'}]
         response = await quart_test_client.get(
             '/api/v1/pipelines/test-pipeline-uuid/extensions', headers={'Authorization': 'Bearer test_token'}
         )
@@ -322,6 +392,21 @@ class TestPipelineExtensionsEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+
+        called = fake_pipeline_app.pipeline_service.get_pipeline
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
+        assert called.await_args.kwargs == {}
+        assert data['data']['available_plugins'] == [{'name': 'extension-plugin'}]
+        assert data['data']['available_mcp_servers'] == [{'uuid': 'extension-mcp'}]
+        assert data['data']['available_skills'] == [{'name': 'extension-skill'}]
+        assert data['data']['bound_plugins'] == []
+        assert data['data']['bound_mcp_servers'] == []
+        assert data['data']['bound_skills'] == []
+        assert data['data']['enable_all_plugins'] is False
+        assert data['data']['enable_all_mcp_servers'] is False
+        assert data['data']['enable_all_skills'] is False
 
     @pytest.mark.asyncio
     async def test_get_extensions_redacts_available_plugin_secrets(
@@ -377,7 +462,31 @@ class TestPipelineExtensionsEndpoint:
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestPipelineDashboardWebSocket:
     @pytest.mark.asyncio
-    async def test_websocket_authenticates_before_registering(self, quart_test_client, fake_pipeline_app):
+    async def test_websocket_authenticates_before_registering(self, quart_test_client, fake_pipeline_app, monkeypatch):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        authenticated = False
+        original_authenticate = chat.WebSocketChatRouterGroup._authenticate_websocket
+        original_add = chat.ws_connection_manager.add_connection
+        proxy = fake_pipeline_app.platform_mgr.get_websocket_proxy_bot
+
+        async def authenticate(router):
+            nonlocal authenticated
+            result = await original_authenticate(router)
+            authenticated = True
+            return result
+
+        async def get_proxy(*_args, **_kwargs):
+            assert authenticated, 'Runtime lookup must follow authentication'
+            return proxy.return_value
+
+        async def add_connection(*args, **kwargs):
+            assert authenticated, 'Connection registration must follow authentication'
+            return await original_add(*args, **kwargs)
+
+        monkeypatch.setattr(chat.WebSocketChatRouterGroup, '_authenticate_websocket', authenticate)
+        monkeypatch.setattr(proxy, 'side_effect', get_proxy)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
         async with quart_test_client.websocket(
             '/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person',
             headers={'Origin': 'http://localhost'},
@@ -403,7 +512,13 @@ class TestPipelineDashboardWebSocket:
         fake_pipeline_app.platform_mgr.get_websocket_proxy_bot.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_websocket_rejects_non_auth_first_frame(self, quart_test_client):
+    async def test_websocket_rejects_non_auth_first_frame(self, quart_test_client, fake_pipeline_app, monkeypatch):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        proxy = fake_pipeline_app.platform_mgr.get_websocket_proxy_bot
+        proxy.reset_mock()
+        add_connection = AsyncMock(wraps=chat.ws_connection_manager.add_connection)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
         async with quart_test_client.websocket(
             '/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person',
             headers={'Origin': 'http://localhost'},
@@ -411,6 +526,9 @@ class TestPipelineDashboardWebSocket:
             await websocket.send(json.dumps({'type': 'message', 'message': []}))
             response = json.loads(await websocket.receive())
             assert response == {'type': 'error', 'message': 'Unauthorized'}
+
+        proxy.assert_not_awaited()
+        add_connection.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_websocket_rechecks_revocable_membership_before_each_message(

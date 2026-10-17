@@ -613,6 +613,7 @@ def test_agent_event_keeps_image_file_and_voice_attachments():
     )
     agent_input = RuntimeBot._build_agent_input(event)
     assert [attachment.type for attachment in agent_input.attachments] == ['image', 'file', 'voice']
+    assert agent_input.attachments[0].url == 'https://cdn.example.test/image.png'
     assert agent_input.attachments[1].name == 'input.txt'
     assert agent_input.attachments[1].url == 'https://cdn.example.test/input.txt'
     assert agent_input.attachments[2].content == 'dGVzdA=='

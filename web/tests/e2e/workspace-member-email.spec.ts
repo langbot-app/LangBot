@@ -73,6 +73,10 @@ test('workspace member list displays each member email without overlapping contr
   await expect(page.getByText('RockChinQ')).toBeVisible();
   await expect(page.getByText('rock@example.com')).toBeVisible();
   await expect(page.getByText('Junyan Qin')).toBeVisible();
+  const ownerRow = page
+    .locator('[data-slot="item"]')
+    .filter({ hasText: 'RockChinQ' });
+  await expect(ownerRow.getByText('Owner', { exact: true })).toBeVisible();
   const longEmail = page.getByText(
     'a.very.long.workspace.member.email.address@example-company.test',
   );
@@ -80,6 +84,7 @@ test('workspace member list displays each member email without overlapping contr
   await longEmail.scrollIntoViewIfNeeded();
 
   const roleSelect = page.getByRole('combobox').last();
+  await expect(roleSelect).toHaveText('Admin');
   const [emailBox, selectBox] = await Promise.all([
     longEmail.boundingBox(),
     roleSelect.boundingBox(),
