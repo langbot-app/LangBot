@@ -291,6 +291,11 @@ Note: PostgreSQL tests are **not** included in fast integration gate because the
 - Are marked with `@pytest.mark.slow`
 - Need `TEST_POSTGRES_URL` environment variable
 
+A separate **PostgreSQL Contract Tests** job provisions a disposable database for
+pipeline admission, RAG recovery, migration convergence, and timestamp/lease contracts.
+See [the PostgreSQL contract guide](../docs/POSTGRES_CONTRACT_TESTS.md) for scope,
+local commands, and remaining optional prerequisites.
+
 CI workflow `.github/workflows/test-migrations.yml` runs:
 - SQLite tests in `test-migrations-sqlite` job (fast, no external services)
 - PostgreSQL tests in `test-migrations-postgres` job (uses PostgreSQL service container)

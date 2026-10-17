@@ -34,7 +34,11 @@ TABLES = [AgentRun.__table__, AgentRunEvent.__table__, AgentRuntime.__table__, E
 
 def _published_schema(connection):
     with Operations.context(MigrationContext.configure(connection)):
-        for revision in ('58846a8d7a81_add_event_log_and_transcript_tables', '8d3a1f2c4b6e_add_agent_run_ledger'):
+        for revision in (
+            '58846a8d7a81_add_event_log_and_transcript_tables',
+            '8d3a1f2c4b6e_add_agent_run_ledger',
+            '0036_execution_host_leases',
+        ):
             importlib.import_module(f'langbot.pkg.persistence.alembic.versions.{revision}').upgrade()
 
 
@@ -119,6 +123,7 @@ async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
             bot_id=None,
             event_type='message.received',
             source='debug',
+            data={},
             delivery=SimpleNamespace(model_dump=lambda **kwargs: {}),
         ),
         binding=SimpleNamespace(binding_id='binding', agent_id='agent', processor_id='agent', processor_type='agent'),
