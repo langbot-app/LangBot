@@ -87,10 +87,14 @@ export default function ExecutionDetailSheet({
   const [detail, setDetail] = useState<ExecutionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [sectionError, setSectionError] = useState<ExecutionSection | null>(
-    null,
+  const [sectionError, setSectionError] = useState<
+    Partial<Record<ExecutionSection, boolean>>
+  >({});
+  const [busy, setBusy] = useState<Partial<Record<ExecutionSection, boolean>>>(
+    {},
   );
-  const [busy, setBusy] = useState<ExecutionSection | null>(null);
+  const pendingSections = useRef(new Set<ExecutionSection>());
+  const expandedSections = useRef(new Set<ExecutionSection>());
   const [refresh, setRefresh] = useState(0);
   const request = useRef(0);
   const identity = `${workspace}:${row?.source}:${row?.id}`;
@@ -106,20 +110,43 @@ export default function ExecutionDetailSheet({
     if (requestedIdentity.current !== identity) {
       setDetail(null);
       requestedIdentity.current = identity;
+      expandedSections.current.clear();
     }
     setError(false);
-    setSectionError(null);
-    setBusy(null);
+    setSectionError({});
+    setBusy({});
+    pendingSections.current.clear();
     if (!id || !source) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    backendClient
-      .getExecutionDetail(source, id)
-      .then((result) => {
+    const expanded = [...expandedSections.current].filter(
+      (section) => section !== 'errors',
+    );
+    Promise.all([
+      backendClient.getExecutionDetail(source, id, { section: 'overview' }),
+      ...expanded.map((section) =>
+        backendClient
+          .getExecutionDetail(source, id, { section })
+          .catch(() => null),
+      ),
+    ])
+      .then(([result, ...sections]) => {
         if (version !== request.current) return;
-        setDetail(result);
+        if (!result) return;
+        const pages = { ...result.pages };
+        const failures: Partial<Record<ExecutionSection, boolean>> = {};
+        sections.forEach((loaded, index) => {
+          const section = expanded[index];
+          if (loaded) Object.assign(pages, loaded.pages);
+          else failures[section] = true;
+        });
+        setDetail((previous) => ({
+          ...result,
+          pages: { ...previous?.pages, ...pages },
+        }));
+        setSectionError((previous) => ({ ...previous, ...failures }));
         setLoadedIdentity(identity);
       })
       .catch(() => {
@@ -144,10 +171,11 @@ export default function ExecutionDetailSheet({
     return () => clearInterval(timer);
   }, [status, visible]);
   const loadMore = async (section: ExecutionSection) => {
-    if (!visible || !row || busy) return;
+    if (!visible || !row || pendingSections.current.has(section)) return;
     const version = request.current;
-    setBusy(section);
-    setSectionError(null);
+    pendingSections.current.add(section);
+    setBusy((previous) => ({ ...previous, [section]: true }));
+    setSectionError((previous) => ({ ...previous, [section]: false }));
     try {
       const result = await backendClient.getExecutionDetail(
         row.source,
@@ -174,9 +202,13 @@ export default function ExecutionDetailSheet({
             },
         );
     } catch {
-      if (version === request.current) setSectionError(section);
+      if (version === request.current)
+        setSectionError((previous) => ({ ...previous, [section]: true }));
     } finally {
-      if (version === request.current) setBusy(null);
+      if (version === request.current) {
+        pendingSections.current.delete(section);
+        setBusy((previous) => ({ ...previous, [section]: false }));
+      }
     }
   };
   const renderItem = (section: ExecutionSection, item: ExecutionDetailItem) => {
@@ -298,9 +330,12 @@ export default function ExecutionDetailSheet({
   };
   const renderSection = (section: ExecutionSection, primary = false) => {
     const page = visible?.pages[section];
+    if (primary && !page) return null;
     if (
-      !page ||
-      (!primary && page.items.length === 0 && section !== 'conversation')
+      !primary &&
+      page?.items.length === 0 &&
+      section !== 'conversation' &&
+      !sectionError[section]
     )
       return null;
     const body = (
@@ -310,26 +345,29 @@ export default function ExecutionDetailSheet({
             {t('monitoring.unified.contextHint')}
           </p>
         )}
-        {page.items.length === 0 && (
+        {!page && !sectionError[section] && (
+          <Skeleton className="h-16 w-full" />
+        )}
+        {page?.items.length === 0 && (
           <p className="text-sm text-muted-foreground">
             {t('monitoring.unified.noRecords')}
           </p>
         )}
-        {page.items.map((item, i) => (
+        {page?.items.map((item, i) => (
           <div key={`${item.id}-${i}`}>{renderItem(section, item)}</div>
         ))}
-        {sectionError === section && (
+        {sectionError[section] && (
           <LoadErrorState
             compact
             title={t('monitoring.execution.detail.loadError')}
             onRetry={() => loadMore(section)}
           />
         )}
-        {page.has_more && (
+        {page?.has_more && (
           <Button
             variant="outline"
             size="sm"
-            disabled={busy !== null}
+            disabled={!!busy[section]}
             onClick={() => loadMore(section)}
           >
             {t('monitoring.unified.loadMore')}
@@ -337,7 +375,7 @@ export default function ExecutionDetailSheet({
         )}
       </div>
     );
-    const title = `${t(`monitoring.unified.${section}`)} (${page.items.length}${page.has_more ? '+' : ''})`;
+    const title = `${t(`monitoring.unified.${section}`)}${page ? ` (${page.items.length}${page.has_more ? '+' : ''})` : ''}`;
     return primary ? (
       <section key={section} className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -352,6 +390,12 @@ export default function ExecutionDetailSheet({
       <details
         key={section}
         open={section === 'errors' ? true : undefined}
+        onToggle={(event) => {
+          if (event.currentTarget.open) {
+            expandedSections.current.add(section);
+            if (!page) void loadMore(section);
+          } else expandedSections.current.delete(section);
+        }}
         className={`rounded-lg border p-3 ${section === 'errors' ? 'border-red-500/25 bg-red-500/5' : ''}`}
       >
         <summary className="cursor-pointer text-sm font-medium">

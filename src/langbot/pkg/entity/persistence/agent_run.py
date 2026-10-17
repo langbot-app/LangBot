@@ -116,6 +116,7 @@ class AgentRun(Base):
         ),
         sqlalchemy.Index('ix_agent_run_runner_status', 'runner_id', 'status'),
         sqlalchemy.Index('ix_agent_run_queue_claim', 'queue_name', 'status', 'priority', 'id'),
+        sqlalchemy.Index('ix_agent_run_workspace_status_lease', 'workspace_id', 'status', 'execution_lease_expires_at'),
     )
 
 

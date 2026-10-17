@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing
 
 from ...core import app
+from ...storage.media import MediaCache
 from .descriptor import RunnerDescriptor
 from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
@@ -44,10 +45,10 @@ class AgentRunJournal:
         if not item:
             return value
         item_type = item.get('type')
-        if item_type == 'image_base64' and item.get('image_base64'):
-            item['image_base64'] = None
+        if MediaCache.has_inline_images(item):
+            item = MediaCache.redact_inline_images(item)
             item['content_redacted'] = True
-        elif item_type == 'file_base64' and item.get('file_base64'):
+        if item_type == 'file_base64' and item.get('file_base64'):
             item['file_base64'] = None
             item['content_redacted'] = True
         return item
@@ -77,6 +78,8 @@ class AgentRunJournal:
             return [cls._sanitize_event_data(item) for item in value]
         if not isinstance(value, dict):
             return value
+        if value.get('type') in ('Image', 'image', 'image_url', 'image_base64'):
+            value = cls._sanitize_content_item(value)
         result = {}
         for key, item in value.items():
             if key in ('image_base64', 'file_base64', 'base64') and item:
@@ -157,11 +160,16 @@ class AgentRunJournal:
         usage = result_dict.get('usage')
         if hasattr(usage, 'model_dump'):
             usage = usage.model_dump(mode='json')
+        data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+        if MediaCache.has_inline_images(data):
+            data = await self.ap.storage_mgr.media_cache.externalize_chain_dump(data)
+        if MediaCache.has_inline_images(metadata):
+            metadata = MediaCache.redact_inline_images(metadata)
         return await self._get_run_ledger_store().append_event(
             run_id=run_id,
             sequence=sequence,
             event_type=str(result_dict.get('type') or 'unknown'),
-            data=result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {},
+            data=data,
             usage=usage if isinstance(usage, dict) else None,
             source=source,
             metadata=metadata,

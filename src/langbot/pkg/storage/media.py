@@ -11,6 +11,8 @@ import xxhash
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..utils.image import DEFAULT_BASE64_MEDIA_LIMIT
+
 if TYPE_CHECKING:
     from ...core import app
     from . import mgr as storage_mgr
@@ -49,13 +51,79 @@ class MediaCache:
                 if split_index != -1:
                     mime_type = data_url[5:split_index]
                     b64_data = data_url[split_index + 8 :]
-                    return base64.b64decode(b64_data), mime_type
-            # Try raw base64 if sufficiently long
-            if len(data_url) > 20 and not data_url.startswith(('http://', 'https://', '/')):
-                return base64.b64decode(data_url), 'application/octet-stream'
+                    return MediaCache._decode_base64(b64_data), mime_type
+            if not data_url.startswith(('http://', 'https://', '/')):
+                return MediaCache._decode_base64(data_url), 'application/octet-stream'
         except Exception:
             return None
         return None
+
+    @staticmethod
+    def _decode_base64(value: str) -> bytes:
+        """Bound decoding before allocating a binary payload for persistence."""
+        if len(value) > 4 * ((DEFAULT_BASE64_MEDIA_LIMIT + 2) // 3):
+            raise ValueError('Inline image exceeds the media size limit')
+        decoded = base64.b64decode(value, validate=True)
+        if len(decoded) > DEFAULT_BASE64_MEDIA_LIMIT:
+            raise ValueError('Inline image exceeds the media size limit')
+        return decoded
+
+    @staticmethod
+    def _inline_image_payload(node: dict) -> str | None:
+        """Recognize platform and provider image payloads without fetching URLs."""
+        node_type = node.get('type')
+        if node_type == 'Image':
+            payload = node.get('base64')
+            url = node.get('url')
+        elif node_type in ('image', 'image_url', 'image_base64'):
+            payload = node.get('image_base64')
+            url = node.get('image_url')
+            if isinstance(url, dict):
+                url = url.get('url')
+        else:
+            return None
+        if isinstance(payload, str) and payload:
+            return payload
+        if isinstance(url, str) and url.startswith('data:image/'):
+            return url
+        return None
+
+    @classmethod
+    def has_inline_images(cls, value: Any) -> bool:
+        if isinstance(value, list):
+            return any(cls.has_inline_images(item) for item in value)
+        if isinstance(value, dict):
+            return cls._inline_image_payload(value) is not None or any(
+                cls.has_inline_images(item) for item in value.values() if isinstance(item, (list, dict))
+            )
+        return False
+
+    @staticmethod
+    def _clear_inline_image(node: dict) -> None:
+        field = 'base64' if node.get('type') == 'Image' else 'image_base64'
+        if node.get(field):
+            node[field] = None
+        url_field = 'url' if node.get('type') == 'Image' else 'image_url'
+        url = node.get(url_field)
+        if isinstance(url, str) and url.startswith('data:image/'):
+            node[url_field] = None
+        elif isinstance(url, dict) and str(url.get('url', '')).startswith('data:image/'):
+            node[url_field] = {**url, 'url': None}
+
+    @classmethod
+    def redact_inline_images(cls, value: Any) -> Any:
+        """Keep metadata-only records binary-free, including short raw base64."""
+        if isinstance(value, list):
+            return [cls.redact_inline_images(item) for item in value]
+        if isinstance(value, dict):
+            node = dict(value)
+            if cls._inline_image_payload(node) is not None:
+                cls._clear_inline_image(node)
+            return {
+                key: cls.redact_inline_images(item) if isinstance(item, (list, dict)) else item
+                for key, item in node.items()
+            }
+        return value
 
     @staticmethod
     def guess_extension(mime_type: str | None, default: str = '.jpg') -> str:
@@ -201,29 +269,33 @@ class MediaCache:
             return [await self.externalize_chain_dump(item) for item in chain_dump]
         if isinstance(chain_dump, dict):
             node = copy.copy(chain_dump)
-            node_type = node.get('type')
-            if node_type == 'Image':
-                b64 = node.get('base64')
-                if b64 and isinstance(b64, str):
-                    try:
-                        parsed = self.parse_data_url(b64)
-                        if parsed is not None:
-                            raw_bytes, mime_type = parsed
-                            hash_str, storage_key, size = await self.save_media(raw_bytes, mime_type)
-                            filename = os.path.basename(storage_key)
-                            current_url = node.get('url') or ''
-                            if current_url and not current_url.startswith('data:'):
-                                node['original_url'] = current_url
-                            node['url'] = f'/api/v1/files/media/{filename}'
-                            node['base64'] = None
-                            node['hash'] = hash_str
-                            node['storage_key'] = storage_key
-                            node['size'] = size
-                            node['mime_type'] = mime_type
-                    except Exception as e:
-                        if hasattr(self.ap, 'logger') and self.ap.logger:
-                            self.ap.logger.warning(f'Failed to externalize image to media cache: {e}')
-                        node['base64'] = None
+            payload = self._inline_image_payload(node)
+            if payload is not None:
+                try:
+                    parsed = await asyncio.to_thread(self.parse_data_url, payload)
+                    if parsed is None:
+                        raise ValueError('Invalid inline image payload')
+                    raw_bytes, mime_type = parsed
+                    hash_str, storage_key, size = await self.save_media(raw_bytes, mime_type)
+                    url = f'/api/v1/files/media/{os.path.basename(storage_key)}'
+                    if node.get('type') == 'Image':
+                        current_url = node.get('url') or ''
+                        if current_url and not current_url.startswith('data:'):
+                            node['original_url'] = current_url
+                        node['url'] = url
+                    else:
+                        current_url = node.get('image_url')
+                        if isinstance(current_url, dict):
+                            current_url = current_url.get('url')
+                        if current_url and not current_url.startswith('data:'):
+                            node['original_url'] = current_url
+                        image_url = node.get('image_url')
+                        node['image_url'] = {**image_url, 'url': url} if isinstance(image_url, dict) else {'url': url}
+                    node.update(hash=hash_str, storage_key=storage_key, size=size, mime_type=mime_type)
+                except Exception as e:
+                    if hasattr(self.ap, 'logger') and self.ap.logger:
+                        self.ap.logger.warning(f'Failed to externalize image to media cache: {e}')
+                self._clear_inline_image(node)
             for k, v in list(node.items()):
                 if isinstance(v, (list, dict)):
                     node[k] = await self.externalize_chain_dump(v)

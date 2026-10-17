@@ -15,6 +15,7 @@ from ....entity.persistence import monitoring as persistence_monitoring
 from ....entity.persistence import agent_run as persistence_agent_run
 from ....entity.persistence import agent_interaction as persistence_agent_interaction
 from ....entity.persistence.event_log import EventLog
+from ....storage.media import MediaCache
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
@@ -504,29 +505,30 @@ class MonitoringService(ExecutionDetailsMixin):
 
     def _sanitize_message_content(self, content: str) -> str:
         """Strip raw base64 data to protect database storage from unbounded bloating."""
-        if not content or len(content) < 10000 or (';base64,' not in content and 'data:image/' not in content):
+        if not content or ('base64' not in content and 'data:image/' not in content):
             return content
         try:
             data = json.loads(content)
-
-            def _strip_node(node):
-                if isinstance(node, list):
-                    return [_strip_node(x) for x in node]
-                if isinstance(node, dict):
-                    res = dict(node)
-                    if res.get('type') == 'Image' and res.get('base64'):
-                        res['base64'] = None
-                    for k, v in list(res.items()):
-                        if isinstance(v, (list, dict)):
-                            res[k] = _strip_node(v)
-                    return res
-                return node
-
-            return json.dumps(_strip_node(data), ensure_ascii=False)
+            return json.dumps(MediaCache.redact_inline_images(data), ensure_ascii=False)
         except Exception:
             return re.sub(
                 r'data:image/[a-zA-Z0-9.+_-]+;base64,[\sA-Za-z0-9+/=]{1000,}', '[base64 image omitted]', content
             )
+
+    async def _externalize_message_content(self, content: str | list | dict) -> str:
+        """Externalize structured images before allocating their JSON representation."""
+        if isinstance(content, str):
+            if not content or ('base64' not in content and 'data:image/' not in content):
+                return content
+            try:
+                payload = json.loads(content)
+            except (TypeError, ValueError):
+                return self._sanitize_message_content(content)
+        else:
+            payload = content
+        if MediaCache.has_inline_images(payload):
+            payload = await self.ap.storage_mgr.media_cache.externalize_chain_dump(payload)
+        return json.dumps(MediaCache.redact_inline_images(payload), ensure_ascii=False)
 
     @_workspace_transaction
     async def record_message(
@@ -536,7 +538,7 @@ class MonitoringService(ExecutionDetailsMixin):
         bot_name: str,
         pipeline_id: str,
         pipeline_name: str,
-        message_content: str,
+        message_content: str | list | dict,
         session_id: str,
         status: str = 'success',
         level: str = 'info',
@@ -558,7 +560,7 @@ class MonitoringService(ExecutionDetailsMixin):
         event_id = event_id or (trace_state.event_id if trace_state else None)
         run_id = run_id or trace.current_run() or None
         message_id = str(uuid.uuid4())
-        message_content = self._sanitize_message_content(message_content)
+        message_content = await self._externalize_message_content(message_content)
         from ....utils.execution_lease import host_execution_lease
 
         message_data = {
@@ -1291,15 +1293,16 @@ class MonitoringService(ExecutionDetailsMixin):
             'input_preview': _message_preview(json.dumps(metadata.get('input') or {}, ensure_ascii=False), 200),
         }
 
-    def _serialize_pipeline_execution(self, row) -> dict:
+    def _serialize_pipeline_execution(self, row, *, summary_only=False) -> dict:
         created_at_ms = _epoch_ms(row.timestamp)
+        preview = '' if summary_only else _message_preview(row.message_content)
         return {
             'source': 'pipeline',
             'id': row.id,
             'event_id': row.event_id,
             'status': row.status,
             'status_group': _status_group(row.status, 'pipeline'),
-            'title': _message_preview(row.message_content),
+            'title': row.pipeline_name if summary_only else preview,
             'target_kind': 'pipeline',
             'target_id': row.pipeline_id,
             'target_name': row.pipeline_name,
@@ -1319,7 +1322,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'queue_name': None,
             'debug': row.bot_id == 'websocket-proxy-bot',
             'has_error': row.status == 'error',
-            'input_preview': _message_preview(row.message_content),
+            'input_preview': preview,
             'platform': row.platform,
             'user_id': row.user_id,
             'user_name': row.user_name,
@@ -1533,6 +1536,23 @@ class MonitoringService(ExecutionDetailsMixin):
             'real': total - debug_count,
         }
 
+    @staticmethod
+    def _inflight_pipeline_condition(*, pending_only: bool = False):
+        """Historical pending records without a live Host lease are not tasks."""
+        Message = persistence_monitoring.MonitoringMessage
+        live_lease = sqlalchemy.and_(
+            Message.execution_owner_id.is_not(None),
+            Message.execution_lease_expires_at > datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
+        )
+        # Active-only queries must expose the lease range to the composite index.
+        # The status OR otherwise reads historical payload pages to check role.
+        if pending_only:
+            return live_lease
+        return sqlalchemy.or_(
+            Message.status != 'pending',
+            live_lease,
+        )
+
     async def get_executions(
         self,
         context: TenantContext,
@@ -1548,6 +1568,7 @@ class MonitoringService(ExecutionDetailsMixin):
         limit: int = 50,
         offset: int = 0,
         include_summary: bool = True,
+        for_inflight: bool = False,
     ) -> dict:
         """List executions from both object types (agent runs and pipeline queries)."""
         workspace_uuid = require_workspace_uuid(context)
@@ -1579,15 +1600,18 @@ class MonitoringService(ExecutionDetailsMixin):
                 ).where(*conditions)
             )
         if source in {'all', 'pipeline'} and (not agent_ids or pipeline_ids):
+            pipeline_statuses = self._raw_pipeline_statuses(statuses)
             conditions = self._pipeline_execution_conditions(
                 workspace_uuid,
                 bot_ids=bot_ids,
                 pipeline_ids=pipeline_ids,
-                statuses=self._raw_pipeline_statuses(statuses),
+                statuses=pipeline_statuses,
                 start_time=start_time,
                 end_time=end_time,
                 debug=debug,
             )
+            if for_inflight:
+                conditions.append(self._inflight_pipeline_condition(pending_only=pipeline_statuses == ['pending']))
             branches.append(
                 sqlalchemy.select(
                     sqlalchemy.literal('pipeline').label('source'),
@@ -1595,7 +1619,7 @@ class MonitoringService(ExecutionDetailsMixin):
                     Message.timestamp.label('time'),
                 ).where(*conditions)
             )
-        if source in {'all', 'event'} and mode != 'debug' and not pipeline_ids and not agent_ids:
+        if source in {'all', 'event'} and mode != 'debug' and not pipeline_ids and not agent_ids and not for_inflight:
             conditions = self._unhandled_event_conditions(workspace_uuid, bot_ids, start_time, end_time)
             if statuses:
                 conditions.append(self._execution_json_text(EventLog.metadata_json, 'status').in_(statuses))
@@ -1634,20 +1658,23 @@ class MonitoringService(ExecutionDetailsMixin):
                 workspace_column = model.workspace_uuid if kind == 'pipeline' else model.workspace_id
                 records = await self._execution_rows(
                     workspace_uuid,
-                    sqlalchemy.select(model).where(workspace_column == workspace_uuid, identity_column.in_(ids)),
+                    self._execution_statement(model, summary_only=for_inflight).where(
+                        workspace_column == workspace_uuid, identity_column.in_(ids)
+                    ),
+                    summary_only=for_inflight,
                 )
                 names = await self._agent_names(workspace_uuid, records) if kind == 'agent' else {}
                 for record in records:
                     item = (
                         self._serialize_agent_execution(record, names)
                         if kind == 'agent'
-                        else self._serialize_pipeline_execution(record)
+                        else self._serialize_pipeline_execution(record, summary_only=for_inflight)
                         if kind == 'pipeline'
                         else self._serialize_event_execution(record)
                     )
                     by_key[(kind, item['id'])] = item
             page = [by_key[(ref.source, ref.id)] for ref in refs if (ref.source, ref.id) in by_key]
-            await self.enrich_execution_rows(workspace_uuid, page)
+            await self.enrich_execution_rows(workspace_uuid, page, summary_only=for_inflight)
         if not include_summary:
             return {'items': page, 'total': total, 'has_more': total > offset + len(page)}
         return {
@@ -1692,7 +1719,9 @@ class MonitoringService(ExecutionDetailsMixin):
         from ....utils.inflight import inflight_hub
 
         workspace = require_workspace_uuid(context)
-        active = await self.get_executions(context, statuses=['running', 'queued'], limit=100, include_summary=False)
+        active = await self.get_executions(
+            context, statuses=['running', 'queued'], limit=100, include_summary=False, for_inflight=True
+        )
         # Execution timestamps are stored as UTC without a timezone. asyncpg
         # rejects aware datetimes for these columns, even though SQLite accepts them.
         recent_start = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
@@ -1703,6 +1732,7 @@ class MonitoringService(ExecutionDetailsMixin):
             start_time=recent_start,
             limit=100,
             include_summary=False,
+            for_inflight=True,
         )
         items = {(r['source'], r['id']): r for r in recent['items'] + active['items'] if r['source'] != 'event'}
         # Keep the actual terminal state of older runs that just left the active set.
@@ -1722,28 +1752,56 @@ class MonitoringService(ExecutionDetailsMixin):
         ]:
             missing = [r['id'] for r in (previous or [])[:100] if r['source'] == kind and (kind, r['id']) not in items]
             if missing:
-                records = await self._execution_rows(
-                    workspace, sqlalchemy.select(model).where(scope == workspace, column.in_(missing))
+                statement = self._execution_statement(model, summary_only=True).where(
+                    scope == workspace, column.in_(missing)
                 )
+                if kind == 'pipeline':
+                    statement = statement.where(self._inflight_pipeline_condition())
+                records = await self._execution_rows(workspace, statement, summary_only=True)
                 names = await self._agent_names(workspace, records) if kind == 'agent' else {}
                 for record in records:
                     row = (
                         self._serialize_agent_execution(record, names)
                         if kind == 'agent'
-                        else self._serialize_pipeline_execution(record)
+                        else self._serialize_pipeline_execution(record, summary_only=True)
                     )
                     items[(kind, row['id'])] = row
         rows = list(items.values())
+        snapshot = {
+            'items': rows,
+            'active_total': active['total'],
+            'truncated': active['has_more'] or recent['has_more'],
+        }
+        if not rows:
+            inflight_hub.track(workspace, [])
+            return snapshot
         Run = persistence_agent_run.AgentRun
         Message = persistence_monitoring.MonitoringMessage
         agent_ids = [r['id'] for r in rows if r['source'] == 'agent']
         pipeline_ids = [r['id'] for r in rows if r['source'] == 'pipeline']
-        linked = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(Run.run_id, Message.id.label('message_id'))
-            .outerjoin(Message, sqlalchemy.and_(Message.workspace_uuid == workspace, Message.run_id == Run.run_id))
-            .where(
-                Run.workspace_id == workspace, sqlalchemy.or_(Run.run_id.in_(agent_ids), Message.id.in_(pipeline_ids))
+        links = []
+        if agent_ids:
+            links.append(
+                sqlalchemy.select(Run.run_id, sqlalchemy.literal(None).label('message_id')).where(
+                    Run.workspace_id == workspace, Run.run_id.in_(agent_ids)
+                )
             )
+        if pipeline_ids:
+            # Start from the selected message IDs. A cross-table OR after a
+            # LEFT JOIN makes SQLite scan the attachment-heavy message ledger
+            # whenever the snapshot contains even one Pipeline execution.
+            selected_messages = sqlalchemy.union_all(
+                *[sqlalchemy.select(sqlalchemy.literal(message_id).label('message_id')) for message_id in pipeline_ids]
+            ).subquery('selected_messages')
+            links.append(
+                sqlalchemy.select(Run.run_id, Message.id.label('message_id'))
+                .select_from(selected_messages)
+                .join(Message, Message.id == selected_messages.c.message_id)
+                .join(Run, sqlalchemy.and_(Run.workspace_id == workspace, Run.run_id == Message.run_id))
+                .where(Message.workspace_uuid == workspace)
+            )
+        linked = await self.ap.persistence_mgr.execute_async(
+            links[0] if len(links) == 1 else sqlalchemy.union_all(*links)
         )
         identities = {
             r.run_id: ('pipeline', r.message_id) if r.message_id in pipeline_ids else ('agent', r.run_id)
@@ -1766,7 +1824,7 @@ class MonitoringService(ExecutionDetailsMixin):
             row = items.get(identities[run_id])
             if row is not None:
                 row['progress_event'] = event_type
-        return {'items': rows, 'active_total': active['total'], 'truncated': active['has_more'] or recent['has_more']}
+        return snapshot
 
     async def get_token_statistics(
         self,

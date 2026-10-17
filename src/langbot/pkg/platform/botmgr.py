@@ -1356,10 +1356,7 @@ class RuntimeBot:
         """Record a discarded message in the monitoring system."""
         try:
             if hasattr(message_chain, 'model_dump'):
-                chain_dump = message_chain.model_dump()
-                if hasattr(self.ap, 'storage_mgr') and hasattr(self.ap.storage_mgr, 'media_cache'):
-                    chain_dump = await self.ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
-                message_content = json.dumps(chain_dump, ensure_ascii=False)
+                message_content = message_chain.model_dump()
             else:
                 message_content = str(message_chain)
 

@@ -313,7 +313,7 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
-            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
+            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Use section=overview for inputs, outputs, deliveries and errors without loading history; request other sections on demand. Omit section for the full trace. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
         )
         async def get_monitoring_execution_detail(
             source: typing.Literal['auto', 'agent', 'pipeline', 'event'],

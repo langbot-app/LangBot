@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -128,6 +129,51 @@ class TestMediaCache:
             assert result[0]['base64'] is None
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'image',
+        [
+            {'type': 'Image', 'base64': 'eA=='},
+            {'type': 'image_base64', 'image_base64': 'eA=='},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA==', 'detail': 'low'}},
+            {'type': 'image', 'image_url': 'data:image/png;base64,eA=='},
+            {'type': 'Image', 'url': 'data:image/png;base64,eA=='},
+        ],
+    )
+    async def test_externalize_image_encodings_without_mutating_runtime_input(self, image):
+        original = json.dumps(image)
+        result = await self.media_cache.externalize_chain_dump({'nested': [image]})
+        saved = result['nested'][0]
+        assert saved['storage_key'].startswith('media_cache/')
+        self.mock_provider.save.assert_awaited_once_with(saved['storage_key'], b'x')
+        assert not MediaCache.has_inline_images(result)
+        assert json.dumps(image) == original
+        if image.get('type') == 'image_url':
+            assert saved['image_url']['detail'] == 'low'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('payload', ['invalid!!!', 'https://example.com/image.png'])
+    async def test_invalid_base64_is_removed_without_saving_or_downloading(self, payload):
+        result = await self.media_cache.externalize_chain_dump({'type': 'Image', 'base64': payload})
+        assert result['base64'] is None
+        self.mock_provider.save.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_url_only_images_do_not_enter_cas(self):
+        image = {'type': 'Image', 'url': 'https://example.com/image.png'}
+        assert not MediaCache.has_inline_images(image)
+        assert await self.media_cache.externalize_chain_dump(image) == image
+        self.mock_provider.exists.assert_not_awaited()
+        self.mock_provider.save.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_oversized_inline_image_is_removed_before_decode(self):
+        image = {'type': 'Image', 'base64': 'data:image/png;base64,' + 'A' * 100}
+        with patch('langbot.pkg.storage.media.DEFAULT_BASE64_MEDIA_LIMIT', 16):
+            result = await self.media_cache.externalize_chain_dump(image)
+        assert result['base64'] is None
+        self.mock_provider.save.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_cleanup_retention_and_max_size(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base_path = Path(temp_dir)
@@ -197,8 +243,8 @@ class TestMonitoringServiceSanitization:
     def test_sanitize_oversized_base64_payload(self):
         svc = MonitoringService.__new__(MonitoringService)
         small_content = '{"type": "Image", "base64": "data:image/png;base64,tiny"}'
-        # Should leave small contents untouched
-        assert svc._sanitize_message_content(small_content) == small_content
+        # Metadata-only records must not retain even small inline images.
+        assert json.loads(svc._sanitize_message_content(small_content))['base64'] is None
 
         # Large content with base64 data URL
         huge_b64 = 'A' * 60000
@@ -213,3 +259,21 @@ class TestMonitoringServiceSanitization:
         sanitized_raw = svc._sanitize_message_content(raw_corrupted)
         assert '[base64 image omitted]' in sanitized_raw
         assert multiline_b64 not in sanitized_raw
+
+    @pytest.mark.parametrize(
+        'image',
+        [
+            {'type': 'Image', 'base64': 'eA=='},
+            {'type': 'Image', 'base64': 'A' * 20000},
+            {'type': 'image_base64', 'image_base64': 'eA=='},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA=='}},
+        ],
+    )
+    def test_redaction_covers_raw_and_provider_images_at_any_size(self, image):
+        svc = MonitoringService.__new__(MonitoringService)
+        payload = {'event': {'images': [image]}, 'count': 0, 'enabled': False}
+        saved = json.loads(svc._sanitize_message_content(json.dumps(payload)))
+        assert not MediaCache.has_inline_images(saved)
+        assert saved['count'] == 0
+        assert saved['enabled'] is False
+        assert MediaCache.has_inline_images(payload)

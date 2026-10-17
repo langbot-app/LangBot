@@ -836,6 +836,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         req_messages = []
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
+            provider_fields = msg_dict.get('provider_specific_fields')
+            if isinstance(provider_fields, dict):
+                # Stream completion metadata belongs to the response, never to
+                # replayed chat messages. Keep provider signatures for LiteLLM.
+                provider_fields.pop('finish_reason', None)
+                if not provider_fields:
+                    msg_dict.pop('provider_specific_fields', None)
             content = msg_dict.get('content')
 
             if msg_dict.get('role') == 'assistant' and reasoning_family:
@@ -870,6 +877,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         msg_dict['provider_specific_fields'] = cleaned_provider_fields
                     else:
                         msg_dict.pop('provider_specific_fields', None)
+
+            if reasoning_family == 'groq':
+                # Groq validates message and tool-call fields strictly and does
+                # not accept LiteLLM's provider metadata envelope.
+                msg_dict.pop('provider_specific_fields', None)
+                for tool_call in msg_dict.get('tool_calls') or []:
+                    tool_call.pop('provider_specific_fields', None)
+                    tool_call.get('function', {}).pop('provider_specific_fields', None)
 
             if isinstance(content, list):
                 converted_parts = []

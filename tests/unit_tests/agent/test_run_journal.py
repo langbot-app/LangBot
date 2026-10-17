@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.storage.media import MediaCache
 
 
 @pytest.mark.asyncio
@@ -68,3 +69,21 @@ def test_event_snapshot_preserves_custom_values_and_redacts_nested_binary():
     assert saved['custom']['contents'][0]['image_base64'] is None
     assert saved['attachments'][0]['content'] is None
     assert data['custom']['contents'][0]['image_base64'] == 'secret'
+
+
+@pytest.mark.parametrize(
+    'image',
+    [
+        {'type': 'Image', 'base64': 'eA=='},
+        {'type': 'image_base64', 'image_base64': 'eA=='},
+        {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA=='}},
+    ],
+)
+def test_metadata_and_transcript_redaction_cover_all_image_encodings(image):
+    content = AgentRunJournal._sanitize_content_item(image)
+    event = AgentRunJournal._sanitize_event_data({'nested': [image]})
+    assert not MediaCache.has_inline_images(content)
+    assert not MediaCache.has_inline_images(event)
+    assert content['content_redacted'] is True
+    assert event['nested'][0]['content_redacted'] is True
+    assert MediaCache.has_inline_images(image)
