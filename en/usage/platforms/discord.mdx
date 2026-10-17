@@ -4,54 +4,61 @@ description: "Build a Discord AI bot with LangBot. Connect GPT, Claude, Gemini, 
 icon: "/images/platforms/discord.svg"
 ---
 
-## Create Bot
+## Create the application and bot
 
-Go to the [Discord Developer Portal](https://discord.com/developers/applications), log in, and create an application.
+Open the [Discord Developer Portal](https://discord.com/developers/applications) and choose **New Application**. Do not include `Discord` in the application name: the portal rejects it. Complete the terms confirmation and verification shown by Discord.
 
-![alt text](/images/zh/deploy/bots/discord/discord_01.png)
+1. Copy the **Application ID** from **General Information**. This is the **Client ID** required by LangBot, not a server or channel ID.
+2. Open **Bot**, choose **Reset Token**, and complete verification. The token is shown only once. Enter it in LangBot; never include it in screenshots, source code, or public messages. Resetting invalidates the old token, so update LangBot as well.
+3. Under **Privileged Gateway Intents**, enable **Server Members Intent** and **Message Content Intent**, then **Save Changes**. The new adapter requests both. **Presence Intent is not required**.
 
-Modify the basic information, click `Save Changes` to save.
+## Connect LangBot
 
-![alt text](/images/zh/deploy/bots/discord/discord_02.png)
+Create a bot using the new **Discord** adapter (`discord-omni`). Enter the Client ID and token and save.
 
-Click `Bot` on the left, click `Reset Token`, copy the generated Token.
+Configure event processing next:
 
-![alt text](/images/zh/deploy/bots/discord/discord_03.png)
+- **Pipeline**: add a received-message rule and bind `message.received` to a pipeline with a configured model. Configure **Trigger conditions** on the bot's event route to limit messages by text, session type, or message elements. Explicit event routes bypass the Pipeline's own group response rules; an unconditional route processes every received message. The mention-element condition matches an @ mention, not necessarily the bot.
+- **Agent**: bind events to an Agent. Instruct it to use the event reply tool to deliver messages; generated text alone is not delivery. Select only the tools the task needs.
+- **Plugin processor**: add an existing plugin processor configuration separately on the bot page. It subscribes independently to the events declared by the plugin and can run alongside a Pipeline or Agent.
 
-And check all options in `Privileged Gateway Intents` on this page, click `Save Changes` to save.
+Enable an available Box sandbox when the runner needs code execution or file generation. Unrelated MCP servers are unnecessary for attachments; external tools with missing credentials introduce additional failures.
 
-![alt text](/images/zh/deploy/bots/discord/discord_05.png)
+Enable the bot and look for `Discord adapter running as ...` in its logs. This confirms Gateway login. Send a real Discord message to verify routing and delivery.
 
-**Finally, click `OAuth2` on the left, copy the `Client ID` on the page.**
+## Install in a test server
 
-## Connect to LangBot
+In **OAuth2 → URL Generator**, select `bot` and **Guild Install**. For ordinary messages, images, and files, select:
 
-Click to add a new bot, fill in the `Client ID` and `Token` obtained in the previous step into the configuration.
+- View Channels
+- Send Messages
+- Embed Links
+- Attach Files
+- Read Message History
+- Add Reactions
 
-![alt text](/images/zh/deploy/bots/discord/connect_to_langbot.png)
+Open the generated link, select your test server, and authorize installation. Administrator is unnecessary. Add permissions for moderation or threads only when needed. Channel permission overrides must also allow access and replies.
 
-<Warning>
-If you are using this adapter within mainland China, you may need to set up a network proxy.
-</Warning>
+## Verify delivery
 
-After filling in, start LangBot. If configured successfully, the log will show `[02-02 16:48:15.263] manager.py (68) - [INFO] : Initializing platform adapter 1: discord`, keep LangBot running.
+Send a message matching the trigger rules in a server channel, then open a DM from the bot's profile. Check ordinary replies, progressive streaming, image and text-file input, and actual returned attachments in both places. A filename or output path in a text reply is not proof that a file was delivered.
 
-## Invite Bot to Server
+Discord limits each message's length, so long streaming replies must be delivered in multiple messages. Verify the final segment and end marker; a successful LangBot run alone does not prove complete delivery. Image understanding requires a vision model; file processing requires suitable runner tools and sandbox support.
 
-You need to create a server first, then invite the bot to the server.
+The adapter also exposes edits, deletions, reaction additions/removals, member joins/leaves, bot joins/leaves, and platform-specific events. Pipelines process messages; route other events to an Agent or plugin. Interaction submissions come from interactive components sent by LangBot, not every possible Discord event.
 
-Go to the `OAuth2` page, select `URL Generator`, select `bot`, check the permissions as shown in the image.
+For message events, `chat_id` is the channel ID and `group.id` is the server ID. Use the channel ID for channel delivery and the server ID for server/member queries and management. They are not interchangeable.
 
-![alt text](/images/zh/deploy/bots/discord/discord_06.png)
+For member join/leave events, there is no originating channel. Replies use the server's configured **System Messages Channel**. Configure it in Discord's server settings and grant the bot View Channels and Send Messages there; without a system channel, the reply fails explicitly. The member-leave callback does not distinguish voluntary departure from a kick, so do not use `is_kicked` as an authoritative moderation signal.
 
-![alt text](/images/zh/deploy/bots/discord/discord_07.png)
+![Real attachment round trip: a red/blue image and a text file go in; a green PNG and a text file containing the calculated result come back.](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
 
-Click `Copy`, paste the generated URL into your browser to open it, and invite the bot to your server.
+## Troubleshooting
 
-![alt text](/images/zh/deploy/bots/discord/discord_08.png)
+- **Gateway login fails**: check the current token and both required intents, including Save Changes. A browser login does not validate the bot token.
+- **Online without replies**: check enablement, event routes, processor model, group triggers, and channel permissions. Independent plugin subscriptions are configured separately.
+- **Attachments fail**: check attachment permissions, runner logs, Box readiness, and attachment download connectivity. CDN access is separate from Gateway connectivity.
+- **Restricted network**: the LangBot environment needs access to Discord Gateway, API, and attachment CDN. Configure a proxy appropriate to your deployment if required.
+- **Screenshots**: exclude tokens and real users' private conversations.
 
-## Use Bot
-
-Now you can use the bot normally in groups or private messages.
-
-![alt text](/images/zh/deploy/bots/discord/discord_09.png)
+- **Attachment 404 errors in an old conversation**: Discord attachment URLs expire, and an old image can also break later text-only requests. Upload the attachment again and reset the conversation context. With EssentialCommands installed, send `!reset` (use your configured command prefix). Resetting context preserves monitoring records.
