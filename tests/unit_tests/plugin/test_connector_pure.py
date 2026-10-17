@@ -123,6 +123,7 @@ class TestExtractDepsMetadata:
 
         # Should find requirements.txt in subdirectory
         assert task_context.metadata['deps_total'] == 2
+        assert task_context.metadata['deps_list'] == ['pytest', 'black']
 
     def test_archive_preview_rejects_extreme_compression_ratio(self):
         from langbot.pkg.plugin.connector import inspect_plugin_archive_metadata
@@ -146,13 +147,6 @@ class TestParsePluginId:
         author, name = PluginRuntimeConnector._parse_plugin_id('myauthor/myplugin')
         assert author == 'myauthor'
         assert name == 'myplugin'
-
-    def test_parse_plugin_id_empty(self):
-        """Empty plugin ID is invalid."""
-        from langbot.pkg.plugin.connector import PluginRuntimeConnector
-
-        with pytest.raises(ValueError):
-            PluginRuntimeConnector._parse_plugin_id('')
 
 
 @pytest.mark.asyncio

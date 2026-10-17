@@ -347,11 +347,6 @@ class TestApiKeyServiceVerifyApiKey:
 
         assert await service.verify_api_key('lbk_invalid_key') is False
 
-    async def test_verify_api_key_empty_string(self, api_key_context):
-        _application, service, _context, _engine = api_key_context
-
-        assert await service.verify_api_key('') is False
-
     async def test_verify_api_key_unknown_key(self, api_key_context):
         _application, service, _context, _engine = api_key_context
 

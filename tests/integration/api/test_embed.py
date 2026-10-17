@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
@@ -148,6 +149,11 @@ class TestEmbedWidgetEndpoint:
         assert 'javascript' in response.content_type
         fake_embed_app.platform_mgr.resolve_public_bot.assert_any_await('a1b2c3d4-5678-90ab-cdef-123456789abc')
 
+        body = await response.get_data(as_text=True)
+        assert 'a1b2c3d4-5678-90ab-cdef-123456789abc' in body
+        assert 'baseUrl: "http://localhost"' in body
+        assert '__LANGBOT_' not in body
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ('query', 'expected_base'),
@@ -208,14 +214,21 @@ class TestEmbedLogoEndpoint:
         assert response.status_code == 200
         assert 'image/webp' in response.content_type
 
+        body = await response.get_data()
+        assert body == (Path(__file__).parents[3] / 'src/langbot/templates/embed/logo.webp').read_bytes()
+        assert body[:4] == b'RIFF' and body[8:12] == b'WEBP'
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestEmbedTurnstileVerifyEndpoint:
     """Tests for Turnstile verification endpoint."""
 
     @pytest.mark.asyncio
-    async def test_turnstile_verify_no_secret(self, quart_test_client):
+    async def test_turnstile_verify_no_secret(self, quart_test_client, monkeypatch):
         """POST turnstile verify without secret returns dummy token."""
+        import langbot.pkg.api.http.controller.groups.pipelines.embed as embed
+
+        monkeypatch.setattr(embed.time, 'time', lambda: 1720000000.25)
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/turnstile/verify', json={'token': 'test-token'}
         )
@@ -224,6 +237,8 @@ class TestEmbedTurnstileVerifyEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'token' in data['data']
+
+        assert data['data']['token'] == '1720000000.25.dummy'
 
     @pytest.mark.asyncio
     async def test_turnstile_verify_invalid_uuid(self, quart_test_client):
@@ -264,7 +279,7 @@ class TestEmbedMessagesEndpoint:
         proxy_bot.adapter.get_websocket_messages.assert_called_with('test-pipeline-uuid', 'person', SESSION_ID)
 
     @pytest.mark.asyncio
-    async def test_get_messages_group_success(self, quart_test_client):
+    async def test_get_messages_group_success(self, quart_test_client, fake_embed_app):
         """GET messages/group returns messages."""
         response = await quart_test_client.get(
             f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/group?session_id={SESSION_ID}',
@@ -272,6 +287,12 @@ class TestEmbedMessagesEndpoint:
         )
 
         assert response.status_code == 200
+
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['messages'] == [{'id': 'msg-1', 'content': 'test message'}]
+        adapter = fake_embed_app.platform_mgr.get_websocket_proxy_bot.return_value.adapter
+        adapter.get_websocket_messages.assert_called_with('test-pipeline-uuid', 'group', SESSION_ID)
 
     @pytest.mark.asyncio
     async def test_get_messages_requires_session_id(self, quart_test_client):
@@ -287,11 +308,13 @@ class TestEmbedMessagesEndpoint:
     async def test_get_messages_invalid_session_type(self, quart_test_client):
         """GET messages with invalid session_type returns 400."""
         response = await quart_test_client.get(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/invalid',
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/invalid?session_id={SESSION_ID}',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 400
+
+        assert (await response.get_json())['msg'] == 'session_type must be person or group'
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -337,8 +360,12 @@ class TestEmbedFeedbackEndpoint:
     """Tests for feedback submission endpoint."""
 
     @pytest.mark.asyncio
-    async def test_submit_feedback_like(self, quart_test_client):
+    async def test_submit_feedback_like(self, quart_test_client, fake_embed_app, monkeypatch):
         """POST feedback with type=1 (like) succeeds."""
+        import langbot.pkg.api.http.controller.groups.pipelines.embed as embed
+
+        monkeypatch.setattr(embed.uuid, 'uuid4', lambda: SimpleNamespace(hex='123456789abcdef0123456789abcdef0'))
+        fake_embed_app.monitoring_service.record_feedback.reset_mock()
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
@@ -350,9 +377,29 @@ class TestEmbedFeedbackEndpoint:
         assert data['code'] == 0
         assert 'feedback_id' in data['data']
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['feedback_id'] == 'embed_123456789abc'
+        called = fake_embed_app.monitoring_service.record_feedback
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.kwargs == {
+            'feedback_id': 'embed_123456789abc',
+            'feedback_type': 1,
+            'bot_id': 'a1b2c3d4-5678-90ab-cdef-123456789abc',
+            'bot_name': 'Test Web Bot',
+            'pipeline_id': 'test-pipeline-uuid',
+            'message_id': 'msg-123',
+            'platform': 'web_page_bot',
+        }
+
     @pytest.mark.asyncio
-    async def test_submit_feedback_dislike(self, quart_test_client):
+    async def test_submit_feedback_dislike(self, quart_test_client, fake_embed_app, monkeypatch):
         """POST feedback with type=2 (dislike) succeeds."""
+        import langbot.pkg.api.http.controller.groups.pipelines.embed as embed
+
+        monkeypatch.setattr(embed.uuid, 'uuid4', lambda: SimpleNamespace(hex='123456789abcdef0123456789abcdef0'))
+        fake_embed_app.monitoring_service.record_feedback.reset_mock()
         response = await quart_test_client.post(
             '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
@@ -360,6 +407,22 @@ class TestEmbedFeedbackEndpoint:
         )
 
         assert response.status_code == 200
+
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data']['feedback_id'] == 'embed_123456789abc'
+        called = fake_embed_app.monitoring_service.record_feedback
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == 'workspace-test'
+        assert called.await_args.kwargs == {
+            'feedback_id': 'embed_123456789abc',
+            'feedback_type': 2,
+            'bot_id': 'a1b2c3d4-5678-90ab-cdef-123456789abc',
+            'bot_name': 'Test Web Bot',
+            'pipeline_id': 'test-pipeline-uuid',
+            'message_id': 'msg-123',
+            'platform': 'web_page_bot',
+        }
 
     @pytest.mark.asyncio
     async def test_submit_feedback_invalid_type(self, quart_test_client):
@@ -378,7 +441,30 @@ class TestEmbedWebSocketEndpoint:
     """The public socket authenticates before resolving shared runtime state."""
 
     @pytest.mark.asyncio
-    async def test_authenticates_before_connecting(self, quart_test_client, fake_embed_app):
+    async def test_authenticates_before_connecting(self, quart_test_client, fake_embed_app, monkeypatch):
+        import langbot.pkg.api.http.controller.groups.pipelines.embed as embed
+
+        authenticated = False
+        original_authenticate = embed.EmbedRouterGroup._authenticate_websocket
+        original_add = embed.ws_connection_manager.add_connection
+        proxy = fake_embed_app.platform_mgr.get_websocket_proxy_bot
+
+        async def authenticate(router, runtime_bot):
+            nonlocal authenticated
+            await original_authenticate(router, runtime_bot)
+            authenticated = True
+
+        async def get_proxy(*_args, **_kwargs):
+            assert authenticated, 'Runtime lookup must follow successful authentication'
+            return proxy.return_value
+
+        async def add_connection(*args, **kwargs):
+            assert authenticated, 'Connection registration must follow successful authentication'
+            return await original_add(*args, **kwargs)
+
+        monkeypatch.setattr(embed.EmbedRouterGroup, '_authenticate_websocket', authenticate)
+        monkeypatch.setattr(proxy, 'side_effect', get_proxy)
+        monkeypatch.setattr(embed.ws_connection_manager, 'add_connection', add_connection)
         async with quart_test_client.websocket(
             f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/ws/connect'
             f'?session_type=person&session_id={SESSION_ID}',

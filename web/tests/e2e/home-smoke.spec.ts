@@ -138,3 +138,37 @@ test.describe('authenticated app shell', () => {
     );
   });
 });
+
+test('token monitoring displays structured API failures and retries the request', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  let failed = true;
+  let requests = 0;
+  await page.route(
+    '**/api/v1/monitoring/token-statistics?**',
+    async (route) => {
+      requests++;
+      if (failed)
+        return route.fulfill({
+          status: 503,
+          json: { code: 1, msg: 'Token aggregation unavailable' },
+        });
+      await route.fallback();
+    },
+  );
+  await page.goto('/home/monitoring');
+  await page.getByRole('tab', { name: 'Token Monitoring' }).click();
+  const error = page
+    .getByRole('alert')
+    .filter({ hasText: 'Token aggregation unavailable' });
+  await expect(error).toBeVisible();
+  const beforeRetry = requests;
+  failed = false;
+  await error.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(() => requests).toBeGreaterThan(beforeRetry);
+  await expect(error).toHaveCount(0);
+  await expect(
+    page.getByText('No token usage in the selected time range'),
+  ).toBeVisible();
+});

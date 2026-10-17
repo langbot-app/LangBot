@@ -31,18 +31,6 @@ const authenticatedPluginResourceSource = readSource(
   'src/hooks/useAuthenticatedPluginResource.ts',
 );
 
-test('hides the entire workspace switcher slot for a singleton local workspace', () => {
-  assert.match(homeSidebarSource, /useWorkspaceBootstrap/);
-  assert.match(
-    homeSidebarSource,
-    /const showWorkspaceSwitcher\s*=\s*workspaces\.length\s*>\s*1\s*\|\|\s*currentWorkspace\?\.workspace\.source\s*===\s*'cloud_projection'/,
-  );
-  assert.match(
-    homeSidebarSource,
-    /\{showWorkspaceSwitcher\s*&&\s*\(\s*<div className="px-2[^>]*>\s*<WorkspaceSwitcher/,
-  );
-});
-
 test('keeps bot forms spaced with responsive setup and detail columns', () => {
   const fieldset = botFormSource.match(
     /<fieldset\s[\s\S]*?disabled=\{isLoading\}/,

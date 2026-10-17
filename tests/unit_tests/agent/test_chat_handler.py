@@ -580,3 +580,4 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.CONTINUE
         assert len(query.resp_messages) == 1
+        assert query.resp_messages[0].content == 'Reply from plugin'

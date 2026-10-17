@@ -236,10 +236,16 @@ class TestInitializePluginSettings:
         app.persistence_mgr.execute_async.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_existing_desired_setting_remains_core_owned(self, app):
+    async def test_existing_desired_setting_remains_core_owned(self, app, plugin_db):
         """Runtime initialization validates identity without rewriting Core state."""
+        import sqlalchemy
+        from langbot.pkg.entity.persistence.plugin import PluginSetting
+
         runtime_handler = make_handler(app)
-        existing_setting = SimpleNamespace(
+        existing_setting = PluginSetting(
+            workspace_uuid='workspace-a',
+            plugin_author='test-author',
+            plugin_name='test-plugin',
             enabled=False,
             priority=5,
             config={'key': 'value'},
@@ -247,7 +253,29 @@ class TestInitializePluginSettings:
             runtime_revision=1,
             artifact_digest='a' * 64,
         )
-        app.persistence_mgr.execute_async.return_value = make_result(existing_setting)
+        other_setting = PluginSetting(
+            workspace_uuid='workspace-b',
+            plugin_author='test-author',
+            plugin_name='test-plugin',
+            enabled=True,
+        )
+        plugin_db.add_all([other_setting, existing_setting])
+        await plugin_db.flush()
+
+        async def execute(statement):
+            result = await plugin_db.execute(statement)
+            return result.scalars() if statement.is_select or statement.is_update else result
+
+        app.persistence_mgr.execute_async.side_effect = execute
+        before = (
+            (
+                await plugin_db.execute(
+                    sqlalchemy.select(*PluginSetting.__table__.c).order_by(PluginSetting.workspace_uuid)
+                )
+            )
+            .mappings()
+            .all()
+        )
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
             {
@@ -260,6 +288,17 @@ class TestInitializePluginSettings:
 
         assert response.code == 0
         app.persistence_mgr.execute_async.assert_awaited_once()
+        plugin_db.expire_all()
+        after = (
+            (
+                await plugin_db.execute(
+                    sqlalchemy.select(*PluginSetting.__table__.c).order_by(PluginSetting.workspace_uuid)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        assert after == before
 
 
 class TestSetBinaryStorage:

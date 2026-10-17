@@ -111,7 +111,11 @@ class UserRouterGroup(group.RouterGroup):
         async def _() -> str:
             if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
                 return self.http_status(403, 'password_login_disabled', 'Password login is disabled on LangBot Cloud')
-            json_data = await quart.request.json
+            json_data = await quart.request.get_json(silent=True)
+            if not isinstance(json_data, dict) or not all(
+                isinstance(json_data.get(field), str) for field in ('user', 'password')
+            ):
+                return self.http_status(400, -1, 'Invalid request parameters')
 
             user_email = json_data['user']
             password = json_data['password']

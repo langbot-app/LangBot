@@ -90,17 +90,23 @@ async def test_image_defaults_to_png():
     adapter, _, _ = _make_adapter()
     chain = [{'type': 'Image', 'path': f'{_UPLOAD_PREFIX}blob'}]
     await adapter._process_image_components(_make_connection(), chain)
-    assert chain[0]['base64'].startswith('data:image/png;base64,')
+    assert chain[0]['base64'] == 'data:image/png;base64,aGVsbG8='
 
 
 @pytest.mark.asyncio
-async def test_voice_uses_guessed_or_wav_mimetype():
+async def test_voice_uses_guessed_or_wav_mimetype(monkeypatch):
     adapter, storage_mgr, _ = _make_adapter()
-    chain = [{'type': 'Voice', 'path': f'{_UPLOAD_PREFIX}clip.wav'}]
+    path = f'{_UPLOAD_PREFIX}clip.unknown'
+    chain = [{'type': 'Voice', 'path': path}]
+    guess_type = Mock(return_value=(None, None))
+    monkeypatch.setattr('mimetypes.guess_type', guess_type)
+
     await adapter._process_image_components(_make_connection(), chain)
-    assert chain[0]['base64'].startswith('data:audio/')
+
+    guess_type.assert_called_once_with(path)
+    assert chain[0]['base64'] == 'data:audio/wav;base64,aGVsbG8='
     assert chain[0]['path'] == ''
-    storage_mgr.delete_scoped_object_key.assert_awaited_once()
+    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(_CONTEXT, path, expected_owner_type='upload_image')
 
 
 @pytest.mark.asyncio
