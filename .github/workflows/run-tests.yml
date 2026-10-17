@@ -11,6 +11,7 @@ on:
       - 'uv.lock'
       - 'run_tests.sh'
       - 'scripts/test-*.sh'
+      - 'scripts/assert-required-tests.py'
   push:
     branches:
       - master
