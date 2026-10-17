@@ -73,7 +73,7 @@ async def test_all_model_types_reject_creation_under_managed_provider(
     with pytest.raises(ValueError, match='managed by Cloud'):
         await getattr(service, create_method)(WORKSPACE, model_data)
 
-    guard.assert_awaited_once()
+    guard.assert_awaited_once_with(application, WORKSPACE, PROVIDER)
 
 
 @pytest.mark.parametrize(
@@ -109,4 +109,4 @@ async def test_all_model_types_reject_update_and_delete_for_managed_provider(
     with pytest.raises(ValueError, match='managed by Cloud'):
         await getattr(service, write_method)(*args)
 
-    guard.assert_awaited_once()
+    guard.assert_awaited_once_with(application, WORKSPACE, PROVIDER)
