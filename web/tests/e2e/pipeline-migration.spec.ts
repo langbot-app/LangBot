@@ -419,7 +419,9 @@ for (const failure of [
 test('workspace changes discard previous task results and stop polling', async ({
   page,
 }) => {
+  await page.clock.install();
   const state = await setup(page);
+  state.done = false;
   let release!: () => void;
   state.holdPoll = new Promise((resolve) => {
     release = resolve;
@@ -437,6 +439,8 @@ test('workspace changes discard previous task results and stop polling', async (
   await expect(
     page.getByRole('dialog', { name: 'Pipeline migration' }),
   ).toHaveCount(0);
+  await page.clock.runFor(3000);
+  expect(state.polls).toBe(1);
   expect(state.posts).toHaveLength(1);
 });
 

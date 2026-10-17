@@ -16,7 +16,7 @@ import asyncio
 import logging
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 import quart
@@ -65,13 +65,17 @@ def _make_genkeys_ap(existing_key: str) -> SimpleNamespace:
     )
 
 
-async def test_recovery_key_generation_is_short_and_unambiguous():
+async def test_recovery_key_generation_is_short_and_unambiguous(monkeypatch):
     """Eight random base32 characters balance manual entry and online throttling."""
     ap = _make_genkeys_ap(existing_key='')
+    choice = Mock(side_effect=list('ZYXW9876'))
+    monkeypatch.setattr('langbot.pkg.core.stages.genkeys.secrets.choice', choice)
 
     await GenKeysStage().run(ap)
 
     key = ap.instance_config.data['system']['recovery_key']
+    assert key == 'ZYXW9876'
+    assert choice.call_args_list == [call('23456789ABCDEFGHJKLMNPQRSTUVWXYZ')] * 8
     assert len(key) == 8
     assert set(key) <= set('23456789ABCDEFGHJKLMNPQRSTUVWXYZ')
     assert ap.instance_config.dump_config.called
@@ -198,7 +202,7 @@ async def test_non_string_recovery_key_does_not_crash():
 @pytest.mark.parametrize('key', ['奇数密钥不是ASCII', '\ud800', '\udfff'])
 async def test_non_ascii_recovery_key_does_not_crash(key):
     """Non-ASCII keys must compare safely (encode-based constant-time compare)."""
-    client, _, _ = await _create_client()
+    client, reset_password, _ = await _create_client()
 
     resp = await client.post(
         '/api/v1/user/reset-password',
@@ -206,6 +210,7 @@ async def test_non_ascii_recovery_key_does_not_crash(key):
     )
 
     assert resp.status_code == 403
+    reset_password.assert_not_awaited()
 
 
 async def test_quota_exhausted_after_max_attempts():

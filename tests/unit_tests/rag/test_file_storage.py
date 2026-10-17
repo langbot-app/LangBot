@@ -300,7 +300,9 @@ class TestStoreFileTask:
         task_context.set_current_action.assert_called_once_with('Processing file')
         kb.ap.storage_mgr.storage_provider.size.assert_awaited_once_with(object_key)
         kb._ingest_document.assert_awaited_once()
-        assert kb.ap.persistence_mgr.execute_async.await_count == 2
+        statements = [call.args[0].compile().params for call in kb.ap.persistence_mgr.execute_async.await_args_list]
+        assert [params['status'] for params in statements] == ['processing', 'completed']
+        assert statements[-1]['engine_document_id'] == 'file-uuid'
         kb.ap.storage_mgr.storage_provider.delete.assert_awaited_once_with(object_key)
 
     @pytest.mark.asyncio
@@ -316,7 +318,9 @@ class TestStoreFileTask:
         with pytest.raises(Exception, match='parser failed'):
             await kb._store_file_task(CONTEXT, file_obj, task_context)
 
-        assert kb.ap.persistence_mgr.execute_async.await_count == 2
+        statements = [call.args[0].compile().params for call in kb.ap.persistence_mgr.execute_async.await_args_list]
+        assert [params['status'] for params in statements] == ['processing', 'failed']
+        assert statements[-1]['engine_document_id'] == 'file-uuid'
         kb.ap.storage_mgr.storage_provider.delete.assert_awaited_once_with(object_key)
 
 

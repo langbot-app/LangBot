@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 import json
+import yaml
 
 from langbot.pkg.config.impls.yaml import YAMLConfigFile
 from langbot.pkg.config.impls.json import JSONConfigFile
@@ -126,8 +127,7 @@ name: custom_name
 
         assert config_file.exists()
         content = config_file.read_text()
-        assert 'saved_app' in content
-        assert 'new_key' in content
+        assert yaml.safe_load(content) == {'name': 'saved_app', 'new_key': 'new_value'}
 
     def test_yaml_save_sync(self, tmp_path):
         """YAML config can be saved synchronously."""
@@ -142,7 +142,7 @@ name: custom_name
 
         assert config_file.exists()
         content = config_file.read_text()
-        assert 'sync_saved' in content
+        assert yaml.safe_load(content) == {'name': 'sync_saved'}
 
 
 class TestJSONConfigFile:
@@ -260,7 +260,7 @@ class TestConfigManager:
         await manager.dump_config()
 
         content = config_file.read_text()
-        assert 'dumped' in content
+        assert yaml.safe_load(content) == {'name': 'dumped', 'new_field': 'value'}
 
     def test_config_manager_dump_sync(self, tmp_path):
         """ConfigManager can dump config synchronously."""
@@ -277,6 +277,7 @@ class TestConfigManager:
         manager.dump_config_sync()
 
         assert config_file.exists()
+        assert yaml.safe_load(config_file.read_text()) == {'name': 'sync_dumped'}
 
 
 class TestConfigExists:

@@ -190,6 +190,7 @@ class TestPreProcessorNormalText:
 
         assert result.new_query.user_message is not None
         assert result.new_query.user_message.role == 'user'
+        assert [(part.type, part.text) for part in result.new_query.user_message.content] == [('text', 'test message')]
 
 
 class TestPreProcessorEmptyMessage:
@@ -254,6 +255,7 @@ class TestPreProcessorImageSegment:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='vision-model', abilities=['func_call', 'vision'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
@@ -261,9 +263,8 @@ class TestPreProcessorImageSegment:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        # Image query with base64
+        # Exercise both supported image transports.
         query = image_query(text='look at this', url=None)
-        # Set base64 on the image component
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
         chain = platform_message.MessageChain(
@@ -283,17 +284,23 @@ class TestPreProcessorImageSegment:
         result = await stage.process(query, 'PreProcessor')
 
         assert result.result_type == preproc.entities.ResultType.CONTINUE
-        # User message should have content
-        assert result.new_query.user_message.content is not None
+        assert result.new_query.use_llm_model_uuid == 'vision-model'
         from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+        from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
+        expected_image = (
+            ContentElement.from_image_base64('data:image/png;base64,abc123')
+            if image_source == 'base64'
+            else ContentElement.from_image_url('https://cdn.example/image.png')
+        )
+        assert result.new_query.user_message.content == [ContentElement.from_text('look at this'), expected_image]
         contents = [part.model_dump() for part in result.new_query.user_message.content]
         attachments = QueryEntryAdapter._build_attachments(result.new_query, contents)
         assert len(attachments) == 1
         if image_source == 'url':
             assert attachments[0]['url'] == 'https://cdn.example/image.png'
         else:
-            assert attachments[0].get('content') or attachments[0].get('url')
+            assert attachments[0]['content'] == 'data:image/png;base64,abc123'
 
     @pytest.mark.asyncio
     async def test_image_without_vision_model(self):
@@ -315,6 +322,7 @@ class TestPreProcessorImageSegment:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='text-only-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
         app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
@@ -327,6 +335,12 @@ class TestPreProcessorImageSegment:
         result = await stage.process(query, 'PreProcessor')
 
         assert result.result_type == preproc.entities.ResultType.CONTINUE
+        assert result.new_query.use_llm_model_uuid == 'text-only-model'
+        assert [(part.type, part.text) for part in result.new_query.user_message.content] == [
+            ('text', 'describe this'),
+            ('text', '[Image]'),
+        ]
+        assert result.new_query.variables['user_message_text'] == 'describe this[Image]'
 
 
 class TestPreProcessorModelSelection:
@@ -471,11 +485,18 @@ class TestPreProcessorVariables:
         result = await stage.process(query, 'PreProcessor')
 
         variables = result.new_query.variables
-        assert 'launcher_type' in variables
-        assert 'launcher_id' in variables
-        assert 'sender_id' in variables
-        assert variables['sender_id'] == 67890
-        assert 'user_message_text' in variables
+        expected = {
+            'launcher_type': 'person',
+            'launcher_id': 12345,
+            'sender_id': 67890,
+            'session_id': 'person_12345',
+            'conversation_id': 'conv-123',
+            'msg_create_time': 1609459200,
+            'group_name': '',
+            'sender_name': 'TestUser',
+            'user_message_text': 'hello',
+        }
+        assert {key: variables[key] for key in expected} == expected
 
     @pytest.mark.asyncio
     async def test_group_variables_include_group_name(self):
@@ -509,8 +530,8 @@ class TestPreProcessorVariables:
         result = await stage.process(query, 'PreProcessor')
 
         variables = result.new_query.variables
-        assert 'group_name' in variables
-        assert 'sender_name' in variables
+        assert variables['group_name'] == 'TestGroup'
+        assert variables['sender_name'] == 'TestUser'
 
 
 class TestPreProcessorToolSelection:

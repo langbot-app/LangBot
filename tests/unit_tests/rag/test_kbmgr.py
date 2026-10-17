@@ -662,7 +662,9 @@ class TestRuntimeKnowledgeBaseRetrieve:
 
         assert len(results) == 1
         assert results[0].id == 'doc1'
-        assert hasattr(results[0], 'content')
+        assert results[0].content[0].text == 'test content'
+        assert results[0].metadata == {'source': 'file.pdf'}
+        assert results[0].distance == 0.15
 
 
 class TestRuntimeKnowledgeBaseDispose:

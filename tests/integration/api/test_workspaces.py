@@ -623,6 +623,12 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     )
     assert expired_capabilities.status_code == 401
 
+    await application.persistence_mgr.execute_async(
+        sqlalchemy.update(apikey.ApiKey).where(apikey.ApiKey.uuid == created['uuid']).values(expires_at=None)
+    )
+    valid_again = await client.get('/api/v1/system/context', headers={'X-API-Key': created['key']})
+    assert valid_again.status_code == 200
+
     revoke_response = await client.delete(
         f'/api/v1/apikeys/{created["id"]}',
         headers=_auth(owner_token, workspace_uuid),

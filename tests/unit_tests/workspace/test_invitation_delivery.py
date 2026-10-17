@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -143,16 +143,24 @@ async def test_oss_smtp_configuration_delivers_the_generic_invitation_email():
             }
         )
     )
-    service._send_smtp = AsyncMock(return_value=True)
     link = 'https://self-hosted.example/invitations/accept#token=lbi_secret'
 
-    result = await service.deliver_invitation(
-        recipient_email='member@example.com',
-        workspace_name='Self-hosted Workspace',
-        invitation_link=link,
-    )
+    with patch('langbot.pkg.workspace.invitation_delivery.smtplib.SMTP') as smtp:
+        result = await service.deliver_invitation(
+            recipient_email='member@example.com',
+            workspace_name='Self-hosted Workspace',
+            invitation_link=link,
+        )
 
     assert result == InvitationDeliveryResult(status='sent', provider='smtp')
-    service._send_smtp.assert_awaited_once()
-    assert 'LangBot Cloud' not in service._plain_text('Self-hosted Workspace', link)
-    assert 'LangBot Cloud' not in service._html('Self-hosted Workspace', link)
+    send_message = smtp.return_value.__enter__.return_value.send_message
+    send_message.assert_called_once()
+    message = send_message.call_args.args[0]
+    assert message['From'] == 'LangBot <noreply@example.com>'
+    assert message['To'] == 'member@example.com'
+    assert message['Subject'] == 'You were invited to Self-hosted Workspace'
+    for subtype in ('plain', 'html'):
+        content = message.get_body(preferencelist=(subtype,)).get_content()
+        assert 'Self-hosted Workspace' in content
+        assert link in content
+        assert 'LangBot Cloud' not in content

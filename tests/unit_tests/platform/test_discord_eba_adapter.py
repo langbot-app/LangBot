@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import yaml
@@ -401,8 +401,7 @@ async def test_discord_stream_keeps_tool_round_and_delivers_terminal_attachment(
     assert 'stream' in adapter._stream_buffer
     adapter.reply_message.assert_not_awaited()
     await adapter.reply_message_chunk(source, {'resp_message_id': 'stream'}, message, is_final=True)
-    adapter.reply_message.assert_awaited_once()
-    assert adapter.reply_message.await_args.args[1].root == [attachment]
+    adapter.reply_message.assert_awaited_once_with(source, message, False)
     channel.send.assert_not_awaited()
     assert not adapter._stream_buffer
 
@@ -471,26 +470,34 @@ async def test_discord_uncached_edit_fetches_message_without_duplicate_or_previe
 
 
 @pytest.mark.asyncio
-async def test_guild_event_reply_uses_system_channel(monkeypatch):
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_uses_system_channel(monkeypatch, guild_id, expected_guild_id):
     adapter = make_adapter()
     channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=456)))
-    monkeypatch.setattr(adapter.bot, 'get_guild', lambda guild_id: SimpleNamespace(system_channel=channel))
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=channel))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
     adapter._get_channel = AsyncMock()
     result = await adapter.send_message(
-        'group', '123', platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+        'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
     )
     assert result.message_id == 456
+    get_guild.assert_called_once_with(expected_guild_id)
     channel.send.assert_awaited_once_with(content='Welcome')
     adapter._get_channel.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_guild_event_reply_without_system_channel_does_not_pick_another_channel(monkeypatch):
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_without_system_channel_does_not_pick_another_channel(
+    monkeypatch, guild_id, expected_guild_id
+):
     adapter = make_adapter()
-    monkeypatch.setattr(adapter.bot, 'get_guild', lambda guild_id: SimpleNamespace(system_channel=None))
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=None))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
     adapter._get_channel = AsyncMock()
     with pytest.raises(ValueError, match='no system channel'):
         await adapter.send_message(
-            'group', '123', platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+            'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
         )
+    get_guild.assert_called_once_with(expected_guild_id)
     adapter._get_channel.assert_not_awaited()

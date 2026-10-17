@@ -437,8 +437,10 @@ class TestEmptyAndEdgeInputs:
         async for ret in mgr.execute('   ', '/   ', query, session):
             results.append(ret)
 
-        # Should yield error
-        assert len(results) >= 1
+        assert len(results) == 1
+        assert results[0].error is not None
+        assert results[0].error.message == '未知命令: '
+        assert results[0].text is None
 
     @pytest.mark.asyncio
     async def test_initialize_with_deep_nesting(self):

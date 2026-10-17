@@ -139,30 +139,31 @@ class TestTranscriptStore:
     """Test TranscriptStore operations."""
 
     @pytest.mark.asyncio
-    async def test_append_transcript(self, mock_db_engine):
+    async def test_append_transcript(self):
         """Test appending a transcript item."""
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from langbot.pkg.entity.persistence.base import Base
+        from uuid import UUID
 
-        store = TranscriptStore(mock_db_engine)
-
-        mock_session = AsyncMock()
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-
-        # Mock _get_next_seq
-        with patch.object(store, '_get_next_seq', return_value=1):
-            with patch.object(store, '_session_factory') as mock_factory:
-                mock_factory.return_value.__aenter__.return_value = mock_session
-
-                transcript_id = await store.append_transcript(
-                    transcript_id=None,  # Auto-generate
-                    event_id='evt_1',
-                    conversation_id='conv_1',
-                    role='user',
-                    content='Hello',
-                )
-
-                assert transcript_id is not None
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            store = TranscriptStore(engine)
+            transcript_id = await store.append_transcript(
+                transcript_id=None,
+                event_id='evt_1',
+                conversation_id='conv_1',
+                role='user',
+                content='Hello',
+            )
+            assert UUID(transcript_id).version == 4
+            items, _, _, _ = await store.page_transcript('conv_1')
+            assert [(item['transcript_id'], item['event_id'], item['role'], item['content']) for item in items] == [
+                (transcript_id, 'evt_1', 'user', 'Hello')
+            ]
+        finally:
+            await engine.dispose()
 
 
 class TestEventLogStoreRealSQLite:
@@ -258,6 +259,7 @@ class TestEventLogStoreRealSQLite:
     async def test_get_latest_cursor(self, db_engine):
         """Test get_latest_cursor with real DB."""
         store = EventLogStore(db_engine)
+        assert await store.get_latest_cursor('conv_cursor') is None
 
         # Append events
         for i in range(3):
@@ -270,8 +272,12 @@ class TestEventLogStoreRealSQLite:
 
         # Get latest cursor
         cursor = await store.get_latest_cursor('conv_cursor')
-        assert cursor is not None
-        assert int(cursor) > 0
+        assert cursor == '3'
+        await store.append_event(
+            event_id='other', event_type='message.received', source='platform', conversation_id='other'
+        )
+        assert await store.get_latest_cursor('conv_cursor') == '3'
+        assert await store.get_latest_cursor('other') == '4'
 
     @pytest.mark.asyncio
     async def test_cleanup_events_older_than(self, db_engine):

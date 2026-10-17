@@ -298,12 +298,13 @@ async def test_device_replacement_expiry_and_idempotent_cancel(auth):
 async def test_device_accepts_issuer_iso_expiry(auth):
     from datetime import datetime, timezone
 
-    expires = datetime.fromtimestamp(time.time() + 600, timezone.utc).isoformat().replace('+00:00', 'Z')
+    expected_expiry = int(time.time()) + 600
+    expires = datetime.fromtimestamp(expected_expiry, timezone.utc).isoformat().replace('+00:00', 'Z')
     auth._post = AsyncMock(
         return_value=httpx.Response(200, json={'device_auth_id': 'device', 'user_code': 'CODE', 'expires_at': expires})
     )
     result = await auth.start(context(), 'p')
-    assert time.time() < result['expires_at'] < time.time() + 900
+    assert result['expires_at'] == expected_expiry
 
 
 @pytest.mark.asyncio
