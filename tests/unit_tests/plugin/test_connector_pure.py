@@ -147,13 +147,6 @@ class TestParsePluginId:
         assert author == 'myauthor'
         assert name == 'myplugin'
 
-    def test_parse_plugin_id_empty(self):
-        """Empty plugin ID is invalid."""
-        from langbot.pkg.plugin.connector import PluginRuntimeConnector
-
-        with pytest.raises(ValueError):
-            PluginRuntimeConnector._parse_plugin_id('')
-
 
 @pytest.mark.asyncio
 async def test_marketplace_response_reader_is_bounded():

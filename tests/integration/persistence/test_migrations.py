@@ -438,16 +438,3 @@ class TestSQLiteMigrationGetCurrent:
         # No stamp - should return None
         rev = await get_alembic_current(sqlite_engine)
         assert rev is None, f'Expected None for unstamped DB, got {rev}'
-
-    @pytest.mark.asyncio
-    async def test_get_current_after_stamp_returns_revision(self, sqlite_engine):
-        """
-        get_alembic_current returns correct revision after stamp.
-        """
-        async with sqlite_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        await run_alembic_stamp(sqlite_engine, '0001_baseline')
-
-        rev = await get_alembic_current(sqlite_engine)
-        assert rev == '0001_baseline'

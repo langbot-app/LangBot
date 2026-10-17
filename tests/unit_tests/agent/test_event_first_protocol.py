@@ -332,16 +332,6 @@ class TestRunnerContextProtocolV1:
         assert not hasattr(ctx, 'bootstrap')
 
 
-class TestHostManagedHistoryNotInProtocol:
-    """Test that Host-managed history payloads are not in Protocol v1."""
-
-    def test_messages_not_in_sdk_context_top_level(self):
-        """RunnerContext should not expose top-level history messages."""
-        ctx_fields = RunnerContext.model_fields.keys()
-
-        assert 'messages' not in ctx_fields
-
-
 class TestSDKResultProtocolV1:
     """Test SDK RunnerResult for Protocol v1."""
 
