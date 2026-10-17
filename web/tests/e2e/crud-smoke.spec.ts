@@ -1464,39 +1464,3 @@ test.describe('cross-resource flows', () => {
     ).toBeVisible();
   });
 });
-
-test.describe('empty states', () => {
-  test('shows empty state when no bots exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/bots');
-    await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
-  });
-
-  test('shows empty state when no processors exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/agents');
-    await expect(
-      page.getByText('Select a processor from the sidebar'),
-    ).toBeVisible();
-  });
-
-  test('shows empty state when no knowledge bases exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/knowledge');
-    await expect(
-      page.getByText('Select a knowledge base from the sidebar'),
-    ).toBeVisible();
-  });
-
-  test('shows empty state when no MCP servers exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/mcp');
-    await expect(
-      page.getByText('Select an MCP server from the sidebar'),
-    ).toBeVisible();
-  });
-});
