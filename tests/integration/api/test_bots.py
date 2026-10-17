@@ -201,8 +201,14 @@ class TestBotEndpoints:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
-        assert 'data' in data
-        assert 'bots' in data['data']
+        assert data['data']['bots'] == [
+            {
+                'uuid': 'test-bot-uuid',
+                'name': 'Test Bot',
+                'platform': 'telegram',
+                'pipeline_uuid': 'test-pipeline-uuid',
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_create_bot_success(self, quart_test_client):

@@ -189,7 +189,7 @@ class TestChatMessageHandlerReal:
     async def test_user_message_alter_string(self, fake_app, mock_event_ctx, set_runner):
         """user_message_alter as string updates query.user_message."""
         from tests.factories import text_query
-        from langbot_plugin.api.entities.builtin.provider.message import Message
+        from langbot_plugin.api.entities.builtin.provider.message import Message, ContentElement
 
         chat = get_chat_handler()
 
@@ -200,7 +200,8 @@ class TestChatMessageHandlerReal:
         query = text_query('original')
         query.adapter = Mock()
         query.adapter.is_stream_output_supported = AsyncMock(return_value=False)
-        query.user_message = Message(role='user', content=[])
+        query.user_message = Message(role='user', content=[ContentElement.from_text('original')])
+        received_contents = []
 
         class QuickRunner:
             name = 'local-agent'
@@ -210,6 +211,7 @@ class TestChatMessageHandlerReal:
                 self.config = config
 
             async def run(self, query):
+                received_contents.append(query.user_message.content)
                 yield Message(role='assistant', content='ok')
 
         set_runner(QuickRunner)
@@ -220,7 +222,9 @@ class TestChatMessageHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
-        assert query.user_message.content is not None
+        expected_content = [ContentElement.from_text('altered text')]
+        assert query.user_message.content == expected_content
+        assert received_contents == [expected_content]
 
     @pytest.mark.asyncio
     async def test_adapter_without_stream_method_defaults_non_stream(self, fake_app, mock_event_ctx, set_runner):

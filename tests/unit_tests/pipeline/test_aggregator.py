@@ -560,19 +560,18 @@ class TestMessageAggregatorAddMessage:
 
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain('hello')
-        event = friend_message_event(chain)
         adapter = mock_adapter()
 
         # Add messages up to MAX_BUFFER_MESSAGES
         for i in range(aggregator.MAX_BUFFER_MESSAGES):
+            chain = text_chain(f'message {i}')
             await agg.add_message(
                 execution_context=execution_context(pipeline_uuid='test-pipeline'),
                 bot_uuid='test-bot',
                 launcher_type=provider_session.LauncherTypes.PERSON,
                 launcher_id=12345,
                 sender_id=12345,
-                message_event=event,
+                message_event=friend_message_event(chain),
                 message_chain=chain,
                 adapter=adapter,
                 pipeline_uuid='test-pipeline',
@@ -588,6 +587,14 @@ class TestMessageAggregatorAddMessage:
             'test-pipeline',
         )
         assert session_id not in agg.buffers or len(agg.buffers[session_id].messages) == 0
+        app.query_pool.add_query.assert_awaited_once()
+        forwarded = app.query_pool.add_query.call_args.kwargs
+        assert str(forwarded['message_chain']) == '\n'.join(
+            f'message {i}' for i in range(aggregator.MAX_BUFFER_MESSAGES)
+        )
+        assert forwarded['execution_context'] == context
+        assert forwarded['bot_uuid'] == 'test-bot'
+        assert forwarded['pipeline_uuid'] == 'test-pipeline'
 
 
 class TestMessageAggregatorMerge:
