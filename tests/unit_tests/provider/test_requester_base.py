@@ -56,11 +56,8 @@ def test_requester_base_class_is_abstract():
     mock_app = SimpleNamespace()
     mock_app.logger = Mock()
 
-    # ProviderAPIRequester has abstract methods, but ABCMeta allows instantiation
-    # if you don't call the abstract methods. Test that it has abstract methods.
-    assert hasattr(requester.ProviderAPIRequester, 'invoke_llm')
-    # Check that invoke_llm is abstract
-    assert hasattr(requester.ProviderAPIRequester.invoke_llm, '__isabstractmethod__')
+    with pytest.raises(TypeError, match='abstract'):
+        requester.ProviderAPIRequester(mock_app, {})
 
 
 def test_requester_default_config_merged():
@@ -251,13 +248,13 @@ def test_runtime_provider_initialization(runtime_provider, fake_persistence_data
 
 
 def test_runtime_provider_has_invoke_methods(runtime_provider):
-    """Test RuntimeProvider has invoke methods that delegate to requester."""
+    """RuntimeProvider exposes callable invocation entrypoints."""
     provider = runtime_provider
 
-    assert hasattr(provider, 'invoke_llm')
-    assert hasattr(provider, 'invoke_llm_stream')
-    assert hasattr(provider, 'invoke_embedding')
-    assert hasattr(provider, 'invoke_rerank')
+    assert callable(provider.invoke_llm)
+    assert callable(provider.invoke_llm_stream)
+    assert callable(provider.invoke_embedding)
+    assert callable(provider.invoke_rerank)
 
 
 @pytest.mark.asyncio
@@ -404,6 +401,7 @@ async def test_runtime_provider_invoke_llm_stream_yields_chunks(runtime_provider
 
     assert len(chunks) == 1
     assert chunks[0].role == 'assistant'
+    assert [(part.type, part.text) for part in chunks[0].content] == [('text', 'Fake stream chunk')]
 
 
 @pytest.mark.asyncio
@@ -513,13 +511,11 @@ def test_runtime_llm_model_initialization(runtime_llm_model, fake_persistence_da
     assert model.reasoning_config_override is None
 
 
-def test_runtime_llm_model_provider_ref(runtime_llm_model):
+def test_runtime_llm_model_provider_ref(runtime_llm_model, runtime_provider):
     """Test RuntimeLLMModel has correct provider reference."""
     model = runtime_llm_model
 
-    assert model.provider.provider_entity is not None
-    assert model.provider.token_mgr is not None
-    assert model.provider.requester is not None
+    assert model.provider is runtime_provider
 
 
 # ============================================================================
