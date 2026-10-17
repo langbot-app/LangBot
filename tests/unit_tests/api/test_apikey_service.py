@@ -3,10 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import hashlib
+import sqlalchemy
 import pytest
 
 from langbot.pkg.api.http.service.apikey import ApiKeyService
-from langbot.pkg.entity.persistence.apikey import ApiKeyStatus
+from langbot.pkg.entity.persistence.apikey import ApiKey, ApiKeyStatus
 
 
 @pytest.mark.asyncio
@@ -76,6 +78,27 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
     result = await service.verify_api_key('lbk_valid_format')
 
     assert result is key_exists
+    digest = hashlib.sha256(b'lbk_valid_format').hexdigest()
+    statements = [call.args[0] for call in persistence_mgr.execute_async.await_args_list]
+    assert statements[0].whereclause.compare(ApiKey.key_hash == digest)
+    if key_exists:
+        assert statements[1].whereclause.compare(
+            sqlalchemy.and_(
+                ApiKey.id == 1,
+                ApiKey.workspace_uuid == 'workspace-a',
+                ApiKey.key_hash == digest,
+            )
+        )
+        assert statements[2].is_update
+        assert statements[2].whereclause.compare(
+            sqlalchemy.and_(
+                ApiKey.id == 1,
+                ApiKey.workspace_uuid == 'workspace-a',
+                ApiKey.key_hash == digest,
+                ApiKey.status == ApiKeyStatus.ACTIVE.value,
+            )
+        )
+        assert statements[2].compile().params['last_used_at'] is not None
     assert persistence_mgr.execute_async.await_count == (3 if key_exists else 1)
     if key_exists:
         workspace_service.get_execution_binding.assert_awaited_once_with('workspace-a')
