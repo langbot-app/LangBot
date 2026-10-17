@@ -1,11 +1,12 @@
-"""Tests for Telegram Dify form callback helpers."""
+"""Tests for Telegram message conversion and Dify form callback helpers."""
 
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from telegram import ForceReply
+from telegram import ForceReply, Message
 
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -31,6 +32,110 @@ def test_telegram_base64_decode_is_bounded(monkeypatch):
 
 TELEGRAM_BOT_TOKEN = '123456789:AAExampleBotTokenThatMustNotLeak'
 TELEGRAM_FILE_URL = f'https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/photos/file_0.jpg'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('text', 'entities', 'expected_text', 'mentioned'),
+    [
+        ('hello', [], 'hello', False),
+        ('hello @test_bot', [('mention', 6, 9)], 'hello ', True),
+        ('@test_bot_extra hello', [('mention', 0, 15)], '@test_bot_extra hello', False),
+        ('@test_bot', [('code', 0, 9)], '@test_bot', False),
+        ('@test_bot', [('pre', 0, 9)], '@test_bot', False),
+        ('https://example.com/@test_bot', [('url', 0, 29)], 'https://example.com/@test_bot', False),
+        ('/help@test_bot', [('bot_command', 0, 14)], '/help', True),
+        ('/help@test_bot_extra', [('bot_command', 0, 20)], '/help@test_bot_extra', False),
+        ('😀 @test_bot!', [('mention', 3, 9)], '😀 !', True),
+        (
+            '@test_bot @test_bot',
+            [('mention', 0, 9), ('code', 10, 9)],
+            ' @test_bot',
+            True,
+        ),
+        (
+            '@test_bot 😀 @test_bot',
+            [('mention', 0, 9), ('mention', 13, 9)],
+            ' 😀 ',
+            True,
+        ),
+    ],
+)
+async def test_telegram_mentions_use_entity_boundaries(text, entities, expected_text, mentioned):
+    message = Message.de_json(
+        {
+            'message_id': 10,
+            'date': 1700000000,
+            'chat': {'id': 123, 'type': 'private'},
+            'text': text,
+            'entities': [{'type': kind, 'offset': offset, 'length': length} for kind, offset, length in entities],
+        },
+        None,
+    )
+
+    chain = await TelegramMessageConverter.target2yiri(message, None, 'test_bot')
+
+    expected = [platform_message.Plain(text=expected_text)]
+    if mentioned:
+        expected.insert(0, platform_message.At(target='test_bot'))
+    assert list(chain) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('media_type', ['photo', 'voice', 'document'])
+@pytest.mark.parametrize('entity_type', ['mention', 'code'])
+async def test_telegram_caption_mentions_preserve_media(monkeypatch, media_type, entity_type):
+    media = {'file_id': 'file-1', 'file_unique_id': 'unique-1'}
+    if media_type == 'photo':
+        media = [{**media, 'width': 1, 'height': 1}]
+    elif media_type == 'voice':
+        media = {**media, 'duration': 1}
+    else:
+        media = {**media, 'file_name': 'report.txt', 'file_size': 5}
+    message = Message.de_json(
+        {
+            'message_id': 10,
+            'date': 1700000000,
+            'chat': {'id': 123, 'type': 'private'},
+            'caption': '😀 @test_bot',
+            'caption_entities': [{'type': entity_type, 'offset': 3, 'length': 9}],
+            media_type: media,
+        },
+        SimpleNamespace(get_file=AsyncMock(return_value=SimpleNamespace(file_path=TELEGRAM_FILE_URL))),
+    )
+
+    response = MagicMock(headers={})
+
+    async def iter_chunked(_chunk_size):
+        yield b'media'
+
+    response.content.iter_chunked = iter_chunked
+
+    @asynccontextmanager
+    async def fake_get(url):
+        assert url == TELEGRAM_FILE_URL
+        yield response
+
+    monkeypatch.setattr(
+        'langbot.pkg.platform.sources.telegram.httpclient.get_session',
+        lambda **kwargs: MagicMock(get=fake_get),
+    )
+
+    chain = list(await TelegramMessageConverter.target2yiri(message, None, 'test_bot'))
+
+    if entity_type == 'mention':
+        assert chain.pop(0) == platform_message.At(target='test_bot')
+        assert chain.pop(0) == platform_message.Plain(text='😀 ')
+    else:
+        assert chain.pop(0) == platform_message.Plain(text='😀 @test_bot')
+    assert len(chain) == 1
+    expected_type = {
+        'photo': platform_message.Image,
+        'voice': platform_message.Voice,
+        'document': platform_message.File,
+    }
+    assert isinstance(chain[0], expected_type[media_type])
+    assert chain[0].base64.endswith('bWVkaWE=')
 
 
 @pytest.mark.asyncio

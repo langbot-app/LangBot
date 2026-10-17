@@ -149,23 +149,38 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
     async def target2yiri(message: telegram.Message, bot: telegram.Bot, bot_account_id: str):
         message_components = []
 
-        def parse_message_text(text: str) -> list[platform_message.MessageComponent]:
+        def parse_message_text(
+            text: str, entities: dict[telegram.MessageEntity, str]
+        ) -> list[platform_message.MessageComponent]:
             msg_components = []
+            mention = f'@{bot_account_id}'
+            bot_mentions = [
+                entity
+                for entity, value in entities.items()
+                if (entity.type == telegram.MessageEntity.MENTION and value == mention)
+                or (entity.type == telegram.MessageEntity.BOT_COMMAND and value.endswith(mention))
+            ]
 
-            if f'@{bot_account_id}' in text:
+            if bot_mentions:
+                # Telegram entity offsets use UTF-16 code units, not Python character indexes.
+                encoded = text.encode('utf-16-le')
+                for entity in sorted(bot_mentions, key=lambda entity: entity.offset, reverse=True):
+                    end = (entity.offset + entity.length) * 2
+                    start = end - len(mention.encode('utf-16-le'))
+                    encoded = encoded[:start] + encoded[end:]
                 msg_components.append(platform_message.At(target=bot_account_id))
-                text = text.replace(f'@{bot_account_id}', '')
+                text = encoded.decode('utf-16-le')
             msg_components.append(platform_message.Plain(text=text))
 
             return msg_components
 
         if message.text:
             message_text = message.text
-            message_components.extend(parse_message_text(message_text))
+            message_components.extend(parse_message_text(message_text, message.parse_entities()))
 
         if message.photo:
             if message.caption:
-                message_components.extend(parse_message_text(message.caption))
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
 
             file = await message.photo[-1].get_file()
 
@@ -192,7 +207,7 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         if message.voice:
             if message.caption:
-                message_components.extend(parse_message_text(message.caption))
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
 
             file = await message.voice.get_file()
 
@@ -215,7 +230,7 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
         if message.document:
             if message.caption:
-                message_components.extend(parse_message_text(message.caption))
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
 
             file = await message.document.get_file()
             file_name = message.document.file_name or 'document'
