@@ -583,11 +583,15 @@ async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(('remaining_references', 'statement_count'), [(1, 1), (0, 2)])
+@pytest.mark.parametrize('remaining_references', [1, 0])
 async def test_artifact_cleanup_is_reference_counted_within_workspace(
     remaining_references: int,
-    statement_count: int,
+    plugin_db,
 ):
+    import sqlalchemy
+    from langbot.pkg.entity.persistence.plugin import PluginSetting
+    from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+
     app = SimpleNamespace(
         instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
         deployment=SimpleNamespace(mode='cloud'),
@@ -598,19 +602,38 @@ async def test_artifact_cleanup_is_reference_counted_within_workspace(
         workspace_uuid='workspace-a',
         placement_generation=1,
     )
-    statements = []
-
-    async def execute(statement):
-        statements.append(statement)
-        return SimpleNamespace(scalar_one=lambda: remaining_references)
+    digest = 'a' * 64
+    settings = [('workspace-b', digest), ('workspace-a', 'b' * 64)]
+    if remaining_references:
+        settings.append(('workspace-a', digest))
+    plugin_db.add_all(
+        PluginSetting(workspace_uuid=workspace, plugin_author='author', plugin_name=artifact, artifact_digest=artifact)
+        for workspace, artifact in settings
+    )
+    plugin_db.add_all(
+        BinaryStorage(
+            workspace_uuid=workspace, unique_key=key, key=key, owner_type=owner_type, owner=owner, value=b'pkg'
+        )
+        for workspace, key, owner_type, owner in [
+            ('workspace-a', 'target', 'plugin_artifact', digest),
+            ('workspace-b', 'other-workspace', 'plugin_artifact', digest),
+            ('workspace-a', 'other-artifact', 'plugin_artifact', 'b' * 64),
+            ('workspace-a', 'other-owner-type', 'plugin', digest),
+        ]
+    )
+    await plugin_db.flush()
 
     await connector._delete_artifact_if_unreferenced(
         execution_context,
-        'a' * 64,
-        execute=execute,
+        digest,
+        execute=plugin_db.execute,
     )
 
-    assert len(statements) == statement_count
+    remaining = (await plugin_db.execute(sqlalchemy.select(BinaryStorage.unique_key))).scalars().all()
+    expected = {'other-workspace', 'other-artifact', 'other-owner-type'}
+    if remaining_references:
+        expected.add('target')
+    assert set(remaining) == expected
 
 
 @pytest.mark.asyncio

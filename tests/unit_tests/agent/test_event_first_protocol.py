@@ -303,6 +303,10 @@ class TestRunnerContextProtocolV1:
 
         assert ctx.event is not None
         assert ctx.event.event_type == 'message.received'
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match='event'):
+            RunnerContext.model_validate(ctx.model_dump(exclude={'event'}))
 
     def test_sdk_context_has_no_history_message_fields(self):
         """RunnerContext should not expose inline history message fields."""
@@ -355,6 +359,8 @@ class TestSDKResultProtocolV1:
         )
 
         assert result.run_id == 'run_1'
+        with pytest.raises(TypeError, match='run_id'):
+            RunnerResult.message_completed(message=Message(role='assistant', content='Hello'))
 
 
 # Fixtures

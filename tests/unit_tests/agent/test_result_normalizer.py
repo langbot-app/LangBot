@@ -156,6 +156,7 @@ class TestNormalizeRunCompleted:
 
         assert result is not None
         assert isinstance(result, provider_message.Message)
+        assert (result.role, result.content) == ('assistant', 'Final response')
 
     @pytest.mark.asyncio
     async def test_normalize_run_completed_without_message(self):
