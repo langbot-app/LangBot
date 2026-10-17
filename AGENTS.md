@@ -79,7 +79,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 
 - Plugin runtime: `plugin.runtime_ws_url`, default Docker host `langbot_plugin_runtime:5400/control/ws`.
 - Box runtime: `box.enabled`, `box.backend`, `box.runtime.endpoint`, Docker host `langbot_box:5410`.
-- API/MCP auth: user-bound Workspace API keys; see `docs/API_KEY_AUTH.md`.
+- API/MCP auth: Workspace-bound Workspace API keys; see `docs/API_KEY_AUTH.md`.
 
 ## Change Rules
 

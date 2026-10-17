@@ -687,7 +687,7 @@ class TestPostgreSQLResourceTenancyMigration:
                 lambda sync_conn: {column['name'] for column in sa.inspect(sync_conn).get_columns('api_keys')}
             )
             assert 'key' not in api_columns
-            assert 'scopes' not in api_columns
+            assert await conn.scalar(text('SELECT scopes FROM api_keys')) == ['*']
             assert (await conn.execute(text('SELECT normalized_email FROM users ORDER BY id'))).scalars().all() == [
                 'strasse@example.com',
                 'Ꭰ@example.com',
@@ -1765,6 +1765,7 @@ class TestPostgreSQLTenantRuntime:
                             name='active-key',
                             key_hash=hashlib.sha256(active_secret.encode()).hexdigest(),
                             created_by_account_uuid=shared_account_uuid,
+                            scopes=[Permission.WORKSPACE_VIEW.value],
                             status='active',
                         ),
                     ]
@@ -1786,6 +1787,7 @@ class TestPostgreSQLTenantRuntime:
                             name='revoked-key',
                             key_hash=hashlib.sha256(revoked_secret.encode()).hexdigest(),
                             created_by_account_uuid=shared_account_uuid,
+                            scopes=[Permission.WORKSPACE_VIEW.value],
                             status='revoked',
                         ),
                         ApiKey(
@@ -1794,6 +1796,7 @@ class TestPostgreSQLTenantRuntime:
                             name='expired-key',
                             key_hash=hashlib.sha256(expired_secret.encode()).hexdigest(),
                             created_by_account_uuid=shared_account_uuid,
+                            scopes=[Permission.WORKSPACE_VIEW.value],
                             status='active',
                             expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
                             - datetime.timedelta(minutes=1),

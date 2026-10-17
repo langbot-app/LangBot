@@ -10,11 +10,8 @@ import uuid
 import sqlalchemy
 
 from ....entity.persistence import apikey
-from ....entity.persistence.user import User, AccountStatus
-from ....entity.persistence.workspace import WorkspaceMembership, MembershipStatus
 from ....workspace.errors import WorkspaceNotFoundError
-from ..authz import permissions_for_role
-from ..context import RequestContext
+from ..authz import Permission, PermissionDeniedError
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 if typing.TYPE_CHECKING:
@@ -29,10 +26,6 @@ class ApiKeyIdentity:
     workspace_uuid: str
     placement_generation: int
     api_key_uuid: str
-    account_uuid: str
-    membership_uuid: str
-    role: str
-    membership_revision: int
     permissions: frozenset[str]
 
 
@@ -50,20 +43,24 @@ class ApiKeyService:
     def _utcnow() -> datetime.datetime:
         return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
-    async def _active_membership(self, workspace_uuid: str, account_uuid: str | None):
-        if not account_uuid:
-            return None
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(WorkspaceMembership)
-            .join(User, User.uuid == WorkspaceMembership.account_uuid)
-            .where(
-                WorkspaceMembership.workspace_uuid == workspace_uuid,
-                WorkspaceMembership.account_uuid == account_uuid,
-                WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
-                User.status == AccountStatus.ACTIVE.value,
-            )
-        )
-        return result.first()
+    @staticmethod
+    def _normalize_scopes(
+        scopes: typing.Iterable[str] | None,
+        *,
+        default: typing.Iterable[str] = (),
+    ) -> list[str]:
+        requested = list(default if scopes is None else scopes)
+        valid = {permission.value for permission in Permission}
+        normalized: list[str] = []
+        for scope in requested:
+            if not isinstance(scope, str):
+                raise ValueError('API key scopes must be strings')
+            value = scope.strip()
+            if value not in valid:
+                raise ValueError(f'Unknown API key scope: {value}')
+            if value not in normalized:
+                normalized.append(value)
+        return normalized
 
     def _serialize(self, row: typing.Any) -> dict[str, typing.Any]:
         value = self.ap.persistence_mgr.serialize_model(apikey.ApiKey, row)
@@ -84,10 +81,11 @@ class ApiKeyService:
 
     async def create_api_key(
         self,
-        context: RequestContext,
+        context: TenantContext,
         name: str,
         description: str = '',
         *,
+        scopes: typing.Iterable[str] | None = None,
         expires_at: datetime.datetime | None = None,
     ) -> dict[str, typing.Any]:
         workspace_uuid = require_workspace_uuid(context)
@@ -100,18 +98,24 @@ class ApiKeyService:
             if expires_at <= self._utcnow():
                 raise ValueError('API key expiry must be in the future')
 
-        account_uuid = context.account_uuid
-        if await self._active_membership(workspace_uuid, account_uuid) is None:
-            raise ValueError('API key requires an active user in the Workspace')
+        default_scopes = getattr(getattr(context, 'workspace', None), 'permissions', frozenset())
+        normalized_scopes = self._normalize_scopes(scopes, default=default_scopes)
+        allowed_scopes = frozenset(default_scopes)
+        unauthorized_scopes = sorted(set(normalized_scopes) - allowed_scopes)
+        if unauthorized_scopes:
+            # API-key management delegates the caller's authority; it must not
+            # become a path for minting a stronger principal.
+            raise PermissionDeniedError(unauthorized_scopes[0])
         secret = f'lbk_{secrets.token_urlsafe(32)}'
         key_uuid = str(uuid.uuid4())
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(apikey.ApiKey).values(
                 uuid=key_uuid,
                 workspace_uuid=workspace_uuid,
-                created_by_account_uuid=account_uuid,
+                created_by_account_uuid=getattr(context, 'account_uuid', None),
                 name=normalized_name,
                 key_hash=self._hash_secret(secret),
+                scopes=normalized_scopes,
                 status=apikey.ApiKeyStatus.ACTIVE.value,
                 expires_at=expires_at,
                 description=description.strip(),
@@ -170,7 +174,7 @@ class ApiKeyService:
         discovered_key_id = key.id
         now = self._utcnow()
 
-        async def bind_and_record_use() -> tuple[typing.Any, typing.Any, typing.Any] | None:
+        async def bind_and_record_use() -> tuple[typing.Any, typing.Any] | None:
             # Re-read inside the tenant transaction. A revoke/expiry racing
             # discovery must not result in an authenticated identity.
             active_session = current_session()
@@ -196,9 +200,6 @@ class ApiKeyService:
             if scoped_key.expires_at is not None and scoped_key.expires_at <= now:
                 return None
 
-            membership = await self._active_membership(discovered_workspace_uuid, scoped_key.created_by_account_uuid)
-            if membership is None:
-                return None
             binding = await self.ap.workspace_service.get_execution_binding(discovered_workspace_uuid)
             updated = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.update(apikey.ApiKey)
@@ -216,7 +217,7 @@ class ApiKeyService:
             # above must never become an authenticated identity.
             if updated.scalar_one_or_none() is None:
                 return None
-            return binding, scoped_key, membership
+            return binding, scoped_key
 
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         if current_session() is None and callable(tenant_uow):
@@ -226,17 +227,19 @@ class ApiKeyService:
             bound = await bind_and_record_use()
         if bound is None:
             return None
-        binding, scoped_key, membership = bound
+        binding, scoped_key = bound
+        raw_scopes = list(scoped_key.scopes or [])
+        permissions = (
+            frozenset(permission.value for permission in Permission)
+            if '*' in raw_scopes
+            else frozenset(self._normalize_scopes(raw_scopes))
+        )
         return ApiKeyIdentity(
             instance_uuid=binding.instance_uuid,
             workspace_uuid=binding.workspace_uuid,
             placement_generation=binding.placement_generation,
             api_key_uuid=scoped_key.uuid,
-            account_uuid=membership.account_uuid,
-            membership_uuid=membership.uuid,
-            role=membership.role,
-            membership_revision=membership.projection_revision,
-            permissions=permissions_for_role(membership.role),
+            permissions=permissions,
         )
 
     async def verify_api_key(self, secret: str) -> bool:

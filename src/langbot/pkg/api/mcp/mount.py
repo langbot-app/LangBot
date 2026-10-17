@@ -4,7 +4,7 @@ The Quart app and the MCP server are both ASGI apps. We front them with a small
 dispatcher ASGI callable:
 
 - Requests whose path is (or is under) ``/mcp`` are authenticated with a
-  user-bound LangBot API key through ``apikey_service.authenticate_api_key``
+  Workspace-bound LangBot API key through ``apikey_service.authenticate_api_key``
   and then handed to the
   FastMCP Starlette app.
 - Every other request goes to the Quart app unchanged.
@@ -137,15 +137,13 @@ class MCPMount:
                 auth_type='api-key',
                 principal=PrincipalContext(
                     principal_type=PrincipalType.API_KEY,
-                    account_uuid=identity.account_uuid,
                     api_key_uuid=identity.api_key_uuid,
                 ),
                 workspace=WorkspaceContext(
                     workspace_uuid=identity.workspace_uuid,
-                    membership_uuid=identity.membership_uuid,
-                    role=identity.role,
+                    membership_uuid=None,
+                    role=None,
                     permissions=identity.permissions,
-                    membership_revision=identity.membership_revision,
                 ),
                 entitlement_revision=entitlement_revision,
             )

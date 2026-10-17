@@ -40,10 +40,6 @@ def build_ap() -> SimpleNamespace:
             workspace_uuid='workspace-1',
             placement_generation=1,
             api_key_uuid='global-test-key',
-            account_uuid='account-1',
-            membership_uuid='member-1',
-            role='viewer',
-            membership_revision=1,
             permissions=frozenset(permission.value for permission in Permission),
         )
 

@@ -11,7 +11,7 @@ import pytest
 import sqlalchemy
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from langbot.pkg.api.http.authz import Permission, permissions_for_role
+from langbot.pkg.api.http.authz import Permission, PermissionDeniedError
 from langbot.pkg.api.http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from langbot.pkg.api.http.service.apikey import ApiKeyService
 from langbot.pkg.entity.persistence.apikey import ApiKey
@@ -136,17 +136,18 @@ async def test_secret_is_returned_once_and_only_hash_is_persisted(api_key_contex
     assert secret not in stored
 
 
-async def test_authentication_derives_current_user_permissions_and_updates_usage(api_key_context):
+async def test_authentication_derives_workspace_scopes_and_updates_usage(api_key_context):
     _application, service, context, engine = api_key_context
     created = await service.create_api_key(
         context,
         'Read only',
+        scopes=[Permission.RESOURCE_VIEW.value],
     )
 
     identity = await service.authenticate_api_key(created['key'])
     assert identity is not None
     assert identity.workspace_uuid == context.workspace_uuid
-    assert identity.permissions == permissions_for_role('owner')
+    assert identity.permissions == frozenset({Permission.RESOURCE_VIEW.value})
 
     async with engine.connect() as connection:
         last_used_at = await connection.scalar(sqlalchemy.select(ApiKey.last_used_at))
@@ -239,30 +240,43 @@ async def test_cross_workspace_crud_and_secret_guessing_are_isolated(api_key_con
     assert identity.workspace_uuid == first_context.workspace_uuid
 
 
-async def test_key_follows_current_membership_and_account_status(api_key_context):
+async def test_key_grants_do_not_follow_creator_role_changes(api_key_context):
     application, service, context, _engine = api_key_context
-    created = await service.create_api_key(context, 'User key')
+    grants = [Permission.RESOURCE_VIEW.value, Permission.RESOURCE_MANAGE.value]
+    created = await service.create_api_key(context, 'Granted key', scopes=grants)
     await application.persistence_mgr.execute_async(
         sqlalchemy.update(WorkspaceMembership)
         .where(WorkspaceMembership.account_uuid == context.account_uuid)
         .values(role='viewer')
     )
     identity = await service.authenticate_api_key(created['key'])
-    assert identity.permissions == permissions_for_role('viewer')
-    assert identity.account_uuid == context.account_uuid
-    await application.persistence_mgr.execute_async(
-        sqlalchemy.update(User).where(User.uuid == context.account_uuid).values(status='disabled')
+    assert identity.permissions == frozenset(grants)
+
+
+async def test_explicit_scopes_cannot_exceed_callers_workspace_permissions(api_key_context):
+    _application, service, context, _engine = api_key_context
+    limited_context = _context(
+        context.workspace_uuid,
+        context.account_uuid or '',
+        {Permission.API_KEY_MANAGE, Permission.RESOURCE_VIEW},
     )
-    assert await service.authenticate_api_key(created['key']) is None
-    await application.persistence_mgr.execute_async(
-        sqlalchemy.update(User).where(User.uuid == context.account_uuid).values(status='active')
+
+    created = await service.create_api_key(
+        limited_context,
+        'Read only',
+        scopes=[Permission.RESOURCE_VIEW.value],
     )
-    await application.persistence_mgr.execute_async(
-        sqlalchemy.update(WorkspaceMembership)
-        .where(WorkspaceMembership.account_uuid == context.account_uuid)
-        .values(status='removed')
-    )
-    assert await service.authenticate_api_key(created['key']) is None
+    identity = await service.authenticate_api_key(created['key'])
+    assert identity is not None
+    assert identity.permissions == frozenset({Permission.RESOURCE_VIEW.value})
+
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        await service.create_api_key(
+            limited_context,
+            'Escalated',
+            scopes=[Permission.WORKSPACE_DELETE.value],
+        )
+    assert exc_info.value.permission == Permission.WORKSPACE_DELETE.value
 
 
 # Preserve the pre-tenancy CRUD and verification regression matrix while

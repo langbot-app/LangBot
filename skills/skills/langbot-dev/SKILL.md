@@ -72,10 +72,11 @@ selector and is always checked against the Account membership. Tenant services
 must accept this context (or an explicit trusted execution context) and fail
 closed when it is absent.
 
-API-key authentication accepts database-backed `lbk_` keys. Their one-time
-secrets are stored only as hashes and bind the creating user and one Workspace.
-Authentication checks the active user and membership and derives permissions
-from the user's current role. Keys have no independent scopes.
+API-key authentication accepts database-backed `lbk_` keys with hashed secrets
+and a Workspace binding. Granted scopes use the same Permission definitions as
+users and cannot exceed the creator's current Workspace permissions at creation.
+Authentication uses the stored grants, without automatic synchronization when
+the creator's role changes. Creator attribution is not a user-session identity.
 
 An API key derives its Workspace from the key record and ignores a caller's
 Workspace selector. Public Bot/Webhook routes similarly derive Workspace from

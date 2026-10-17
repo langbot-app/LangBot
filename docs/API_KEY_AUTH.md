@@ -13,12 +13,14 @@ API keys can be managed through the web interface:
 
 Database-backed API-key secrets are returned exactly once. LangBot stores only
 a SHA-256 lookup hash, so an existing secret cannot be displayed or recovered
-later. Each key belongs to its creating user and one Workspace, and may have
-an expiry. Each authentication checks that the user and Workspace membership
-are active and derives permissions from the user's current role. Role changes
-apply to existing keys; disabled users and removed memberships cannot authenticate.
-Keys have no independent permission scopes. The Workspace is derived from the
-key; an `X-Workspace-Id` header cannot redirect it to another tenant.
+later. Each key belongs to one Workspace and records its creator, granted
+permission scopes, status and optional expiry. Scopes use the same permission
+definitions as user roles. On creation, requested scopes must be a subset of
+the caller's current Workspace permissions; omitting scopes grants that current
+set, while an empty list grants no permissions. Authentication uses the key's
+stored grants, not the creator's current role. Later role changes do not
+synchronize the key's grants. The Workspace is derived from the key;
+`X-Workspace-Id` cannot redirect it to another tenant.
 
 Only database-backed `lbk_` keys are accepted. Config-file global keys are not supported.
 
@@ -46,7 +48,7 @@ Authorization: Bearer lbk_your_api_key_here
 ## Available APIs
 
 Endpoints that declare API-key authentication accept either a user token or a
-Workspace API key. The key's user must currently have the permission required by the route.
+Workspace API key. The key must have been granted the permission required by the route.
 This includes:
 
 - **Model Management** - `/api/v1/provider/models/llm` and `/api/v1/provider/models/embedding`
@@ -233,8 +235,7 @@ or
 
 ### 403 Forbidden
 
-The key is valid, but its user's current Workspace role lacks the permission
-required by the route.
+The key is valid, but its granted scopes lack the permission required by the route.
 
 ### 500 Internal Server Error
 

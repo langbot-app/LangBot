@@ -42,10 +42,6 @@ async def test_mcp_mount_keeps_request_context_but_no_session_during_stream_wait
             workspace_uuid='workspace-1',
             placement_generation=7,
             api_key_uuid='key-1',
-            account_uuid='account-1',
-            membership_uuid='member-1',
-            role='viewer',
-            membership_revision=1,
             permissions=frozenset({'pipelines:read'}),
         )
         app = SimpleNamespace(

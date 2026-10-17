@@ -606,15 +606,13 @@ class RouterGroup(abc.ABC):
             auth_type=auth_type.value,
             principal=PrincipalContext(
                 principal_type=PrincipalType.API_KEY,
-                account_uuid=identity.account_uuid,
                 api_key_uuid=identity.api_key_uuid,
             ),
             workspace=WorkspaceContext(
                 workspace_uuid=identity.workspace_uuid,
-                membership_uuid=identity.membership_uuid,
-                role=identity.role,
+                membership_uuid=None,
+                role=None,
                 permissions=identity.permissions,
-                membership_revision=identity.membership_revision,
             ),
             entitlement_revision=entitlement_revision,
         )
