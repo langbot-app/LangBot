@@ -1,4 +1,5 @@
 export default {
+  networkDiagnostic: '网络诊断：{{kind}}',
   complete: '完成',
   checkingPlugin: '检查插件',
   preparingPlugin: '准备安装',

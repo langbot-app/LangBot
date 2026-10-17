@@ -951,3 +951,31 @@ async def test_missing_marketplace_release_has_specific_migration_result(env):
     assert all(r['code'] == 'plugin_version_unavailable' for r in metadata['results'])
     assert metadata['installations'][0]['code'] == 'plugin_version_unavailable'
     assert 'private-token' not in str(metadata)
+
+
+@pytest.mark.parametrize('kind', ['connect', 'read_timeout', 'truncated', 'http'])
+def test_network_diagnostic_is_allowlisted_and_credential_free(kind):
+    import httpx
+    from langbot.pkg.api.http.service.pipeline_migration import MigrationInstallContext
+
+    request = httpx.Request('GET', 'https://secret-user:secret-password@example.invalid/package?token=private-token')
+    errors = {
+        'connect': httpx.ConnectError('private-token', request=request),
+        'read_timeout': httpx.ReadTimeout('private-token', request=request),
+        'truncated': httpx.RemoteProtocolError('private-token', request=request),
+        'http': httpx.HTTPStatusError(
+            'private-token', request=request, response=httpx.Response(503, request=request, text='private-token')
+        ),
+    }
+    ctx = MigrationInstallContext({'author': 'team', 'name': 'Runner', 'version': '1'})
+    ctx.record_network_failure(errors[kind])
+    expected = {
+        'connect': 'connect_error',
+        'read_timeout': 'read_timeout',
+        'truncated': 'incomplete_response',
+        'http': 'http_status',
+    }
+    assert ctx.progress['diagnostic']['kind'] == expected[kind]
+    assert ctx.progress['diagnostic'].get('http_status') == (503 if kind == 'http' else None)
+    assert 'private-token' not in str(ctx.progress)
+    assert 'secret-' not in str(ctx.progress)

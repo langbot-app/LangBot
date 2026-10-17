@@ -130,3 +130,10 @@ uv run python tests/manual/mcp_smoke.py    # MCP server e2e smoke
 - `langbot-deploy` — Docker/compose deployment + config.
 - `langbot-mcp-ops` — operating the LangBot MCP server.
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) — `lbctl`, a standalone Service API client for managing running Workspaces.
+
+### Migration installation diagnostics
+
+Migration remains an HTTP-only operation. Poll its system task handle and inspect
+`runtime.result.installations[].diagnostic`: `kind` is an allowlisted network
+category and `http_status` is present for HTTP failures. Never expose raw exception
+messages, request URLs, headers or response bodies in this diagnostic object.

@@ -1,4 +1,5 @@
 export default {
+  networkDiagnostic: 'Diagnóstico de red: {{kind}}',
   complete: 'Finalizar',
   checkingPlugin: 'Comprobar plugin',
   preparingPlugin: 'Preparar instalación',

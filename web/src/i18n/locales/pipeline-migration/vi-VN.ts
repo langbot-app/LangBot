@@ -1,4 +1,5 @@
 export default {
+  networkDiagnostic: 'Chẩn đoán mạng: {{kind}}',
   complete: 'Hoàn tất',
   checkingPlugin: 'Kiểm tra plugin',
   preparingPlugin: 'Chuẩn bị cài đặt',
