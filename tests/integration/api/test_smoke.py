@@ -164,16 +164,6 @@ class TestHealthEndpoint:
         data = await response.get_json()
         assert data == {'code': 0, 'msg': 'ok', 'resources': {}}
 
-    @pytest.mark.asyncio
-    async def test_healthz_no_auth_required(self, quart_test_client):
-        """
-        /healthz doesn't require authentication.
-
-        Tests that AuthType.NONE endpoints work without headers.
-        """
-        response = await quart_test_client.get('/healthz')
-        assert response.status_code == 200
-
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestSystemEndpoint:

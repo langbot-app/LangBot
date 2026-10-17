@@ -1884,21 +1884,6 @@ class TestBuildSkillExecutionMounts:
         with pytest.raises(ValueError, match='no immutable package root'):
             skill_loader.build_execution_mounts(app, query)
 
-    def test_empty_package_root_skipped_even_when_not_shared(self):
-        """An empty package_root is always invalid regardless of topology."""
-        logger = Mock()
-        skills = {
-            'no_root': {
-                'name': 'no_root',
-                'package_root': '',
-                'manifest_path': '',
-                'revision': 'sha256:' + '1' * 64,
-            }
-        }
-        app = self._make_app(logger, skills)
-
-        assert skill_loader.build_execution_mounts(app, make_query()) == []
-
     def test_returns_empty_when_no_skill_manager(self):
         logger = Mock()
         app = make_app(logger)

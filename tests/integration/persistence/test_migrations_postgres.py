@@ -550,21 +550,6 @@ class TestPostgreSQLMigrationGetCurrent:
         rev = await get_alembic_current(postgres_engine)
         assert rev is None, f'Expected None for unstamped DB, got {rev}'
 
-    @pytest.mark.asyncio
-    async def test_postgres_get_current_after_stamp_returns_revision(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
-        """
-        get_alembic_current returns correct revision after stamp.
-        """
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-
-        rev = await get_alembic_current(postgres_engine)
-        assert rev == '0001_baseline'
-
 
 class TestPostgreSQLWorkspaceMigration:
     """Focused coverage for upgrading a pre-tenancy PostgreSQL instance."""

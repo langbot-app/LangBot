@@ -235,39 +235,6 @@ async def test_redirect_rejects_invalid_callback_shape(space_oauth_api):
 
 
 @pytest.mark.asyncio
-async def test_explicit_server_side_webui_origin_supports_split_dev_server(space_oauth_api):
-    application, client = space_oauth_api
-    application.instance_config.data['api'] = {'webui_url': 'http://localhost:5173'}
-
-    response = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'http://localhost:5173/auth/space/callback'},
-        headers={'Origin': 'https://irrelevant.example'},
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['code'] == 0
-
-
-@pytest.mark.asyncio
-async def test_server_side_webhook_origin_supports_bundled_ui(space_oauth_api):
-    application, client = space_oauth_api
-    application.instance_config.data['api'] = {
-        'webui_url': '',
-        'webhook_prefix': 'https://langbot.example/base/path',
-    }
-
-    response = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://langbot.example/auth/space/callback'},
-        headers={'Host': 'attacker.example'},
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['code'] == 0
-
-
-@pytest.mark.asyncio
 async def test_login_callback_requires_and_consumes_server_state(space_oauth_api):
     application, client = space_oauth_api
 

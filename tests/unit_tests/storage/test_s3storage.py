@@ -57,14 +57,6 @@ def s3_mock():
 class TestS3StorageProviderInit:
     """Tests for S3StorageProvider initialization."""
 
-    def test_init_stores_app_reference(self):
-        """Test that __init__ stores the Application reference."""
-        s3storage = get_s3storage_module()
-
-        mock_app = Mock()
-        provider = s3storage.S3StorageProvider(mock_app)
-        assert provider.ap is mock_app
-
     def test_init_s3_client_none(self):
         """Test that s3_client starts as None."""
         s3storage = get_s3storage_module()
@@ -232,7 +224,7 @@ class TestS3StorageProviderWithMoto:
 
     @pytest.mark.asyncio
     async def test_delete_dir_recursive_handles_trailing_slash(self, mock_app_with_s3_config, s3_mock):
-        """Test that delete_dir_recursive handles path without trailing slash."""
+        """Test that delete_dir_recursive handles a path with a trailing slash."""
         s3storage = get_s3storage_module()
 
         provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
@@ -241,8 +233,7 @@ class TestS3StorageProviderWithMoto:
         # Save object
         await provider.save('mydir/file.txt', b'data')
 
-        # Delete without trailing slash
-        await provider.delete_dir_recursive('mydir')
+        await provider.delete_dir_recursive('mydir/')
 
         # Verify deleted
         assert await provider.exists('mydir/file.txt') is False

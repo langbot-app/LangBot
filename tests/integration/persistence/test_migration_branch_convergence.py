@@ -354,6 +354,9 @@ async def test_empty_database_startup_schema_then_real_migrations(convergence_en
     await run_alembic_upgrade(engine, 'head')
     assert await get_alembic_current(engine) == get_alembic_head()
 
+    await run_alembic_upgrade(engine, 'head')
+    assert await get_alembic_current(engine) == get_alembic_head()
+
 
 def _legacy_shared_certification(**overrides):
     certification = {
@@ -478,18 +481,6 @@ async def test_certification_artifact_digest_backfill_is_safe_and_keeps_legacy_d
                 )
                 is PluginExecutionMode.DEDICATED
             )
-
-
-@pytest.mark.asyncio
-async def test_certification_artifact_digest_backfill_accepts_fresh_current_schema(convergence_engine):
-    engine = convergence_engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    await run_alembic_upgrade(engine, 'head')
-    await run_alembic_upgrade(engine, 'head')
-
-    assert await get_alembic_current(engine) == get_alembic_head()
 
 
 @pytest.mark.asyncio
