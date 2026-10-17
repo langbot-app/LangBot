@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import logging
 import sqlite3
+from contextlib import closing
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -188,7 +189,7 @@ async def test_directory_delta_requests_model_catalog_sync_after_commit(projecti
     observed_revisions = []
 
     def observe_committed_revision():
-        with sqlite3.connect(application.persistence_mgr.engine.url.database) as connection:
+        with closing(sqlite3.connect(application.persistence_mgr.engine.url.database)) as connection:
             row = connection.execute(
                 'SELECT projection_revision FROM workspaces WHERE uuid = ?', (WORKSPACE_UUID,)
             ).fetchone()
