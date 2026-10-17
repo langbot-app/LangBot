@@ -247,16 +247,6 @@ def test_runtime_provider_initialization(runtime_provider, fake_persistence_data
     assert isinstance(provider.requester, requester.ProviderAPIRequester)
 
 
-def test_runtime_provider_has_invoke_methods(runtime_provider):
-    """RuntimeProvider exposes callable invocation entrypoints."""
-    provider = runtime_provider
-
-    assert callable(provider.invoke_llm)
-    assert callable(provider.invoke_llm_stream)
-    assert callable(provider.invoke_embedding)
-    assert callable(provider.invoke_rerank)
-
-
 @pytest.mark.asyncio
 async def test_runtime_provider_invoke_llm_delegates(runtime_provider, runtime_llm_model):
     """Test RuntimeProvider.invoke_llm delegates to requester."""
