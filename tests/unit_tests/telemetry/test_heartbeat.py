@@ -183,6 +183,7 @@ class TestBuildHeartbeatPayload:
         assert by_workspace['workspace-b']['execution_generation'] == 9
         assert by_workspace['workspace-b']['adapters'] == ['WorkspaceBAdapter']
         assert 'workspace_resources' not in by_workspace['workspace-a']
+        ap.plugin_connector.list_plugins.assert_not_awaited()
         ap.persistence_mgr.execute_async.assert_not_awaited()
         ap.workspace_service.list_active_execution_bindings.assert_awaited_once()
 

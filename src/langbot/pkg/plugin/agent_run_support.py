@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 from typing import Any, Union
 import json
 import time
@@ -303,8 +301,6 @@ async def _validate_agent_run_session(
         )
         if not available_apis.get(api_capability, False) and not has_admin_permission:
             return None, handler.ActionResponse.error(message=f'{api_name} access not authorized')
-
-    diagnostics.link_context(session.get('_diagnostic_context'))
     return session, None
 
 

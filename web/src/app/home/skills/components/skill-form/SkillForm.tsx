@@ -829,6 +829,7 @@ export default function SkillForm({
           ...baseSkillData,
           base_revision: skill.revision || '',
         });
+        setSkill(resp.skill);
         toast.success(t('skills.saveSuccess'));
         onSkillUpdated(resp.skill.name);
       } else {

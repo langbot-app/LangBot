@@ -23,6 +23,8 @@ Human-readable labels are never returned from this module. The persisted
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import contextvars
 import dataclasses
 import datetime
 import enum
@@ -1198,6 +1200,9 @@ class WorkspaceSettingsService:
         # refresh and page turn, which is what made reading the log feel slow.
         self._integrity_cache: dict[str, dict[str, typing.Any]] = {}
         self._dropped_count = 0
+        # Failed persistence attempts, so a silently broken writer (a missing
+        # tenant scope, an RLS rejection) is reported instead of only counted.
+        self._write_failures = 0
         # Set while the queue is empty; lets tests/shutdown await a drain.
         self._idle = asyncio.Event()
         self._idle.set()
@@ -1232,59 +1237,116 @@ class WorkspaceSettingsService:
         enable_globally()
         self.ap.operation_trace_active = True
 
+    def _workspace_scope(self, workspace_uuid: str) -> typing.AsyncContextManager[typing.Any]:
+        """Carry a Workspace scope into persistence work that runs off-request.
+
+        Cloud runtime rejects every database call made without an explicit scope,
+        and the audit table is RLS-protected on ``langbot.workspace_uuid``, so the
+        background writer and the retention loop have to establish their own
+        scope. On the request path the caller already bound the Workspace: that
+        scope is the correct one, so the boundary is skipped rather than nested.
+        """
+
+        manager = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(manager, 'tenant_scope', None)
+        current_scope = getattr(manager, 'current_scope', None)
+        if not callable(tenant_scope) or not workspace_uuid:
+            return contextlib.nullcontext()
+        if callable(current_scope):
+            try:
+                active = current_scope()
+            except Exception:
+                # A child task that inherited its parent's scope cannot use it;
+                # an explicit boundary of its own is exactly what it needs.
+                active = None
+            if active is not None:
+                return contextlib.nullcontext()
+        return tenant_scope(workspace_uuid)
+
     async def prime_global_flag(self) -> None:
         """Open the cheap global gate at startup if a Workspace already opted in.
 
-        Runs one bounded query during application build, never per request, so a
+        Runs once during application build, never per request, so a
         previously-enabled Workspace keeps recording after a restart while a
-        disabled instance still pays nothing on the hot path.
+        disabled instance still pays nothing on the hot path. Workspaces are
+        enumerated through the execution bindings this instance owns, because the
+        metadata table is RLS-protected per Workspace and a single cross-Workspace
+        scan can never see them in cloud runtime.
         """
 
         try:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid)
-                .where(
-                    persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY,
-                    persistence_metadata.WorkspaceMetadata.value != str(OPERATION_LEVEL_NONE),
-                )
-                .limit(1)
-            )
-            if result.first() is not None:
-                self._activate()
+            for workspace_uuid in await self._traced_workspace_candidates():
+                async with self._workspace_scope(workspace_uuid):
+                    level = clamp_level(await self._read_metadata(workspace_uuid, OPERATION_LEVEL_KEY))
+                if level > OPERATION_LEVEL_NONE:
+                    self._activate()
+                    return
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation trace global gate prime skipped: {exc}')
 
+    async def _traced_workspace_candidates(self) -> list[str]:
+        """Return the Workspaces that may have tracing enabled.
+
+        A multi-Workspace runtime enumerates the execution bindings discovered for
+        this instance. A single-database deployment can scan the metadata table
+        directly, which is also the path a lightweight test double takes.
+        """
+
+        list_bindings = getattr(
+            getattr(self.ap, 'workspace_service', None),
+            'list_active_execution_bindings',
+            None,
+        )
+        if callable(list_bindings):
+            try:
+                bindings = await list_bindings()
+            except Exception as exc:  # pragma: no cover - discovery is optional
+                self.ap.logger.debug(f'Operation trace Workspace discovery skipped: {exc}')
+            else:
+                return [str(binding.workspace_uuid) for binding in bindings]
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid).where(
+                persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY,
+                persistence_metadata.WorkspaceMetadata.value != str(OPERATION_LEVEL_NONE),
+            )
+        )
+        return [str(workspace_uuid) for workspace_uuid in result.scalars().all()]
+
     async def _read_metadata(self, workspace_uuid: str, key: str) -> str | None:
         try:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_metadata.WorkspaceMetadata.value).where(
-                    persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
-                    persistence_metadata.WorkspaceMetadata.key == key,
+            # Resolved outside the request scope when the route wrapper records a
+            # request, so the read has to carry the Workspace itself.
+            async with self._workspace_scope(workspace_uuid):
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_metadata.WorkspaceMetadata.value).where(
+                        persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
+                        persistence_metadata.WorkspaceMetadata.key == key,
+                    )
                 )
-            )
-            return result.scalar_one_or_none()
+                return result.scalar_one_or_none()
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation log metadata read failed for {key}: {exc}')
             return None
 
     async def _write_metadata(self, workspace_uuid: str, values: dict[str, str]) -> None:
-        for key, value in values.items():
-            try:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.delete(persistence_metadata.WorkspaceMetadata).where(
-                        persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
-                        persistence_metadata.WorkspaceMetadata.key == key,
+        async with self._workspace_scope(workspace_uuid):
+            for key, value in values.items():
+                try:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.delete(persistence_metadata.WorkspaceMetadata).where(
+                            persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
+                            persistence_metadata.WorkspaceMetadata.key == key,
+                        )
                     )
-                )
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(persistence_metadata.WorkspaceMetadata).values(
-                        workspace_uuid=workspace_uuid,
-                        key=key,
-                        value=value,
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.insert(persistence_metadata.WorkspaceMetadata).values(
+                            workspace_uuid=workspace_uuid,
+                            key=key,
+                            value=value,
+                        )
                     )
-                )
-            except Exception as exc:  # pragma: no cover - defensive
-                self.ap.logger.warning(f'Operation log metadata write failed for {key}: {exc}')
+                except Exception as exc:  # pragma: no cover - defensive
+                    self.ap.logger.warning(f'Operation log metadata write failed for {key}: {exc}')
 
     async def _read_metadata_values(self, workspace_uuid: str, keys: typing.Iterable[str]) -> dict[str, str]:
         """Read several metadata rows for one Workspace in a single query."""
@@ -1293,16 +1355,17 @@ class WorkspaceSettingsService:
         if not wanted:
             return {}
         try:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(
-                    persistence_metadata.WorkspaceMetadata.key,
-                    persistence_metadata.WorkspaceMetadata.value,
-                ).where(
-                    persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
-                    persistence_metadata.WorkspaceMetadata.key.in_(wanted),
+            async with self._workspace_scope(workspace_uuid):
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(
+                        persistence_metadata.WorkspaceMetadata.key,
+                        persistence_metadata.WorkspaceMetadata.value,
+                    ).where(
+                        persistence_metadata.WorkspaceMetadata.workspace_uuid == workspace_uuid,
+                        persistence_metadata.WorkspaceMetadata.key.in_(wanted),
+                    )
                 )
-            )
-            return {row[0]: row[1] for row in result.all()}
+                return {row[0]: row[1] for row in result.all()}
         except Exception as exc:  # pragma: no cover - defensive
             self.ap.logger.debug(f'Operation log metadata batch read failed: {exc}')
             return {}
@@ -1583,7 +1646,13 @@ class WorkspaceSettingsService:
 
         if self._writer_task is not None and not self._writer_task.done():
             return
-        self._writer_task = asyncio.get_running_loop().create_task(self._writer_loop())
+        # A fresh context: the writer outlives the request that first enqueued a
+        # trace. Inheriting that request's persistence scope would make every
+        # later write fail, because a child task may not use its parent's scope.
+        self._writer_task = asyncio.get_running_loop().create_task(
+            self._writer_loop(),
+            context=contextvars.Context(),
+        )
 
     async def _writer_loop(self) -> None:
         """Drain the queue and persist traces sequentially.
@@ -1627,22 +1696,41 @@ class WorkspaceSettingsService:
 
         try:
             workspace_uuid = record_fields['workspace_uuid']
-            # Off the request path: hash the dedupe material, resolve the actor
-            # display name, then link and insert this row.
-            record_fields['dedupe_key'] = hash_dedupe_material(record_fields.pop('_dedupe_material'))
-            if record_fields.get('actor_name') is None and record_fields.get('actor_account_uuid'):
-                await self._fill_actor_name(record_fields)
-            if await self._is_duplicate_observation(workspace_uuid, record_fields['dedupe_key']):
-                return False
-            record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
-            record_fields['record_hash'] = compute_record_hash(record_fields)
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(**record_fields)
-            )
-            return True
+            # The writer drains the queue outside any request, so it has to carry
+            # its own Workspace scope: cloud runtime refuses unscoped access and
+            # the audit table only accepts rows that match the bound Workspace.
+            async with self._workspace_scope(workspace_uuid):
+                # Off the request path: hash the dedupe material, resolve the actor
+                # display name, then link and insert this row.
+                record_fields['dedupe_key'] = hash_dedupe_material(record_fields.pop('_dedupe_material'))
+                if record_fields.get('actor_name') is None and record_fields.get('actor_account_uuid'):
+                    await self._fill_actor_name(record_fields)
+                if await self._is_duplicate_observation(workspace_uuid, record_fields['dedupe_key']):
+                    return False
+                record_fields['prev_hash'] = await self._latest_record_hash(workspace_uuid)
+                record_fields['record_hash'] = compute_record_hash(record_fields)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_operation_log.WorkspaceOperationLog).values(**record_fields)
+                )
+                return True
         except Exception as exc:  # pragma: no cover - auditing is best effort
-            self.ap.logger.debug(f'Operation log write skipped: {exc}')
+            self._note_write_failure(exc)
             return False
+
+    def _note_write_failure(self, exc: BaseException) -> None:
+        """Report a dropped trace without letting it break the caller.
+
+        Recording is best effort, but an audit trail that silently stops growing
+        is indistinguishable from an idle Workspace. The first failure and then
+        every hundredth are surfaced; the rest stay at debug so a persistent
+        failure cannot flood the log.
+        """
+
+        self._write_failures += 1
+        if self._write_failures == 1 or self._write_failures % 100 == 0:
+            self.ap.logger.warning(f'Operation log write failed ({self._write_failures} so far): {exc}')
+        else:
+            self.ap.logger.debug(f'Operation log write skipped: {exc}')
 
     async def _fill_actor_name(self, record_fields: dict[str, typing.Any]) -> None:
         """Resolve the actor display name off the request path."""
@@ -2344,7 +2432,9 @@ class WorkspaceSettingsService:
             self._insert_counters[workspace_uuid] = pending
             return
         self._insert_counters[workspace_uuid] = 0
-        await self._enforce_row_budget(workspace_uuid)
+        # Runs from the writer task, which holds no scope of its own.
+        async with self._workspace_scope(workspace_uuid):
+            await self._enforce_row_budget(workspace_uuid)
 
     async def _enforce_row_budget(self, workspace_uuid: str) -> None:
         """Drop the oldest rows when the Workspace row budget is exceeded."""
@@ -2396,67 +2486,39 @@ class WorkspaceSettingsService:
         by a privileged click.
         """
 
-        days = (
-            await self.get_retention_days(workspace_uuid) if retention_days is None else clamp_retention(retention_days)
-        )
-        budget = await self.get_max_rows(workspace_uuid) if max_rows is None else clamp_max_rows(max_rows)
-        cutoff = _utcnow() - datetime.timedelta(days=days)
-
-        expired = 0
-        try:
-            model = persistence_operation_log.WorkspaceOperationLog
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(model).where(
-                    model.workspace_uuid == workspace_uuid,
-                    model.created_at < cutoff,
-                )
+        # The maintenance loop runs per Workspace without holding a scope, so
+        # retention has to bind one itself; on the settings route the request
+        # scope is already active and this is a no-op.
+        async with self._workspace_scope(workspace_uuid):
+            days = (
+                await self.get_retention_days(workspace_uuid)
+                if retention_days is None
+                else clamp_retention(retention_days)
             )
-            expired = int(result.rowcount or 0)
-        except Exception as exc:  # pragma: no cover - defensive
-            self.ap.logger.debug(f'Operation log retention prune skipped: {exc}')
+            budget = await self.get_max_rows(workspace_uuid) if max_rows is None else clamp_max_rows(max_rows)
+            cutoff = _utcnow() - datetime.timedelta(days=days)
 
-        if expired > 0:
-            # Age-based retention removed the oldest rows, so any cached
-            # verification -- including its boundary baseline link -- no longer
-            # describes the surviving chain.
-            self._invalidate_integrity_cache(workspace_uuid)
-
-        total = await self.count_logs(workspace_uuid)
-        trimmed = await self._delete_oldest(workspace_uuid, max(total - budget, 0))
-        # The budget was just enforced in full, so the deferred counter restarts.
-        self._insert_counters[workspace_uuid] = 0
-        return {'expired': expired, 'trimmed': trimmed, 'remaining': await self.count_logs(workspace_uuid)}
-
-    async def prune_all_workspaces(self) -> dict[str, int]:
-        """Run retention pruning for every Workspace that enabled tracing.
-
-        Returns a coarse report; individual Workspace failures are contained.
-        """
-
-        processed = 0
-        removed = 0
-        try:
-            workspaces = (
-                (
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.select(persistence_metadata.WorkspaceMetadata.workspace_uuid).where(
-                            persistence_metadata.WorkspaceMetadata.key == OPERATION_LEVEL_KEY
-                        )
+            expired = 0
+            try:
+                model = persistence_operation_log.WorkspaceOperationLog
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(model).where(
+                        model.workspace_uuid == workspace_uuid,
+                        model.created_at < cutoff,
                     )
                 )
-                .scalars()
-                .all()
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            self.ap.logger.debug(f'Operation log workspace enumeration skipped: {exc}')
-            return {'workspaces': 0, 'removed': 0}
-
-        for workspace_uuid in {item for item in workspaces if item}:
-            try:
-                report = await self.prune(workspace_uuid)
+                expired = int(result.rowcount or 0)
             except Exception as exc:  # pragma: no cover - defensive
-                self.ap.logger.debug(f'Operation log prune failed for {workspace_uuid}: {exc}')
-                continue
-            processed += 1
-            removed += report['expired'] + report['trimmed']
-        return {'workspaces': processed, 'removed': removed}
+                self.ap.logger.debug(f'Operation log retention prune skipped: {exc}')
+
+            if expired > 0:
+                # Age-based retention removed the oldest rows, so any cached
+                # verification -- including its boundary baseline link -- no longer
+                # describes the surviving chain.
+                self._invalidate_integrity_cache(workspace_uuid)
+
+            total = await self.count_logs(workspace_uuid)
+            trimmed = await self._delete_oldest(workspace_uuid, max(total - budget, 0))
+            # The budget was just enforced in full, so the deferred counter restarts.
+            self._insert_counters[workspace_uuid] = 0
+            return {'expired': expired, 'trimmed': trimmed, 'remaining': await self.count_logs(workspace_uuid)}

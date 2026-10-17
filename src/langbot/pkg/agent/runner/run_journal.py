@@ -68,6 +68,26 @@ class AgentRunJournal:
     def _sanitize_attachments(cls, attachments: typing.Iterable[typing.Any]) -> list[dict[str, typing.Any]]:
         return [cls._sanitize_attachment_ref(attachment) for attachment in attachments]
 
+    @classmethod
+    def _sanitize_event_data(cls, value: typing.Any) -> typing.Any:
+        """Retain arbitrary event fields without copying inline binary payloads."""
+        if hasattr(value, 'model_dump'):
+            value = value.model_dump(mode='json')
+        if isinstance(value, list):
+            return [cls._sanitize_event_data(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {}
+        for key, item in value.items():
+            if key in ('image_base64', 'file_base64', 'base64') and item:
+                result[key] = None
+                result['content_redacted'] = True
+            elif key == 'attachments' and isinstance(item, list):
+                result[key] = [cls._sanitize_event_data(cls._sanitize_attachment_ref(ref)) for ref in item]
+            else:
+                result[key] = cls._sanitize_event_data(item)
+        return result
+
     async def create_run(
         self,
         *,
@@ -78,6 +98,9 @@ class AgentRunJournal:
         authorization: dict[str, typing.Any],
     ) -> dict[str, typing.Any]:
         """Create the Host-owned run ledger record."""
+        from ...telemetry import trace
+
+        trace_state = trace.current()
         runtime = context.get('runtime') if isinstance(context, dict) else {}
         return await self._get_run_ledger_store().create_run(
             run_id=context['run_id'],
@@ -93,17 +116,21 @@ class AgentRunJournal:
             authorization=authorization,
             metadata={
                 'event_type': event.event_type,
+                'ingress_event_id': trace_state.event_id if trace_state else event.event_id,
                 'source': event.source,
                 'processor_id': binding.processor_id,
                 'processor_type': binding.processor_type,
                 **(
-                    {'input_event': event.data, 'delivery': event.delivery.model_dump(mode='json')}
+                    {
+                        'input_event': self._sanitize_event_data(event.data),
+                        'delivery': event.delivery.model_dump(mode='json'),
+                    }
                     if binding.processor_type == 'event_processor'
                     else {}
                 ),
                 **(
                     {
-                        **({'input_event': event.data} if event.event_type != 'message.received' else {}),
+                        'input_event': self._sanitize_event_data(event.data),
                         'input': {
                             'text': context.get('input', {}).get('text', ''),
                             'contents': self._sanitize_contents(context.get('input', {}).get('contents', [])),
@@ -260,7 +287,7 @@ class AgentRunJournal:
             event_time=(
                 datetime.datetime.fromtimestamp(event.event_time, datetime.timezone.utc) if event.event_time else None
             ),
-            metadata=metadata,
+            metadata={**(metadata or {}), 'input_event': self._sanitize_event_data(event.data)},
         )
 
     async def write_user_transcript(

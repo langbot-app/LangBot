@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import time
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -18,7 +16,6 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
         raise NotImplementedError
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2yiri', source='platform', stage='convert')
     async def target2yiri(kook_event: dict, bot_account_id: str = '') -> platform_events.Event | None:
         event_type = int(kook_event.get('type', 0) or 0)
         channel_type = kook_event.get('channel_type')
@@ -58,7 +55,6 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
         )
 
     @staticmethod
-    @diagnostics.observe('event', 'platform.target2legacy', source='platform', stage='convert')
     async def target2legacy(
         kook_event: dict, bot_account_id: str = ''
     ) -> platform_events.FriendMessage | platform_events.GroupMessage:

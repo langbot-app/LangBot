@@ -1,11 +1,10 @@
 # For connect to plugin runtime.
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import asyncio
 import contextlib
 import contextvars
+import datetime
 import hashlib
 import json
 import math
@@ -23,6 +22,7 @@ from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
 from . import handler
+from . import runtime_ops
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
@@ -56,7 +56,9 @@ from langbot_plugin.api.entities.builtin.command import (
     errors as command_errors,
 )
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+from langbot_plugin.runtime.io.handler import SHARED_WORKER_FILE_STORAGE_DIR
 from langbot_plugin.runtime.security import (
+    PLUGIN_FILE_STORAGE_DIR_ENV,
     PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
     PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
     validate_runtime_secret,
@@ -97,6 +99,12 @@ _DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
+
+
+def _utc_now_iso() -> str:
+    """Return the current UTC time as a second-precision RFC 3339 string."""
+
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
 
 async def _read_httpx_response_limited(
@@ -225,6 +233,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.runtime_profile: typing.Literal['oss_dev', 'shared'] = (
             'shared' if getattr(getattr(ap, 'deployment', None), 'mode', 'oss') == 'cloud' else 'oss_dev'
         )
+        self._align_plugin_file_transfer_root()
         self.runtime_identity: RuntimeIdentity | None = None
         self._runtime_id = self._build_runtime_id()
         self.worker_policy: PluginWorkerPolicy | None = None
@@ -241,6 +250,32 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._reconnect_task: asyncio.Task | None = None
         self._generation = 0
         self._connected = asyncio.Event()
+        self.runtime_ops_reporter = runtime_ops.RuntimeOpsReporter(ap)
+        self._reconcile_summary: dict[str, Any] = {
+            'last_started_at': None,
+            'last_duration_ms': None,
+            'last_ok': None,
+            'failed_installations': 0,
+            'missing_artifacts': 0,
+        }
+
+    def _align_plugin_file_transfer_root(self) -> None:
+        """Use the Runtime's plugin file-transfer root when running shared.
+
+        The SDK binds its transfer root to one directory inode with mode 0700 and
+        picks the default per process: a shared worker uses
+        ``SHARED_WORKER_FILE_STORAGE_DIR``, every other process falls back to
+        ``data/temp/lbp``. A host talking to a shared Runtime must use the same root,
+        otherwise plugin icons and assets die with "Invalid file transfer
+        capability" (the icon route then answers 500/404 instead of the image).
+        An explicit operator value always wins.
+        """
+
+        if self.runtime_profile != 'shared':
+            return
+        if os.environ.get(PLUGIN_FILE_STORAGE_DIR_ENV):
+            return
+        os.environ[PLUGIN_FILE_STORAGE_DIR_ENV] = SHARED_WORKER_FILE_STORAGE_DIR
 
     @staticmethod
     def _build_runtime_id() -> str:
@@ -299,6 +334,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         ):
             if field_name in PluginWorkerPolicy.model_fields and field_name in worker:
                 policy_data[field_name] = worker.get(field_name)
+        if self.runtime_profile == 'shared':
+            for mode in ('dedicated', 'shared'):
+                overrides = worker.get(mode)
+                if isinstance(overrides, dict):
+                    overrides = dict(overrides)
+                    for name, value in overrides.items():
+                        # Optional leaves start as null, so env loading preserves
+                        # strings. Parse only these trusted numeric config fields.
+                        if isinstance(value, str) and name in (
+                            'max_cpus',
+                            'max_memory_mb',
+                            'max_pids',
+                            'max_open_files',
+                            'max_file_size_mb',
+                        ):
+                            overrides[name] = float(value) if name == 'max_cpus' else int(value)
+                if overrides is not None:
+                    policy_data[mode] = overrides
         return PluginWorkerPolicy.model_validate(policy_data)
 
     def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
@@ -345,8 +398,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             artifact_digest=setting.artifact_digest,
         )
 
-    @staticmethod
-    def _execution_mode_from_setting(setting: persistence_plugin.PluginSetting) -> PluginExecutionMode:
+    def _execution_mode_from_setting(self, setting: persistence_plugin.PluginSetting) -> PluginExecutionMode:
+        if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+            return PluginExecutionMode.DEDICATED
         return execution_mode_for_persisted_installation(
             artifact_digest=setting.artifact_digest,
             install_info=setting.install_info,
@@ -619,6 +673,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'installation_uuid': installation_uuid,
             'error_code': error_code,
             'message': message,
+            # When the failure actually happened. The ops reporter must publish this
+            # instead of its own sampling time, otherwise every sample re-stamps the
+            # same failure with the newest report time.
+            'failed_at': _utc_now_iso(),
         }
         self._installation_failures[installation_uuid] = failure
         self.ap.logger.error(
@@ -660,9 +718,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 'installation_uuid': installation_uuid,
                 'error_code': error_code,
                 'message': message,
+                # See _raise_apply_failure: never let the reporter substitute its own
+                # sampling time for the moment the failure was observed.
+                'failed_at': _utc_now_iso(),
             }
             failures[installation_uuid] = failure
-            if self._installation_failures.get(installation_uuid) != failure:
+            previous = self._installation_failures.get(installation_uuid) or {}
+            if {key: value for key, value in previous.items() if key != 'failed_at'} != {
+                key: value for key, value in failure.items() if key != 'failed_at'
+            }:
                 self.ap.logger.error(
                     'Plugin installation %s failed during reconcile [%s]: %s',
                     installation_uuid,
@@ -674,6 +738,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if installation_uuid not in failures:
                 self._installation_failures.pop(installation_uuid, None)
         self._installation_failures.update(failures)
+
+    def _record_reconcile_outcome(self, started_at: str, duration_ms: float, result: dict[str, Any]) -> None:
+        """Expose the last reconcile outcome for the runtime ops sample."""
+
+        failed = result.get('failed_installations')
+        missing = result.get('missing_artifacts')
+        failed_installations = len(failed) if isinstance(failed, list) else 0
+        missing_artifacts = len(missing) if isinstance(missing, list) else 0
+        self._reconcile_summary = {
+            'last_started_at': started_at,
+            'last_duration_ms': int(max(duration_ms, 0.0)),
+            'last_ok': failed_installations == 0 and missing_artifacts == 0,
+            'failed_installations': failed_installations,
+            'missing_artifacts': missing_artifacts,
+        }
 
     async def _repair_reconcile_missing_artifacts(
         self,
@@ -719,7 +798,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         }
                     )
 
-    @diagnostics.observe('lifecycle', 'runtime.prepare_connected_runtime', source='runtime', stage='execute')
     async def _prepare_connected_runtime(self) -> None:
         """Handshake follow-up: pin OSS compatibility, then replay authority."""
 
@@ -756,12 +834,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         reconcile_timeout_seconds = max(
             300.0, self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {}))
         )
+        reconcile_started_at = _utc_now_iso()
+        reconcile_started_monotonic = time.monotonic()
         result = await runtime_handler.reconcile_plugin_installations(
             tuple(self._known_desired_states.values()),
             timeout=reconcile_timeout_seconds,
         )
         await self._repair_reconcile_missing_artifacts(self._known_desired_states, result)
         self._record_reconcile_failures(self._known_desired_states, result)
+        self._record_reconcile_outcome(
+            reconcile_started_at,
+            (time.monotonic() - reconcile_started_monotonic) * 1000.0,
+            result,
+        )
 
     async def reconcile_projected_workspaces(
         self,
@@ -777,6 +862,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         runtime_handler = self._runtime_handler()
         started_at = time.monotonic()
+        started_at_iso = _utc_now_iso()
         async with self._state_lock:
             all_states: dict[str, PluginInstallationDesiredState] = {}
             workspace_installations: dict[str, set[str]] = {}
@@ -803,6 +889,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             )
             await self._repair_reconcile_missing_artifacts(all_states, result)
             self._record_reconcile_failures(all_states, result)
+            self._record_reconcile_outcome(
+                started_at_iso,
+                (time.monotonic() - started_at) * 1000.0,
+                result,
+            )
             for installation_uuid, previous in tuple(self._known_desired_states.items()):
                 if installation_uuid not in all_states:
                     runtime_handler.unregister_installation_binding(previous.binding)
@@ -905,7 +996,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     self.schedule_reconnect()
                     failures = 0
 
-    @diagnostics.observe('lifecycle', 'runtime.initialize', source='runtime', stage='execute')
     async def initialize(self):
         if not self.is_enable_plugin:
             self.ap.logger.info('Plugin system is disabled.')
@@ -1071,6 +1161,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if self.heartbeat_task is None or self.heartbeat_task.done():
                 self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
 
+            self.runtime_ops_reporter.start()
+
     def schedule_reconnect(self) -> None:
         if self._closing or not self.is_enable_plugin:
             return
@@ -1133,6 +1225,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             await asyncio.gather(self.heartbeat_task, return_exceptions=True)
             self.heartbeat_task = None
         await self._stop_transport()
+        await self.runtime_ops_reporter.stop()
         await self._close_managed_subprocess()
 
     @staticmethod
@@ -1809,13 +1902,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'normalized_digest': facts.artifact_digest,
             'verification': facts.certificate.verification.value,
             'certificate_runtime_profile': facts.certificate.runtime_profile,
+            'certificate_component_model': facts.certificate.component_model,
             'certificate_id': facts.certificate.certificate_id,
             'runtime_profile': decision.runtime_profile,
             'admission_code': decision.code.value,
         }
         return {**install_info, '_certification': certification_info}, verified
 
-    @diagnostics.observe('lifecycle', 'runtime.install_plugin', source='runtime', stage='execute')
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
@@ -1982,7 +2075,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             task_context.set_current_action('plugin updated' if operation == 'upgrade' else 'plugin installed')
             task_context.metadata['progress_percent'] = 100
 
-    @diagnostics.observe('lifecycle', 'runtime.upgrade_plugin', source='runtime', stage='execute')
     async def upgrade_plugin(
         self,
         plugin_author: str,
@@ -2009,7 +2101,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         return {}
 
-    @diagnostics.observe('lifecycle', 'runtime.delete_plugin', source='runtime', stage='execute')
     async def delete_plugin(
         self,
         plugin_author: str,

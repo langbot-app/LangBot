@@ -59,12 +59,10 @@ class SkillManager:
         for existing_key in tuple(self._skills_by_scope):
             if existing_key[:2] == key[:2] and existing_key != key:
                 self._skills_by_scope.pop(existing_key, None)
-        self._skills_by_scope[key] = {}
 
         repository = getattr(self.ap, 'skill_repository', None)
         if repository is None:
-            self.ap.logger.info('Skill repository unavailable; skill cache will remain empty.')
-            return
+            raise RuntimeError('Skill repository unavailable')
 
         try:
             skills: dict[str, dict] = {}
@@ -77,6 +75,7 @@ class SkillManager:
             self.ap.logger.info(f'Loaded {len(skills)} skills for Workspace {execution_context.workspace_uuid}')
         except Exception as exc:
             self.ap.logger.warning(f'Failed to load skills for Workspace {execution_context.workspace_uuid}: {exc}')
+            raise
 
     async def ensure_loaded(self, context: TenantContext) -> None:
         key = self._scope_key(context)

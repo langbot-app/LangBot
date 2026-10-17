@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 import asyncio
 import dataclasses
 import inspect
@@ -310,7 +308,6 @@ class QueryPool:
             )
             object.__setattr__(query, 'query_uuid', query_uuid)
             object.__setattr__(query, '_execution_context', execution_context)
-            object.__setattr__(query, '_diagnostic_context', diagnostics.capture_context())
 
             self.queries.append(query)
             self.cached_queries[(execution_context.workspace_uuid, query_uuid)] = query

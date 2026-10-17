@@ -63,7 +63,7 @@ class SkillToolLoader(loader.ToolLoader):
         if not self._read_only_tools:
             await self.initialize()
         tools = list(self._read_only_tools)
-        if sandbox_available:
+        if sandbox_available and self._skill_registration_available():
             tools.extend(self._sandbox_tools)
         return tools
 
@@ -73,10 +73,14 @@ class SkillToolLoader(loader.ToolLoader):
                 return tool
         return None
 
+    def _skill_registration_available(self) -> bool:
+        """Host skill scanning is disabled for Cloud-managed sandboxes."""
+        return not bool(getattr(getattr(self.ap, 'box_service', None), 'managed_admission_required', False))
+
     async def has_tool(self, name: str, *, sandbox_available: bool | None = None) -> bool:
         if not self._is_available() or name not in SKILL_TOOL_NAMES:
             return False
-        return name in READ_ONLY_SKILL_TOOL_NAMES or bool(sandbox_available)
+        return name in READ_ONLY_SKILL_TOOL_NAMES or (bool(sandbox_available) and self._skill_registration_available())
 
     @staticmethod
     def is_sandbox_tool(name: str) -> bool:
@@ -158,28 +162,34 @@ class SkillToolLoader(loader.ToolLoader):
 
         from . import skill as skill_loader
 
-        visible_skill = skill_loader.get_visible_skill(self.ap, query, skill_name)
-        if visible_skill is None:
-            visible_skills = skill_loader.get_visible_skills(self.ap, query)
-            available_names = ', '.join(sorted(visible_skills.keys())) or 'none'
-            raise ValueError(f'Skill "{skill_name}" not found. Available skills: {available_names}')
-
-        skill_data = await self.ap.skill_repository.get_skill(
-            self._execution_context(query),
-            skill_name,
-            snapshot=True,
-        )
+        bound_names = skill_loader.get_bound_skill_names(query)
+        if bound_names is not None and skill_name not in bound_names:
+            raise ValueError(f'Skill "{skill_name}" is not authorized for this run')
+        skill_data = skill_loader.get_activated_skill(query, skill_name)
         if skill_data is None:
-            raise ValueError(f'Skill "{skill_name}" is no longer available; reload the skill catalog.')
+            pinned_revision = await skill_loader.get_persisted_skill_revision(self.ap, query, skill_name)
+            if pinned_revision is None and skill_loader.get_visible_skill(self.ap, query, skill_name) is None:
+                raise ValueError(f'Skill "{skill_name}" not found in the authorized catalog')
+            skill_data = await self.ap.skill_repository.get_skill(
+                self._execution_context(query), skill_name, snapshot=True, revision=pinned_revision
+            )
+            if skill_data is None:
+                raise ValueError(f'Skill "{skill_name}" revision is unavailable')
 
-        # Keep the first revision pinned if the Skill is activated again in this run.
+        # Persist before exposing the activation; a failed write must not produce an unrecorded pin.
+        pinned_revision = await skill_loader.persist_activated_skill(self.ap, query, skill_name, skill_data['revision'])
+        if pinned_revision != skill_data['revision']:
+            skill_data = await self.ap.skill_repository.get_skill(
+                self._execution_context(query), skill_name, snapshot=True, revision=pinned_revision
+            )
+            if skill_data is None:
+                raise ValueError('The run-pinned Skill revision is unavailable')
         skill_data = skill_loader.register_activated_skill(query, skill_data)
-        await skill_loader.persist_activated_skill(self.ap, query, skill_name)
 
         instructions = skill_data.get('instructions', '')
         revision = str(skill_data.get('revision', '') or '')
         execution_available = await self._execution_available(query)
-        mount_path = skill_loader.get_virtual_skill_mount_path(skill_name) if execution_available else None
+        mount_path = skill_loader.get_virtual_skill_mount_path(skill_name, revision) if execution_available else None
 
         result_content = f'<command-message>The "{skill_name}" skill is activated</command-message>\n'
         result_content += '<skill-activation>\n'
@@ -191,9 +201,7 @@ class SkillToolLoader(loader.ToolLoader):
         result_content += '\n## Runtime Context\n'
         result_content += '- Use `list_skill_resources` and `read_skill_resource` for read-only package resources.\n'
         if execution_available:
-            result_content += (
-                f'- Box execution is available; executable package files will be mounted at {mount_path}.\n'
-            )
+            result_content += f'- Package files will be prepared read-only at {mount_path} before execution.\n'
         else:
             result_content += (
                 '- Box execution is unavailable. Do not attempt to run scripts or modify Workspace files.\n'

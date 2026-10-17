@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import asyncio
 import time
 import traceback
@@ -81,6 +79,12 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
     def get_supported_events(self) -> list[str]:
         return [
             'message.received',
+            'message.deleted',
+            'wecomcs.enter_session',
+            'wecomcs.msg_send_fail',
+            'wecomcs.servicer_status_change',
+            'wecomcs.session_status_change',
+            'wecomcs.reject_customer_msg_switch_change',
             'platform.specific',
         ]
 
@@ -94,7 +98,6 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             'call_platform_api',
         ]
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -113,7 +116,36 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             )
         return platform_events.MessageResult(raw={'results': raw_results})
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        """Use event credentials for welcome and session-status replies."""
+        event_type = context.get('event_type')
+        if event_type not in ('wecomcs.enter_session', 'wecomcs.session_status_change'):
+            return await self.send_message(target_type, target_id, message)
+        data = context.get('data') or {}
+        code_key = 'welcome_code' if event_type == 'wecomcs.enter_session' else 'msg_code'
+        code = data.get(code_key) or (data.get('data') or {}).get(code_key)
+        if not code:
+            raise ValueError(
+                f'WeCom CS did not provide {code_key} for this event; an event response is not available. '
+                'Entering a session does not open the ordinary messaging window. '
+                'Ask the customer to send a message before sending an ordinary reply.'
+            )
+        timestamp = data.get('timestamp')
+        if event_type == 'wecomcs.enter_session' and timestamp and time.time() - float(timestamp) >= 20:
+            raise ValueError(
+                'WeCom CS welcome reply expired: welcome_code is valid for only 20 seconds after entry. '
+                'Use a fast, fixed welcome response; do not wait for a long AI run or retry this event.'
+            )
+        if not message.root or any(not isinstance(item, platform_message.Plain) for item in message.root):
+            raise ValueError('WeCom CS event replies currently support a single text message only')
+        text = ''.join(item.text for item in message.root)
+        if not text.strip():
+            raise ValueError('WeCom CS event reply text must not be empty')
+        result = await self.bot.send_event_text(str(code), self._make_outbound_msgid(), text)
+        return platform_events.MessageResult(message_id=result.get('msgid'), raw=result)
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -136,7 +168,6 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             )
         return platform_events.MessageResult(message_id=wecom_event.message_id, raw={'results': raw_results})
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
@@ -188,10 +219,9 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
         async def on_message(event: WecomCSEvent):
             await self._handle_native_event(event)
 
-        for msg_type in ('text', 'image', 'file', 'voice'):
+        for msg_type in ('text', 'image', 'file', 'voice', 'event'):
             self.bot.on_message(msg_type)(on_message)
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_native_event(self, event: WecomCSEvent):
         self.bot_account_id = event.receiver_id or self.bot_account_id
         try:
@@ -214,7 +244,6 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             await self.logger.error(f'Error in wecomcs native event: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:

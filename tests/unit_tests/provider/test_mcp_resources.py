@@ -24,7 +24,6 @@ from langbot.pkg.provider.tools.loaders.mcp import (
     MCPToolCallTimeoutError,
     RuntimeMCPSession,
 )
-from langbot.pkg.telemetry import features as telemetry_features
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
 
 
@@ -298,10 +297,6 @@ async def test_read_resource_envelope_truncates_caches_and_records_trace():
     traces = query.variables[MCP_RESOURCE_TRACE_QUERY_KEY]
     assert [trace['source'] for trace in traces] == ['ui_preview', 'agent_tool']
     assert traces[1]['cache_hit'] is True
-    assert query.variables[telemetry_features.FEATURES_KEY]['mcp_resource_reads'] == {
-        'ui_preview': 1,
-        'agent_tool': 1,
-    }
 
 
 @pytest.mark.asyncio

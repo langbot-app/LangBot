@@ -36,6 +36,7 @@ export enum PluginV4Status {
 }
 
 export interface PluginV4 {
+  certification_status?: string;
   id: number;
   plugin_id: string;
   mcp_id?: string;

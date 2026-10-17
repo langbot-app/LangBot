@@ -862,3 +862,35 @@ async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch
             values[statement.targets[0].id] = ast.literal_eval(statement.value)
     assert values['include'] == include
     assert values['path'] == '/workspace'
+
+
+@pytest.mark.asyncio
+async def test_workspace_file_script_resolves_the_sandbox_interpreter():
+    """Sandboxes built from a host rootfs may only ship `python3`."""
+
+    captured: dict = {}
+
+    async def execute_tool(payload, query):
+        captured.update(payload)
+        return {'ok': True, 'stdout': '{"ok": true}'}
+
+    box_service = SimpleNamespace(
+        available=True,
+        execute_tool=execute_tool,
+        require_workspace_sandbox=AsyncMock(),
+    )
+    loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+    query = SimpleNamespace(
+        _execution_context=_CONTEXT,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        query_uuid=None,
+    )
+    query._box_binding = RunBoxBinding('run', 'box', {}, 'run')
+
+    result = await loader._run_workspace_file_script('print("x")', query)
+
+    assert result == {'ok': True}
+    command = captured['command']
+    assert command.startswith('PYTHON_BIN=$(command -v python3 || command -v python)')
+    assert command.endswith(' - <<\'PY\'\nprint("x")\nPY')

@@ -16,6 +16,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 from ....utils import httpclient
 from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
+from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
 
 
@@ -52,19 +53,19 @@ class BotService:
         return None
 
     def _adapter_declares_webhook_url(self, adapter_name: str) -> bool:
-        """Whether the adapter manifest declares a generated webhook URL config item."""
+        """Whether the manifest needs a generated public bot ingress URL."""
         component = self._get_adapter_component(adapter_name)
         if component is None:
             return False
 
         for config_item in component.spec.get('config', []):
-            if config_item.get('type') == 'webhook-url':
+            if config_item.get('type') == 'webhook-url' or config_item.get('name') == '__system.onebot_ws_url':
                 return True
         return False
 
     @staticmethod
     def _is_message_event_pattern(event_pattern: str) -> bool:
-        return event_pattern == 'message.*' or event_pattern.startswith('message.')
+        return event_pattern == 'message.received'
 
     @staticmethod
     def _event_pattern_covers(supported_pattern: str, binding_pattern: str) -> bool:
@@ -507,7 +508,7 @@ class BotService:
 
             if target_type == 'pipeline':
                 if not self._is_message_event_pattern(event_pattern):
-                    raise ValueError('Pipeline can only be bound to message events')
+                    raise ValueError('Pipeline can only be bound to message.received')
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
                         sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
@@ -685,7 +686,9 @@ class BotService:
         """Create bot"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_bots = limitation.get('max_bots', -1)
         if max_bots >= 0:
             existing_bots = await self.get_bots(context)
@@ -694,6 +697,7 @@ class BotService:
 
         # TODO: 检查配置信息格式
         bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
+        await require_workspace_platform(self.ap, workspace_uuid, bot_data['adapter'])
         bot_data['uuid'] = str(uuid.uuid4())
         bot_data['workspace_uuid'] = workspace_uuid
         bot_data.setdefault('event_bindings', [])
@@ -704,7 +708,8 @@ class BotService:
         bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
         try:
-            await self.ap.platform_mgr.load_bot(context, bot)
+            if bot.get('enable'):
+                await self.ap.platform_mgr.load_bot(context, bot)
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
 
@@ -715,6 +720,9 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
         update_data.pop('workspace_uuid', None)
+        if 'adapter' in update_data or update_data.get('enable'):
+            current = await self.get_bot(context, bot_uuid, include_secret=True)
+            await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -740,8 +748,8 @@ class BotService:
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
-            runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
-            if runtime_bot.enable:
+            if bot.get('enable'):
+                runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
                 await runtime_bot.run()
         except Exception as exc:
             raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
@@ -775,7 +783,8 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
-            raise Exception('Bot not found')
+            # Saved but disabled/unconfigured bots have no runtime logs yet.
+            return [], 0
 
         logs, total_count = await runtime_bot.logger.get_logs(from_index, max_count)
 

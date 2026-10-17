@@ -14,6 +14,7 @@ import websockets
 from .EchoHandler import EchoTextHandler
 from .card_callback import DingTalkCardActionHandler
 from .dingtalkevent import DingTalkEvent
+from .thinking import card_text_fields, visible_think_markers
 import httpx
 import traceback
 from langbot.pkg.utils import httpclient
@@ -74,6 +75,16 @@ def _stringify_card_param_map(card_param_map: Optional[dict]) -> dict:
     return result
 
 
+def is_stream_card_configured(config: dict) -> bool:
+    if not config.get('markdown_card', True):
+        return False
+    template_id = config.get('card_template_id')
+    # Older manifests stored instructional placeholder text as the default.
+    return (
+        isinstance(template_id, str) and bool(template_id.strip()) and template_id.strip() != '填写你的卡片template_id'
+    )
+
+
 class DingTalkClient:
     _MAX_INBOUND_TASKS = 100
 
@@ -108,7 +119,7 @@ class DingTalkClient:
         }
         self.access_token = ''
         self.robot_name = robot_name
-        self.robot_code = robot_code
+        self.robot_code = (robot_code or '').strip() or client_id
         self.access_token_expiry_time = ''
         self.markdown_card = markdown_card
         self.logger = logger
@@ -258,28 +269,105 @@ class DingTalkClient:
 
     async def update_incoming_message(self, message):
         """异步更新 DingTalkClient 中的 incoming_message"""
+        # Resolve identity before downloading any attachments from this event.
+        robot_code = getattr(message, 'robot_code', None)
+        if isinstance(robot_code, str) and robot_code.strip():
+            self.robot_code = robot_code.strip()
         message_data = await self.get_message(message)
         if message_data:
             event = DingTalkEvent.from_payload(message_data)
             if event:
                 await self._handle_message(event)
 
+    @staticmethod
+    def _check_send_result(response):
+        # HTTP 200 can still contain a rejected DingTalk message.
+        data = response.json()
+        if response.status_code != 200 or data.get('errcode', 0) != 0 or data.get('code'):
+            raise RuntimeError(
+                f'DingTalk delivery failed (HTTP {response.status_code}, '
+                f'code={data.get("errcode", data.get("code", "unknown"))}): '
+                f'{data.get("errmsg", data.get("message", "Unknown error"))}'
+            )
+        return data
+
     async def send_message(self, content: str, incoming_message, at: bool):
+        if not content.strip():
+            return {}
+        content = visible_think_markers(content, self.markdown_card)
         if self.markdown_card:
-            if at:
-                self.EchoTextHandler.reply_markdown(
-                    title='@' + incoming_message.sender_nick + ' ' + content,
-                    text='@' + incoming_message.sender_nick + ' ' + content,
-                    incoming_message=incoming_message,
-                )
-            else:
-                self.EchoTextHandler.reply_markdown(
-                    title=content,
-                    text=content,
-                    incoming_message=incoming_message,
-                )
+            text = ('@' + incoming_message.sender_nick + ' ' if at else '') + content
+            payload = {'msgtype': 'markdown', 'markdown': {'title': text[:80], 'text': text}}
         else:
-            self.EchoTextHandler.reply_text(content, incoming_message)
+            payload = {'msgtype': 'text', 'text': {'content': content}}
+        payload['at'] = {'atUserIds': [incoming_message.sender_staff_id]}
+        async with self._http_client_context() as client:
+            response = await client.post(incoming_message.session_webhook, json=payload, timeout=30.0)
+        return self._check_send_result(response)
+
+    async def send_attachment(self, component, incoming_message):
+        from langbot_plugin.api.entities.builtin.platform.message import Image
+
+        is_image = isinstance(component, Image)
+        name = getattr(component, 'name', '') or ('image.png' if is_image else 'file')
+        name = os.path.basename(name)
+        encoded = getattr(component, 'base64', None)
+        if encoded:
+            encoded = encoded.split(',', 1)[-1]
+            if len(encoded) > 4 * ((_MAX_MEDIA_BYTES + 2) // 3):
+                raise ValueError('DingTalk media exceeds the size limit')
+            body = base64.b64decode(encoded, validate=True)
+        elif getattr(component, 'path', None):
+            body = await asyncio.to_thread(_read_local_media_limited, component.path)
+        elif getattr(component, 'url', None):
+            async with self._http_client_context() as client:
+                async with client.stream('GET', component.url, timeout=30.0) as response:
+                    response.raise_for_status()
+                    body = await _read_httpx_media_limited(response)
+        else:
+            raise ValueError('DingTalk attachment has no readable content')
+        if len(body) > _MAX_MEDIA_BYTES:
+            raise ValueError('DingTalk media exceeds the size limit')
+        token = await self.get_legacy_access_token()
+        if not token:
+            raise RuntimeError('DingTalk media authentication failed')
+        async with self._http_client_context() as client:
+            response = await client.post(
+                'https://oapi.dingtalk.com/media/upload',
+                params={'access_token': token, 'type': 'image' if is_image else 'file'},
+                files={'media': (name, body)},
+                timeout=30.0,
+            )
+        uploaded = self._check_send_result(response)
+        media_id = uploaded.get('media_id')
+        if not media_id:
+            raise RuntimeError('DingTalk media upload returned no media ID')
+        if not await self.check_access_token():
+            await self.get_access_token()
+        params = (
+            {'photoURL': media_id}
+            if is_image
+            else {'mediaId': media_id, 'fileName': name, 'fileType': os.path.splitext(name)[1].lstrip('.')}
+        )
+        payload = {
+            'robotCode': self.robot_code or self.key,
+            'msgKey': 'sampleImageMsg' if is_image else 'sampleFile',
+            'msgParam': json.dumps(params, ensure_ascii=False),
+        }
+        if str(incoming_message.conversation_type) == '2':
+            endpoint = 'groupMessages/send'
+            payload['openConversationId'] = incoming_message.conversation_id
+        else:
+            endpoint = 'oToMessages/batchSend'
+            payload['userIds'] = [incoming_message.sender_staff_id]
+        async with self._http_client_context() as client:
+            response = await client.post(
+                f'{DINGTALK_OPENAPI_BASE}/v1.0/robot/{endpoint}',
+                headers={'x-acs-dingtalk-access-token': self.access_token},
+                json=payload,
+                timeout=30.0,
+            )
+        return self._check_send_result(response)
 
     async def get_incoming_message(self):
         """获取收到的消息"""
@@ -562,7 +650,7 @@ class DingTalkClient:
             'robotCode': robot_code,
             'userIds': [target_id],
             'msgKey': 'sampleText',
-            'msgParam': json.dumps({'content': content}),
+            'msgParam': json.dumps({'content': visible_think_markers(content, False)}),
         }
         _stdout_logger.info(
             'DingTalk send_proactive_message_to_one request: robotCode=%s target_id=%s content_len=%d',
@@ -606,7 +694,7 @@ class DingTalkClient:
             'robotCode': self.robot_code or self.key,
             'openConversationId': target_id,
             'msgKey': 'sampleText',
-            'msgParam': json.dumps({'content': content}),
+            'msgParam': json.dumps({'content': visible_think_markers(content, False)}),
         }
         try:
             async with self._http_client_context() as client:
@@ -627,14 +715,13 @@ class DingTalkClient:
         temp_card_id: str,
         incoming_message: dingtalk_stream.ChatbotMessage,
         quote_origin: bool = False,
-        card_auto_layout: bool = False,
+        card_auto_layout: bool = True,
     ):
         """Create + deliver the streaming chat card for a chatbot reply.
 
         Replaces the old `dingtalk_stream.AICardReplier`-based path. Returns
-        `(None, out_track_id)` to keep call sites compatible with the
-        previous `(card_instance, card_instance_id)` shape — the first slot
-        is unused now that everything is driven by out_track_id.
+        `(layout_config, out_track_id)` keeps the adapter's tuple contract
+        while preserving the layout setting on subsequent data updates.
         """
         out_track_id = uuid.uuid4().hex
         is_group = str(incoming_message.conversation_type) == '2'
@@ -643,7 +730,14 @@ class DingTalkClient:
         else:
             open_space_id = f'dtv1.card//IM_ROBOT.{incoming_message.sender_staff_id}'
 
-        card_param_map = {'content': ''}
+        card_param_map = {
+            'content': '',
+            'answer': '',
+            'reasoning': '',
+            'flowStatus': '1',
+            'brand': '',
+            'hasReasoning': '',
+        }
         if incoming_message.message_type == 'text':
             card_param_map['query'] = incoming_message.get_text_list()[0]
         else:
@@ -657,30 +751,21 @@ class DingTalkClient:
             card_param_map=card_param_map,
             card_data_config={'autoLayout': card_auto_layout},
         )
-        return None, out_track_id
+        return {'autoLayout': card_auto_layout}, out_track_id
 
     async def send_card_message(self, card_instance, card_instance_id: str, content: str, is_final: bool):
-        """Stream a single chunk into an existing card's `content` field."""
-        try:
-            await self.streaming_update_card(
-                out_track_id=card_instance_id,
-                content_key='content',
-                content_value=content,
-                append=False,
-                finished=is_final,
-                failed=False,
-            )
-        except Exception as e:
-            if self.logger:
-                self.logger.exception(e)
-            await self.streaming_update_card(
-                out_track_id=card_instance_id,
-                content_key='content',
-                content_value='',
-                append=False,
-                finished=is_final,
-                failed=True,
-            )
+        """Update separate reasoning/answer fields and the legacy content field."""
+        fields = card_text_fields(content)
+        # Old templates continue to render content with explicit think markers;
+        # the supplied split template binds only reasoning and answer.
+        fields['content'] = visible_think_markers(content)
+        fields['flowStatus'] = '3' if is_final else '2'
+        fields['brand'] = ''
+        if isinstance(card_instance, dict):
+            fields['config'] = card_instance
+            fields['autoLayout'] = str(card_instance.get('autoLayout', True)).lower()
+        if not await self.update_card_data(out_track_id=card_instance_id, card_param_map=fields):
+            raise RuntimeError('DingTalk card content update failed; see adapter logs for the API response')
 
     async def create_and_deliver_card(
         self,
@@ -710,6 +795,7 @@ class DingTalkClient:
         template_params = dict(card_param_map or {})
         if card_data_config is not None:
             template_params['config'] = card_data_config
+            template_params['autoLayout'] = str(card_data_config.get('autoLayout', True)).lower()
         cardData: dict = {'cardParamMap': _stringify_card_param_map(template_params)}
 
         body: dict = {
@@ -743,34 +829,17 @@ class DingTalkClient:
             'Content-Type': 'application/json',
         }
         try:
-            _stdout_logger.info(
-                'DingTalk createAndDeliver request body: %s',
-                json.dumps(body, ensure_ascii=False)[:1500],
-            )
             async with self._http_client_context() as client:
                 response = await client.post(url, headers=headers, json=body, timeout=30.0)
-                response_body = await httpclient.response_text(response, max_chars=500)
-                if response.status_code == 200:
-                    _stdout_logger.info(
-                        'DingTalk createAndDeliver response: %s',
-                        response_body,
-                    )
-                    return True
-                _stdout_logger.error(
-                    'DingTalk createAndDeliver failed: status=%s body=%s',
-                    response.status_code,
-                    response_body,
-                )
-                if self.logger:
-                    await self.logger.error(
-                        f'DingTalk createAndDeliver failed: status={response.status_code} body={response_body}'
-                    )
-                return False
-        except Exception:
-            _stdout_logger.exception('DingTalk createAndDeliver error')
-            if self.logger:
-                await self.logger.error(f'DingTalk createAndDeliver error: {traceback.format_exc()}')
-            return False
+            # Propagate business failures as well as transport failures. Callers
+            # must not register or update a card that was never delivered.
+            self._check_send_result(response)
+        except Exception as exc:
+            error = RuntimeError(f'DingTalk card creation failed: {exc}')
+            _stdout_logger.error('%s', error)
+            raise error from exc
+        _stdout_logger.info('DingTalk card created: outTrackId=%s', out_track_id)
+        return True
 
     async def streaming_update_card(
         self,

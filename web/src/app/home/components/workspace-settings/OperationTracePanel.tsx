@@ -15,12 +15,6 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
 import { Item, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
 import {
   Select,
@@ -41,6 +35,7 @@ import type {
 } from '@/app/infra/entities/operation-log';
 import { Download } from 'lucide-react';
 import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import OperationTraceCollectionDialog from './OperationTraceCollectionDialog';
 import {
   PanelBody,
   PanelToolbar,
@@ -343,12 +338,7 @@ export default function OperationTracePanel({
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [query, setQuery] = useState<OperationLogQuery>({});
-  const [retentionDays, setRetentionDays] = useState<number>(30);
-  const [maxRows, setMaxRows] = useState<number>(20000);
-  const [dedupeSeconds, setDedupeSeconds] = useState<number>(60);
-  // Retention is an advanced, rarely-touched policy: it collapses by default so
-  // the capture level and the records list stay the focus of the panel.
-  const [retentionOpen, setRetentionOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Only one record shows its full change detail at a time, so the list stays
   // scannable: the payload diff is long and is opt-in per row.
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -395,9 +385,6 @@ export default function OperationTracePanel({
         setGovernance(governanceResponse);
         setFilters(filtersResponse);
         setPage(pageResponse);
-        setRetentionDays(governanceResponse.retention_days);
-        setMaxRows(governanceResponse.max_rows);
-        setDedupeSeconds(governanceResponse.dedupe_window_seconds);
       } catch {
         toast.error(t('operationTrace.loadFailed'));
       } finally {
@@ -463,16 +450,28 @@ export default function OperationTracePanel({
     }));
   }
 
-  async function changeLevel(level: OperationLevel) {
+  async function saveCollectionSettings(settings: {
+    level: OperationLevel;
+    retentionDays: number;
+    maxRows: number;
+    dedupeSeconds: number;
+  }) {
     if (!canConfigure) return;
     setSaving(true);
     try {
-      const updated = await backendClient.updateOperationGovernance({ level });
+      // One governed write per dialog save: the level and the retention policy
+      // are applied together, and the maintenance loop enforces them after.
+      const updated = await backendClient.updateOperationGovernance({
+        level: settings.level,
+        retention_days: settings.retentionDays,
+        max_rows: settings.maxRows,
+        dedupe_window_seconds: settings.dedupeSeconds,
+      });
       setGovernance(updated);
-      toast.success(t('operationTrace.levelUpdated'));
+      toast.success(t('operationTrace.settingsUpdated'));
       await load({ ...query, offset: 0 });
     } catch {
-      toast.error(t('operationTrace.levelUpdateFailed'));
+      toast.error(t('operationTrace.settingsUpdateFailed'));
     } finally {
       setSaving(false);
     }
@@ -496,8 +495,7 @@ export default function OperationTracePanel({
       });
       const response = await backendClient.downloadFile(url);
       const disposition = response.headers['content-disposition'] as
-        | string
-        | undefined;
+        string | undefined;
       const match = disposition?.match(/filename="?([^";\n]+)"?/);
       const filename = match?.[1] ?? `operation-logs-${Date.now()}.csv`;
       const blob = new Blob([response.data], {
@@ -518,33 +516,6 @@ export default function OperationTracePanel({
     }
   }
 
-  async function saveRetention() {
-    if (!canConfigure || !governance) return;
-    setSaving(true);
-    try {
-      // Saving the retention policy applies it immediately and keeps the
-      // maintenance loop enforcing it afterwards; there is no manual prune.
-      const updated = await backendClient.updateOperationGovernance({
-        level: governance.configured_level,
-        retention_days: retentionDays,
-        max_rows: maxRows,
-        dedupe_window_seconds: dedupeSeconds,
-      });
-      setGovernance(updated);
-      toast.success(t('operationTrace.retentionUpdated'));
-      await load({ ...query, offset: 0 });
-    } catch {
-      toast.error(t('operationTrace.retentionUpdateFailed'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const levelOptions = useMemo(
-    () => governance?.supported_levels ?? [],
-    [governance],
-  );
-
   if (loading && !governance) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -556,23 +527,33 @@ export default function OperationTracePanel({
   return (
     <>
       <PanelToolbar>
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <p className="truncate text-sm font-medium">
             {t('operationTrace.title')}
           </p>
-        </div>
-        {/* Keep the actions in one right-aligned cluster: the panel toolbar
-            spreads direct children apart, so they are grouped instead. */}
-        <div className="ml-auto flex items-center gap-2">
           {governance && (
             <Badge
               variant={governance.configured_level > 0 ? 'default' : 'outline'}
             >
-              {t(
-                `operationTrace.levelNames.${governance.configured_level_name}`,
-              )}
+              {t('operationTrace.levelBadge', {
+                level: t(
+                  `operationTrace.levelNames.${governance.configured_level_name}`,
+                ),
+              })}
             </Badge>
           )}
+        </div>
+        {/* Keep the actions in one right-aligned cluster: the panel toolbar
+            spreads direct children apart, so they are grouped instead. */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            {t('operationTrace.collectionSettings')}
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -603,121 +584,14 @@ export default function OperationTracePanel({
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="size-4" />
-            <h3 className="text-sm font-semibold">
-              {t('operationTrace.captureLevel')}
-            </h3>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {levelOptions.map((option) => {
-              const selected = governance?.configured_level === option.level;
-              return (
-                <button
-                  key={option.level}
-                  type="button"
-                  disabled={!canConfigure || saving}
-                  onClick={() => void changeLevel(option.level)}
-                  className={`rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${
-                    selected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {t(`${option.i18n_key}.label`)}
-                    </span>
-                    <Badge variant={selected ? 'default' : 'outline'}>
-                      L{option.level}
-                    </Badge>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <Collapsible open={retentionOpen} onOpenChange={setRetentionOpen}>
-          <section className="space-y-3">
-            <CollapsibleTrigger className="flex w-full items-center gap-2 text-left">
-              <ChevronDown
-                className={`size-4 shrink-0 text-muted-foreground transition-transform ${
-                  retentionOpen ? '' : '-rotate-90'
-                }`}
-              />
-              <h3 className="text-sm font-semibold">
-                {t('operationTrace.retention')}
-              </h3>
-              {!retentionOpen && (
-                <span className="ml-auto truncate text-xs text-muted-foreground">
-                  {t('operationTrace.retentionSummary', {
-                    days: retentionDays,
-                    rows: maxRows,
-                  })}
-                </span>
-              )}
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="flex flex-wrap items-end gap-2 pt-3">
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t('operationTrace.retentionDays')}
-                  </span>
-                  <Input
-                    type="number"
-                    className="w-28"
-                    min={governance?.limits.min_retention_days ?? 1}
-                    max={governance?.limits.max_retention_days ?? 3650}
-                    value={retentionDays}
-                    disabled={!canConfigure}
-                    onChange={(event) =>
-                      setRetentionDays(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t('operationTrace.maxRows')}
-                  </span>
-                  <Input
-                    type="number"
-                    className="w-32"
-                    min={governance?.limits.min_max_rows ?? 100}
-                    max={governance?.limits.max_max_rows ?? 500000}
-                    value={maxRows}
-                    disabled={!canConfigure}
-                    onChange={(event) => setMaxRows(Number(event.target.value))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t('operationTrace.dedupeWindow')}
-                  </span>
-                  <Input
-                    type="number"
-                    className="w-28"
-                    min={governance?.limits.min_dedupe_window_seconds ?? 0}
-                    max={governance?.limits.max_dedupe_window_seconds ?? 3600}
-                    value={dedupeSeconds}
-                    disabled={!canConfigure}
-                    onChange={(event) =>
-                      setDedupeSeconds(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <Button
-                  size="sm"
-                  onClick={() => void saveRetention()}
-                  disabled={!canConfigure || saving}
-                >
-                  {t('operationTrace.save')}
-                </Button>
-              </div>
-            </CollapsibleContent>
-          </section>
-        </Collapsible>
+        <OperationTraceCollectionDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          governance={governance}
+          canConfigure={canConfigure}
+          saving={saving}
+          onSave={(settings) => void saveCollectionSettings(settings)}
+        />
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">

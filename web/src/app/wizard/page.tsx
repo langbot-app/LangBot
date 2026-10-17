@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import {
   systemInfo,
   bootstrapWorkspaceSession,
@@ -390,8 +391,7 @@ export default function WizardPage() {
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
             setExtraWebhookUrl(
               (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -734,8 +734,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(resp.uuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -823,7 +822,7 @@ export default function WizardPage() {
 
       if (!previewPipelineUuid) {
         const pipelineResp = await httpClient.createPipeline({
-          name: `${botName} Pipeline`,
+          name: `${botName} ${t('agents.pipelineType')}`,
           description: botDescription || '',
           config: {},
         });
@@ -901,8 +900,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(createdBotUuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -1816,6 +1814,10 @@ function StepBotConfig({
                   systemContext={{
                     is_wizard: true,
                     webhook_url: webhookUrl,
+                    onebot_ws_url: webhookUrl
+                      ? webhookUrl.replace(/^http/, 'ws').replace(/\/$/, '') +
+                        '/onebot/v11/ws'
+                      : '',
                     extra_webhook_url: extraWebhookUrl,
                     outbound_ips: systemInfo.outbound_ips,
                   }}
@@ -1896,6 +1898,30 @@ function runnerPluginId(runner: string) {
     .split('/')
     .slice(0, 2)
     .join('/');
+}
+
+function InstalledRunnerIcon({
+  author,
+  name,
+}: {
+  author: string;
+  name: string;
+}) {
+  const iconURL = useInstalledPluginIcon(author, name);
+
+  if (!iconURL) {
+    return (
+      <Blocks className="size-10 shrink-0 rounded-md border bg-muted p-2 text-muted-foreground" />
+    );
+  }
+
+  return (
+    <img
+      src={iconURL}
+      alt=""
+      className="size-10 shrink-0 rounded-md border bg-muted object-cover"
+    />
+  );
 }
 
 function StepAIEngine({
@@ -2292,11 +2318,7 @@ function StepAIEngine({
             >
               <CardHeader className="flex flex-row items-start gap-3 px-4">
                 {author && name ? (
-                  <img
-                    src={httpClient.getPluginIconURL(author, name)}
-                    alt=""
-                    className="size-10 shrink-0 rounded-md border bg-muted object-cover"
-                  />
+                  <InstalledRunnerIcon author={author} name={name} />
                 ) : (
                   <Blocks className="size-10 shrink-0 rounded-md border bg-muted p-2 text-muted-foreground" />
                 )}

@@ -8,6 +8,7 @@ import {
   Users,
   Layers,
   ThumbsUp,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { backendClient } from '@/app/infra/http';
+import { resolveMonitoringWindow } from '../utils/dateUtils';
 import { FilterState } from '../types/monitoring';
 
 export type ExportType =
@@ -37,44 +39,8 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
   const { t } = useTranslation();
   const [exporting, setExporting] = useState<ExportType | null>(null);
 
-  const getDateRangeParams = (): { startTime: string; endTime: string } => {
-    const now = new Date();
-    let startTime: Date;
-    let endTime: Date = now;
-
-    switch (filterState.timeRange) {
-      case 'lastHour':
-        startTime = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'last6Hours':
-        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case 'last24Hours':
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case 'last7Days':
-        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'last30Days':
-        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case 'custom':
-        if (filterState.customDateRange) {
-          startTime = filterState.customDateRange.from;
-          endTime = filterState.customDateRange.to;
-        } else {
-          startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        }
-        break;
-      default:
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    }
-
-    return {
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-    };
-  };
+  const getDateRangeParams = () =>
+    resolveMonitoringWindow(filterState.timeRange, filterState.customDateRange);
 
   const handleExport = async (type: ExportType) => {
     setExporting(type);
@@ -182,26 +148,7 @@ export function ExportDropdown({ filterState }: ExportDropdownProps) {
         >
           {exporting ? (
             <>
-              <svg
-                className="w-4 h-4 mr-2 animate-spin"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               {t('monitoring.export.exporting')}
             </>
           ) : (

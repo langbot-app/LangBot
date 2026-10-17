@@ -288,30 +288,12 @@ async def test_existing_run_keeps_v1_while_new_run_resolves_v2(tmp_path):
 
 @pytest.mark.asyncio
 async def test_deleted_skill_can_restore_exact_recoverable_run_revision(tmp_path):
-    from langbot.pkg.provider.tools.loaders import skill as skill_loader
-
     repository = _repository(tmp_path)
     published = await repository.create_skill(
         _CONTEXT,
         {'name': 'recoverable', 'instructions': 'Pinned instructions'},
     )
     await repository.delete_skill(_CONTEXT, 'recoverable')
-    app = SimpleNamespace(skill_repository=repository)
-    query = SimpleNamespace(
-        variables={skill_loader.PIPELINE_BOUND_SKILLS_KEY: ['recoverable']},
-        instance_uuid=_CONTEXT.instance_uuid,
-        workspace_uuid=_CONTEXT.workspace_uuid,
-        placement_generation=_CONTEXT.placement_generation,
-        bot_uuid=None,
-        pipeline_uuid=None,
-        query_uuid='recovered-query',
-    )
-
-    restored = await skill_loader.restore_activated_skills(
-        app,
-        query,
-        [{'name': 'recoverable', 'revision': published['revision']}],
-    )
-
-    assert restored == ['recoverable']
-    assert skill_loader.get_activated_skill(query, 'recoverable')['revision'] == published['revision']
+    restored = await repository.get_skill(_CONTEXT, 'recoverable', snapshot=True, revision=published['revision'])
+    assert restored['revision'] == published['revision']
+    assert restored['instructions'] == 'Pinned instructions'

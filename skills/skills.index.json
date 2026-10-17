@@ -1805,7 +1805,7 @@
         },
         {
           "id": "sandbox-skill-authoring-e2e",
-          "title": "Local Agent creates, registers, activates, and uses a sandbox skill",
+          "title": "Local Agent publishes and executes an immutable Skill revision",
           "mode": "agent-browser",
           "area": "sandbox",
           "type": "regression",
@@ -1817,9 +1817,7 @@
             "skills",
             "local-agent",
             "tools",
-            "e2b",
-            "nsjail",
-            "host"
+            "nsjail"
           ],
           "automation": "",
           "setup_automation": [],
@@ -1833,7 +1831,7 @@
         },
         {
           "id": "sandbox-skill-authoring-edit-existing-e2e",
-          "title": "Local Agent modifies an activated sandbox skill package",
+          "title": "Local Agent publishes a new Skill revision without changing an active run",
           "mode": "agent-browser",
           "area": "sandbox",
           "type": "regression",
@@ -1845,17 +1843,12 @@
             "skills",
             "local-agent",
             "tools",
-            "edit"
+            "edit",
+            "nsjail"
           ],
-          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
-          "setup_automation": [
-            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
-            "node:scripts/e2e/reset-sandbox-skill.mjs --name=lb-skill-edit-regression"
-          ],
-          "setup_provides_env": [
-            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
-          ],
+          "automation": "",
+          "setup_automation": [],
+          "setup_provides_env": [],
           "evidence_required": [
             "ui",
             "backend_log",

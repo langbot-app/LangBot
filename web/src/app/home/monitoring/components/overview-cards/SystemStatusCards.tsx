@@ -5,7 +5,7 @@ import {
   Box,
   CircleCheck,
   CircleX,
-  Loader2,
+  Server,
   Info,
   Container,
   Clock,
@@ -15,7 +15,7 @@ import {
   Image,
   FolderOpen,
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { MetricCard } from './MetricCard';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,6 +37,10 @@ import {
 import { httpClient } from '@/app/infra/http/HttpClient';
 
 type StatusState = 'ok' | 'disabled' | 'failed' | null;
+
+// Neutral tile: the status dots already carry the health colour, so the card's
+// own tile must not encode a second, conflicting verdict.
+const SYSTEM_STATUS_ACCENT = '#64748b';
 
 function StatusDot({ state }: { state: StatusState }) {
   if (state === null)
@@ -118,28 +122,22 @@ export default function SystemStatusCard({
 
   if (loading) {
     return (
-      <Card className="transition-all duration-300">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {t('monitoring.systemStatus')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          </div>
-        </CardContent>
-      </Card>
+      <MetricCard
+        label={t('monitoring.systemStatus')}
+        icon={<Server className="h-4 w-4" />}
+        accent={SYSTEM_STATUS_ACCENT}
+        loading
+      />
     );
   }
 
   return (
     <>
-      <Card className="transition-all duration-300 group">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {t('monitoring.systemStatus')}
-          </CardTitle>
+      <MetricCard
+        label={t('monitoring.systemStatus')}
+        icon={<Server className="h-4 w-4" />}
+        accent={SYSTEM_STATUS_ACCENT}
+        action={
           <Button
             variant="ghost"
             size="icon"
@@ -148,8 +146,9 @@ export default function SystemStatusCard({
           >
             <Info className="w-4 h-4" />
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        }
+      >
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
             <StatusDot state={pluginState} />
             <Plug className="w-3.5 h-3.5 text-muted-foreground" />
@@ -162,8 +161,8 @@ export default function SystemStatusCard({
               <span className="text-sm">{t('monitoring.boxRuntime')}</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </MetricCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">

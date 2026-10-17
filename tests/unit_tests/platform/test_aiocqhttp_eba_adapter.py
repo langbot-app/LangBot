@@ -34,7 +34,7 @@ class DummyLogger(AbstractEventLogger):
 
 
 def make_adapter() -> AiocqhttpAdapter:
-    return AiocqhttpAdapter({'host': '127.0.0.1', 'port': 2280, 'access-token': ''}, DummyLogger())
+    return AiocqhttpAdapter({'host': '127.0.0.1', 'port': 2280, 'access-token': 'test-secret'}, DummyLogger())
 
 
 def manifest() -> dict:
@@ -48,11 +48,38 @@ def manifest() -> dict:
         / 'aiocqhttp'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def onebot_event(payload: dict) -> aiocqhttp.Event:
     return aiocqhttp.Event.from_payload(payload)
+
+
+@pytest.mark.parametrize('meta_type', ['heartbeat', 'lifecycle', 'future_transport_metadata'])
+async def test_protocol_metadata_never_reaches_business_listeners(meta_type):
+    adapter = make_adapter()
+    listener = AsyncMock()
+    adapter.register_listener(platform_events.EBAEvent, listener)
+    payload = {'post_type': 'meta_event', 'meta_event_type': meta_type, 'self_id': 42, 'time': 1700000000}
+    assert await AiocqhttpEventConverter.target2yiri(onebot_event(payload)) is None
+    await adapter._receive_event(payload)
+    listener.assert_not_awaited()
+    assert adapter.bot_account_id == '42'
+
+    # Genuine platform-specific user interactions still reach business routing.
+    await adapter._receive_event(
+        {
+            'post_type': 'notice',
+            'notice_type': 'notify',
+            'sub_type': 'poke',
+            'self_id': 42,
+            'time': 1700000001,
+            'user_id': 10001,
+            'target_id': 42,
+        }
+    )
+    listener.assert_awaited_once()
+    assert listener.await_args.args[0].type == 'platform.specific'
 
 
 def test_aiocqhttp_supported_events_match_manifest():
@@ -255,7 +282,7 @@ async def test_aiocqhttp_event_converter_maps_private_and_group_messages():
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
     assert private_event.type == 'message.received'
-    assert private_event.adapter_name == 'aiocqhttp-omni'
+    assert private_event.adapter_name == 'onebot-v11'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 10001
     assert private_event.sender.nickname == 'Alice'

@@ -200,11 +200,25 @@ class SystemRouterGroup(group.RouterGroup):
             if invitation_delivery_service is None:
                 invitation_delivery_service = InvitationDeliveryService(self.ap)
 
+            # Release channel is independent of diagnostics or usage telemetry.
+            from packaging.version import Version, InvalidVersion
+
+            try:
+                release = Version(constants.semantic_version)
+                is_beta = bool(release.pre and release.pre[0] == 'b' and not release.local)
+            except InvalidVersion:
+                is_beta = False
+
+            # Detect Cloud deployment mode
+            is_cloud = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+
             return self.success(
                 data={
                     'version': constants.semantic_version,
                     'debug': constants.debug_mode,
                     'edition': constants.edition,
+                    'beta': is_beta,
+                    'deployment_mode': 'cloud' if is_cloud else 'oss',
                     'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
                         'enable_marketplace', True
                     ),

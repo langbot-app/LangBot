@@ -135,49 +135,16 @@ class TestSkillPathHelpers:
 
         assert list(result.keys()) == ['visible']
 
-    @pytest.mark.asyncio
-    async def test_restore_activated_skills_uses_exact_revision_bindings(self):
-        from langbot.pkg.provider.tools.loaders.skill import (
-            ACTIVATED_SKILLS_KEY,
-            PIPELINE_BOUND_SKILLS_KEY,
-            get_activated_skill_bindings,
-            get_activated_skill_names,
-            restore_activated_skills,
-        )
+    def test_activation_keeps_first_revision_and_rejects_unversioned_data(self):
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
 
-        ap = _make_ap()
-        pinned = _make_skill_data(name='visible', revision='sha256:' + '2' * 64)
-        ap.skill_repository = SimpleNamespace(
-            get_skill=AsyncMock(return_value=pinned),
-        )
-        query = _make_query(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
-
-        restored = await restore_activated_skills(
-            ap,
-            query,
-            [{'name': 'visible', 'revision': pinned['revision']}],
-        )
-
-        assert restored == ['visible']
-        assert list(query.variables[ACTIVATED_SKILLS_KEY].keys()) == ['visible']
-        assert get_activated_skill_names(query) == ['visible']
-        assert get_activated_skill_bindings(query) == [{'name': 'visible', 'revision': pinned['revision']}]
-        ap.skill_repository.get_skill.assert_awaited_once_with(
-            _CONTEXT,
-            'visible',
-            snapshot=True,
-            revision=pinned['revision'],
-        )
-
-    @pytest.mark.asyncio
-    async def test_restore_rejects_name_only_state(self):
-        from langbot.pkg.provider.tools.loaders.skill import restore_activated_skills
-
-        ap = _make_ap()
-        ap.skill_repository = SimpleNamespace(get_skill=AsyncMock())
-
-        with pytest.raises(ValueError, match='cannot use names without revisions'):
-            await restore_activated_skills(ap, _make_query(), ['visible'])
+        query = _make_query()
+        first = _make_skill_data(name='visible', revision='sha256:' + '1' * 64)
+        second = _make_skill_data(name='visible', revision='sha256:' + '2' * 64)
+        assert register_activated_skill(query, first)['revision'] == first['revision']
+        assert register_activated_skill(query, second)['revision'] == first['revision']
+        with pytest.raises(ValueError, match='immutable revision'):
+            register_activated_skill(query, {'name': 'unversioned'})
 
     def test_resolve_virtual_skill_path_allows_visible_skill_reads(self):
         from langbot.pkg.provider.tools.loaders.skill import (
@@ -785,8 +752,8 @@ class TestNativeToolLoaderSkillPaths:
 
             assert result['ok'] is True
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
-            assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
-            assert tool_parameters['workdir'] == '/workspace/.skills/demo'
+            assert tool_parameters['command'] == f'python /opt/langbot-artifacts/{"1" * 64}/scripts/run.py'
+            assert tool_parameters['workdir'] == '/opt/langbot-artifacts/' + '1' * 64
             assert 'skill_name' not in ap.box_service.execute_tool.await_args.kwargs
             ap.skill_mgr.refresh_skill_from_disk.assert_not_called()
 
@@ -832,7 +799,7 @@ class TestNativeToolLoaderSkillPaths:
         tool_parameters = ap.box_service.execute_tool.await_args.args[0]
         wrapped = tool_parameters['command']
         assert f'_LB_VENV_DIR="/workspace/.skill-envs/demo/{"1" * 64}/.venv"' in wrapped
-        assert 'root = "/workspace/.skills/demo"' in wrapped
+        assert f'root = "/opt/langbot-artifacts/{"1" * 64}"' in wrapped
         assert tmpdir not in wrapped
         assert 'skill_name' not in ap.box_service.execute_tool.await_args.kwargs
 
@@ -898,3 +865,52 @@ async def test_native_skill_tools_require_runner_box_binding():
     with pytest.raises(BoxValidationError, match='Runner must bind a Box'):
         await loader.invoke_tool('exec', {'command': 'true'}, _make_query())
     ap.box_service.execute_tool.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_skill_hidden_when_cloud_scanning_is_disabled():
+    from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+
+    ap = _make_ap()
+    ap.skill_repository = SimpleNamespace()
+    ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo')})
+    ap.box_service = SimpleNamespace(
+        available=True,
+        managed_admission_required=True,
+        get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
+    )
+
+    loader = SkillToolLoader(ap)
+    await loader.initialize()
+
+    assert {tool.name for tool in await loader.get_tools(sandbox_available=True)} == {
+        'activate',
+        'list_skill_resources',
+        'read_skill_resource',
+    }
+    assert await loader.has_tool('register_skill', sandbox_available=True) is False
+    assert await loader.has_tool('activate') is True
+
+
+@pytest.mark.asyncio
+async def test_catalog_refresh_does_not_hide_skills_from_another_run():
+    import asyncio
+    from langbot.pkg.skill.manager import SkillManager
+
+    app = _make_ap()
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def read_catalog(context):
+        entered.set()
+        await release.wait()
+        return [_make_skill_data(name='new')]
+
+    app.skill_repository = SimpleNamespace(list_skills=read_catalog)
+    manager = SkillManager(app)
+    manager._skills_by_scope[manager._scope_key(_CONTEXT)] = {'old': _make_skill_data(name='old')}
+    refresh = asyncio.create_task(manager.reload_skills(_CONTEXT))
+    await entered.wait()
+    assert set(manager.get_skills(_CONTEXT)) == {'old'}
+    release.set()
+    await refresh
+    assert set(manager.get_skills(_CONTEXT)) == {'new'}

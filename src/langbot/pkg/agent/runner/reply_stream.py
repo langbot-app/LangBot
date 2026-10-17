@@ -7,8 +7,6 @@ from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID, uuid4
 
-from ...telemetry import diagnostics
-
 import pydantic
 from langbot_plugin.api.entities.builtin.platform import events, message
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -56,9 +54,6 @@ class ReplyStreamSession:
         self._closed = False
         self._active: set[asyncio.Task] = set()
 
-    @diagnostics.observe(
-        'delivery', 'reply_stream.apply', source='agent', fields=lambda b: {'attributes': {'stream': True}}
-    )
     async def apply(self, request: ReplyStreamRequest) -> dict:
         task = asyncio.create_task(self._apply(request))
         self._active.add(task)

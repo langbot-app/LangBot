@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 import { FeedbackRecord } from '../types/monitoring';
 import { Button } from '@/components/ui/button';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { TabState } from './TabState';
 
 interface FeedbackListProps {
   feedback: FeedbackRecord[];
@@ -31,33 +33,25 @@ export function FeedbackList({
   };
 
   if (loading) {
-    return (
-      <div className="py-12 flex justify-center">
-        <LoadingSpinner text={t('common.loading')} />
-      </div>
-    );
+    return <TabState loading rows={6} />;
   }
 
   if (!feedback || feedback.length === 0) {
     return (
-      <div className="text-center text-gray-500 dark:text-gray-400 py-16">
-        <Heart className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-        <p className="text-base font-medium mb-2">
-          {t('monitoring.feedback.noFeedback')}
-        </p>
-        <p className="text-sm">
-          {t('monitoring.feedback.noFeedbackDescription')}
-        </p>
-      </div>
+      <TabState
+        icon={<Heart className="w-16 h-16 text-muted-foreground/50" />}
+        title={t('monitoring.feedback.noFeedback')}
+        hint={t('monitoring.feedback.noFeedbackDescription')}
+      />
     );
   }
 
   return (
     <div className="space-y-4">
       {feedback.map((item) => (
-        <div
+        <Card
           key={item.id}
-          className={`border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 ${
+          className={`gap-0 py-0 overflow-hidden hover:shadow-md transition-all duration-200 ${
             item.feedbackType === 'like'
               ? 'border-green-200 dark:border-green-900'
               : 'border-red-200 dark:border-red-900'
@@ -105,16 +99,19 @@ export function FeedbackList({
                     </span>
                     {item.botName && (
                       <>
-                        <span className="text-gray-400">→</span>
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                        <span className="text-muted-foreground">→</span>
+                        <span className="text-sm text-muted-foreground">
                           {item.botName}
                         </span>
                       </>
                     )}
                     {item.platform && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                      <Badge
+                        variant="outline"
+                        className="bg-muted text-muted-foreground"
+                      >
                         {item.platform}
-                      </span>
+                      </Badge>
                     )}
                     {item.streamId && onViewMessage && (
                       <Button
@@ -133,7 +130,7 @@ export function FeedbackList({
                   </div>
 
                   {item.feedbackContent && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                    <p className="text-sm text-muted-foreground line-clamp-2">
                       {item.feedbackContent}
                     </p>
                   )}
@@ -142,12 +139,13 @@ export function FeedbackList({
                     item.inaccurateReasons.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {item.inaccurateReasons.map((reason, idx) => (
-                          <span
+                          <Badge
                             key={idx}
-                            className="text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                            variant="outline"
+                            className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
                           >
                             {reason}
-                          </span>
+                          </Badge>
                         ))}
                       </div>
                     )}
@@ -156,7 +154,7 @@ export function FeedbackList({
 
               {/* Timestamp */}
               <div className="flex flex-col items-end gap-2 ml-4">
-                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
                   {item.timestamp.toLocaleString()}
                 </span>
               </div>
@@ -166,75 +164,75 @@ export function FeedbackList({
           {/* Expanded Details */}
           {expandedId === item.id && (
             <div
-              className={`border-t p-5 bg-white dark:bg-gray-900 ${
+              className={`border-t p-5 bg-background ${
                 item.feedbackType === 'like'
                   ? 'border-green-200 dark:border-green-900'
                   : 'border-red-200 dark:border-red-900'
               }`}
             >
-              <div className="space-y-4 pl-8 border-l-2 border-gray-200 dark:border-gray-700 ml-4">
+              <div className="space-y-4 pl-8 border-l-2 border-border ml-4">
                 {/* Context Info */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                <div className="bg-muted rounded-lg p-3">
+                  <h4 className="text-sm font-semibold text-foreground mb-3">
                     {t('monitoring.feedback.contextInfo')}
                   </h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                     {item.botName && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.messageList.bot')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.botName}
                         </div>
                       </div>
                     )}
                     {item.pipelineName && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.messageList.pipeline')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.pipelineName}
                         </div>
                       </div>
                     )}
                     {item.sessionId && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.sessions.sessionId')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.sessionId}
                         </div>
                       </div>
                     )}
                     {item.userId && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.feedback.userId')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.userId}
                         </div>
                       </div>
                     )}
                     {item.messageId && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.feedback.messageId')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.messageId}
                         </div>
                       </div>
                     )}
                     {item.streamId && (
-                      <div className="bg-white dark:bg-gray-900 rounded p-2">
-                        <div className="text-gray-500 dark:text-gray-400">
+                      <div className="bg-background rounded p-2">
+                        <div className="text-muted-foreground">
                           {t('monitoring.feedback.streamId')}
                         </div>
-                        <div className="font-medium text-gray-900 dark:text-white truncate">
+                        <div className="font-medium text-foreground truncate">
                           {item.streamId}
                         </div>
                       </div>
@@ -244,11 +242,11 @@ export function FeedbackList({
 
                 {/* Feedback Content */}
                 {item.feedbackContent && (
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                  <div className="bg-muted rounded-lg p-3">
+                    <h4 className="text-sm font-semibold text-foreground mb-3">
                       {t('monitoring.feedback.feedbackContent')}
                     </h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                       {item.feedbackContent}
                     </p>
                   </div>
@@ -256,7 +254,7 @@ export function FeedbackList({
               </div>
             </div>
           )}
-        </div>
+        </Card>
       ))}
     </div>
   );

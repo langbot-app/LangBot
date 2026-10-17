@@ -18,6 +18,7 @@ from langbot_plugin.entities.io.context import PluginExecutionMode
 
 
 SHARED_RUNTIME_V1 = 'shared-runtime-v1'
+STATELESS_COMPONENT_MODEL_V1 = 'stateless-v1'
 DEDICATED_RUNTIME = 'dedicated'
 
 
@@ -42,12 +43,11 @@ class AdmissionDisposition(str, Enum):
 
 class AdmissionCode(str, Enum):
     SHARED_ELIGIBLE = 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE'
-    CLOUD_CERTIFICATE_REQUIRED = 'CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED'
+    UNSIGNED_DEDICATED = 'CERTIFIED_PLUGIN_UNSIGNED_DEDICATED'
     CLOUD_CERTIFICATE_INVALID = 'CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID'
     OSS_LEGACY_DEDICATED = 'CERTIFIED_PLUGIN_OSS_LEGACY_DEDICATED'
     OSS_FORCE_REQUIRED = 'CERTIFIED_PLUGIN_OSS_FORCE_REQUIRED'
     OSS_FORCED_DEDICATED = 'CERTIFIED_PLUGIN_OSS_FORCED_DEDICATED'
-    OSS_CERTIFIED_DEDICATED = 'CERTIFIED_PLUGIN_OSS_CERTIFIED_DEDICATED'
     OSS_UNTRUSTED_DEDICATED = 'CERTIFIED_PLUGIN_OSS_UNTRUSTED_DEDICATED'
 
 
@@ -66,11 +66,16 @@ class CertificateFacts:
 
     verification: CertificateVerification
     runtime_profile: str | None = None
+    component_model: str | None = None
     certificate_id: str | None = None
 
     @property
     def is_valid_shared_runtime(self) -> bool:
-        return self.verification is CertificateVerification.VALID and self.runtime_profile == SHARED_RUNTIME_V1
+        return (
+            self.verification is CertificateVerification.VALID
+            and self.runtime_profile == SHARED_RUNTIME_V1
+            and self.component_model == STATELESS_COMPONENT_MODEL_V1
+        )
 
     @property
     def is_declared(self) -> bool:
@@ -153,6 +158,7 @@ def verify_plugin_archive_certificate(
     verification = verify_archive(archive, key_ring.get)
     envelope = verification.envelope
     runtime_profile = envelope.shared_runtime if envelope is not None else None
+    component_model = envelope.component_model if envelope is not None else None
     # Record the issuer identity only when this instance actually resolved it
     # through the configured ring. When the ring is empty (for example a
     # self-hosted deployment that never configured
@@ -170,6 +176,7 @@ def verify_plugin_archive_certificate(
         certificate=CertificateFacts(
             verification=state,
             runtime_profile=runtime_profile,
+            component_model=component_model,
             certificate_id=certificate_id,
         ),
     )
@@ -188,37 +195,36 @@ def decide_plugin_admission(
     facts: PluginCertificationFacts,
     administrator_force: bool = False,
 ) -> PluginAdmissionDecision:
-    """Apply Cloud fail-closed and OSS administrator-force admission rules."""
+    """Only verified cross-tenant certificates grant shared placement."""
 
     mode = DeploymentMode(deployment)
     certificate = facts.certificate
-    if certificate.is_valid_shared_runtime:
+    if mode is DeploymentMode.CLOUD and certificate.is_valid_shared_runtime:
         return PluginAdmissionDecision(
             AdmissionDisposition.SHARED_ELIGIBLE,
             AdmissionCode.SHARED_ELIGIBLE,
             SHARED_RUNTIME_V1,
         )
 
-    if mode is DeploymentMode.CLOUD:
-        code = (
-            AdmissionCode.CLOUD_CERTIFICATE_REQUIRED
-            if certificate.verification is CertificateVerification.ABSENT
-            else AdmissionCode.CLOUD_CERTIFICATE_INVALID
-        )
-        return PluginAdmissionDecision(AdmissionDisposition.REJECTED, code, DEDICATED_RUNTIME)
-
     if certificate.verification is CertificateVerification.ABSENT:
         return PluginAdmissionDecision(
             AdmissionDisposition.DEDICATED_ALLOWED,
-            AdmissionCode.OSS_LEGACY_DEDICATED,
+            AdmissionCode.UNSIGNED_DEDICATED if mode is DeploymentMode.CLOUD else AdmissionCode.OSS_LEGACY_DEDICATED,
             DEDICATED_RUNTIME,
         )
 
-    if certificate.verification is CertificateVerification.VALID:
+    # OSS has no cross-tenant shared placement; a verified claim stays dedicated
+    # there without inventing a dedicated certification tier.
+    if mode is DeploymentMode.OSS and certificate.is_valid_shared_runtime:
         return PluginAdmissionDecision(
             AdmissionDisposition.DEDICATED_ALLOWED,
-            AdmissionCode.OSS_CERTIFIED_DEDICATED,
+            AdmissionCode.OSS_UNTRUSTED_DEDICATED,
             DEDICATED_RUNTIME,
+        )
+
+    if mode is DeploymentMode.CLOUD:
+        return PluginAdmissionDecision(
+            AdmissionDisposition.REJECTED, AdmissionCode.CLOUD_CERTIFICATE_INVALID, DEDICATED_RUNTIME
         )
 
     # A self-hosted deployment that has not configured the issuer key ring cannot
@@ -299,6 +305,7 @@ def execution_mode_for_persisted_installation(
         'artifact_digest': artifact_digest,
         'verification': CertificateVerification.VALID.value,
         'certificate_runtime_profile': SHARED_RUNTIME_V1,
+        'certificate_component_model': STATELESS_COMPONENT_MODEL_V1,
         'runtime_profile': SHARED_RUNTIME_V1,
         'admission_code': AdmissionCode.SHARED_ELIGIBLE.value,
     }

@@ -183,6 +183,31 @@ async def test_analysis_fails_closed_and_scopes_statistics(service):
     assert result['session']['bot_id'] == 'b'
 
 
+async def test_single_message_analysis_without_tool_calls(service):
+    from langbot.pkg.api.http.controller.groups.monitoring import validate_monitoring_window
+    from werkzeug.exceptions import BadRequest
+
+    await service.record_session_start(context('a'), session_id='person_42', **resource('a'))
+    await service.record_message(context('a'), session_id='person_42', message_content='hi', **resource('a'))
+    row = (await service.ap.persistence_mgr.execute_async(sa.select(models.MonitoringMessage.timestamp))).one()
+    timestamp = row.timestamp
+    validate_monitoring_window(timestamp, timestamp, allow_point_window=True)
+    result = await service.get_session_analysis(
+        context(), 'person_42', bot_id='a', start_time=timestamp, end_time=timestamp
+    )
+    assert result['found'] is True
+    assert result['message_stats']['total'] == 1
+    assert result['tool_calls'] == []
+    for start, end in [
+        (timestamp + dt.timedelta(seconds=1), timestamp),
+        (timestamp, timestamp + dt.timedelta(days=366)),
+    ]:
+        with pytest.raises(BadRequest):
+            validate_monitoring_window(start, end, allow_point_window=True)
+    with pytest.raises(BadRequest):
+        validate_monitoring_window(timestamp, timestamp)
+
+
 async def test_activity_requires_bot_and_upsert_counts_racing_first_queries(service):
     for _ in range(2):
         await service.record_session_start(context('a'), session_id='person_42', **resource('a'))

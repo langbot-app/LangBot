@@ -12,8 +12,16 @@ from langbot_plugin.entities.io.context import PluginExecutionMode
 @pytest.mark.parametrize(
     ('deployment', 'certificate', 'certificate_id', 'force', 'expected_disposition', 'expected_code'),
     [
-        ('cloud', ('valid', 'shared-runtime-v1'), 'issuer', False, 'shared_eligible', 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE'),
-        ('cloud', ('absent', None), None, False, 'rejected', 'CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED'),
+        (
+            'cloud',
+            ('valid', 'shared-runtime-v1'),
+            'issuer',
+            False,
+            'shared_eligible',
+            'CERTIFIED_PLUGIN_SHARED_ELIGIBLE',
+        ),
+        ('cloud', ('absent', None), None, False, 'dedicated_allowed', 'CERTIFIED_PLUGIN_UNSIGNED_DEDICATED'),
+        ('cloud', ('absent', None), None, True, 'dedicated_allowed', 'CERTIFIED_PLUGIN_UNSIGNED_DEDICATED'),
         ('cloud', ('malformed', None), None, False, 'rejected', 'CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID'),
         (
             'cloud',
@@ -24,7 +32,14 @@ from langbot_plugin.entities.io.context import PluginExecutionMode
             'CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_INVALID',
         ),
         ('oss', ('absent', None), None, False, 'dedicated_allowed', 'CERTIFIED_PLUGIN_OSS_LEGACY_DEDICATED'),
-        ('oss', ('valid', 'shared-runtime-v1'), 'issuer', False, 'shared_eligible', 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE'),
+        (
+            'oss',
+            ('valid', 'shared-runtime-v1'),
+            'issuer',
+            False,
+            'dedicated_allowed',
+            'CERTIFIED_PLUGIN_OSS_UNTRUSTED_DEDICATED',
+        ),
         (
             'oss',
             ('invalid', 'shared-runtime-v1'),
@@ -85,6 +100,9 @@ def test_admission_policy_enforces_certification_matrix(
         certificate=CertificateFacts(
             verification=CertificateVerification(verification),
             runtime_profile=runtime_profile,
+            component_model=(
+                'stateless-v1' if verification == 'valid' and runtime_profile == 'shared-runtime-v1' else None
+            ),
             certificate_id=certificate_id,
         ),
     )
@@ -100,6 +118,92 @@ def test_admission_policy_enforces_certification_matrix(
     assert decision.runtime_profile == (
         'shared-runtime-v1' if expected_disposition == 'shared_eligible' else 'dedicated'
     )
+
+
+def test_legacy_shared_certificate_without_stateless_contract_is_not_shared() -> None:
+    from langbot.pkg.plugin.certification import (
+        AdmissionDisposition,
+        CertificateFacts,
+        CertificateVerification,
+        DeploymentMode,
+        PluginCertificationFacts,
+        decide_plugin_admission,
+    )
+
+    decision = decide_plugin_admission(
+        deployment=DeploymentMode.CLOUD,
+        facts=PluginCertificationFacts(
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            artifact_digest='a' * 64,
+            certificate=CertificateFacts(
+                verification=CertificateVerification.VALID,
+                runtime_profile='shared-runtime-v1',
+                component_model=None,
+                certificate_id='legacy-issuer',
+            ),
+        ),
+    )
+
+    assert decision.disposition is AdmissionDisposition.REJECTED
+
+
+def test_oss_never_selects_shared_even_with_a_resolved_valid_certificate() -> None:
+    from langbot.pkg.plugin.certification import (
+        CertificateFacts,
+        CertificateVerification,
+        PluginCertificationFacts,
+        decide_plugin_admission,
+    )
+
+    facts = PluginCertificationFacts(
+        'installation',
+        'a' * 64,
+        CertificateFacts(
+            CertificateVerification.VALID,
+            'shared-runtime-v1',
+            'stateless-v1',
+            'issuer',
+        ),
+    )
+    decision = decide_plugin_admission(deployment='oss', facts=facts)
+    assert decision.runtime_profile == 'dedicated'
+    assert decision.disposition.value == 'dedicated_allowed'
+
+
+def test_oss_reconcile_never_reuses_persisted_shared_placement() -> None:
+    from types import SimpleNamespace
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
+
+    connector = object.__new__(PluginRuntimeConnector)
+    connector.ap = SimpleNamespace(deployment=SimpleNamespace(mode='oss'))
+    setting = SimpleNamespace(
+        artifact_digest='a' * 64, install_info={'_certification': _complete_persisted_certification()}
+    )
+    assert connector._execution_mode_from_setting(setting) is PluginExecutionMode.DEDICATED
+
+
+def test_oss_does_not_treat_valid_nonshared_signature_as_dedicated_certification() -> None:
+    from langbot.pkg.plugin.certification import (
+        AdmissionDisposition,
+        CertificateFacts,
+        CertificateVerification,
+        PluginCertificationFacts,
+        decide_plugin_admission,
+    )
+
+    decision = decide_plugin_admission(
+        deployment='oss',
+        facts=PluginCertificationFacts(
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            artifact_digest='a' * 64,
+            certificate=CertificateFacts(
+                verification=CertificateVerification.VALID,
+                runtime_profile=None,
+                certificate_id='issuer',
+            ),
+        ),
+    )
+    assert decision.disposition is AdmissionDisposition.ADMINISTRATOR_FORCE_REQUIRED
 
 
 def test_archive_inspection_preserves_legacy_tuple_and_exposes_certificate_facts() -> None:
@@ -181,6 +285,7 @@ def test_log_visibility_policy_only_scopes_valid_shared_certifications(
         certificate=CertificateFacts(
             verification=CertificateVerification(verification),
             runtime_profile='shared-runtime-v1',
+            component_model='stateless-v1',
         ),
     )
 
@@ -195,6 +300,7 @@ def _complete_persisted_certification() -> dict[str, object]:
         'normalized_digest': 'b' * 64,
         'verification': 'valid',
         'certificate_runtime_profile': 'shared-runtime-v1',
+        'certificate_component_model': 'stateless-v1',
         'certificate_id': 'ed25519:trusted-issuer',
         'runtime_profile': 'shared-runtime-v1',
         'admission_code': 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE',
@@ -261,6 +367,7 @@ def test_persisted_certification_selects_shared_execution_only_for_exact_admitte
         'normalized_digest',
         'verification',
         'certificate_runtime_profile',
+        'certificate_component_model',
         'certificate_id',
         'runtime_profile',
         'admission_code',
@@ -303,6 +410,9 @@ def test_persisted_certification_requires_every_shared_admission_fact(missing_fi
         ('certificate_runtime_profile', None),
         ('certificate_runtime_profile', 123),
         ('certificate_runtime_profile', ''),
+        ('certificate_component_model', None),
+        ('certificate_component_model', 123),
+        ('certificate_component_model', ''),
         ('runtime_profile', None),
         ('runtime_profile', 123),
         ('runtime_profile', ''),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
+from contextlib import aclosing
 
 import asyncio
 import inspect
@@ -443,13 +443,19 @@ def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
     return False
 
 
-def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
+def _merge_model_extra_args(model: Any, call_extra_args: Any, *, llm_policy: bool = False) -> dict[str, Any]:
     """Merge persisted model extra_args with action-level overrides."""
     merged: dict[str, Any] = {}
 
     model_extra_args = getattr(getattr(model, 'model_entity', None), 'extra_args', None)
     if isinstance(model_extra_args, dict):
         merged.update(model_extra_args)
+    if llm_policy:
+        # RuntimeProvider resolves model and call policy layers independently.
+        # Flattening them here makes a model request_policy.retries override a
+        # caller's legacy num_retries=0 (and similarly hides timeout overrides).
+        for key in ('request_policy', 'num_retries', 'max_retries', 'timeout'):
+            merged.pop(key, None)
     if isinstance(call_extra_args, dict):
         merged.update(call_extra_args)
 
@@ -646,8 +652,6 @@ class RuntimeConnectionHandler(handler.Handler):
         payload fields can never select the scope. A transaction-free boundary
         avoids reserving one pooled connection across provider and network waits.
         """
-
-        diagnostics.annotate(workspace_uuid=action_context.workspace_uuid)
         persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
         if persistence_mgr is None:
             yield
@@ -700,9 +704,7 @@ class RuntimeConnectionHandler(handler.Handler):
                             async for response in responses:
                                 yield response
 
-                self.actions[action_name] = diagnostics.observe(
-                    'api', 'host.' + action_name, source='plugin', ap=self.ap
-                )(secured_stream_action)
+                self.actions[action_name] = secured_stream_action
                 continue
 
             async def secured_action(
@@ -731,9 +733,7 @@ class RuntimeConnectionHandler(handler.Handler):
                         response = await response
                     return response
 
-            self.actions[action_name] = diagnostics.observe('api', 'host.' + action_name, source='plugin', ap=self.ap)(
-                secured_action
-            )
+            self.actions[action_name] = secured_action
 
     async def _get_plugin_setting(
         self,
@@ -1490,7 +1490,9 @@ class RuntimeConnectionHandler(handler.Handler):
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
-            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            if query is None:
+                query = _build_plugin_action_query(action_context)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
@@ -1586,26 +1588,31 @@ class RuntimeConnectionHandler(handler.Handler):
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
-            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            if query is None:
+                query = _build_plugin_action_query(action_context)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
-            async for chunk in llm_model.provider.invoke_llm_stream(
-                query=query,
-                model=llm_model,
-                messages=messages_obj,
-                funcs=effective_funcs,
-                extra_args=effective_extra_args,
-                remove_think=remove_think,
-                execution_context=execution_context,
-            ):
-                if chunk is None:
-                    continue
-                yield handler.ActionResponse.success(
-                    data={
-                        'chunk': chunk.model_dump(),
-                    },
+            async with aclosing(
+                llm_model.provider.invoke_llm_stream(
+                    query=query,
+                    model=llm_model,
+                    messages=messages_obj,
+                    funcs=effective_funcs,
+                    extra_args=effective_extra_args,
+                    remove_think=remove_think,
+                    execution_context=execution_context,
                 )
+            ) as owned_stream:
+                async for chunk in owned_stream:
+                    if chunk is None:
+                        continue
+                    yield handler.ActionResponse.success(
+                        data={
+                            'chunk': chunk.model_dump(),
+                        },
+                    )
             usage = _pop_query_llm_usage(query)
             if usage is not None:
                 yield handler.ActionResponse.success(
@@ -2808,7 +2815,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.APPLY_PLUGIN_INSTALLATION,
                 request.model_dump(exclude_none=True),
-                timeout=120,
+                timeout=600,  # dependency install can be slow
             )
 
     async def remove_plugin_installation(
@@ -2832,7 +2839,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'install_source': install_source,
                 'install_info': install_info,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:
@@ -2846,7 +2853,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:

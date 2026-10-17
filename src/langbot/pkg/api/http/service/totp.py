@@ -49,6 +49,17 @@ _TOTP_MAX_ATTEMPTS = 5
 _RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 
+def _utc_now_naive() -> datetime.datetime:
+    """UTC now without tzinfo, matching the credential ``timestamp`` columns.
+
+    The TOTP tables store ``timestamp without time zone``. asyncpg rejects an
+    offset-aware value for such a column (SQLite accepts it, which is why this
+    only surfaced on PostgreSQL), so every write converts at the boundary.
+    """
+
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class TotpError(ValueError):
     """Base class for TOTP second-factor failures."""
 
@@ -363,7 +374,7 @@ class TotpService:
                 await session.execute(
                     sqlalchemy.update(totp_entity.TotpCredential)
                     .where(totp_entity.TotpCredential.account_uuid == account_uuid)
-                    .values(disabled_at=datetime.datetime.now(datetime.timezone.utc))
+                    .values(disabled_at=_utc_now_naive())
                 )
                 await session.execute(
                     sqlalchemy.delete(totp_entity.TotpRecoveryCode).where(
@@ -409,7 +420,7 @@ class TotpService:
 
         counter = self._verify_counter(credential, code)
         codes = _generate_recovery_codes()
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = _utc_now_naive()
 
         async with self._session_factory()() as session:
             async with session.begin():
@@ -479,7 +490,7 @@ class TotpService:
         if not await self.verify_code(account_uuid, code, allow_recovery=True):
             raise TotpInvalidCodeError('Invalid TOTP code')
 
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = _utc_now_naive()
         async with self._session_factory()() as session:
             async with session.begin():
                 await session.execute(
@@ -497,11 +508,16 @@ class TotpService:
     # ------------------------------------------------------------------
     # owner/admin oversight
     # ------------------------------------------------------------------
-    async def list_account_states(self) -> list[dict[str, typing.Any]]:
-        """Second-factor state for every Account, for owner/admin oversight.
+    async def list_account_states(
+        self,
+        *,
+        account_uuids: typing.Sequence[str],
+    ) -> list[dict[str, typing.Any]]:
+        """Second-factor state for the Accounts a Workspace owner/admin may see.
 
-        Oversight is instance-wide by design: an owner/admin may manage the
-        second factor of any Account.
+        Oversight belongs to the Workspace, so the caller supplies the member
+        Account UUIDs of its own Workspace: an owner/admin must never observe or
+        manage another tenant's Accounts.
 
         Only state is returned: no secret and no recovery-code material.
         """
@@ -525,6 +541,7 @@ class TotpService:
                 credential.last_used_at,
                 sqlalchemy.func.coalesce(unused_codes.c.unused, 0),
             )
+            .where(user.User.uuid.in_(tuple(account_uuids)))
             .outerjoin(
                 credential,
                 sqlalchemy.and_(
@@ -558,7 +575,7 @@ class TotpService:
         outstanding recovery codes are destroyed.
         """
 
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = _utc_now_naive()
         async with self._session_factory()() as session:
             async with session.begin():
                 result = await session.execute(
@@ -630,7 +647,7 @@ class TotpService:
             raise
 
         if consume_counter:
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = _utc_now_naive()
             async with self._session_factory()() as session:
                 async with session.begin():
                     await session.execute(
@@ -680,7 +697,7 @@ class TotpService:
                     totp_entity.TotpRecoveryCode.id == matched_id,
                     totp_entity.TotpRecoveryCode.used_at.is_(None),
                 )
-                .values(used_at=datetime.datetime.now(datetime.timezone.utc))
+                .values(used_at=_utc_now_naive())
             )
             await session.commit()
         return bool(result.rowcount)

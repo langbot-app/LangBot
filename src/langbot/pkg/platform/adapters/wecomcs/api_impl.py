@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import typing
 
 from langbot.libs.wecom_customer_service_api.api import WecomCSClient
@@ -16,7 +14,6 @@ class WecomCSAPIMixin:
     _message_cache: dict[str, platform_events.MessageReceivedEvent]
     _user_cache: dict[str, platform_entities.User]
 
-    @diagnostics.observe('api', 'get_message', source='platform', stage='accepted')
     async def get_message(
         self,
         chat_type: str,
@@ -28,7 +25,6 @@ class WecomCSAPIMixin:
             raise NotSupportedError('get_message:message_not_cached')
         return event
 
-    @diagnostics.observe('api', 'get_user_info', source='platform', stage='accepted')
     async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
         cached = self._user_cache.get(str(user_id))
         if cached is not None:
@@ -43,30 +39,24 @@ class WecomCSAPIMixin:
             username=info.get('external_userid') or None,
         )
 
-    @diagnostics.observe('api', 'get_friend_list', source='platform', stage='accepted')
     async def get_friend_list(self) -> list[platform_entities.User]:
         return list(self._user_cache.values())
 
-    @diagnostics.observe('api', 'upload_file', source='platform', stage='accepted')
     async def upload_file(self, file_data: bytes, filename: str) -> str:
         raise NotSupportedError('upload_file')
 
-    @diagnostics.observe('api', 'get_file_url', source='platform', stage='accepted')
     async def get_file_url(self, file_id: str) -> str:
         raise NotSupportedError('get_file_url')
 
-    @diagnostics.observe('api', 'get_group_info', source='platform', stage='accepted')
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         raise NotSupportedError('get_group_info')
 
-    @diagnostics.observe('api', 'get_group_member_list', source='platform', stage='accepted')
     async def get_group_member_list(
         self,
         group_id: typing.Union[int, str],
     ) -> list[platform_entities.UserGroupMember]:
         raise NotSupportedError('get_group_member_list')
 
-    @diagnostics.observe('api', 'get_group_member_info', source='platform', stage='accepted')
     async def get_group_member_info(
         self,
         group_id: typing.Union[int, str],
@@ -74,7 +64,6 @@ class WecomCSAPIMixin:
     ) -> platform_entities.UserGroupMember:
         raise NotSupportedError('get_group_member_info')
 
-    @diagnostics.observe('api', 'edit_message', source='platform', stage='accepted')
     async def edit_message(
         self,
         chat_type: str,
@@ -84,7 +73,6 @@ class WecomCSAPIMixin:
     ) -> None:
         raise NotSupportedError('edit_message')
 
-    @diagnostics.observe('api', 'delete_message', source='platform', stage='accepted')
     async def delete_message(
         self,
         chat_type: str,

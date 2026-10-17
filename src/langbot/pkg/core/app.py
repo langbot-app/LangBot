@@ -306,6 +306,19 @@ class Application:
         if callable(database_snapshot):
             database_stats = database_snapshot()
 
+        runtime_ops_stats = {}
+        runtime_ops_reporter = getattr(self.plugin_connector, 'runtime_ops_reporter', None)
+        if runtime_ops_reporter is not None:
+            runtime_ops_stats = runtime_ops_reporter.get_stats()
+
+        telemetry_stats = {}
+        telemetry_health = getattr(self.telemetry, 'health', None)
+        if callable(telemetry_health):
+            try:
+                telemetry_stats = telemetry_health()
+            except Exception:
+                telemetry_stats = {}
+
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
@@ -316,7 +329,8 @@ class Application:
             'query_pool': query_pool_stats,
             'models': model_stats,
             'runtimes': runtime_stats,
-            'telemetry_tasks': len(getattr(self.telemetry, 'send_tasks', ())),
+            'runtime_ops': runtime_ops_stats,
+            'telemetry': telemetry_stats,
         }
 
     async def initialize(self):
@@ -346,6 +360,13 @@ class Application:
 
     async def run(self):
         self.event_loop_monitor.start()
+        from ..utils.execution_lease import maintain_execution_leases
+
+        self.task_mgr.create_task(
+            maintain_execution_leases(self),
+            name='execution-lease-maintenance',
+            scopes=[core_entities.LifecycleControlScope.APPLICATION],
+        )
         try:
             if (
                 self.directory_projection_service is not None
@@ -408,7 +429,10 @@ class Application:
 
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            monitoring_enabled = auto_cleanup_cfg.get('enabled', True)
+            monitoring_enabled = (
+                auto_cleanup_cfg.get('enabled', True)
+                or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            )
             retention_days = self._get_positive_int_config(
                 auto_cleanup_cfg.get('retention_days', 30),
                 default=30,
@@ -644,10 +668,6 @@ class Application:
             if self.telemetry is not None:
                 with contextlib.suppress(Exception):
                     await self.telemetry.shutdown()
-            diagnostics_manager = getattr(self, 'diagnostics', None)
-            if diagnostics_manager is not None:
-                with contextlib.suppress(Exception):
-                    await diagnostics_manager.shutdown()
             if self.vector_db_mgr is not None:
                 with contextlib.suppress(Exception):
                     await self.vector_db_mgr.shutdown()

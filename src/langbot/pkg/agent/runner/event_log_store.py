@@ -128,7 +128,33 @@ class EventLogStore:
                 created_at=as_naive_utc(_utc_now()),
             )
             session.add(event)
-            await session.commit()
+            try:
+                await session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                await session.rollback()
+                existing = (
+                    (await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id)))
+                    .scalars()
+                    .first()
+                )
+                if existing is None or existing.workspace_id != workspace_id or existing.bot_id != bot_id:
+                    raise
+                # Complete the ingress snapshot once a runner claims it. A
+                # second subscriber must not replace another run's identity.
+                for field, value in {
+                    'run_id': run_id,
+                    'runner_id': runner_id,
+                    'conversation_id': conversation_id,
+                    'thread_id': thread_id,
+                    'actor_id': actor_id,
+                    'actor_name': actor_name,
+                }.items():
+                    if getattr(existing, field) is None and value is not None:
+                        setattr(existing, field, value)
+                if input_json and ('contents' in input_json or 'attachments' in input_json):
+                    existing.input_json = json.dumps(input_json)
+                    existing.input_summary = input_summary
+                await session.commit()
 
         return event_id
 

@@ -19,11 +19,7 @@ import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import { getBackendBaseUrl } from '@/app/infra/http/backendUrl';
 
 export type QrLoginPlatform =
-  | 'feishu'
-  | 'weixin'
-  | 'dingtalk'
-  | 'wecombot'
-  | 'qqofficial';
+  'feishu' | 'weixin' | 'dingtalk' | 'wecombot' | 'qqofficial';
 
 interface PlatformConfig {
   titleKey: string;
@@ -83,7 +79,6 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
       client_id: data.client_id,
       client_secret: data.client_secret,
     }),
-    successNoteKey: 'dingtalk.robotCodeNote',
   },
   wecombot: {
     titleKey: 'wecombot.createBot',

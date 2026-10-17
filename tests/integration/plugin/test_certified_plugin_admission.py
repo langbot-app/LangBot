@@ -29,7 +29,8 @@ pytestmark = pytest.mark.integration
     ('deployment', 'archive_kind', 'administrator_force', 'expected_profile'),
     [
         ('cloud', 'signed_shared', False, 'shared-runtime-v1'),
-        ('oss', 'signed_shared', False, 'shared-runtime-v1'),
+        ('cloud', 'legacy', False, 'dedicated'),
+        ('oss', 'signed_shared', False, 'dedicated'),
         ('oss', 'legacy', False, 'dedicated'),
         ('oss', 'forged_shared', True, 'dedicated'),
     ],
@@ -75,7 +76,7 @@ async def test_install_plugin_admits_archive_before_persistence_and_applies_sele
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('archive_kind', ['legacy', 'invalid_shared'])
+@pytest.mark.parametrize('archive_kind', ['invalid_shared'])
 async def test_cloud_rejects_untrusted_archive_before_storage_persistence_or_runtime_apply(archive_kind: str) -> None:
     package, trusted_public_keys = _archive(archive_kind)
     connector, _execution_context, _binding = _connector('cloud', trusted_public_keys)
@@ -180,26 +181,20 @@ async def test_marketplace_version_selection_keeps_certificate_gate_and_single_a
     if requested_version is not None:
         info['plugin_version'] = requested_version
     task_context = TaskContext.new()
-    if archive_kind == 'legacy':
-        with pytest.raises(ValueError, match='CERTIFIED_PLUGIN_CLOUD_CERTIFICATE_REQUIRED'):
-            await connector.install_plugin(PluginInstallSource.MARKETPLACE, info, task_context)
-        connector._store_artifact_package.assert_not_awaited()
-        connector._persist_installation_package.assert_not_awaited()
-        connector.handler.apply_plugin_installation.assert_not_awaited()
-        connector._refresh_runner_registry.assert_not_awaited()
-    else:
-        await connector.install_plugin(PluginInstallSource.MARKETPLACE, info, task_context)
-        persisted_info = connector._persist_installation_package.await_args.kwargs['install_info']
-        assert persisted_info['plugin_version'] == '1.0.0'
-        assert persisted_info['_certification']['runtime_profile'] == 'shared-runtime-v1'
-        connector.handler.apply_plugin_installation.assert_awaited_once_with(
-            binding,
-            artifact_package=package,
-            enabled=True,
-            execution_mode=PluginExecutionMode.SHARED_CERTIFIED,
-        )
-        connector._refresh_runner_registry.assert_awaited_once()
-        assert task_context.metadata['progress_percent'] == 100
+    await connector.install_plugin(PluginInstallSource.MARKETPLACE, info, task_context)
+    persisted_info = connector._persist_installation_package.await_args.kwargs['install_info']
+    assert persisted_info['plugin_version'] == '1.0.0'
+    assert persisted_info['_certification']['runtime_profile'] == (
+        'shared-runtime-v1' if archive_kind == 'signed_shared' else 'dedicated'
+    )
+    connector.handler.apply_plugin_installation.assert_awaited_once_with(
+        binding,
+        artifact_package=package,
+        enabled=True,
+        execution_mode=(PluginExecutionMode.SHARED_CERTIFIED if archive_kind == 'signed_shared' else PluginExecutionMode.DEDICATED),
+    )
+    connector._refresh_runner_registry.assert_awaited_once()
+    assert task_context.metadata['progress_percent'] == 100
     if requested_version is not None:
         # Confirmed migrations must fetch the reviewed release, never latest/MCP/skill.
         assert len(requests) == 1
@@ -249,7 +244,10 @@ def _connector(deployment: str, trusted_public_keys: dict[str, str]):
 def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
     manifest = {
         'metadata': {'author': 'certified', 'name': 'example', 'version': '1.0.0'},
-        'execution': {'sharedRuntime': 'shared-runtime-v1'},
+        'execution': {
+            'sharedRuntime': 'shared-runtime-v1',
+            'componentModel': 'stateless-v1',
+        },
     }
     if kind == 'legacy':
         manifest.pop('execution')

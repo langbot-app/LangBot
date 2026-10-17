@@ -9,7 +9,7 @@ class Metadata(Base):
     __tablename__ = 'metadata'
 
     key = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
-    value = sqlalchemy.Column(sqlalchemy.String(255))
+    value = sqlalchemy.Column(sqlalchemy.Text())
 
 
 class WorkspaceMetadata(Base):
@@ -23,4 +23,4 @@ class WorkspaceMetadata(Base):
         primary_key=True,
     )
     key = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
-    value = sqlalchemy.Column(sqlalchemy.String(255))
+    value = sqlalchemy.Column(sqlalchemy.Text())

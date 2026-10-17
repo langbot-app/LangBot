@@ -24,6 +24,7 @@ class RunBoxBinding:
     exported: dict = field(default_factory=dict)
     submitted: set = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    read_only_mounts: list[dict] = field(default_factory=list)
 
 
 def prepare_input_files(query, agent_input):
@@ -152,7 +153,10 @@ class RunnerBoxService:
         if set(request.options) - {'image'}:
             raise BoxValidationError('Only the Box image can be specified; resource limits are Host-owned')
         spec = {'session_id': session_id, **request.options}
-        result = await self.box.create_session(context, spec)
+        from ..provider.tools.loaders.skill import build_execution_mounts
+
+        mounts = build_execution_mounts(self.box.ap, query) if query is not None else []
+        result = await self.box.create_session(context, spec, trusted_read_only_mounts=mounts)
         return self.public_session(result)
 
     async def bind(self, context, query, run_id, box_id):
@@ -172,7 +176,11 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
-        binding = RunBoxBinding(run_id, box_id, spec, run_id)
+        from ..provider.tools.loaders.skill import build_execution_mounts
+
+        binding = RunBoxBinding(
+            run_id, box_id, spec, run_id, read_only_mounts=build_execution_mounts(self.box.ap, query)
+        )
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)
 

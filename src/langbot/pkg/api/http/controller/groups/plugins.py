@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .....i18n import t
+
 import asyncio
 import base64
 import collections.abc
@@ -165,6 +167,16 @@ except Exception:
     pass
 
 
+def _is_plugin_not_installed(exc: BaseException) -> bool:
+    """True when the connector reports a plugin absent from the resolved Workspace.
+
+    The connector raises a plain ``ValueError`` for this case, so resource routes
+    answer 404 instead of surfacing a 500 the WebUI would have to swallow.
+    """
+
+    return 'is not installed in this workspace' in str(exc).lower()
+
+
 def _normalize_plugin_asset_path(filepath: str) -> str | None:
     filepath = filepath.replace('\\', '/')
     if filepath.startswith('/'):
@@ -286,14 +298,20 @@ class PluginsRouterGroup(group.RouterGroup):
     async def _check_extensions_limit(self, request_context: RequestContext) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         await self.ap.plugin_connector.require_workspace_context(request_context)
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from ...service.workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, request_context.workspace_uuid)
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
             plugins = await self.ap.plugin_connector.list_plugins()
             mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context)
             total_extensions = len(plugins) + len(mcp_servers)
             if total_extensions >= max_extensions:
-                return self.http_status(400, -1, f'Maximum number of extensions ({max_extensions}) reached')
+                return self.http_status(
+                    400,
+                    -1,
+                    t('Maximum number of {resource} ({limit}) reached', resource=t('extensions'), limit=max_extensions),
+                )
         return None
 
     @staticmethod
@@ -596,7 +614,15 @@ class PluginsRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> quart.Response:
             await self._require_authenticated_plugin_runtime_context(request_context)
-            icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+            try:
+                icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+            except ValueError as exc:
+                # A plugin that is not installed for this Workspace is a missing
+                # resource, not a server fault: the WebUI asks for icons by plugin
+                # identity and must be able to fall back silently.
+                if _is_plugin_not_installed(exc):
+                    return quart.Response('Icon not found', status=404)
+                raise
             icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
             return quart.Response(icon_bytes, mimetype=icon_data['mime_type'])
 

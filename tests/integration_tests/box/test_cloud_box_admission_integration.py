@@ -40,6 +40,7 @@ _UTC = dt.timezone.utc
 
 
 class _AdmissionBackend(BaseSandboxBackend):
+    execution_scoped_mounts = True
     name = 'nsjail'
 
     def __init__(self, logger):
@@ -397,10 +398,10 @@ async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitl
             read_only_mounts=skill_loader.build_execution_mounts(service.ap, query),
         )
 
-        mounted_spec = backend.started_specs[-1]
+        mounted_spec = backend.executed_specs[-1]
         assert len(mounted_spec.extra_mounts) == 1
         assert mounted_spec.extra_mounts[0].host_path == refreshed_skill['package_root']
-        assert mounted_spec.extra_mounts[0].mount_path == '/workspace/.skills/runner'
+        assert mounted_spec.extra_mounts[0].mount_path == '/opt/langbot-artifacts/' + refreshed_skill['revision'][7:]
         assert mounted_spec.extra_mounts[0].mode.value == 'ro'
         assert mounted_spec.extra_mounts[0].content_digest == refreshed_skill['revision']
 
@@ -419,7 +420,7 @@ async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitl
 
 
 @pytest.mark.asyncio
-async def test_activated_skill_mount_changes_recreate_shared_box_session(tmp_path):
+async def test_activated_skill_mount_changes_preserve_shared_box_session(tmp_path):
     service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
     context = _context('workspace-a')
     entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
@@ -438,12 +439,12 @@ async def test_activated_skill_mount_changes_recreate_shared_box_session(tmp_pat
             second_query,
             read_only_mounts=skill_loader.build_execution_mounts(service.ap, second_query),
         )
-        assert len(backend.started_specs) == 2
-        assert backend.stopped_sessions == [backend.started_specs[0].session_id]
+        assert len(backend.started_specs) == 1
+        assert backend.stopped_sessions == []
 
         await service.execute_tool({'command': 'echo first query again'}, first_query)
-        assert len(backend.started_specs) == 3
-        assert backend.stopped_sessions == [backend.started_specs[0].session_id] * 2
+        assert len(backend.started_specs) == 1
+        assert backend.stopped_sessions == []
     finally:
         server_task.cancel()
         client_task.cancel()

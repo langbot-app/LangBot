@@ -36,7 +36,9 @@ class QueryRunBridge:
         """Build an event-first run plan from a Pipeline Query."""
         runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
         if not runner_id:
-            raise RunnerNotFoundError('no runner configured')
+            raise RunnerNotFoundError(
+                'no runner configured; legacy (pre-4.11) pipelines must be migrated with the pipeline migration assistant'
+            )
 
         event = QueryEntryAdapter.query_to_event(query)
         agent_config = QueryEntryAdapter.config_to_agent_config(query, runner_id)

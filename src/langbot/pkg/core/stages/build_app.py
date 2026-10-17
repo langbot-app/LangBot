@@ -164,12 +164,6 @@ class BuildAppStage(stage.BootingStage):
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
-        # Persistence is ready now. Open the cheap global traceability gate if
-        # any Workspace already has tracing enabled, so a restart resumes
-        # recording without ever checking the database on the request path.
-        if ap.workspace_settings_service is not None:
-            await ap.workspace_settings_service.prime_global_flag()
-
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(
                 ap,
@@ -204,6 +198,13 @@ class BuildAppStage(stage.BootingStage):
             )
             await cloud_model_catalog_service.initialize()
             ap.cloud_model_catalog_service = cloud_model_catalog_service
+
+        # Persistence and the Workspace directory are both ready now. Open the
+        # cheap global traceability gate if any Workspace already has tracing
+        # enabled, so a restart resumes recording without ever checking the
+        # database on the request path.
+        if ap.workspace_settings_service is not None:
+            await ap.workspace_settings_service.prime_global_flag()
 
         ap.workspace_collaboration_service = workspace_collaboration_module.WorkspaceCollaborationService(
             ap,

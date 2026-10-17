@@ -313,7 +313,7 @@ class NativeToolLoader(loader.ToolLoader):
             include_visible=False,
             include_activated=True,
         )
-        referenced_skill_names = skill_loader.find_referenced_skill_names(command)
+        referenced_skill_names = skill_loader.find_referenced_skill_names(command, query)
 
         if selected_skill is None and referenced_skill_names:
             if len(referenced_skill_names) > 1:
@@ -334,8 +334,13 @@ class NativeToolLoader(loader.ToolLoader):
                 raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
             # Wrap command with Python venv bootstrap if the skill has a Python project.
-            # The venv is created inside the skill's mount path.
-            skill_mount = f'/workspace/.skills/{selected_skill_name}'
+            # Dependency state stays writable and separate from the published package.
+            skill_mount = skill_loader.get_virtual_skill_mount_path(selected_skill_name, selected_skill['revision'])
+            legacy_mount = skill_loader.get_virtual_skill_mount_path(selected_skill_name)
+            command = regex.sub(regex.escape(legacy_mount) + r'(?![A-Za-z0-9_-])', skill_mount, command)
+            if workdir == legacy_mount or workdir.startswith(legacy_mount + '/'):
+                workdir = skill_mount + workdir[len(legacy_mount) :]
+            parameters = {**parameters, 'command': command, 'workdir': workdir}
             python_project = selected_skill.get('python_project') is True
             if 'python_project' not in selected_skill:
                 python_project = skill_loader.should_prepare_skill_python_env(package_root)
@@ -350,9 +355,7 @@ class NativeToolLoader(loader.ToolLoader):
                     state_path=f'/workspace/.skill-envs/{selected_skill_name}/{revision_key}',
                 )
 
-        # All exec calls (with or without skills) go through the same container
-        # via execute_tool. Skills are mounted at /workspace/.skills/{name}/
-        # via read-only mounts composed by the Core skill loader.
+        # Package paths contain the pinned digest, so no shared alias changes underneath another run.
         result = await self.ap.box_service.execute_tool(
             parameters,
             query,
@@ -744,9 +747,13 @@ class NativeToolLoader(loader.ToolLoader):
         return f'{str(base).rstrip("/")}/{relative}'
 
     async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
+        # Sandbox images built from a host rootfs may only ship `python3`, and a
+        # read-only /usr prevents creating a `python` shim inside the jail, so
+        # resolve the interpreter instead of assuming its name.
+        command = f'PYTHON_BIN=$(command -v python3 || command -v python); "$PYTHON_BIN" - <<\'PY\'\n{script}\nPY'
         result = await self.ap.box_service.execute_tool(
             {
-                'command': f"python - <<'PY'\n{script}\nPY",
+                'command': command,
                 'timeout_sec': 30,
             },
             query,

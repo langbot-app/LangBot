@@ -212,6 +212,12 @@ export default function Login() {
         );
       const authResp = await startAuthentication({ optionsJSON: options });
       const res = await httpClient.verifyPasskeyAuth(challenge_token, authResp);
+      // A rejected assertion answers with an error payload and no session, so a
+      // missing token means the login failed rather than that the user cancelled.
+      if (!res?.token) {
+        toast.error(t('common.passkeyLoginFailed'));
+        return;
+      }
       if (await finishLogin(res.token, res.user)) {
         toast.success(t('common.passkeyLoginSuccess'));
       }

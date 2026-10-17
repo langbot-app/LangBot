@@ -24,6 +24,24 @@ def parse_iso_datetime(datetime_str: str | None) -> datetime.datetime | None:
     return dt
 
 
+def validate_monitoring_window(
+    start_time: datetime.datetime | None,
+    end_time: datetime.datetime | None,
+    *,
+    allow_point_window: bool = False,
+) -> None:
+    """Bound explicit dashboard windows to one year without silently truncating them."""
+    if start_time is None:
+        return
+    end = end_time or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    if (
+        start_time > end
+        or (start_time == end and not allow_point_window)
+        or end - start_time > datetime.timedelta(days=365)
+    ):
+        quart.abort(400, description='Monitoring time range must be positive and no longer than 365 days')
+
+
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -39,6 +57,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             metrics = await self.ap.monitoring_service.get_overview_metrics(
                 request_context,
@@ -49,6 +68,80 @@ class MonitoringRouterGroup(group.RouterGroup):
             )
 
             return self.success(data=metrics)
+
+        @self.route('/in-flight/stream', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def stream_inflight(request_context: RequestContext):
+            from .....utils.inflight import inflight_hub
+            from ...service.tenant import require_workspace_uuid
+            import json
+
+            workspace = require_workspace_uuid(request_context)
+            previous = []
+
+            async def snapshot():
+                nonlocal previous
+                result = await self.ap.monitoring_service.get_inflight_snapshot(request_context, previous)
+                previous = [row for row in result['items'] if row['status_group'] in {'running', 'queued'}]
+                return result
+
+            async def frames():
+                async for frame in inflight_hub.watch(workspace, snapshot):
+                    yield 'data: ' + json.dumps(frame, ensure_ascii=False) + '\n\n'
+
+            response = quart.Response(frames(), content_type='text/event-stream')
+            response.headers['Cache-Control'] = 'no-cache, no-store'
+            response.headers['X-Accel-Buffering'] = 'no'
+            response.timeout = None
+            return response
+
+        @self.route('/executions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
+        async def get_executions(request_context: RequestContext) -> str:
+            """Unified execution list across agent runs and pipeline queries."""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            agent_ids = quart.request.args.getlist('agentId')
+            statuses = quart.request.args.getlist('status')
+            source = quart.request.args.get('source', 'all')
+            mode = quart.request.args.get('mode', 'all')
+            start_time = parse_iso_datetime(quart.request.args.get('startTime'))
+            end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            validate_monitoring_window(start_time, end_time)
+
+            result = await self.ap.monitoring_service.get_executions(
+                request_context,
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                agent_ids=agent_ids if agent_ids else None,
+                statuses=statuses if statuses else None,
+                source=source,
+                mode=mode,
+                start_time=start_time,
+                end_time=end_time,
+                limit=quart.request.args.get('limit', 50),
+                offset=quart.request.args.get('offset', 0),
+            )
+
+            return self.success(data=result)
+
+        @self.route(
+            '/executions/<source>/<execution_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
+            """Full trace of a single execution (agent run or pipeline query)."""
+            try:
+                detail = await self.ap.monitoring_service.get_execution_detail(
+                    request_context,
+                    source,
+                    execution_id,
+                    section=quart.request.args.get('section'),
+                    offset=quart.request.args.get('offset', 0),
+                    limit=quart.request.args.get('limit', 100),
+                )
+            except ValueError as exc:
+                return self.fail(404, str(exc))
+            return self.success(data=detail)
 
         @self.route('/token-statistics', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_token_statistics(request_context: RequestContext) -> str:
@@ -63,9 +156,12 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_token_statistics(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -96,6 +192,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             messages, total = await self.ap.monitoring_service.get_messages(
                 request_context,
@@ -137,6 +234,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             llm_calls, total = await self.ap.monitoring_service.get_llm_calls(
                 request_context,
@@ -176,6 +274,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             tool_calls, total = await self.ap.monitoring_service.get_tool_calls(
                 request_context,
@@ -216,6 +315,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             embedding_calls, total = await self.ap.monitoring_service.get_embedding_calls(
                 request_context,
@@ -257,6 +357,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse is_active
             is_active = None
@@ -304,6 +405,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             errors, total = await self.ap.monitoring_service.get_errors(
                 request_context,
@@ -327,6 +429,10 @@ class MonitoringRouterGroup(group.RouterGroup):
         @self.route('/data', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_all_data(request_context: RequestContext) -> str:
             """Get all monitoring data in a single request"""
+            execution_filters = {
+                'execution_statuses': quart.request.args.getlist('status') or None,
+                'mode': quart.request.args.get('mode', 'all'),
+            }
             # Parse query parameters
             bot_ids = quart.request.args.getlist('botId')
             pipeline_ids = quart.request.args.getlist('pipelineId')
@@ -337,10 +443,12 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get overview metrics
             overview = await self.ap.monitoring_service.get_overview_metrics(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -350,6 +458,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get messages
             messages, messages_total = await self.ap.monitoring_service.get_messages(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -361,6 +470,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get LLM calls
             llm_calls, llm_calls_total = await self.ap.monitoring_service.get_llm_calls(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -372,6 +482,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get tool calls
             tool_calls, tool_calls_total = await self.ap.monitoring_service.get_tool_calls(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -383,6 +494,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get sessions
             sessions, sessions_total = await self.ap.monitoring_service.get_sessions(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -395,6 +507,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get errors
             errors, errors_total = await self.ap.monitoring_service.get_errors(
                 request_context,
+                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -406,6 +519,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Get embedding calls
             embedding_calls, embedding_calls_total = await self.ap.monitoring_service.get_embedding_calls(
                 request_context,
+                **execution_filters,
                 start_time=start_time,
                 end_time=end_time,
                 limit=limit,
@@ -417,6 +531,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'traffic': await get_traffic_series(
                         self.ap,
                         request_context,
+                        **execution_filters,
                         bot_ids=bot_ids or None,
                         pipeline_ids=pipeline_ids or None,
                         start_time=start_time,
@@ -441,6 +556,30 @@ class MonitoringRouterGroup(group.RouterGroup):
             )
 
         @self.route(
+            '/sessions/reset-context',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def reset_session_context(request_context: RequestContext):
+            body = await quart.request.get_json()
+            if not isinstance(body, dict):
+                return self.http_status(400, 'invalid_request', 'Expected a JSON object')
+            try:
+                result = await self.ap.monitoring_service.reset_session_context(
+                    request_context,
+                    body.get('bot_id'),
+                    body.get('session_id'),
+                )
+            except ValueError as exc:
+                return self.http_status(400, 'invalid_request', str(exc))
+            except LookupError as exc:
+                return self.http_status(404, 'resource_not_found', str(exc))
+            except RuntimeError as exc:
+                return self.http_status(409, 'session_busy', str(exc))
+            return self.success(data=result)
+
+        @self.route(
             '/sessions/<session_id>/analysis',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
@@ -450,6 +589,8 @@ class MonitoringRouterGroup(group.RouterGroup):
             """Get detailed analysis for a specific session"""
             start_time = parse_iso_datetime(quart.request.args.get('startTime'))
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            # Message pages can contain one timestamp; tool-call bounds are inclusive.
+            validate_monitoring_window(start_time, end_time, allow_point_window=True)
             analysis = await self.ap.monitoring_service.get_session_analysis(
                 request_context,
                 session_id,
@@ -491,6 +632,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Get data based on export type
             if export_type == 'messages':
@@ -639,7 +781,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'platform',
                 ]
             else:
-                return self.error(message=f'Invalid export type: {export_type}', code=400)
+                return self.fail(400, f'Invalid export type: {export_type}')
 
             # Generate CSV content with UTF-8 BOM for Excel compatibility
             import io
@@ -681,9 +823,12 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             stats = await self.ap.monitoring_service.get_feedback_stats(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
@@ -707,12 +852,15 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse datetime
             start_time = parse_iso_datetime(start_time_str)
             end_time = parse_iso_datetime(end_time_str)
+            validate_monitoring_window(start_time, end_time)
 
             # Parse feedback type
             feedback_type = int(feedback_type_str) if feedback_type_str else None
 
             feedback_list, total = await self.ap.monitoring_service.get_feedback_list(
                 request_context,
+                execution_statuses=quart.request.args.getlist('status') or None,
+                mode=quart.request.args.get('mode', 'all'),
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 feedback_type=feedback_type,

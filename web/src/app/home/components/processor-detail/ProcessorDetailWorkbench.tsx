@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarChart3, Bug, Info, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,6 +57,7 @@ interface ProcessorDetailWorkbenchProps {
   debugDisconnectedLabel?: string;
   unsavedLabel?: string;
   monitoring?: ProcessorMonitoringView;
+  view?: 'workbench' | 'monitoring';
   onViewChange?: (view: 'workbench' | 'monitoring') => void;
 }
 
@@ -83,11 +85,12 @@ export default function ProcessorDetailWorkbench({
   debugDisconnectedLabel,
   unsavedLabel,
   monitoring,
+  view,
   onViewChange,
 }: ProcessorDetailWorkbenchProps) {
-  const [activeView, setActiveView] = useState<'workbench' | 'monitoring'>(
-    'workbench',
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeView =
+    searchParams.get('tab') === 'logs' ? 'monitoring' : 'workbench';
   const hasDebug = Boolean(debugTitle && debugContent);
 
   const configPanel = (
@@ -143,10 +146,17 @@ export default function ProcessorDetailWorkbench({
 
   return (
     <Tabs
-      value={activeView}
+      value={view ?? activeView}
       onValueChange={(value) => {
         const view = value as 'workbench' | 'monitoring';
-        setActiveView(view);
+        setSearchParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.set('tab', view === 'monitoring' ? 'logs' : 'config');
+            return next;
+          },
+          { preventScrollReset: true },
+        );
         onViewChange?.(view);
       }}
       className="flex h-full min-h-0 min-w-0 flex-col gap-0"
@@ -226,7 +236,7 @@ export default function ProcessorDetailWorkbench({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {canSave && activeView === 'workbench' && (
+          {canSave && (view ?? activeView) === 'workbench' && (
             <Button
               type="submit"
               form={saveFormId}
@@ -236,7 +246,7 @@ export default function ProcessorDetailWorkbench({
               {saveLabel}
             </Button>
           )}
-          {activeView === 'workbench' && headerActions}
+          {(view ?? activeView) === 'workbench' && headerActions}
         </div>
       </div>
 

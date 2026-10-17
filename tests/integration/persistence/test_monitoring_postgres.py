@@ -7,6 +7,7 @@ no existing tables are dropped. Without that URL these tests are skipped.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import uuid
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.monitoring import MonitoringService
+from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence import monitoring as models
 from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
@@ -156,6 +158,56 @@ async def _read(service, method, context, *args, **kwargs):
     # HTTP auth binds a tenant scope; exercise that same guard for service reads.
     async with service.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
         return await getattr(service, method)(context, *args, **kwargs)
+
+
+async def test_inflight_snapshot_reads_recent_utc_rows_and_terminal_transitions(service, cloud_database):
+    _, admin = cloud_database
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    old = now - datetime.timedelta(hours=1)
+    async with admin.begin() as conn:
+        for workspace, run_id, status, created_at in [
+            (WORKSPACE_A, 'inflight-running', 'running', old),
+            (WORKSPACE_A, 'inflight-recent', 'completed', now),
+            (WORKSPACE_B, 'inflight-private', 'running', now),
+        ]:
+            await conn.execute(
+                sa.insert(AgentRun).values(
+                    run_id=run_id, workspace_id=workspace, runner_id='runner', status=status, created_at=created_at
+                )
+            )
+        for message_id, timestamp in [('inflight-message', now), ('inflight-old-message', old)]:
+            await conn.execute(
+                sa.insert(models.MonitoringMessage).values(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE_A,
+                    timestamp=timestamp,
+                    **RESOURCE,
+                    message_content='hello',
+                    session_id='session',
+                    status='success',
+                    level='info',
+                )
+            )
+
+    try:
+        # The SSE producer owns its tenant scope after the HTTP handler has returned.
+        snapshot = await service.get_inflight_snapshot(_context(WORKSPACE_A))
+        assert snapshot['active_total'] == 1
+        assert {row['id'] for row in snapshot['items']} == {'inflight-running', 'inflight-recent', 'inflight-message'}
+        async with admin.begin() as conn:
+            await conn.execute(
+                sa.update(AgentRun).where(AgentRun.run_id == 'inflight-running').values(status='completed')
+            )
+        snapshot = await service.get_inflight_snapshot(_context(WORKSPACE_A), snapshot['items'])
+        assert snapshot['active_total'] == 0
+        assert next(row for row in snapshot['items'] if row['id'] == 'inflight-running')['status_group'] == 'completed'
+    finally:
+        async with admin.begin() as conn:
+            await conn.execute(
+                sa.delete(AgentRun).where(
+                    AgentRun.run_id.in_(['inflight-running', 'inflight-recent', 'inflight-private'])
+                )
+            )
 
 
 def _query(context, sender_id):

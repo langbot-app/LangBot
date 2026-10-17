@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from ..telemetry import diagnostics
-
 import dataclasses
 import typing
 import traceback
+import asyncio
 
 import sqlalchemy
 
@@ -21,6 +20,8 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
@@ -180,7 +181,6 @@ class RuntimePipeline:
             raise WorkspaceInvariantError('RuntimePipeline instance does not match the active Workspace binding')
         return execution_context
 
-    @diagnostics.observe('run', 'pipeline.run', source='pipeline', fields=lambda b: {'processor_type': 'pipeline'})
     async def run(self, query: pipeline_query.Query):
         if (
             query.instance_uuid != self.execution_context.instance_uuid
@@ -196,6 +196,19 @@ class RuntimePipeline:
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
         query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
+        # Telemetry: the bindings this lane runs with. None means "all enabled",
+        # which the *_all flags make explicit in the chain record.
+        try:
+            from ..telemetry import resources as telemetry_resources
+
+            telemetry_resources.note_pipeline(
+                plugins=self.bound_plugins,
+                plugins_all=self.enable_all_plugins,
+                mcp_servers=self.bound_mcp_servers,
+                mcp_all=self.enable_all_mcp_servers,
+            )
+        except Exception:
+            pass
 
         # Record query start for monitoring
         try:
@@ -257,10 +270,12 @@ class RuntimePipeline:
         if result.console_notice:
             self.ap.logger.info(result.console_notice)
         if result.error_notice:
-            diagnostics.set_outcome('failed', reason_code='response_error')
             self.ap.logger.error(result.error_notice)
             # Mark query as having error
             query.variables['_monitoring_has_error'] = True
+            # The lane reports failures as a value instead of raising, so record the
+            # reason here: without it the uploaded trace would not explain the break.
+            self._record_lane_failure(query, str(result.error_notice))
             # Record error to monitoring system
             try:
                 await self._assert_execution_active(query)
@@ -370,7 +385,118 @@ class RuntimePipeline:
 
             i += 1
 
+    @staticmethod
+    def _synthetic_origin(query: pipeline_query.Query) -> str:
+        """Origin of a lane that starts without an inbound platform event."""
+        try:
+            variables = getattr(query, 'variables', None)
+            declared = str(variables.get('_telemetry_origin') or '').strip() if isinstance(variables, dict) else ''
+        except Exception:
+            declared = ''
+        if declared in ('webui', 'api'):
+            return declared
+        adapter = getattr(query, 'adapter', None)
+        if adapter is not None and adapter.__class__.__name__ == 'WebSocketAdapter':
+            # WebChat and the CLI diagnostic surface both speak through the
+            # WebSocket proxy adapter; the CLI marks itself in its variables.
+            try:
+                variables = getattr(query, 'variables', None)
+                if isinstance(variables, dict) and '_cli_run_status' in variables:
+                    return 'api'
+            except Exception:
+                pass
+            return 'webui'
+        return 'api'
+
+    @staticmethod
+    def _synthetic_event_type(query: pipeline_query.Query) -> str:
+        """Event type of the virtual inbound event a synthetic lane stands for."""
+        event = getattr(query, 'message_event', None)
+        event_type = str(getattr(event, 'type', None) or '').strip()
+        return event_type[:160] or 'message.received'
+
     async def process_query(self, query: pipeline_query.Query):
+        workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
+        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+            return await self._process_query_with_language(query)
+
+    async def _process_query_with_language(self, query: pipeline_query.Query):
+        from ..telemetry import trace as trace_mod
+        from ..telemetry.execution import ingress
+        from ..telemetry.execution import record as record_execution
+        from ..telemetry.platform import processing_mode
+        from ..telemetry.trace import stage_scope
+
+        token = processing_mode.set('pipeline')
+        # The Workspace-scoped opaque query uuid is the execution identity Space
+        # shows for this lane; it is a stable UUID for every pooled query.
+        ingress_event_id = (query.variables or {}).get('_ingress_event_id')
+        execution_id = ingress_event_id or str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
+        # A lane with no inbound platform event in flight (WebChat, WebUI debug,
+        # HTTP pipeline run) synthesizes its virtual inbound event here, so every
+        # execution starts at an event boundary and the Runner is never the trace
+        # origin. A lane running under a platform route nests inside that ingress.
+        synthesizing = trace_mod.current() is None and not ingress_event_id
+        try:
+            with ingress(
+                self.ap,
+                'pipeline_done',
+                getattr(self, 'execution_context', None),
+                execution_id=execution_id,
+                debug=synthesizing,
+                origin=self._synthetic_origin(query) if synthesizing else 'platform',
+                synthetic_event=self._synthetic_event_type(query) if synthesizing else '',
+            ):
+                # The lane is its own workflow step: acknowledgements and replies it
+                # sends directly, and the runner it drives, hang under this node.
+                # When the lane runs under a platform route the node nests there.
+                with stage_scope() as node:
+                    lane_outcome = 'success'
+                    lane_error = ''
+                    try:
+                        from ..platform.processing_indicator import processing_indicator
+
+                        async with processing_indicator(
+                            query.adapter, query.launcher_type.value.lower(), query.launcher_id
+                        ):
+                            return await self._process_query(query)
+                    except asyncio.CancelledError:
+                        lane_outcome = 'cancelled'
+                        lane_error = 'cancelled'
+                        raise
+                    except BaseException as exc:
+                        lane_outcome = 'failed'
+                        lane_error = str(exc) or type(exc).__name__
+                        raise
+                    finally:
+                        try:
+                            variables = getattr(query, 'variables', None) or {}
+                            lane_has_error = bool(variables.get('_monitoring_has_error'))
+                        except Exception:
+                            lane_has_error = False
+                        if lane_outcome == 'success' and lane_has_error:
+                            # The lane reported the failure as a value, not an exception.
+                            lane_outcome = 'failed'
+                        config = getattr(query, 'pipeline_config', None)
+                        try:
+                            runner_id = (RunnerConfigResolver.resolve_runner_id(config) or '') if config else ''
+                        except Exception:
+                            runner_id = ''
+                        record_execution(
+                            self.ap,
+                            getattr(self, 'execution_context', None),
+                            family='pipeline',
+                            operation='run',
+                            mode='pipeline',
+                            runner=runner_id,
+                            outcome=lane_outcome,
+                            error=lane_error,
+                            node=node,
+                        )
+        finally:
+            processing_mode.reset(token)
+
+    async def _process_query(self, query: pipeline_query.Query):
         """处理请求"""
         await self._assert_execution_active(query)
         # Get monitoring metadata
@@ -430,7 +556,6 @@ class RuntimePipeline:
             await self._assert_execution_active(query)
 
             if event_ctx.is_prevented_default():
-                diagnostics.set_outcome('skipped', reason_code='discarded')
                 self.ap.logger.debug(
                     f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
                 )
@@ -477,14 +602,14 @@ class RuntimePipeline:
                     self.ap.logger.error(f'Failed to record query response: {e}')
 
         except WorkspaceError as e:
-            diagnostics.set_outcome('rejected', reason_code='processor_incompatible')
             self.ap.logger.info(f'Dropped query {query.query_id} because its Workspace execution binding is stale: {e}')
         except Exception as e:
-            diagnostics.set_outcome('failed', reason_code='response_error')
-            diagnostics.annotate(error=e)
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
             self.ap.logger.error(f'Error processing query {query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+            # The lane itself broke: land the reason on the execution trace so the
+            # chain is uploaded even though the error never became a StageProcessResult.
+            self._record_lane_failure(query, str(e) or type(e).__name__)
 
             # Record query error
             try:
@@ -507,6 +632,40 @@ class RuntimePipeline:
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
             await self.ap.query_pool.remove_query(query)
+
+    def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
+        """Land one failed ``runner/execute`` stage on the owning execution trace."""
+        try:
+            from ..telemetry.execution import record as record_execution
+            from ..telemetry.trace import current as current_trace
+            from ..telemetry.trace import stage_scope
+
+            detail = reason or 'pipeline_lane_failed'
+            state = current_trace()
+            # The runner orchestrator already lands its own failed ``runner/execute``
+            # node when the break happens inside a runner; in that case only carry the
+            # reason over instead of repeating the node on the chain.
+            already_recorded = bool(state is not None and state.runner_failed)
+            if not already_recorded:
+                # The lane failure is its own workflow step, hanging under whatever
+                # step routed into it (or a root when nothing did).
+                with stage_scope() as node:
+                    record_execution(
+                        self.ap,
+                        getattr(self, 'execution_context', None),
+                        family='runner',
+                        operation='execute',
+                        mode='pipeline',
+                        runner=(RunnerConfigResolver.resolve_runner_id(query.pipeline_config) or ''),
+                        outcome='failed',
+                        error=detail,
+                        node=node,
+                    )
+                state = current_trace()
+            if state is not None:
+                state.mark_failure(detail)
+        except Exception:
+            pass
 
 
 class PipelineManager:

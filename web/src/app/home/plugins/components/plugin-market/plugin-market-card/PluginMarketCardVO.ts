@@ -9,6 +9,7 @@ export interface IPluginMarketCardVO {
   iconURL: string;
   githubURL: string;
   version: string;
+  certificationStatus?: string;
   components?: Record<string, number>;
   tags?: string[];
   type?: 'plugin' | 'mcp' | 'skill';
@@ -29,6 +30,7 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
   installCount: number;
   likeCount: number;
   version: string;
+  certificationStatus?: string;
   components?: Record<string, number>;
   tags?: string[];
   type?: 'plugin' | 'mcp' | 'skill';
@@ -46,6 +48,7 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
     this.likeCount = prop.likeCount ?? 0;
     this.pluginId = prop.pluginId;
     this.version = prop.version;
+    this.certificationStatus = prop.certificationStatus;
     this.components = prop.components;
     this.tags = prop.tags;
     this.type = prop.type;

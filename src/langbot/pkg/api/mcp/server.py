@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import json
 import typing
+import functools
 
 from mcp.server.fastmcp import FastMCP
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
-from .. import management_diagnostics as diagnostics
+from ...i18n import language_scope
+from ...i18n.workspace import get_workspace_language, set_workspace_language
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -53,7 +55,6 @@ def _dump(value: typing.Any) -> str:
 def _authorized(permission: Permission):
     context = get_request_context()
     require_permission(context, permission)
-    diagnostics.workspace(context)
     return context
 
 
@@ -79,6 +80,20 @@ class LangBotMCPServer:
     def _register_tools(self) -> None:
         ap = self.ap
         mcp = self
+
+        @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
+        async def get_workspace_message_language() -> str:
+            context = _authorized(Permission.WORKSPACE_VIEW)
+            return _dump({'language': await get_workspace_language(ap, context.workspace_uuid, refresh=True)})
+
+        @mcp.tool(
+            description='Set the Workspace message language. Requires workspace.update; does not change personal UI language.'
+        )
+        async def set_workspace_message_language(
+            language: typing.Literal['en_US', 'zh_Hans', 'zh_Hant', 'ja_JP', 'es_ES', 'ru_RU', 'th_TH', 'vi_VN'],
+        ) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
 
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
@@ -167,7 +182,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -178,7 +193,7 @@ class LangBotMCPServer:
             import datetime
 
             context = _authorized(Permission.RESOURCE_VIEW)
-            allowed = {'start_time', 'end_time'}
+            allowed = {'start_time', 'end_time', 'mode', 'execution_statuses'}
             if kind != 'embedding_calls':
                 allowed |= {'bot_ids', 'pipeline_ids'}
             if kind in {'messages', 'tool_calls'}:
@@ -209,6 +224,116 @@ class LangBotMCPServer:
                 return _dump(await ap.monitoring_service.get_message_details(context, identifier))
             return _dump(await ap.monitoring_service.get_session_analysis(context, identifier))
 
+        @mcp.tool(
+            description='Read a bounded snapshot of active and recently started Workspace executions, including the latest progress event. No percentage is estimated.'
+        )
+        async def get_inflight_executions() -> str:
+            return _dump(await ap.monitoring_service.get_inflight_snapshot(_authorized(Permission.RESOURCE_VIEW)))
+
+        @mcp.tool(
+            description='Reset a bot session model context, preserving monitoring history. Refuses busy sessions.'
+        )
+        async def reset_session_context(bot_id: str, session_id: str) -> str:
+            return _dump(
+                await ap.monitoring_service.reset_session_context(
+                    _authorized(Permission.RESOURCE_MANAGE),
+                    bot_id,
+                    session_id,
+                )
+            )
+
+        @mcp.tool(
+            description='Create/configure a Slack app for an existing Workspace bot draft. Returns a setup session; poll it for the installation authorization URL. The user must approve Slack installation. Configuration tokens stay in memory only.'
+        )
+        async def start_slack_setup(
+            bot_uuid: str,
+            access_token: str,
+            refresh_token: str,
+            webhook_url: str = '',
+            name: str = 'LangBot',
+            socket_mode: bool = False,
+            redirect_url: str = '',
+        ) -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+
+            return _dump(
+                await get_slack_setup(ap).start(
+                    _authorized(Permission.RESOURCE_MANAGE),
+                    bot_uuid=bot_uuid,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    webhook_url=webhook_url,
+                    name=name,
+                    socket_mode=socket_mode,
+                    redirect_url=redirect_url,
+                )
+            )
+
+        @mcp.tool(
+            description='Read an owned Slack setup session. Success includes adapter credentials; save them with the existing bot update tool. Socket Mode additionally needs an App-Level Token with connections:write.'
+        )
+        async def get_slack_setup_status(session_id: str) -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+
+            return _dump(get_slack_setup(ap).status(_authorized(Permission.RESOURCE_MANAGE), session_id))
+
+        @mcp.tool(
+            description='Discard an owned Slack setup session and its temporary credentials. Does not delete the Slack app.'
+        )
+        async def cancel_slack_setup(session_id: str) -> str:
+            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
+
+            service = get_slack_setup(ap)
+            service.owned(_authorized(Permission.RESOURCE_MANAGE), session_id)
+            service.discard(session_id)
+            return _dump({'cancelled': True})
+
+        @mcp.tool(
+            description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
+        )
+        async def get_monitoring_executions(
+            limit: int = 50,
+            offset: int = 0,
+            bot_ids: list[str] | None = None,
+            pipeline_ids: list[str] | None = None,
+            statuses: list[str] | None = None,
+            mode: typing.Literal['all', 'real', 'debug'] = 'all',
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.monitoring_service.get_executions(
+                    context,
+                    limit=limit,
+                    offset=offset,
+                    bot_ids=bot_ids,
+                    pipeline_ids=pipeline_ids,
+                    statuses=statuses,
+                    mode=mode,
+                )
+            )
+
+        @mcp.tool(
+            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
+        )
+        async def get_monitoring_execution_detail(
+            source: typing.Literal['auto', 'agent', 'pipeline', 'event'],
+            identifier: str,
+            section: str | None = None,
+            offset: int = 0,
+            limit: int = 100,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.monitoring_service.get_execution_detail(
+                    context,
+                    source,
+                    identifier,
+                    section=section,
+                    offset=offset,
+                    limit=limit,
+                )
+            )
+
         # ----- Bots ---------------------------------------------------- #
         @mcp.tool(description='List all messaging-platform bots. Secrets are redacted.')
         async def list_bots() -> str:
@@ -222,7 +347,7 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Create a bot. `bot_data` is a JSON object matching the LangBot '
+                'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
                 'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
@@ -380,12 +505,38 @@ class LangBotMCPServer:
             context = _authorized(Permission.RUNTIME_OPERATE)
             return _dump(await ap.agent_service.debug_agent(context, processor_uuid, payload))
 
+        @mcp.tool(description='Get the single starred LLM model UUID for the current Workspace.')
+        async def get_starred_model() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump({'uuid': await ap.llm_model_service.get_starred_model(context)})
+
+        @mcp.tool(
+            description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.'
+        )
+        async def set_starred_model(model_uuid: str | None = None) -> str:
+            context = _authorized(Permission.PROVIDER_SECRET_MANAGE)
+            await ap.llm_model_service.set_starred_model(context, model_uuid)
+            return _dump({'uuid': model_uuid})
+
+        @mcp.tool(
+            description='Resolve the default LLM model: starred model, then the available Space wizard recommendation.'
+        )
+        async def get_default_model() -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump({'uuid': await ap.llm_model_service.get_default_model(context)})
+
         @mcp.tool(description='List all configured LLM models. Secrets are redacted.')
         async def list_llm_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_models(context, include_secret=False))
 
-        @mcp.tool(description='Get a single LLM model by UUID.')
+        @mcp.tool(
+            description=(
+                'Get a single LLM model by UUID, including reasoning capabilities. '
+                'Optional budget_tokens min/max describes numeric thinking-budget support; '
+                'reasoning_config and extra_args retain the existing model API shape.'
+            )
+        )
         async def get_llm_model(model_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.llm_model_service.get_llm_model(context, model_uuid, include_secret=False))
@@ -443,7 +594,12 @@ class LangBotMCPServer:
         """Register a tool boundary before its authorization and service call."""
 
         def register(fn):
-            observed = diagnostics.observe(diagnostics.operation_id('mcp', fn), source='mcp', ap=self.ap)(fn)
+            @functools.wraps(fn)
+            async def observed(*args, **kwargs):
+                context = get_request_context()
+                with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                    return await fn(*args, **kwargs)
+
             return self.mcp.tool(**options)(observed)
 
         return register

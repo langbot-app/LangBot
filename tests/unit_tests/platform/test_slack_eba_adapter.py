@@ -190,7 +190,7 @@ async def test_slack_event_converter_maps_private_group_and_platform_specific():
     assert isinstance(group_event.message_chain[1], platform_message.At)
 
     assert isinstance(platform_event, platform_events.PlatformSpecificEvent)
-    assert platform_event.action == 'slack.file_share'
+    assert platform_event.action == 'slack.message'
 
 
 @pytest.mark.asyncio
@@ -212,7 +212,7 @@ async def test_slack_adapter_dispatches_eba_and_legacy_and_caches_group_event():
     assert len(eba_calls) == 1
     assert len(legacy_calls) == 1
     received = eba_calls[0]
-    assert await adapter.get_message('group', 'C-1', 'evt-1') == received
+    assert await adapter.get_message('group', 'C-1', '1710003600.000100') == received
     assert (await adapter.get_group_info('C-1')).id == 'C-1'
     assert (await adapter.get_group_member_info('C-1', 'U-1')).user.id == 'U-1'
 
@@ -225,7 +225,7 @@ async def test_slack_send_reply_platform_api_and_unsupported():
     reply_result = await adapter.reply_message(
         source_event, platform_message.MessageChain([platform_message.Plain(text='reply')])
     )
-    assert reply_result.message_id == 'evt-1'
+    assert reply_result.message_id == '1.2'
     assert ('person', 'U-1', 'reply') in adapter.bot.sent
 
     await adapter.send_message(
@@ -235,6 +235,7 @@ async def test_slack_send_reply_platform_api_and_unsupported():
 
     assert await adapter.call_platform_api('get_mode', {}) == {
         'webhook': True,
+        'socket_mode': False,
         'bot_account_id': 'B-1',
     }
     assert await adapter.call_platform_api('auth_test', {}) == {'ok': True, 'user_id': 'B-1'}

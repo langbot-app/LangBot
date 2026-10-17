@@ -131,9 +131,11 @@ export default function AccountSettingsPanel({
   async function loadTotpAccounts() {
     try {
       const res = await httpClient.getTotpAccounts();
-      const list = res.accounts || [];
-      setIsManager(list.length > 1);
-      setTotpRows(list);
+      // The role rule lives in the API: owners and admins receive the Workspace
+      // list, everyone else receives 403. Deriving manager state from the list
+      // length would hide oversight in a single-member Workspace.
+      setIsManager(true);
+      setTotpRows(res.accounts || []);
     } catch {
       // A non-manager receives 403 here; the panel keeps working on own state.
       setIsManager(false);

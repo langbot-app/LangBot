@@ -80,6 +80,7 @@ class FakePluginConnector:
         self.results = results or []
         self.error = error
         self.delay = delay
+        self.delay_entered = asyncio.Event()
         self.calls: list[dict] = []
         self.contexts: list[dict] = []
         self.sessions_during_run: list[dict | None] = []
@@ -100,6 +101,7 @@ class FakePluginConnector:
 
         for result in self.results:
             if self.delay:
+                self.delay_entered.set()
                 await asyncio.sleep(self.delay)
             yield result
 
@@ -142,6 +144,7 @@ class FakeApplication:
             get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase('kb_001'))
         )
         self.skill_mgr = types.SimpleNamespace(
+            reload_skills=AsyncMock(),
             get_skills=lambda context: {
                 'demo': {
                     'name': 'demo',
@@ -153,7 +156,7 @@ class FakeApplication:
                     'display_name': 'Hidden Skill',
                     'description': 'Not bound to this pipeline.',
                 },
-            }
+            },
         )
 
 
@@ -601,6 +604,35 @@ async def test_orchestrator_stops_after_cancel_request(clean_agent_state):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_while_waiting', [False, True])
+async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting):
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'first'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
+    await anext(stream)
+    if cancel_while_waiting:
+        connector.delay = 10
+        pending = asyncio.create_task(anext(stream))
+        # Cancel the provider wait, not an arbitrary journal DB operation.
+        await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+    else:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'cancelled'
+    assert run['status_reason'] == 'consumer_cancelled'
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_does_not_package_query_messages_into_context(clean_agent_state):
     """Host should not build an agent working-context window from query.messages."""
     db_engine = clean_agent_state
@@ -1007,7 +1039,7 @@ class TestQueryEntrySessionQueryId:
 
     @pytest.mark.asyncio
     async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
-        """Pure event-first flow restores authorized Skill revisions without a Query."""
+        """Pure event-first flow ignores the previous run's conversation pins."""
         from langbot.pkg.agent.runner.host_models import (
             AgentEventEnvelope,
             AgentBinding,
@@ -1131,7 +1163,8 @@ class TestQueryEntrySessionQueryId:
         assert execution_query.message_event.type == event.event_type
         assert '_host_box_scope' not in execution_query.variables
         assert execution_query.variables['_pipeline_bound_skills'] == ['demo', 'hidden']
-        assert execution_query.variables[ACTIVATED_SKILLS_KEY]['demo']['revision'] == revision
+        assert ACTIVATED_SKILLS_KEY not in execution_query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
         assert execution_query.variables['_pipeline_mcp_resource_attachments'][0]['server_uuid'] == 'srv-1'
         assert execution_query.variables['_pipeline_mcp_resource_agent_read_enabled'] is True
         assert 'MCP resource context selected by LangBot host:' in plugin_connector.contexts[0]['input']['text']
@@ -1363,8 +1396,8 @@ class TestQueryEntryAdapterHostCapabilities:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize('legacy_state', [False, True])
-    async def test_run_from_query_restores_activated_skills_from_state(self, clean_agent_state, legacy_state):
-        """Pinned revisions restore; old name-only state requires reactivation."""
+    async def test_new_query_does_not_restore_conversation_skill_pins(self, clean_agent_state, legacy_state):
+        """New runs ignore both revision and legacy name-only conversation pins."""
         from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
         from langbot.pkg.provider.tools.loaders.skill import (
             ACTIVATED_SKILL_NAMES_STATE_KEY,
@@ -1408,16 +1441,8 @@ class TestQueryEntryAdapterHostCapabilities:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         assert len(messages) == 1
-        if legacy_state:
-            assert ACTIVATED_SKILLS_KEY not in query.variables
-            assert ap.skill_repository.get_skill.await_count == 0
-            assert (
-                len([warning for warning in ap.logger.warnings if 'Legacy name-only activated Skill state' in warning])
-                == 1
-            )
-        else:
-            assert query.variables[ACTIVATED_SKILLS_KEY]['demo']['name'] == 'demo'
-            assert query.variables[ACTIVATED_SKILLS_KEY]['demo']['revision'] == revision
+        assert ACTIVATED_SKILLS_KEY not in query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_event_log_and_transcript_written(self, clean_agent_state):
@@ -1522,59 +1547,6 @@ async def test_synthetic_event_query_exposes_trusted_workspace_to_tools(clean_ag
     app.skill_mgr.get_skills = lambda scope: received.append(scope) or {}
     get_visible_skills(app, synthetic)
     assert received[0].workspace_uuid == context.workspace_uuid
-
-
-@pytest.mark.asyncio
-async def test_beta_diagnostics_close_releases_real_orchestrator_session(clean_agent_state):
-    from langbot.pkg.telemetry.diagnostics import DiagnosticsManager
-
-    plugin_connector = FakePluginConnector(
-        results=[{'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'CANARY'}}}]
-    )
-    ap = FakeApplication(plugin_connector, clean_agent_state)
-    ap.instance_config = types.SimpleNamespace(data={'space': {'url': 'https://example.invalid'}})
-    ap.diagnostics = DiagnosticsManager(ap, version='4.11.0b2', instance_id='instance-test')
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
-    gen = orchestrator.run_from_query(make_query())
-    assert (await anext(gen)).content == 'CANARY'
-    run_id = plugin_connector.contexts[0]['run_id']
-    assert await get_session_registry().get(run_id) is not None
-    await gen.aclose()
-    assert await get_session_registry().get(run_id) is None
-    records = [e for e in ap.diagnostics.pending if e['operation'] == 'runner.run']
-    assert records[-1]['outcome'] == 'cancelled'
-    import json
-
-    assert 'CANARY' not in json.dumps(ap.diagnostics.pending)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('terminal', ['run.completed', 'run.failed'])
-async def test_beta_diagnostics_real_runner_terminal(clean_agent_state, terminal):
-    from langbot.pkg.telemetry.diagnostics import DiagnosticsManager
-
-    plugin_connector = FakePluginConnector(
-        results=[
-            {
-                'type': terminal,
-                'data': {'finish_reason': 'stop'} if terminal == 'run.completed' else {'error': 'CANARY'},
-            }
-        ]
-    )
-    ap = FakeApplication(plugin_connector, clean_agent_state)
-    ap.instance_config = types.SimpleNamespace(data={'space': {'url': 'https://example.invalid'}})
-    ap.diagnostics = DiagnosticsManager(ap, version='4.11.0b2', instance_id='instance-test')
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
-    try:
-        _ = [v async for v in orchestrator.run_from_query(make_query())]
-    except RunnerExecutionError:
-        assert terminal == 'run.failed'
-    records = [e for e in ap.diagnostics.pending if e['operation'] == 'runner.run']
-    assert records[-1]['outcome'] == ('succeeded' if terminal == 'run.completed' else 'failed')
-    assert records[-1]['run_id'] == plugin_connector.contexts[0]['run_id']
-    import json
-
-    assert 'CANARY' not in json.dumps(ap.diagnostics.pending)
 
 
 @pytest.mark.asyncio

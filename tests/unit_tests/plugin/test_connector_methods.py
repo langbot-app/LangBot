@@ -749,6 +749,7 @@ class TestSetPluginConfig:
         """Config changes are fenced by a new runtime revision."""
         get_connector_module()
         connector = create_mock_connector()
+        connector.ap.deployment.mode = 'cloud'
 
         configure_handler(connector, AsyncMock())
         connector.handler.register_installation_binding = Mock()
@@ -765,6 +766,7 @@ class TestSetPluginConfig:
                     'normalized_digest': 'b' * 64,
                     'verification': 'valid',
                     'certificate_runtime_profile': 'shared-runtime-v1',
+                    'certificate_component_model': 'stateless-v1',
                     'certificate_id': 'ed25519:trusted-issuer',
                     'runtime_profile': 'shared-runtime-v1',
                     'admission_code': 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE',

@@ -356,7 +356,10 @@ class VectorDBManager:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
                 knowledge_base_uuid,
-                expected_dimension=len(query_vector),
+                # A text-only search sends no query vector; there is no dimension
+                # to bind, and validating an empty vector as dimension 0 would
+                # mask the backend capability error.
+                expected_dimension=len(query_vector) or None,
                 initialize_dimension=False,
             )
             results = await pgvector.search(

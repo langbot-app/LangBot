@@ -214,13 +214,33 @@ In `langbot-plugin-sdk`:
 - `src/langbot_plugin/box/runtime.py` owns sandbox sessions, generic read-only mounts, and managed processes.
 - `backend.py`, `nsjail_backend.py`, and `e2b_backend.py` implement sandbox backends.
 - `src/langbot_plugin/skill_store.py` is consumed by Core, not Box. Activation
-  pins the first revision for a run; instructions, resource reads, restart
-  recovery, execution mounts, and revision-scoped dependency state all use that
-  exact publication. Core mounts only activated and authorized Skills. Published
+  pins the first revision for a run in Host-owned run ledger metadata; instructions,
+  resource reads, execution mounts, and revision-scoped dependency state use that
+  exact publication. A new run refreshes the Workspace catalog and resolves the
+  current revision, ignoring old conversation activation state. Lost in-memory
+  pins in an active authorized run are reloaded from its ledger. After a Core
+  process restart, expired run sessions cannot call tools: the Host rejects them
+  rather than silently resolving a new version. This does not add automatic run resumption. Core mounts only activated and authorized Skills. Published
   trees are never agent write targets: authoring happens in Workspace drafts and
   an explicit registration/update atomically publishes the next revision. Core
   turns those package roots and content digests into generic read-only mounts;
   Box does not understand Skill names, metadata, revisions, files, or CRUD.
+
+Skill execution paths include the publication digest (`/opt/langbot-artifacts/<digest>`).
+Docker/Podman mount a read-only cache when creating the Box and atomically add
+verified packages before execution; E2B seals and verifies a private staging copy
+before publishing a stable projection. nsjail applies the requested mounts in a
+separate namespace for each execution. Activating a Skill after acquiring a Box
+therefore does not recreate the session or stop its managed processes. Ordinary
+host mount changes still fail explicitly on fixed-mount backends.
+
+A shared Box remains a Workspace filesystem sharing boundary: its commands can
+see previously materialized packages. Run pins prevent revision switching; they
+are not access isolation between mutually untrusted programs in the same Box.
+Use package-relative script paths or the path returned by activation. Core tools
+translate legacy `/workspace/.skills/<name>` command paths to the run's digest
+path, but do not rewrite paths embedded inside scripts. Published packages remain
+read-only; use writable drafts and the existing per-run outbox for output.
 
 Skill storage uses `skills.root`. Box execution config lives under `box:`:
 `box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. The old

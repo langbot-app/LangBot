@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langbot.pkg.telemetry import diagnostics
-
 import asyncio
 import time
 import traceback
@@ -134,7 +132,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     def _plain_message(text: str) -> platform_message.MessageChain:
         return platform_message.MessageChain([platform_message.Plain(text=text)])
 
-    @diagnostics.observe('api', 'send_message', source='platform', stage='accepted')
     async def send_message(
         self,
         target_type: str,
@@ -146,7 +143,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         )
         return platform_events.MessageResult(raw={'results': raw})
 
-    @diagnostics.observe('api', 'reply_message', source='platform', stage='accepted')
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -165,7 +161,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         )
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
 
-    @diagnostics.observe('api', 'call_platform_api', source='platform', stage='accepted')
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request':
             return await send_interaction(self, params)
@@ -263,7 +258,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     async def is_stream_output_supported(self) -> bool:
         return bool(self.config.get('enable-stream-reply') or self.config.get('enable_stream_reply'))
 
-    @diagnostics.observe('api', 'create_message_card', source='platform', stage='accepted')
     async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
         source = event.source_platform_object
         if not isinstance(source, QQOfficialEvent) or source.t != 'C2C_MESSAGE_CREATE':
@@ -283,7 +277,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         self._stream_ctx_ts[message_id] = time.time()
         return True
 
-    @diagnostics.observe('api', 'reply_message_chunk', source='platform', stage='accepted')
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -371,7 +364,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             if event is not None:
                 await self._dispatch_eba_event(event)
 
-    @diagnostics.observe('event', 'platform.native_receive', source='platform', stage='convert')
     async def _handle_native_event(self, event: QQOfficialEvent):
         self.bot_account_id = self.config.get('appid', self.bot_account_id)
         try:
@@ -388,7 +380,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             await self.logger.error(f'Error in qqofficial native event: {traceback.format_exc()}')
 
     async def _dispatch_eba_event(self, event: platform_events.EBAEvent):
-        diagnostics.adapter_event_received(self, event)
         for event_type in (type(event), platform_events.EBAEvent, platform_events.Event):
             callback = self.listeners.get(event_type)
             if callback:

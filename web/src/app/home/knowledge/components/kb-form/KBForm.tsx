@@ -112,6 +112,8 @@ export default function KBForm({
   // Dirty tracking: snapshot of saved state for comparison
   const savedSnapshotRef = useRef<string>('');
   const isInitializing = useRef(true);
+  const loadVersion = useRef(0);
+  const initialSettings = useRef(new Set<'config' | 'retrieval'>());
   const suppressNextAutoSelectRef = useRef(false);
 
   // Refs to store validation functions from dynamic forms
@@ -135,36 +137,65 @@ export default function KBForm({
     (e) => e.plugin_id === selectedEngineId,
   );
 
-  // Dirty tracking: compare current form + dynamic settings against saved snapshot
-  const watchedFormValues = form.watch();
-  useEffect(() => {
+  const draftRef = useRef({
+    config: configSettings,
+    retrieval: retrievalSettings,
+  });
+  draftRef.current = { config: configSettings, retrieval: retrievalSettings };
+  const lastDirtyRef = useRef(false);
+  const refreshDirty = useCallback(() => {
     if (!savedSnapshotRef.current || isInitializing.current) return;
-    const currentSnapshot = JSON.stringify({
-      form: watchedFormValues,
-      config: configSettings,
-      retrieval: retrievalSettings,
-    });
-    const dirty = currentSnapshot !== savedSnapshotRef.current;
-    onDirtyChange?.(dirty);
-  }, [watchedFormValues, configSettings, retrievalSettings, onDirtyChange]);
+    const next =
+      !engineInitialized ||
+      JSON.stringify({
+        form: form.getValues(),
+        ...draftRef.current,
+      }) !== savedSnapshotRef.current;
+    if (next !== lastDirtyRef.current) {
+      lastDirtyRef.current = next;
+      onDirtyChange?.(next);
+    }
+  }, [engineInitialized, form, onDirtyChange]);
+  useEffect(() => {
+    refreshDirty();
+    const subscription = form.watch(refreshDirty);
+    return () => subscription.unsubscribe();
+  }, [form, refreshDirty, configSettings, retrievalSettings]);
 
-  const captureSnapshot = () => {
-    savedSnapshotRef.current = JSON.stringify({
-      form: form.getValues(),
-      config: configSettings,
-      retrieval: retrievalSettings,
-    });
-  };
+  function updateSettings(
+    slot: 'config' | 'retrieval',
+    values: Record<string, unknown>,
+  ) {
+    // Normalize only this form's initial emission. Never absorb another field's
+    // edits or depend on a timer to decide when the user may start typing.
+    if (initialSettings.current.delete(slot) && savedSnapshotRef.current) {
+      const baseline = JSON.parse(savedSnapshotRef.current);
+      baseline[slot] = values;
+      savedSnapshotRef.current = JSON.stringify(baseline);
+    }
+    draftRef.current = { ...draftRef.current, [slot]: values };
+    if (slot === 'config') setConfigSettings(values);
+    else setRetrievalSettings(values);
+  }
 
   useEffect(() => {
+    const version = ++loadVersion.current;
     setInitialDataLoaded(false);
     setLoadFailed(false);
-    loadRagEngines()
+    loadRagEngines(version)
       .then(() => {
-        if (initKbId) return loadKbConfig(initKbId);
+        if (version === loadVersion.current && initKbId)
+          return loadKbConfig(initKbId, version);
       })
-      .catch(() => setLoadFailed(true))
-      .finally(() => setInitialDataLoaded(true));
+      .catch(() => {
+        if (version === loadVersion.current) setLoadFailed(true);
+      })
+      .finally(() => {
+        if (version === loadVersion.current) setInitialDataLoaded(true);
+      });
+    return () => {
+      loadVersion.current += 1;
+    };
   }, [initKbId, loadAttempt]);
 
   // Auto-select first engine when engines are loaded and no selection
@@ -188,54 +219,63 @@ export default function KBForm({
     }
   }, [ragEngines, selectedEngineId, isEditing]);
 
-  const loadRagEngines = async () => {
+  const loadRagEngines = async (version: number) => {
     setLoading(true);
     try {
       const resp = await httpClient.getKnowledgeEngines();
-      setRagEngines(resp.engines);
+      if (version === loadVersion.current) setRagEngines(resp.engines);
     } catch (err) {
       throw err;
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
-  const loadKbConfig = async (kbId: string) => {
+  const loadKbConfig = async (kbId: string, version: number) => {
     try {
       isInitializing.current = true;
       setIsEditing(true);
 
       const res = await httpClient.getKnowledgeBase(kbId);
+      if (version !== loadVersion.current) return;
       const kb = res.base;
 
       const engineId = kb.knowledge_engine_plugin_id || '';
       setSelectedEngineId(engineId);
 
-      form.reset({
+      const loadedForm = {
         name: kb.name,
         description: kb.description,
         emoji: kb.emoji || '📚',
         ragEngineId: engineId,
-      });
+      };
+      form.reset(loadedForm);
 
       setConfigSettings(kb.creation_settings || {});
       setRetrievalSettings(kb.retrieval_settings || {});
       setEngineInitialized(kb.initialized !== false);
 
-      // Capture snapshot after a tick so dynamic forms have emitted initial values
-      setTimeout(() => {
-        captureSnapshot();
-        isInitializing.current = false;
-        onDirtyChange?.(kb.initialized === false);
-      }, 500);
-    } catch (err) {
+      draftRef.current = {
+        config: kb.creation_settings || {},
+        retrieval: kb.retrieval_settings || {},
+      };
+      savedSnapshotRef.current = JSON.stringify({
+        form: loadedForm,
+        ...draftRef.current,
+      });
+      initialSettings.current = new Set(['config', 'retrieval']);
       isInitializing.current = false;
+      lastDirtyRef.current = kb.initialized === false;
+      onDirtyChange?.(lastDirtyRef.current);
+    } catch (err) {
+      if (version === loadVersion.current) isInitializing.current = false;
       throw err;
     }
   };
 
   const handleEngineChange = useCallback(
     (engineId: string, installedEngine?: KnowledgeEngine) => {
+      initialSettings.current.clear();
       setSelectedEngineId(engineId);
       form.setValue('ragEngineId', engineId, {
         shouldDirty: true,
@@ -300,13 +340,22 @@ export default function KBForm({
         : { defer_initialization: true }),
     };
 
+    const submittedSnapshot = JSON.stringify({
+      form: data,
+      config: configSettings,
+      retrieval: retrievalSettings,
+    });
     if (initKbId) {
       httpClient
         .updateKnowledgeBase(initKbId, kbData)
         .then((res) => {
           setEngineInitialized(true);
-          captureSnapshot();
-          onDirtyChange?.(false);
+          savedSnapshotRef.current = submittedSnapshot;
+          const dirty =
+            JSON.stringify({ form: form.getValues(), ...draftRef.current }) !==
+            submittedSnapshot;
+          lastDirtyRef.current = dirty;
+          onDirtyChange?.(dirty);
           onKbUpdated(res.uuid);
           toast.success(t('knowledge.updateKnowledgeBaseSuccess'));
         })
@@ -515,7 +564,7 @@ export default function KBForm({
                   itemConfigList={configFormItems}
                   initialValues={configSettings as Record<string, object>}
                   onSubmit={(val) =>
-                    setConfigSettings(val as Record<string, unknown>)
+                    updateSettings('config', val as Record<string, unknown>)
                   }
                   isEditing={engineInitialized}
                   externalDependentValues={retrievalSettings}
@@ -542,7 +591,7 @@ export default function KBForm({
                 itemConfigList={retrievalFormItems}
                 initialValues={retrievalSettings as Record<string, object>}
                 onSubmit={(val) =>
-                  setRetrievalSettings(val as Record<string, unknown>)
+                  updateSettings('retrieval', val as Record<string, unknown>)
                 }
                 externalDependentValues={configSettings}
                 onValidate={(validateFn) =>

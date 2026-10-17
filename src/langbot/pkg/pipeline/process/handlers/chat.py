@@ -1,22 +1,21 @@
 from __future__ import annotations
 
+from ....i18n import pipeline_notice
+
 import uuid
 import typing
 import traceback
-import time
-from datetime import datetime
 
 
 from .. import handler
+from ..stream_results import coalesce_stream_results
 from ... import entities
 from ... import plugin_diagnostics
 
 import langbot_plugin.api.entities.events as events
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
-from ....utils import constants, runner as runner_utils
-from ....telemetry import features as telemetry_features
-from ....telemetry.identity import workspace_identity
+from ....utils import runner as runner_utils
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -115,9 +114,6 @@ class ChatMessageHandler(handler.MessageHandler):
             text_length = 0
             runner = None
             try:
-                # Mark start time for telemetry
-                start_ts = time.time()
-
                 try_claim_steering = getattr(
                     self.ap.agent_run_orchestrator,
                     'try_claim_steering_from_query',
@@ -139,7 +135,10 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginRunnerWrapper
-                async for result in self.ap.agent_run_orchestrator.run_from_query(query):
+                results = self.ap.agent_run_orchestrator.run_from_query(query)
+                if is_stream:
+                    results = coalesce_stream_results(results)
+                async for result in results:
                     has_result = True
                     self._check_response_size(result)
 
@@ -155,6 +154,11 @@ class ChatMessageHandler(handler.MessageHandler):
                             }
                         )
                         result.attachments = attachments
+
+                    if is_stream and result.tool_calls:
+                        # A model round ending in tool calls does not end the
+                        # reply. Keep the native stream open for the answer.
+                        result = result.model_copy(update={'is_final': False})
 
                     result.resp_message_id = str(resp_message_id)
 
@@ -199,6 +203,11 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     if is_stream:
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                        if result.is_final and not result.tool_calls:
+                            # Native adapters release their card on completion.
+                            # A distinct later message needs a fresh card identity.
+                            is_create_card = False
+                            resp_message_id = uuid.uuid4()
 
                 # Log final summary after streaming completes
                 if is_stream:
@@ -231,14 +240,20 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Handle specific runner errors with appropriate messages
                 if isinstance(e, RunnerNotFoundError):
-                    user_notice = f'Agent runner not found: {e.runner_id}'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-found-hint', 'Agent runner not found: {runner}', runner=e.runner_id
+                    )
                 elif isinstance(e, RunnerNotAuthorizedError):
-                    user_notice = 'Agent runner not authorized for this pipeline'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                    )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:
-                        user_notice = 'Agent runner temporarily unavailable. Please try again.'
+                        user_notice = pipeline_notice(
+                            query, 'runner-unavailable-hint', 'Agent runner temporarily unavailable. Please try again.'
+                        )
                     else:
-                        user_notice = 'Agent runner execution failed.'
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
                     # Use existing exception handling
                     exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
@@ -246,7 +261,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     if exception_handling == 'show-error':
                         user_notice = f'{e}'
                     elif exception_handling == 'show-hint':
-                        user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
                     else:  # hide
                         user_notice = None
 
@@ -258,69 +273,48 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc(),
                 )
             finally:
-                # Telemetry reporting
+                # Telemetry: the per-execution record is built when the owning
+                # trace closes, so only attach the execution-scoped fields this
+                # lane knows here.
                 try:
-                    end_ts = time.time()
-                    duration_ms = None
-                    if 'start_ts' in locals():
-                        duration_ms = int((end_ts - start_ts) * 1000)
+                    from ....telemetry.trace import current as current_trace
 
+                    state = current_trace()
+                    if state is not None:
+                        adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else ''
+                        runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
+                        state.adapter = state.adapter or adapter_name
+                        state.runner = state.runner or (runner_name or '')
+                        state.runner_category = state.runner_category or runner_utils.get_runner_category_from_runner(
+                            runner_name, None, query.pipeline_config
+                        )
+                        model_name = ''
+                        try:
+                            if getattr(query, 'use_llm_model_uuid', None):
+                                m = await self.ap.model_mgr.get_model_by_uuid(
+                                    get_query_execution_context(query),
+                                    query.use_llm_model_uuid,
+                                )
+                                if m and getattr(m, 'model_entity', None):
+                                    model_name = getattr(m.model_entity, 'name', '') or ''
+                        except Exception:
+                            model_name = ''
+                        state.model_name = state.model_name or model_name
+                        if state.pipeline_plugins is None:
+                            state.pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                except Exception as ex:
+                    self.ap.logger.warning(f'Failed to attach execution telemetry fields: {ex}')
+
+                # Trigger survey events on successful non-WebSocket responses
+                try:
                     adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else None
-
-                    # Use orchestrator to resolve runner ID for telemetry
-                    runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
-
-                    # Model name if available
-                    model_name = None
-                    try:
-                        if getattr(query, 'use_llm_model_uuid', None):
-                            m = await self.ap.model_mgr.get_model_by_uuid(
-                                get_query_execution_context(query),
-                                query.use_llm_model_uuid,
-                            )
-                            if m and getattr(m, 'model_entity', None):
-                                model_name = getattr(m.model_entity, 'name', None)
-                    except Exception:
-                        model_name = None
-
-                    pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
-
-                    runner_category = runner_utils.get_runner_category_from_runner(
-                        runner_name, None, query.pipeline_config
-                    )
-
-                    # Feature usage collected during query processing (tool calls,
-                    # knowledge base usage, sandbox executions, activated skills, ...)
-                    features = telemetry_features.collect_features(query)
-
-                    payload = {
-                        'event_type': 'query',
-                        'query_id': query.query_id,
-                        'adapter': adapter_name,
-                        'runner': runner_name,
-                        'runner_category': runner_category,
-                        'duration_ms': duration_ms,
-                        'model_name': model_name,
-                        'version': constants.semantic_version,
-                        **workspace_identity(get_query_execution_context(query)),
-                        'runtime_instance_id': constants.instance_id,
-                        'edition': constants.edition,
-                        'pipeline_plugins': pipeline_plugins,
-                        'features': features,
-                        'error': locals().get('error_info', None),
-                        'timestamp': datetime.utcnow().isoformat(),
-                    }
-
-                    await self.ap.telemetry.start_send_task(payload)
-
-                    # Trigger survey events on successful non-WebSocket responses
                     if not locals().get('error_info') and adapter_name and 'WebSocket' not in adapter_name:
                         if self.ap.survey:
                             await self.ap.survey.trigger_event('first_bot_response_success')
                             # Counts toward the bot_response_success_100 milestone event
                             await self.ap.survey.record_bot_response_success()
                 except Exception as ex:
-                    self.ap.logger.warning(f'Failed to send telemetry: {ex}')
+                    self.ap.logger.warning(f'Failed to trigger survey event: {ex}')
 
     async def _ensure_conversation_for_history(
         self,

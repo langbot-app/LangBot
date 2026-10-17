@@ -6,14 +6,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import time
 
 import websockets
 
 
-async def run(port: int) -> None:
-    uri = f'ws://127.0.0.1:{port}/ws'
+async def run(uri: str) -> None:
     headers = {
+        'Authorization': 'Bearer ' + os.environ['ONEBOT_PROBE_TOKEN'],
         'X-Self-ID': '900001',
         'X-Client-Role': 'Universal',
         'User-Agent': 'LangBot-E2E-OneBot/1.0',
@@ -27,7 +28,7 @@ async def run(port: int) -> None:
         except OSError:
             await asyncio.sleep(0.25)
     if connection is None:
-        raise RuntimeError(f'OneBot reverse WebSocket did not open on port {port}')
+        raise RuntimeError('OneBot reverse WebSocket did not open')
 
     actions: list[str] = []
     event_deadline = time.monotonic() + 20
@@ -88,6 +89,6 @@ async def run(port: int) -> None:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, required=True)
+    parser.add_argument('--url', required=True)
     args = parser.parse_args()
-    asyncio.run(run(args.port))
+    asyncio.run(run(args.url))

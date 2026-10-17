@@ -655,6 +655,16 @@ function NavItems({
           if (item.extensionType === 'skill') {
             return `/home/skills?id=${encodeURIComponent(item.id)}`;
           }
+          const processorTab = searchParams.get('tab');
+          if (
+            hasDetailPages &&
+            (routePrefix === '/home/agents' ||
+              routePrefix === '/home/pipelines') &&
+            (pathname === '/home/agents' || pathname === '/home/pipelines') &&
+            (processorTab === 'logs' || processorTab === 'config')
+          ) {
+            return `${routePrefix}?id=${encodeURIComponent(item.id)}&tab=${processorTab}`;
+          }
           return hasDetailPages
             ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
             : routePrefix;
@@ -794,7 +804,7 @@ function NavItems({
                       {(isBot || isMCP) && (
                         <span
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
+                            'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-popover',
                             isMCP
                               ? mcpStatusColor(item)
                               : item.enabled === false
@@ -862,7 +872,7 @@ function NavItems({
                             {(isBot || isMCP) && (
                               <span
                                 className={cn(
-                                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
+                                  'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-sidebar',
                                   isMCP
                                     ? mcpStatusColor(item)
                                     : item.enabled === false
@@ -1871,6 +1881,9 @@ export default function HomeSidebar({
   const canViewStorageAnalysis =
     currentWorkspace?.workspace.source !== 'cloud_projection' &&
     currentWorkspace?.permissions.includes('audit.view');
+  // The operation log is an audit surface: owner / admin only.
+  const canViewOperationTrace =
+    currentWorkspace?.permissions.includes('audit.view') ?? false;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('models');
@@ -2221,19 +2234,8 @@ export default function HomeSidebar({
                 <span>{t('models.title')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {/* Operation traceability is an audit surface: only roles holding
-                audit.view (owner / admin) get a direct sidebar entry. */}
-            {currentWorkspace?.permissions.includes('audit.view') && (
-              <SidebarMenuItem data-sidebar-guide="operation-trace">
-                <SidebarMenuButton
-                  onClick={() => openSettings('operationTrace')}
-                  tooltip={t('operationTrace.title')}
-                >
-                  <History className="size-4 text-blue-500" />
-                  <span>{t('operationTrace.title')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
+            {/* Operation log entry moved to the account menu: it is an audit
+                surface, not a primary navigation target. */}
           </SidebarMenu>
 
           {/* API-key management is available only to authorized Workspace roles. */}
@@ -2356,6 +2358,17 @@ export default function HomeSidebar({
                       >
                         <HardDrive />
                         {t('storageAnalysis.title')}
+                      </DropdownMenuItem>
+                    )}
+                    {canViewOperationTrace && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          openSettings('operationTrace');
+                        }}
+                      >
+                        <History />
+                        {t('operationTrace.title')}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
