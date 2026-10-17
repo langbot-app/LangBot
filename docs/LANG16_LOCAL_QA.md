@@ -10,6 +10,9 @@ rule out an overnight leak or establish the reporter's exact network failure.
 - Core task branch: `qa/lang-16-v4.11.0`. This document accompanies the tested core changes.
 - LocalAgent task branch: `agent/langbot-local-qa/7acb7953fc8d`, fix commit
   `f33146a0c263f643d1bba803c640af2ac7906f46` in `langbot-app/langbot-plugins`.
+- SDK task branch: `qa/lang-16-sdk-0.7.11`, fix `11b525892fb0d4ea8b478958ebab717e90fe462a`
+  in `langbot-app/langbot-plugin-sdk`, based on v0.7.11 `e10d8385b2843a25e30219f9153f3227c8a0009f`.
+  Code is pushed; no SDK package or LocalAgent marketplace release has occurred.
 - macOS 27.0 arm64, 36 GiB RAM, Python 3.12.14, Node 26.10.0, pnpm 8.9.2.
 - Dedicated task worktrees; existing core/RT/Box/frontend on 5399, 5400/5401, 5410, 3000 were left alone.
 - Test core 15399, RT 15400/15401, Box 15410, Vite 13000, OneBot peers 12280/12281,
@@ -122,9 +125,8 @@ Core/RT health stayed responsive. SDK 0.7.11 `runtime/plugin/mgr.py:3166` serial
 every initialized plugin in scope without first excluding plugins with no EventListener components;
 Core `plugin/connector.py:2344` serially visits installation bindings. Both QA plugins declare only a
 Runner, so the unrelated worker's event RPC waits behind its busy event loop. This is latency coupling,
-not a reproduced whole-RT crash. Fixing admission at the SDK layer needs its source worktree;
-`multica repo checkout https://github.com/langbot-app/langbot-plugin-sdk` returned
-`repo is not configured for this workspace`. Installed dependency files were not patched as a substitute.
+not a reproduced whole-RT crash. The initial repository-registration blocker was removed by Mika;
+the SDK is now fixed in its task worktree and pushed (see below).
 
 Causal configuration control `baseline-20261017-200408`: disable enable_all_plugins and bind each
 pipeline only to its required QA plugin. The same BLOCK control arrived at +0.393 s, versus +3.191 s
@@ -132,6 +134,61 @@ with all plugins enabled; other controls were +0.428–0.448 s. Both database an
 API showed zero running queries at all post-fault checkpoints. This is a verified temporary workaround
 when a pipeline does not need the other plugins, not a replacement for an SDK fix. No existing user
 pipeline configuration was changed.
+
+## SDK root fix and real subscriber contract follow-up
+
+SDK `11b52589` skips workers whose initialized component list contains no EventListener. The list is
+refreshed from the worker after initialization; this is not a pipeline-binding workaround. Existing
+scope/enabled/status/connection filters, serial context mutation, response provenance, trusted query
+identity and prevent_postorder handling remain intact. Event-type subscriptions remain worker-local:
+a plugin with an EventListener may still receive an event it does not subscribe to. No parallel
+broadcast, event schema change, exception swallowing or package version change was introduced.
+
+Seven new no-listener regression cases fail on unmodified v0.7.11 and pass with the fix. The focused
+manager/worker/control-handler regression suite passes **473 tests, 5 skipped, 11 warnings**. Skips are
+two unavailable exact plugin archives, Linux shared-worker/nsjail tests and platform-specific launcher
+cases. An existing synchronous component-list test used asyncio.run inside a suite managed by
+pytest-asyncio, orphaning a loop (also reproduced on unmodified SDK). It now uses async/await under
+pytest's lifecycle. No warning filters were relaxed; final stderr is empty. Ruff and diff checks pass.
+
+All new real runs use core behavior at `8ffd38c6` (this follow-up changes only QA scripts/docs), real
+RT/Box/frontend and two separately installed synthetic plugins, with enable_all_plugins=True. Before
+uses the preserved PyPI SDK 0.7.11 environment. After uses a new task-only venv populated from the same
+frozen dependencies, then `uv pip install --python <task-venv>/bin/python --no-deps ./langbot-plugin-sdk`.
+The SDK wheel is built from the task worktree, not a patch to installed site-packages. Core, RT, Box
+and their plugin workers use that interpreter. LANG16_CORE_PYTHON selects it; no uv sync replaces it.
+Existing user environments and both earlier repository results are preserved. LocalAgent remains
+`f33146a0` / task-built 0.2.1; its real model/Box acceptance above used SDK 0.7.11 before this SDK change.
+The SDK fault fixture uses QA plugins, not LocalAgent or a model; a new three-way live LLM run is not
+claimed. Production adoption requires a coordinated dependency/package update, which is not published here.
+
+| Real run | No-listener RAISE / TIMEOUT / BLOCK / EXIT healthy reply after fault start |
+| --- | --- |
+| Before `201631` (43.59 s) | 0.413 / 0.399 / **3.177** / 0.409 s |
+| After `201723` (60.31 s including startup) | 0.424 / 0.390 / **0.393** / 0.412 s |
+
+Controls are sent at +0.30 s. Both completed all cases; monitoring executions API running=0 at every
+post-fault checkpoint, including OneBot disconnect/reconnect. All owned process survivors=[]; all four
+services reached health 200. Startup timings are not a controlled cold-start benchmark.
+
+Actual subscribers, after `201830` (73.14 s): the two real EventListeners produce
+`HealthyProbe>FaultProbe>` by serially accumulating reply_message_chain. prevent_default bypasses
+Runner; prevent_postorder yields only `HealthyProbe>`. Faulty listener RuntimeError, bounded timeout,
+worker exit and subsequent healthy controls are exercised. Controls after those faults are
+0.416 / 0.405 / 0.803 s. With listeners present, a Runner BLOCK still delays a healthy event to 3.171 s.
+The combined LBLOCK input intentionally matches both the listener and Runner: each busy-loops for
+three seconds, giving 6.190 s healthy latency. At the five-second checkpoint two executions remain
+running, then both finish; subsequent checkpoints and final queue are zero. This is bounded waiting,
+not a leak or successful isolation of a faulty subscriber. Subscriber exceptions still abort their
+current event; later queries recover. OneBot transport and worker disconnect paths both recover.
+The unmodified SDK control `202001` (73.12 s) produced the identical ordered/prevented replies;
+LRAISE/LTIMEOUT/LBLOCK/LEXIT controls were 0.424/0.421/6.173/0.784 s, and Runner BLOCK was 3.182 s.
+Results are in the follow-up evidence package. No arbitrary unbounded hang or shared-worker isolation
+claim is made. All owned processes are cleaned before handoff.
+
+Reproduce with LANG16_MATRIX=1 LANG16_SHORT=1 LANG16_SECONDS=180; add LANG16_LISTENERS=1 for real
+subscriber checks. Use LANG16_CORE_PYTHON for the isolated built SDK. The listener harness asserts
+exact ordered/prevented replies. Run only one stack at a time and retain supervisor resource limits.
 
 ## 5, 7–9. Terminal states and resources
 
@@ -267,15 +324,27 @@ They are not acceptance evidence. A resource limit fired safely during browser s
 | 1 Installation detail | Redacted network diagnostics implemented; real API and browser failure flow verified | Original user network incident itself not reproduced |
 | 2 Installation path discrepancy | Both actual marketplace paths succeed; ten synthetic fault/path cases terminate | Mainland route blocked: proxy-disabled egress is JP through utun4 |
 | 3 Box/unrelated messages | Catch-all gate, busy steering gate and LocalAgent lazy Box fixes delivered | Explicit filtered bindings keep their override; live steering acceptance/attachments are not covered by live prompts |
-| 4 RT coupling | Handler/timeout/exit/init/dependency cases tested; whole-RT crash not reproduced | Cross-plugin BLOCK latency reproduced; SDK checkout unavailable; explicit plugin binding is a verified workaround |
+| 4 RT coupling | SDK no-listener RPC admission fixed and pushed; real healthy BLOCK latency 3.177→0.393 s; subscriber order/prevention preserved | Faulty EventListeners can still delay/abort later subscribers by the serial contract; no whole-RT crash reproduced |
 | 5 Memory exhaustion | Not reproduced in bounded process-separated runs | No heap or overnight real-LLM-history soak; not a leak-free guarantee |
 | 6 Groq | Outbound schema correction and local JSON/SSE regressions delivered | Real Groq explicitly deferred, not passed |
 | 7 Processing records | Stage-exception and disconnected-reply stale rows fixed and retested | No bulk rewriting of historical pending records; host-shutdown recovery recorded separately |
 | 8 Backlog CPU/memory | Matched workload CPU reduction measured; bounded queue and recovery verified | Peak memory unchanged; cannot attribute reporter's exact resource spike |
 | 9 Startup/ongoing resources | Cold/idle/message/fault/burst/ten-minute soak and recovery measured | Development frontend and synthetic load; limits described above |
 
-Remaining support requests go to Mika: register langbot-app/langbot-plugin-sdk for a task checkout to
-repair the reproduced cross-plugin wait, and provide an authorized isolated mainland egress on this Mac
-for the network acceptance gap. No change to the existing VPN or user services is authorized or needed
+Remaining environment requirement: an authorized process-only mainland egress on this Mac, or an
+explicitly authorized isolated direct-connect window, for the network acceptance gap. SDK registration,
+checkout, root fix and task-branch push are complete. No change to the existing VPN or user services is authorized or needed
 for the completed tests. No new paid resource/account permission is assumed. Until those are resolved
 (or explicitly deferred), this is a partial delivery and LANG-16 must not be marked fully accepted.
+
+
+## Explicit unaccepted long-history scope
+
+Real LLM windows were approximately 120.01 s (`154144`) and 119.08 s (`192121`), including startup;
+each used two prompted turns (plain answer and exec tool request), plus one filtered unrelated message.
+This is not a growing-history benchmark. The ten-minute synthetic soak used 3232 total inputs per run,
+including 60 keyword controls and 3000 unrelated messages, but no model/history growth. Serialized
+conversation-history bytes and peak prompt tokens were not measured. Overnight real LLM history,
+long-lived tool histories and eventual memory saturation therefore remain unaccepted; no 18-hour or
+leak-free assurance is given. No overnight process is left running. Groq real calls remain explicitly
+deferred. These limits are separate from the now-completed SDK no-listener fix.

@@ -34,6 +34,31 @@ class Probe(Runner):
 """
 
 
+LISTENER = """import asyncio, os, time
+from langbot_plugin.api.definition.components.common.event_listener import EventListener
+from langbot_plugin.api.entities import events
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+class ProbeListener(EventListener):
+    async def initialize(self):
+        @self.handler(events.GroupNormalMessageReceived)
+        async def handle(ctx):
+            text = ctx.event.text_message
+            name = 'PLUGIN_NAME'
+            if name == 'FaultProbe':
+                if 'LRAISE' in text: raise RuntimeError('LANG16 listener fault')
+                if 'LTIMEOUT' in text: await asyncio.wait_for(asyncio.sleep(3), 0.2)
+                if 'LEXIT' in text: os._exit(19)
+                if 'LBLOCK' in text:
+                    until = time.monotonic() + 3
+                    while time.monotonic() < until: pass
+            if 'CONTRACT' in text:
+                previous = str(ctx.event.reply_message_chain or '')
+                ctx.event.reply_message_chain = MessageChain([Plain(text=previous + name + '>')])
+                ctx.prevent_default()
+                if 'STOP' in text: ctx.prevent_postorder()
+"""
+
+
 def package(name, init_failure=False, dependency_failure=False):
     manifest = {
         'apiVersion': 'v1',
@@ -63,9 +88,24 @@ def package(name, init_failure=False, dependency_failure=False):
     }
     main = 'from langbot_plugin.api.definition.plugin import BasePlugin\nclass ProbePlugin(BasePlugin):\n    async def initialize(self):\n        '
     main += "raise RuntimeError('LANG16 initialization fault')\n" if init_failure else 'pass\n'
+    listener_files = {}
+    if os.environ.get('LANG16_LISTENERS') == '1':
+        manifest['spec']['components']['EventListener'] = {'fromDirs': [{'path': 'components/event_listener/'}]}
+        listener_manifest = {
+            'apiVersion': 'v1',
+            'kind': 'EventListener',
+            'metadata': {'name': 'events', 'label': {'en_US': 'QA events'}},
+            'spec': {},
+            'execution': {'python': {'path': 'events.py', 'attr': 'ProbeListener'}},
+        }
+        listener_files = {
+            'components/event_listener/events.yaml': yaml.safe_dump(listener_manifest),
+            'components/event_listener/events.py': LISTENER.replace('PLUGIN_NAME', name),
+        }
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, 'w') as z:
         for path, data in {
+            **listener_files,
             'manifest.yaml': yaml.safe_dump(manifest),
             'main.py': main,
             'components/runner/default.yaml': yaml.safe_dump(component),
@@ -82,6 +122,7 @@ async def main():
         'synthetic_plugins': True,
         'stages': [],
         'sent': 0,
+        'listeners': os.environ.get('LANG16_LISTENERS') == '1',
         'explicit_plugin_bindings': os.environ.get('LANG16_BOUND') == '1',
     }
     async with httpx.AsyncClient(base_url='http://127.0.0.1:15399', timeout=15, trust_env=False) as client:
@@ -227,6 +268,29 @@ async def main():
                 await asyncio.sleep(2)
                 await snapshot('healthy_baseline')
                 assert any('LANG16_HEALTHY' in str(r['message']) for r in replies), 'Healthy runner did not execute'
+                if os.environ.get('LANG16_LISTENERS') == '1':
+                    for text in ('CONTRACT', 'CONTRACT STOP'):
+                        first = len(replies)
+                        await send(healthy, 'qa: ' + text, 910600)
+                        await asyncio.sleep(2)
+                        results.setdefault('contracts', {})[text] = replies[first:]
+                        expected = 'HealthyProbe>' if 'STOP' in text else 'HealthyProbe>FaultProbe>'
+                        actual = [
+                            element['data']['text']
+                            for reply in replies[first:]
+                            for element in reply['message']
+                            if element['type'] == 'text'
+                        ]
+                        assert actual == [expected], (text, actual)
+
+                    for kind in ('LRAISE', 'LTIMEOUT', 'LBLOCK', 'LEXIT'):
+                        results.setdefault('fault_started', {})[kind] = time.monotonic()
+                        await send(fault, 'qa: ' + kind, 910601)
+                        await asyncio.sleep(0.3)
+                        await send(healthy, 'qa: HEALTHY control', 910101)
+                        await asyncio.sleep(5)
+                        await snapshot(kind)
+                    await asyncio.sleep(3)
                 if os.environ.get('LANG16_CANCEL') == '1':
                     await send(healthy, 'qa: WAIT', 910500)
                     await asyncio.sleep(1)
@@ -259,7 +323,7 @@ async def main():
                     await send(healthy, 'qa: HEALTHY control', 910101)
                     await asyncio.sleep(5)
                     await snapshot('EXIT')
-                if os.environ.get('LANG16_BOUND') == '1':
+                if os.environ.get('LANG16_BOUND') == '1' or os.environ.get('LANG16_SHORT') == '1':
                     results['complete'] = True
                     results['replies'] = replies
                     Path('matrix-result.json').write_text(json.dumps(results, indent=2))

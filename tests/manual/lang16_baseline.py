@@ -99,6 +99,10 @@ def launch(name, args, cwd):
         for key in ('LANG16_UPGRADE', 'LANG16_UPGRADE_ACCOUNT'):
             if key in os.environ:
                 child_env[key] = os.environ[key]
+    if name == 'matrix':
+        for key in ('LANG16_SHORT', 'LANG16_LISTENERS'):
+            if key in os.environ:
+                child_env[key] = os.environ[key]
     if name == 'matrix' and os.environ.get('LANG16_BOUND'):
         child_env['LANG16_BOUND'] = os.environ['LANG16_BOUND']
     if name == 'matrix' and os.environ.get('LANG16_CANCEL'):
