@@ -61,3 +61,52 @@ test('Cloud never exposes or requests storage analysis', async ({ page }) => {
   );
   expect(storageAnalysisRequests).toBe(0);
 });
+
+test('an OSS owner opens storage analysis from its storage-icon menu item', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  let requests = 0;
+  await page.route('**/api/v1/system/storage-analysis', async (route) => {
+    requests++;
+    await route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          generated_at: '2026-10-17T00:00:00Z',
+          total_size_bytes: 123,
+          sections: [],
+          cleanup_policy: {
+            uploaded_file_retention_days: 7,
+            log_retention_days: 14,
+          },
+          database: {
+            type: 'sqlite',
+            monitoring_counts: {},
+            binary_storage: { count: 0, size_bytes: 0 },
+          },
+          cleanup_candidates: { uploaded_files: [], log_files: [] },
+          tasks: {},
+        },
+      },
+    });
+  });
+  await page.goto('/home/bots');
+  await page.getByRole('button', { name: /admin@example\.com/i }).click();
+  const menuItem = page.getByRole('menuitem', {
+    name: 'Storage Analysis',
+    exact: true,
+  });
+  await expect(menuItem).toBeVisible();
+  await expect(menuItem.locator('svg.lucide-hard-drive')).toBeVisible();
+  await menuItem.click();
+  await expect(
+    page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Refresh', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('dialog').getByText('123 B', { exact: true }),
+  ).toBeVisible();
+  await expect.poll(() => requests).toBeGreaterThan(0);
+});

@@ -138,7 +138,8 @@ async def test_same_session_and_resource_ids_do_not_collide(service):
     assert (await service.get_message_details(context_a, message_b))['found'] is False
 
 
-async def test_session_search_matches_user_id_or_name_within_workspace(service):
+@pytest.mark.parametrize('bot_ids', [None, ['same-bot']])
+async def test_session_search_matches_user_id_or_name_within_workspace(service, bot_ids):
     context_a = _context(WORKSPACE_A)
     context_b = _context(WORKSPACE_B)
     fixtures = [
@@ -159,8 +160,8 @@ async def test_session_search_matches_user_id_or_name_within_workspace(service):
             user_name=user_name,
         )
 
-    by_id, id_total = await service.get_sessions(context_a, user_query='customer-42')
-    by_name, name_total = await service.get_sessions(context_a, user_query='alice')
+    by_id, id_total = await service.get_sessions(context_a, bot_ids=bot_ids, user_query='customer-42')
+    by_name, name_total = await service.get_sessions(context_a, bot_ids=bot_ids, user_query='alice')
 
     assert id_total == 1
     assert [session['session_id'] for session in by_id] == ['session-id-match']

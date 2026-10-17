@@ -100,7 +100,7 @@ async def test_permission_fallback_retries_all_files_once_in_the_bound_box(env, 
     original_open = secure_fs.os.open
 
     def denied_open(path, flags, *args, **kwargs):
-        if path == 'b.txt':
+        if path == 'b.txt' and not flags & os.O_DIRECTORY:
             raise PermissionError(errno.EACCES, 'denied', path)
         return original_open(path, flags, *args, **kwargs)
 

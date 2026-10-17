@@ -51,6 +51,8 @@ def _unsafe(path: str, exc: BaseException | None = None) -> UnsafeWorkspacePathE
 def _root_fd(root: str):
     try:
         fd = os.open(root, _DIRECTORY_FLAGS)
+    except PermissionError:
+        raise
     except OSError as exc:
         raise _unsafe(root, exc)
     try:
@@ -70,6 +72,8 @@ def _open_dir_at(parent_fd: int, name: str, *, create: bool) -> int:
             pass
     try:
         fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+    except PermissionError:
+        raise
     except OSError as exc:
         raise _unsafe(name, exc)
     if not stat.S_ISDIR(os.fstat(fd).st_mode):
@@ -97,6 +101,8 @@ def _remove_entry(
             child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent_fd)
         except FileNotFoundError:
             return
+        except PermissionError:
+            raise
         except OSError as exc:
             if exc.errno not in {errno.ELOOP, errno.ENOTDIR, errno.EACCES}:
                 raise

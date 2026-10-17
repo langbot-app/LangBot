@@ -7,14 +7,18 @@ They must not be converted into an empty or partial successful export.
 
 If Core lacks permission to read host-mounted output, it retries the complete
 read inside the already-bound Box. The retry preserves the Box configuration,
-Workspace identity and generation checks. Both readers use the same bounded,
-descriptor-relative implementation and do not follow symbolic links. Unsafe
+Workspace identity and generation checks. Both readers use bounded,
+descriptor-relative reads and do not follow symbolic links. The sandbox path
+uses the upstream read/clear script and preserves its nonblocking FIFO handling. Unsafe
 host paths and quota failures do not trigger this permission fallback.
 
 Host and exec exports retain the upstream limits: up to 20 files and 50 MiB
 per collection, with a 10 MiB per-file limit. Exec export uses raw stdout;
-the smaller inbound command limit does not apply. Over-limit output fails
-explicitly and remains in the outbox so the producer can reduce it and retry.
+the smaller inbound command limit does not apply. SDK 0.7.13 still caps raw
+stdout at 1 MiB per stream, including base64/JSON overhead. Larger private
+exports can therefore fail before reaching the reader's nominal file limit.
+Truncated or over-limit output fails explicitly and remains in the outbox so
+the producer can reduce it and retry; this change does not extend that SDK cap.
 
 Runner export also checks its cumulative 100-file and 50 MiB run limits before
 registering any new file handles or clearing the outbox. Failed reads and
@@ -37,6 +41,7 @@ the permission fallback for root-owned mode-0600 output. Docker Desktop has
 different bind-mount ownership semantics, so its test explicitly selects the
 remote reader; that result alone does not establish the Linux permission case.
 
-When the sibling official LocalAgent source fixture is available, the original
+With `LANGBOT_LEGACY_PLUGIN_ROOT` pointing to the official revision pinned in
+`tests/fixtures/legacy_plugin_identity_sources.json`, the
 `test_local_runner_owns_box_reuse_and_explicit_files` E2E additionally exercises
 Core, Plugin Runtime, LocalAgent, Host file APIs and Docker with a scripted model.
