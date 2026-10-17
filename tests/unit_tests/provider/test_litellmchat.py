@@ -29,6 +29,108 @@ class MockRuntimeModel:
         self.provider.token_mgr.get_token = Mock(return_value=api_key)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+@pytest.mark.parametrize(
+    'provider,model_name', [('groq', 'llama-3.3-70b-versatile'), ('', 'groq/llama-3.3-70b-versatile')]
+)
+async def test_groq_history_omits_internal_provider_metadata(stream, provider, model_name):
+    from langbot_plugin.api.entities.builtin.provider.message import Message, ToolCall, FunctionCall
+
+    history = Message(
+        role='assistant',
+        content='previous answer',
+        provider_specific_fields={'thought_signature': 'opaque-signature'},
+        tool_calls=[
+            ToolCall(
+                id='call_1',
+                type='function',
+                function=FunctionCall(name='lookup', arguments='{}'),
+                provider_specific_fields={'thought_signature': 'tool-signature'},
+            )
+        ],
+    )
+    original = history.model_dump()
+    app = Mock()
+    app.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+    req = litellmchat.LiteLLMRequester(ap=app, config={'custom_llm_provider': provider})
+    args = await req._build_completion_args(MockRuntimeModel(model_name), [history], stream=stream)
+    assert 'provider_specific_fields' not in args['messages'][0]
+    assert 'provider_specific_fields' not in args['messages'][0]['tool_calls'][0]
+    assert args['messages'][0]['tool_calls'][0]['function'] == {'name': 'lookup', 'arguments': '{}'}
+    assert history.model_dump() == original
+    # A subsequent fallback must still have the original provider's signature.
+    assert (
+        req._convert_messages([history], reasoning_family='gemini')[0]['provider_specific_fields']
+        == original['provider_specific_fields']
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+async def test_groq_local_http_payload_has_no_history_metadata(stream):
+    """Exercise real LiteLLM HTTP serialization against a synthetic local endpoint."""
+    from aiohttp import web
+    import json
+    from langbot_plugin.api.entities.builtin.provider.message import Message
+
+    received = []
+
+    async def completion(request):
+        payload = await request.json()
+        received.append(payload)
+        if any('provider_specific_fields' in m for m in payload['messages']):
+            return web.json_response(
+                {'error': {'message': 'unsupported property', 'type': 'invalid_request_error'}}, status=400
+            )
+        message = {'role': 'assistant', 'content': 'local fixture'}
+        response = {
+            'id': 'local-test',
+            'object': 'chat.completion',
+            'created': 1,
+            'model': 'llama-3.3-70b-versatile',
+            'service_tier': 'on_demand',
+            'choices': [{'index': 0, 'message': message, 'finish_reason': 'stop'}],
+        }
+        if stream:
+            response['object'] = 'chat.completion.chunk'
+            response['choices'][0]['delta'] = response['choices'][0].pop('message')
+            return web.Response(
+                text='data: ' + json.dumps(response) + '\n\ndata: [DONE]\n\n', content_type='text/event-stream'
+            )
+        return web.json_response(response)
+
+    server = web.Application()
+    server.router.add_post('/chat/completions', completion)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    site = web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        req = litellmchat.LiteLLMRequester(
+            ap=Mock(), config={'custom_llm_provider': 'groq', 'base_url': f'http://127.0.0.1:{port}', 'timeout': 5}
+        )
+        args = await req._build_completion_args(
+            MockRuntimeModel('llama-3.3-70b-versatile'),
+            [
+                Message(role='assistant', content='history', provider_specific_fields={'opaque': 'local-test'}),
+                Message(role='user', content='continue'),
+            ],
+            stream=stream,
+        )
+        response = await litellm.acompletion(**args)
+        if stream:
+            chunks = [chunk async for chunk in response]
+            assert chunks[0].choices[0].delta.content == 'local fixture'
+        else:
+            assert response.choices[0].message.content == 'local fixture'
+        assert len(received) == 1
+        assert received[0]['messages'][0] == {'role': 'assistant', 'content': 'history'}
+    finally:
+        await runner.cleanup()
+
+
 class MockRuntimeEmbeddingModel:
     """Mock RuntimeEmbeddingModel for testing"""
 

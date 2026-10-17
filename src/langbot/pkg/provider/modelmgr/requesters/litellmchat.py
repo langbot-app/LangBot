@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing
 import asyncio
+import copy
 
 import litellm
 from litellm import acompletion, aembedding, arerank
@@ -1120,6 +1121,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 # otherwise probes its optional MCP gateway for every tool call
                 # and imports proxy-only dependencies such as FastAPI.
                 args['_skip_mcp_handler'] = True
+
+        destination_provider = args.get('custom_llm_provider') or str(args['model']).partition('/')[0]
+        if destination_provider == 'groq':
+            # Internal history metadata is not part of Groq's message schema.
+            # Copy at the request boundary so fallback providers can still
+            # replay signatures from the same conversation/tool-call history.
+            args['messages'] = copy.deepcopy(args['messages'])
+            for message in args['messages']:
+                message.pop('provider_specific_fields', None)
+                for tool_call in message.get('tool_calls') or []:
+                    tool_call.pop('provider_specific_fields', None)
 
         return args
 
