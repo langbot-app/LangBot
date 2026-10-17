@@ -9,7 +9,6 @@ import sqlalchemy as sa
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 from ....entity.persistence.assistant import AssistantConversation as Conversation
-from ...application import ApplicationAPIException
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext, PrincipalType
 from .assistant_tools import TOOLS, execute_tool, tool_definitions, validate_call
@@ -354,15 +353,6 @@ class AssistantService:
                     )
                     if 'func_call' not in (selected_model.model_entity.abilities or []):
                         raise ValueError('Model does not support tool calls')
-                except ApplicationAPIException as exc:
-                    self.ap.logger.warning('Management assistant tool %s rejected (%s)', func['name'], exc.error.code)
-                    self._append_result(
-                        conversation,
-                        call,
-                        {'error': {'code': exc.error.code, 'message': exc.error.message}},
-                    )
-                    await self._save(context, conversation, 'failed', exc.error.code)
-                    raise AssistantError(exc.error.code, exc.error.status_code)
                 except Exception as exc:
                     raise AssistantError('model_unavailable', 400) from exc
             result = await self.ap.persistence_mgr.execute_async(

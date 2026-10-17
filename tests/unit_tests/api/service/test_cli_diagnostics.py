@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
+from langbot.pkg.api.application import ApplicationAPI
 import quart
 
 from langbot.pkg.api.http.context import (
@@ -64,6 +66,7 @@ async def diagnostic_client(ap):
             permissions=ctx.workspace.permissions,
         )
 
+    ap.application_api = ApplicationAPI(ap)
     ap.apikey_service = SimpleNamespace(authenticate_api_key=authenticate)
     app = quart.Quart(__name__)
     for cls in (MonitoringRouterGroup, BoxRouterGroup, PipelinesRouterGroup):

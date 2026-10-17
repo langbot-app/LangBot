@@ -20,12 +20,10 @@ from __future__ import annotations
 import json
 import functools
 import typing
-import functools
 
 from mcp.server.fastmcp import FastMCP
 
 from ..application import (
-    ApplicationAPI,
     ApplicationAPIException,
     KnowledgeBaseGetInput,
     KnowledgeBaseListInput,
@@ -73,19 +71,6 @@ def _authorized(permission: Permission):
     context = get_request_context()
     require_permission(context, permission)
     return context
-
-
-def _application_api(ap) -> ApplicationAPI:
-    """Resolve the shared operation facade without an eager fallback.
-
-    ``_application_api(ap)`` evaluates
-    ``ap.pipeline_service`` even when the facade exists and assumes the legacy
-    service has facade method names such as ``list_pipelines``. Both make
-    lightweight app graphs fail before the operation can run.
-    """
-
-    application_api = getattr(ap, 'application_api', None)
-    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 class LangBotMCPServer:
@@ -145,7 +130,7 @@ class LangBotMCPServer:
         async def list_knowledge_engines() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             try:
-                output = await _application_api(ap).execute(
+                output = await ap.application_api.execute(
                     'knowledge.engine.list',
                     context,
                     KnowledgeEngineListInput(),
@@ -158,7 +143,7 @@ class LangBotMCPServer:
         async def get_knowledge_engine_schema(plugin_id: str, kind: typing.Literal['creation', 'retrieval']) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             try:
-                output = await _application_api(ap).execute(
+                output = await ap.application_api.execute(
                     'knowledge.engine.schema.get',
                     context,
                     KnowledgeEngineSchemaInput(plugin_id=plugin_id, kind=kind),
@@ -175,7 +160,7 @@ class LangBotMCPServer:
         async def get_pipeline_extensions(pipeline_uuid: str) -> str:
             try:
                 return _dump(
-                    await _application_api(ap).get_pipeline_extensions(
+                    await ap.application_api.get_pipeline_extensions(
                         _authorized(Permission.RESOURCE_VIEW), pipeline_uuid
                     )
                 )
@@ -197,7 +182,7 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
             try:
-                await _application_api(ap).update_pipeline_extensions(
+                await ap.application_api.update_pipeline_extensions(
                     context,
                     PipelineExtensionsUpdateInput(
                         pipeline_uuid=pipeline_uuid,
@@ -211,7 +196,7 @@ class LangBotMCPServer:
                         mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
                     ),
                 )
-                return _dump(await _application_api(ap).get_pipeline_extensions(context, pipeline_uuid))
+                return _dump(await ap.application_api.get_pipeline_extensions(context, pipeline_uuid))
             except ApplicationAPIException as exc:
                 return _application_error(exc)
 
@@ -439,12 +424,12 @@ class LangBotMCPServer:
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await _application_api(ap).list_pipelines(context))
+            return _dump(await ap.application_api.list_pipelines(context))
 
         @mcp.tool(description='Get a single pipeline by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await _application_api(ap).get_pipeline(context, pipeline_uuid))
+            return _dump(await ap.application_api.get_pipeline(context, pipeline_uuid))
 
         @mcp.tool(
             description=(
@@ -611,7 +596,7 @@ class LangBotMCPServer:
         async def list_knowledge_bases() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             try:
-                output = await _application_api(ap).execute(
+                output = await ap.application_api.execute(
                     'knowledge.base.list',
                     context,
                     KnowledgeBaseListInput(),
@@ -624,7 +609,7 @@ class LangBotMCPServer:
         async def get_knowledge_base(kb_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             try:
-                output = await _application_api(ap).execute(
+                output = await ap.application_api.execute(
                     'knowledge.base.get',
                     context,
                     KnowledgeBaseGetInput(knowledge_base_uuid=kb_uuid),

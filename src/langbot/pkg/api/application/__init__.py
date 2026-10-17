@@ -1,8 +1,6 @@
-"""Versioned, workspace-scoped application APIs shared by protocol adapters."""
+"""Workspace-scoped application APIs shared by protocol adapters."""
 
 from .api import (
-    APPLICATION_API_VERSION,
-    ApplicationErrorCode,
     OPERATIONS,
     ApplicationAPI,
     ApplicationAPIError,
@@ -25,17 +23,12 @@ from .api import (
     KnowledgeEngineSchemaInput,
     KnowledgeEngineSchemaOutput,
 )
-from .client import ApplicationAPIClient, ApplicationAPIClientError
 
 __all__ = [
-    'APPLICATION_API_VERSION',
-    'ApplicationErrorCode',
     'OPERATIONS',
     'ApplicationAPI',
     'ApplicationAPIError',
     'ApplicationAPIException',
-    'ApplicationAPIClient',
-    'ApplicationAPIClientError',
     'OperationSpec',
     'PipelineExtensionsGetInput',
     'PipelineExtensionsGetOutput',

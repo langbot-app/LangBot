@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.api.application import (
-    APPLICATION_API_VERSION,
+    OPERATIONS,
     ApplicationAPI,
     ApplicationAPIException,
     PipelineListInput,
@@ -82,22 +82,6 @@ async def test_execute_validates_service_output_contract():
     assert failure.value.error.code == 'invalid_output'
 
 
-def test_catalog_is_versioned_and_workspace_scoped():
-    catalog = {item['id']: item for item in ApplicationAPI.operation_catalog()}
-
-    assert len(catalog) == 8
-    assert catalog['pipeline.list']['version'] == APPLICATION_API_VERSION
-    assert catalog['pipeline.list']['scope'] == 'workspace'
-    assert catalog['pipeline.extensions.update']['side_effect'] is True
-    assert catalog['pipeline.list']['input_type'] == 'PipelineListInput'
-    assert catalog['pipeline.list']['output_type'] == 'PipelineListOutput'
-    assert catalog['pipeline.extensions.update']['error_type'] == 'ApplicationAPIError'
-    assert catalog['knowledge.engine.list']['version'] == APPLICATION_API_VERSION
-    assert catalog['knowledge.engine.schema.get']['input_type'] == 'KnowledgeEngineSchemaInput'
-    assert catalog['knowledge.base.list']['output_type'] == 'KnowledgeBaseListOutput'
-    assert catalog['knowledge.base.get']['output_type'] == 'KnowledgeBaseGetOutput'
-
-
 def test_update_pipeline_extensions_has_explicit_typed_parameters():
     signature = inspect.signature(ApplicationAPI.update_pipeline_extensions)
     assert all(parameter.kind is not inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
@@ -115,7 +99,7 @@ def test_application_api_is_part_of_minimal_application_graph():
     graph.application_api = ApplicationAPI(graph)
 
     assert graph.application_api.ap is graph
-    assert {item['id'] for item in graph.application_api.operation_catalog()} == {
+    assert set(OPERATIONS) == {
         'pipeline.list',
         'pipeline.get',
         'pipeline.extensions.get',
@@ -151,7 +135,7 @@ async def test_knowledge_read_operations_delegate_with_typed_outputs():
     assert fetched.base == {'uuid': 'kb-1'}
     assert engines.engines == [{'plugin_id': 'author/engine'}]
     assert schema.schema == [{'name': 'url'}]
-    service.get_knowledge_bases.assert_awaited_once_with(context)
+    service.get_knowledge_bases.assert_awaited_once_with(context, include_secret=False)
     service.get_knowledge_base.assert_awaited_once_with(context, 'kb-1', include_secret=False)
     service.list_knowledge_engines.assert_awaited_once_with(context)
     service.get_engine_creation_schema.assert_awaited_once_with(context, 'author/engine')

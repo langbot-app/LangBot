@@ -123,7 +123,6 @@ Repository = "https://github.com/langbot-app/LangBot"
 
 [project.scripts]
 langbot = "langbot.__main__:main"
-langbot-api = "langbot.pkg.api.application.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

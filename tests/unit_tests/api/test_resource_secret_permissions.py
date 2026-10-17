@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+
+from langbot.pkg.api.application import ApplicationAPI
 import quart
 
 from langbot.pkg.api.http.controller.groups.knowledge.base import KnowledgeBaseRouterGroup
@@ -111,6 +113,7 @@ async def _create_client(role: str):
 
     application.webhook_service = SimpleNamespace(get_webhooks=AsyncMock(side_effect=get_webhooks))
 
+    application.application_api = ApplicationAPI(application)
     quart_app = quart.Quart(__name__)
     for router_type in (
         PipelinesRouterGroup,
