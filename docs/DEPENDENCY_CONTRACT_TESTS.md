@@ -14,8 +14,8 @@ latest-LocalAgent Space-resolution work in PR #2632.
 ## Official plugin identity boundary
 
 The source lock in `tests/fixtures/legacy_plugin_identity_sources.json` records
-the official repository, immutable revision, and SHA-256 of every consumed file
-(including plugin manifests). CI checks out that revision with read-only access
+the official repository, immutable revision, and SHA-256 of the consumed Python
+source files. CI checks out that revision with read-only access
 and no persisted Git credentials. Tests verify file digests before executing the
 actual identity methods, their genuine configuration-error classes, and their
 real `scoped_identity` dependency. Vendor HTTP clients are not constructed.
