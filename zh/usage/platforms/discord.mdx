@@ -51,7 +51,7 @@ Discord 单条消息有长度限制，长流式输出需要分段送达。检查
 
 成员加入/离开事件没有来源频道，回复会发送到服务器配置的 **系统消息频道**。请在 Discord 服务器设置中配置该频道，并授予机器人查看频道、发送消息权限；未配置系统消息频道时，回复会明确失败。成员离开回调无法区分主动退群和被踢，不要将 `is_kicked` 作为可靠的管理判断依据。
 
-![实际附件往返示例：红蓝图片与文本作为输入，回复包含绿色 PNG 和计算结果文本附件。](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
+![Discord 实际投递：插件原样回传上传的图片和文本文件，随后 Pipeline 私聊回复成功。](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
 
 ## 排查问题
 

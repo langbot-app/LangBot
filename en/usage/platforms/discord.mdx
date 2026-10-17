@@ -51,7 +51,7 @@ For message events, `chat_id` is the channel ID and `group.id` is the server ID.
 
 For member join/leave events, there is no originating channel. Replies use the server's configured **System Messages Channel**. Configure it in Discord's server settings and grant the bot View Channels and Send Messages there; without a system channel, the reply fails explicitly. The member-leave callback does not distinguish voluntary departure from a kick, so do not use `is_kicked` as an authoritative moderation signal.
 
-![Real attachment round trip: a red/blue image and a text file go in; a green PNG and a text file containing the calculated result come back.](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
+![Real Discord delivery: the plugin returns the uploaded image and text file, followed by a successful Pipeline DM reply.](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
 
 ## Troubleshooting
 
