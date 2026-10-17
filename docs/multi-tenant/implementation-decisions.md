@@ -73,7 +73,7 @@ This log records implementation choices made while delivering the Workspace arch
 
 ### API-key secrets are one-time and Workspace-bound
 
-- Decision: Database API keys persist only a globally unique SHA-256 hash, an opaque UUID, one Workspace UUID, explicit fixed-permission scopes, status, expiry, creator, and last-used time. The raw secret is returned once. Authentication derives Workspace and generation from the key record and ignores Workspace selectors. Legacy plaintext keys are hashed during migration and receive a compatibility `*` scope. The plaintext config key works only for the OSS singleton Workspace and is disabled in multi-Workspace mode.
+- Decision: Database API keys persist a secret hash, UUID, Workspace, creating user, status, expiry and last-used time. The raw secret is returned once. Authentication derives the Workspace from the key, checks the active user and membership, and uses the current role permissions. Keys have no independent scopes; config-file global keys are not supported.
 - Reason: A bearer key is an identity and routing credential, not merely a password layered on top of caller-controlled tenant selection.
 
 ### MCP tools inherit the authenticated API-key context

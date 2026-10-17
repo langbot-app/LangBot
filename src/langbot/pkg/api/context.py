@@ -63,7 +63,7 @@ class RequestContext:
 
     @property
     def account_uuid(self) -> str | None:
-        """Return the Account UUID when the principal is an Account."""
+        """Return the user UUID for an account session or user-bound API key."""
 
         return self.principal.account_uuid
 

@@ -495,9 +495,6 @@ export default function ApiIntegrationPanel({
 # or
 Authorization: Bearer <your-api-key>`}
             </pre>
-            <p className="text-sm text-muted-foreground">
-              {t('common.mcpGlobalKeyNote')}
-            </p>
           </div>
 
           <div className="space-y-2">

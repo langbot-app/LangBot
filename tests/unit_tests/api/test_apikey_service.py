@@ -13,7 +13,7 @@ from langbot.pkg.entity.persistence.apikey import ApiKeyStatus
 @pytest.mark.parametrize('api_key', [None, 123, b'lbk_bytes', '', 'plain_key', ' LBK_bad', 'sk-lbk_fake'])
 async def test_verify_api_key_rejects_non_lbk_keys_without_db_query(api_key):
     persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
-    instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
+    instance_config = SimpleNamespace(data={'api': {}})
     workspace_service = SimpleNamespace(get_execution_binding=AsyncMock())
     service = ApiKeyService(
         SimpleNamespace(
@@ -40,7 +40,7 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
             workspace_uuid='workspace-a',
             status=ApiKeyStatus.ACTIVE.value,
             expires_at=None,
-            scopes=[],
+            created_by_account_uuid='account-a',
         )
         if key_exists
         else None
@@ -53,9 +53,16 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
         scoped_result.first.return_value = key
         update_result = Mock()
         update_result.scalar_one_or_none.return_value = key.id
-        query_results.extend([scoped_result, update_result])
+        membership_result = Mock()
+        membership_result.first.return_value = SimpleNamespace(
+            uuid='member-a',
+            account_uuid='account-a',
+            role='viewer',
+            projection_revision=1,
+        )
+        query_results.extend([scoped_result, membership_result, update_result])
     persistence_mgr = SimpleNamespace(execute_async=AsyncMock(side_effect=query_results))
-    instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
+    instance_config = SimpleNamespace(data={'api': {}})
     workspace_service = SimpleNamespace(
         get_execution_binding=AsyncMock(
             return_value=SimpleNamespace(
@@ -76,7 +83,7 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
     result = await service.verify_api_key('lbk_valid_format')
 
     assert result is key_exists
-    assert persistence_mgr.execute_async.await_count == (3 if key_exists else 1)
+    assert persistence_mgr.execute_async.await_count == (4 if key_exists else 1)
     if key_exists:
         workspace_service.get_execution_binding.assert_awaited_once_with('workspace-a')
     else:

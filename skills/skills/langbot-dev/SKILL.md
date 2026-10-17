@@ -1,6 +1,6 @@
 ---
 name: langbot-dev
-description: Develop, build, and debug the LangBot core backend and web frontend. Use when working inside the LangBot repository — backend (Python/Quart, src/langbot/pkg), the Vite/React web UI, HTTP API controllers/services, Alembic migrations, or the MCP server. Covers the dev environment (uv, pnpm), repo layout, the API auth model (user token / API key / global key), adding API endpoints, and the rule that API changes must update the MCP server and skills. Triggers on "langbot backend", "langbot dev", "langbot api", "add langbot endpoint", "langbot migration".
+description: Develop, build, and debug the LangBot core backend and web frontend. Use when working inside the LangBot repository — backend (Python/Quart, src/langbot/pkg), the Vite/React web UI, HTTP API controllers/services, Alembic migrations, or the MCP server. Covers the dev environment (uv, pnpm), repo layout, the API auth model (user token / API key), adding API endpoints, and the rule that API changes must update the MCP server and skills. Triggers on "langbot backend", "langbot dev", "langbot api", "add langbot endpoint", "langbot migration".
 ---
 
 # LangBot Core Development
@@ -72,12 +72,10 @@ selector and is always checked against the Account membership. Tenant services
 must accept this context (or an explicit trusted execution context) and fail
 closed when it is absent.
 
-API-key authentication accepts:
-
-1. the **global key** from `config.yaml` `api.global_api_key` only for a
-   community instance with exactly one local Workspace, then
-2. **web-UI keys** whose one-time `lbk_` secret is stored only as a hash and is
-   bound to one Workspace, explicit scopes, status, and optional expiry.
+API-key authentication accepts database-backed `lbk_` keys. Their one-time
+secrets are stored only as hashes and bind the creating user and one Workspace.
+Authentication checks the active user and membership and derives permissions
+from the user's current role. Keys have no independent scopes.
 
 An API key derives its Workspace from the key record and ignores a caller's
 Workspace selector. Public Bot/Webhook routes similarly derive Workspace from

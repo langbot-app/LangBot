@@ -52,7 +52,7 @@ async def test_fresh_oss_workspace_http_journey_uses_real_sqlite_persistence(
                     'limitation': {},
                     'outbound_ips': [],
                 },
-                'api': {'global_api_key': ''},
+                'api': {},
                 'plugin': {'enable_marketplace': True},
                 'space': {
                     'url': 'https://space.langbot.app',

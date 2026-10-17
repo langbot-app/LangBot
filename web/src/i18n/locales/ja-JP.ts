@@ -488,8 +488,6 @@ const jaJP = {
     mcpAuthTitle: '認証',
     mcpAuthDesc:
       '「API キー」タブの任意のキーを、ヘッダーで送信して認証します：',
-    mcpGlobalKeyNote:
-      'config.yaml にグローバル API キー（api.global_api_key）を設定すると、ログインなしで使用できます。',
     mcpClientConfigTitle: 'MCP クライアント設定の例',
     webhooks: 'Webhooks',
     createWebhook: 'Webhook を作成',

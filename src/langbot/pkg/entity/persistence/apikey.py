@@ -34,7 +34,6 @@ class ApiKey(Base):
     )
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     key_hash = sqlalchemy.Column(sqlalchemy.String(64), nullable=False)
-    scopes = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=list, server_default='[]')
     status = sqlalchemy.Column(
         sqlalchemy.String(32),
         nullable=False,

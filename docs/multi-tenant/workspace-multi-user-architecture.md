@@ -433,7 +433,7 @@ class RequestContext:
 
 ### 8.3 API Key、WebSocket 与长任务
 
-- API Key 只持久化 hash，raw secret 仅返回一次；记录绑定 Workspace、固定 scopes、状态、expiry 和 creator。
+- API Key 只持久化 hash，raw secret 仅返回一次；记录绑定 Workspace、creator、状态和 expiry；认证时检查用户及成员状态，使用用户当前角色权限，不维护独立 scopes。
 - Dashboard WebSocket 在升级后认证，并在每条入站消息前重新验证 Account、Membership、权限、资源所有权和 generation。
 - 长时间 LLM、MCP、Plugin 或 Box 调用在产生副作用或接受结果前再次校验 execution generation。
 - 临时凭证交换绑定发起者、Workspace、instance 和 generation；其他 scope 查询返回与不存在相同的 404。

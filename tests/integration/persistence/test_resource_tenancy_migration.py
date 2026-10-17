@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import uuid
 
 import pytest
@@ -50,15 +49,11 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
                 )
 
             api_key = (
-                (await conn.execute(sa.text('SELECT key_hash, scopes, status, created_by_account_uuid FROM api_keys')))
+                (await conn.execute(sa.text('SELECT key_hash, status, created_by_account_uuid FROM api_keys')))
                 .mappings()
                 .one()
             )
             assert api_key['key_hash'] == hashlib.sha256(b'lbk_legacy-secret').hexdigest()
-            stored_scopes = api_key['scopes']
-            if isinstance(stored_scopes, str):
-                stored_scopes = json.loads(stored_scopes)
-            assert stored_scopes == ['*']
             assert api_key['status'] == 'active'
             assert api_key['created_by_account_uuid'] is not None
             assert await conn.scalar(sa.text('SELECT normalized_email FROM users')) == 'owner@example.com'
@@ -117,8 +112,9 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
             engine,
             lambda conn: {column['name'] for column in sa.inspect(conn).get_columns('api_keys')},
         )
+        assert 'scopes' not in api_columns
         assert 'key' not in api_columns
-        assert {'uuid', 'key_hash', 'scopes', 'status', 'expires_at', 'last_used_at'} <= api_columns
+        assert {'uuid', 'key_hash', 'status', 'expires_at', 'last_used_at'} <= api_columns
         for table_name in TENANT_TABLES:
             columns = await _inspect(
                 engine,

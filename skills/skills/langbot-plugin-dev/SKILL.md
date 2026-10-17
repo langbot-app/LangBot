@@ -10,8 +10,7 @@ description: Develop, debug, and test LangBot plugins. Use when creating new Lan
 Beyond writing code, you can **drive a live LangBot instance over MCP** — no raw
 HTTP needed. Two MCP servers exist (both reuse existing API keys; see `AGENTS.md`):
 
-- **LangBot instance** — `http://<host>:5300/mcp` (auth: web-UI `lbk_` key or the
-  `api.global_api_key` from `config.yaml`). Manage bots, pipelines, models,
+- **LangBot instance** — `http://<host>:5300/mcp` (auth: user-bound web-UI `lbk_` key). Manage bots, pipelines, models,
   knowledge bases, and skills. See the **`langbot-mcp-ops`** skill.
 - **LangBot Space marketplace** — `https://space.langbot.app/mcp` (auth: Personal
   Access Token). Search plugins / MCP servers / skills. See the

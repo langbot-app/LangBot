@@ -687,7 +687,7 @@ class TestPostgreSQLResourceTenancyMigration:
                 lambda sync_conn: {column['name'] for column in sa.inspect(sync_conn).get_columns('api_keys')}
             )
             assert 'key' not in api_columns
-            assert await conn.scalar(text('SELECT scopes FROM api_keys')) == ['*']
+            assert 'scopes' not in api_columns
             assert (await conn.execute(text('SELECT normalized_email FROM users ORDER BY id'))).scalars().all() == [
                 'strasse@example.com',
                 'Ꭰ@example.com',
@@ -1764,7 +1764,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_a,
                             name='active-key',
                             key_hash=hashlib.sha256(active_secret.encode()).hexdigest(),
-                            scopes=[Permission.WORKSPACE_VIEW.value],
+                            created_by_account_uuid=shared_account_uuid,
                             status='active',
                         ),
                     ]
@@ -1785,7 +1785,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_b,
                             name='revoked-key',
                             key_hash=hashlib.sha256(revoked_secret.encode()).hexdigest(),
-                            scopes=[Permission.WORKSPACE_VIEW.value],
+                            created_by_account_uuid=shared_account_uuid,
                             status='revoked',
                         ),
                         ApiKey(
@@ -1793,7 +1793,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_b,
                             name='expired-key',
                             key_hash=hashlib.sha256(expired_secret.encode()).hexdigest(),
-                            scopes=[Permission.WORKSPACE_VIEW.value],
+                            created_by_account_uuid=shared_account_uuid,
                             status='active',
                             expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
                             - datetime.timedelta(minutes=1),
@@ -1819,7 +1819,7 @@ class TestPostgreSQLTenantRuntime:
                     'system': {
                         'jwt': {'secret': 'postgres-request-jwt', 'expire': 3600},
                     },
-                    'api': {'global_api_key': ''},
+                    'api': {},
                 }
             )
             runtime_application.logger = logging.getLogger('postgres-request-runtime-test')

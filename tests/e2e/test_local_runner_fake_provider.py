@@ -305,7 +305,6 @@ def local_agent_e2e_config_path(local_agent_e2e_tmpdir, local_agent_e2e_port, lo
     with open(config_path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
     runtime_control_port, _runtime_debug_port = local_agent_runtime_ports
-    config['api']['global_api_key'] = 'e2e-local-agent-key'
     config['plugin']['enable'] = True
     config['plugin']['runtime_ws_url'] = f'ws://127.0.0.1:{runtime_control_port}/control/ws'
     config['plugin']['enable_marketplace'] = False

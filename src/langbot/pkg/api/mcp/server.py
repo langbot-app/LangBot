@@ -45,8 +45,8 @@ This MCP server manages a LangBot instance. LangBot is an LLM-native instant
 messaging bot platform. Use these tools to inspect and manage bots, agents, pipelines,
 models, knowledge bases, MCP servers, and skills.
 
-Authentication uses a LangBot API key (web-UI-created `lbk_...` key or the
-global API key from config.yaml), passed as the `X-API-Key` header or
+Authentication uses a user-bound LangBot API key (`lbk_...`), passed as
+the `X-API-Key` header or
 `Authorization: Bearer <key>`.
 
 Prefer the `list_*` / `get_*` tools to discover resources before mutating. All

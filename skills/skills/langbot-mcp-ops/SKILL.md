@@ -1,6 +1,6 @@
 ---
 name: langbot-mcp-ops
-description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
+description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (user-bound web-UI lbk_ keys), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
 ---
 
 # LangBot MCP Operations
@@ -27,21 +27,15 @@ X-API-Key: <api-key>
 Authorization: Bearer <api-key>
 ```
 
-Two kinds of key are accepted:
+Use a **web-UI key** created in the sidebar's API Keys panel, prefixed `lbk_`.
+The secret is shown once; only its SHA-256 hash is stored. Each key binds its
+creating user and one Workspace, with status, optional expiry and last-used
+metadata. Authentication checks the active user and membership and uses the
+user's current Workspace role. Keys have no independent permission scopes.
+Callers cannot switch the bound Workspace with `X-Workspace-Id`.
 
-1. **Web-UI key** — created in the web UI (sidebar → API Keys), prefixed `lbk_`.
-   The secret is shown once; only its SHA-256 hash is stored. Each key is bound
-   to one Workspace and has explicit scopes, status, optional expiry, and
-   last-used metadata. The key determines the Workspace; callers cannot switch
-   it with `X-Workspace-Id`.
-2. **Global API key** — set in `data/config.yaml` under `api.global_api_key`.
-   Requires no login session and no DB record; does not need the `lbk_` prefix.
-   It is accepted only by a community instance with exactly one local
-   Workspace and is disabled for SaaS multi-Workspace operation. Leave empty to
-   disable. See the `langbot-deploy` skill for config details.
-
-Invalid, revoked, or expired keys get `401 Unauthorized`. A valid key whose
-scopes do not authorize a tool gets `403 Forbidden`.
+Invalid, revoked or expired keys, disabled users and removed memberships get
+`401 Unauthorized`. A valid key whose user lacks a tool's permission gets `403 Forbidden`.
 
 To inspect key identity and permissions, call `GET /api/v1/system/context` with the API key.
 
@@ -92,7 +86,7 @@ already have a default pipeline.
 
 ## How to use
 
-1. Get an API key (web UI key, or set `api.global_api_key` in config.yaml).
+1. Create a user-bound API key in the web UI.
 2. Point your MCP client at `http://<host>:5300/mcp` with the key header.
 3. Call `get_system_info` to confirm connectivity.
 4. Use `list_*` tools to discover, then `get_*` / `create_*` / `update_*` /
@@ -147,11 +141,8 @@ state as well; it is not the same operation as disconnecting an account.
 - `/mcp` is the **server** LangBot exposes. The `/api/v1/mcp` routes are the
   **client** side (managing external MCP servers LangBot connects to). Don't
   confuse them.
-- A `401` means the key is wrong, missing, revoked, expired, or (for the global
-  key) `api.global_api_key` is empty or the instance is not an OSS singleton.
-- A `403` means the key is valid but lacks the permission required by the tool.
-- The global key is plaintext in config.yaml — only enable it on trusted/internal
-  deployments and serve over HTTPS.
+- A `401` means the key is wrong, missing, revoked or expired, or its user or membership is inactive.
+- A `403` means the user's current Workspace role lacks the permission required by the tool.
 
 ## Event processors
 

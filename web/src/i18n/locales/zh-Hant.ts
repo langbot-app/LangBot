@@ -453,8 +453,6 @@ const zhHant = {
     mcpEndpoint: 'MCP 接入位址',
     mcpAuthTitle: '驗證方式',
     mcpAuthDesc: '使用「API 金鑰」標籤頁中的任意金鑰，透過請求標頭傳入：',
-    mcpGlobalKeyNote:
-      '也可在 config.yaml 中設定全域 API 金鑰（api.global_api_key），無需登入即可使用。',
     mcpClientConfigTitle: 'MCP 用戶端設定範例',
     webhooks: 'Webhooks',
     createWebhook: '建立 Webhook',

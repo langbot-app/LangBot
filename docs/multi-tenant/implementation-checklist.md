@@ -144,7 +144,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 - [x] Knowledge bases, files, and chunks.
 - [x] Vector collections and handles.
 - [x] Monitoring messages, calls, sessions, errors, embeddings, and feedback.
-- [x] API keys and scopes.
+- [x] User-bound API keys using current Workspace permissions.
 - [x] Webhooks and public route resolution.
 - [x] Binary storage and Workspace storage.
 - [x] Workspace metadata, separated from system metadata.

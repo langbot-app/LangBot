@@ -20,6 +20,8 @@ class ApiKeysRouterGroup(group.RouterGroup):
         @self.route('', methods=['POST'], permission=Permission.API_KEY_MANAGE)
         async def _(request_context: RequestContext) -> str:
             json_data = await quart.request.json
+            if 'scopes' in json_data:
+                return self.http_status(400, 'invalid_api_key', 'API keys use the user Workspace permissions')
             expires_at = json_data.get('expires_at')
             parsed_expiry = None
             if expires_at:
@@ -32,7 +34,6 @@ class ApiKeysRouterGroup(group.RouterGroup):
                     request_context,
                     json_data.get('name', ''),
                     json_data.get('description', ''),
-                    scopes=json_data.get('scopes'),
                     expires_at=parsed_expiry,
                 )
             except ValueError as error:

@@ -10,7 +10,6 @@ import inspect
 import uuid
 from quart.typing import RouteCallable
 
-from ....utils import constants
 from ....utils import bounded_executor
 from ....workspace.collaboration import MembershipPermissionError, WorkspaceCollaborationError
 from ....workspace.errors import WorkspaceNotFoundError
@@ -586,57 +585,28 @@ class RouterGroup(abc.ABC):
         return request_context
 
     async def _authenticate_api_key(self, api_key: str, auth_type: AuthType) -> RequestContext:
-        authenticator = getattr(self.ap.apikey_service, 'authenticate_api_key', None)
-        if callable(authenticator):
-            authenticated = authenticator(api_key)
-            if inspect.isawaitable(authenticated):
-                identity = await authenticated
-                if identity is not None:
-                    entitlement_revision = await self._resolve_entitlement_revision(
-                        identity.instance_uuid,
-                        identity.workspace_uuid,
-                    )
-                    request_context = RequestContext(
-                        instance_uuid=identity.instance_uuid,
-                        placement_generation=identity.placement_generation,
-                        request_id=self.request_id(),
-                        auth_type=auth_type.value,
-                        principal=PrincipalContext(
-                            principal_type=PrincipalType.API_KEY,
-                            api_key_uuid=identity.api_key_uuid,
-                        ),
-                        workspace=WorkspaceContext(
-                            workspace_uuid=identity.workspace_uuid,
-                            membership_uuid=None,
-                            role=None,
-                            permissions=identity.permissions,
-                        ),
-                        entitlement_revision=entitlement_revision,
-                    )
-                    quart.g.request_context = request_context
-                    return request_context
-
-        if not await self.ap.apikey_service.verify_api_key(api_key):
+        identity = await self.ap.apikey_service.authenticate_api_key(api_key)
+        if identity is None:
             raise ValueError('Invalid API key')
-        workspace_service = getattr(self.ap, 'workspace_service', None)
-        if workspace_service is None:
-            raise ValueError('API key Workspace binding is unavailable')
-        binding = await workspace_service.get_local_execution_binding()
+        entitlement_revision = await self._resolve_entitlement_revision(identity.instance_uuid, identity.workspace_uuid)
         request_context = RequestContext(
-            instance_uuid=binding.instance_uuid or constants.instance_id,
-            placement_generation=binding.placement_generation,
+            instance_uuid=identity.instance_uuid,
+            placement_generation=identity.placement_generation,
             request_id=self.request_id(),
             auth_type=auth_type.value,
             principal=PrincipalContext(
                 principal_type=PrincipalType.API_KEY,
-                api_key_uuid='legacy-oss-api-key',
+                account_uuid=identity.account_uuid,
+                api_key_uuid=identity.api_key_uuid,
             ),
             workspace=WorkspaceContext(
-                workspace_uuid=binding.workspace_uuid,
-                membership_uuid=None,
-                role=None,
-                permissions=frozenset(item.value for item in Permission),
+                workspace_uuid=identity.workspace_uuid,
+                membership_uuid=identity.membership_uuid,
+                role=identity.role,
+                permissions=identity.permissions,
+                membership_revision=identity.membership_revision,
             ),
+            entitlement_revision=entitlement_revision,
         )
         quart.g.request_context = request_context
         return request_context

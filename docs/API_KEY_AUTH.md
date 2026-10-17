@@ -13,45 +13,14 @@ API keys can be managed through the web interface:
 
 Database-backed API-key secrets are returned exactly once. LangBot stores only
 a SHA-256 lookup hash, so an existing secret cannot be displayed or recovered
-later. Each key belongs to one Workspace, has explicit permission scopes, and
-may have an expiry. The Workspace is derived from the authenticated key; an
-`X-Workspace-Id` header cannot redirect it to another tenant.
+later. Each key belongs to its creating user and one Workspace, and may have
+an expiry. Each authentication checks that the user and Workspace membership
+are active and derives permissions from the user's current role. Role changes
+apply to existing keys; disabled users and removed memberships cannot authenticate.
+Keys have no independent permission scopes. The Workspace is derived from the
+key; an `X-Workspace-Id` header cannot redirect it to another tenant.
 
-## Global API Key (config.yaml)
-
-In addition to web-UI-created keys (stored in the database, prefixed `lbk_`),
-LangBot supports a **global API key** defined directly in `data/config.yaml`.
-This is a Community-edition bootstrap option for automated deployments,
-infrastructure-as-code, and AI agents
-that need API/MCP access **without a login session and without creating a
-database record first**.
-
-```yaml
-api:
-    port: 5300
-    # ...
-    global_api_key: 'your-strong-secret-here'   # leave empty to disable
-```
-
-Behavior:
-
-- In Community edition's singleton Workspace, a non-empty
-  `api.global_api_key` is bound to that Workspace and accepted across the HTTP
-  service API and the MCP server.
-- The global config key is rejected when multi-Workspace SaaS mode is enabled;
-  SaaS automation must use a database-backed Workspace key or a closed control
-  plane credential.
-- The global key does **not** require the `lbk_` prefix; use any sufficiently
-  strong secret.
-- Leave it empty (`''`, the default) to disable it entirely; only database-backed
-  `lbk_` keys will then be accepted.
-- Existing installs are unaffected until you add the key — config completion only
-  backfills top-level keys, and the lookup is defensive when the field is absent.
-
-> **Security:** the global key is stored in plaintext in `config.yaml` and has
-> the singleton Workspace's full fixed permission set. Only enable it on
-> trusted/internal Community deployments, keep file permissions tight, always
-> serve over HTTPS, and rotate it if it may have leaked.
+Only database-backed `lbk_` keys are accepted. Config-file global keys are not supported.
 
 ## Using API Keys
 
@@ -77,7 +46,7 @@ Authorization: Bearer lbk_your_api_key_here
 ## Available APIs
 
 Endpoints that declare API-key authentication accept either a user token or a
-Workspace API key. The key must include the permission required by the route.
+Workspace API key. The key's user must currently have the permission required by the route.
 This includes:
 
 - **Model Management** - `/api/v1/provider/models/llm` and `/api/v1/provider/models/embedding`
@@ -264,7 +233,7 @@ or
 
 ### 403 Forbidden
 
-The key is valid for its Workspace but does not include the fixed permission
+The key is valid, but its user's current Workspace role lacks the permission
 required by the route.
 
 ### 500 Internal Server Error

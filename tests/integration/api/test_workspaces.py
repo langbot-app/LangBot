@@ -20,6 +20,7 @@ from langbot.pkg.api.http.controller.groups.system import SystemRouterGroup
 from langbot.pkg.api.http.controller.groups.apikeys import ApiKeysRouterGroup
 from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 from langbot.pkg.api.http.service.apikey import ApiKeyService
+from langbot.pkg.api.authz import permissions_for_role
 from langbot.pkg.api.http.service.user import ControlPlaneDirectoryRequiredError, UserService
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
@@ -55,7 +56,7 @@ async def workspace_api(tmp_path):
                 'jwt': {'secret': 'workspace-api-secret', 'expire': 3600},
                 'allow_modify_login_info': True,
             },
-            'api': {'global_api_key': '', 'webui_url': 'https://langbot.example'},
+            'api': {'webui_url': 'https://langbot.example'},
         }
     )
     application.logger = logging.getLogger('workspace-api-test')
@@ -393,7 +394,7 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     create_response = await client.post(
         '/api/v1/apikeys',
         headers=_auth(owner_token, workspace_uuid),
-        json={'name': 'E2E automation', 'scopes': ['resource.view']},
+        json={'name': 'E2E automation'},
     )
     assert create_response.status_code == 200
     created = (await create_response.get_json())['data']['key']
@@ -410,7 +411,7 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     identity = await application.apikey_service.authenticate_api_key(created['key'])
     assert identity is not None
     assert identity.workspace_uuid == workspace_uuid
-    assert identity.permissions == frozenset({'resource.view'})
+    assert identity.permissions == permissions_for_role('owner')
 
     invite_response = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
@@ -442,7 +443,7 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     assert (await forbidden.get_json())['code'] == 'permission_denied'
 
 
-async def test_api_key_context_returns_bound_identity_without_workspace_permission(workspace_api):
+async def test_api_key_context_returns_bound_user_permissions(workspace_api):
     application, client, _, owner_token = workspace_api
     current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
     workspace_uuid = (await current_response.get_json())['data']['workspace']['uuid']
@@ -450,7 +451,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     create_response = await client.post(
         '/api/v1/apikeys',
         headers=_auth(owner_token, workspace_uuid),
-        json={'name': 'Context probe', 'scopes': []},
+        json={'name': 'Context probe'},
     )
     assert create_response.status_code == 200
     created = (await create_response.get_json())['data']['key']
@@ -483,7 +484,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
         'instance_uuid': application.workspace_service.instance_uuid,
         'workspace_uuid': workspace_uuid,
         'api_key_id': created['uuid'],
-        'permissions': [],
+        'permissions': sorted(permissions_for_role('owner')),
     }
 
     capabilities_response = await client.get(
@@ -669,7 +670,7 @@ async def test_api_key_can_query_tasks_with_public_contract_and_resource_permiss
     create_response = await client.post(
         '/api/v1/apikeys',
         headers=_auth(owner_token, workspace_uuid),
-        json={'name': 'Task reader', 'scopes': ['resource.view']},
+        json={'name': 'Task reader'},
     )
     assert create_response.status_code == 200
     key = (await create_response.get_json())['data']['key']['key']
@@ -707,15 +708,13 @@ async def test_api_key_can_query_tasks_with_public_contract_and_resource_permiss
     missing = await client.get('/api/v1/system/tasks/not-an-id', headers={'X-API-Key': key})
     assert missing.status_code == 404
 
-    no_permission_response = await client.post(
-        '/api/v1/apikeys',
-        headers=_auth(owner_token, workspace_uuid),
-        json={'name': 'Task denied', 'scopes': []},
+    await application.persistence_mgr.execute_async(
+        sqlalchemy.update(WorkspaceMembership)
+        .where(WorkspaceMembership.workspace_uuid == workspace_uuid)
+        .values(status='removed')
     )
-    assert no_permission_response.status_code == 200
-    no_permission_key = (await no_permission_response.get_json())['data']['key']['key']
-    denied = await client.get('/api/v1/system/tasks', headers={'X-API-Key': no_permission_key})
-    assert denied.status_code == 403
+    denied = await client.get('/api/v1/system/tasks', headers={'X-API-Key': key})
+    assert denied.status_code == 401
 
 
 async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in_core(

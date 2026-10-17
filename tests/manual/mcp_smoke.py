@@ -22,26 +22,28 @@ from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.service.apikey import ApiKeyIdentity
 
 PORT = 5399
-GLOBAL_KEY = 'test-global-key-123'
+API_KEY = 'lbk_test-user-key-123'
 
 
 def build_ap() -> SimpleNamespace:
     ap = SimpleNamespace()
-    ap.instance_config = SimpleNamespace(
-        data={'api': {'global_api_key': GLOBAL_KEY}, 'system': {'edition': 'community', 'instance_id': 'inst-1'}}
-    )
+    ap.instance_config = SimpleNamespace(data={'api': {}, 'system': {'edition': 'community', 'instance_id': 'inst-1'}})
     ap.ver_mgr = SimpleNamespace(get_current_version=lambda: '4.5.0-test')
     ap.logger = SimpleNamespace(info=print, error=print, warning=print)
 
     # API key authentication derives the trusted Workspace carried into tools.
     async def authenticate_api_key(key: str) -> ApiKeyIdentity | None:
-        if key != GLOBAL_KEY:
+        if key != API_KEY:
             return None
         return ApiKeyIdentity(
             instance_uuid='inst-1',
             workspace_uuid='workspace-1',
             placement_generation=1,
             api_key_uuid='global-test-key',
+            account_uuid='account-1',
+            membership_uuid='member-1',
+            role='viewer',
+            membership_revision=1,
             permissions=frozenset(permission.value for permission in Permission),
         )
 
@@ -107,7 +109,7 @@ async def main() -> int:
             print('PASS: unauthorized request rejected (401)')
 
     # 2. Authorized MCP session: list tools + call two.
-    headers = {'X-API-Key': GLOBAL_KEY}
+    headers = {'X-API-Key': API_KEY}
     async with streamablehttp_client(url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
