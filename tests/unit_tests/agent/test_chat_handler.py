@@ -11,7 +11,6 @@ Avoids circular imports by using proper import structure.
 
 from __future__ import annotations
 
-import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -172,65 +171,6 @@ class MockApplication:
         # Mock sess_mgr
         self.sess_mgr = MagicMock()
         self.sess_mgr.get_conversation = AsyncMock()
-
-
-class TestStreamingBehavior:
-    """Tests for streaming mode behavior."""
-
-    def test_single_resp_message_id_for_streaming(self):
-        """Streaming mode should use single resp_message_id for entire response."""
-        # Simulate the streaming logic: resp_message_id created outside loop
-        resp_message_id = uuid.uuid4()
-
-        chunks = ['Hello', ' World', '!']
-        resp_messages = []
-
-        for chunk in chunks:
-            result = MockMessageChunk(chunk)
-            result.resp_message_id = str(resp_message_id)
-
-            # Pop old chunk (streaming behavior)
-            if resp_messages:
-                resp_messages.pop()
-            resp_messages.append(result)
-
-        # All chunks should have same resp_message_id
-        assert len(resp_messages) == 1  # Only last chunk remains after pop/append
-        assert resp_messages[0].resp_message_id == str(resp_message_id)
-
-    def test_pop_before_append_in_streaming(self):
-        """Streaming mode should pop old chunk before appending new."""
-        resp_message_id = uuid.uuid4()
-        resp_messages = []
-
-        # First chunk - no pop
-        chunk1 = MockMessageChunk('Hello')
-        chunk1.resp_message_id = str(resp_message_id)
-        resp_messages.append(chunk1)
-        assert len(resp_messages) == 1
-
-        # Second chunk - pop first, then append
-        if resp_messages:
-            resp_messages.pop()
-        chunk2 = MockMessageChunk('Hello World')
-        chunk2.resp_message_id = str(resp_message_id)
-        resp_messages.append(chunk2)
-        assert len(resp_messages) == 1
-        assert resp_messages[0].content == 'Hello World'
-
-    def test_non_streaming_no_pop(self):
-        """Non-streaming mode should NOT pop previous responses."""
-        resp_messages = []
-
-        # First message
-        msg1 = MockMessageChunk('Response 1')
-        resp_messages.append(msg1)
-        assert len(resp_messages) == 1
-
-        # Second message - should NOT pop in non-streaming
-        msg2 = MockMessageChunk('Response 2')
-        resp_messages.append(msg2)
-        assert len(resp_messages) == 2
 
 
 class TestRunnerConfigResolverInChatHandler:

@@ -486,54 +486,6 @@ class TestWebhookServiceGetEnabledWebhooks:
         # Verify
         assert result == []
 
-    async def test_get_enabled_webhooks_filters_enabled(self):
-        """Returns only enabled webhooks."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        # All returned webhooks should be enabled (SQL filter)
-        webhook1 = _create_mock_webhook(webhook_id=1, name='Enabled 1', enabled=True)
-        webhook2 = _create_mock_webhook(webhook_id=2, name='Enabled 2', enabled=True)
-
-        mock_result = _create_mock_result([webhook1, webhook2])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(
-            side_effect=lambda model_cls, entity: {
-                'id': entity.id,
-                'name': entity.name,
-                'enabled': entity.enabled,
-            }
-        )
-
-        service = WebhookService(ap)
-
-        # Execute
-        result = await service.get_enabled_webhooks(WORKSPACE_UUID)
-
-        # Verify
-        assert len(result) == 2
-        assert all(w['enabled'] for w in result)
-
-    async def test_get_enabled_webhooks_filters_disabled(self):
-        """Does not return disabled webhooks."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        # Empty result because query filters on enabled=True
-        mock_result = _create_mock_result([])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={})
-
-        service = WebhookService(ap)
-
-        # Execute
-        result = await service.get_enabled_webhooks(WORKSPACE_UUID)
-
-        # Verify - should be empty (SQL would filter disabled)
-        assert result == []
-
 
 ISOLATION_WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
 ISOLATION_WORKSPACE_B = '00000000-0000-0000-0000-00000000000b'
@@ -639,6 +591,11 @@ async def test_cross_workspace_id_guessing_is_not_found(tenant_webhook_service):
 
 
 async def test_update_and_delete_are_scoped(tenant_webhook_service):
+    enabled = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'keep enabled',
+        'https://a.invalid/enabled',
+    )
     created = await tenant_webhook_service.create_webhook(
         ISOLATION_WORKSPACE_A,
         'old',
@@ -654,7 +611,9 @@ async def test_update_and_delete_are_scoped(tenant_webhook_service):
     assert updated['name'] == 'new'
     assert updated['enabled'] is False
     assert updated['url'] == 'https://a.invalid/old'
-    assert await tenant_webhook_service.get_enabled_webhooks(ISOLATION_WORKSPACE_A) == []
+    assert [item['id'] for item in await tenant_webhook_service.get_enabled_webhooks(ISOLATION_WORKSPACE_A)] == [
+        enabled['id']
+    ]
     assert await tenant_webhook_service.delete_webhook(ISOLATION_WORKSPACE_A, created['id'])
     assert await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id']) is None
 
