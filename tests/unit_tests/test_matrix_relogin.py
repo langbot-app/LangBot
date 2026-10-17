@@ -1,61 +1,89 @@
+"""Regression tests for the production Matrix ``!relogin`` command."""
+
 from __future__ import annotations
 
-"""Regression test for the Matrix ``!relogin`` command (``_handle_relogin_command``).
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, call
 
-The old code placed ``logout_cmd = ...`` on a line after an unconditional
-``continue`` inside the ``if not bridge.login_command or not bridge.dm_room_id``
-branch. Because the ``continue`` always fired, ``logout_cmd`` was never assigned
-on the configured path, so any bridge with both ``login_command`` and
-``dm_room_id`` raised ``UnboundLocalError``. The fix moves the assignment above
-the ``if`` so it runs for configured bridges.
+import pytest
 
-These tests replicate the loop's control flow with a minimal fake bridge so they
-run without the Matrix SDK / langbot_plugin dependency.
-"""
+from langbot.pkg.platform.sources import matrix
 
 
-class FakeBridge:
-    def __init__(self, user_id: str, login_command: str, logout_command: str = '', dm_room_id: str | None = None):
-        self.user_id = user_id
-        self.login_command = login_command
-        self.logout_command = logout_command
-        self.dm_room_id = dm_room_id
+@pytest.fixture
+def bridge():
+    bridge = matrix.BridgeState('@u:example.org', 'login', '', '', '')
+    bridge.dm_room_id = '!bridge:example.org'
+    bridge.logged_in = True
+    return bridge
 
 
-def _relogin_commands(bridges: list[FakeBridge]) -> list[str]:
-    """Return the logout commands the fixed loop would send for each bridge."""
-    commands: list[str] = []
-    for bridge in bridges:
-        if not bridge.login_command or not bridge.dm_room_id:
-            continue
-        # Use configured logout command, fallback to deriving from login command.
-        logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
-        commands.append(logout_cmd)
-    return commands
+@pytest.fixture
+def adapter(monkeypatch):
+    adapter = matrix.MatrixAdapter.model_construct(
+        client=SimpleNamespace(room_send=AsyncMock()),
+        logger=None,
+    )
+    monkeypatch.setattr(matrix.asyncio, 'sleep', AsyncMock())
+    monkeypatch.setattr(matrix.MatrixAdapter, '_restart_bridge_login', Mock())
+    return adapter
 
 
-def test_configured_bridge_produces_logout_command_without_error() -> None:
-    bridges = [FakeBridge('@u:example.org', 'login', dm_room_id='!room:example.org')]
-    # Old code raised UnboundLocalError here; the fix must return the derived
-    # logout command (no configured logout_command -> derive from login).
-    assert _relogin_commands(bridges) == ['logout']
+async def test_configured_bridge_produces_logout_command_without_error(adapter, bridge) -> None:
+    adapter._bridges = [bridge]
+
+    await adapter._handle_relogin_command('!admin:example.org')
+
+    assert adapter.client.room_send.await_count == 2
+    assert adapter.client.room_send.await_args_list[0] == call(
+        room_id='!bridge:example.org',
+        message_type='m.room.message',
+        content={'msgtype': 'm.text', 'body': 'logout'},
+    )
+    adapter._restart_bridge_login.assert_called_once_with(bridge)
+    assert bridge.logged_in is False
 
 
-def test_configured_logout_command_is_used_verbatim() -> None:
-    bridges = [FakeBridge('@u:example.org', 'login', logout_command='leave', dm_room_id='!room:example.org')]
-    assert _relogin_commands(bridges) == ['leave']
+async def test_configured_logout_command_is_used_verbatim(adapter, bridge) -> None:
+    bridge.logout_command = 'leave'
+    adapter._bridges = [bridge]
+
+    await adapter._handle_relogin_command('!admin:example.org')
+
+    assert adapter.client.room_send.await_count == 2
+    assert adapter.client.room_send.await_args_list[0] == call(
+        room_id='!bridge:example.org',
+        message_type='m.room.message',
+        content={'msgtype': 'm.text', 'body': 'leave'},
+    )
+    adapter._restart_bridge_login.assert_called_once_with(bridge)
+    assert bridge.logged_in is False
 
 
-def test_skipped_bridge_is_ignored() -> None:
-    # Missing dm_room_id -> skipped, no command emitted.
-    bridges = [FakeBridge('@u:example.org', 'login', dm_room_id=None)]
-    assert _relogin_commands(bridges) == []
+async def test_skipped_bridge_is_ignored(adapter, bridge) -> None:
+    bridge.dm_room_id = None
+    adapter._bridges = [bridge]
+
+    await adapter._handle_relogin_command('!admin:example.org')
+
+    adapter.client.room_send.assert_awaited_once()
+    assert adapter.client.room_send.await_args.kwargs['room_id'] == '!admin:example.org'
+    adapter._restart_bridge_login.assert_not_called()
+    assert bridge.logged_in is True
 
 
-def test_relogin_never_raises_for_mixed_configurations() -> None:
-    bridges = [
-        FakeBridge('@skip:example.org', '', dm_room_id='!room:example.org'),  # no login_command
-        FakeBridge('@ok:example.org', 'login', dm_room_id='!room:example.org'),
-        FakeBridge('@skip2:example.org', 'login', dm_room_id=None),  # no dm_room_id
+async def test_relogin_never_raises_for_mixed_configurations(adapter, bridge) -> None:
+    missing_login = matrix.BridgeState('@skip:example.org', '', '', '', '')
+    missing_login.dm_room_id = '!skip:example.org'
+    missing_room = matrix.BridgeState('@skip2:example.org', 'login', '', '', '')
+    adapter._bridges = [missing_login, bridge, missing_room]
+
+    await adapter._handle_relogin_command('!admin:example.org')
+
+    assert [sent.kwargs['room_id'] for sent in adapter.client.room_send.await_args_list] == [
+        '!bridge:example.org',
+        '!admin:example.org',
     ]
-    assert _relogin_commands(bridges) == ['logout']
+    assert adapter.client.room_send.await_args_list[0].kwargs['content']['body'] == 'logout'
+    adapter._restart_bridge_login.assert_called_once_with(bridge)
+    assert bridge.logged_in is False
