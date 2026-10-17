@@ -39,7 +39,7 @@ ACCOUNT = '41100000-0000-4000-8000-000000000002'
 NOW = datetime.datetime(2026, 9, 1)
 
 
-@pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=pytest.mark.slow)])
+@pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=[pytest.mark.slow, pytest.mark.postgres])])
 async def convergence_engine(request, tmp_path):
     if request.param == 'sqlite':
         engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "convergence.db"}')
@@ -354,6 +354,7 @@ async def _assert_merged_schema_and_data(engine, source):
         ('beta', None),
     ],
 )
+@pytest.mark.contract('migration_history')
 async def test_historical_schema_and_populated_branch_upgrade(convergence_engine, source, checkpoint):
     engine = convergence_engine
     fixture = json.loads((FIXTURES / f'{source}_schema.json').read_text())
@@ -395,6 +396,7 @@ async def test_historical_schema_and_populated_branch_upgrade(convergence_engine
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('migration_fresh_schema')
 async def test_empty_database_startup_schema_then_real_migrations(convergence_engine):
     engine = convergence_engine
     async with engine.begin() as conn:

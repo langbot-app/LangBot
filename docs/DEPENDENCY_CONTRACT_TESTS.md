@@ -47,12 +47,12 @@ To run with an official checkout at the locked revision:
 
 ```bash
 export LANGBOT_LEGACY_PLUGIN_ROOT=/absolute/path/to/langbot-plugins
-uv run --frozen pytest tests/unit_tests/agent/test_legacy_identity_boundary.py -q -rs
+uv run --frozen pytest --required-suite plugin_identity -q -rs
 ```
 
 An unset variable allows an explicit local prerequisite skip. An empty variable,
 a missing file, a path escaping the fixture root, or a hash mismatch fails.
-CI selects the 16 consumer cases and requires all 16 to pass without skips.
+CI selects the `plugin_identity` suite and requires every selected case to pass without skips.
 
 ## Embedded SeekDB
 
@@ -64,10 +64,8 @@ The tests supply their own small embedding vectors; no model download is needed.
 
 ```bash
 uv sync --dev --extra seekdb --frozen
-uv run --no-sync pytest tests/integration/vector/test_seekdb.py \
-  -m slow -q -rs --durations=5 --junitxml=seekdb-contract-results.xml
-python scripts/assert-required-tests.py seekdb-contract-results.xml \
-  --module tests.integration.vector.test_seekdb --expected-tests 2
+uv run --no-sync pytest --required-suite seekdb \
+  -q -rs --durations=5 --junitxml=seekdb-contract-results.xml
 ```
 
 This isolated Linux job keeps native dependency startup failures visible instead
@@ -87,7 +85,7 @@ CI builds the official [`langbot-app/langbot-cli` v0.2.0 source](https://github.
 pinned to commit `3bd20eecd4771b1fe5d0dca61d8b5523182e7bd9`, using Go 1.26.8.
 Module versions and checksums come from that checkout's `go.mod` and `go.sum`.
 The job verifies modules and builds with `CGO_ENABLED=0`, `-mod=readonly`, and
-`-trimpath`. It requires exactly one passing JUnit case and rejects skips.
+`-trimpath`. It requires the CLI HTTP behavior contract and rejects skips.
 
 To run locally with an official pinned CLI checkout and Go 1.26.8:
 
@@ -101,12 +99,35 @@ go build -mod=readonly -trimpath -o ./bin/lbctl ./cmd/lbctl
 export LANGBOT_CLI_BIN="$(pwd)/bin/lbctl"
 
 # In the LangBot Core checkout:
-uv run --frozen pytest \
-  tests/unit_tests/api/service/test_cli_diagnostics.py::test_compiled_cli_against_core_http \
-  -q --tb=short -rs
+uv run --frozen pytest --required-suite compiled_cli -q --tb=short -rs
 ```
 
 Without `LANGBOT_CLI_BIN`, this test remains an explicit local skip. When set, it
 must point to a real compiled executable. CI supplies an absolute path and treats
 a missing binary, command failure, or skipped case as a failure. Update the source
 pin deliberately and rerun the contract before accepting a newer CLI version.
+
+## Required suite policy
+
+CI provisions dependencies and invokes `pytest --required-suite SUITE`. The
+registered suites are `postgres`, `local_agent`, `security`, `compiled_cli`,
+`plugin_identity`, and `seekdb`. Tests carry explicit suite markers; mixed
+SQLite/PostgreSQL fixtures mark only their PostgreSQL parameter. New marked
+cases are discovered automatically, without editing workflow file lists or counts.
+
+`tests/utils/required_suites.py` lists the stable behavior obligations for each
+suite. `@pytest.mark.contract('name')` identifies the behavior a case exercises.
+Only a new or retired behavior obligation changes this policy; renaming, moving,
+or parameterizing an existing test does not. Unmarked sibling tests are not run
+by a required suite.
+
+Required execution fails if a behavior obligation is absent, no cases are
+selected, or any selected case fails, errors, skips, or xfails (including fixture
+setup/teardown). Partial `-k`, `-m`, and `--deselect` filters are rejected.
+`--collect-only` validates selection without claiming execution. Without
+`--required-suite`, optional local prerequisites may still skip as before.
+JUnit remains an artifact, not a second source of the expected test inventory.
+
+These checks prevent missing execution; they cannot prove that a behavior marker
+is truthful or that an assertion detects defects. Review and mutation checks
+still establish assertion quality.
