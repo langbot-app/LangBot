@@ -235,17 +235,6 @@ class TestInvokeLLMAuthorization:
         session = await registry.get('run_nonexistent')
         assert session is None
 
-    @pytest.mark.asyncio
-    async def test_invoke_llm_no_run_id_unrestricted(self):
-        """INVOKE_LLM: no run_id should be unrestricted (backward compat)."""
-        # When no run_id is provided, the authorization check is skipped
-        # This is the unscoped path for regular plugin calls
-
-        # Simulate: if not run_id, skip authorization
-        run_id = None
-        # Authorization check should NOT be triggered
-        assert run_id is None  # No authorization check
-
 
 class TestInvokeLLMStreamAuthorization:
     """Tests for INVOKE_LLM_STREAM authorization."""
@@ -289,13 +278,6 @@ class TestInvokeLLMStreamAuthorization:
         assert registry.is_resource_allowed(session, 'model', 'model_002') is False
 
         await registry.unregister('run_stream_unauthorized')
-
-    @pytest.mark.asyncio
-    async def test_invoke_llm_stream_no_run_id_unrestricted(self):
-        """INVOKE_LLM_STREAM: no run_id should be unrestricted."""
-        run_id = None
-        # No authorization check
-        assert run_id is None
 
 
 @pytest.mark.asyncio
@@ -375,13 +357,6 @@ class TestCallToolAuthorization:
         assert registry.is_resource_allowed(session, 'tool', 'image_gen') is False
 
         await registry.unregister('run_tool_unauthorized')
-
-    @pytest.mark.asyncio
-    async def test_call_tool_no_run_id_unrestricted(self):
-        """CALL_TOOL: no run_id should be unrestricted."""
-        run_id = None
-        # No authorization check
-        assert run_id is None
 
 
 class TestRetrieveKnowledgeBaseAuthorization:
@@ -494,49 +469,6 @@ class TestAuthorizationPathDifferentiation:
         assert registry.is_resource_allowed(session, 'knowledge_base', 'kb_other') is False
 
         await registry.unregister(run_id)
-
-    @pytest.mark.asyncio
-    async def test_regular_plugin_path_no_run_id(self):
-        """Regular plugin calls have no run_id and skip session check."""
-        # Regular plugin call has no run_id
-        run_id = None
-
-        # Authorization check should be skipped when run_id is None.
-        # This is handled in handler.py with: if run_id: ...
-        assert run_id is None
-
-        # For regular plugins:
-        # - INVOKE_LLM: unrestricted access to any model
-        # - CALL_TOOL: unrestricted access to any tool
-        # - RETRIEVE_KNOWLEDGE_BASE: checks pipeline config instead
-
-
-class TestHandlerAuthorizationErrorMessages:
-    """Tests for error message content in authorization failures."""
-
-    def test_model_not_authorized_error_message(self):
-        """Error message should mention model not authorized."""
-        expected_msg = 'Model model_999 is not authorized for this agent run'
-        assert 'not authorized' in expected_msg
-        assert 'model_999' in expected_msg
-
-    def test_tool_not_authorized_error_message(self):
-        """Error message should mention tool not authorized."""
-        expected_msg = 'Tool image_gen is not authorized for this agent run'
-        assert 'not authorized' in expected_msg
-        assert 'image_gen' in expected_msg
-
-    def test_kb_not_authorized_error_message(self):
-        """Error message should mention kb not authorized."""
-        expected_msg = 'Knowledge base kb_999 is not authorized for this agent run'
-        assert 'not authorized' in expected_msg
-        assert 'kb_999' in expected_msg
-
-    def test_session_not_found_error_message(self):
-        """Error message should mention session not found."""
-        expected_msg = 'Run session run_xyz not found or expired'
-        assert 'not found' in expected_msg
-        assert 'run_xyz' in expected_msg
 
 
 class TestRETRIEVEKNOWLEDGEBASEBugFix:
@@ -697,16 +629,6 @@ class TestHandlerActionAuthorization:
         assert 'not found' in expected_error
 
     @pytest.mark.asyncio
-    async def test_invoke_llm_handler_no_run_id_unrestricted(self):
-        """INVOKE_LLM handler: no run_id skips authorization (backward compat)."""
-        # Simulate handler logic: if not run_id, skip authorization
-        run_id = None
-
-        # In handler.py, authorization check is inside: if run_id: ...
-        # So when run_id is None, authorization is skipped.
-        assert run_id is None
-
-    @pytest.mark.asyncio
     async def test_call_tool_handler_authorized_path(self):
         """CALL_TOOL handler: authorized when tool in resources."""
         registry = AgentRunSessionRegistry()
@@ -763,14 +685,6 @@ class TestHandlerActionAuthorization:
         assert 'not authorized' in expected_error
 
         await registry.unregister(run_id)
-
-    @pytest.mark.asyncio
-    async def test_call_tool_handler_no_run_id_unrestricted(self):
-        """CALL_TOOL handler: no run_id skips authorization."""
-        run_id = None
-
-        # Authorization check is inside: if run_id: ...
-        assert run_id is None
 
     @pytest.mark.asyncio
     async def test_retrieve_knowledge_base_handler_authorized_path(self):
@@ -837,53 +751,6 @@ class TestSDKRunnerAPIProxyFieldConsistency:
     These tests verify that SDK sends field names that match what Host handler reads.
     """
 
-    def test_call_tool_field_names_match(self):
-        """CALL_TOOL: SDK 'parameters' matches Host 'parameters'."""
-        # SDK agent_run_api.py line 146: "parameters": parameters
-        # Host handler.py line 457: parameters = data['parameters']
-        sdk_field = 'parameters'
-        host_field = 'parameters'
-        assert sdk_field == host_field
-
-    def test_call_tool_run_id_field_present(self):
-        """CALL_TOOL: SDK includes 'run_id' field."""
-        # SDK agent_run_api.py line 144: "run_id": self.run_id
-        # Host handler.py line 458: run_id = data.get('run_id')
-        sdk_fields = ['run_id', 'tool_name', 'parameters']
-        host_expected_fields = ['tool_name', 'parameters', 'run_id']
-
-        for field in host_expected_fields:
-            assert field in sdk_fields
-
-    def test_invoke_llm_field_names_match(self):
-        """INVOKE_LLM: SDK fields match Host handler."""
-        # SDK agent_run_api.py lines 77-82
-        sdk_fields = ['run_id', 'llm_model_uuid', 'messages', 'funcs', 'extra_args', 'timeout']
-        # Host handler.py lines 333-337
-        host_fields = ['llm_model_uuid', 'messages', 'funcs', 'extra_args', 'run_id']
-
-        for field in host_fields:
-            assert field in sdk_fields
-
-    def test_invoke_llm_stream_field_names_match(self):
-        """INVOKE_LLM_STREAM: SDK fields match Host handler."""
-        # SDK agent_run_api.py lines 111-116
-        sdk_fields = ['run_id', 'llm_model_uuid', 'messages', 'funcs', 'extra_args']
-        # Host handler.py lines 397-401
-        host_fields = ['llm_model_uuid', 'messages', 'funcs', 'extra_args', 'run_id']
-
-        for field in host_fields:
-            assert field in sdk_fields
-
-    def test_retrieve_knowledge_base_field_names_match(self):
-        """RETRIEVE_KNOWLEDGE_BASE: SDK fields match Host handler."""
-        # SDK agent_run_api.py lines 178-183
-        sdk_fields = ['run_id', 'kb_id', 'query_text', 'top_k', 'filters']
-
-        # Note: query_id is from query context, not SDK proxy
-        for field in ['run_id', 'kb_id', 'query_text', 'top_k', 'filters']:
-            assert field in sdk_fields
-
     def test_retrieve_knowledge_base_action_enum_correct(self):
         """RETRIEVE_KNOWLEDGE_BASE: SDK uses correct action enum."""
         from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -905,31 +772,6 @@ class TestNoRunIdBackwardCompatPath:
     Regular plugins (non-Runner) don't have run_id and should
     have unrestricted access to certain APIs.
     """
-
-    @pytest.mark.asyncio
-    async def test_invoke_llm_no_run_id_unrestricted_access(self):
-        """INVOKE_LLM: no run_id means unrestricted model access."""
-        # Handler.py line 340: if run_id: ...
-        # When run_id is None, the authorization block is skipped
-        run_id = None
-        llm_model_uuid = 'any_model'
-
-        # Simulate handler logic: no run_id skips authorization.
-        assert run_id is None
-
-        # Model can be any UUID (unrestricted)
-        assert llm_model_uuid == 'any_model'
-
-    @pytest.mark.asyncio
-    async def test_call_tool_no_run_id_unrestricted_access(self):
-        """CALL_TOOL: no run_id means unrestricted tool access."""
-        run_id = None
-        tool_name = 'any_tool'
-
-        # Handler.py line 463: if run_id: ...
-        assert run_id is None
-
-        assert tool_name == 'any_tool'
 
     @pytest.mark.asyncio
     async def test_retrieve_knowledge_base_no_run_id_pipeline_check(self):
@@ -962,70 +804,6 @@ class TestNoRunIdBackwardCompatPath:
 
 class TestSessionExpiryAndCleanup:
     """Tests for session expiry and cleanup scenarios."""
-
-    @pytest.mark.asyncio
-    async def test_session_expiry_detection(self):
-        """Session expiry: old session should be considered expired."""
-        import time
-
-        registry = AgentRunSessionRegistry()
-        resources = make_resources(models=[{'model_id': 'model_001'}])
-
-        # Register session
-        await registry.register(
-            run_id='run_expiry_test',
-            runner_id='plugin:test/runner/default',
-            query_id=1,
-            plugin_identity='test/runner',
-            resources=resources,
-        )
-
-        session = await registry.get('run_expiry_test')
-        assert session is not None
-
-        # Check session status
-        started_at = session['status']['started_at']
-        last_activity = session['status']['last_activity_at']
-        assert last_activity >= started_at
-
-        # Session should be valid initially
-        current_time = int(time.time())
-        assert current_time - started_at < 10  # Less than 10 seconds old
-
-        await registry.unregister('run_expiry_test')
-
-    @pytest.mark.asyncio
-    async def test_cleanup_stale_sessions(self):
-        """Cleanup: stale sessions should be removed."""
-        registry = AgentRunSessionRegistry()
-        resources = make_resources(models=[{'model_id': 'model_001'}])
-
-        # Register session
-        await registry.register(
-            run_id='run_cleanup_test',
-            runner_id='plugin:test/runner/default',
-            query_id=1,
-            plugin_identity='test/runner',
-            resources=resources,
-        )
-
-        # Session exists
-        session = await registry.get('run_cleanup_test')
-        assert session is not None
-
-        # Cleanup with max_age=0 (immediate cleanup)
-        # Note: This won't actually cleanup because session is just created
-        # We need to manually test cleanup logic
-        cleaned = await registry.cleanup_stale_sessions(max_age_seconds=0)
-        assert isinstance(cleaned, int)
-
-        # Session should still exist (it was just created)
-        # With max_age=0, sessions with last_activity > 0 seconds ago would be cleaned
-        # But since it's just created, last_activity_at is current time
-        session_after = await registry.get('run_cleanup_test')
-        assert session_after is not None
-
-        await registry.unregister('run_cleanup_test')
 
     @pytest.mark.asyncio
     async def test_unregister_removes_session(self):
@@ -2002,32 +1780,3 @@ class TestCallerPluginIdentityValidation:
         assert 'no plugin_identity' in error.message
 
         await registry.unregister('run_missing_pull_identity')
-
-
-class TestBackwardCompatStorageNoRunId:
-    """Tests for unscoped storage actions without run_id.
-
-    Regular plugins (non-Runner) don't have run_id and should
-    have unrestricted access to storage APIs.
-    """
-
-    def test_storage_no_run_id_skips_validation(self):
-        """Storage actions without run_id skip Host-side validation."""
-        # Handler.py: if run_id: ...validation...
-        # When run_id is None, validation is skipped
-        run_id = None
-
-        # Simulate handler logic: no run_id skips validation.
-        assert run_id is None
-
-        # Storage access unrestricted for regular plugins
-        assert run_id is None
-
-    def test_file_no_run_id_skips_validation(self):
-        """GET_CONFIG_FILE without run_id skips Host-side validation."""
-        run_id = None
-
-        assert run_id is None
-
-        # File access unrestricted for regular plugins
-        assert run_id is None

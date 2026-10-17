@@ -219,90 +219,44 @@ class TestCommandManagerExecute:
         assert hasattr(result, '__aiter__')
 
     @pytest.mark.asyncio
-    async def test_execute_sets_privilege_for_admin(self):
-        """execute() sets privilege=2 for admin users."""
-
-        fake_app = FakeApp(admins=['person_12345'])
-        mgr = CommandManager(fake_app)
-        mgr.cmd_list = []
-
-        # Mock plugin_connector
-        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[])
-
-        query = command_query('status')
-        query.launcher_type = provider_session.LauncherTypes.PERSON
-        query.launcher_id = 12345
-
-        session = self._create_session()
-
-        results = []
-        async for ret in mgr.execute('status', '/status', query, session):
-            results.append(ret)
-
-        # Verify admin config was checked
-        assert 'person_12345' in fake_app.instance_config.data['admins']
-
-    @pytest.mark.asyncio
-    async def test_execute_sets_privilege_for_non_admin(self):
-        """execute() sets privilege=1 for non-admin users."""
-
-        fake_app = FakeApp(admins=['person_12345'])
-        mgr = CommandManager(fake_app)
-        mgr.cmd_list = []
-
-        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[])
-
-        query = command_query('status')
-        query.launcher_type = provider_session.LauncherTypes.PERSON
-        query.launcher_id = 67890  # Not in admins list
-
-        session = self._create_session(launcher_id=67890)
-
-        results = []
-        async for ret in mgr.execute('status', '/status', query, session):
-            results.append(ret)
-
-    @pytest.mark.asyncio
-    async def test_execute_parses_command_text(self):
-        """execute() splits command_text into params."""
+    @pytest.mark.parametrize(('is_admin', 'privilege'), [(True, 2), (False, 1)])
+    @pytest.mark.parametrize('bound_plugins', [None, ['plugin1', 'plugin2']])
+    async def test_execute_delivers_scoped_command_context(self, is_admin, privilege, bound_plugins):
+        from langbot_plugin.api.entities.builtin.command.context import CommandReturn
 
         fake_app = FakeApp()
+        fake_app.persistence_mgr.execute_async = AsyncMock(
+            return_value=Mock(first=Mock(return_value=object() if is_admin else None))
+        )
+        command = Mock()
+        command.metadata.name = 'help'
+        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[command])
+        received = []
+
+        async def execute_command(context, plugins):
+            received.append((context, plugins))
+            yield CommandReturn(text='plugin response')
+
+        fake_app.plugin_connector.execute_command = execute_command
         mgr = CommandManager(fake_app)
         mgr.cmd_list = []
-
-        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[])
-
         query = command_query('help arg1 arg2')
+        query.variables['_pipeline_bound_plugins'] = bound_plugins
         session = self._create_session()
 
-        results = []
-        async for ret in mgr.execute('help arg1 arg2', '/help arg1 arg2', query, session):
-            results.append(ret)
+        results = [result async for result in mgr.execute('help arg1 arg2', '/help arg1 arg2', query, session)]
 
-        # Command text parsing happens inside execute()
-        # We verify it doesn't crash
-
-    @pytest.mark.asyncio
-    async def test_execute_passes_bound_plugins(self):
-        """execute() passes bound_plugins from query variables."""
-
-        fake_app = FakeApp()
-        mgr = CommandManager(fake_app)
-        mgr.cmd_list = []
-
-        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[])
-
-        query = command_query('help')
-        query.variables = {'_pipeline_bound_plugins': ['plugin1', 'plugin2']}
-
-        session = self._create_session()
-
-        results = []
-        async for ret in mgr.execute('help', '/help', query, session):
-            results.append(ret)
-
-        # Bound plugins are extracted from query.variables
-        assert query.variables.get('_pipeline_bound_plugins') == ['plugin1', 'plugin2']
+        assert [result.text for result in results] == ['plugin response']
+        fake_app.plugin_connector.list_commands.assert_awaited_once_with(bound_plugins)
+        assert len(received) == 1
+        context, plugins = received[0]
+        assert plugins == bound_plugins
+        assert context.privilege == privilege
+        assert context.command == context.crt_command == 'help'
+        assert context.command_text == 'help arg1 arg2'
+        assert context.full_command_text == '/help arg1 arg2'
+        assert context.params == ['help', 'arg1', 'arg2']
+        assert context.crt_params == ['arg1', 'arg2']
 
 
 class TestCommandManagerInternalExecute:
@@ -419,31 +373,6 @@ class TestCommandManagerInternalExecute:
         assert selected.workspace_uuid == 'workspace-a'
         assert selected.placement_generation == 4
         assert selected.query_uuid == 'query-a'
-
-    @pytest.mark.asyncio
-    async def test_execute_with_bound_plugins(self):
-        """_execute passes bound_plugins to plugin connector."""
-
-        fake_app = FakeApp()
-        mgr = CommandManager(fake_app)
-        mgr.cmd_list = []
-
-        # Mock plugin command
-        mock_command = Mock()
-        mock_command.metadata.name = 'test_cmd'
-
-        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[mock_command])
-
-        async def mock_execute_command(ctx, bound_plugins):
-            yield Mock(text='ok')
-
-        fake_app.plugin_connector.execute_command = mock_execute_command
-
-        ctx = self._create_context(command='test_cmd')
-
-        # Execute with bound_plugins parameter
-        async for _ in mgr._execute(ctx, mgr.cmd_list, bound_plugins=['test_plugin']):
-            pass
 
 
 class TestEmptyAndEdgeInputs:

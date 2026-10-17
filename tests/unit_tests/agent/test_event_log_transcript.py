@@ -135,53 +135,6 @@ class TestEventLogStore:
             assert '"status": "queued"' in stored_event.metadata_json
             assert '"claimed_by_run_id": "run_1"' in stored_event.metadata_json
 
-    @pytest.mark.asyncio
-    async def test_append_event_truncates_input_summary(self, mock_db_engine):
-        """Test that long input summaries are truncated."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = EventLogStore(mock_db_engine)
-
-        mock_session = AsyncMock()
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            long_text = 'x' * 2000
-            event_id = await store.append_event(
-                event_id='evt_2',
-                event_type='message.received',
-                source='platform',
-                input_summary=long_text,
-            )
-
-            assert event_id == 'evt_2'
-
-    @pytest.mark.asyncio
-    async def test_page_events_with_conversation_filter(self, mock_db_engine):
-        """Test paging events with conversation_id filter."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = EventLogStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            items, next_seq, has_more = await store.page_events(
-                conversation_id='conv_1',
-                limit=10,
-            )
-
-            assert isinstance(items, list)
-
 
 class TestTranscriptStore:
     """Test TranscriptStore operations."""
@@ -212,122 +165,9 @@ class TestTranscriptStore:
 
                 assert transcript_id is not None
 
-    @pytest.mark.asyncio
-    async def test_append_transcript_with_attachments(self, mock_db_engine):
-        """Test appending transcript with attachment refs."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_session = AsyncMock()
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-
-        with patch.object(store, '_get_next_seq', return_value=1):
-            with patch.object(store, '_session_factory') as mock_factory:
-                mock_factory.return_value.__aenter__.return_value = mock_session
-
-                transcript_id = await store.append_transcript(
-                    transcript_id=None,  # Auto-generate
-                    event_id='evt_2',
-                    conversation_id='conv_1',
-                    role='assistant',
-                    content="Here's an image",
-                    attachment_refs=[{'id': 'att_1', 'type': 'image', 'url': 'http://example.com/img.png'}],
-                )
-
-                assert transcript_id is not None
-
-    @pytest.mark.asyncio
-    async def test_page_transcript_backward(self, mock_db_engine):
-        """Test paging transcript backward (older items)."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            items, next_seq, prev_seq, has_more = await store.page_transcript(
-                conversation_id='conv_1',
-                limit=10,
-                direction='backward',
-            )
-
-            assert isinstance(items, list)
-
-    @pytest.mark.asyncio
-    async def test_page_transcript_has_hard_limit(self, mock_db_engine):
-        """Test that transcript paging has a hard limit."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            # Request more than the hard limit
-            items, next_seq, prev_seq, has_more = await store.page_transcript(
-                conversation_id='conv_1',
-                limit=200,  # Request 200, but hard limit is 100
-            )
-
-            # The store should cap at 100
-            assert len(items) <= store.HARD_LIMIT
-
-    @pytest.mark.asyncio
-    async def test_search_transcript(self, mock_db_engine):
-        """Test searching transcript."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            items = await store.search_transcript(
-                conversation_id='conv_1',
-                query_text='database',
-                top_k=10,
-            )
-
-            assert isinstance(items, list)
-
 
 class TestHistoryPageAuthorization:
     """Test history.page authorization."""
-
-    @pytest.mark.asyncio
-    async def test_history_page_requires_run_id(self, mock_handler, mock_db_engine):
-        """Test history.page requires run_id."""
-        from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-
-        # Mock call_action to simulate the handler
-        result = await mock_handler.call_action(
-            PluginToRuntimeAction.HISTORY_PAGE,
-            {'run_id': None},
-        )
-
-        # Should return error
-        assert result.get('ok') is False or 'error' in str(result).lower()
 
     @pytest.mark.asyncio
     async def test_history_page_validates_conversation_scope(self, mock_db_engine):
@@ -353,66 +193,6 @@ class TestHistoryPageAuthorization:
         await session_registry.unregister('run_1')
 
 
-class TestEventGetAuthorization:
-    """Test event.get authorization."""
-
-    @pytest.mark.asyncio
-    async def test_event_get_requires_run_id(self, mock_handler):
-        """Test event.get requires run_id."""
-        from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-
-        result = await mock_handler.call_action(
-            PluginToRuntimeAction.EVENT_GET,
-            {'run_id': None, 'event_id': 'evt_1'},
-        )
-
-        # Should return error
-        assert result.get('ok') is False or 'error' in str(result).lower()
-
-
-class TestContextAccessPopulation:
-    """Test ContextAccess population in build_context_from_event."""
-
-    @pytest.mark.asyncio
-    async def test_context_access_has_history_apis_when_permitted(self, mock_db_engine):
-        """Test ContextAccess shows available APIs based on permissions."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.first.return_value = None
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            cursor = await store.get_latest_cursor('conv_1')
-            # Should return None or a cursor string
-            assert cursor is None or isinstance(cursor, str)
-
-    @pytest.mark.asyncio
-    async def test_context_access_shows_has_history_before(self, mock_db_engine):
-        """Test ContextAccess indicates if history exists."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        store = TranscriptStore(mock_db_engine)
-
-        mock_result = MagicMock()
-        mock_result.scalar.return_value = 0
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        with patch.object(store, '_session_factory') as mock_factory:
-            mock_factory.return_value.__aenter__.return_value = mock_session
-
-            has_history = await store.has_history_before('conv_1', 10)
-            assert isinstance(has_history, bool)
-
-
 class TestEventLogStoreRealSQLite:
     """Test EventLogStore with real SQLite database."""
 
@@ -433,8 +213,9 @@ class TestEventLogStoreRealSQLite:
         await engine.dispose()
 
     @pytest.mark.asyncio
-    async def test_append_get_event_round_trip(self, db_engine):
-        """Test append_event -> get_event round trip with real DB."""
+    @pytest.mark.parametrize(('summary', 'stored_summary'), [('x' * 1000, 'x' * 1000), ('x' * 1001, 'x' * 997 + '...')])
+    async def test_append_get_event_round_trip(self, db_engine, summary, stored_summary):
+        """Event fields and the summary length boundary survive a real DB round trip."""
         store = EventLogStore(db_engine)
 
         # Append event
@@ -447,7 +228,7 @@ class TestEventLogStoreRealSQLite:
             actor_type='user',
             actor_id='user_001',
             actor_name='Test User',
-            input_summary='Hello world',
+            input_summary=summary,
             run_id='run_001',
             runner_id='plugin:test/plugin/runner',
         )
@@ -463,6 +244,7 @@ class TestEventLogStoreRealSQLite:
         assert event['conversation_id'] == 'conv_001'
         assert event['actor_type'] == 'user'
         assert event['actor_id'] == 'user_001'
+        assert event['input_summary'] == stored_summary
 
     @pytest.mark.asyncio
     async def test_page_events(self, db_engine):
@@ -478,6 +260,12 @@ class TestEventLogStoreRealSQLite:
                 conversation_id='conv_001',
                 input_summary=f'Message {i}',
             )
+        await store.append_event(
+            event_id='evt_other_conversation',
+            event_type='message.received',
+            source='platform',
+            conversation_id='conv_other',
+        )
 
         # Page events
         items, next_seq, has_more = await store.page_events(
@@ -485,8 +273,14 @@ class TestEventLogStoreRealSQLite:
             limit=3,
         )
 
-        assert len(items) == 3
+        assert [item['event_id'] for item in items] == ['evt_real_004', 'evt_real_003', 'evt_real_002']
         assert has_more is True
+        assert next_seq == items[-1]['id']
+
+        older, next_seq, has_more = await store.page_events(conversation_id='conv_001', before_seq=next_seq, limit=3)
+        assert [item['event_id'] for item in older] == ['evt_real_001', 'evt_real_000']
+        assert next_seq is None
+        assert has_more is False
 
     @pytest.mark.asyncio
     async def test_get_latest_cursor(self, db_engine):
@@ -568,8 +362,9 @@ class TestTranscriptStoreRealSQLite:
 
     @pytest.mark.asyncio
     async def test_append_page_transcript_round_trip(self, db_engine):
-        """Test append_transcript -> page_transcript round trip with real DB."""
+        """Persist attachments and page backward without crossing conversations."""
         store = TranscriptStore(db_engine)
+        attachments = [{'id': 'att_1', 'type': 'image', 'url': 'https://example.test/image.png'}]
 
         # Append transcript items
         for i in range(3):
@@ -579,16 +374,51 @@ class TestTranscriptStoreRealSQLite:
                 conversation_id='conv_001',
                 role='user' if i % 2 == 0 else 'assistant',
                 content=f'Message {i}',
+                attachment_refs=attachments if i == 2 else None,
             )
+        await store.append_transcript(
+            transcript_id='trans_other',
+            event_id='evt_other',
+            conversation_id='conv_other',
+            role='user',
+            content='Other conversation',
+        )
 
         # Page transcript
         items, next_seq, prev_seq, has_more = await store.page_transcript(
             conversation_id='conv_001',
-            limit=10,
+            limit=2,
+            include_attachments=True,
         )
 
-        assert len(items) == 3
-        assert items[0]['conversation_id'] == 'conv_001'
+        assert [item['transcript_id'] for item in items] == ['trans_real_002', 'trans_real_001']
+        assert items[0]['attachment_refs'] == attachments
+        assert has_more is True
+        assert next_seq == items[-1]['seq']
+        assert prev_seq == items[0]['seq']
+
+        older, next_seq, prev_seq, has_more = await store.page_transcript(
+            'conv_001', before_seq=next_seq, limit=2, direction='backward'
+        )
+        assert [item['transcript_id'] for item in older] == ['trans_real_000']
+        assert next_seq is None
+        assert prev_seq == older[0]['seq']
+        assert has_more is False
+
+    @pytest.mark.asyncio
+    async def test_page_transcript_caps_results_at_100(self, db_engine):
+        store = TranscriptStore(db_engine)
+        for i in range(101):
+            await store.append_transcript(
+                transcript_id=f'cap_{i}', event_id=f'evt_{i}', conversation_id='conv_cap', role='user', content=str(i)
+            )
+
+        items, next_seq, prev_seq, has_more = await store.page_transcript('conv_cap', limit=200)
+
+        assert [item['transcript_id'] for item in items] == [f'cap_{i}' for i in range(100, 0, -1)]
+        assert has_more is True
+        assert next_seq == items[-1]['seq']
+        assert prev_seq == items[0]['seq']
 
     @pytest.mark.asyncio
     async def test_get_legacy_provider_messages_projects_transcript_history(self, db_engine):
@@ -694,6 +524,20 @@ class TestTranscriptStoreRealSQLite:
             role='assistant',
             content='Here is information about databases',
         )
+        await store.append_transcript(
+            transcript_id='nonmatch',
+            event_id='evt_nonmatch',
+            conversation_id='conv_search',
+            role='user',
+            content='hello',
+        )
+        await store.append_transcript(
+            transcript_id='foreign_match',
+            event_id='evt_foreign',
+            conversation_id='conv_other',
+            role='user',
+            content='foreign database',
+        )
 
         # Search for "database"
         items = await store.search_transcript(
@@ -701,13 +545,17 @@ class TestTranscriptStoreRealSQLite:
             query_text='database',
         )
 
-        # Should find at least one match
-        assert len(items) >= 1
+        assert [item['transcript_id'] for item in items] == ['trans_search_002', 'trans_search_001']
+        limited = await store.search_transcript('conv_search', query_text='database', top_k=1)
+        assert [item['transcript_id'] for item in limited] == ['trans_search_002']
+        assert await store.search_transcript('conv_search', query_text='missing') == []
 
     @pytest.mark.asyncio
     async def test_get_latest_cursor_real_db(self, db_engine):
-        """Test get_latest_cursor with real DB."""
+        """Cursors and history-before checks reflect persisted conversation rows."""
         store = TranscriptStore(db_engine)
+        assert await store.get_latest_cursor('conv_cursor') is None
+        assert await store.has_history_before('conv_cursor', 1) is False
 
         # Append transcript items
         for i in range(3):
@@ -721,8 +569,10 @@ class TestTranscriptStoreRealSQLite:
 
         # Get latest cursor
         cursor = await store.get_latest_cursor('conv_cursor')
-        assert cursor is not None
-        assert int(cursor) > 0
+        assert cursor == '3'
+        assert await store.has_history_before('conv_cursor', 1) is False
+        assert await store.has_history_before('conv_cursor', 2) is True
+        assert await store.has_history_before('conv_other', 4) is False
 
     @pytest.mark.asyncio
     async def test_cleanup_transcripts_older_than(self, db_engine):
@@ -775,21 +625,3 @@ def mock_db_engine():
 
     engine = MagicMock(spec=AsyncEngine)
     return engine
-
-
-@pytest.fixture
-def mock_handler():
-    """Create a mock handler for testing actions."""
-    from langbot_plugin.runtime.io.handler import Handler
-
-    class MockHandler(Handler):
-        def __init__(self):
-            self._responses = {}
-
-        async def call_action(self, action, data, timeout=30):
-            # Simulate error response for missing run_id
-            if not data.get('run_id'):
-                return {'ok': False, 'message': 'run_id is required'}
-            return {'ok': True, 'data': {}}
-
-    return MockHandler()

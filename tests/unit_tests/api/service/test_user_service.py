@@ -388,38 +388,24 @@ class TestUserServiceAuthenticate:
 class TestUserServiceGenerateJwtToken:
     """Tests for generate_jwt_token method."""
 
-    async def test_generate_jwt_token_returns_valid_token(self):
-        """Generates valid JWT token."""
+    @pytest.mark.parametrize('expire', [3600, 7200])
+    async def test_generate_jwt_token_returns_valid_token(self, expire):
+        """The signed token retains the account and configured lifetime."""
         # Setup
         ap = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 3600}}}
+        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': expire}}}
 
         service = UserService(ap)
 
         # Execute
+        before = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
         token = await service.generate_jwt_token('test@example.com')
+        after = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
-        # Verify - JWT format (base64 encoded parts)
-        assert token is not None
-        assert len(token) > 0
-        parts = token.split('.')
-        assert len(parts) == 3  # JWT has 3 parts
-
-    async def test_generate_jwt_token_custom_expire(self):
-        """Generates token with custom expiry."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.instance_config = SimpleNamespace()
-        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 7200}}}
-
-        service = UserService(ap)
-
-        # Execute
-        token = await service.generate_jwt_token('test@example.com')
-
-        # Verify
-        assert token is not None
+        claims = jwt.decode(token, 'test_secret', algorithms=['HS256'], options={'verify_aud': False})
+        assert claims['user'] == 'test@example.com'
+        assert before + expire <= claims['exp'] <= after + expire
 
 
 class TestUserServiceVerifyJwtToken:
