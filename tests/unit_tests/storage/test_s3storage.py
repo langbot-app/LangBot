@@ -12,8 +12,9 @@ Uses moto library to mock AWS S3 service.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from importlib import import_module
+from botocore.exceptions import ClientError
 
 
 def get_s3storage_module():
@@ -102,6 +103,7 @@ class TestS3StorageProviderWithMoto:
         assert provider.s3_client is not None
         assert provider.bucket_name == 'test-langbot-storage'
         mock_app_with_s3_config.logger.info.assert_called()
+        assert [bucket['Name'] for bucket in s3_mock.list_buckets()['Buckets']] == ['test-langbot-storage']
 
     @pytest.mark.asyncio
     async def test_initialize_uses_existing_bucket(self, mock_app_with_s3_config, s3_mock):
@@ -112,11 +114,16 @@ class TestS3StorageProviderWithMoto:
         s3_mock.create_bucket(Bucket='test-langbot-storage')
 
         provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
+        with (
+            patch.object(s3storage.boto3.session.Session, 'client', return_value=s3_mock),
+            patch.object(s3_mock, 'head_bucket', wraps=s3_mock.head_bucket) as head_bucket,
+            patch.object(s3_mock, 'create_bucket', wraps=s3_mock.create_bucket) as create_bucket,
+        ):
+            await provider.initialize()
 
-        assert provider.s3_client is not None
-        # Bucket creation log should not be called since bucket exists
-        # Note: moto may still call head_bucket successfully
+        assert provider.s3_client is s3_mock
+        head_bucket.assert_called_once_with(Bucket='test-langbot-storage')
+        create_bucket.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_save_and_load_bytes(self, mock_app_with_s3_config, s3_mock):
@@ -325,8 +332,9 @@ class TestS3StorageProviderErrorHandling:
         provider = s3storage.S3StorageProvider(mock_app)
         await provider.initialize()
 
-        with pytest.raises(Exception):
+        with pytest.raises(ClientError) as exc_info:
             await provider.load('nonexistent.txt')
+        assert exc_info.value.response['Error']['Code'] == 'NoSuchKey'
 
     @pytest.mark.asyncio
     async def test_size_nonexistent_raises_error(self, s3_mock):
@@ -350,5 +358,6 @@ class TestS3StorageProviderErrorHandling:
         provider = s3storage.S3StorageProvider(mock_app)
         await provider.initialize()
 
-        with pytest.raises(Exception):
+        with pytest.raises(ClientError) as exc_info:
             await provider.size('nonexistent.txt')
+        assert exc_info.value.response['Error']['Code'] == '404'

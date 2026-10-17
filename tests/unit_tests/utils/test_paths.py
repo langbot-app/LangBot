@@ -9,7 +9,6 @@ Tests path utility functions:
 Uses tmp_path for file system isolation where applicable.
 """
 
-import os
 import pytest
 
 
@@ -45,17 +44,16 @@ class TestCheckIfSourceInstall:
 class TestGetFrontendPath:
     """Test get_frontend_path function."""
 
-    def test_returns_web_dist_by_default(self):
-        """Should return a path containing web/dist as default."""
+    def test_returns_web_dist_by_default(self, monkeypatch):
+        """Should return web/dist when no frontend build exists."""
         from langbot.pkg.utils import paths
 
-        paths._is_source_install = None
+        monkeypatch.setattr(paths, '_is_source_install', False)
+        monkeypatch.setattr(paths.os.path, 'exists', lambda _: False)
+        monkeypatch.setattr(paths.Path, 'exists', lambda _: False)
 
         result = paths.get_frontend_path()
-        # The result should contain web/dist or be an absolute path to it
-        assert 'web/dist' in result or result.endswith('dist')
-
-        paths._is_source_install = None
+        assert result == 'web/dist'
 
     def test_finds_dist_directory_in_source_mode(self, tmp_path, monkeypatch):
         """Should find web/dist when running from source mode."""
@@ -130,7 +128,7 @@ class TestGetResourcePath:
         paths._is_source_install = None
 
         result = paths.get_resource_path('templates/config.yaml')
-        assert os.path.exists(result)
+        assert result == 'templates/config.yaml'
 
         paths._is_source_install = None
 
