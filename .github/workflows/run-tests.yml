@@ -48,6 +48,22 @@ jobs:
       - name: Run unit + smoke tests
         run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short
 
+      - name: Run required security regressions
+        run: |
+          uv run pytest tests/test_cwe94_debug_exec.py \
+            -q --tb=short -rs --junitxml=cwe94-results.xml
+          python scripts/assert-required-tests.py cwe94-results.xml \
+            --module tests.test_cwe94_debug_exec \
+            --name-prefix test_no_ --expected-tests 2
+
+      - name: Upload security regression results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cwe94-results-${{ matrix.python-version }}
+          path: cwe94-results.xml
+          if-no-files-found: ignore
+
       - name: Test Summary
         if: always()
         run: |
