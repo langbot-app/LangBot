@@ -4,8 +4,8 @@ The Quart app and the MCP server are both ASGI apps. We front them with a small
 dispatcher ASGI callable:
 
 - Requests whose path is (or is under) ``/mcp`` are authenticated with a
-  LangBot API key (reusing ``apikey_service.verify_api_key``, which also
-  accepts the global API key from ``config.yaml``) and then handed to the
+  Workspace-bound LangBot API key through ``apikey_service.authenticate_api_key``
+  and then handed to the
   FastMCP Starlette app.
 - Every other request goes to the Quart app unchanged.
 

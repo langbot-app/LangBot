@@ -4,7 +4,7 @@
     {
       "directory": "langbot-deploy",
       "name": "langbot-deploy",
-      "description": "Deploy and configure a LangBot instance — Docker / Docker Compose, Kubernetes, the config.yaml model, the Box sandbox runtime, the plugin runtime, and the global API key. Use when installing, deploying, upgrading, or configuring LangBot in production or self-hosted environments. Triggers on \"deploy langbot\", \"langbot docker\", \"langbot compose\", \"langbot kubernetes\", \"langbot config.yaml\", \"langbot box runtime\", \"langbot global api key\".",
+      "description": "Deploy and configure a LangBot instance — Docker / Docker Compose, Kubernetes, the config.yaml model, the Box sandbox runtime, the plugin runtime, and API-key setup. Use when installing, deploying, upgrading, or configuring LangBot in production or self-hosted environments. Triggers on \"deploy langbot\", \"langbot docker\", \"langbot compose\", \"langbot kubernetes\", \"langbot config.yaml\", \"langbot box runtime\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -17,7 +17,7 @@
     {
       "directory": "langbot-dev",
       "name": "langbot-dev",
-      "description": "Develop, build, and debug the LangBot core backend and web frontend. Use when working inside the LangBot repository — backend (Python/Quart, src/langbot/pkg), the Vite/React web UI, HTTP API controllers/services, Alembic migrations, or the MCP server. Covers the dev environment (uv, pnpm), repo layout, the API auth model (user token / API key / global key), adding API endpoints, and the rule that API changes must update the MCP server and skills. Triggers on \"langbot backend\", \"langbot dev\", \"langbot api\", \"add langbot endpoint\", \"langbot migration\".",
+      "description": "Develop, build, and debug the LangBot core backend and web frontend. Use when working inside the LangBot repository — backend (Python/Quart, src/langbot/pkg), the Vite/React web UI, HTTP API controllers/services, Alembic migrations, or the MCP server. Covers the dev environment (uv, pnpm), repo layout, the API auth model (user token / API key), adding API endpoints, and the rule that API changes must update the MCP server and skills. Triggers on \"langbot backend\", \"langbot dev\", \"langbot api\", \"add langbot endpoint\", \"langbot migration\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -64,7 +64,7 @@
     {
       "directory": "langbot-mcp-ops",
       "name": "langbot-mcp-ops",
-      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (Workspace-bound web-UI lbk_ keys), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
       "references": [],
       "cases": [],
       "case_summaries": [],

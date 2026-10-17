@@ -288,7 +288,7 @@ LangBot is deliberately agent-friendly. The agent-facing surfaces are part of th
 - `skills/` is the single source of truth for in-repo skills.
 - `pkg/api/mcp/server.py` exposes the LangBot MCP server at `/mcp`.
 - `lbctl` calls the authenticated HTTP Service API from a terminal; its source and releases live in `langbot-cli`.
-- `api.global_api_key` authenticates API/MCP access without a browser login.
+- Workspace-bound Workspace API keys authenticate API/MCP access using the key’s granted permissions.
 - `AGENTS.md` and `ARCHITECTURE.md` tell coding agents how the repo works.
 
 When one of these changes, update the others if the behavior or contract changed. API, MCP tools, and skills are one system; drift is a bug.

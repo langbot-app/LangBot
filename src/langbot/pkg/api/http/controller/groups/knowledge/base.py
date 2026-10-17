@@ -1,9 +1,20 @@
 import quart
 
+from .....application import (
+    ApplicationAPI,
+    ApplicationAPIException,
+    KnowledgeBaseGetInput,
+    KnowledgeBaseListInput,
+)
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
 from ... import group
+
+
+def _application_api(ap) -> ApplicationAPI:
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('knowledge_base', '/api/v1/knowledge/bases')
@@ -16,11 +27,16 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def handle_knowledge_bases(request_context: RequestContext) -> quart.Response:
-            knowledge_bases = await self.ap.knowledge_service.get_knowledge_bases(
-                request_context,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
-            )
-            return self.success(data={'bases': knowledge_bases})
+            application_api = _application_api(self.ap)
+            try:
+                output = await application_api.execute(
+                    'knowledge.base.list',
+                    request_context,
+                    KnowledgeBaseListInput(include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE)),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data={'bases': output.bases})
 
         @self.route(
             '',
@@ -49,11 +65,19 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> quart.Response:
-            knowledge_base = await self.ap.knowledge_service.get_knowledge_base(
-                request_context,
-                knowledge_base_uuid,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
-            )
+            application_api = _application_api(self.ap)
+            try:
+                output = await application_api.execute(
+                    'knowledge.base.get',
+                    request_context,
+                    KnowledgeBaseGetInput(
+                        knowledge_base_uuid=knowledge_base_uuid,
+                        include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                    ),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            knowledge_base = output.base
             if knowledge_base is None:
                 return self.http_status(404, 'resource_not_found', 'knowledge base not found')
             return self.success(data={'base': knowledge_base})

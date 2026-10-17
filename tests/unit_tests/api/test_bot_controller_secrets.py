@@ -58,6 +58,10 @@ async def create_client(*, role: str):
                     instance_uuid='instance-test',
                     placement_generation=1,
                     api_key_uuid='api-key-test',
+                    account_uuid='account-test',
+                    membership_uuid='membership-test',
+                    role='viewer',
+                    membership_revision=1,
                     workspace_uuid='workspace-test',
                     permissions=frozenset({'resource.view'}),
                 )

@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 
+from ...application import ApplicationAPI
+
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext
 from .secrets import redact_secrets
@@ -147,6 +149,10 @@ class PipelineID(Arguments):
     pipeline_uuid: UUID
 
 
+class PipelineExtensionsID(PipelineID):
+    pass
+
+
 class EngineID(Arguments):
     plugin_id: str = Field(min_length=3, max_length=255)
 
@@ -180,6 +186,12 @@ TOOLS = {
         None,
     ),
     'get_pipeline': (PipelineID, 'Read a Pipeline configuration with secrets redacted.', False, None),
+    'get_pipeline_extensions': (
+        PipelineExtensionsID,
+        'Read Pipeline extension bindings and available Workspace extensions.',
+        False,
+        None,
+    ),
     'get_knowledge_schema': (EngineID, 'Get the engine creation and retrieval configuration schemas.', False, None),
     'list_operation_logs': (
         ListOperationLogs,
@@ -215,6 +227,15 @@ TOOLS = {
     ),
 }
 
+# Keep the assistant's public names tied to the versioned Application API
+# catalog.  Tests use this map to detect schema drift when a Pipeline DTO is
+# changed without updating the assistant-facing Pydantic model.
+ASSISTANT_APPLICATION_OPERATIONS = {
+    'get_pipeline': 'pipeline.get',
+    'get_pipeline_extensions': 'pipeline.extensions.get',
+    'list_resources:pipelines': 'pipeline.list',
+}
+
 
 def _required_permission(writes: bool, extra: Permission | None) -> Permission:
     """Return the permission a tool needs beyond the base resource verbs."""
@@ -222,6 +243,13 @@ def _required_permission(writes: bool, extra: Permission | None) -> Permission:
     if extra is not None:
         return extra
     return Permission.RESOURCE_MANAGE if writes else Permission.RESOURCE_VIEW
+
+
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared facade without evaluating a legacy fallback eagerly."""
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 def _authorized(context, name: str) -> bool:
@@ -257,11 +285,13 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         readers = {
             'models': ap.llm_model_service.get_llm_models,
             'embedding_models': ap.embedding_models_service.get_embedding_models,
-            'pipelines': ap.pipeline_service.get_pipelines,
             'knowledge_bases': ap.knowledge_service.get_knowledge_bases,
             'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
         }
-        resources = await readers[args['kind']](context)
+        if args['kind'] == 'pipelines':
+            resources = await _application_api(ap).list_pipelines(context)
+        else:
+            resources = await readers[args['kind']](context)
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
             fields = ('uuid', 'name', 'description', 'abilities', 'knowledge_engine_plugin_id')
@@ -285,7 +315,9 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         compact['query'] = {key: args[key] for key in ('search', 'action', 'resource_type', 'actor') if args.get(key)}
         return compact
     if name == 'get_pipeline':
-        return await ap.pipeline_service.get_pipeline(context, args['pipeline_uuid'])
+        return await _application_api(ap).get_pipeline(context, args['pipeline_uuid'])
+    if name == 'get_pipeline_extensions':
+        return await _application_api(ap).get_pipeline_extensions(context, args['pipeline_uuid'])
     if name == 'get_knowledge_schema':
         return {
             'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),

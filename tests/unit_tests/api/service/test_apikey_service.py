@@ -22,6 +22,7 @@ from langbot.pkg.entity.persistence.workspace import (
     WorkspaceExecutionSource,
     WorkspaceExecutionState,
     WorkspaceSource,
+    WorkspaceMembership,
 )
 from langbot.pkg.workspace.policy import SingleWorkspacePolicy
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
@@ -81,7 +82,7 @@ async def api_key_context(tmp_path):
 
     application = SimpleNamespace(
         persistence_mgr=_PersistenceManager(engine),
-        instance_config=SimpleNamespace(data={'api': {'global_api_key': ''}}),
+        instance_config=SimpleNamespace(data={'api': {}}),
         logger=logging.getLogger('api-key-test'),
     )
     application.workspace_service = WorkspaceService(application, instance_uuid='api-key-instance')
@@ -96,6 +97,16 @@ async def api_key_context(tmp_path):
                 normalized_email='owner@example.com',
                 password='hash',
                 account_type='local',
+            )
+        )
+    async with session_factory.begin() as session:
+        session.add(
+            WorkspaceMembership(
+                uuid=str(uuid.uuid4()),
+                workspace_uuid=workspace.uuid,
+                account_uuid=account_uuid,
+                role='owner',
+                status='active',
             )
         )
     service = ApiKeyService(application)
@@ -157,8 +168,8 @@ async def test_revoked_expired_and_unknown_keys_fail_closed(api_key_context):
         sqlalchemy.insert(ApiKey).values(
             workspace_uuid=context.workspace_uuid,
             name='Expired',
+            created_by_account_uuid=context.account_uuid,
             key_hash=hashlib.sha256(expired_secret.encode()).hexdigest(),
-            scopes=[Permission.RESOURCE_VIEW.value],
             status='active',
             expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(seconds=1),
         )
@@ -229,16 +240,17 @@ async def test_cross_workspace_crud_and_secret_guessing_are_isolated(api_key_con
     assert identity.workspace_uuid == first_context.workspace_uuid
 
 
-async def test_global_config_key_is_oss_singleton_only(api_key_context):
-    application, service, _context_value, _engine = api_key_context
-    application.instance_config.data['api']['global_api_key'] = 'configured-secret'
-
-    identity = await service.authenticate_api_key('configured-secret')
-    assert identity is not None
-    assert identity.api_key_uuid == 'global-oss-api-key'
-
-    application.workspace_service.policy = SingleWorkspacePolicy(workspace_limit=10, multi_workspace_enabled=True)
-    assert await service.authenticate_api_key('configured-secret') is None
+async def test_key_grants_do_not_follow_creator_role_changes(api_key_context):
+    application, service, context, _engine = api_key_context
+    grants = [Permission.RESOURCE_VIEW.value, Permission.RESOURCE_MANAGE.value]
+    created = await service.create_api_key(context, 'Granted key', scopes=grants)
+    await application.persistence_mgr.execute_async(
+        sqlalchemy.update(WorkspaceMembership)
+        .where(WorkspaceMembership.account_uuid == context.account_uuid)
+        .values(role='viewer')
+    )
+    identity = await service.authenticate_api_key(created['key'])
+    assert identity.permissions == frozenset(grants)
 
 
 async def test_explicit_scopes_cannot_exceed_callers_workspace_permissions(api_key_context):
@@ -356,45 +368,6 @@ class TestApiKeyServiceVerifyApiKey:
         _application, service, _context, _engine = api_key_context
 
         assert await service.verify_api_key('unknown_key') is False
-
-    async def test_verify_global_api_key_match(self, api_key_context):
-        application, service, context, _engine = api_key_context
-        application.instance_config.data['api']['global_api_key'] = 'my-global-secret'
-
-        identity = await service.authenticate_api_key('my-global-secret')
-
-        assert identity is not None
-        assert identity.workspace_uuid == context.workspace_uuid
-        assert identity.api_key_uuid == 'global-oss-api-key'
-
-    async def test_verify_global_api_key_no_prefix_required(self, api_key_context):
-        application, service, _context, _engine = api_key_context
-        application.instance_config.data['api']['global_api_key'] = 'plainsecret123'
-
-        assert await service.verify_api_key('plainsecret123') is True
-
-    async def test_verify_global_api_key_mismatch_falls_back_to_db(self, api_key_context):
-        application, service, context, _engine = api_key_context
-        application.instance_config.data['api']['global_api_key'] = 'my-global-secret'
-        created = await service.create_api_key(context, 'DB key')
-
-        identity = await service.authenticate_api_key(created['key'])
-
-        assert identity is not None
-        assert identity.api_key_uuid == created['uuid']
-
-    async def test_verify_empty_global_api_key_disabled(self, api_key_context):
-        application, service, _context, _engine = api_key_context
-        application.instance_config.data['api']['global_api_key'] = ''
-
-        assert await service.verify_api_key('') is False
-        assert await service.verify_api_key('   ') is False
-
-    async def test_verify_api_key_missing_global_config_key(self, api_key_context):
-        application, service, _context, _engine = api_key_context
-        application.instance_config.data = {'api': {}}
-
-        assert await service.verify_api_key('lbk_some_key') is False
 
 
 class TestApiKeyServiceDeleteApiKey:

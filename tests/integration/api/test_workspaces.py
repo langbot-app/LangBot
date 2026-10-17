@@ -55,7 +55,7 @@ async def workspace_api(tmp_path):
                 'jwt': {'secret': 'workspace-api-secret', 'expire': 3600},
                 'allow_modify_login_info': True,
             },
-            'api': {'global_api_key': '', 'webui_url': 'https://langbot.example'},
+            'api': {'webui_url': 'https://langbot.example'},
         }
     )
     application.logger = logging.getLogger('workspace-api-test')
@@ -442,7 +442,7 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     assert (await forbidden.get_json())['code'] == 'permission_denied'
 
 
-async def test_api_key_context_returns_bound_identity_without_workspace_permission(workspace_api):
+async def test_api_key_context_returns_bound_key_permissions(workspace_api):
     application, client, _, owner_token = workspace_api
     current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
     workspace_uuid = (await current_response.get_json())['data']['workspace']['uuid']

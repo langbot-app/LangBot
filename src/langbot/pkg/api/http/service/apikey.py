@@ -153,20 +153,6 @@ class ApiKeyService:
         if not isinstance(secret, str) or not secret.strip():
             return None
 
-        global_secret = self.ap.instance_config.data.get('api', {}).get('global_api_key', '')
-        if global_secret and secrets.compare_digest(secret, global_secret):
-            workspace_service = getattr(self.ap, 'workspace_service', None)
-            if workspace_service is None or workspace_service.policy.multi_workspace_enabled:
-                return None
-            binding = await workspace_service.get_local_execution_binding()
-            return ApiKeyIdentity(
-                instance_uuid=binding.instance_uuid,
-                workspace_uuid=binding.workspace_uuid,
-                placement_generation=binding.placement_generation,
-                api_key_uuid='global-oss-api-key',
-                permissions=frozenset(permission.value for permission in Permission),
-            )
-
         if not secret.startswith('lbk_'):
             return None
         secret_hash = self._hash_secret(secret)

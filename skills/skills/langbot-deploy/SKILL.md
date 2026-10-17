@@ -1,6 +1,6 @@
 ---
 name: langbot-deploy
-description: Deploy and configure a LangBot instance — Docker / Docker Compose, Kubernetes, the config.yaml model, the Box sandbox runtime, the plugin runtime, and the global API key. Use when installing, deploying, upgrading, or configuring LangBot in production or self-hosted environments. Triggers on "deploy langbot", "langbot docker", "langbot compose", "langbot kubernetes", "langbot config.yaml", "langbot box runtime", "langbot global api key".
+description: Deploy and configure a LangBot instance — Docker / Docker Compose, Kubernetes, the config.yaml model, the Box sandbox runtime, the plugin runtime, and API-key setup. Use when installing, deploying, upgrading, or configuring LangBot in production or self-hosted environments. Triggers on "deploy langbot", "langbot docker", "langbot compose", "langbot kubernetes", "langbot config.yaml", "langbot box runtime".
 ---
 
 # LangBot Deployment & Configuration
@@ -70,7 +70,6 @@ Key settings:
 | Key | Meaning |
 | --- | --- |
 | `api.port` | HTTP API + UI port (default 5300) |
-| `api.global_api_key` | **Global API key** for the HTTP API + MCP server. Non-empty = accepted with no login/DB record; no `lbk_` prefix required. Empty = disabled. Plaintext — trusted/internal only, serve over HTTPS. |
 | `plugin.runtime_ws_url` | Standalone plugin runtime WS URL (e.g. `ws://langbot_plugin_runtime:5400/control/ws`) |
 | `box.enabled` | Master switch for the Box sandbox runtime |
 | `box.backend` | `local` (Docker/nsjail autopick) / `docker` / `nsjail` / `e2b` / explicit unsafe `host`; env override `BOX__BACKEND` |
@@ -96,7 +95,6 @@ Many keys have `ENV__SUBKEY` overrides (e.g. `BOX__BACKEND`, `BOX__ENABLED`).
 # data/config.yaml
 api:
     port: 5300
-    global_api_key: 'a-strong-secret'   # empty disables it
 ```
 
 This key authenticates both the HTTP API and the MCP server (`/mcp`) without a
@@ -110,4 +108,3 @@ login session. See `langbot-mcp-ops` for using it, and `docs/API_KEY_AUTH.md`.
 - Do not use `box.backend: host` as a production fallback. It cannot enforce
   image, filesystem, network, PID, CPU, memory, or storage isolation.
 - Box root host/container path mismatch breaks sandbox container creation.
-- Don't commit a non-empty `api.global_api_key` to version control.

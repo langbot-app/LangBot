@@ -9,12 +9,6 @@ api:
     # OAuth redirects trust only these server-side values, never request Host
     # or Origin headers.
     webui_url: ''
-    # Global API key for the HTTP service API and the MCP server. When set to a
-    # non-empty string, this key is accepted anywhere a web-UI-created API key is
-    # accepted (X-API-Key header or "Authorization: Bearer <key>"), WITHOUT any
-    # login session and without a database record. Leave empty to disable.
-    # Keep this value secret; only enable it on trusted/internal deployments.
-    global_api_key: ''
 workspace:
     invitations:
         # Public WebUI origin used to build invitation links. Leave empty to

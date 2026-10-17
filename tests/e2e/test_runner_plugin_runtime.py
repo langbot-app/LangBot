@@ -230,7 +230,6 @@ def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_po
 
     with open(config_path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
-    config['api']['global_api_key'] = 'e2e-agent-runner-key'
     runtime_control_port, _runtime_debug_port = runner_runtime_ports
     config['plugin']['enable'] = True
     config['plugin']['runtime_ws_url'] = f'ws://127.0.0.1:{runtime_control_port}/control/ws'

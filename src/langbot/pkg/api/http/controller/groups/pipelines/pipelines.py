@@ -2,16 +2,38 @@ from __future__ import annotations
 
 import quart
 
+from .....application import (
+    ApplicationAPI,
+    ApplicationAPIException,
+    PipelineExtensionsGetInput,
+    PipelineExtensionsUpdateInput,
+    PipelineGetInput,
+    PipelineListInput,
+)
+
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
-from ....service.secrets import redact_secrets
 from ....service.pipeline_run import run_pipeline
 from ... import group
 from ......pipeline.extension_preferences import (
     normalize_extension_preferences,
     validate_extension_preferences,
 )
+
+
+def _application_api(ap) -> ApplicationAPI:
+    """Resolve the shared facade without evaluating an eager fallback.
+
+    Test and migration graphs may not attach ``application_api`` yet.  Build a
+    small compatibility facade around the existing PipelineService in that
+    case; using ``getattr(..., ap.pipeline_service)`` directly evaluates the
+    fallback eagerly and also assumes legacy services expose ``list_pipelines``
+    (the service contract is ``get_pipelines``).
+    """
+
+    application_api = getattr(ap, 'application_api', None)
+    return application_api if isinstance(application_api, ApplicationAPI) else ApplicationAPI(ap)
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
@@ -27,16 +49,16 @@ class PipelinesRouterGroup(group.RouterGroup):
             sort_by = quart.request.args.get('sort_by', 'created_at')
             sort_order = quart.request.args.get('sort_order', 'DESC')
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
-            return self.success(
-                data={
-                    'pipelines': await self.ap.pipeline_service.get_pipelines(
-                        request_context,
-                        sort_by,
-                        sort_order,
-                        include_secret=include_secret,
-                    )
-                }
-            )
+            application_api = _application_api(self.ap)
+            try:
+                output = await application_api.execute(
+                    'pipeline.list',
+                    request_context,
+                    PipelineListInput(sort_by=sort_by, sort_order=sort_order, include_secret=include_secret),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data={'pipelines': output.pipelines})
 
         @self.route(
             '',
@@ -73,11 +95,19 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            pipeline = await self.ap.pipeline_service.get_pipeline(
-                request_context,
-                pipeline_uuid,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
-            )
+            application_api = _application_api(self.ap)
+            try:
+                output = await application_api.execute(
+                    'pipeline.get',
+                    request_context,
+                    PipelineGetInput(
+                        pipeline_uuid=pipeline_uuid,
+                        include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                    ),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            pipeline = output.pipeline
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
             return self.success(data={'pipeline': pipeline})
@@ -137,36 +167,19 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+            application_api = _application_api(self.ap)
+            pipeline = await application_api.get_pipeline(request_context, pipeline_uuid)
             if pipeline is None:
                 return self.http_status(404, -1, 'pipeline not found')
-
-            pipeline_component_kinds = ['Command', 'EventListener', 'Tool']
-            if self.ap.plugin_connector.is_enable_plugin:
-                await self.ap.plugin_connector.require_workspace_context(request_context)
-            plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
-            mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
             try:
-                available_skills = await self.ap.skill_service.list_skills(request_context)
-            except Exception as exc:
-                self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
-                available_skills = []
-            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
-            return self.success(
-                data={
-                    'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
-                    'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
-                    'enable_all_skills': extensions_prefs.get('enable_all_skills', True),
-                    'bound_plugins': extensions_prefs.get('plugins', []),
-                    'available_plugins': redact_secrets(plugins),
-                    'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
-                    'available_mcp_servers': mcp_servers,
-                    'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
-                    'mcp_resource_agent_read_enabled': extensions_prefs.get('mcp_resource_agent_read_enabled', True),
-                    'bound_skills': extensions_prefs.get('skills', []),
-                    'available_skills': available_skills,
-                }
-            )
+                output = await application_api.execute(
+                    'pipeline.extensions.get',
+                    request_context,
+                    PipelineExtensionsGetInput(pipeline_uuid=pipeline_uuid),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success(data=output.extensions)
 
         @self.route(
             '/<pipeline_uuid>/extensions',
@@ -234,18 +247,27 @@ class PipelinesRouterGroup(group.RouterGroup):
                         'mcp_resources': 'bound_mcp_resources',
                     },
                 )
-                await self.ap.pipeline_service.update_pipeline_extensions(
+                application_api = _application_api(self.ap)
+                await application_api.execute(
+                    'pipeline.extensions.update',
                     request_context,
-                    pipeline_uuid,
-                    json_data.get('bound_plugins', []),
-                    json_data.get('bound_mcp_servers', []),
-                    json_data.get('enable_all_plugins', True),
-                    json_data.get('enable_all_mcp_servers', True),
-                    bound_skills=json_data.get('bound_skills', []),
-                    enable_all_skills=json_data.get('enable_all_skills', True),
-                    bound_mcp_resources=json_data.get('bound_mcp_resources'),
-                    mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    PipelineExtensionsUpdateInput(
+                        pipeline_uuid=pipeline_uuid,
+                        bound_plugins=json_data.get('bound_plugins', []),
+                        bound_mcp_servers=json_data.get('bound_mcp_servers', []),
+                        enable_all_plugins=json_data.get('enable_all_plugins', True),
+                        enable_all_mcp_servers=json_data.get('enable_all_mcp_servers', True),
+                        bound_skills=json_data.get('bound_skills', []),
+                        enable_all_skills=json_data.get('enable_all_skills', True),
+                        bound_mcp_resources=json_data.get('bound_mcp_resources'),
+                        mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    ),
                 )
+            except ApplicationAPIException as exc:
+                # Preserve the legacy Service API validation envelope while
+                # the transport-neutral boundary exposes ``validation_error``.
+                code = -1 if exc.error.code == 'validation_error' else exc.error.code
+                return self.http_status(exc.error.status_code, code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success()

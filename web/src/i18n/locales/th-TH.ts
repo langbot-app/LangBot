@@ -646,8 +646,6 @@ const thTH = {
     mcpAuthTitle: 'Authentication',
     mcpAuthDesc:
       'Authenticate with any API key from the API Keys tab, sent as a header:',
-    mcpGlobalKeyNote:
-      'You can also set a global API key in config.yaml (api.global_api_key) to use without logging in.',
     mcpClientConfigTitle: 'Example MCP client config',
     webhooks: 'Webhooks',
     createWebhook: 'สร้าง Webhook',

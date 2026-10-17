@@ -1764,6 +1764,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_a,
                             name='active-key',
                             key_hash=hashlib.sha256(active_secret.encode()).hexdigest(),
+                            created_by_account_uuid=shared_account_uuid,
                             scopes=[Permission.WORKSPACE_VIEW.value],
                             status='active',
                         ),
@@ -1785,6 +1786,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_b,
                             name='revoked-key',
                             key_hash=hashlib.sha256(revoked_secret.encode()).hexdigest(),
+                            created_by_account_uuid=shared_account_uuid,
                             scopes=[Permission.WORKSPACE_VIEW.value],
                             status='revoked',
                         ),
@@ -1793,6 +1795,7 @@ class TestPostgreSQLTenantRuntime:
                             workspace_uuid=workspace_b,
                             name='expired-key',
                             key_hash=hashlib.sha256(expired_secret.encode()).hexdigest(),
+                            created_by_account_uuid=shared_account_uuid,
                             scopes=[Permission.WORKSPACE_VIEW.value],
                             status='active',
                             expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
@@ -1819,7 +1822,7 @@ class TestPostgreSQLTenantRuntime:
                     'system': {
                         'jwt': {'secret': 'postgres-request-jwt', 'expire': 3600},
                     },
-                    'api': {'global_api_key': ''},
+                    'api': {},
                 }
             )
             runtime_application.logger = logging.getLogger('postgres-request-runtime-test')

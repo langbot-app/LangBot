@@ -14,7 +14,7 @@ and LangBot's own Local Agent) working with the LangBot ecosystem.
 | --- | --- |
 | [`langbot-dev`](skills/langbot-dev) | Core backend + web frontend development (Quart, Vite, API, migrations, MCP server) |
 | [`langbot-plugin-dev`](skills/langbot-plugin-dev) | Plugin SDK / component development, debugging, WebSocket testing |
-| [`langbot-deploy`](skills/langbot-deploy) | Docker / Compose / Kubernetes deployment, config.yaml, Box runtime, global API key |
+| [`langbot-deploy`](skills/langbot-deploy) | Docker / Compose / Kubernetes deployment, config.yaml, Box runtime, Workspace-bound API keys |
 | [`langbot-testing`](skills/langbot-testing) | WebUI / e2e QA harness, cases, fixtures, troubleshooting (the `bin/lbs` CLI) |
 | [`langbot-env-setup`](skills/langbot-env-setup) | Local dev/test environment, browser access, OAuth, proxy, startup |
 | [`langbot-mcp-ops`](skills/langbot-mcp-ops) | Operating a LangBot instance through its MCP server (`/mcp`) |

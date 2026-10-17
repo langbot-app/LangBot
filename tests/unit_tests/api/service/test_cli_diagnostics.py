@@ -57,6 +57,10 @@ async def diagnostic_client(ap):
             workspace_uuid=ctx.workspace_uuid,
             placement_generation=ctx.placement_generation,
             api_key_uuid=ctx.principal.api_key_uuid,
+            account_uuid='account-test',
+            membership_uuid='membership-test',
+            role='viewer',
+            membership_revision=1,
             permissions=ctx.workspace.permissions,
         )
 

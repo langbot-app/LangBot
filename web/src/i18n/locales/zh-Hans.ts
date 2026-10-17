@@ -621,8 +621,6 @@ const zhHans = {
     mcpEndpoint: 'MCP 接入地址',
     mcpAuthTitle: '鉴权方式',
     mcpAuthDesc: '使用「API 密钥」标签页中的任意密钥，通过请求头传入：',
-    mcpGlobalKeyNote:
-      '也可在 config.yaml 中设置全局 API 密钥（api.global_api_key），无需登录即可使用。',
     mcpClientConfigTitle: 'MCP 客户端配置示例',
     webhooks: 'Webhooks',
     createWebhook: '创建 Webhook',

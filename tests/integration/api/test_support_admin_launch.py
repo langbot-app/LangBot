@@ -224,7 +224,7 @@ async def support_admin_api(tmp_path):
                     'control_plane_public_key': _base64url(public_key),
                 }
             },
-            'api': {'global_api_key': ''},
+            'api': {},
         }
     )
     app.logger = logging.getLogger('support-admin-test')
@@ -248,6 +248,10 @@ async def support_admin_api(tmp_path):
             workspace_uuid=OTHER_WORKSPACE_UUID,
             placement_generation=1,
             api_key_uuid='api-key',
+            account_uuid='account-test',
+            membership_uuid='membership-test',
+            role='viewer',
+            membership_revision=1,
             permissions=frozenset(permission.value for permission in Permission),
         )
     )

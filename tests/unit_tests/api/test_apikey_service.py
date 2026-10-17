@@ -13,7 +13,7 @@ from langbot.pkg.entity.persistence.apikey import ApiKeyStatus
 @pytest.mark.parametrize('api_key', [None, 123, b'lbk_bytes', '', 'plain_key', ' LBK_bad', 'sk-lbk_fake'])
 async def test_verify_api_key_rejects_non_lbk_keys_without_db_query(api_key):
     persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
-    instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
+    instance_config = SimpleNamespace(data={'api': {}})
     workspace_service = SimpleNamespace(get_execution_binding=AsyncMock())
     service = ApiKeyService(
         SimpleNamespace(
@@ -55,7 +55,7 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
         update_result.scalar_one_or_none.return_value = key.id
         query_results.extend([scoped_result, update_result])
     persistence_mgr = SimpleNamespace(execute_async=AsyncMock(side_effect=query_results))
-    instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
+    instance_config = SimpleNamespace(data={'api': {}})
     workspace_service = SimpleNamespace(
         get_execution_binding=AsyncMock(
             return_value=SimpleNamespace(
