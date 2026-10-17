@@ -1,10 +1,5 @@
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type PromptMessage = {
   role: string;
   content?: string | null | JsonValue[];

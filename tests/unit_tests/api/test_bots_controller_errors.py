@@ -114,7 +114,12 @@ async def test_runtime_error_redacts_persisted_secrets_on_partial_update():
     )
     service = BotService(ap)
     service.get_bot = AsyncMock(
-        return_value={'uuid': 'bot-1', 'enable': True, 'adapter_config': {'app_secret': 'persisted-secret-value'}}
+        return_value={
+            'uuid': 'bot-1',
+            'adapter': 'aiocqhttp',
+            'enable': True,
+            'adapter_config': {'app_secret': 'persisted-secret-value'},
+        }
     )
     with pytest.raises(BotApplyError) as captured:
         await service.update_bot('workspace-test', 'bot-1', {'enable': True})

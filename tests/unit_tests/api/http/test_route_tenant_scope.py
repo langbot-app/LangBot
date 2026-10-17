@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller import group
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 
 
 pytestmark = pytest.mark.asyncio
@@ -20,6 +21,8 @@ async def test_authenticated_route_does_not_hold_database_session_during_externa
     release = asyncio.Event()
     observations: list[bool] = []
     engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as connection:
+        await connection.run_sync(WorkspaceMetadata.__table__.create)
     persistence = PersistenceManager(object(), mode=PersistenceMode.CLOUD_RUNTIME)
     persistence.db = SimpleNamespace(get_engine=lambda: engine)
 
@@ -60,7 +63,7 @@ async def test_authenticated_route_does_not_hold_database_session_during_externa
         )
     )
     try:
-        await entered.wait()
+        await asyncio.wait_for(entered.wait(), timeout=5)
         assert observations == [True]
         release.set()
         response = await request

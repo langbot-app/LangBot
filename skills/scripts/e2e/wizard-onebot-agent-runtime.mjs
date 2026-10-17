@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { createServer } from "node:net";
+import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -60,19 +60,6 @@ const result = {
   evidence_collected: ["ui", "screenshot", "console", "api_diagnostic"],
 };
 
-async function getFreePort() {
-  const server = createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  const port = typeof address === "object" && address ? address.port : 0;
-  await new Promise((resolve) => server.close(resolve));
-  if (!port) throw new Error("Could not allocate a temporary OneBot port.");
-  return port;
-}
-
 async function api(page, path, options = {}) {
   return await page.evaluate(
     async ({ baseUrl, path, options, token }) => {
@@ -96,7 +83,7 @@ async function api(page, path, options = {}) {
   );
 }
 
-async function runProbe(port) {
+async function runProbe(url, accessToken) {
   const repo = await resolveLangBotRepo();
   const python = join(repo, ".venv", "bin", "python");
   const script = join(
@@ -107,8 +94,9 @@ async function runProbe(port) {
     throw new Error(`LangBot virtualenv Python is missing: ${python}`);
   }
   return await new Promise((resolve, reject) => {
-    const child = spawn(python, [script, "--port", String(port)], {
+    const child = spawn(python, [script, "--url", url], {
       cwd: repo,
+      env: { ...process.env, ONEBOT_PROBE_TOKEN: accessToken },
     });
     let stdout = "";
     let stderr = "";
@@ -132,7 +120,7 @@ async function runProbe(port) {
 try {
   if (!frontendUrl) throw new Error("LANGBOT_FRONTEND_URL is not configured.");
   if (!backendUrl) throw new Error("LANGBOT_BACKEND_URL is not configured.");
-  const port = await getFreePort();
+  const accessToken = randomBytes(32).toString("hex");
 
   browser = await createBrowser(paths);
   const { page } = browser;
@@ -190,9 +178,7 @@ try {
     .getByText(/Configure Your Bot|配置机器人|ボットを設定/)
     .first()
     .waitFor({ timeout: 15_000 });
-  const portInput = page.getByRole("spinbutton").first();
-  await portInput.fill(String(port));
-  await portInput.press("Tab");
+  await page.getByLabel(/Access token|访问令牌|アクセストークン/i).fill(accessToken);
   await page
     .getByRole("button", {
       name: /Save & Enable Bot|保存并启用|保存して有効化/,
@@ -270,7 +256,7 @@ try {
   }
   result.visible_signals.push("route-persisted");
 
-  result.runtime.onebot = await runProbe(port);
+  result.runtime.onebot = await runProbe(`${backendUrl.replace(/^http/, "ws").replace(/\/$/, "")}/bots/${botId}/onebot/v11/ws`, accessToken);
   let routeStatus;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     routeStatus = await api(

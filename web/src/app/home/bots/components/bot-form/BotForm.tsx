@@ -288,6 +288,10 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     () => ({
       bot_uuid: initBotId,
       webhook_url: webhookUrl,
+      onebot_ws_url: webhookUrl
+        ? webhookUrl.replace(/^http/, 'ws').replace(/\/$/, '') +
+          '/onebot/v11/ws'
+        : '',
       extra_webhook_url: extraWebhookUrl,
       adapter_config: { title: embedTitle },
       outbound_ips: systemInfo.outbound_ips,
@@ -494,8 +498,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         .then((res) => {
           const bot = res.bot;
           const runtimeValues = bot.adapter_runtime_values as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           resolve({
             adapter: bot.adapter,
             description: bot.description,
@@ -505,11 +508,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             event_bindings: bot.event_bindings ?? [],
             plugin_processors: bot.plugin_processors ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
           });
         })
         .catch((err) => {

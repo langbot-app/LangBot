@@ -377,6 +377,33 @@ class RunLedgerStore:
             inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
+    async def pin_skill_revision(self, run_id: str, workspace_id: str, name: str, revision: str) -> str:
+        """Pin a Host-owned revision without overwriting concurrent run metadata."""
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
+                raise ValueError('Skill activation requires an active run in the current Workspace')
+            original = run.metadata_json
+            metadata = _json_loads(original, {})
+            bindings = metadata.setdefault('activated_skills', {})
+            if name in bindings:
+                return str(bindings[name])
+            bindings[name] = revision
+            result = await session.execute(
+                sqlalchemy.update(AgentRun)
+                .where(
+                    AgentRun.run_id == run_id,
+                    AgentRun.metadata_json == original,
+                    AgentRun.status.notin_(TERMINAL_STATUSES),
+                )
+                .values(metadata_json=_json_dumps(metadata))
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
+                raise ValueError('Concurrent run update; retry Skill activation')
+            await session.commit()
+            return revision
+
     async def finalize_run(
         self,
         *,

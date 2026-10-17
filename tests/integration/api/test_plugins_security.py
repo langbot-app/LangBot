@@ -88,6 +88,7 @@ async def plugin_security_api(plugin_module):
     }
 
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False)
     application.user_service.get_authenticated_account = AsyncMock(side_effect=lambda token: accounts[token])
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(

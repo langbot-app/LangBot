@@ -87,10 +87,21 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 - When changing Service API routes or capabilities used by `lbctl`, check compatibility with the separate `langbot-cli` repository.
 - New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`. LangBot 4.x does not support upgrading 3.x databases.
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
-- User-facing strings must support i18n (`en_US`, `zh_Hans`; include `ja_JP` where the repo already does).
+- User-facing strings must support i18n; follow the backend language rules below for server-generated content.
 - Code comments and docstrings must be English.
 - Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
 - Commit message format: `<type>(<scope>): <subject>`.
+
+## Backend Message Language
+
+- LangBot-owned business errors, runtime notices, and default messages sent to users must use the owning Workspace's message language. Keep this independent of each member's WebUI language; an unset Workspace language defaults to `en_US`.
+- Reuse `src/langbot/pkg/i18n/` and the existing `message_language` entry in `WorkspaceMetadata`. Use `t()` with stable English templates and named parameters; add matching keys and placeholders to all eight catalogs: `en_US`, `zh_Hans`, `zh_Hant`, `ja_JP`, `es_ES`, `ru_RU`, `th_TH`, and `vi_VN`. Avoid new translation frameworks or duplicate language settings.
+- Resolve language from a trusted Workspace or bot execution context, and isolate it across concurrent requests, tasks, and adapter callbacks. Browser language hints may supply account-only or unauthenticated response language, but must not override a resolved Workspace or authorize tenant selection. Reading/changing the setting requires `workspace.view` / `workspace.update`.
+- Pipeline notices should be configurable in Pipeline output settings through `pipeline_notice()`. Blank overrides inherit the Workspace translation. Preserve user-authored text literally except for documented placeholders, and retain existing visibility switches. Do not rewrite historical messages or custom text when the language changes.
+- China-only adapters and configuration/field validation diagnostics do not require localization. An adapter also serving international users is not exempt merely because it supports a Chinese platform.
+- Preserve raw provider/plugin diagnostics, tracebacks, protocol values, and machine-readable error/status codes. Translate LangBot's own category or explanation around them; do not translate arbitrary errors with substring replacement. Plugin-authored messages remain the plugin's localization responsibility.
+- Keep changes small and maintainable. Reuse existing persistence and response boundaries; delete obsolete fields only after verifying they have no remaining readers, including compatibility paths.
+- When changing language behavior, verify catalog/placeholder parity, Workspace isolation and permissions, and Pipeline inheritance/custom overrides. Update affected configuration snapshots and API/MCP documentation. Implementation details and focused test locations: [Backend message language](docs/architecture/backend-i18n.md).
 
 ## Runtime Pitfalls
 

@@ -319,8 +319,7 @@ export default function AgentApiToolPicker({
                   const expanded = expandedTool === tool.key;
                   const parameterNames = Object.keys(
                     (tool.parameters.properties as
-                      | Record<string, unknown>
-                      | undefined) ?? {},
+                      Record<string, unknown> | undefined) ?? {},
                   );
                   return (
                     <div key={tool.key} className="bg-background px-3 py-2.5">

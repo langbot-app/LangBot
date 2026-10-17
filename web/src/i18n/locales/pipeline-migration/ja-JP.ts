@@ -37,6 +37,19 @@ export default {
     '実行環境を確認して再読み込みし、このパイプラインを選択して確定すると、有効化のみを再試行します。保存済み設定は再移行しません。',
   details: '移行の詳細',
   notices: {
+    customRunner:
+      '旧形式のカスタム Runner は、プラグイン Runner として書き直してからバインドしてください。プラグイン開発ドキュメント：https://langbot.app/docs/ja/plugin/dev/tutor',
+    fieldDropped:
+      '認識できない旧フィールドやセクションは有効な設定から削除され、元の値は移行バックアップに保存されます。',
+    valueRepaired:
+      '不正または欠落した値は 4.10 の既定値で自動修復されました。移行後に確認してください。',
+    mixedRunner:
+      '新旧両方の Runner 指定があるため、利用可能な方を採用しました。',
+    runnerConfigReplaced:
+      '既存の新形式 Runner 設定は移行結果で置き換えられ、元の値はバックアップに保存されます。',
+    runnerAdded:
+      '必要な Runner プラグインをこのパイプラインの拡張リストに追加しました。',
+    extensionPrefs: '拡張設定の無効な項目は無視されました。',
     runtimeUnavailable:
       'プラグインランタイムが未接続です。接続を復旧して再試行するか、データのみ移行してください。',
     executionFailed:
@@ -119,6 +132,7 @@ export default {
     blocked: '移行不可',
     already_current: '移行済みの形式',
     not_legacy: '旧形式ではない',
+    unsupported_runner: '非対応の Runner',
     activation_pending: '有効化待ち',
     pending: '待機中',
     migrated: '移行済み',

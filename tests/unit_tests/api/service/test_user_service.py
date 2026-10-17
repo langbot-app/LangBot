@@ -16,6 +16,10 @@ from __future__ import annotations
 import pytest
 import jwt
 import datetime
+
+import sqlalchemy
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
@@ -357,7 +361,7 @@ class TestUserServiceAuthenticate:
         service = UserService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='用户不存在'):
+        with pytest.raises(ValueError, match='Resource not found'):
             await service.authenticate('nonexistent@example.com', 'password')
 
     async def test_authenticate_space_user_without_password_raises_error(self):
@@ -377,7 +381,7 @@ class TestUserServiceAuthenticate:
         service = UserService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='请使用 LangBot 账号登录'):
+        with pytest.raises(ValueError, match='Please sign in with your LangBot Account'):
             await service.authenticate('space@example.com', 'password')
 
 
@@ -416,7 +420,6 @@ class TestUserServiceGenerateJwtToken:
 
         # Verify
         assert token is not None
-
 
 
 class TestUserServiceVerifyJwtToken:
@@ -511,10 +514,17 @@ class TestUserServiceResetPassword:
         service = UserService(ap)
 
         # Execute
-        await service.reset_password('test@example.com', 'new_password')
+        await service.reset_password(' Test@Example.COM ', 'new_password')
 
-        # Verify - execute_async was called with update
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert isinstance(statement, sqlalchemy.sql.dml.Update)
+        assert statement.table.name == User.__tablename__
+        params = statement.compile().params
+        assert params['normalized_email_1'] == 'test@example.com'
+        assert PasswordHasher().verify(params['password'], 'new_password')
+        with pytest.raises(VerifyMismatchError):
+            PasswordHasher().verify(params['password'], 'old-password')
 
 
 class TestUserServiceChangePassword:

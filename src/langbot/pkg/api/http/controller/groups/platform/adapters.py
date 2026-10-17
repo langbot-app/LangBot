@@ -1,3 +1,5 @@
+from langbot.pkg.i18n import t, DEFAULT_LANGUAGE
+from langbot.pkg.i18n.workspace import get_workspace_language
 import asyncio
 import dataclasses
 import mimetypes
@@ -6,6 +8,7 @@ import quart
 
 from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.context import RequestContext
+from langbot.pkg.cloud.plan_policy import workspace_entitlement, platform_feature_names, require_workspace_platform
 from langbot.pkg.core.errors import TaskCapacityError
 from langbot.pkg.utils import httpclient, importutil
 
@@ -213,16 +216,20 @@ class AdaptersRouterGroup(group.RouterGroup):
 
         @self.route('/slack/setup/callback', methods=['GET'], auth_type=group.AuthType.NONE)
         async def slack_callback():
+            session = slack_setup.sessions.get(quart.request.args.get('state', ''))
+            locale = DEFAULT_LANGUAGE
+            if session is not None:
+                locale = await get_workspace_language(self.ap, session['context'].workspace_uuid)
             try:
                 await slack_setup.finish(
                     quart.request.args.get('state', ''),
                     quart.request.args.get('code', ''),
                     quart.request.args.get('error'),
                 )
-                message = 'Slack authorization completed. Return to LangBot to finish setup. / Slack 授权完成，请返回 LangBot 完成配置。'
+                message = t('Slack authorization completed. Return to LangBot to finish setup.', locale=locale)
                 status = 200
             except SlackSetupError:
-                message = 'Slack authorization failed or expired. Return to LangBot for details. / Slack 授权失败或已过期，请返回 LangBot 查看详情。'
+                message = t('Slack authorization failed or expired. Return to LangBot for details.', locale=locale)
                 status = 400
             return quart.Response(
                 message,
@@ -232,11 +239,20 @@ class AdaptersRouterGroup(group.RouterGroup):
             )
 
         @self.route('', methods=['GET'])
-        async def _() -> str:
-            return self.success(data={'adapters': self.ap.platform_mgr.get_available_adapters_info()})
+        async def _(request_context: RequestContext) -> str:
+            snapshot = await workspace_entitlement(self.ap, request_context.workspace_uuid)
+            adapters = self.ap.platform_mgr.get_available_adapters_info()
+            if snapshot is not None:
+                adapters = [
+                    a
+                    for a in adapters
+                    if not any(snapshot.features.get(f) is False for f in platform_feature_names(a['name']))
+                ]
+            return self.success(data={'adapters': adapters})
 
         @self.route('/<adapter_name>', methods=['GET'])
-        async def _(adapter_name: str) -> str:
+        async def _(adapter_name: str, request_context: RequestContext) -> str:
+            await require_workspace_platform(self.ap, request_context.workspace_uuid, adapter_name)
             adapter_info = self.ap.platform_mgr.get_available_adapter_info_by_name(adapter_name)
 
             if adapter_info is None:

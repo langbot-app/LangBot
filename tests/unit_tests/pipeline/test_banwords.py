@@ -82,7 +82,7 @@ async def test_invalid_sensitive_word_regex_still_blocks():
     result = await filt.process(Mock(), 'any message')
 
     assert result.level == entities.ResultLevel.BLOCK
-    assert result.user_notice == '内容检查规则执行失败，请联系管理员'
+    assert result.user_notice == 'Content checking failed. Please contact the administrator.'
     assert 'rejected' in result.console_notice.lower() or 'invalid' in result.console_notice.lower()
 
 
@@ -97,7 +97,7 @@ async def test_oversized_word_list_is_blocked():
 
     assert result.level == entities.ResultLevel.BLOCK
     assert result.replacement == ''
-    assert result.user_notice == '内容检查规则执行失败，请联系管理员'
+    assert result.user_notice == 'Content checking failed. Please contact the administrator.'
     assert 'at most 256 regex patterns are allowed' in result.console_notice.lower()
 
 

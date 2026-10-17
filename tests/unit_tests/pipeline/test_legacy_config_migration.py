@@ -1,4 +1,4 @@
-"""Behavioral tests for the pure, fail-closed legacy migration planner."""
+"""Behavioral tests for the pure legacy migration planner (relaxed v5 semantics)."""
 
 import copy
 import importlib
@@ -11,15 +11,15 @@ import pytest
 
 FIXTURES = json.loads((Path(__file__).parents[2] / 'fixtures/pipeline_migration/synthetic_legacy.json').read_text())
 TARGETS = {
-    'local-agent': ('LocalAgent', '0.1.10', None),
-    'dify-service-api': ('DifyAgent', '0.1.10', None),
-    'coze-api': ('CozeAgent', '0.1.10', None),
-    'dashscope-app-api': ('DashScopeAgent', '0.1.10', None),
-    'n8n-service-api': ('N8nAgent', '0.1.10', None),
-    'langflow-api': ('LangflowAgent', '0.1.10', None),
-    'deerflow-api': ('DeerFlowAgent', '0.1.10', None),
-    'tbox-app-api': ('TboxAgent', '0.1.8', None),
-    'weknora-api': ('WeKnoraAgent', '0.1.10', None),
+    'local-agent': ('LocalAgent', '0.2.1', None),
+    'dify-service-api': ('DifyAgent', '0.2.3', None),
+    'coze-api': ('CozeAgent', '0.2.0', None),
+    'dashscope-app-api': ('DashScopeAgent', '0.2.2', None),
+    'n8n-service-api': ('N8nAgent', '0.2.0', None),
+    'langflow-api': ('LangflowAgent', '0.2.2', None),
+    'deerflow-api': ('DeerFlowAgent', '0.2.1', None),
+    'tbox-app-api': ('TboxAgent', '0.2.1', None),
+    'weknora-api': ('WeKnoraAgent', '0.2.1', None),
 }
 
 
@@ -45,6 +45,21 @@ def assert_block(result, code, field=None):
     if field is not None:
         expected['field'] = field
     assert expected in result['blockers']
+
+
+def assert_repaired(result, code, field=None):
+    """Relaxed planner (v5): non-critical problems are repaired and reported as warnings."""
+    assert result['state'] == 'ready', result['blockers']
+    assert result['blockers'] == []
+    assert result['config'] is not None
+    codes = {(w['code'], w.get('field')) for w in result['warnings']}
+    if field is None:
+        assert code in {c for c, _ in codes}
+    else:
+        assert (code, field) in codes
+    public = {key: value for key, value in result.items() if key != 'config'}
+    assert 'SECRET' not in json.dumps(public)
+    assert 'secret-' not in json.dumps(public)
 
 
 @pytest.mark.parametrize('runner', TARGETS)
@@ -140,11 +155,22 @@ def test_malformed_envelopes_are_safe_blockers(field, value):
     assert_block(plan(source), 'invalid_type', 'ai' if field == 'ai' else 'ai.runner')
 
 
-@pytest.mark.parametrize('current', [None, '', False, {}, 'plugin:langbot-team/DeerFlowAgent/default'])
-def test_mixed_selections_block_even_empty_current_id(current):
+@pytest.mark.parametrize('current', [None, '', False, {}])
+def test_mixed_selection_with_unusable_current_id_migrates_legacy(current):
     source = source_for()
     source['ai']['runner']['id'] = current
-    assert_block(plan(source), 'mixed_runner_selection', 'ai.runner')
+    result = plan(source)
+    assert_repaired(result, 'migration.mixed_runner_selection', 'ai.runner')
+    assert result['config']['ai']['runner']['id'] == 'plugin:langbot-team/DeerFlowAgent/default'
+    assert 'runner' not in result['config']['ai']['runner']
+
+
+def test_mixed_selection_prefers_valid_current_id():
+    source = source_for()
+    source['ai']['runner']['id'] = 'plugin:langbot-team/DeerFlowAgent/default'
+    result = plan(source)
+    assert result['state'] == 'already_current'
+    assert {'code': 'migration.mixed_runner_selection', 'field': 'ai.runner'} in result['warnings']
 
 
 @pytest.mark.parametrize('value', [None, False, 0, '', [], 'secret'])
@@ -154,33 +180,59 @@ def test_malformed_active_runner_section_is_not_defaulted(value):
     assert_block(plan(source), 'invalid_type', 'ai.deerflow-api')
 
 
-def test_existing_runner_config_is_not_overwritten():
+def test_existing_runner_config_is_replaced_with_warning():
     source = source_for()
-    source['ai']['runner_config'] = {'plugin:custom/Runner/default': {'secret': 'value'}}
-    assert_block(plan(source), 'mixed_runner_config', 'ai.runner_config')
-
-
-def test_unknown_selection_is_not_echoed_as_public_legacy_id():
-    source = source_for()
-    source['ai']['runner']['runner'] = 'secret-value'
+    source['ai']['runner_config'] = {'plugin:custom/Runner/default': {'secret': 'SECRET-value'}}
     result = plan(source)
-    assert result['state'] == 'not_legacy'
-    assert 'secret-value' not in json.dumps(result)
+    assert_repaired(result, 'migration.runner_config_replaced', 'ai.runner_config')
+    assert list(result['config']['ai']['runner_config']) == [result['target_runner_id']]
+
+
+@pytest.mark.parametrize('name', ['my-runner', 'custom_runner'])
+def test_custom_legacy_runner_is_unsupported_not_blocked(name):
+    source = source_for()
+    source['ai']['runner']['runner'] = name
+    result = plan(source)
+    assert result['state'] == 'unsupported_runner'
+    assert result['config'] is None
+    assert result['blockers'] == []
+    assert result['changed_paths'] == []
+    assert {'code': 'legacy.custom_runner_unsupported', 'field': 'ai.runner.runner'} in result['warnings']
+
+
+def test_custom_runner_diagnostics_never_echo_section_values():
+    source = source_for()
+    source['ai']['runner']['runner'] = 'my-runner'
+    source['ai']['my-runner'] = {'api-key': 'SECRET-KEY'}
+    result = plan(source)
+    assert result['state'] == 'unsupported_runner'
+    assert 'SECRET' not in json.dumps(result)
+
+
+def test_leftover_custom_section_does_not_block_builtin_migration():
+    source = source_for()
+    source['ai']['my-runner'] = {'api-key': 'SECRET-KEY'}
+    result = plan(source)
+    assert_repaired(result, 'migration.unknown_section_archived', 'ai')
+    assert 'my-runner' not in result['config']['ai']
 
 
 @pytest.mark.parametrize('value', [None, False, -1, 1.5, '0'])
-def test_expiry_is_strict_nonnegative_integer(value):
+def test_malformed_expiry_is_defaulted(value):
     source = source_for()
     source['ai']['runner']['expire-time'] = value
-    assert_block(plan(source), 'invalid_expiry', 'ai.runner.expire-time')
+    result = plan(source)
+    assert result['state'] == 'ready'
+    assert result['config']['ai']['runner']['expire-time'] == 0
 
 
-def test_unknown_active_field_name_and_value_never_leak():
+def test_unknown_active_field_is_dropped_without_leaking():
     source = source_for()
     source['ai']['deerflow-api']['secret-field-name'] = 'secret-field-value'
     result = plan(source)
-    assert_block(result, 'unknown_field', 'ai.deerflow-api')
-    assert 'secret-field' not in json.dumps(result)
+    assert_repaired(result, 'migration.unknown_field_dropped', 'ai.deerflow-api')
+    assert 'secret-field' not in json.dumps({k: v for k, v in result.items() if k != 'config'})
+    assert 'secret-field-name' not in json.dumps(result['config']['ai'])
 
 
 @pytest.mark.parametrize('value', [float('nan'), float('inf'), {1: 'secret'}, ('tuple',), b'secret'])
@@ -198,10 +250,12 @@ def test_cyclic_input_blocks_without_recursion_error():
 
 @pytest.mark.parametrize('runner', TARGETS)
 @pytest.mark.parametrize('value', [None, False, 0, '', [], {}])
-def test_unknown_active_keys_block_even_when_falsey(runner, value):
+def test_unknown_active_keys_are_dropped_even_when_falsey(runner, value):
     source = source_for(runner)
     source['ai'][runner]['secret-unknown-key'] = value
-    assert_block(plan(source), 'unknown_field', f'ai.{runner}')
+    result = plan(source)
+    assert_repaired(result, 'migration.unknown_field_dropped', f'ai.{runner}')
+    assert 'secret-unknown-key' not in selected_config(result)
 
 
 @pytest.mark.parametrize('runner', TARGETS)
@@ -217,8 +271,9 @@ def test_unknown_active_envelope_keys_are_not_echoed(container):
     target = source['ai'] if container == 'ai' else source['ai']['runner']
     target['secret-unknown-key'] = 'secret-value'
     result = plan(source)
-    assert_block(result, 'unknown_field', 'ai' if container == 'ai' else 'ai.runner')
-    assert 'secret-' not in json.dumps(result)
+    code = 'migration.unknown_section_archived' if container == 'ai' else 'migration.unknown_field_dropped'
+    assert_repaired(result, code, 'ai' if container == 'ai' else 'ai.runner')
+    assert 'secret-' not in json.dumps(result['config']['ai'])
 
 
 @pytest.mark.parametrize(
@@ -237,17 +292,29 @@ def test_unknown_active_envelope_keys_are_not_echoed(container):
         {'mcp_resources': [False]},
     ],
 )
-def test_malformed_extension_preferences_block_without_expanding_access(preferences):
+def test_malformed_extension_preferences_are_ignored_without_expanding_access(preferences):
     result = plan(source_for(), preferences)
-    assert result['state'] == 'blocked'
-    assert any(item['code'] == 'invalid_extension_preferences' for item in result['blockers'])
-    assert 'secret' not in json.dumps(result)
+    assert result['state'] == 'ready'
+    assert any(item['code'] == 'invalid_extension_preferences' for item in result['warnings'])
+    assert result['extensions_preferences'] is None
+    assert 'secret' not in json.dumps({k: v for k, v in result.items() if k != 'config'})
 
 
-def test_explicit_plugin_denylist_is_not_silently_broadened():
-    preferences = {'enable_all_plugins': False, 'plugins': []}
-    assert_block(plan(source_for(), preferences), 'extensions.runner_excluded', 'extensions_preferences.plugins')
-    assert preferences == {'enable_all_plugins': False, 'plugins': []}
+def test_explicit_plugin_allowlist_gets_only_the_target_runner_added():
+    preferences = {'enable_all_plugins': False, 'plugins': [{'author': 'other', 'name': 'Plugin'}]}
+    result = plan(source_for(), preferences)
+    assert_repaired(result, 'extensions.runner_added', 'extensions_preferences.plugins')
+    assert result['extensions_preferences'] == {
+        'enable_all_plugins': False,
+        'plugins': [{'author': 'other', 'name': 'Plugin'}, {'author': 'langbot-team', 'name': 'DeerFlowAgent'}],
+    }
+    assert preferences == {'enable_all_plugins': False, 'plugins': [{'author': 'other', 'name': 'Plugin'}]}
+
+
+def test_enable_all_plugins_needs_no_extension_patch():
+    result = plan(source_for(), {'enable_all_plugins': True})
+    assert result['state'] == 'ready'
+    assert result['extensions_preferences'] is None
 
 
 @pytest.mark.parametrize('field', ['api-key', 'auth-header'])
@@ -274,29 +341,50 @@ def test_deerflow_option_trim_drift_is_not_repaired(field, value):
 
 
 @pytest.mark.parametrize('field', ['thinking-enabled', 'plan-mode', 'subagent-enabled'])
-@pytest.mark.parametrize('value', [None, 0, 1, 'false', []])
-def test_deerflow_requires_real_booleans(field, value):
+@pytest.mark.parametrize(
+    'value,expected,code',
+    [
+        (None, False, 'migration.invalid_value_defaulted'),
+        ([], False, 'migration.invalid_value_defaulted'),
+        (0, False, 'migration.value_coerced'),
+        (1, True, 'migration.value_coerced'),
+        ('false', False, 'migration.value_coerced'),
+        ('true', True, 'migration.value_coerced'),
+    ],
+)
+def test_deerflow_booleans_are_coerced_or_defaulted(field, value, expected, code):
     source = source_for()
     source['ai']['deerflow-api'][field] = value
-    assert_block(plan(source), 'invalid_type', f'ai.deerflow-api.{field}')
+    result = plan(source)
+    assert_repaired(result, code, f'ai.deerflow-api.{field}')
+    assert selected_config(result)[field] is expected
 
 
-@pytest.mark.parametrize('field', ['timeout', 'max-concurrent-subagents', 'recursion-limit'])
-@pytest.mark.parametrize('value', [None, False, 1.5, '3'])
-def test_deerflow_requires_real_integers_without_coercion(field, value):
+@pytest.mark.parametrize(
+    'value,expected,code',
+    [
+        (None, 300, 'migration.invalid_value_defaulted'),
+        (False, 300, 'migration.invalid_value_defaulted'),
+        (1.5, 300, 'migration.invalid_value_defaulted'),
+        ('3', 3, 'migration.value_coerced'),
+        (0, 300, 'migration.invalid_value_defaulted'),
+        (-1, 300, 'migration.invalid_value_defaulted'),
+    ],
+)
+def test_deerflow_timeout_is_coerced_or_defaulted(value, expected, code):
     source = source_for()
-    source['ai']['deerflow-api'][field] = value
-    assert_block(plan(source), 'invalid_type', f'ai.deerflow-api.{field}')
+    source['ai']['deerflow-api']['timeout'] = value
+    result = plan(source)
+    assert_repaired(result, code, 'ai.deerflow-api.timeout')
+    assert selected_config(result)['timeout'] == expected
 
 
-@pytest.mark.parametrize('field', ['timeout', 'max-concurrent-subagents', 'recursion-limit'])
+@pytest.mark.parametrize('field', ['max-concurrent-subagents', 'recursion-limit'])
 @pytest.mark.parametrize('value', [0, -1, 1])
 def test_deerflow_does_not_invent_numeric_clamps(field, value):
     source = source_for()
     source['ai']['deerflow-api'][field] = value
-    result = plan(source)
-    assert result['state'] == 'ready'
-    assert result['config']['ai']['runner_config'][result['target_runner_id']][field] == value
+    assert selected_config(plan(source))[field] == value
 
 
 @pytest.mark.parametrize('value', [None, False, 0, [], ''])
@@ -333,7 +421,7 @@ def test_deerflow_native_runtime_defaults_are_materialized_not_ui_defaults():
         'mcp-resources': [],
         'mcp-resource-agent-read-enabled': False,
     }
-    assert 'expire-time' not in result['config']['ai']['runner']
+    assert result['config']['ai']['runner']['expire-time'] == 0
 
 
 def test_deerflow_missing_endpoint_blocks_instead_of_using_schema_localhost():
@@ -361,11 +449,21 @@ def test_ready_public_projection_contains_no_secrets_or_credentials_in_urls():
     assert 'SECRET' not in json.dumps(public)
 
 
-@pytest.mark.parametrize('value', [None, 0, 'false'])
-def test_remove_think_flag_is_not_coerced(value):
+@pytest.mark.parametrize(
+    'value,expected,code',
+    [
+        (None, False, 'migration.invalid_value_defaulted'),
+        (0, False, 'migration.value_coerced'),
+        ('false', False, 'migration.value_coerced'),
+        ('true', True, 'migration.value_coerced'),
+    ],
+)
+def test_remove_think_flag_is_coerced_or_defaulted(value, expected, code):
     source = source_for('tbox-app-api')
     source['output']['misc']['remove-think'] = value
-    assert_block(plan(source), 'invalid_type', 'output.misc.remove-think')
+    result = plan(source)
+    assert_repaired(result, code, 'output.misc.remove-think')
+    assert selected_config(result)['remove-think'] is expected
 
 
 @pytest.mark.parametrize(
@@ -401,83 +499,130 @@ def test_local_rounds_are_never_translated_into_transcript_item_counts(rounds):
 
 
 @pytest.mark.parametrize(
-    'field,value,code',
+    'field,value,code,expected',
     [
         (
             'model',
             {'primary': 'model', 'fallbacks': [], 'reasoning': {'SECRET-model': 'invalid-level'}},
-            'local.reasoning_value',
+            'local.reasoning_dropped',
+            {'primary': 'model', 'fallbacks': [], 'reasoning': {}},
         ),
-        ('prompt', [{'role': 'system', 'content': 42}], 'local.prompt_shape'),
-        ('prompt', [{'role': 'system', 'content': 'text', 'SECRET-key': 'SECRET-value'}], 'local.prompt_shape'),
-        ('prompt', [{'role': 'system', 'content': [{'type': 'text', 'text': 42}]}], 'local.prompt_shape'),
+        (
+            'prompt',
+            [{'role': 'system', 'content': 42}],
+            'local.prompt_normalized',
+            [{'role': 'system', 'content': 'You are a helpful assistant.'}],
+        ),
+        (
+            'prompt',
+            [{'role': 'system', 'content': 'text', 'SECRET-key': 'SECRET-value'}],
+            'local.prompt_normalized',
+            [{'role': 'system', 'content': 'text'}],
+        ),
+        (
+            'prompt',
+            [{'role': 'system', 'content': [{'type': 'text', 'text': 42}]}],
+            'local.prompt_normalized',
+            [{'role': 'system', 'content': 'You are a helpful assistant.'}],
+        ),
     ],
 )
-def test_local_unsupported_behaviors_have_specific_safe_blockers(field, value, code):
+def test_local_unsupported_behaviors_are_repaired_without_leaking(field, value, code, expected):
     source = source_for('local-agent')
     source['ai']['local-agent'][field] = value
     result = plan(source)
-    assert_block(result, code, f'ai.local-agent.{field}')
-    assert 'SECRET' not in json.dumps(result)
+    assert_repaired(result, code, f'ai.local-agent.{field}' + ('.reasoning' if field == 'model' else ''))
+    assert selected_config(result)[field] == expected
+    assert 'SECRET' not in json.dumps(result['config']['ai'])
 
 
 @pytest.mark.parametrize(
-    'field,value',
+    'field,value,expected',
     [
-        ('enable-all-tools', None),
-        ('enable-all-tools', 0),
-        ('tools', None),
-        ('tools', [42]),
-        ('mcp-resources', None),
-        ('mcp-resources', [False]),
-        ('mcp-resource-agent-read-enabled', 'false'),
+        ('enable-all-tools', None, True),
+        ('enable-all-tools', 0, False),
+        ('tools', None, []),
+        ('tools', [42], []),
+        ('mcp-resources', None, []),
+        ('mcp-resources', [False], []),
+        ('mcp-resource-agent-read-enabled', 'false', False),
     ],
 )
-def test_local_host_policy_malformed_values_block(field, value):
+def test_local_host_policy_malformed_values_are_repaired(field, value, expected):
     source = source_for('local-agent')
     source['ai']['local-agent'][field] = value
-    assert_block(plan(source), 'invalid_type', f'ai.local-agent.{field}')
+    result = plan(source)
+    assert result['state'] == 'ready'
+    assert selected_config(result)[field] == expected
+    codes = {(w['code'], w['field']) for w in result['warnings']}
+    assert codes & {
+        ('migration.value_coerced', f'ai.local-agent.{field}'),
+        ('migration.invalid_value_defaulted', f'ai.local-agent.{field}'),
+    }
 
 
 @pytest.mark.parametrize(
     'runner,field',
     [
         ('dify-service-api', 'api-key'),
-        ('dify-service-api', 'base-prompt'),
-        ('coze-api', 'timeout'),
-        ('coze-api', 'api-base'),
         ('langflow-api', 'flow-id'),
         ('n8n-service-api', 'webhook-url'),
         ('tbox-app-api', 'app-id'),
-        ('weknora-api', 'app-type'),
     ],
 )
-def test_defaultless_native_fields_are_not_filled_from_target_schema(runner, field):
+def test_missing_required_credentials_and_endpoints_still_block(runner, field):
     source = source_for(runner)
     del source['ai'][runner][field]
     assert_block(plan(source), 'missing_field', f'ai.{runner}.{field}')
 
 
-@pytest.mark.parametrize('value', [None, False, 0, [], {}])
-@pytest.mark.parametrize('runner', [r for r in TARGETS if r not in ('local-agent', 'n8n-service-api')])
+@pytest.mark.parametrize(
+    'runner,field',
+    [
+        ('dify-service-api', 'base-prompt'),
+        ('coze-api', 'timeout'),
+        ('coze-api', 'api-base'),
+        ('weknora-api', 'app-type'),
+    ],
+)
+def test_missing_optional_fields_are_filled_with_410_defaults(runner, field):
+    source = source_for(runner)
+    del source['ai'][runner][field]
+    result = plan(source)
+    assert_repaired(result, 'migration.missing_default_filled', f'ai.{runner}.{field}')
+
+
+@pytest.mark.parametrize('value', [None, False, [], {}])
+@pytest.mark.parametrize('runner', [r for r in TARGETS if r not in ('local-agent', 'n8n-service-api', 'deerflow-api')])
 def test_external_api_keys_require_strings_even_if_target_coerces(runner, value):
     source = source_for(runner)
     source['ai'][runner]['api-key'] = value
     assert_block(plan(source), 'invalid_type', f'ai.{runner}.api-key')
 
 
+@pytest.mark.parametrize('runner', [r for r in TARGETS if r not in ('local-agent', 'n8n-service-api')])
+def test_numeric_external_api_key_is_stringified(runner):
+    source = source_for(runner)
+    source['ai'][runner]['api-key'] = 0
+    result = plan(source)
+    assert_repaired(result, 'migration.value_coerced', f'ai.{runner}.api-key')
+    assert selected_config(result)['api-key'] == '0'
+
+
 @pytest.mark.parametrize(
-    'section',
+    'section,expected',
     [
-        {'auto_save_history': False, 'auto-save-history': True},
-        {'auto_save_history': True, 'auto-save-history': False},
+        ({'auto_save_history': False, 'auto-save-history': True}, True),
+        ({'auto_save_history': True, 'auto-save-history': False}, False),
     ],
 )
-def test_coze_actual_underscore_history_key_missing_null_or_conflict_blocks(section):
+def test_coze_history_alias_conflict_uses_canonical_field(section, expected):
     source = source_for('coze-api')
     source['ai']['coze-api'].pop('auto_save_history')
     source['ai']['coze-api'].update(section)
-    assert_block(plan(source), 'coze.history_alias', 'ai.coze-api.auto_save_history')
+    result = plan(source)
+    assert_repaired(result, 'migration.alias_conflict_resolved', 'ai.coze-api.auto_save_history')
+    assert selected_config(result)['auto-save-history'] is expected
 
 
 @pytest.mark.parametrize('value', [False, True])
@@ -497,27 +642,36 @@ def test_coze_custom_endpoint_not_replaced_with_schema_region():
     assert 'secret-' not in json.dumps(result)
 
 
-@pytest.mark.parametrize('underscore,hyphen', [('one', 'two')])
-def test_dashscope_seed_hyphen_is_not_actual_native_runtime_key(underscore, hyphen):
+def test_dashscope_seed_alias_conflict_is_resolved_with_warning():
     source = source_for('dashscope-app-api')
     section = source['ai']['dashscope-app-api']
     section.pop('references_quote')
-    if underscore is not None:
-        section['references_quote'] = underscore
-    section['references-quote'] = hyphen
-    assert_block(plan(source), 'dashscope.references_alias', 'ai.dashscope-app-api.references_quote')
+    section['references_quote'] = 'one'
+    section['references-quote'] = 'two'
+    assert_repaired(plan(source), 'migration.alias_conflict_resolved', 'ai.dashscope-app-api.references-quote')
 
 
 @pytest.mark.parametrize('axis', ['input', 'output'])
-@pytest.mark.parametrize('underscore,hyphen', [(None, 'text'), ('chat', 'text'), ('text', 'chat')])
-def test_langflow_conflicting_or_nondefault_ui_only_alias_blocks(axis, underscore, hyphen):
+@pytest.mark.parametrize(
+    'underscore,hyphen,code',
+    [
+        (None, 'text', 'migration.alias_repaired'),
+        ('chat', 'text', 'migration.alias_conflict_resolved'),
+        ('text', 'chat', 'migration.alias_conflict_resolved'),
+    ],
+)
+def test_langflow_io_aliases_use_canonical_hyphen_field(axis, underscore, hyphen, code):
     source = source_for('langflow-api')
     section = source['ai']['langflow-api']
     section.pop(f'{axis}_type')
     if underscore is not None:
         section[f'{axis}_type'] = underscore
     section[f'{axis}-type'] = hyphen
-    assert_block(plan(source), 'langflow.io_alias', f'ai.langflow-api.{axis}_type')
+    result = plan(source)
+    assert result['state'] == 'ready'
+    assert selected_config(result)[f'{axis}-type'] == hyphen
+    if underscore is not None:
+        assert {'code': code, 'field': f'ai.langflow-api.{axis}_type'} in result['warnings']
 
 
 @pytest.mark.parametrize(
@@ -537,12 +691,13 @@ def test_langflow_conflicting_or_nondefault_ui_only_alias_blocks(axis, underscor
         0,
     ],
 )
-def test_langflow_tweaks_require_strict_object_json_without_fallback_loss(raw):
+def test_invalid_langflow_tweaks_are_defaulted_without_leaking(raw):
     source = source_for('langflow-api')
     source['ai']['langflow-api']['tweaks'] = raw
     result = plan(source)
-    assert_block(result, 'langflow.invalid_tweaks', 'ai.langflow-api.tweaks')
-    assert 'broken-secret' not in json.dumps(result)
+    assert_repaired(result, 'langflow.tweaks_invalid_defaulted', 'ai.langflow-api.tweaks')
+    assert selected_config(result)['tweaks'] == {}
+    assert 'broken-secret' not in json.dumps({k: v for k, v in result.items() if k != 'config'})
 
 
 @pytest.mark.parametrize('raw', [None, '', '{}', '{"nested":{"token":"SECRET","values":[null,false,0]}}'])
@@ -616,19 +771,20 @@ def test_n8n_secrets_remain_raw_and_not_public_even_for_inactive_modes(mode):
 
 
 @pytest.mark.parametrize(
-    'runner,field,value',
+    'runner,field,value,expected',
     [
-        ('dify-service-api', 'app-type', 'unknown'),
-        ('dashscope-app-api', 'app-type', 'chat'),
-        ('weknora-api', 'app-type', 'workflow'),
-        ('n8n-service-api', 'auth-type', 'SECRET-unknown'),
+        ('dify-service-api', 'app-type', 'unknown', 'chat'),
+        ('dashscope-app-api', 'app-type', 'chat', 'agent'),
+        ('weknora-api', 'app-type', 'workflow', 'chat'),
+        ('n8n-service-api', 'auth-type', 'SECRET-unknown', 'none'),
     ],
 )
-def test_invalid_enum_values_are_not_echoed(runner, field, value):
+def test_invalid_enum_values_are_defaulted_and_not_echoed(runner, field, value, expected):
     source = source_for(runner)
     source['ai'][runner][field] = value
     result = plan(source)
-    assert_block(result, 'invalid_value', f'ai.{runner}.{field}')
+    assert_repaired(result, 'migration.invalid_value_defaulted', f'ai.{runner}.{field}')
+    assert selected_config(result)[field] == expected
     assert 'SECRET' not in json.dumps(result)
 
 
@@ -818,7 +974,7 @@ def test_dashscope_unambiguous_seed_alias_is_repaired(value):
 
 @pytest.mark.parametrize('mode', ['agent', 'chat'])
 @pytest.mark.parametrize('value', ['ABSENT', None, '', ' ', 'saved-agent'])
-def test_weknora_agent_absence_is_not_null_or_empty(mode, value):
+def test_weknora_agent_absence_is_defaulted(mode, value):
     source = source_for('weknora-api')
     section = source['ai']['weknora-api']
     section['app-type'] = mode
@@ -826,9 +982,8 @@ def test_weknora_agent_absence_is_not_null_or_empty(mode, value):
     if value != 'ABSENT':
         section['agent-id'] = value
     selected = selected_config(plan(source))
-    assert selected['agent-id'] == (
-        ('builtin-quick-answer' if mode == 'chat' else 'builtin-smart-reasoning') if value == 'ABSENT' else value
-    )
+    default = 'builtin-quick-answer' if mode == 'chat' else 'builtin-smart-reasoning'
+    assert selected['agent-id'] == (default if value in ('ABSENT', None) else value)
     assert selected['knowledge-base-ids'] == []
     assert selected['knowledge-bases'] == []
 
@@ -914,18 +1069,22 @@ def test_n8n_ignore_and_native_latin1_are_selected():
     assert selected['basic-encoding'] == 'latin1'
 
 
-def test_weknora_blank_remote_kb_is_rejected():
+def test_weknora_blank_remote_kb_is_dropped():
     source = source_for('weknora-api')
     source['ai']['weknora-api']['knowledge-base-ids'] = [' ']
-    assert_block(plan(source), 'invalid_value', 'ai.weknora-api.knowledge-base-ids')
+    result = plan(source)
+    assert_repaired(result, 'migration.value_coerced', 'ai.weknora-api.knowledge-base-ids')
+    assert selected_config(result)['knowledge-base-ids'] == []
 
 
 @pytest.mark.parametrize('runner', ['coze-api', 'n8n-service-api', 'weknora-api'])
 @pytest.mark.parametrize('value', [0, -1])
-def test_external_target_requires_positive_timeout(runner, value):
+def test_nonpositive_external_timeout_is_defaulted(runner, value):
     source = source_for(runner)
     source['ai'][runner]['timeout'] = value
-    assert_block(plan(source), 'invalid_value', f'ai.{runner}.timeout')
+    result = plan(source)
+    assert_repaired(result, 'migration.invalid_value_defaulted', f'ai.{runner}.timeout')
+    assert selected_config(result)['timeout'] == 120
 
 
 @pytest.mark.parametrize(
@@ -975,6 +1134,7 @@ def test_ready_all9_nested_candidates_are_detached_and_no_io(runner, monkeypatch
         'target_runner_id',
         'target_plugin',
         'config',
+        'extensions_preferences',
         'changed_paths',
         'blockers',
         'warnings',
@@ -989,13 +1149,14 @@ def test_empty_config_is_not_legacy():
         'target_runner_id': None,
         'target_plugin': None,
         'config': None,
+        'extensions_preferences': None,
         'changed_paths': [],
         'blockers': [],
         'warnings': [],
     }
 
 
-def test_default_local_agent_blocks_instead_of_inventing_round_translation():
+def test_minimal_local_agent_is_completed_with_defaults():
     source = {
         'ai': {
             'runner': {'runner': 'local-agent', 'expire-time': 0},
@@ -1004,13 +1165,23 @@ def test_default_local_agent_blocks_instead_of_inventing_round_translation():
     }
     original = copy.deepcopy(source)
     result = planner().plan_legacy_pipeline(source)
-    assert planner().PLANNER_VERSION == '4'
-    assert result['state'] == 'blocked'
+    assert planner().PLANNER_VERSION == '5'
     assert result['target_runner_id'] == 'plugin:langbot-team/LocalAgent/default'
-    assert result['target_plugin'] == {'author': 'langbot-team', 'name': 'LocalAgent', 'version': '0.1.10'}
-    assert {'code': 'missing_field', 'field': 'ai.local-agent.prompt'} in result['blockers']
-    assert result['config'] is None
+    assert result['target_plugin'] == {'author': 'langbot-team', 'name': 'LocalAgent', 'version': '0.2.1'}
+    selected = selected_config(result)
+    assert selected['model'] == {'primary': 'model-id', 'fallbacks': [], 'reasoning': {}}
+    assert 'max-round' not in selected
+    assert selected['prompt'] == [{'role': 'system', 'content': 'You are a helpful assistant.'}]
+    assert {'code': 'migration.new_defaults', 'field': 'ai.local-agent'} in result['warnings']
     assert source == original
+
+
+def test_local_agent_without_primary_model_still_blocks():
+    source = source_for('local-agent')
+    del source['ai']['local-agent']['model']
+    result = plan(source)
+    assert result['state'] == 'blocked'
+    assert result['config'] is None
 
 
 @pytest.mark.parametrize('template', ['{global}', '{launcher_type}_{launcher_id}', '{sender_id}', '{project}'])
@@ -1025,8 +1196,11 @@ def test_local_box_reuse_templates_are_preserved_for_plugin(template):
 @pytest.mark.parametrize(
     'template', ['', ' ', '{}', '{0}', '{sender_id', '{sender_id!r}', '{query_id:04}', '{actor.id}', '{actor[id]}']
 )
-def test_invalid_box_templates_are_reported_before_migration(template):
+def test_invalid_box_templates_are_defaulted(template):
     source = source_for('local-agent')
     source['ai']['local-agent']['box-session-id-template'] = template
     result = plan(source)
-    assert_block(result, 'local.box_template_invalid', 'ai.local-agent.box-session-id-template')
+    assert_repaired(result, 'local.box_template_defaulted', 'ai.local-agent.box-session-id-template')
+    assert selected_config(result)['box-session-id-template'] == '{launcher_type}_{launcher_id}'
+
+

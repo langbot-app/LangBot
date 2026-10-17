@@ -47,6 +47,7 @@ from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
+from ..skill import repository as skill_repository
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
@@ -91,6 +92,7 @@ class Application:
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
     box_service: box_service_module.BoxService = None
+    skill_repository: skill_repository.SkillRepository = None
 
     # ======= Config manager =======
 
@@ -427,7 +429,10 @@ class Application:
 
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            monitoring_enabled = auto_cleanup_cfg.get('enabled', True)
+            monitoring_enabled = (
+                auto_cleanup_cfg.get('enabled', True)
+                or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            )
             retention_days = self._get_positive_int_config(
                 auto_cleanup_cfg.get('retention_days', 30),
                 default=30,

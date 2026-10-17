@@ -174,6 +174,17 @@
     bubbleIcon: "__LANGBOT_BUBBLE_ICON__",
   };
 
+  // Wizard previews must use the browser-visible backend URL. Behind a TLS
+  // proxy the server's request URL can be HTTP even when widget.js uses HTTPS.
+  // External embeds retain their configured public webhook prefix.
+  if (scriptEl && scriptEl.src) {
+    var scriptUrl = new URL(scriptEl.src, document.baseURI);
+    if (scriptUrl.searchParams.get("preview") === "wizard") {
+      CONFIG.baseUrl = scriptUrl.origin;
+      CONFIG.logoUrl = CONFIG.baseUrl + "/api/v1/embed/logo";
+    }
+  }
+
   // ========== Styles ==========
   var STYLES =
     '\
@@ -524,18 +535,15 @@
       return;
     }
 
-    var protocol = CONFIG.baseUrl.indexOf("https") === 0 ? "wss:" : "ws:";
-    var host = CONFIG.baseUrl.replace(/^https?:\/\//, "");
-    var url =
-      protocol +
-      "//" +
-      host +
-      "/api/v1/embed/" +
-      CONFIG.botUuid +
-      "/ws/connect?session_type=" +
-      CONFIG.sessionType +
-      "&session_id=" +
-      encodeURIComponent(state.sessionId);
+    var endpoint = new URL(CONFIG.baseUrl || "/", window.location.href);
+    endpoint.protocol = endpoint.protocol === "https:" || endpoint.protocol === "wss:" ? "wss:" : "ws:";
+    endpoint.pathname = endpoint.pathname.replace(/\/$/, "") +
+      "/api/v1/embed/" + encodeURIComponent(CONFIG.botUuid) + "/ws/connect";
+    endpoint.search = "";
+    endpoint.hash = "";
+    endpoint.searchParams.set("session_type", CONFIG.sessionType);
+    endpoint.searchParams.set("session_id", state.sessionId);
+    var url = endpoint.toString();
 
     try {
       state.ws = new WebSocket(url);

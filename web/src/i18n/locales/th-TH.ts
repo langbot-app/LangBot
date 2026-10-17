@@ -1,5 +1,125 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 const thTH = {
+  planRevision: {
+    subscribedOn: 'วันที่สมัคร: {{date}}',
+    latestQuota: 'โควตาล่าสุดของแผนนี้',
+    showLatest: 'ดูโควตาล่าสุดของแผนนี้',
+    showCurrent: 'ดูการสมัครสมาชิกปัจจุบัน',
+    latestTab: 'ล่าสุด',
+    currentTab: 'ปัจจุบัน',
+    cancelToSubscribe: 'ยกเลิกการสมัครสมาชิกเพื่อรับโควต้าล่าสุดในรอบถัดไป',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'ต่ออายุการสมัครปัจจุบัน',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'ยังไม่เปิดรับการสมัคร',
+    subscriptionUnavailableHint:
+      'แผนนี้ยังไม่รับการสมัครใหม่ โปรดเลือกแผนอื่น การสมัครเดิมและการต่ออายุอัตโนมัติจะไม่ได้รับผลกระทบ',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'จัดการการสมัครสมาชิก',
+    downgradeUnavailable: 'ไม่สามารถลดระดับเป็นแผนฟรีได้',
+    features: {
+      multiUserWorkspace: 'พื้นที่ทำงานสำหรับผู้ใช้หลายคน',
+      remoteE2BSandbox: 'การตั้งค่าแซนด์บ็อกซ์ E2B ระยะไกล',
+      communitySupport: 'การสนับสนุนจากชุมชน',
+      everythingInFree: 'ฟีเจอร์ทั้งหมดในแผนฟรี',
+      alwaysOnSandbox: 'แซนด์บ็อกซ์ส่วนกลางที่ทำงานตลอดเวลา 1 รายการ',
+      higherWorkspaceLimits: 'โควตาพื้นที่ทำงานที่สูงขึ้น',
+    },
+    title: 'เปรียบเทียบแผน',
+    description: 'เลือกแผนสำหรับ {{workspace}}',
+    billing: 'รอบการเรียกเก็บเงิน',
+    monthly: 'รายเดือน',
+    annual: 'รายปี',
+    currency: 'สกุลเงิน',
+    loading: 'กำลังโหลดแผน…',
+    error: 'ไม่สามารถโหลดแผนได้',
+    retry: 'ลองอีกครั้ง',
+    empty: 'ไม่มีแผนที่ใช้ได้',
+    current: 'แผนปัจจุบัน',
+    recommended: 'แนะนำ',
+    free: 'ฟรี',
+    annualNote: 'เทียบเท่า {{price}} / เดือน',
+    ownerOnly: 'เฉพาะเจ้าของหรือผู้ดูแลระบบ',
+    choose: 'ดำเนินการชำระเงิน',
+    handoff: 'เข้าสู่ระบบและชำระเงินใน Space โดยจะเก็บตัวเลือกของคุณไว้',
+    quotas: 'โควตาพื้นที่ทำงาน',
+    unlimited: 'ไม่จำกัด',
+    retention: 'ประวัติข้อความ · {{count}} วัน',
+    retentionLabel: 'ระยะเวลาเก็บประวัติข้อความ',
+    retentionHelp: 'ประวัติข้อความจะถูกลบโดยอัตโนมัติเมื่อเกินระยะเวลานี้',
+    credits: '{{count}} เครดิตต่อเดือน',
+    creditsLabel: 'เครดิตรายเดือน',
+    creditsHelp: 'ได้รับเครดิตทุกเดือนของการสมัคร รวมถึงแผนรายปี',
+    platforms: 'รองรับแพลตฟอร์มหลัก',
+    excludedPlatforms: 'ไม่รองรับ: {{platforms}}',
+    allPlatforms: 'ทุกแพลตฟอร์มที่พร้อมใช้งาน',
+    limits: {
+      bots: 'บอต',
+      pipelines: 'ตัวประมวลผล',
+      knowledge_bases: 'ฐานความรู้',
+      plugins: 'ส่วนขยาย',
+      members: 'สมาชิก',
+      managed_sandbox_sessions: 'เซสชันแซนด์บ็อกซ์ที่จัดการ',
+    },
+  },
+  workspaceLanguage: {
+    label: 'ภาษาของพื้นที่ทำงาน',
+    description:
+      'ใช้สำหรับข้อความจากระบบและคำตอบเริ่มต้นของบอต โดยไม่เปลี่ยนภาษาอินเทอร์เฟซของคุณ',
+    saved: 'บันทึกภาษาแล้ว',
+    saveFailed: 'บันทึกภาษาไม่สำเร็จ',
+  },
   inflight: {
     autoCollapse: 'ยุบอัตโนมัติ',
     empty: 'ไม่มีเหตุการณ์ที่กำลังประมวลผล',
@@ -2096,7 +2216,7 @@ const thTH = {
       mcpToolsScopeTooltip:
         'ที่นี่จะแสดงเฉพาะเครื่องมือจากเซิร์ฟเวอร์ MCP ที่อนุญาตอยู่ในส่วนขยาย',
       skillToolsScopeTooltip:
-        'เครื่องมือสกิลจะแสดงเมื่อบริการสกิลของ LangBot และแบ็กเอนด์แซนด์บ็อกซ์ Box พร้อมใช้งาน เพื่อให้ Agent เปิดใช้หรือลงทะเบียนสกิลได้',
+        'การเปิดใช้สกิลและทรัพยากรแบบอ่านอย่างเดียวทำงานได้โดยไม่ต้องใช้ Box ส่วนการลงทะเบียนจาก workspace ของ Agent ยังต้องใช้ sandbox Box',
       selectTools: 'เลือกเครื่องมือ',
       resourcesTitle: 'ทรัพยากร',
       resourcesDescription: 'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Runner นี้',
@@ -2503,8 +2623,7 @@ const thTH = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2951,9 +3070,9 @@ const thTH = {
     statusDetail: 'สถานะ',
     pluginDisabled: 'ระบบปลั๊กอินถูกปิดใช้งาน',
     boxDisabled:
-      'Sandbox Box ถูกปิดใช้งานในการตั้งค่า — เครื่องมือ sandbox, การเพิ่ม/แก้ไข skill และ stdio MCP ใช้งานไม่ได้',
+      'Sandbox Box ถูกปิดใช้งานในการตั้งค่า — เครื่องมือเรียกใช้และ stdio MCP ใช้งานไม่ได้',
     boxUnavailable:
-      'Sandbox Box ไม่พร้อมใช้งาน — เครื่องมือ sandbox, การเพิ่ม/แก้ไข skill และ stdio MCP ใช้งานไม่ได้',
+      'Sandbox Box ไม่พร้อมใช้งาน — เครื่องมือเรียกใช้และ stdio MCP ใช้งานไม่ได้',
     boxRequiredHint:
       'ฟีเจอร์นี้ต้องใช้ Box runtime กรุณาเปิดใช้งานในการตั้งค่า (box.enabled = true) และตรวจสอบว่าการเชื่อมต่อปกติ',
     boxBackend: 'แบ็กเอนด์',
@@ -3551,15 +3670,6 @@ const thTH = {
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',
-  },
-  beta_banner: {
-    message:
-      'สภาพแวดล้อมนี้อยู่ระหว่างการทดสอบเบต้า ไม่รับประกันความเสถียรของบริการ โปรดพิจารณาใช้',
-    cloud_link: 'LangBot Cloud (สภาพแวดล้อมเฉพาะ)',
-    or: 'หรือ',
-    oss_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
-    period: '',
-    dismiss: 'ปิด',
   },
 };
 export default thTH;

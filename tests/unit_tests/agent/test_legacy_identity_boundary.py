@@ -1,12 +1,15 @@
 """Native identity provenance across the Host/SDK and persisted resume boundary."""
 
-import ast
-from pathlib import Path
+import hashlib
+import json
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+from langbot_plugin.api.proxies.invocation import bind_invocation
+from langbot_plugin.entities.io.context import InstallationBinding
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.context_builder import RunnerContextBuilder
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
@@ -16,6 +19,7 @@ from langbot.pkg.entity.persistence.base import Base
 from sqlalchemy.ext.asyncio import create_async_engine
 from tests.unit_tests.agent import test_event_first_protocol as event_fixtures
 from tests.unit_tests.agent.test_context_validation import TestContextValidation as Helpers
+from tests.utils.legacy_plugin_contract import load_identity_helper, verified_plugin_root
 
 
 @pytest.fixture
@@ -192,35 +196,30 @@ async def test_tbox_resume_without_persisted_identity_fails_closed(mock_query):
     assert context['runtime']['metadata']['bot_id'] is None
 
 
+@pytest.fixture(scope='session')
+def official_plugin_root():
+    return verified_plugin_root()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    'runner,folder,method',
+    'runner,folder,method,error_name,local_identity',
     [
-        ('DifyAgent', 'dify-agent', '_get_user_tag'),
-        ('N8nAgent', 'n8n-agent', '_get_user_tag'),
-        ('CozeAgent', 'coze-agent', '_get_user_id'),
-        ('TboxAgent', 'tbox-agent', '_get_user_id'),
+        ('DifyAgent', 'dify-agent', '_get_user_tag', 'DifyConfigError', 'person_Session_007'),
+        ('N8nAgent', 'n8n-agent', '_get_user_tag', 'N8nConfigError', 'person_Session_007'),
+        ('CozeAgent', 'coze-agent', '_get_user_id', 'CozeConfigError', 'person_launcher-123'),
+        ('TboxAgent', 'tbox-agent', '_get_user_id', 'TboxConfigError', 'bot-uuid-123'),
     ],
 )
-@pytest.mark.parametrize('missing', [False, True])
-async def test_real_plugin_identity_helper_with_host_payload(mock_query, runner, folder, method, missing):
-    # Execute the actual pure helper AST without loading vendor clients or making network calls.
-    root = Path(__file__).resolve().parents[3].parent / 'langbot-plugins-411-migration'
-    path = root / 'Runner' / folder / 'components/runner/default.py'
-    if not path.exists():
-        pytest.skip('sibling plugin source checkout is required for cross-repository contract gate')
-    tree = ast.parse(path.read_text())
-    function = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == method)
-
-    class ConfigError(Exception):
-        def __init__(self, message, **kwargs):
-            super().__init__(message)
-
-    namespace = {
-        'RunnerContext': RunnerContext,
-        **{name: ConfigError for name in ('DifyConfigError', 'N8nConfigError', 'CozeConfigError', 'TboxConfigError')},
-    }
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
+@pytest.mark.parametrize('missing', [False, True], ids=['trusted-identity', 'missing-identity'])
+@pytest.mark.parametrize('profile', ['dedicated', 'shared'])
+async def test_real_plugin_identity_helper_with_host_payload(
+    mock_query, monkeypatch, official_plugin_root, runner, folder, method, error_name, local_identity, missing, profile
+):
+    # Keep exact Host identity selection above; current supported plugins namespace
+    # that identity to prevent collisions across Workspaces and installations.
+    helper, config_error = load_identity_helper(official_plugin_root, folder, method, error_name)
+    monkeypatch.setenv('LANGBOT_PLUGIN_RUNTIME_PROFILE', profile)
     mock_query.session.launcher_id = 'Session_007'
     event = QueryEntryAdapter.query_to_event(mock_query)
     if missing:
@@ -229,13 +228,34 @@ async def test_real_plugin_identity_helper_with_host_payload(mock_query, runner,
     source = 'legacy-bot' if runner == 'TboxAgent' else 'legacy-session'
     context, _ = await build(event, runner, source)
     sdk = RunnerContext.model_validate(context)
-    if missing:
-        with pytest.raises(ConfigError, match='trusted Host identity'):
-            namespace[method](None, sdk)
-    else:
-        expected = (
-            mock_query.bot_uuid
-            if runner == 'TboxAgent'
-            else ('person_launcher-123' if runner == 'CozeAgent' else 'person_Session_007')
+    handler = SimpleNamespace()
+    consumer = SimpleNamespace(_plugin_runtime_handler=handler)
+    binding = InstallationBinding(
+        instance_uuid='identity-instance',
+        workspace_uuid=event.workspace_id,
+        installation_uuid='00000000-0000-4000-8000-000000000007',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
+    )
+    if profile == 'shared':
+        # A stale connection binding must never win over the active invocation.
+        handler.bound_action_context = binding.model_copy(
+            update={'workspace_uuid': 'foreign-workspace', 'installation_uuid': 'foreign-installation'}
         )
-        assert namespace[method](None, sdk) == expected
+    authority = bind_invocation(handler, binding=binding) if profile == 'shared' else nullcontext()
+    with authority:
+        if missing:
+            with pytest.raises(config_error, match='trusted Host identity') as caught:
+                helper(consumer, sdk)
+            assert caught.value.code == f'{folder.removesuffix("-agent")}.identity_unavailable'
+        else:
+            # The expected local IDs above are independent of the actual Host
+            # payload and plugin output, preserving session-vs-event provenance.
+            scope = (
+                ['identity-instance', event.workspace_id, '00000000-0000-4000-8000-000000000007']
+                if profile == 'shared'
+                else [event.workspace_id]
+            )
+            encoded = json.dumps([scope, local_identity], ensure_ascii=False, separators=(',', ':')).encode()
+            expected = 'lb_' + hashlib.sha256(encoded).hexdigest()
+            assert helper(consumer, sdk) == expected

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...i18n import pipeline_notice
+
 import typing
 
 from .. import entities, stage
@@ -62,7 +64,7 @@ class RateLimit(stage.PipelineStage):
                     result_type=entities.ResultType.INTERRUPT,
                     new_query=query,
                     console_notice=f'根据限速规则忽略 {query.launcher_type.value}:{query.launcher_id} 消息',
-                    user_notice='请求数超过限速器设定值，已丢弃本消息。',
+                    user_notice=pipeline_notice(query, 'rate-limit-hint', 'Too many requests. Please try again later.'),
                 )
         elif stage_inst_name == 'ReleaseRateLimitOccupancy':
             await self.algo.release_access(

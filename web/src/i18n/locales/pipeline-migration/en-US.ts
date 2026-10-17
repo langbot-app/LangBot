@@ -37,6 +37,19 @@ export default {
     'After checking the runtime, refresh, select this pipeline and confirm to retry activation only. Its saved configuration will not be migrated again.',
   details: 'Migration details',
   notices: {
+    customRunner:
+      'Legacy custom runners must be rewritten as plugin runners before they can be bound. See the plugin docs: https://langbot.app/docs/en/plugin/dev/tutor',
+    fieldDropped:
+      'Unrecognized legacy fields or sections were removed from the active config; the original values are kept in the migration backup.',
+    valueRepaired:
+      'Malformed or missing values were repaired with the 4.10 defaults. Review them after migration.',
+    mixedRunner:
+      'Both a new and a legacy runner selection exist; the usable one was kept.',
+    runnerConfigReplaced:
+      'The existing new-style runner config is replaced by the migration result; the original is kept in the backup.',
+    runnerAdded:
+      'The required runner plugin was added to the extension list of this pipeline.',
+    extensionPrefs: 'Invalid entries in the extension settings were ignored.',
     runtimeUnavailable:
       'The plugin runtime is disconnected. Restore the connection and retry, or migrate data only.',
     executionFailed: 'Migration failed. Check the server logs and retry.',
@@ -119,6 +132,7 @@ export default {
     blocked: 'Blocked',
     already_current: 'Already current',
     not_legacy: 'Not legacy',
+    unsupported_runner: 'Unsupported runner',
     activation_pending: 'Activation pending',
     pending: 'Pending',
     migrated: 'Migrated',

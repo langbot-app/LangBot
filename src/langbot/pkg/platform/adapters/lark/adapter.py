@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter as LegacyLarkAdapter,
     NonBlockingLarkWSClient,
@@ -347,6 +349,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.request_tenant_access_token(tenant_key)
         return self.tenant_access_tokens.get(tenant_key, {}).get('token')
 
+    @localized_adapter
     async def send_message(
         self,
         target_type: str,
@@ -380,6 +383,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             message_id=message_ids[-1] if message_ids else '', raw={'message_ids': message_ids}
         )
 
+    @localized_adapter
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -538,6 +542,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             raise RuntimeError(f'Lark card update failed: {response.code} {response.msg}')
         self.closed_streaming_cards.add(card_id)
 
+    @localized_adapter
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -592,6 +597,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.card_last_update_dict.pop(card_id, None)
             self.closed_streaming_cards.discard(card_id)
 
+    @localized_adapter
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request':
             return await send_interaction(self, params)
@@ -632,6 +638,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             return f'{event.group.id}_{thread_id}'
         return None
 
+    @localized_adapter
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         try:
             data = await request.json
@@ -668,7 +675,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 feedback_event = self._feedback_event_from_webhook(data)
                 if feedback_event and platform_events.FeedbackEvent in self.listeners:
                     await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
-                return {'toast': {'type': 'success', 'content': '感谢您的反馈'}}
+                return {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
             await self._dispatch_eba_event(LarkEventConverter.platform_specific(data, event_type, data))
             return {'code': 200, 'message': 'ok'}
         except Exception:
@@ -689,6 +696,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     def _webhook_header(self, data: dict):
         return type('LarkWebhookHeader', (), data.get('header', {}))()
 
+    @localized_adapter
     async def run_async(self):
         self.event_loop = asyncio.get_running_loop()
         if self.config.get('app_type', 'self') != 'isv':
@@ -892,12 +900,13 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self._submit_coro(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
         from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-        return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
+        return P2CardActionTriggerResponse(
+            {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
+        )
 
-    @staticmethod
-    def _interaction_action_response(event: platform_events.PlatformSpecificEvent) -> dict[str, typing.Any]:
+    def _interaction_action_response(self, event: platform_events.PlatformSpecificEvent) -> dict[str, typing.Any]:
         response: dict[str, typing.Any] = {
-            'toast': {'type': 'success', 'content': 'Submitted / 已提交'},
+            'toast': {'type': 'success', 'content': adapter_t(self, 'Submitted')},
         }
         if not event.data.get('cardkit'):
             response['card'] = {
@@ -907,7 +916,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                     'elements': [
                         {
                             'tag': 'div',
-                            'text': {'tag': 'lark_md', 'content': '**Submitted / 已提交**'},
+                            'text': {'tag': 'lark_md', 'content': '**' + adapter_t(self, 'Submitted') + '**'},
                         }
                     ],
                 },

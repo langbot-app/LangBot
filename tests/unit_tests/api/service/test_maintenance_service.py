@@ -383,6 +383,7 @@ class TestMaintenanceServiceGetStorageAnalysis:
                 handler=plugin_handler,
             ),
             box_service=box_service,
+            skill_repository=SimpleNamespace(storage_root=Mock(return_value='/core/skills/tenants/test')),
         )
         service = MaintenanceService(ap)
         service._path_size = Mock(return_value=10)
@@ -394,12 +395,17 @@ class TestMaintenanceServiceGetStorageAnalysis:
 
         result = await service.get_storage_analysis(TEST_CONTEXT)
 
-        assert result['total_size_bytes'] == 115
+        assert result['total_size_bytes'] == 125
+        assert (
+            next(section for section in result['sections'] if section['key'] == 'skills')['path']
+            == '/core/skills/tenants/test'
+        )
         assert result['processes'][1]['directories'][0]['key'] == 'artifacts'
         assert result['processes'][2]['directories'][1]['key'] == 'mcp'
         assert result['processes'][2]['managed_processes'] == 2
         plugin_handler.get_storage_analysis.assert_awaited_once_with()
         box_service.get_storage_analysis.assert_awaited_once_with(TEST_CONTEXT)
+        ap.skill_repository.storage_root.assert_called_once_with(TEST_CONTEXT)
 
     async def test_get_storage_analysis_postgresql(self):
         """Handles PostgreSQL database type."""

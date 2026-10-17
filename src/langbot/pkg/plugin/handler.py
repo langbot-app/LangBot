@@ -443,13 +443,19 @@ def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
     return False
 
 
-def _merge_model_extra_args(model: Any, call_extra_args: Any) -> dict[str, Any]:
+def _merge_model_extra_args(model: Any, call_extra_args: Any, *, llm_policy: bool = False) -> dict[str, Any]:
     """Merge persisted model extra_args with action-level overrides."""
     merged: dict[str, Any] = {}
 
     model_extra_args = getattr(getattr(model, 'model_entity', None), 'extra_args', None)
     if isinstance(model_extra_args, dict):
         merged.update(model_extra_args)
+    if llm_policy:
+        # RuntimeProvider resolves model and call policy layers independently.
+        # Flattening them here makes a model request_policy.retries override a
+        # caller's legacy num_retries=0 (and similarly hides timeout overrides).
+        for key in ('request_policy', 'num_retries', 'max_retries', 'timeout'):
+            merged.pop(key, None)
     if isinstance(call_extra_args, dict):
         merged.update(call_extra_args)
 
@@ -1484,7 +1490,9 @@ class RuntimeConnectionHandler(handler.Handler):
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
-            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            if query is None:
+                query = _build_plugin_action_query(action_context)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
@@ -1580,7 +1588,9 @@ class RuntimeConnectionHandler(handler.Handler):
 
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
-            effective_extra_args = _merge_model_extra_args(llm_model, extra_args)
+            if query is None:
+                query = _build_plugin_action_query(action_context)
+            effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
 
@@ -2805,7 +2815,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.APPLY_PLUGIN_INSTALLATION,
                 request.model_dump(exclude_none=True),
-                timeout=120,
+                timeout=600,  # dependency install can be slow
             )
 
     async def remove_plugin_installation(
@@ -2829,7 +2839,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'install_source': install_source,
                 'install_info': install_info,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:
@@ -2843,7 +2853,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_author': plugin_author,
                 'plugin_name': plugin_name,
             },
-            timeout=120,
+            timeout=600,  # dependency install can be slow
         )
 
         async for ret in gen:

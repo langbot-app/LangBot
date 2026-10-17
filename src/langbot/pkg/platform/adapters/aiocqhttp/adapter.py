@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import traceback
+import hmac
+from urllib.parse import urlsplit
+
+from websockets.asyncio.client import connect
+from langbot.pkg.core.task_boundary import create_detached_task
+from langbot.pkg.platform.adapters.aiocqhttp.transport import OneBotClient, OneBotConnection
 import typing
 
 import aiocqhttp
@@ -20,7 +26,10 @@ from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedErro
 
 
 class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
-    bot: aiocqhttp.CQHttp = pydantic.Field(exclude=True)
+    bot: typing.Any = pydantic.Field(exclude=True)
+    _runtime: typing.Any = pydantic.PrivateAttr(default=None)
+    _stopped: asyncio.Event = pydantic.PrivateAttr(default_factory=asyncio.Event)
+    _connection_task: typing.Any = pydantic.PrivateAttr(default=None)
 
     message_converter: AiocqhttpMessageConverter = AiocqhttpMessageConverter()
     event_converter: AiocqhttpEventConverter = AiocqhttpEventConverter()
@@ -36,24 +45,64 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
         arbitrary_types_allowed = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
-        run_config = dict(config)
+        config = dict(config)
+        config.setdefault('connection_mode', 'reverse_ws')
+        if not isinstance(config.get('access-token'), str) or not config['access-token'].strip():
+            raise ValueError('OneBot requires a non-empty access token')
+        if config['connection_mode'] not in ('reverse_ws', 'forward_ws'):
+            raise ValueError('Unsupported OneBot connection mode')
+        if config['connection_mode'] == 'forward_ws':
+            url = urlsplit(config.get('ws_url', ''))
+            if url.scheme not in ('ws', 'wss') or not url.hostname or url.username or url.password or url.fragment:
+                raise ValueError('OneBot ws_url must be a ws:// or wss:// endpoint without embedded credentials')
+        super().__init__(config=config, logger=logger, bot=OneBotClient(), bot_account_id='', listeners={})
 
-        async def shutdown_trigger_placeholder():
-            while True:
-                await asyncio.sleep(1)
+    def bind_runtime(self, runtime):
+        self._runtime = runtime
 
-        run_config['shutdown_trigger'] = shutdown_trigger_placeholder
-        access_token = run_config.pop('access-token', '') or None
-        bot = aiocqhttp.CQHttp(access_token=access_token)
+    async def _validate_connection(self):
+        if self._stopped.is_set() or self._runtime is None:
+            raise RuntimeError('OneBot runtime is inactive')
+        current = await self._runtime.ap.platform_mgr.resolve_public_bot(self._runtime.bot_entity.uuid)
+        if current is not self._runtime or not current.enable:
+            raise RuntimeError('OneBot runtime placement changed')
 
-        super().__init__(
-            config=run_config,
-            logger=logger,
-            bot=bot,
-            bot_account_id='',
-            listeners={},
+    def authenticate(self, headers):
+        token = str(self.config.get('access-token', ''))
+        supplied = headers.get('Authorization', '')
+        return bool(token) and hmac.compare_digest(supplied.encode(), ('Bearer ' + token).encode())
+
+    async def serve_connection(self, send, receive, close, self_id=''):
+        await self._validate_connection()
+        if self.bot.connection is not None:
+            raise RuntimeError('OneBot already has an active connection')
+        expected = str(self.config.get('self_id', '') or '')
+        if expected and self_id and expected != self_id:
+            raise ValueError('OneBot account mismatch')
+        connection = OneBotConnection(
+            send,
+            receive,
+            close,
+            self._receive_event,
+            self._validate_connection,
+            self_id=expected or self_id,
         )
-        self._register_native_handlers()
+        self.bot.connection = connection
+        self.bot_account_id = expected or self_id
+        self._lookup.clear()
+        task = create_detached_task(connection.run(), workspace_uuid=self._runtime.workspace_uuid)
+        self._connection_task = task
+        try:
+            await task
+        finally:
+            await connection.close()
+            if self.bot.connection is connection:
+                self.bot.connection = None
+                self._connection_task = None
+                self._lookup.clear()
+
+    async def _receive_event(self, payload):
+        await self._handle_native_event(aiocqhttp.Event.from_payload(payload))
 
     def get_supported_events(self) -> list[str]:
         return [
@@ -121,33 +170,51 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
             self.listeners.pop(event_type, None)
 
     async def run_async(self):
-        await self.bot._server_app.run_task(**self.config)
+        if not self.config.get('access-token'):
+            raise ValueError('OneBot requires a non-empty access token')
+        if self.config['connection_mode'] == 'reverse_ws':
+            await self._stopped.wait()
+            return
+        delay = 1
+        while not self._stopped.is_set():
+            await self._validate_connection()
+            try:
+                async with connect(
+                    self.config['ws_url'],
+                    additional_headers={'Authorization': 'Bearer ' + self.config['access-token']},
+                    open_timeout=10,
+                    close_timeout=5,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    max_size=8 * 1024 * 1024,
+                    proxy=None,
+                ) as socket:
+                    delay = 1
+                    await self.serve_connection(socket.send, socket.recv, socket.close)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await self.logger.warning(f'OneBot connection lost ({type(exc).__name__}); reconnecting')
+            try:
+                await asyncio.wait_for(self._stopped.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+            delay = min(delay * 2, 30)
 
     async def kill(self) -> bool:
+        self._stopped.set()
+        task = self._connection_task
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         self._lookup.clear()
-        return False
-
-    def _register_native_handlers(self):
-        @self.bot.on_message()
-        async def on_message(event: aiocqhttp.Event):
-            await self._handle_native_event(event)
-
-        @self.bot.on_notice()
-        async def on_notice(event: aiocqhttp.Event):
-            await self._handle_native_event(event)
-
-        @self.bot.on_request()
-        async def on_request(event: aiocqhttp.Event):
-            await self._handle_native_event(event)
-
-        @self.bot.on_websocket_connection
-        async def on_websocket_connection(event: aiocqhttp.Event):
-            self.bot_account_id = str(getattr(event, 'self_id', '') or self.bot_account_id)
-            await self.logger.info(f'WebSocket connection established, bot id: {self.bot_account_id}')
-            await self._dispatch_native_event(event)
+        return True
 
     async def _handle_native_event(self, event: aiocqhttp.Event):
         self.bot_account_id = str(getattr(event, 'self_id', '') or self.bot_account_id)
+        # Connection metadata belongs to the adapter, never business event routing.
+        if getattr(event, 'type', None) == 'meta_event':
+            return
         if getattr(event, 'type', None) == 'message' and str(getattr(event, 'user_id', '')) == self.bot_account_id:
             return
         try:

@@ -1,0 +1,2 @@
+FROM local/langbot-oss-411:688e7761
+COPY src/langbot/pkg/persistence/databases/sqlite.py /app/src/langbot/pkg/persistence/databases/sqlite.py

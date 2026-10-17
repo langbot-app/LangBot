@@ -53,6 +53,7 @@
 | BoxService 输出截断 | 优秀 | 短/精确边界/长输出、独立 stderr |
 | BoxService 可观测性 | 优秀 | 状态报告、error ring buffer、buffer 上限 |
 | BoxService Host-owned session | 优秀 | 覆盖 `lb-box-<sha256>` 固定格式、原始 identity 不泄露、同 scope 稳定、不同 conversation/scope 隔离、缺 identity fail closed |
+| BoxService mount contract | 良好 | 通用 `read_only_mounts`；Skill mount 由 Core loader 组装 |
 | RPC client/server 协议 | 优秀 | execute/get_sessions/delete/create/conflict error |
 | BoxRuntimeConnector | 良好 | local/remote 模式、Docker 平台、relay URL、心跳与重连回调 |
 | BoxWorkspaceSession | 良好 | payload 构建、managed process 路径重写、stage host file |

@@ -223,7 +223,7 @@ function MonitoringPageContent() {
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
       {!error && (
-        <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
+        <div className="relative z-10 -mt-1 pb-3 pt-1 bg-background lg:sticky lg:top-0 lg:pb-5">
           <div>
             <Card className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end">
               <MonitoringFilters

@@ -2,7 +2,8 @@
 Pipeline full-flow integration tests.
 
 Tests real pipeline stages with fake runner/provider.
-Validates message processing through PreProcessor, Processor, and SendResponseBackStage.
+Validates RuntimePipeline dispatch through PreProcessor, Processor, ResponseWrapper,
+and SendResponseBackStage, with external services replaced by deterministic doubles.
 
 Uses RuntimePipeline directly (not PipelineManager) to avoid DB dependency.
 
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from tests.factories import FakeApp, text_query, mock_platform_adapter
@@ -23,76 +25,20 @@ from tests.factories.platform import FakePlatform
 pytestmark = pytest.mark.integration
 
 
-# ============== FIXTURE FOR SYS.MODULES ISOLATION ==============
+# ============== NORMAL APPLICATION IMPORT BOOTSTRAP ==============
 
 
 @pytest.fixture(scope='module')
-def mock_circular_import_chain():
+def load_pipeline_modules():
+    """Initialize the real import graph before importing individual stages.
+
+    This matches normal startup and the pipeline unit-test bootstrap. No
+    sys.modules/package attributes are replaced, so later tests keep real
+    module identities and the complete stage registry.
     """
-    Break circular import chain for pipeline modules using isolated_sys_modules.
+    from importlib import import_module
 
-    Chain: pipeline → core.app → http_controller → groups/plugins
-
-    We mock minimal modules to allow importing RuntimePipeline, StageInstContainer,
-    and stage classes without triggering full application initialization.
-
-    After mocking, we import the stage modules so decorators register them.
-    """
-    from tests.utils.import_isolation import isolated_sys_modules, MockLifecycleControlScope
-
-    # Mock core.entities with LifecycleControlScope enum
-    mock_core_entities = Mock()
-    mock_core_entities.LifecycleControlScope = MockLifecycleControlScope
-
-    # Mock core.app - Application class is referenced but not instantiated
-    mock_core_app = Mock()
-
-    # Mock utils.importutil to avoid unrelated import-time registrations.
-    mock_importutil = Mock()
-    mock_importutil.import_modules_in_pkg = lambda pkg: None
-    mock_importutil.import_modules_in_pkgs = lambda pkgs: None
-
-    # Modules to clear (force re-import after mocking)
-    clear = [
-        'langbot.pkg.pipeline.stage',
-        'langbot.pkg.pipeline.entities',
-        'langbot.pkg.pipeline.pipelinemgr',
-        'langbot.pkg.pipeline.preproc.preproc',
-        'langbot.pkg.pipeline.process.process',
-        'langbot.pkg.pipeline.process.handler',
-        'langbot.pkg.pipeline.process.handlers.chat',
-        'langbot.pkg.pipeline.process.handlers.command',
-        'langbot.pkg.pipeline.respback.respback',
-    ]
-
-    with isolated_sys_modules(
-        mocks={
-            'langbot.pkg.core.entities': mock_core_entities,
-            'langbot.pkg.core.app': mock_core_app,
-            'langbot.pkg.utils.importutil': mock_importutil,
-            'langbot.pkg.pipeline.controller': Mock(),
-            'langbot.pkg.pipeline.pipelinemgr': Mock(),
-        },
-        clear=clear,
-    ):
-        # Import stage modules AFTER clearing so decorators register them
-        from importlib import import_module
-
-        # Import stage base first
-        import_module('langbot.pkg.pipeline.stage')
-
-        # Import entities
-        import_module('langbot.pkg.pipeline.entities')
-
-        # Import specific stages to register them
-        import_module('langbot.pkg.pipeline.preproc.preproc')
-        import_module('langbot.pkg.pipeline.process.process')
-        import_module('langbot.pkg.pipeline.respback.respback')
-
-        # Import pipelinemgr for RuntimePipeline
-        import_module('langbot.pkg.pipeline.pipelinemgr')
-
-        yield
+    import_module('langbot.pkg.pipeline.pipelinemgr')
 
 
 # ============== FAKE RUNNER ==============
@@ -172,35 +118,18 @@ def pipeline_app():
     """
     app = FakeApp()
 
-    # Session/conversation mocks for PreProcessor
-    mock_session = Mock()
-    mock_session.launcher_type = Mock()
-    mock_session.launcher_type.value = 'person'
-    mock_session.launcher_id = 12345
-    mock_session.sender_id = 12345
-    mock_session.use_prompt_name = 'default'
-    mock_session.using_conversation = None
+    # Real SDK entities keep plugin event validation meaningful.
+    from langbot_plugin.api.entities.builtin.provider.session import Conversation, Session, LauncherTypes
+    from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 
-    # Create a simple class to mimic Prompt behavior
-    class MockPrompt:
-        def __init__(self, name, messages):
-            self.name = name
-            self.messages = messages
-
-        def copy(self):
-            return MockPrompt(self.name, list(self.messages))
-
-    # Create real lists for messages
-    prompt_messages_list = []
-    messages_list = []
-
-    mock_prompt = MockPrompt('default', prompt_messages_list)
-    mock_conversation = Mock()
-    mock_conversation.prompt = mock_prompt
-    mock_conversation.messages = messages_list
-    mock_conversation.uuid = 'test-conversation-uuid'
-    mock_conversation.update_time = None
-    mock_conversation.create_time = None
+    mock_session = Session(launcher_type=LauncherTypes.PERSON, launcher_id=12345, sender_id=12345)
+    mock_conversation = Conversation(
+        prompt=Prompt(name='default', messages=[]),
+        messages=[],
+        pipeline_uuid='test-pipeline-uuid',
+        bot_uuid='test-bot-uuid',
+        uuid='test-conversation-uuid',
+    )
 
     async def get_scoped_session(query):
         context = query._execution_context
@@ -223,6 +152,18 @@ def pipeline_app():
 
     # Tool manager mock
     app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
+    app.workspace_service = AsyncMock()
+    app.workspace_service.get_execution_binding.return_value = SimpleNamespace(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+    )
+    app.query_pool.remove_query = AsyncMock(return_value=True)
+    app.bot_service = AsyncMock()
+    app.bot_service.get_bot.return_value = {'name': 'Test bot'}
+    app.monitoring_service = AsyncMock()
+    app.monitoring_service.record_message.return_value = 'test-monitoring-message'
 
     # Telemetry mock (required by ChatMessageHandler)
     app.telemetry = Mock()
@@ -251,7 +192,10 @@ def set_fake_runner(pipeline_app):
         orchestrator = Mock()
         orchestrator.try_claim_steering_from_query = AsyncMock(return_value=False)
 
+        orchestrator.observed_queries = []
+
         async def run_from_query(query):
+            orchestrator.observed_queries.append(query)
             async for result in runner.run(query):
                 yield result
 
@@ -283,6 +227,7 @@ def create_minimal_pipeline_config():
             'misc': {
                 'at-sender': False,
                 'quote-origin': False,
+                'track-function-calls': False,
                 'exception-handling': 'show-hint',
                 'failure-hint': 'Request failed.',
             },
@@ -320,7 +265,7 @@ async def collect_processor_results(processor, query, stage_name):
 # ============== TESTS ==============
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestPipelineStageChainReal:
     """Tests for real pipeline stage chain."""
 
@@ -348,7 +293,7 @@ class TestPipelineStageChainReal:
         assert 'SendResponseBackStage' in stage.preregistered_stages
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestPreProcessorStage:
     """Tests for PreProcessor stage alone."""
 
@@ -410,7 +355,7 @@ class TestPreProcessorStage:
         assert result.new_query.user_message.role == 'user'
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestProcessorStage:
     """Tests for MessageProcessor stage."""
 
@@ -517,7 +462,7 @@ class TestProcessorStage:
         assert query.resp_messages[0] == reply_chain
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestRunnerExceptionFlow:
     """Tests for runner exception handling."""
 
@@ -638,7 +583,7 @@ class TestRunnerExceptionFlow:
         assert results[0].user_notice is None
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestSendResponseBackStage:
     """Tests for SendResponseBackStage."""
 
@@ -768,136 +713,220 @@ class TestSendResponseBackStage:
         pipeline_app.plugin_connector.notify_plugin_diagnostic.assert_not_called()
 
 
-@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.fixture
+async def runtime_pipeline_factory(pipeline_app, load_pipeline_modules):
+    """Use real dispatch and stages; fake only the surrounding services."""
+    from langbot.pkg.pipeline import pipelinemgr
+    from langbot.pkg.pipeline.preproc.preproc import PreProcessor
+    from langbot.pkg.pipeline.process.process import Processor
+    from langbot.pkg.pipeline.wrapper.wrapper import ResponseWrapper
+    from langbot.pkg.pipeline.respback.respback import SendResponseBackStage
+
+    async def create(query):
+        context = query._execution_context
+        query.instance_uuid = context.instance_uuid
+        query.workspace_uuid = context.workspace_uuid
+        query.placement_generation = context.placement_generation
+        query.resp_message_chain = []
+        query.adapter.on_monitoring_message_created = AsyncMock()
+        stage_specs = [
+            ('PreProcessor', PreProcessor),
+            ('MessageProcessor', Processor),
+            ('ResponseWrapper', ResponseWrapper),
+            ('SendResponseBackStage', SendResponseBackStage),
+        ]
+        containers = []
+        for name, cls in stage_specs:
+            instance = cls(pipeline_app)
+            await instance.initialize(query.pipeline_config)
+            containers.append(pipelinemgr.StageInstContainer(name, instance))
+        entity = SimpleNamespace(
+            uuid=query.pipeline_uuid,
+            workspace_uuid=context.workspace_uuid,
+            name='Contract pipeline',
+            config=query.pipeline_config,
+            extensions_preferences={'enable_all_plugins': False, 'plugins': [{'author': 'test', 'name': 'observer'}]},
+        )
+        return pipelinemgr.RuntimePipeline(pipeline_app, entity, containers, context)
+
+    return create
+
+
+@pytest.fixture
+def passthrough_plugin(pipeline_app):
+    """Return real SDK contexts, like a plugin which does not intercept a call."""
+    from langbot_plugin.api.entities.context import EventContext
+
+    def context_for(event, _bound_plugins):
+        return EventContext.from_event(event)
+
+    pipeline_app.plugin_connector.emit_event.side_effect = context_for
+    return context_for
+
+
+@pytest.mark.usefixtures('load_pipeline_modules')
 class TestStageChainIntegration:
-    """Tests for full stage chain (PreProcessor -> Processor -> SendResponseBackStage)."""
+    """Runtime dispatch must preserve input, output, plugin boundaries, and cleanup."""
 
     @pytest.mark.asyncio
-    async def test_full_chain_text_message_flow(self, pipeline_app, fake_platform_adapter, set_fake_runner):
-        """
-        Full chain: text message -> PreProcessor -> Processor -> SendResponseBackStage.
-
-        Validates:
-        - PreProcessor sets up session, user_message
-        - Processor calls runner and populates resp_messages
-        - SendResponseBackStage calls adapter.reply_message
-        """
-        from langbot.pkg.pipeline import entities
-        from langbot.pkg.pipeline.preproc import preproc
-        from langbot.pkg.pipeline.process import process
-        from langbot.pkg.pipeline.respback import respback
-
+    async def test_full_chain_text_message_flow(
+        self, pipeline_app, fake_platform_adapter, set_fake_runner, runtime_pipeline_factory, passthrough_plugin
+    ):
         adapter, platform = fake_platform_adapter
-
-        # Set fake runner
-        fake_runner = FakeRunner().returns('LANGBOT_FAKE_PONG')
-        set_fake_runner(fake_runner)
-
-        # Create query
-        config = create_minimal_pipeline_config()
-        query = text_query('ping')
+        set_fake_runner(FakeRunner.returns('LANGBOT_FAKE_PONG'))
+        query = text_query('ping', pipeline_config=create_minimal_pipeline_config())
+        query.pipeline_config['output']['misc']['quote-origin'] = True
         query.adapter = adapter
-        query.pipeline_config = config
-        query.resp_messages = []
-        query.resp_message_chain = []
+        runtime = await runtime_pipeline_factory(query)
 
-        # Mock plugin_connector for PreProcessor and Processor events
-        mock_event_ctx_preproc = Mock()
-        mock_event_ctx_preproc.event = Mock()
-        mock_event_ctx_preproc.event.default_prompt = []
-        mock_event_ctx_preproc.event.prompt = []
+        await runtime.run(query)
 
-        mock_event_ctx_processor = Mock()
-        mock_event_ctx_processor.is_prevented_default = Mock(return_value=False)
-        mock_event_ctx_processor.event = Mock()
-        mock_event_ctx_processor.event.user_message_alter = None
-
-        pipeline_app.plugin_connector.emit_event = AsyncMock()
-        pipeline_app.plugin_connector.emit_event.side_effect = [
-            mock_event_ctx_preproc,  # PreProcessor PromptPreProcessing
-            mock_event_ctx_processor,  # Processor NormalMessageReceived
+        assert pipeline_app.agent_run_orchestrator.observed_queries == [query]
+        assert str(query.user_message.get_content_platform_message_chain()) == 'ping'
+        assert [message.content for message in query.resp_messages] == ['LANGBOT_FAKE_PONG']
+        assert [str(chain) for chain in query.resp_message_chain] == ['LANGBOT_FAKE_PONG']
+        outbound = platform.get_outbound_messages()
+        assert len(outbound) == 1, pipeline_app.logger.error.call_args_list
+        assert outbound[0]['source'] is query.message_event
+        assert str(outbound[0]['message']) == 'LANGBOT_FAKE_PONG'
+        assert outbound[0]['quote_origin'] is True
+        assert platform.get_outbound_chunks() == []
+        assert not query.variables.get('_monitoring_has_error'), pipeline_app.logger.error.call_args_list
+        pipeline_app.logger.error.assert_not_called()
+        emitted = pipeline_app.plugin_connector.emit_event.await_args_list
+        assert [call.args[0].event_name for call in emitted] == [
+            'PersonMessageReceived',
+            'PromptPreProcessing',
+            'PersonNormalMessageReceived',
+            'NormalMessageResponded',
         ]
+        assert [call.args[1] for call in emitted] == [['test/observer']] * 4
+        pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)
 
-        # Create stages
-        preproc_stage = preproc.PreProcessor(pipeline_app)
-        processor_stage = process.Processor(pipeline_app)
-        await processor_stage.initialize(config)
-        respback_stage = respback.SendResponseBackStage(pipeline_app)
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'blocked_event', ['PersonMessageReceived', 'PersonNormalMessageReceived', 'NormalMessageResponded']
+    )
+    async def test_chain_stops_on_interrupt(
+        self,
+        pipeline_app,
+        fake_platform_adapter,
+        set_fake_runner,
+        runtime_pipeline_factory,
+        passthrough_plugin,
+        blocked_event,
+    ):
+        adapter, platform = fake_platform_adapter
+        set_fake_runner(FakeRunner.returns('MUST_NOT_BE_DELIVERED'))
+        query = text_query('hello', pipeline_config=create_minimal_pipeline_config())
+        query.adapter = adapter
+        runtime = await runtime_pipeline_factory(query)
 
-        # Run PreProcessor
-        result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type.value == entities.ResultType.CONTINUE.value
-        query = result1.new_query
+        def intercept(event, bound_plugins):
+            context = passthrough_plugin(event, bound_plugins)
+            if event.event_name == blocked_event:
+                context.prevent_default()
+            return context
 
-        # Run Processor
-        results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
-        assert len(results) >= 1
+        pipeline_app.plugin_connector.emit_event.side_effect = intercept
+        await runtime.run(query)
 
-        # Build resp_message_chain from resp_messages
+        event_names = [call.args[0].event_name for call in pipeline_app.plugin_connector.emit_event.await_args_list]
+        assert event_names[-1] == blocked_event
+        expected_runner_queries = [query] if blocked_event == 'NormalMessageResponded' else []
+        assert pipeline_app.agent_run_orchestrator.observed_queries == expected_runner_queries
+        assert query.resp_message_chain == []
+        assert platform.get_outbound_messages() == []
+        assert platform.get_outbound_chunks() == []
+        assert not query.variables.get('_monitoring_has_error'), pipeline_app.logger.error.call_args_list
+        pipeline_app.logger.error.assert_not_called()
+        pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)
+
+    @pytest.mark.asyncio
+    async def test_wrapper_plugin_reply_reaches_adapter(
+        self, pipeline_app, fake_platform_adapter, set_fake_runner, runtime_pipeline_factory, passthrough_plugin
+    ):
         from tests.factories.message import text_chain
 
-        for resp_msg in query.resp_messages:
-            if resp_msg.content:
-                query.resp_message_chain.append(text_chain(resp_msg.content))
+        adapter, platform = fake_platform_adapter
+        set_fake_runner(FakeRunner.returns('original runner answer'))
+        query = text_query('hello', pipeline_config=create_minimal_pipeline_config())
+        query.adapter = adapter
+        runtime = await runtime_pipeline_factory(query)
 
-        # Run SendResponseBackStage
-        result3 = await respback_stage.process(query, 'SendResponseBackStage')
-        assert result3.result_type.value == entities.ResultType.CONTINUE.value
+        def alter_response(event, bound_plugins):
+            context = passthrough_plugin(event, bound_plugins)
+            if event.event_name == 'NormalMessageResponded':
+                context.event.reply_message_chain = text_chain('plugin replacement')
+            return context
 
-        # Verify adapter was called
+        pipeline_app.plugin_connector.emit_event.side_effect = alter_response
+        await runtime.run(query)
+
         outbound = platform.get_outbound_messages()
-        assert len(outbound) >= 1
+        assert len(outbound) == 1, pipeline_app.logger.error.call_args_list
+        assert str(outbound[0]['message']) == 'plugin replacement'
+        assert [str(chain) for chain in query.resp_message_chain] == ['plugin replacement']
+        pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)
 
     @pytest.mark.asyncio
-    async def test_chain_stops_on_interrupt(self, pipeline_app, fake_platform_adapter):
-        """
-        Chain should stop when a stage returns INTERRUPT.
-
-        PreProcessor returns CONTINUE, Processor returns INTERRUPT (prevent_default).
-        """
-        from langbot.pkg.pipeline import entities
-        from langbot.pkg.pipeline.preproc import preproc
-        from langbot.pkg.pipeline.process import process
-
+    async def test_runner_failure_delivers_hint_and_cleans_up(
+        self, pipeline_app, fake_platform_adapter, set_fake_runner, runtime_pipeline_factory, passthrough_plugin
+    ):
         adapter, platform = fake_platform_adapter
-
-        # Create query
-        query = text_query('hello')
+        set_fake_runner(FakeRunner.raises(RuntimeError('provider unavailable')))
+        query = text_query('hello', pipeline_config=create_minimal_pipeline_config())
         query.adapter = adapter
-        query.pipeline_config = create_minimal_pipeline_config()
+        runtime = await runtime_pipeline_factory(query)
 
-        # Mock plugin_connector - PreProcessor continues, Processor interrupts
-        mock_event_ctx_preproc = Mock()
-        mock_event_ctx_preproc.event = Mock()
-        mock_event_ctx_preproc.event.default_prompt = []
-        mock_event_ctx_preproc.event.prompt = []
+        await runtime.run(query)
 
-        mock_event_ctx_processor = Mock()
-        mock_event_ctx_processor.is_prevented_default = Mock(return_value=True)
-        mock_event_ctx_processor.event = Mock()
-        mock_event_ctx_processor.event.reply_message_chain = None
-
-        pipeline_app.plugin_connector.emit_event = AsyncMock()
-        pipeline_app.plugin_connector.emit_event.side_effect = [
-            mock_event_ctx_preproc,  # PreProcessor PromptPreProcessing
-            mock_event_ctx_processor,  # Processor NormalMessageReceived
+        outbound = platform.get_outbound_messages()
+        assert len(outbound) == 1, pipeline_app.logger.error.call_args_list
+        assert str(outbound[0]['message']) == 'Request failed.'
+        assert query.variables['_monitoring_has_error'] is True
+        assert query.resp_messages == []
+        assert query.resp_message_chain == []
+        assert [call.args[0].event_name for call in pipeline_app.plugin_connector.emit_event.await_args_list] == [
+            'PersonMessageReceived',
+            'PromptPreProcessing',
+            'PersonNormalMessageReceived',
         ]
+        pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)
 
-        # Create stages
-        preproc_stage = preproc.PreProcessor(pipeline_app)
-        processor_stage = process.Processor(pipeline_app)
-        await processor_stage.initialize(query.pipeline_config)
+    @pytest.mark.asyncio
+    async def test_streaming_chain_delivers_each_chunk_with_one_response_id(
+        self, pipeline_app, set_fake_runner, runtime_pipeline_factory, passthrough_plugin
+    ):
+        from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 
-        # Run PreProcessor
-        result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type.value == entities.ResultType.CONTINUE.value
-        query = result1.new_query
+        class StreamingRunner(FakeRunner):
+            async def run(self, query):
+                yield MessageChunk(role='assistant', content='first', all_content='first', is_final=False)
+                yield MessageChunk(role='assistant', content=' second', all_content='first second', is_final=True)
 
-        # Run Processor - should INTERRUPT
-        results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
+        platform = FakePlatform(stream_output_supported=True)
+        adapter = mock_platform_adapter(platform)
+        adapter.create_message_card = AsyncMock(side_effect=platform.create_message_card)
+        set_fake_runner(StreamingRunner)
+        query = text_query('stream please', pipeline_config=create_minimal_pipeline_config())
+        query.adapter = adapter
+        runtime = await runtime_pipeline_factory(query)
 
-        assert len(results) == 1
-        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
+        await runtime.run(query)
 
-        # Chain stops here - no resp_messages
-        assert len(query.resp_messages) == 0
+        chunks = platform.get_outbound_chunks()
+        assert [(str(chunk['message']), chunk['is_final']) for chunk in chunks] == [
+            ('first', False),
+            ('first second', True),
+        ], pipeline_app.logger.error.call_args_list
+        assert all(chunk['source'] is query.message_event for chunk in chunks)
+        response_ids = [chunk['bot_message'].resp_message_id for chunk in chunks]
+        assert response_ids[0] and response_ids == [response_ids[0]] * 2
+        adapter.create_message_card.assert_awaited_once_with(response_ids[0], query.message_event)
+        assert [str(chain) for chain in query.resp_message_chain] == ['first second']
+        assert platform.get_outbound_messages() == []
+        assert pipeline_app.agent_run_orchestrator.observed_queries == [query]
+        assert not query.variables.get('_monitoring_has_error'), pipeline_app.logger.error.call_args_list
+        pipeline_app.logger.error.assert_not_called()
+        pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)

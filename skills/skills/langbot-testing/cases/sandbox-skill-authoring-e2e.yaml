@@ -1,5 +1,5 @@
 id: sandbox-skill-authoring-e2e
-title: "Local Agent creates, registers, activates, and uses a sandbox skill"
+title: "Local Agent publishes and executes an immutable Skill revision"
 mode: agent-browser
 area: sandbox
 type: regression
@@ -11,45 +11,32 @@ tags:
   - skills
   - local-agent
   - tools
-  - e2b
   - nsjail
-  - host
 skills:
   - langbot-env-setup
   - langbot-testing
 env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_any:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 preconditions:
-  - "LANGBOT_LOCAL_AGENT_PIPELINE_URL or LANGBOT_LOCAL_AGENT_PIPELINE_NAME points to the local-agent pipeline under test."
-  - "LangBot is started with the Box backend intended for this run, such as e2b, nsjail, or explicit host development mode."
-  - "The selected model route supports tool/function calling strongly enough to invoke sandbox tools."
+  - "The selected Local Agent uses a function-calling model and an available Box backend."
 steps:
-  - "Start LangBot with the target sandbox backend and confirm the Box status UI or LANGBOT_BACKEND_URL /api/v1/box/status reports the expected backend."
-  - "Open the target Local Agent pipeline in Debug Chat with a function-calling model."
-  - "Run the canonical prompt pattern in references/sandbox-skill-authoring.md with a unique skill name."
-  - "Capture the visible final response, backend logs, and the registered skill-store files."
+  - "Open the target Local Agent in Debug Chat."
+  - "Follow Publish and execute in references/sandbox-skill-authoring.md with a unique Skill name."
+  - "Record the activated revision and the script's independently expected output."
+  - "Attempt a write under the published package, then read back the original contents."
 checks:
-  - "UI: Debug Chat final assistant response contains E2E_OK:<skill-name>."
-  - "Logs: The model called exec, register_skill, activate, then exec again from the activated skill path."
-  - "Logs: The selected backend name is the expected one, such as e2b, nsjail, or host."
-  - "Skill store: The registered package and activated writeback match references/sandbox-skill-authoring.md."
-  - "Box status: recent_error_count is 0 after the run."
+  - "UI and logs show successful draft creation, registration, activation and script execution."
+  - "Script output matches the deterministic expected value."
+  - "Published-package mutation is rejected; outputs remain in the run outbox or writable draft."
+  - "The expected rejected write is distinguishable from unexpected execution failures."
 evidence_required:
   - ui
   - backend_log
   - api_diagnostic
   - filesystem
 diagnostics:
-  - "If Debug Chat fails before tool execution, first validate the model provider and function-calling support."
-  - "If /workspace/.skills/<skill> is missing only on E2B, check extra mount sync behavior."
-  - "If nsjail starts but every command fails before execve, check nsjail CLI compatibility and chroot mount targets."
-  - "API or raw provider probes are diagnostic only; they do not make this UI case pass by themselves."
-troubleshooting:
-  - sandbox-native-tools-unavailable
-  - e2b-extra-mount-sync-missing
-  - box-session-conflict-logical-metadata
-  - nsjail-cli-compatibility
-  - socks-proxy-without-socksio
+  - "Check Box availability and backend selection before interpreting a missing tool."
+  - "The runner may acquire Box before activation; a new package must not recreate the session."

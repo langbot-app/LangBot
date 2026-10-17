@@ -1,6 +1,130 @@
 import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 const enUS = {
+  planRevision: {
+    subscribedOn: 'Subscribed on {{date}}',
+    latestQuota: 'Latest quotas for this plan',
+    showLatest: 'Show latest quotas for this plan',
+    showCurrent: 'Show your current subscription',
+    latestTab: 'Latest',
+    currentTab: 'Current',
+    cancelToSubscribe:
+      'Cancel your subscription to subscribe to the latest quota next period',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Renew current subscription',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Not available to subscribe',
+    subscriptionUnavailableHint:
+      'This plan is not accepting new subscriptions. Please choose another plan. Existing subscriptions and scheduled automatic renewals are unaffected.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Manage subscription',
+    downgradeUnavailable: 'Cannot downgrade to Free',
+    features: {
+      multiUserWorkspace: 'Multi-user workspace',
+      remoteE2BSandbox: 'Remote E2B sandbox configuration',
+      communitySupport: 'Community support',
+      everythingInFree: 'Everything in Free',
+      alwaysOnSandbox: 'One always-on global sandbox',
+      higherWorkspaceLimits: 'Higher workspace limits',
+    },
+    title: 'Compare plans',
+    description: 'Choose a plan for {{workspace}}',
+    billing: 'Billing cycle',
+    monthly: 'Monthly',
+    annual: 'Yearly',
+    currency: 'Currency',
+    loading: 'Loading plans…',
+    error: 'Could not load plans',
+    retry: 'Retry',
+    empty: 'No plans available',
+    current: 'Current plan',
+    recommended: 'Recommended',
+    free: 'Free',
+    annualNote: 'Equivalent to {{price}} / month',
+    ownerOnly: 'Owner or admin only',
+    choose: 'Continue to payment',
+    handoff:
+      'Continue in Space to sign in and pay. Your selection will be preserved.',
+    quotas: 'Workspace quotas',
+    unlimited: 'Unlimited',
+    retention: 'Message history · {{count}} days',
+    retentionLabel: 'Message history retention',
+    retentionHelp:
+      'Message history is automatically removed after this period.',
+    credits: '{{count}} credits every month',
+    creditsLabel: 'Monthly credits',
+    creditsHelp:
+      'Credits are granted each subscription month, including on yearly plans.',
+    platforms: 'Mainstream platforms supported',
+    excludedPlatforms: 'Excluded: {{platforms}}',
+    allPlatforms: 'All currently available platforms',
+    limits: {
+      bots: 'Bots',
+      pipelines: 'Processors',
+      knowledge_bases: 'Knowledge bases',
+      plugins: 'Extensions',
+      members: 'Members',
+      managed_sandbox_sessions: 'Managed sandbox sessions',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Workspace language',
+    description:
+      'Language for backend messages and default bot replies. Your interface language stays independent.',
+    saved: 'Language saved',
+    saveFailed: 'Failed to save language',
+  },
   slackSetup,
   inflight: {
     autoCollapse: 'Auto-collapse',
@@ -2139,7 +2263,7 @@ const enUS = {
       mcpToolsScopeTooltip:
         'Only tools from MCP servers currently allowed in Extensions are shown here.',
       skillToolsScopeTooltip:
-        'Skill tools are available when LangBot skill service and the Box sandbox backend are ready. They let the agent activate or register skills.',
+        'Skill activation and read-only resources work without Box. Registering a skill from the agent workspace still requires the Box sandbox.',
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:
@@ -2559,8 +2683,7 @@ const enUS = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -3006,9 +3129,9 @@ const enUS = {
     statusDetail: 'Status',
     pluginDisabled: 'Plugin system is disabled',
     boxDisabled:
-      'Box sandbox is disabled in config — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+      'Box sandbox is disabled in config — execution tools and stdio MCP are unavailable',
     boxUnavailable:
-      'Box sandbox is unavailable — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+      'Box sandbox is unavailable — execution tools and stdio MCP are unavailable',
     boxRequiredHint:
       'This feature requires the Box runtime. Enable it in config (box.enabled = true) and ensure the runtime is healthy.',
     boxBackend: 'Backend',
@@ -3620,15 +3743,6 @@ const enUS = {
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',
     invalidPage: 'Invalid plugin page',
-  },
-  beta_banner: {
-    message:
-      'This environment is in Beta testing. Service stability is not guaranteed. Consider using',
-    cloud_link: 'LangBot Cloud (dedicated environment)',
-    or: 'or',
-    oss_link: 'self-hosted open-source version',
-    period: '.',
-    dismiss: 'Dismiss',
   },
 };
 export default enUS;

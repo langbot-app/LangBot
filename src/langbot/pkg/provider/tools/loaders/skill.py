@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import os
 import re
 import typing
 
-from ....box import workspace as box_workspace
+from langbot_plugin.box.models import ARTIFACT_MOUNT_ROOT
+
 from ....api.http.context import ExecutionContext
+from ....utils.python_workspace import (
+    should_prepare_python_env,
+    wrap_python_command_with_env,
+)
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -17,7 +23,9 @@ SKILL_MOUNT_PREFIX = '/workspace/.skills'
 _SKILL_MOUNT_PATTERN = re.compile(r'/workspace/\.skills/([A-Za-z0-9_-]+)')
 
 
-def get_virtual_skill_mount_path(skill_name: str) -> str:
+def get_virtual_skill_mount_path(skill_name: str, revision: str | None = None) -> str:
+    if revision is not None:
+        return f'{ARTIFACT_MOUNT_ROOT}/{revision.removeprefix("sha256:")}'
     return f'{SKILL_MOUNT_PREFIX}/{skill_name}'
 
 
@@ -70,6 +78,37 @@ def register_created_skill_visibility(query: pipeline_query.Query, skill_name: s
         bound_skills.append(skill_name)
 
 
+def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
+    """Mount only immutable revisions pinned by this run's activations."""
+
+    mounts: list[dict] = []
+    for skill_name, skill_data in get_activated_skills(query).items():
+        package_root = str(skill_data.get('package_root', '') or '').strip()
+        manifest_path = str(skill_data.get('manifest_path', '') or '').strip()
+        revision = str(skill_data.get('revision', '') or '').strip()
+        if not package_root:
+            raise ValueError(f'Activated skill "{skill_name}" has no immutable package root.')
+        if not revision:
+            raise ValueError(f'Activated skill "{skill_name}" has no pinned revision.')
+        if not os.path.isdir(package_root):
+            raise ValueError(
+                f'Activated skill "{skill_name}" pinned revision {revision} is unavailable; '
+                'the run cannot be recovered safely.'
+            )
+        if not manifest_path or not os.path.isfile(manifest_path):
+            raise ValueError(f'Activated skill "{skill_name}" pinned revision {revision} has no publication manifest.')
+        mounts.append(
+            {
+                'host_path': package_root,
+                'mount_path': get_virtual_skill_mount_path(skill_name, revision),
+                'mode': 'ro',
+                'content_digest': revision,
+                'manifest_path': manifest_path,
+            }
+        )
+    return mounts
+
+
 def get_activated_skills(query: pipeline_query.Query) -> dict[str, dict]:
     if query.variables is None:
         return {}
@@ -84,14 +123,18 @@ def get_activated_skill(query: pipeline_query.Query, skill_name: str) -> dict | 
     return get_activated_skills(query).get(skill_name)
 
 
-def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> None:
+def register_activated_skill(query: pipeline_query.Query, skill_data: dict) -> dict:
     if query.variables is None:
         query.variables = {}
 
     activated = query.variables.setdefault(ACTIVATED_SKILLS_KEY, {})
     skill_name = str(skill_data.get('name', '') or '').strip()
-    if skill_name and skill_name not in activated:
-        activated[skill_name] = skill_data
+    revision = str(skill_data.get('revision', '') or '').strip()
+    if not skill_name or not revision:
+        raise ValueError('Activated Skills require a name and immutable revision.')
+    if skill_name not in activated:
+        activated[skill_name] = dict(skill_data)
+    return activated[skill_name]
 
 
 def normalize_skill_names(value: typing.Any) -> list[str]:
@@ -112,89 +155,37 @@ def get_activated_skill_names(query: pipeline_query.Query) -> list[str]:
     return normalize_skill_names(list(get_activated_skills(query).keys()))
 
 
-def restore_activated_skills(
-    ap: app.Application,
-    query: pipeline_query.Query,
-    skill_names: typing.Any,
-) -> list[str]:
-    """Restore caller-provided names from the current visible skill set."""
-    restored: list[str] = []
-    for skill_name in normalize_skill_names(skill_names):
-        skill_data = get_visible_skill(ap, query, skill_name)
-        if skill_data is None:
-            continue
-        register_activated_skill(query, skill_data)
-        restored.append(skill_name)
-    return restored
+async def get_persisted_skill_revision(ap: app.Application, query: pipeline_query.Query, name: str) -> str | None:
+    """Read a pin only for the currently authorized Host run."""
+    session = getattr(query, '_agent_run_session', None)
+    if not isinstance(session, dict):
+        return None
+    from ....agent.runner.run_ledger_store import RunLedgerStore, TERMINAL_STATUSES
 
-
-def restore_activated_skills_from_state(
-    ap: app.Application,
-    query: pipeline_query.Query,
-    state: dict[str, dict[str, typing.Any]],
-) -> list[str]:
-    """Restore persisted activated skill names into Query variables.
-
-    The state value stores names only. Full skill metadata is rebuilt from the
-    current pipeline-visible skill cache so removed or unbound skills remain
-    unavailable to native exec/write/edit.
-    """
-    conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
-    skill_names = normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
-    return restore_activated_skills(ap, query, skill_names)
+    context = getattr(query, '_execution_context', None)
+    workspace_id = str(getattr(context, 'workspace_uuid', None) or getattr(query, 'workspace_uuid', '') or '')
+    run = await RunLedgerStore(ap.persistence_mgr.get_db_engine()).get_run(str(session['run_id']))
+    if run is None or run['workspace_id'] != workspace_id or run['status'] in TERMINAL_STATUSES:
+        raise ValueError('Skill recovery requires an active run in the current Workspace')
+    return (run.get('metadata') or {}).get('activated_skills', {}).get(name)
 
 
 async def persist_activated_skill(
     ap: app.Application,
     query: pipeline_query.Query,
     skill_name: str,
-) -> None:
-    """Persist activated skill names into host-owned conversation state.
-
-    ``activate`` runs host-side. This writes the run's current activated skill
-    names to the conversation-scope ``host.activated_skills`` snapshot so a later
-    run can restore them via ``restore_activated_skills_from_state``. Host writes
-    here and a runner ``state.updated`` to the same key follow last-write-wins.
-
-    Best-effort: a persistence failure must not fail the activation itself. No-op
-    when the call is not inside an authorized agent run, or when conversation
-    state is unavailable (state disabled / scope not enabled / no conversation).
-    """
+    revision: str,
+) -> str:
+    """Persist one pin in the run ledger, never in Runner-writable conversation state."""
     session = getattr(query, '_agent_run_session', None)
     if not isinstance(session, dict):
-        return
+        return revision
+    from ....agent.runner.run_ledger_store import RunLedgerStore
 
-    authorization = session.get('authorization')
-    if not isinstance(authorization, dict):
-        return
-
-    state_context = authorization.get('state_context')
-    if not isinstance(state_context, dict):
-        return
-
-    scope_keys = state_context.get('scope_keys')
-    conversation_scope_key = scope_keys.get('conversation') if isinstance(scope_keys, dict) else None
-    if not conversation_scope_key:
-        return
-
-    try:
-        from ....agent.runner.persistent_state_store import get_persistent_state_store
-
-        store = get_persistent_state_store(ap.persistence_mgr.get_db_engine())
-        await store.state_set(
-            scope_key=conversation_scope_key,
-            state_key=ACTIVATED_SKILL_NAMES_STATE_KEY,
-            value=get_activated_skill_names(query),
-            runner_id=str(session.get('runner_id', '') or ''),
-            binding_identity=str(state_context.get('binding_identity', 'unknown') or 'unknown'),
-            scope='conversation',
-            context=state_context,
-            logger=getattr(ap, 'logger', None),
-        )
-    except Exception as e:  # noqa: BLE001 - persistence is best-effort, must not break activation
-        logger = getattr(ap, 'logger', None)
-        if logger is not None:
-            logger.warning(f'Failed to persist activated skill "{skill_name}": {e}')
+    context = getattr(query, '_execution_context', None)
+    workspace_id = str(getattr(context, 'workspace_uuid', None) or getattr(query, 'workspace_uuid', '') or '')
+    store = RunLedgerStore(ap.persistence_mgr.get_db_engine())
+    return await store.pin_skill_revision(str(session['run_id']), workspace_id, skill_name, revision)
 
 
 def parse_skill_mount_path(sandbox_path: str) -> tuple[str | None, str]:
@@ -224,6 +215,12 @@ def resolve_virtual_skill_path(
     include_visible: bool,
     include_activated: bool,
 ) -> tuple[dict | None, str]:
+    if sandbox_path == ARTIFACT_MOUNT_ROOT or sandbox_path.startswith(ARTIFACT_MOUNT_ROOT + '/'):
+        for skill in get_activated_skills(query).values():
+            root = get_virtual_skill_mount_path(skill['name'], skill['revision'])
+            if sandbox_path == root or sandbox_path.startswith(root + '/'):
+                return skill, '/workspace' + sandbox_path[len(root) :]
+        raise ValueError('Artifact path does not belong to a Skill activated by this run')
     skill_name, rewritten_path = parse_skill_mount_path(sandbox_path)
     if skill_name is None:
         return None, rewritten_path
@@ -246,7 +243,7 @@ def resolve_virtual_skill_path(
     )
 
 
-def find_referenced_skill_names(text: str) -> list[str]:
+def find_referenced_skill_names(text: str, query=None) -> list[str]:
     if not text:
         return []
 
@@ -254,6 +251,20 @@ def find_referenced_skill_names(text: str) -> list[str]:
     for match in _SKILL_MOUNT_PATTERN.findall(text):
         if match not in seen:
             seen.append(match)
+    if query is not None:
+        for path in re.findall(re.escape(ARTIFACT_MOUNT_ROOT) + r'/[a-f0-9]{64}', text):
+            selected = next(
+                (
+                    name
+                    for name, skill in get_activated_skills(query).items()
+                    if get_virtual_skill_mount_path(name, skill['revision']) == path
+                ),
+                None,
+            )
+            if selected is None:
+                raise ValueError('Artifact command references a revision not activated by this run')
+            if selected not in seen:
+                seen.append(selected)
     return seen
 
 
@@ -275,7 +286,7 @@ def build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str
 
 
 def should_prepare_skill_python_env(package_root: str | None) -> bool:
-    return box_workspace.should_prepare_python_env(package_root)
+    return should_prepare_python_env(package_root)
 
 
 def wrap_skill_command_with_python_env(
@@ -284,7 +295,7 @@ def wrap_skill_command_with_python_env(
     mount_path: str = '/workspace',
     state_path: str | None = None,
 ) -> str:
-    return box_workspace.wrap_python_command_with_env(
+    return wrap_python_command_with_env(
         command,
         mount_path=mount_path,
         state_path=state_path,

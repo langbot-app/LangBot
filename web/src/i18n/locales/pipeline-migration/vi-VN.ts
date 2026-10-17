@@ -36,6 +36,18 @@ export default {
     'Sau khi kiểm tra môi trường chạy, làm mới, chọn pipeline này và xác nhận để chỉ thử kích hoạt lại. Cấu hình đã lưu sẽ không được di chuyển lần nữa.',
   details: 'Chi tiết chuyển đổi',
   notices: {
+    customRunner:
+      'Runner tùy chỉnh kiểu cũ cần được viết lại thành runner dạng plugin trước khi liên kết. Xem tài liệu plugin: https://langbot.app/docs/en/plugin/dev/tutor',
+    fieldDropped:
+      'Các trường hoặc mục cũ không nhận dạng được đã bị loại khỏi cấu hình đang dùng; giá trị gốc được lưu trong bản sao lưu di chuyển.',
+    valueRepaired:
+      'Các giá trị sai định dạng hoặc thiếu đã được sửa bằng giá trị mặc định của 4.10. Hãy kiểm tra sau khi di chuyển.',
+    mixedRunner: 'Có cả lựa chọn runner mới và cũ; đã giữ lựa chọn dùng được.',
+    runnerConfigReplaced:
+      'Cấu hình runner kiểu mới hiện có được thay bằng kết quả di chuyển; bản gốc được lưu trong bản sao lưu.',
+    runnerAdded:
+      'Đã thêm plugin runner cần thiết vào danh sách tiện ích của pipeline này.',
+    extensionPrefs: 'Các mục không hợp lệ trong cài đặt tiện ích đã bị bỏ qua.',
     runtimeUnavailable:
       'Môi trường chạy plugin bị ngắt kết nối. Khôi phục kết nối rồi thử lại, hoặc chỉ di chuyển dữ liệu.',
     executionFailed:
@@ -118,6 +130,7 @@ export default {
     blocked: 'Bị chặn',
     already_current: 'Đã cập nhật',
     not_legacy: 'Không phải bản cũ',
+    unsupported_runner: 'Runner không được hỗ trợ',
     activation_pending: 'Chờ kích hoạt',
     pending: 'Đang chờ',
     migrated: 'Đã di chuyển',
