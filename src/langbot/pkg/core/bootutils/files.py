@@ -18,13 +18,11 @@ required_paths = [
 
 
 async def generate_files() -> list[str]:
-    global required_files, required_paths
-
     from ...utils import paths as path_utils
 
-    for required_paths in required_paths:
-        if not os.path.exists(required_paths):
-            os.mkdir(required_paths)
+    for path in required_paths:
+        if not os.path.exists(path):
+            os.mkdir(path)
 
     generated_files = []
     for file in required_files:
