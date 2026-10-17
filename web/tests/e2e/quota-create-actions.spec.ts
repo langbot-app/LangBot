@@ -148,3 +148,192 @@ test('quota-reached create actions are disabled and explain the current limit', 
     ),
   ).toBeVisible();
 });
+
+for (const kind of ['plugin', 'skill'] as const) {
+  test(`GitHub ${kind} confirmation rejects a failed quota check and can retry`, async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.route('**/api/v1/system/info', (route) =>
+      fulfill(route, {
+        debug: false,
+        version: 'quota-e2e',
+        edition: 'community',
+        cloud_service_url: 'https://space.langbot.app',
+        enable_marketplace: true,
+        allow_modify_login_info: true,
+        disable_models_service: false,
+        limitation: { max_extensions: 3 },
+        outbound_ips: [],
+        wizard_status: 'completed',
+        wizard_progress: null,
+      }),
+    );
+
+    let checkingQuota = false;
+    let quotaChecks = 0;
+    let releaseQuotaCheck!: () => void;
+    const quotaCheckGate = new Promise<void>((resolve) => {
+      releaseQuotaCheck = resolve;
+    });
+    await page.route('**/api/v1/plugins', async (route) => {
+      if (checkingQuota) {
+        quotaChecks += 1;
+        await quotaCheckGate;
+        checkingQuota = false;
+        await route.fulfill({
+          status: 503,
+          json: { code: 503, message: 'Quota service unavailable' },
+        });
+        return;
+      }
+      await fulfill(route, { plugins: [] });
+    });
+
+    const skillUrl =
+      'https://github.com/quota-fixture/extension/blob/main/SKILL.md';
+    await page.route('**/api/v1/plugins/github/releases', (route) =>
+      fulfill(route, {
+        owner: 'quota-fixture',
+        repo: 'extension',
+        releases: [
+          {
+            id: 7,
+            tag_name: 'v1.0.0',
+            name: 'Quota Test Release',
+            published_at: '2026-01-01T00:00:00Z',
+            prerelease: false,
+            draft: false,
+          },
+        ],
+      }),
+    );
+    await page.route('**/api/v1/plugins/github/release-assets', (route) =>
+      fulfill(route, {
+        assets: [
+          {
+            id: 42,
+            name: 'quota-test.lbpkg',
+            size: 1024,
+            download_url: 'https://example.com/quota-test.lbpkg',
+            content_type: 'application/octet-stream',
+          },
+        ],
+      }),
+    );
+    await page.route('**/api/v1/skills/install/github/preview', (route) =>
+      fulfill(route, {
+        skills: [
+          {
+            name: 'quota-test-skill',
+            display_name: 'Quota Test Skill',
+            description: 'Skill used to verify quota confirmation',
+            instructions: '# Quota Test Skill',
+            package_root: '.',
+          },
+        ],
+      }),
+    );
+
+    const installRequests: { path: string; method: string; body: unknown }[] =
+      [];
+    await page.route(
+      /\/api\/v1\/(plugins|skills)\/install\/github$/,
+      (route) => {
+        const request = route.request();
+        installRequests.push({
+          path: new URL(request.url()).pathname,
+          method: request.method(),
+          body: request.postDataJSON(),
+        });
+        return fulfill(
+          route,
+          kind === 'plugin' ? { task_id: 'quota-test-task' } : { skills: [] },
+        );
+      },
+    );
+
+    await page.goto('/home/add-extension');
+    await page.getByRole('button', { name: 'Manual Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Install from GitHub' }).click();
+    await page
+      .getByPlaceholder('GitHub repository, Release, or SKILL.md link')
+      .fill(
+        kind === 'plugin'
+          ? 'https://github.com/quota-fixture/extension'
+          : skillUrl,
+      );
+    const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
+    await confirm.click();
+    if (kind === 'plugin') {
+      await page.getByText('Quota Test Release', { exact: true }).click();
+      await page.getByText('quota-test.lbpkg', { exact: true }).click();
+    } else {
+      await expect(
+        page.getByText('Quota Test Skill', { exact: true }),
+      ).toBeVisible();
+    }
+
+    checkingQuota = true;
+    await confirm.click();
+    try {
+      await expect.poll(() => quotaChecks).toBe(1);
+      await expect(
+        page.getByText(`Installing ${kind}...`, { exact: true }),
+      ).toBeVisible();
+      await expect(confirm).toHaveCount(0);
+      await page.keyboard.press('Enter');
+      expect(quotaChecks).toBe(1);
+      expect(installRequests).toEqual([]);
+    } finally {
+      releaseQuotaCheck();
+    }
+
+    await expect(
+      page.getByText(
+        'Unable to verify the current workspace quota. Please try again.',
+      ),
+    ).toBeVisible();
+    expect(installRequests).toEqual([]);
+    await expect(confirm).toBeEnabled();
+
+    await confirm.click();
+    await expect.poll(() => installRequests.length).toBe(1);
+    await expect(
+      page.getByRole('button', {
+        name: 'Manual Add',
+        exact: true,
+        includeHidden: true,
+      }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      page.getByPlaceholder('GitHub repository, Release, or SKILL.md link'),
+    ).toBeHidden();
+    expect(installRequests).toEqual([
+      {
+        path: `/api/v1/${kind === 'plugin' ? 'plugins' : 'skills'}/install/github`,
+        method: 'POST',
+        body:
+          kind === 'plugin'
+            ? {
+                asset_id: 42,
+                release_id: 7,
+                owner: 'quota-fixture',
+                repo: 'extension',
+                release_tag: 'v1.0.0',
+              }
+            : {
+                asset_url: skillUrl,
+                owner: 'quota-fixture',
+                repo: 'extension',
+                release_tag: 'main',
+              },
+      },
+    ]);
+    if (kind === 'skill') {
+      await expect(
+        page.getByText('Skill installed successfully', { exact: true }),
+      ).toBeVisible();
+    }
+  });
+}
