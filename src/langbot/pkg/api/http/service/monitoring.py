@@ -15,6 +15,7 @@ from ....entity.persistence import monitoring as persistence_monitoring
 from ....entity.persistence import agent_run as persistence_agent_run
 from ....entity.persistence import agent_interaction as persistence_agent_interaction
 from ....entity.persistence.event_log import EventLog
+from ....storage.media import MediaCache
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
@@ -504,29 +505,30 @@ class MonitoringService(ExecutionDetailsMixin):
 
     def _sanitize_message_content(self, content: str) -> str:
         """Strip raw base64 data to protect database storage from unbounded bloating."""
-        if not content or len(content) < 10000 or (';base64,' not in content and 'data:image/' not in content):
+        if not content or ('base64' not in content and 'data:image/' not in content):
             return content
         try:
             data = json.loads(content)
-
-            def _strip_node(node):
-                if isinstance(node, list):
-                    return [_strip_node(x) for x in node]
-                if isinstance(node, dict):
-                    res = dict(node)
-                    if res.get('type') == 'Image' and res.get('base64'):
-                        res['base64'] = None
-                    for k, v in list(res.items()):
-                        if isinstance(v, (list, dict)):
-                            res[k] = _strip_node(v)
-                    return res
-                return node
-
-            return json.dumps(_strip_node(data), ensure_ascii=False)
+            return json.dumps(MediaCache.redact_inline_images(data), ensure_ascii=False)
         except Exception:
             return re.sub(
                 r'data:image/[a-zA-Z0-9.+_-]+;base64,[\sA-Za-z0-9+/=]{1000,}', '[base64 image omitted]', content
             )
+
+    async def _externalize_message_content(self, content: str | list | dict) -> str:
+        """Externalize structured images before allocating their JSON representation."""
+        if isinstance(content, str):
+            if not content or ('base64' not in content and 'data:image/' not in content):
+                return content
+            try:
+                payload = json.loads(content)
+            except (TypeError, ValueError):
+                return self._sanitize_message_content(content)
+        else:
+            payload = content
+        if MediaCache.has_inline_images(payload):
+            payload = await self.ap.storage_mgr.media_cache.externalize_chain_dump(payload)
+        return json.dumps(MediaCache.redact_inline_images(payload), ensure_ascii=False)
 
     @_workspace_transaction
     async def record_message(
@@ -536,7 +538,7 @@ class MonitoringService(ExecutionDetailsMixin):
         bot_name: str,
         pipeline_id: str,
         pipeline_name: str,
-        message_content: str,
+        message_content: str | list | dict,
         session_id: str,
         status: str = 'success',
         level: str = 'info',
@@ -558,7 +560,7 @@ class MonitoringService(ExecutionDetailsMixin):
         event_id = event_id or (trace_state.event_id if trace_state else None)
         run_id = run_id or trace.current_run() or None
         message_id = str(uuid.uuid4())
-        message_content = self._sanitize_message_content(message_content)
+        message_content = await self._externalize_message_content(message_content)
         from ....utils.execution_lease import host_execution_lease
 
         message_data = {

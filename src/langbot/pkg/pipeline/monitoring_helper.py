@@ -143,12 +143,9 @@ class MonitoringHelper:
                         sender_name = query.message_event.sender.member_name
 
             # Try to record message
-            # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
+            # Let persistence externalize images before serializing the message chain.
             if hasattr(query, 'message_chain') and hasattr(query.message_chain, 'model_dump'):
-                chain_dump = query.message_chain.model_dump()
-                if hasattr(ap, 'storage_mgr') and hasattr(ap.storage_mgr, 'media_cache'):
-                    chain_dump = await ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
-                message_content = json.dumps(chain_dump, ensure_ascii=False)
+                message_content = query.message_chain.model_dump()
             else:
                 message_content = str(query)
 
@@ -257,10 +254,10 @@ class MonitoringHelper:
 
             # Extract response content from resp_message_chain
             if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
-                # Serialize the last response message chain
+                # Preserve the structure until persistence has externalized images.
                 last_resp = query.resp_message_chain[-1]
                 if hasattr(last_resp, 'model_dump'):
-                    message_content = json.dumps(last_resp.model_dump(), ensure_ascii=False)
+                    message_content = last_resp.model_dump()
                 else:
                     message_content = str(last_resp)
             elif hasattr(query, 'resp_messages') and query.resp_messages:
@@ -268,10 +265,7 @@ class MonitoringHelper:
                 if hasattr(last_resp, 'get_content_platform_message_chain'):
                     chain = last_resp.get_content_platform_message_chain()
                     if hasattr(chain, 'model_dump'):
-                        chain_dump = chain.model_dump()
-                        if hasattr(ap, 'storage_mgr') and hasattr(ap.storage_mgr, 'media_cache'):
-                            chain_dump = await ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
-                        message_content = json.dumps(chain_dump, ensure_ascii=False)
+                        message_content = chain.model_dump()
                     else:
                         message_content = str(chain)
                 else:

@@ -794,7 +794,9 @@ async def execute_platform_tool(
                         bot_name=str(getattr(getattr(bot, 'bot_entity', None), 'name', bot_id)),
                         pipeline_id=str(authorization.get('processor_id') or ''),
                         pipeline_name=str(authorization.get('processor_id') or authorization.get('runner_id') or ''),
-                        message_content=json.dumps(content, ensure_ascii=False),
+                        message_content=content
+                        if isinstance(content, (list, dict))
+                        else json.dumps(content, ensure_ascii=False),
                         session_id=str(authorization.get('conversation_id') or ''),
                         role='assistant',
                         status='error' if delivery_error else 'success',
