@@ -3,6 +3,7 @@ import { expect, Page, test } from '@playwright/test';
 import {
   installLangBotApiMocks,
   makeWorkspaceEntry,
+  pipelineMetadata,
 } from './fixtures/langbot-api';
 
 async function save(page: Page) {
@@ -31,11 +32,20 @@ async function createPlaywrightBot(page: Page, name: string, description = '') {
   await submit(page);
 }
 
-async function confirmDelete(page: Page) {
+async function confirmDelete(page: Page, apiPath: string) {
+  const responses: boolean[] = [];
+  page.on('response', (response) => {
+    if (
+      response.request().method() === 'DELETE' &&
+      new URL(response.url()).pathname === apiPath
+    )
+      responses.push(response.ok());
+  });
   await page
     .getByRole('dialog')
     .getByRole('button', { name: /^Confirm Delete$/ })
     .click();
+  await expect.poll(() => responses).toEqual([true]);
 }
 
 async function installDelayedFirstSave(page: Page, apiPath: string) {
@@ -198,10 +208,14 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/platform/bots/bot-1');
 
     await expect(page).toHaveURL(/\/home\/bots$/);
     await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Support Bot Updated', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('creates, edits, and deletes a pipeline', async ({ page }) => {
@@ -264,15 +278,26 @@ test.describe('frontend CRUD smoke flows', () => {
       .getByLabel('Description')
       .fill('Routes urgent customer issues to operators.');
     await pipelineInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(pipelineInfoDialog).toHaveCount(0);
+    await page.reload();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    await expect(
+      page.getByRole('dialog').getByLabel('Description'),
+    ).toHaveValue('Routes urgent customer issues to operators.');
+    await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Management' }).click();
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/pipelines/pipeline-1');
 
     await expect(page).toHaveURL(/\/home\/agents$/);
     await expect(
       page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Escalation Pipeline', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('opens pipeline AI capabilities with malformed model options', async ({
@@ -337,12 +362,16 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/knowledge/bases/knowledge-1');
 
     await expect(page).toHaveURL(/\/home\/knowledge$/);
     await expect(
       page.getByText('Select a knowledge base from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Support Knowledge Updated', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('creates, edits, and deletes an MCP server', async ({ page }) => {
@@ -366,18 +395,33 @@ test.describe('frontend CRUD smoke flows', () => {
     await page
       .locator('input[name="url"]')
       .fill('https://mcp.example.test/updated-sse');
+    const update = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().endsWith('/api/v1/mcp/servers/playwright-mcp'),
+    );
     await save(page);
+    expect((await update).request().postDataJSON()).toMatchObject({
+      name: 'playwright-mcp',
+      mode: 'remote',
+      extra_args: { url: 'https://mcp.example.test/updated-sse' },
+    });
+    await page.reload();
     await expect(page.locator('input[name="url"]')).toHaveValue(
       'https://mcp.example.test/updated-sse',
     );
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/mcp/servers/playwright-mcp');
 
     await expect(page).toHaveURL(/\/home\/mcp$/);
     await expect(
       page.getByText('Select an MCP server from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('playwright-mcp', { exact: true })).toHaveCount(
+      0,
+    );
   });
 
   test('updates and deletes a manually-created skill', async ({ page }) => {
@@ -415,9 +459,13 @@ test.describe('frontend CRUD smoke flows', () => {
     );
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/skills/release_notes');
 
     await expect(page).toHaveURL(/\/home\/add-extension$/);
+    await page.goto('/home/skills');
+    await expect(page.getByText('Release Notes', { exact: true })).toHaveCount(
+      0,
+    );
   });
 });
 
@@ -679,6 +727,54 @@ test.describe('bot advanced flows', () => {
 
   test('switches between bot detail tabs', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+    await page.route('**/api/v1/platform/bots/bot-1/logs', (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            logs: [
+              {
+                seq_id: 1,
+                level: 'info',
+                text: 'Bot tab log response',
+                images: [],
+                message_session_id: '',
+                timestamp: 1792200000,
+              },
+            ],
+            total_count: 1,
+          },
+        },
+      }),
+    );
+    await page.route('**/api/v1/monitoring/sessions?**', (route) => {
+      expect(new URL(route.request().url()).searchParams.get('botId')).toBe(
+        'bot-1',
+      );
+      return route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            sessions: [
+              {
+                session_id: 'person_tab-user',
+                bot_id: 'bot-1',
+                bot_name: 'Tab Test Bot',
+                pipeline_id: 'pipeline-tab',
+                pipeline_name: 'Tab pipeline',
+                message_count: 1,
+                start_time: '2026-10-17T00:00:00Z',
+                last_activity: '2026-10-17T00:01:00Z',
+                is_active: true,
+                user_id: 'tab-user',
+                user_name: 'Tab Session User',
+              },
+            ],
+            total: 1,
+          },
+        },
+      });
+    });
 
     // Create a bot
     await page.goto('/home/bots?id=new');
@@ -699,12 +795,20 @@ test.describe('bot advanced flows', () => {
       'active',
     );
 
+    await expect(
+      page.getByText('Bot tab log response', { exact: true }),
+    ).toBeVisible();
+
     // Switch to Sessions tab
     await page.getByRole('tab', { name: /Sessions/ }).click();
     await expect(page.getByRole('tab', { name: /Sessions/ })).toHaveAttribute(
       'data-state',
       'active',
     );
+
+    await expect(
+      page.getByText('Tab Session User', { exact: true }),
+    ).toBeVisible();
 
     // Switch back to Configuration
     await page.getByRole('tab', { name: /Configuration/ }).click();
@@ -715,6 +819,14 @@ test.describe('bot advanced flows', () => {
 
   test('save button is disabled when form is clean', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
+    await page.locator('input[name="name"]').fill('Dirty state target');
+    await submit(page);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     // Create a bot
     await page.goto('/home/bots?id=new');
@@ -728,7 +840,9 @@ test.describe('bot advanced flows', () => {
     ).toBeVisible();
 
     // After loading, save button should be disabled (form is clean)
-    const saveButton = page.getByRole('button', { name: /^Save$/ });
+    const saveButton = page.getByRole('button', {
+      name: /^Save(?: and enable)?$/,
+    });
     await expect(saveButton).toBeDisabled();
 
     await page.getByRole('button', { name: 'Edit basic information' }).click();
@@ -736,6 +850,20 @@ test.describe('bot advanced flows', () => {
     await infoDialog.getByLabel('Description').fill('New description');
     await infoDialog.getByRole('button', { name: 'Save' }).click();
     await expect(saveButton).toBeDisabled();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await page
+      .getByRole('combobox')
+      .filter({ hasText: 'Select processor' })
+      .click();
+    await page.getByRole('option', { name: /Dirty state target/ }).click();
+    await expect(saveButton).toBeEnabled();
+    await save(page);
+    await expect(saveButton).toBeDisabled();
+    await page.reload();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Dirty state target' }),
+    ).toBeVisible();
   });
 
   test('shows validation error when bot name is empty', async ({ page }) => {
@@ -823,6 +951,17 @@ test.describe('pipeline advanced flows', () => {
 
   test('save button reflects form dirty state', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+    const metadata = pipelineMetadata();
+    metadata.configs[0].stages[1].config.push({
+      name: 'instruction',
+      label: { en_US: 'Instruction', zh_Hans: 'Instruction' },
+      type: 'text',
+      required: true,
+      default: 'Original instruction',
+    } as any);
+    await page.route('**/api/v1/pipelines/_/metadata', (route) =>
+      route.fulfill({ json: { code: 0, data: metadata } }),
+    );
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
@@ -842,6 +981,18 @@ test.describe('pipeline advanced flows', () => {
       page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
     ).toBeVisible();
     await expect(saveButton).toBeDisabled();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+    const instruction = page.locator('textarea[name="instruction"]');
+    await expect(instruction).toHaveValue('Original instruction');
+    await instruction.fill('Updated instruction');
+    await expect(saveButton).toBeEnabled();
+    await save(page);
+    await expect(saveButton).toBeDisabled();
+    await page.reload();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+    await expect(page.locator('textarea[name="instruction"]')).toHaveValue(
+      'Updated instruction',
+    );
   });
 
   test('shows validation error when pipeline name is empty', async ({

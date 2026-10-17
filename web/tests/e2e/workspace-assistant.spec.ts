@@ -570,16 +570,34 @@ test('setup login starts the existing LangBot Account authorization flow', async
   await page.route('**/api/v1/provider/models/llm', (route) =>
     route.fulfill({ json: { code: 0, data: { models: [] } } }),
   );
+  const authorizationUrl =
+    'https://space.langbot.app/authorize?state=assistant-bind-state';
+  await page.route('**/api/v1/user/space/bind-authorize-url?**', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { authorize_url: authorizationUrl } },
+    }),
+  );
   await page.goto('/home/bots');
+  const origin = new URL(page.url()).origin;
   const request = page.waitForRequest(
     (request) =>
-      request.url().includes('/space/') && request.url().includes('authorize'),
+      new URL(request.url()).pathname ===
+      '/api/v1/user/space/bind-authorize-url',
   );
   await page
     .getByRole('dialog', { name: 'Workspace assistant' })
     .getByRole('button', { name: 'Sign in to LangBot Account' })
     .click();
-  expect((await request).url()).toContain('authorize');
+  const authorization = await request;
+  expect(authorization.method()).toBe('GET');
+  expect(new URL(authorization.url()).searchParams.get('redirect_uri')).toBe(
+    `${origin}/auth/space/callback?mode=bind`,
+  );
+  expect(authorization.headers()['authorization']).toBe(
+    'Bearer playwright-token',
+  );
+  expect(authorization.headers()['x-workspace-id']).toBeUndefined();
+  await expect(page).toHaveURL(authorizationUrl);
 });
 
 test('switches conversations, restores background progress after reload and stops only the selected task', async ({
