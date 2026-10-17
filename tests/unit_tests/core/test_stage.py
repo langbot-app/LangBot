@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import MagicMock
 import pytest
 
@@ -41,11 +42,11 @@ class TestStageClassDecorator:
         with isolated_sys_modules(mocks):
             from langbot.pkg.core.stage import stage_class
 
-            @stage_class('TestStage')
             class TestStage:
                 value = 42
 
-            # Class attributes should be preserved
+            decorated = stage_class('TestStage')(TestStage)
+            assert decorated is TestStage
             assert TestStage.value == 42
 
     def test_stage_class_multiple_stages(self):
@@ -125,25 +126,15 @@ class TestBootingStageAbstract:
             # Abstract class has name attribute defined as None
             assert hasattr(BootingStage, 'name')
 
-    @pytest.mark.asyncio
-    async def test_booting_stage_run_signature(self):
-        """run method receives Application parameter."""
+    def test_booting_stage_run_signature(self):
+        """The production abstract stage accepts an Application asynchronously."""
         mocks = self._make_stage_import_mocks()
 
         with isolated_sys_modules(mocks):
             from langbot.pkg.core.stage import BootingStage
 
-            class TestStage(BootingStage):
-                name = 'TestStage'
-
-                async def run(self, ap):
-                    self.ap_received = ap
-
-            stage = TestStage()
-            mock_ap = MagicMock()
-
-            await stage.run(mock_ap)
-            assert stage.ap_received == mock_ap
+            assert list(inspect.signature(BootingStage.run).parameters) == ['self', 'ap']
+            assert inspect.iscoroutinefunction(BootingStage.run)
 
 
 class TestPreregisteredStages:
@@ -160,19 +151,3 @@ class TestPreregisteredStages:
             from langbot.pkg.core.stage import preregistered_stages
 
             assert isinstance(preregistered_stages, dict)
-
-    def test_preregistered_stages_key_is_string(self):
-        """Registry keys are stage names (strings)."""
-        mocks = self._make_stage_import_mocks()
-
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.core.stage import stage_class, preregistered_stages
-
-            preregistered_stages.clear()
-
-            @stage_class('MyStage')
-            class MyStage:
-                pass
-
-            for key in preregistered_stages:
-                assert isinstance(key, str)

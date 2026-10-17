@@ -125,6 +125,24 @@ class TestWebhookServiceGetWebhooks:
         assert result[1]['name'] == 'Webhook 2'
 
 
+def _assert_webhook_write(ap, operation, expected):
+    statements = [
+        call.args[0]
+        for call in ap.persistence_mgr.execute_async.await_args_list
+        if getattr(call.args[0], f'is_{operation}')
+    ]
+    assert len(statements) == 1
+    statement = statements[0]
+    assert statement.table.name == Webhook.__tablename__
+    if operation == 'insert':
+        values = statement.compile().params
+        assert {key: values.get(key) for key in expected} == expected
+    else:
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(Webhook.id == expected, Webhook.workspace_uuid == WORKSPACE_UUID)
+        )
+
+
 class TestWebhookServiceCreateWebhook:
     """Tests for create_webhook method."""
 
@@ -187,6 +205,17 @@ class TestWebhookServiceCreateWebhook:
         assert result['url'] == 'http://new.example.com/webhook'
         assert result['description'] == 'New Description'
         assert result['enabled'] is True
+        _assert_webhook_write(
+            ap,
+            'insert',
+            {
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'New Webhook',
+                'url': 'http://new.example.com/webhook',
+                'description': 'New Description',
+                'enabled': True,
+            },
+        )
 
     async def test_create_webhook_defaults(self):
         """Creates webhook with default description and enabled."""
@@ -236,6 +265,17 @@ class TestWebhookServiceCreateWebhook:
         # Verify defaults
         assert result['description'] == ''
         assert result['enabled'] is True
+        _assert_webhook_write(
+            ap,
+            'insert',
+            {
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'Minimal Webhook',
+                'url': 'http://minimal.example.com',
+                'description': '',
+                'enabled': True,
+            },
+        )
 
     async def test_create_webhook_disabled(self):
         """Creates webhook with enabled=False."""
@@ -271,6 +311,7 @@ class TestWebhookServiceCreateWebhook:
 
         # Verify
         assert result['enabled'] is False
+        _assert_webhook_write(ap, 'insert', {'enabled': False, 'workspace_uuid': WORKSPACE_UUID})
 
     async def test_create_webhook_rejects_workspace_at_capacity(self):
         ap = SimpleNamespace(
@@ -448,7 +489,8 @@ class TestWebhookServiceDeleteWebhook:
         await service.delete_webhook(WORKSPACE_UUID, 1)
 
         # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        _assert_webhook_write(ap, 'delete', 1)
 
     async def test_delete_webhook_nonexistent_id(self):
         """Delete operation completes even for nonexistent ID."""
@@ -463,7 +505,8 @@ class TestWebhookServiceDeleteWebhook:
         await service.delete_webhook(WORKSPACE_UUID, 999)
 
         # Verify - still called
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        _assert_webhook_write(ap, 'delete', 999)
 
 
 class TestWebhookServiceGetEnabledWebhooks:

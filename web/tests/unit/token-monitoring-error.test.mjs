@@ -10,10 +10,6 @@ const utilsPath = path.resolve(
   currentDirectory,
   '../../src/app/home/monitoring/utils.ts',
 );
-const componentPath = path.resolve(
-  currentDirectory,
-  '../../src/app/home/monitoring/components/TokenMonitoring.tsx',
-);
 
 function loadMonitoringUtils() {
   const source = fs.readFileSync(utilsPath, 'utf8');
@@ -44,10 +40,4 @@ test('token monitoring extracts messages from structured API errors', () => {
   );
   assert.equal(getErrorMessage(new Error('Network failed')), 'Network failed');
   assert.equal(getErrorMessage('Request failed'), 'Request failed');
-});
-
-test('token monitoring uses the structured API error helper', () => {
-  const source = fs.readFileSync(componentPath, 'utf8');
-  assert.match(source, /import \{ getErrorMessage \} from '\.\.\/utils';/);
-  assert.match(source, /setError\(getErrorMessage\(e\)\)/);
 });

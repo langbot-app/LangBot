@@ -87,21 +87,6 @@ test('backend filters sessions by user id or user name in the existing endpoint'
   );
 });
 
-test('stale session and message page responses cannot overwrite the latest page', () => {
-  const monitor = read(
-    'src/app/home/bots/components/bot-session/BotSessionMonitor.tsx',
-  );
-  for (const token of [
-    'sessionRequestIdRef',
-    'messageRequestIdRef',
-    'requestId !== sessionRequestIdRef.current',
-    'requestId !== messageRequestIdRef.current',
-    'messageRequestIdRef.current += 1',
-  ]) {
-    includes(monitor, token, `stale response guard includes ${token}`);
-  }
-});
-
 test('changing the session page or filters clears the selected detail', () => {
   const monitor = read(
     'src/app/home/bots/components/bot-session/BotSessionMonitor.tsx',

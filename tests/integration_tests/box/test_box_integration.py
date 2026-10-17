@@ -249,17 +249,68 @@ async def test_timeout_kills_command(box_client: ActionRPCBoxClient):
 @requires_socket
 @pytest.mark.asyncio
 async def test_offline_cannot_reach_network(box_client: ActionRPCBoxClient):
-    """With network=OFF the sandbox cannot reach the internet."""
-    spec = BoxSpec(
-        cmd='wget -q -O /dev/null --timeout=3 http://1.1.1.1 2>&1; exit $?',
-        session_id='int-offline',
-        workdir='/tmp',
-        network=BoxNetworkMode.OFF,
-        image=_TEST_IMAGE,
+    """Only OFF blocks the same reachable private peer and installed HTTP client."""
+    server = await box_client.execute(
+        BoxSpec(
+            cmd=r"""cat > /tmp/response.sh <<'HTTP'
+#!/bin/sh
+while IFS= read -r line; do
+    [ -z "$(printf '%s' "$line" | busybox tr -d '\r')" ] && break
+done
+printf 'HTTP/1.0 200 OK\r\nContent-Length: 19\r\n\r\nbox-network-control'
+HTTP
+chmod +x /tmp/response.sh
+(while true; do busybox nc -l -p 8080 -e /bin/sh /tmp/response.sh; done >/tmp/http.log 2>&1 < /dev/null &)
+sleep 1 && hostname -i""",
+            session_id='int-network-peer',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
     )
-    result = await box_client.execute(spec)
+    assert server.status == BoxExecutionStatus.COMPLETED
+    assert server.exit_code == 0, server.stderr
+    import ipaddress
 
-    assert result.exit_code != 0
+    peer = str(ipaddress.IPv4Address(server.stdout.strip().split()[0]))
+    assert not ipaddress.ip_address(peer).is_loopback
+    command = f'wget -q -O - --timeout=3 http://{peer}:8080/'
+    online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert online.status == BoxExecutionStatus.COMPLETED
+    assert online.exit_code == 0, online.stderr
+    assert online.stdout == 'box-network-control'
+
+    offline = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-offline',
+            workdir='/tmp',
+            network=BoxNetworkMode.OFF,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert offline.status == BoxExecutionStatus.COMPLETED
+    assert offline.exit_code != 0
+    assert offline.stdout == ''
+    still_online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert still_online.exit_code == 0
+    assert still_online.stdout == 'box-network-control'
 
 
 # ── 5. Backend unavailable ───────────────────────────────────────────

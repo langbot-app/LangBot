@@ -190,10 +190,17 @@ async def test_session_capacity_evicts_oldest_session_in_same_workspace():
         _bind_session_scope(session, owner_context)
         sessions[f'session-{index}'] = session
 
+    foreign_task = SimpleNamespace(done=Mock(return_value=False), cancel=Mock())
+    foreign = {'created_at': -1.0, 'task': foreign_task}
+    _bind_session_scope(foreign, _request_context(workspace_uuid='workspace-b'))
+    sessions['foreign'] = foreign
+
     _make_room_for_session(sessions, owner_context)
 
     assert 'session-0' not in sessions
-    assert len(sessions) == 9
+    assert len(sessions) == 10
+    assert sessions['foreign'] is foreign
+    foreign_task.cancel.assert_not_called()
     tasks[0].cancel.assert_called_once_with()
 
 

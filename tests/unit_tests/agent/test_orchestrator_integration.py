@@ -789,6 +789,13 @@ async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(
 
     assert [message.content for message in messages] == ['state saved']
     # State is persisted to the database via PersistentStateStore.
+    from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+
+    event = QueryEntryAdapter.query_to_event(query)
+    config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+    binding = AgentBindingResolver().resolve_one(event, [config])
+    snapshot = await get_persistent_state_store(db_engine).build_snapshot_from_event(event, binding, descriptor)
+    assert snapshot['conversation'].get('external.conversation_id') == 'external_conv_123'
 
 
 @pytest.mark.asyncio

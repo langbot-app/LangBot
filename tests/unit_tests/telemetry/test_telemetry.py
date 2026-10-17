@@ -83,7 +83,9 @@ class TestTelemetrySendEarlyReturn:
         manager.telemetry_config = {}
 
         # Should return without making HTTP calls
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         # No HTTP client should be created, no logs should be written
         mock_app.logger.debug.assert_not_called()
@@ -99,7 +101,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'disable_telemetry': True, 'url': 'https://example.com'}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -113,7 +117,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': ''}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -627,4 +633,3 @@ class TestAuthenticatedWorkspaceReporter:
         assert mock_client.post.call_args.kwargs['headers'] == {
             'Authorization': 'Bearer refreshed-workspace-owner-token'
         }
-

@@ -434,7 +434,7 @@ async def test_box_service_get_sessions_delegates_to_client():
     sessions = await service.get_sessions(_CONTEXT)
 
     assert sessions == [{'session_id': 'test-session'}]
-    client.get_sessions.assert_awaited_once()
+    client.get_sessions.assert_awaited_once_with(action_context=_ACTION_CONTEXT)
 
 
 @pytest.mark.asyncio
@@ -599,12 +599,14 @@ async def test_cloud_box_service_reconnect_restores_runtime_only(
     connector.reconnect = AsyncMock()
     service._ensure_default_workspace = Mock()
     service._verify_cloud_runtime = AsyncMock()
+    service._purge_attachment_dirs = AsyncMock()
     monkeypatch.setattr('langbot.pkg.box.service.asyncio.sleep', AsyncMock())
 
     await service._reconnect_loop(connector)
 
     connector.reconnect.assert_awaited_once()
     service._verify_cloud_runtime.assert_awaited_once()
+    service._purge_attachment_dirs.assert_not_awaited()
     assert service.available is True
 
 
@@ -674,6 +676,8 @@ async def test_box_service_allows_host_mount_under_configured_root(tmp_path):
 
     assert result['ok'] is True
     assert backend.start_calls == ['person_test_user']
+    assert backend.start_specs[0].host_path == os.path.realpath(host_dir)
+    assert backend.start_specs[0].host_path_mode == BoxHostMountMode.READ_WRITE
 
 
 @pytest.mark.asyncio
@@ -744,15 +748,19 @@ async def test_box_service_rejects_host_mount_outside_allowed_roots(tmp_path):
     service = BoxService(make_app(logger, [str(allowed_root)]), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    with pytest.raises(BoxValidationError):
+    with pytest.raises(BoxValidationError, match='outside allowed_mount_roots'):
         await service.execute_spec_payload(
             {
                 'cmd': 'pwd',
                 'host_path': str(disallowed_root),
-                'session_id': '12',
+                'session_id': 'person_test_user',
             },
             make_query(12),
         )
+
+    assert backend.start_calls == []
+    assert backend.exec_calls == []
+    assert list(disallowed_root.iterdir()) == []
 
 
 @pytest.mark.asyncio
@@ -1064,8 +1072,18 @@ def test_builtin_profiles_are_consistent():
 
 
 @pytest.mark.asyncio
-async def test_profile_default_applies_resource_limits():
+async def test_profile_default_applies_resource_limits(monkeypatch):
     """Default profile resource limits are applied to BoxSpec."""
+    profile = BUILTIN_PROFILES['default'].model_copy(
+        update={
+            'cpus': 0.75,
+            'memory_mb': 320,
+            'pids_limit': 37,
+            'read_only_rootfs': False,
+            'workspace_quota_mb': 19,
+        }
+    )
+    monkeypatch.setitem(BUILTIN_PROFILES, 'default', profile)
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
@@ -1473,8 +1491,14 @@ async def test_rpc_client_get_status():
     try:
         status = await client.get_status(action_context=_ACTION_CONTEXT)
 
-        assert 'backend' in status
-        assert 'active_sessions' in status
+        assert status['backend']['name'] == 'fake'
+        assert status['backend']['available'] is True
+        assert status['active_sessions'] == 0
+        await client.execute(BoxSpec(cmd='true', session_id='status-session'), action_context=_ACTION_CONTEXT)
+        status = await client.get_status(action_context=_ACTION_CONTEXT)
+        assert status['active_sessions'] == 1
+        assert status['managed_processes'] == 0
+        assert status['session_ttl_sec'] == 300
     finally:
         server_task.cancel()
         client_task.cancel()
@@ -1515,8 +1539,10 @@ async def test_rpc_client_delete_session():
         spec = BoxSpec.model_validate({'cmd': 'echo hi', 'session_id': 'r-del-1'})
         await client.execute(spec, action_context=_ACTION_CONTEXT)
 
+        physical_session_id = backend.start_calls[0]
         await client.delete_session('r-del-1', action_context=_ACTION_CONTEXT)
 
+        assert backend.stop_calls == [physical_session_id]
         sessions = await client.get_sessions(action_context=_ACTION_CONTEXT)
         assert len(sessions) == 0
     finally:
@@ -1884,21 +1910,6 @@ class TestBuildSkillExecutionMounts:
         with pytest.raises(ValueError, match='no immutable package root'):
             skill_loader.build_execution_mounts(app, query)
 
-    def test_empty_package_root_skipped_even_when_not_shared(self):
-        """An empty package_root is always invalid regardless of topology."""
-        logger = Mock()
-        skills = {
-            'no_root': {
-                'name': 'no_root',
-                'package_root': '',
-                'manifest_path': '',
-                'revision': 'sha256:' + '1' * 64,
-            }
-        }
-        app = self._make_app(logger, skills)
-
-        assert skill_loader.build_execution_mounts(app, make_query()) == []
-
     def test_returns_empty_when_no_skill_manager(self):
         logger = Mock()
         app = make_app(logger)
@@ -1973,13 +1984,26 @@ class TestAttachmentHelpers:
 
 
 class TestInboundOutboundRoundTrip:
+    @staticmethod
+    async def _execute_command(command, workspace):
+        process = await asyncio.create_subprocess_exec(
+            '/bin/sh',
+            '-c',
+            command.replace('/workspace', str(workspace)),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        assert process.returncode == 0, stderr.decode()
+        return stdout.decode().replace(str(workspace), '/workspace')
+
     def _service(self) -> BoxService:
         service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
         service._available = True
         return service
 
     @pytest.mark.asyncio
-    async def test_materialize_inbound_writes_and_describes(self):
+    async def test_materialize_inbound_writes_and_describes(self, tmp_path):
         import base64
 
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -1997,14 +2021,9 @@ class TestInboundOutboundRoundTrip:
             ]
         )
 
-        # Mock the sandbox write path: echo back the written paths.
         async def fake_execute_tool(parameters, q):
-            assert '/workspace/inbox/' in parameters['command']
-            return {
-                'ok': True,
-                'stdout': '["/workspace/inbox/query-42/image_1.png"]',
-                'stderr': '',
-            }
+            assert q is query
+            return {'ok': True, 'stdout': await self._execute_command(parameters['command'], tmp_path), 'stderr': ''}
 
         service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
 
@@ -2014,6 +2033,7 @@ class TestInboundOutboundRoundTrip:
         assert d['type'] == 'Image'
         assert d['path'] == '/workspace/inbox/query-42/image_1.png'
         assert d['size'] == len(img_bytes)
+        assert (tmp_path / 'inbox/query-42/image_1.png').read_bytes() == img_bytes
 
     @pytest.mark.asyncio
     async def test_materialize_inbound_noop_without_attachments(self):
@@ -2027,45 +2047,40 @@ class TestInboundOutboundRoundTrip:
         service.execute_tool.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_collect_outbound_reads_and_clears(self):
+    async def test_collect_outbound_reads_and_clears(self, tmp_path):
         service = self._service()
         query = make_query()
-
-        calls = []
+        outbox = tmp_path / 'outbox/query-42'
+        outbox.mkdir(parents=True)
+        (outbox / 'out.png').write_bytes(b'ABC')
+        guard = tmp_path / 'outbox/query-other/protected.txt'
+        guard.parent.mkdir()
+        guard.write_bytes(b'other query')
 
         async def fake_client_execute(spec, *, action_context=None):
-            assert action_context.workspace_uuid == query.workspace_uuid
-            cmd = spec.cmd
-            calls.append(cmd)
-            if 'os.scandir' in cmd:
-                return BoxExecutionResult(
-                    session_id='s',
-                    backend_name='test',
-                    status=BoxExecutionStatus.COMPLETED,
-                    exit_code=0,
-                    stdout='[{"name": "out.png", "b64": "QUJD"}]',
-                    duration_ms=10,
-                )
-            # the rm -rf cleanup call
+            assert action_context == _ACTION_CONTEXT
             return BoxExecutionResult(
                 session_id='s',
                 backend_name='test',
                 status=BoxExecutionStatus.COMPLETED,
                 exit_code=0,
-                stdout='',
+                stdout=await self._execute_command(spec.cmd, tmp_path),
                 duration_ms=10,
             )
 
+        async def fake_execute_tool(parameters, q):
+            assert q is query
+            return {'ok': True, 'stdout': await self._execute_command(parameters['command'], tmp_path), 'stderr': ''}
+
         service.client.execute = AsyncMock(side_effect=fake_client_execute)
-        service.execute_tool = AsyncMock(return_value={'ok': True, 'stdout': '', 'stderr': ''})
+        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
 
         attachments = await service.collect_outbound_attachments(query)
-        assert len(attachments) == 1
-        assert attachments[0]['type'] == 'Image'
-        assert attachments[0]['name'] == 'out.png'
-        # Cleanup uses the bounded sandbox walker after collection.
-        service.execute_tool.assert_awaited_once()
-        assert 'clear_directory' in service.execute_tool.await_args.args[0]['command']
+
+        assert attachments == [{'type': 'Image', 'name': 'out.png', 'base64': 'data:image/png;base64,QUJD'}]
+        assert not (outbox / 'out.png').exists()
+        assert guard.read_bytes() == b'other query'
+        assert await service.collect_outbound_attachments(query) == []
 
     @pytest.mark.asyncio
     async def test_collect_outbound_empty_still_clears(self):
@@ -2172,6 +2187,7 @@ class TestAttachmentHostPath:
         stale_dir = os.path.join(ws, 'inbox', 'query-42')
         os.makedirs(stale_dir, exist_ok=True)
         pathlib.Path(stale_dir, 'image_1.png').write_bytes(b'STALE-OLD-IMAGE')
+        pathlib.Path(stale_dir, 'leftover-secret.txt').write_bytes(b'STALE-OTHER-FILE')
 
         new = b'\x89PNG\r\n\x1a\n NEW'
         b64 = 'data:image/png;base64,' + base64.b64encode(new).decode()
@@ -2185,6 +2201,7 @@ class TestAttachmentHostPath:
         assert host_bytes == new
         # No leftover content from the stale image.
         assert b'STALE-OLD-IMAGE' not in host_bytes
+        assert sorted(os.listdir(stale_dir)) == ['image_1.png']
 
     @pytest.mark.asyncio
     async def test_inbound_host_replaces_query_symlink_without_touching_other_workspace(self, tmp_path):

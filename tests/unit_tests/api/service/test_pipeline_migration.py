@@ -367,6 +367,9 @@ async def test_ordinary_update_requires_manual_migration_but_allows_metadata(env
         await service.update_pipeline(context(), 'one', {'name': 'renamed'})
     configs, backups = await rows(env)
     assert configs['one'] == SOURCE and not backups
+    async with env.engine.connect() as conn:
+        name = (await conn.execute(sa.select(LegacyPipeline.name).where(LegacyPipeline.uuid == 'one'))).scalar_one()
+    assert name == 'renamed'
 
 
 @pytest.mark.asyncio
@@ -777,7 +780,8 @@ async def test_all_mode_installs_missing_plugin_once_then_migrates_both(env):
         await conn.execute(sa.delete(PluginSetting))
 
     async def install(source, info, task_context):
-        assert info['plugin_version'] == '1.0'
+        assert source == env.m.PluginInstallSource.MARKETPLACE
+        assert info == {'plugin_author': 'langbot-team', 'plugin_name': 'TestAgent', 'plugin_version': '1.0'}
         async with env.engine.begin() as conn:
             await conn.execute(
                 sa.insert(PluginSetting).values(
@@ -848,7 +852,14 @@ async def test_all_mode_has_no_fifty_pipeline_limit(env):
         )
     response, metadata = await execute_all(env, install_plugins=False)
     assert len(response['pipeline_uuids']) == 53
+    expected = {'one', 'two', *(f'extra-{i}' for i in range(51))}
+    assert {r['pipeline_uuid'] for r in metadata['results']} == expected
+    assert len(metadata['results']) == 53
     assert all(r['state'] == 'migrated' for r in metadata['results'])
+    configs, backups = await rows(env)
+    assert len(backups) == 53
+    assert all(configs[pipeline_uuid]['ai']['runner']['id'] == RID for pipeline_uuid in expected)
+    assert configs['foreign'] == SOURCE
 
 
 @pytest.mark.asyncio
