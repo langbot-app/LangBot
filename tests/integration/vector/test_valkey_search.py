@@ -169,6 +169,7 @@ async def test_full_text_search(backend):
 async def test_hybrid_filter_then_knn(backend):
     db, collection = backend
     ids, embeddings, metadatas, documents = _sample_docs()
+    documents = ['cats nearby', 'cats elsewhere', 'cats farther']
     await db.add_embeddings(collection, ids, embeddings, metadatas, documents)
 
     result = await _poll_until(
@@ -180,10 +181,10 @@ async def test_hybrid_filter_then_knn(backend):
             query_text='cats',
             filter={'file_id': 'fileA'},
         ),
-        lambda r: len(r['ids'][0]) >= 1,
+        lambda r: len(r['ids'][0]) == 2,
     )
-    # Only fileA docs (d1, d3) should be candidates.
-    assert set(result['ids'][0]).issubset({'d1', 'd3'})
+    assert result['ids'][0] == ['d1', 'd3']
+    assert [item['file_id'] for item in result['metadatas'][0]] == ['fileA', 'fileA']
 
 
 @pytest.mark.asyncio
@@ -191,16 +192,17 @@ async def test_vector_weight_not_honored(backend):
     """Passing different vector_weight values must NOT change ranking."""
     db, collection = backend
     ids, embeddings, metadatas, documents = _sample_docs()
+    documents = ['cats nearby', 'cats elsewhere', 'cats farther']
     await db.add_embeddings(collection, ids, embeddings, metadatas, documents)
 
     common = dict(
         collection=collection, query_embedding=[1.0, 0.0, 0.0, 0.0], k=3, search_type='hybrid', query_text='cats'
     )
-    await _poll_until(lambda: db.search(**common), lambda r: len(r['ids'][0]) >= 1)
+    await _poll_until(lambda: db.search(**common), lambda r: len(r['ids'][0]) == 3)
 
     r_low = await db.search(**common, vector_weight=0.1)
     r_high = await db.search(**common, vector_weight=0.9)
-    assert r_low['ids'][0] == r_high['ids'][0]
+    assert r_low['ids'][0] == r_high['ids'][0] == ['d1', 'd3', 'd2']
 
 
 @pytest.mark.asyncio
@@ -257,6 +259,9 @@ async def test_delete_by_filter_returns_count(backend):
 
     deleted = await db.delete_by_filter(collection, filter={'file_id': 'fileA'})
     assert deleted == 2
+    items, total = await _poll_until(lambda: db.list_by_filter(collection, limit=10), lambda result: result[1] == 1)
+    assert total == 1
+    assert [item['id'] for item in items] == ['d2']
 
 
 @pytest.mark.asyncio
@@ -273,6 +278,10 @@ async def test_list_by_filter_pagination(backend):
     page2, total = await db.list_by_filter(collection, limit=2, offset=2)
     assert total == 3
     assert len(page2) == 1
+    first_ids = {item['id'] for item in page1}
+    second_ids = {item['id'] for item in page2}
+    assert first_ids.isdisjoint(second_ids)
+    assert first_ids | second_ids == {'d1', 'd2', 'd3'}
 
 
 @pytest.mark.asyncio
@@ -282,7 +291,11 @@ async def test_delete_collection(backend):
     await db.add_embeddings(collection, ids, embeddings, metadatas, documents)
     await _poll_until(lambda: db.list_by_filter(collection, limit=10), lambda r: r[1] >= 3)
 
+    client = await db._ensure_client()
+    keys = [f'kb:{collection}:{document_id}' for document_id in ids]
+    assert await client.exists(keys) == 3
     await db.delete_collection(collection)
+    assert await client.exists(keys) == 0
 
     # After dropping, search on a missing index returns empty.
     result = await db.search(collection, [1.0, 0.0, 0.0, 0.0], k=3, search_type='vector')
