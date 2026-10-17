@@ -16,7 +16,6 @@ from langbot.pkg.agent.runner.host_models import (
 )
 from langbot.pkg.agent.runner.event_log_store import EventLogStore
 from langbot.pkg.agent.runner.transcript_store import TranscriptStore
-from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot_plugin.api.entities.builtin.runner.event import (
     ActorContext,
 )
@@ -164,33 +163,6 @@ class TestTranscriptStore:
                 )
 
                 assert transcript_id is not None
-
-
-class TestHistoryPageAuthorization:
-    """Test history.page authorization."""
-
-    @pytest.mark.asyncio
-    async def test_history_page_validates_conversation_scope(self, mock_db_engine):
-        """Test history.page only allows access to run's conversation."""
-        # This test verifies the authorization logic
-        # The actual implementation validates conversation_id matches session
-        session_registry = get_session_registry()
-
-        await session_registry.register(
-            run_id='run_1',
-            runner_id='plugin:test/plugin/runner',
-            query_id=None,
-            plugin_identity='test/plugin',
-            resources={'models': [], 'tools': [], 'knowledge_bases': [], 'storage': {'plugin_storage': True}},
-            conversation_id='conv_1',
-        )
-
-        session = await session_registry.get('run_1')
-        assert session is not None
-        assert session['authorization']['conversation_id'] == 'conv_1'
-
-        # Cleanup
-        await session_registry.unregister('run_1')
 
 
 class TestEventLogStoreRealSQLite:

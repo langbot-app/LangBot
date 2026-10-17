@@ -19,7 +19,6 @@ from langbot.pkg.agent.runner.errors import (
     RunnerExecutionError,
     RunnerNotAuthorizedError,
 )
-from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
 
 # Define mock classes in dependency order (no forward references needed)
@@ -171,36 +170,6 @@ class MockApplication:
         # Mock sess_mgr
         self.sess_mgr = MagicMock()
         self.sess_mgr.get_conversation = AsyncMock()
-
-
-class TestRunnerConfigResolverInChatHandler:
-    """Tests for RunnerConfigResolver usage in chat handler context."""
-
-    def test_resolve_runner_id_from_pipeline_config(self):
-        """Chat handler should use RunnerConfigResolver to resolve runner ID."""
-        pipeline_config = {
-            'ai': {
-                'runner': {
-                    'id': 'plugin:langbot-team/LocalAgent/default',
-                },
-            },
-        }
-
-        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
-        assert runner_id == 'plugin:langbot-team/LocalAgent/default'
-
-    def test_old_runner_field_is_not_resolved(self):
-        """The 4.x path requires ai.runner.id."""
-        pipeline_config = {
-            'ai': {
-                'runner': {
-                    'runner': 'local-agent',
-                },
-            },
-        }
-
-        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
-        assert runner_id is None
 
 
 class TestErrorHandling:

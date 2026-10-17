@@ -214,6 +214,57 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('denial', 'message'),
+    [('missing_run', 'run_id is required'), ('expired_run', 'not found or expired'), ('capability', 'not authorized')],
+)
+async def test_event_get_requires_active_run_capability(session_registry, db_engine, denial, message):
+    await _register_session(session_registry, available_apis={'event_get': denial != 'capability'})
+    await EventLogStore(db_engine).append_event(
+        event_id='evt_denied',
+        event_type='message.received',
+        source='platform',
+        conversation_id='conv_1',
+        run_id='run_1',
+        input_summary='must not be returned',
+    )
+    data = {'event_id': 'evt_denied'}
+    if denial != 'missing_run':
+        data['run_id'] = 'expired' if denial == 'expired_run' else 'run_1'
+    result = await _handler(db_engine, session_registry).actions[PluginToRuntimeAction.EVENT_GET.value](data)
+    assert result.code != 0
+    assert message in result.message
+    assert not result.data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mismatch', [None, 'conversation_id', 'bot_id', 'workspace_id', 'thread_id'])
+async def test_event_get_enforces_run_scope(session_registry, db_engine, mismatch):
+    scope = {'conversation_id': 'conv_1', 'bot_id': 'bot_1', 'workspace_id': 'workspace-test', 'thread_id': 'thread_1'}
+    await _register_session(session_registry, **scope, available_apis={'event_get': True})
+    event_scope = {**scope, **({mismatch: 'other'} if mismatch else {})}
+    await EventLogStore(db_engine).append_event(
+        event_id='evt_other_run',
+        event_type='message.received',
+        source='platform',
+        run_id='other_run',
+        input_summary='scoped document',
+        **event_scope,
+    )
+    result = await _handler(db_engine, session_registry).actions[PluginToRuntimeAction.EVENT_GET.value](
+        {'run_id': 'run_1', 'event_id': 'evt_other_run'}
+    )
+    if mismatch is None:
+        assert result.code == 0
+        assert result.data['event_id'] == 'evt_other_run'
+        assert result.data['input_summary'] == 'scoped document'
+    else:
+        assert result.code != 0
+        assert 'not accessible' in result.message
+        assert not result.data
+
+
+@pytest.mark.asyncio
 async def test_event_page_returns_sdk_page_projection(session_registry, db_engine):
     await _register_session(session_registry, available_apis={'event_page': True})
     store = EventLogStore(db_engine)
