@@ -138,3 +138,42 @@ async def test_atbot_rule_no_match(mock_app, sample_query):
     result = await atbot_rule.match(str(message_chain), message_chain, {}, sample_query)
 
     assert result.matching is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('routed', [False, True])
+@pytest.mark.parametrize('kind', ['plain', 'mention', 'prefix'])
+async def test_routed_group_messages_still_obey_response_rules(mock_app, sample_query, routed, kind):
+    resprule, entities, _, _ = get_modules()
+    sample_query.launcher_type = provider_session.LauncherTypes.GROUP
+    sample_query.adapter.bot_account_id = '999'
+    sample_query.variables = {'_routed_by_rule': routed}
+    sample_query.pipeline_config = {
+        'trigger': {'group-respond-rules': {'at': True, 'prefix': ['!bot '], 'regexp': [], 'random': 0}}
+    }
+    parts = [platform_message.Plain(text='!bot hello' if kind == 'prefix' else 'hello')]
+    if kind == 'mention':
+        parts.insert(0, platform_message.At(target='999'))
+    sample_query.message_chain = platform_message.MessageChain(parts)
+    stage = resprule.GroupRespondRuleCheckStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+
+    result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
+
+    expected = entities.ResultType.INTERRUPT if kind == 'plain' else entities.ResultType.CONTINUE
+    assert result.result_type == expected
+    if kind != 'plain':
+        assert str(sample_query.message_chain) == 'hello'
+
+
+@pytest.mark.asyncio
+async def test_interaction_submission_does_not_require_another_mention(mock_app, sample_query):
+    resprule, entities, _, _ = get_modules()
+    sample_query.launcher_type = provider_session.LauncherTypes.GROUP
+    sample_query.variables = {'_routed_by_rule': True, '_interaction_submission': {'interaction_id': 'form-1'}}
+    stage = resprule.GroupRespondRuleCheckStage(mock_app)
+    stage.rule_matchers = []
+
+    result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
+
+    assert result.result_type == entities.ResultType.CONTINUE
