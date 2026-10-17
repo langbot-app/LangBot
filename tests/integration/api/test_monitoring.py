@@ -8,6 +8,9 @@ Run: uv run pytest tests/integration/api/test_monitoring.py -q
 
 from __future__ import annotations
 
+import csv
+import io
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock, patch
 from types import SimpleNamespace
@@ -122,15 +125,22 @@ def fake_monitoring_app():
     )
     app.monitoring_service.get_feedback_stats = AsyncMock(return_value={'like_count': 10})
     app.monitoring_service.get_feedback_list = AsyncMock(return_value=([{'feedback_id': 'fb-1'}], 12))
-    app.monitoring_service.export_messages = AsyncMock(return_value=[{'id': 'msg-1'}])
+    app.monitoring_service.export_messages = AsyncMock(
+        return_value=[{'id': 'msg-1', 'message_content': 'hello, "quoted"'}]
+    )
     app.monitoring_service.export_llm_calls = AsyncMock(return_value=[{'id': 'llm-1'}])
     app.monitoring_service.export_errors = AsyncMock(return_value=[{'id': 'err-1'}])
     app.monitoring_service.export_sessions = AsyncMock(return_value=[{'session_id': 'sess-1'}])
     app.monitoring_service.export_feedback = AsyncMock(return_value=[{'id': 'fb-1'}])
     app.monitoring_service.export_embedding_calls = AsyncMock(return_value=[{'id': 'emb-1'}])
-    app.monitoring_service._escape_csv_field = Mock(return_value='escaped')
+    app.monitoring_service._escape_csv_field = MonitoringService(app)._escape_csv_field
 
     return app
+
+
+@pytest.fixture(autouse=True)
+def reset_monitoring_calls(fake_monitoring_app):
+    fake_monitoring_app.monitoring_service.reset_mock()
 
 
 @pytest.fixture(scope='module')
@@ -157,6 +167,14 @@ class TestMonitoringOverviewEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+
+        assert data['data'] == {
+            'total_messages': 100,
+            'total_llm_calls': 50,
+            'total_sessions': 20,
+            'active_sessions': 5,
+            'total_errors': 2,
+        }
 
     @pytest.mark.asyncio
     async def test_viewer_can_read_monitoring_but_cannot_export(
@@ -203,6 +221,15 @@ class TestMonitoringMessagesEndpoint:
         assert data['code'] == 0
         assert 'messages' in data['data']
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {
+            'messages': [{'id': 'msg-1', 'content': 'test'}],
+            'total': 100,
+            'limit': 100,
+            'offset': 0,
+        }
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringLLMCallsEndpoint:
@@ -216,6 +243,10 @@ class TestMonitoringLLMCallsEndpoint:
         )
 
         assert response.status_code == 200
+
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'llm_calls': [{'id': 'llm-1'}], 'total': 50, 'limit': 100, 'offset': 0}
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -231,6 +262,10 @@ class TestMonitoringEmbeddingCallsEndpoint:
 
         assert response.status_code == 200
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'embedding_calls': [{'id': 'emb-1'}], 'total': 10, 'limit': 100, 'offset': 0}
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringSessionsEndpoint:
@@ -244,6 +279,10 @@ class TestMonitoringSessionsEndpoint:
         )
 
         assert response.status_code == 200
+
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'sessions': [{'session_id': 'sess-1'}], 'total': 20, 'limit': 100, 'offset': 0}
 
     @pytest.mark.asyncio
     async def test_get_sessions_forwards_user_search_and_page_window(self, quart_test_client, fake_monitoring_app):
@@ -275,6 +314,10 @@ class TestMonitoringErrorsEndpoint:
 
         assert response.status_code == 200
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'errors': [{'id': 'err-1'}], 'total': 2, 'limit': 100, 'offset': 0}
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringAllDataEndpoint:
@@ -297,6 +340,29 @@ class TestMonitoringAllDataEndpoint:
         data = await response.get_json()
         assert 'overview' in data['data']
         assert data['data']['traffic'] == traffic
+
+        assert data['code'] == 0
+        assert data['data']['overview'] == {
+            'total_messages': 100,
+            'total_llm_calls': 50,
+            'total_sessions': 20,
+            'active_sessions': 5,
+            'total_errors': 2,
+        }
+        assert data['data']['messages'] == [{'id': 'msg-1', 'content': 'test'}]
+        assert data['data']['llmCalls'] == [{'id': 'llm-1'}]
+        assert data['data']['toolCalls'] == [{'id': 'tool-1'}]
+        assert data['data']['embeddingCalls'] == [{'id': 'emb-1'}]
+        assert data['data']['sessions'] == [{'session_id': 'sess-1'}]
+        assert data['data']['errors'] == [{'id': 'err-1'}]
+        assert data['data']['totalCount'] == {
+            'messages': 100,
+            'llmCalls': 50,
+            'toolCalls': 5,
+            'embeddingCalls': 10,
+            'sessions': 20,
+            'errors': 2,
+        }
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -327,6 +393,10 @@ class TestMonitoringDetailsEndpoints:
 
         assert response.status_code == 200
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'found': True, 'message_id': 'msg-1'}
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringFeedbackEndpoints:
@@ -341,6 +411,10 @@ class TestMonitoringFeedbackEndpoints:
 
         assert response.status_code == 200
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'like_count': 10}
+
     @pytest.mark.asyncio
     async def test_get_feedback_list(self, quart_test_client):
         """GET /api/v1/monitoring/feedback."""
@@ -350,13 +424,17 @@ class TestMonitoringFeedbackEndpoints:
 
         assert response.status_code == 200
 
+        data = await response.get_json()
+        assert data['code'] == 0
+        assert data['data'] == {'feedback': [{'feedback_id': 'fb-1'}], 'total': 12, 'limit': 100, 'offset': 0}
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringExportEndpoint:
     """Tests for /api/v1/monitoring/export endpoint."""
 
     @pytest.mark.asyncio
-    async def test_export_messages(self, quart_test_client):
+    async def test_export_messages(self, quart_test_client, fake_monitoring_app):
         """GET export?type=messages returns CSV."""
         response = await quart_test_client.get(
             '/api/v1/monitoring/export?type=messages', headers={'Authorization': 'Bearer test_token'}
@@ -365,8 +443,20 @@ class TestMonitoringExportEndpoint:
         assert response.status_code == 200
         assert 'text/csv' in response.content_type
 
+        assert 'text/csv' in response.content_type
+        assert 'monitoring-messages-' in response.headers['Content-Disposition']
+        body = (await response.get_data()).decode('utf-8-sig')
+        records = list(csv.DictReader(io.StringIO(body)))
+        assert len(records) == 1
+        assert records[0]['id'] == 'msg-1'
+        called = fake_monitoring_app.monitoring_service.export_messages
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.kwargs['limit'] == 100000
+        assert records[0]['message_content'] == 'hello, "quoted"'
+
     @pytest.mark.asyncio
-    async def test_export_llm_calls(self, quart_test_client):
+    async def test_export_llm_calls(self, quart_test_client, fake_monitoring_app):
         """GET export?type=llm-calls returns CSV."""
         response = await quart_test_client.get(
             '/api/v1/monitoring/export?type=llm-calls', headers={'Authorization': 'Bearer test_token'}
@@ -374,8 +464,19 @@ class TestMonitoringExportEndpoint:
 
         assert response.status_code == 200
 
+        assert 'text/csv' in response.content_type
+        assert 'monitoring-llm-calls-' in response.headers['Content-Disposition']
+        body = (await response.get_data()).decode('utf-8-sig')
+        records = list(csv.DictReader(io.StringIO(body)))
+        assert len(records) == 1
+        assert records[0]['id'] == 'llm-1'
+        called = fake_monitoring_app.monitoring_service.export_llm_calls
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.kwargs['limit'] == 100000
+
     @pytest.mark.asyncio
-    async def test_export_sessions(self, quart_test_client):
+    async def test_export_sessions(self, quart_test_client, fake_monitoring_app):
         """GET export?type=sessions returns CSV."""
         response = await quart_test_client.get(
             '/api/v1/monitoring/export?type=sessions', headers={'Authorization': 'Bearer test_token'}
@@ -383,11 +484,33 @@ class TestMonitoringExportEndpoint:
 
         assert response.status_code == 200
 
+        assert 'text/csv' in response.content_type
+        assert 'monitoring-sessions-' in response.headers['Content-Disposition']
+        body = (await response.get_data()).decode('utf-8-sig')
+        records = list(csv.DictReader(io.StringIO(body)))
+        assert len(records) == 1
+        assert records[0]['session_id'] == 'sess-1'
+        called = fake_monitoring_app.monitoring_service.export_sessions
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.kwargs['limit'] == 100000
+
     @pytest.mark.asyncio
-    async def test_export_feedback(self, quart_test_client):
+    async def test_export_feedback(self, quart_test_client, fake_monitoring_app):
         """GET export?type=feedback returns CSV."""
         response = await quart_test_client.get(
             '/api/v1/monitoring/export?type=feedback', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
+
+        assert 'text/csv' in response.content_type
+        assert 'monitoring-feedback-' in response.headers['Content-Disposition']
+        body = (await response.get_data()).decode('utf-8-sig')
+        records = list(csv.DictReader(io.StringIO(body)))
+        assert len(records) == 1
+        assert records[0]['id'] == 'fb-1'
+        called = fake_monitoring_app.monitoring_service.export_feedback
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.kwargs['limit'] == 100000
