@@ -65,3 +65,15 @@ async def test_mcp_server_exposes_bot_event_route_tools():
     assert 'test_bot_event_route' not in tool_names
     assert 'list_processors' in tool_names
     assert 'list_agents' not in tool_names
+    assert 'get_workspace_message_language' in tool_names
+    language_tool = next(tool for tool in tools if tool.name == 'set_workspace_message_language')
+    assert set(language_tool.inputSchema['properties']['language']['enum']) == {
+        'en_US',
+        'zh_Hans',
+        'zh_Hant',
+        'ja_JP',
+        'es_ES',
+        'ru_RU',
+        'th_TH',
+        'vi_VN',
+    }

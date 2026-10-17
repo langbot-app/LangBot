@@ -5,9 +5,11 @@ from __future__ import annotations
 import time
 import asyncio
 import contextlib
+import copy
 import typing
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
+from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -18,6 +20,7 @@ from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
+from .config_schema import extract_prompt_config
 from .execution_context import (
     append_mcp_resource_context_to_event,
     build_mcp_resource_context_addition,
@@ -115,6 +118,12 @@ class AgentRunOrchestrator:
 
         if execution_query is None:
             execution_query = build_execution_query(event, [])
+            # Event runs bypass pipeline prompt preparation, just like debug runs.
+            prompt_config = extract_prompt_config(descriptor, binding.runner_config, [])
+            execution_query.prompt = provider_prompt.Prompt(
+                name='default',
+                messages=[provider_message.Message(**item) for item in copy.deepcopy(prompt_config)],
+            )
             # Synthetic events must expose the same trusted scope as pipeline queries.
             for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
                 object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
@@ -264,6 +273,11 @@ class AgentRunOrchestrator:
                 context=context,
                 authorization=run_authorization,
             )
+            monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
+            if monitoring_id and monitoring_id != run_id:
+                await self.ap.monitoring_service.link_execution_message(
+                    get_query_execution_context(execution_query), monitoring_id, run_id, event.event_id
+                )
             await self._session_registry.register(
                 run_id=run_id,
                 runner_id=descriptor.id,
@@ -346,16 +360,25 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
                             run_id=run_id,
                             sequence=sequence_int,
                         )
+                        journal_ms = (time.monotonic() - journal_started) * 1000
 
                         # Trusted Host observers receive validated events before message-only normalization.
                         result_observer = (adapter_context or {}).get('_result_observer')
+                        observer_started = time.monotonic()
                         if result_observer is not None:
                             await result_observer(result_dict)
+                        observer_ms = (time.monotonic() - observer_started) * 1000
+                        if journal_ms + observer_ms >= 100:
+                            self.ap.logger.debug(
+                                f'Slow runner event consumer run={run_id} type={result_type} '
+                                f'journal_ms={journal_ms:.1f} observer_ms={observer_ms:.1f}'
+                            )
 
                         if result_type == 'state.updated':
                             await self.journal.handle_state_updated_event(
@@ -441,9 +464,15 @@ class AgentRunOrchestrator:
                 terminal_status or '', 'unknown'
             )
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             execution_outcome = 'cancelled'
             execution_error = 'cancelled'
+            await self.journal.finalize_run(
+                run_id=run_id,
+                status='cancelled',
+                status_reason='consumer_cancelled',
+                usage=terminal_usage,
+            )
             raise
         except Exception as exc:
             execution_outcome = 'timeout' if self._is_deadline_exhausted(context) else 'failed'

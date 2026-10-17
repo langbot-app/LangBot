@@ -200,7 +200,7 @@ async def test_wecomcs_event_converter_maps_media_and_unknown_messages():
     assert isinstance(file_event.message_chain[1], platform_message.File)
     assert isinstance(voice_event.message_chain[1], platform_message.Voice)
     assert isinstance(unknown_event, platform_events.PlatformSpecificEvent)
-    assert unknown_event.action == 'wecomcs.event'
+    assert unknown_event.action == 'wecomcs.unknown'
 
 
 @pytest.mark.asyncio

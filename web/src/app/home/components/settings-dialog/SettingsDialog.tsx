@@ -191,7 +191,7 @@ export default function SettingsDialog({
       }}
     >
       <DialogContent
-        className="h-[80vh] max-h-[800px] overflow-hidden p-0 sm:max-w-[52rem] [&>button:last-child]:z-20"
+        className="flex h-[80dvh] max-h-[800px] min-h-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[52rem] [&>button:last-child]:z-20"
         // Fixed height so switching sections never resizes the dialog; each
         // panel scrolls its own content internally.
       >
@@ -202,7 +202,7 @@ export default function SettingsDialog({
 
         {/* Override the SidebarProvider wrapper's default h-svh so the two
             columns fill the dialog's fixed height instead of the viewport. */}
-        <SidebarProvider className="!min-h-0 h-full">
+        <SidebarProvider className="!min-h-0 flex-1 overflow-hidden">
           <Sidebar
             collapsible="none"
             className="hidden h-full w-44 shrink-0 border-r md:flex"
@@ -231,7 +231,7 @@ export default function SettingsDialog({
             </SidebarContent>
           </Sidebar>
 
-          <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* Mobile section switcher (sidebar is hidden on small screens) */}
             <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-2 md:hidden">
               {navItems.map((item) => (

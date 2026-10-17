@@ -1025,3 +1025,45 @@ class TestSpaceServiceCreditsCache:
         assert result == 500
         assert 'test@example.com' in service._credits_cache
         assert service._credits_cache['test@example.com'][0] == 500
+
+
+@pytest.mark.parametrize('status', [200, 503])
+async def test_assistant_recommendation_uses_dedicated_endpoint_without_fallback(status):
+    service = SpaceService(SimpleNamespace(instance_config=SimpleNamespace(data={})))
+    service.get_model_selection = AsyncMock()
+    service._resolve_recommended_model = AsyncMock(return_value={'uuid': 'local', 'name': 'deepseek-v4-flash'})
+    response = MagicMock(status=status)
+    _set_response_body(
+        response,
+        {
+            'code': 0,
+            'data': {
+                'model': {
+                    'uuid': 'upstream',
+                    'model_id': 'deepseek-v4-flash',
+                    'category': 'chat',
+                    'provider': 'deepseek',
+                    'status': 'active',
+                }
+            },
+        },
+    )
+    session = MagicMock()
+    session.get.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+    context = object()
+    with patch('langbot.pkg.api.http.service.space.httpclient.get_session', return_value=session):
+        if status == 200:
+            assert await service.get_recommended_assistant_model(context) == {
+                'uuid': 'local',
+                'name': 'deepseek-v4-flash',
+            }
+            args = service._resolve_recommended_model.await_args.args
+            assert args[0] is context
+            assert args[1].model_id == 'deepseek-v4-flash'
+        else:
+            with pytest.raises(ValueError, match='No recommended assistant model'):
+                await service.get_recommended_assistant_model(context)
+            service._resolve_recommended_model.assert_not_awaited()
+    service.get_model_selection.assert_not_awaited()
+    session.get.assert_called_once_with('https://space.langbot.app/api/v1/models/assistant/recommendation')

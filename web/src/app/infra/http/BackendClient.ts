@@ -1,10 +1,12 @@
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
+import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
 } from '@/app/infra/entities/api/pipeline-migration';
 import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
 import type {
+  InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
   ExecutionModeFilter,
@@ -109,6 +111,17 @@ import type {
  * 负责与后端 API 的所有交互
  */
 export class BackendClient extends BaseHttpClient {
+  public getWorkspaceLanguage(): Promise<{
+    language: string;
+    supported_languages: string[];
+  }> {
+    return this.get('/api/v1/workspaces/current/language');
+  }
+
+  public setWorkspaceLanguage(language: string): Promise<{ language: string }> {
+    return this.put('/api/v1/workspaces/current/language', { language });
+  }
+
   constructor(baseURL: string) {
     super(baseURL, false);
   }
@@ -148,19 +161,25 @@ export class BackendClient extends BaseHttpClient {
   public createModelProvider(
     provider: Omit<ModelProvider, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/providers', provider);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/providers', provider),
+    );
   }
 
   public updateModelProvider(
     uuid: string,
     provider: Partial<ModelProvider>,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/providers/${uuid}`, provider);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/providers/${uuid}`, provider),
+    );
   }
 
   public deleteModelProvider(uuid: string, cascade = false): Promise<object> {
-    return this.delete(
-      `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(
+        `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+      ),
     );
   }
 
@@ -229,18 +248,24 @@ export class BackendClient extends BaseHttpClient {
   public createProviderLLMModel(
     model: Omit<LLMModel, 'uuid'>,
   ): Promise<{ uuid: string }> {
-    return this.post('/api/v1/provider/models/llm', model);
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/models/llm', model),
+    );
   }
 
   public deleteProviderLLMModel(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/models/llm/${uuid}`);
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(`/api/v1/provider/models/llm/${uuid}`),
+    );
   }
 
   public updateProviderLLMModel(
     uuid: string,
     model: LLMModel,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/models/llm/${uuid}`, model);
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/models/llm/${uuid}`, model),
+    );
   }
 
   public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
@@ -359,6 +384,18 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/agents', agent);
   }
 
+  public getStarredModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/starred');
+  }
+
+  public setStarredModel(uuid: string | null): Promise<object> {
+    return this.put('/api/v1/provider/models/llm/_/starred', { uuid });
+  }
+
+  public getDefaultModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/default');
+  }
+
   public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
     return this.put(`/api/v1/agents/${uuid}`, agent);
   }
@@ -435,6 +472,58 @@ export class BackendClient extends BaseHttpClient {
       throw {
         code: 'runner_protocol_error',
         msg: 'Debug stream ended before completion',
+      };
+    return result;
+  }
+
+  public async streamAssistant<T>(
+    uuid: string,
+    payload: {
+      revision: number;
+      text?: string;
+      approved?: boolean;
+      model_uuid?: string;
+    },
+    onEvent: (event: { kind: string; data: unknown }) => void,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let offset = 0;
+    let result: T | undefined;
+    let failure: { code: string; msg: string } | undefined;
+    const consume = (text: string) => {
+      let end: number;
+      while ((end = text.indexOf('\n', offset)) !== -1) {
+        const line = text.slice(offset, end).trim();
+        offset = end + 1;
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        if (frame.kind === 'completed') result = frame.data;
+        else if (frame.kind === 'error') failure = frame;
+        else onEvent(frame);
+      }
+    };
+    const response = await this.instance.post<string>(
+      `/api/v1/assistant/conversations/${encodeURIComponent(uuid)}/turn/stream`,
+      payload,
+      {
+        adapter: 'xhr',
+        responseType: 'text',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'application/x-ndjson' },
+        transformResponse: [(data) => data],
+        onDownloadProgress: (progress) => {
+          const xhr = progress.event?.target as XMLHttpRequest | undefined;
+          if (xhr?.status === 200) consume(xhr.responseText);
+        },
+      },
+    );
+    consume(response.data);
+    if (failure) throw failure;
+    if (!result)
+      throw {
+        code: 'assistant_protocol_error',
+        msg: 'Assistant stream ended before completion',
       };
     return result;
   }
@@ -742,6 +831,16 @@ export class BackendClient extends BaseHttpClient {
       queryParams.append('userQuery', options.userQuery);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
+  }
+
+  public resetSessionContext(
+    botId: string,
+    sessionId: string,
+  ): Promise<{ reset: boolean }> {
+    return this.post('/api/v1/monitoring/sessions/reset-context', {
+      bot_id: botId,
+      session_id: sessionId,
+    });
   }
 
   public getSessionAnalysis<T>(
@@ -1980,6 +2079,8 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ Monitoring API ============
   public getMonitoringData(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2103,6 +2204,8 @@ export class BackendClient extends BaseHttpClient {
     };
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }
@@ -2120,6 +2223,44 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public async streamInflight(
+    onFrame: (frame: InflightFrame) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const response = await this.instance.get<ReadableStream<Uint8Array>>(
+      '/api/v1/monitoring/in-flight/stream',
+      {
+        adapter: 'fetch',
+        responseType: 'stream',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'text/event-stream' },
+      },
+    );
+    const reader = response.data.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (frame.startsWith('data: '))
+            onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
+        }
+        if (buffer.length > 2_000_000)
+          throw new Error('Monitoring frame exceeds limit');
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
   }
 
   public getExecutions(params: {
@@ -2170,11 +2311,15 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getExecutionDetail(
-    source: ExecutionSource,
+    source: ExecutionSource | 'auto',
     executionId: string,
+    options: { section?: string; offset?: number; limit?: number } = {},
   ): Promise<ExecutionDetail> {
+    const params = new URLSearchParams(
+      Object.entries(options).map(([key, value]) => [key, String(value)]),
+    );
     return this.get(
-      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}`,
+      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}?${params}`,
     );
   }
 
@@ -2207,6 +2352,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getTokenStatistics(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
     botId?: string[];
     pipelineId?: string[];
     startTime?: string;
@@ -2247,6 +2394,8 @@ export class BackendClient extends BaseHttpClient {
     bucket: string;
   }> {
     const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
     if (params.botId) {
       params.botId.forEach((id) => queryParams.append('botId', id));
     }

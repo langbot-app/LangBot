@@ -149,7 +149,7 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         application.add_handler(
             MessageReactionHandler(
                 telegram_callback,
-                MessageReactionHandler.MESSAGE_REACTION,
+                message_reaction_types=MessageReactionHandler.MESSAGE_REACTION,
             )
         )
 
@@ -213,6 +213,7 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         chat_id: int | str = int(chat_id_str) if chat_id_str.lstrip('-').isdigit() else chat_id_str
         message_thread_id = int(thread_id_str) if thread_id_str and thread_id_str.isdigit() else None
 
+        sent_messages = []
         for component in components:
             component_type = component.get('type')
             args = {'chat_id': chat_id}
@@ -225,20 +226,24 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                     text = telegramify_markdown.markdownify(content=text)
                     args['parse_mode'] = 'MarkdownV2'
                 args['text'] = text
-                await self.bot.send_message(**args)
+                sent_messages.append(await self.bot.send_message(**args))
             elif component_type == 'photo':
                 photo = component.get('photo')
                 if photo is None:
                     continue
-                args['photo'] = telegram.InputFile(photo)
-                await self.bot.send_photo(**args)
+                sent_messages.append(await self._send_photo_or_document(photo, args))
             elif component_type == 'document':
                 doc = component.get('document')
                 if doc is None:
                     continue
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
-                await self.bot.send_document(**args)
+                sent_messages.append(await self.bot.send_document(**args))
+
+        return platform_events.MessageResult(
+            message_id=sent_messages[-1].message_id if sent_messages else None,
+            raw={'message_ids': [sent.message_id for sent in sent_messages]},
+        )
 
     async def reply_message(
         self,
@@ -249,6 +254,7 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         assert isinstance(message_source.source_platform_object, Update)
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
+        sent_messages = []
         for component in components:
             component_type = component.get('type')
             args = {
@@ -271,20 +277,34 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 if self.config['markdown_card'] is True:
                     args['parse_mode'] = 'MarkdownV2'
                 args['text'] = content
-                await self.bot.send_message(**args)
+                sent_messages.append(await self.bot.send_message(**args))
             elif component_type == 'photo':
                 photo = component.get('photo')
                 if photo is None:
                     continue
-                args['photo'] = telegram.InputFile(photo)
-                await self.bot.send_photo(**args)
+                sent_messages.append(await self._send_photo_or_document(photo, args))
             elif component_type == 'document':
                 doc = component.get('document')
                 if doc is None:
                     continue
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
-                await self.bot.send_document(**args)
+                sent_messages.append(await self.bot.send_document(**args))
+
+        return platform_events.MessageResult(
+            message_id=sent_messages[-1].message_id if sent_messages else None,
+            raw={'message_ids': [sent.message_id for sent in sent_messages]},
+        )
+
+    async def _send_photo_or_document(self, photo: bytes, args: dict):
+        try:
+            return await self.bot.send_photo(photo=telegram.InputFile(photo), **args)
+        except telegram.error.BadRequest as exc:
+            if 'image_process_failed' not in str(exc).lower() and 'photo_invalid_dimensions' not in str(exc).lower():
+                raise
+            # Preserve rejected image bytes without retrying already-sent parts.
+            await self.logger.warning('Telegram rejected photo encoding; sending the image as a document')
+            return await self.bot.send_document(document=telegram.InputFile(photo, filename='image'), **args)
 
     # ---- Streaming Output (preserving original logic) ----
 
@@ -302,6 +322,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return args
 
     _MAX_STREAM_STATES: typing.ClassVar[int] = 1000
+
+    async def _delete_group_stream_message(self, chat_mode: str, chat_id: int, stream_id: int | None):
+        if chat_mode == 'private' or stream_id is None:
+            return
+        try:
+            await self.bot.delete_message(chat_id=chat_id, message_id=stream_id)
+        except telegram.error.TelegramError:
+            pass
 
     def _cap_stream_states(self) -> None:
         while len(self.msg_stream_id) > self._MAX_STREAM_STATES:
@@ -350,6 +378,15 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         if message_id not in self.msg_stream_id:
             return
 
+        # Media cannot be edited into a text stream. Deliver terminal attachments
+        # through the regular reply path, including attachment-only completions.
+        if is_final and not bot_message.tool_calls:
+            attachments = platform_message.MessageChain(
+                [part for part in message if isinstance(part, (platform_message.Image, platform_message.File))]
+            )
+            if attachments:
+                await self.reply_message(message_source, attachments, quote_origin=quote_origin)
+
         stream_state = self.msg_stream_id[message_id]
         chat_mode, stream_id = stream_state[:2]
         has_visible_content = len(stream_state) > 2 and stream_state[2]
@@ -357,6 +394,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
         if not components or components[0]['type'] != 'text':
             if is_final and bot_message.tool_calls is None:
+                if not has_visible_content:
+                    await self._delete_group_stream_message(chat_mode, chat_id, stream_id)
                 self.msg_stream_id.pop(message_id)
             return
 

@@ -50,6 +50,36 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
         )
 
     async def target2yiri(self, event: WecomBotEvent) -> platform_events.Event:
+        from langbot.libs.wecom_ai_bot_api.api import (
+            extract_wecom_event_type,
+            extract_template_card_event_payload,
+            extract_template_card_action,
+        )
+
+        event_type = extract_wecom_event_type(event) or event.get('eventtype')
+        if event_type in {'enter_chat', 'template_card_event'}:
+            group = event.get('chattype', event.type) == 'group'
+            fields = dict(
+                adapter_name=ADAPTER_NAME,
+                user=platform_entities.User(id=event.userid, nickname=event.username),
+                chat_id=str(event.chatid if group else event.userid),
+                chat_type=platform_entities.ChatType.GROUP if group else platform_entities.ChatType.PRIVATE,
+                message_id=event.message_id or '',
+                timestamp=float(event.get('create_time') or time.time()),
+                data=dict(event),
+                source_platform_object=event,
+            )
+            if event_type == 'enter_chat':
+                return platform_events.WecomBotEnterChatEvent(**fields)
+            card = extract_template_card_event_payload(event)
+            task_id, event_key, card_type = extract_template_card_action(card)
+            return platform_events.WecomBotTemplateCardEvent(
+                **fields,
+                task_id=task_id,
+                event_key=event_key,
+                card_type=card_type,
+                selected_items=card.get('selected_items') or card.get('SelectedItems') or [],
+            )
         if event.type in {'single', 'group'} and event.msgtype != 'event':
             return await self.message_to_eba(event)
         return self.platform_specific(

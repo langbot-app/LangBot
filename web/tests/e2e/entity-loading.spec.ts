@@ -240,7 +240,7 @@ for (const scenario of cases) {
     await page.goto(scenario.url);
     const error = page
       .getByRole('alert')
-      .filter({ hasText: 'Failed to load. Please try again.' });
+      .filter({ hasText: 'Unable to load this content' });
     await expect(error).toBeVisible();
     fail = false;
     await error.getByRole('button', { name: 'Retry', exact: true }).click();

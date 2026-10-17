@@ -27,6 +27,7 @@ async def skills_api():
         execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=1),
     )
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False)
     application.persistence_mgr = SimpleNamespace(tenant_uow=None)
     application.user_service.get_authenticated_account = AsyncMock(return_value=account)
@@ -76,4 +77,6 @@ async def test_list_skills_does_not_hide_other_entitlement_failures(skills_api):
         },
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 403
+    payload = await response.get_json()
+    assert payload['code'] == 'entitlement_unavailable'

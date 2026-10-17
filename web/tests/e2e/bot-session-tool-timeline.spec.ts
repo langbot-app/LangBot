@@ -152,17 +152,20 @@ test.describe('bot session request recovery', () => {
             await page.getByRole('button', { name: /Recovery user 1/ }).click();
           else
             await page
-              .getByRole('button', { name: 'Next', exact: true })
-              .last()
+              .getByRole('button', { name: 'Next page', exact: true })
               .click();
         }
       }
-      await expect(page.getByRole('alert')).toBeVisible();
+      await expect(
+        page.getByRole('tabpanel', { name: /Sessions/ }).getByRole('alert'),
+      ).toBeVisible();
       await expect(
         page.getByText('No sessions found', { exact: true }),
       ).toHaveCount(0);
       if (failure === 'analysis') {
-        await expect(page.getByRole('alert')).toContainText(/Tool/i);
+        await expect(
+          page.getByRole('tabpanel', { name: /Sessions/ }).getByRole('alert'),
+        ).toContainText(/Tool/i);
         await expect(
           page.getByText('Successful message', { exact: true }),
         ).toBeVisible();
@@ -177,10 +180,13 @@ test.describe('bot session request recovery', () => {
         ).toHaveCount(0);
       failing = false;
       await page
+        .getByRole('tabpanel', { name: /Sessions/ })
         .getByRole('alert')
         .getByRole('button', { name: 'Retry', exact: true })
         .click();
-      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(
+        page.getByRole('tabpanel', { name: /Sessions/ }).getByRole('alert'),
+      ).toHaveCount(0);
       if (failure === 'initial list' || failure === 'list page') {
         await expect(
           page.getByRole('button', {
@@ -313,7 +319,9 @@ test.describe('bot session request races', () => {
         await expect.poll(() => released).toBe(true);
         // Allow the released HTTP response and React's queued update to settle.
         await page.waitForTimeout(200);
-        await expect(page.getByRole('alert')).toHaveCount(0);
+        await expect(
+          page.getByRole('tabpanel', { name: /Sessions/ }).getByRole('alert'),
+        ).toHaveCount(0);
         await expect(page.getByText('Stale list', { exact: true })).toHaveCount(
           0,
         );

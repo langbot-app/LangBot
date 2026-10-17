@@ -32,7 +32,11 @@ async def _wait_forever() -> None:
     await asyncio.Event().wait()
 
 
-async def test_resource_maintenance_waits_and_shares_workspace_discovery() -> None:
+async def test_resource_maintenance_waits_and_shares_workspace_discovery(monkeypatch) -> None:
+    async def idle_leases(_ap):
+        await _wait_forever()
+
+    monkeypatch.setattr('langbot.pkg.utils.execution_lease.maintain_execution_leases', idle_leases)
     stop = asyncio.Event()
     completed = asyncio.Event()
     discovery_calls = 0

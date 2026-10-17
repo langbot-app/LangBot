@@ -4,11 +4,18 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
+import LoadErrorState from '@/components/LoadErrorState';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -16,7 +23,7 @@ import {
   ChevronDown,
   ExternalLink,
   RefreshCw,
-  MessageSquare,
+  RotateCcw,
   Sparkles,
   CheckCircle2,
   Activity,
@@ -30,20 +37,14 @@ import { ExportDropdown } from './components/ExportDropdown';
 import { useMonitoringFilters } from './hooks/useMonitoringFilters';
 import { useMonitoringData } from './hooks/useMonitoringData';
 import { useFeedbackData } from './hooks/useFeedbackData';
-import { ConversationTurnList } from './components/ConversationTurnList';
 import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
 import ExecutionOverviewCards from './components/overview-cards/ExecutionOverviewCards';
 import ExecutionTable from './components/executions/ExecutionTable';
-import ExecutionDetailSheet from './components/executions/ExecutionDetailSheet';
+import ExecutionDetailSheet, {
+  type ExecutionSelection,
+} from './components/executions/ExecutionDetailSheet';
 import { useExecutions } from './hooks/useExecutions';
-import type {
-  ExecutionModeFilter,
-  ExecutionRow,
-  ExecutionSourceFilter,
-} from '@/app/infra/entities/api/monitoring-executions';
-import { buildConversationTurns } from './utils/conversationTurns';
-import { resolveCallTarget } from './utils/callLinks';
 import { cn } from '@/lib/utils';
 import { resolveMonitoringWindow } from './utils/dateUtils';
 import { LoadingPage } from '@/components/ui/loading-spinner';
@@ -54,32 +55,43 @@ function MonitoringPageContent() {
   const currentWorkspace = useCurrentWorkspace();
   const canExport =
     currentWorkspace?.permissions.includes('data.export') ?? false;
-  const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
-    useMonitoringFilters();
-  const { data, loading, error, refetch } = useMonitoringData(filterState);
-
-  // Unified execution view (agent runs + pipeline queries). Its filters are
-  // independent of the legacy message/model tabs.
-  const [executionSource, setExecutionSource] =
-    useState<ExecutionSourceFilter>('all');
-  const [executionMode, setExecutionMode] =
-    useState<ExecutionModeFilter>('all');
-  const [executionStatus, setExecutionStatus] = useState<string>('all');
+  const {
+    filterState,
+    setSelectedBots,
+    setSelectedPipelines,
+    setTimeRange,
+    setCustomDateRange,
+    setExecutionMode,
+    setExecutionStatus,
+    resetFilters,
+  } = useMonitoringFilters();
+  const executionMode = filterState.mode ?? 'all';
+  const executionStatus = filterState.statusGroup ?? 'all';
+  const {
+    data,
+    loading: monitoringRefreshing,
+    error,
+    refetch,
+  } = useMonitoringData({
+    ...filterState,
+    mode: executionMode,
+    statusGroup: executionStatus,
+  });
   const [executionOffset, setExecutionOffset] = useState(0);
   const [selectedExecution, setSelectedExecution] =
-    useState<ExecutionRow | null>(null);
+    useState<ExecutionSelection | null>(null);
   const EXECUTIONS_PAGE_SIZE = 50;
 
   const {
     result: executionResult,
-    loading: executionLoading,
+    loading: executionRefreshing,
     error: executionError,
     refetch: refetchExecutions,
   } = useExecutions({
     selectedBots: filterState.selectedBots,
     selectedPipelines: filterState.selectedPipelines,
     selectedAgents: [],
-    source: executionSource,
+    source: 'all',
     mode: executionMode,
     statusGroup: executionStatus,
     timeRange: filterState.timeRange,
@@ -92,7 +104,6 @@ function MonitoringPageContent() {
   useEffect(() => {
     setExecutionOffset(0);
   }, [
-    executionSource,
     executionMode,
     executionStatus,
     filterState.selectedBots,
@@ -119,8 +130,10 @@ function MonitoringPageContent() {
   const {
     feedback: feedbackList,
     stats: feedbackStats,
-    loading: feedbackLoading,
+    loading: feedbackRefreshing,
   } = useFeedbackData({
+    mode: executionMode,
+    statusGroup: executionStatus,
     botIds:
       filterState.selectedBots.length > 0
         ? filterState.selectedBots
@@ -134,51 +147,68 @@ function MonitoringPageContent() {
     limit: 50,
   });
 
+  const loading = monitoringRefreshing && !data;
+  const executionLoading = executionRefreshing && !executionResult;
+  const feedbackLoading = feedbackRefreshing && !feedbackStats;
+  const refreshing =
+    monitoringRefreshing || executionRefreshing || feedbackRefreshing;
+  const countdown = useRef(0);
+  const intervalRef = useRef(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   // Combined refresh handler for both monitoring and feedback data
   const handleRefresh = useCallback(() => {
+    countdown.current = intervalRef.current;
+    setRemainingSeconds(countdown.current);
     refetch();
     refetchExecutions();
     setFeedbackRefreshKey((k) => k + 1);
   }, [refetch, refetchExecutions]);
 
-  const conversationTurns = useMemo(
-    () =>
-      buildConversationTurns(
-        data?.messages || [],
-        data?.llmCalls || [],
-        data?.errors || [],
-        data?.toolCalls || [],
-      ),
-    [data?.messages, data?.llmCalls, data?.errors, data?.toolCalls],
-  );
+  const [refreshInterval, setRefreshInterval] = useState(() => {
+    try {
+      const saved = Number(
+        localStorage.getItem('langbot-dashboard-refresh-interval'),
+      );
+      return [5, 15, 30, 60, 300].includes(saved) ? saved : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const refreshState = useRef({ handleRefresh, busy: false });
+  useEffect(() => {
+    refreshState.current = { handleRefresh, busy: refreshing };
+  }, [handleRefresh, refreshing]);
+  useEffect(() => {
+    intervalRef.current = refreshInterval;
+    countdown.current = refreshInterval;
+    setRemainingSeconds(refreshInterval);
+    if (!refreshInterval || error) return;
+    const timer = window.setInterval(() => {
+      if (
+        document.visibilityState === 'visible' &&
+        !refreshState.current.busy
+      ) {
+        countdown.current = Math.max(0, countdown.current - 1);
+        setRemainingSeconds(countdown.current);
+        if (countdown.current === 0) {
+          refreshState.current.busy = true;
+          refreshState.current.handleRefresh();
+        }
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [refreshInterval, error]);
 
   // State for expanded errors
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
-  const [expandedTurnId, setExpandedTurnId] = useState<string | null>(null);
 
   // State for controlled tabs
   const [activeTab, setActiveTab] = useState<string>('executions');
 
-  // Ids the message list actually holds: a call may name a record that the
-  // current window does not contain, and a dead link is worse than no link.
-  const messageIds = useMemo(
-    () => new Set(data?.messages.map((message) => message.id) ?? []),
-    [data?.messages],
-  );
-
-  // Function to jump to a message record
-  const jumpToMessage = (messageId: string) => {
-    setActiveTab('messages');
-    setTimeout(() => {
-      const turn = conversationTurns.find((item) =>
-        item.messages.some((message) => message.id === messageId),
-      );
-      setExpandedTurnId(turn?.id ?? messageId);
-    }, 100);
-  };
-
-  const toggleTurnExpand = (turnId: string) => {
-    setExpandedTurnId((current) => (current === turnId ? null : turnId));
+  // Resolve the owning record server-side, including records outside this page.
+  const jumpToMessage = (identifier: string) => {
+    setActiveTab('executions');
+    setSelectedExecution({ source: 'auto', id: identifier });
   };
 
   const toggleErrorExpand = (errorId: string) => {
@@ -192,49 +222,115 @@ function MonitoringPageContent() {
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden">
       {/* Filters and Refresh Button - Sticky */}
-      <div className="sticky top-0 z-10 -mt-1 pb-5 pt-1 bg-background">
-        <div>
-          <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:p-4">
-            <MonitoringFilters
-              selectedBots={filterState.selectedBots}
-              selectedPipelines={filterState.selectedPipelines}
-              timeRange={filterState.timeRange}
-              onBotsChange={setSelectedBots}
-              onPipelinesChange={setSelectedPipelines}
-              onTimeRangeChange={setTimeRange}
-              source={executionSource}
-              onSourceChange={setExecutionSource}
-              mode={executionMode}
-              onModeChange={setExecutionMode}
-              statusGroup={executionStatus}
-              onStatusGroupChange={setExecutionStatus}
-            />
-            <div className="flex items-center gap-2">
-              {canExport && <ExportDropdown filterState={filterState} />}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                className="flex-1 shadow-sm sm:flex-shrink-0 sm:flex-none"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                {t('monitoring.refreshData')}
-              </Button>
-            </div>
-          </Card>
+      {!error && (
+        <div className="relative z-10 -mt-1 pb-3 pt-1 bg-background lg:sticky lg:top-0 lg:pb-5">
+          <div>
+            <Card className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end">
+              <MonitoringFilters
+                selectedBots={filterState.selectedBots}
+                selectedPipelines={filterState.selectedPipelines}
+                timeRange={filterState.timeRange}
+                onBotsChange={setSelectedBots}
+                onPipelinesChange={setSelectedPipelines}
+                onTimeRangeChange={setTimeRange}
+                customDateRange={filterState.customDateRange}
+                onCustomDateRangeChange={setCustomDateRange}
+                mode={executionMode}
+                onModeChange={setExecutionMode}
+                statusGroup={executionStatus}
+                onStatusGroupChange={setExecutionStatus}
+              />
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t pt-3 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0 [&_button]:h-9">
+                <Button variant="outline" size="sm" onClick={resetFilters}>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {t('monitoring.filters.reset')}
+                </Button>
+                {canExport && <ExportDropdown filterState={filterState} />}
+                <div className="relative flex items-center overflow-hidden rounded-lg border bg-background shadow-xs">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="gap-2 rounded-none px-3"
+                  >
+                    <RefreshCw
+                      className={cn('size-3.5', refreshing && 'animate-spin')}
+                    />
+                    {t('monitoring.refreshData')}
+                    {refreshInterval > 0 && (
+                      <span className="min-w-8 text-right text-xs tabular-nums text-muted-foreground">
+                        {remainingSeconds}s
+                      </span>
+                    )}
+                  </Button>
+                  <Select
+                    value={String(refreshInterval)}
+                    onValueChange={(value) => {
+                      setRefreshInterval(Number(value));
+                      try {
+                        localStorage.setItem(
+                          'langbot-dashboard-refresh-interval',
+                          value,
+                        );
+                      } catch {
+                        /* Storage may be unavailable. */
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-11 justify-center rounded-l-none border-0 border-l px-2 shadow-none [&>svg:last-child]:hidden"
+                      aria-label={t('monitoring.autoRefreshLabel')}
+                      title={
+                        refreshInterval
+                          ? t('monitoring.autoRefreshEvery', {
+                              seconds: refreshInterval,
+                            })
+                          : t('monitoring.autoRefreshOff')
+                      }
+                    >
+                      <span aria-hidden="true">
+                        <ChevronDown className="size-3.5" />
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">
+                        {t('monitoring.autoRefreshOff')}
+                      </SelectItem>
+                      {[5, 15, 30, 60, 300].map((seconds) => (
+                        <SelectItem key={seconds} value={String(seconds)}>
+                          {t('monitoring.autoRefreshEvery', { seconds })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {refreshInterval > 0 && (
+                    <div
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-blue-500/10"
+                      aria-hidden="true"
+                    >
+                      <div
+                        className="h-full origin-left bg-blue-500/70 transition-transform duration-700 ease-linear motion-reduce:transition-none"
+                        style={{
+                          transform: `scaleX(${remainingSeconds / refreshInterval})`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content Area */}
       {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>{t('monitoring.loadError')}</AlertTitle>
-          <AlertDescription className="mt-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              {t('common.retry')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <LoadErrorState
+          title={t('monitoring.loadError')}
+          onRetry={handleRefresh}
+          busy={refreshing}
+        />
       ) : (
         <div className="relative z-0 flex flex-col gap-6 pb-4 pt-3">
           {/* Overview Section: the execution metrics and the runtime status share
@@ -258,14 +354,6 @@ function MonitoringPageContent() {
               className="text-sm text-muted-foreground space-y-1"
               role="status"
             >
-              {data.totalCount.messages > data.messages.length && (
-                <p>
-                  {t('monitoring.partialMessages', {
-                    shown: data.messages.length,
-                    total: data.totalCount.messages,
-                  })}
-                </p>
-              )}
               {data.totalCount.llmCalls + data.totalCount.embeddingCalls >
                 data.modelCalls.length && (
                 <p>
@@ -308,9 +396,7 @@ function MonitoringPageContent() {
                   <TabsTrigger value="executions" className="px-3 py-2 sm:px-6">
                     {t('monitoring.execution.tabs.executions')}
                   </TabsTrigger>
-                  <TabsTrigger value="messages" className="px-3 py-2 sm:px-6">
-                    {t('monitoring.tabs.messages')}
-                  </TabsTrigger>
+
                   <TabsTrigger value="modelCalls" className="px-3 py-2 sm:px-6">
                     {t('monitoring.tabs.modelCalls')}
                   </TabsTrigger>
@@ -336,20 +422,11 @@ function MonitoringPageContent() {
 
                 {executionError ? (
                   <div className="px-3 pt-4 sm:px-6">
-                    <Alert variant="destructive">
-                      <AlertTitle>
-                        {t('monitoring.execution.detail.loadError')}
-                      </AlertTitle>
-                      <AlertDescription className="mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleRefresh}
-                        >
-                          {t('common.retry')}
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
+                    <LoadErrorState
+                      title={t('monitoring.execution.detail.loadError')}
+                      onRetry={handleRefresh}
+                      busy={refreshing}
+                    />
                   </div>
                 ) : (
                   <>
@@ -385,7 +462,7 @@ function MonitoringPageContent() {
                               )
                             }
                           >
-                            {t('common.previous')}
+                            {t('operationTrace.previousPage')}
                           </Button>
                           <span className="text-xs text-muted-foreground">
                             {executionOffset + 1}–
@@ -405,36 +482,12 @@ function MonitoringPageContent() {
                               )
                             }
                           >
-                            {t('common.next')}
+                            {t('operationTrace.nextPage')}
                           </Button>
                         </div>
                       )}
                   </>
                 )}
-              </TabsContent>
-
-              <TabsContent
-                value="messages"
-                className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
-              >
-                <div>
-                  {loading && <TabState loading rows={6} />}
-
-                  {!loading && data && conversationTurns.length > 0 && (
-                    <ConversationTurnList
-                      turns={conversationTurns}
-                      expandedTurnId={expandedTurnId}
-                      onToggleTurn={toggleTurnExpand}
-                    />
-                  )}
-
-                  {!loading && (!data || conversationTurns.length === 0) && (
-                    <TabState
-                      icon={<MessageSquare className="h-12 w-12" />}
-                      title={t('monitoring.messageList.noMessages')}
-                    />
-                  )}
-                </div>
               </TabsContent>
 
               <TabsContent
@@ -453,19 +506,9 @@ function MonitoringPageContent() {
                           // A recorded call names the record it belongs to, so
                           // the whole card opens it; without a match the card
                           // stays static instead of pretending to be a link.
-                          const target = resolveCallTarget(
-                            call,
-                            executionResult?.items ?? [],
-                            messageIds,
-                          );
+                          const target = call.messageId;
                           const openTarget = () => {
-                            if (!target) return;
-                            if (target.kind === 'execution') {
-                              setActiveTab('executions');
-                              setSelectedExecution(target.row);
-                              return;
-                            }
-                            jumpToMessage(target.id);
+                            if (target) jumpToMessage(target);
                           };
                           return (
                             <Card
@@ -504,31 +547,30 @@ function MonitoringPageContent() {
                                   {/* The stored id is the owning record: a
                                       Pipeline's message, or an Agent run's id
                                       that the card itself opens. */}
-                                  {call.messageId &&
-                                    messageIds.has(call.messageId) && (
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs text-muted-foreground font-mono">
-                                          Query ID: {call.messageId}
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-5 px-1.5 text-xs"
-                                          onClick={(event) => {
-                                            // The card itself opens the call's
-                                            // record; this button is the more
-                                            // specific message target.
-                                            event.stopPropagation();
-                                            jumpToMessage(call.messageId!);
-                                          }}
-                                        >
-                                          <ExternalLink className="w-3 h-3 mr-1" />
-                                          {t(
-                                            'monitoring.messageList.viewConversation',
-                                          )}
-                                        </Button>
-                                      </div>
-                                    )}
+                                  {call.messageId && (
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-xs text-muted-foreground font-mono">
+                                        Query ID: {call.messageId}
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-5 px-1.5 text-xs"
+                                        onClick={(event) => {
+                                          // The card itself opens the call's
+                                          // record; this button is the more
+                                          // specific message target.
+                                          event.stopPropagation();
+                                          jumpToMessage(call.messageId!);
+                                        }}
+                                      >
+                                        <ExternalLink className="w-3 h-3 mr-1" />
+                                        {t(
+                                          'monitoring.messageList.viewConversation',
+                                        )}
+                                      </Button>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-2 mb-2">
                                     {/* Model Type Badge */}
                                     <Badge
@@ -715,6 +757,8 @@ function MonitoringPageContent() {
                 className="m-0 min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
               >
                 <TokenMonitoring
+                  mode={executionMode}
+                  statusGroup={executionStatus}
                   botIds={
                     filterState.selectedBots.length > 0
                       ? filterState.selectedBots
@@ -934,6 +978,7 @@ function MonitoringPageContent() {
       {/* Execution trace drawer */}
       <ExecutionDetailSheet
         row={selectedExecution}
+        onSelect={setSelectedExecution}
         onClose={() => setSelectedExecution(null)}
       />
     </div>
@@ -941,9 +986,10 @@ function MonitoringPageContent() {
 }
 
 export default function MonitoringPage() {
+  const workspace = useCurrentWorkspace()?.workspace.uuid;
   return (
     <Suspense fallback={<LoadingPage />}>
-      <MonitoringPageContent />
+      <MonitoringPageContent key={workspace ?? 'pending'} />
     </Suspense>
   );
 }

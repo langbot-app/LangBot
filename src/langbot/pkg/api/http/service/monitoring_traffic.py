@@ -24,9 +24,14 @@ async def get_traffic_series(
     pipeline_ids: list[str] | None = None,
     start_time: datetime.datetime | None = None,
     end_time: datetime.datetime | None = None,
+    execution_statuses: list[str] | None = None,
+    mode: str = 'all',
 ) -> dict:
     """Count all matching records in UTC buckets, returning at most 1000 points."""
     workspace_uuid = require_workspace_uuid(context)
+    from .monitoring import MonitoringService
+
+    service = MonitoringService(ap)
     bucket = 'hour' if start_time and end_time and end_time - start_time <= datetime.timedelta(days=7) else 'day'
     step = datetime.timedelta(hours=1) if bucket == 'hour' else datetime.timedelta(days=1)
     postgres = ap.persistence_mgr.get_db_engine().dialect.name == 'postgresql'
@@ -40,10 +45,11 @@ async def get_traffic_series(
             pattern = '%Y-%m-%dT%H:00:00' if bucket == 'hour' else '%Y-%m-%dT00:00:00'
             time_bucket = sqlalchemy.func.strftime(pattern, timestamp)
         conditions = [model.workspace_uuid == workspace_uuid]
+        conditions.append(service._monitoring_execution_condition(model, workspace_uuid, execution_statuses, mode))
         if bot_ids:
             conditions.append(model.bot_id.in_(bot_ids))
         if pipeline_ids:
-            conditions.append(model.pipeline_id.in_(pipeline_ids))
+            conditions.append(service._monitoring_processor_condition(model, workspace_uuid, pipeline_ids))
         if start_time is not None:
             conditions.append(timestamp >= start_time)
         if end_time is not None:

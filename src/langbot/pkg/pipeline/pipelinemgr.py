@@ -20,6 +20,8 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
@@ -414,6 +416,11 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
+        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+            return await self._process_query_with_language(query)
+
+    async def _process_query_with_language(self, query: pipeline_query.Query):
         from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
         from ..telemetry.execution import record as record_execution
@@ -423,12 +430,13 @@ class RuntimePipeline:
         token = processing_mode.set('pipeline')
         # The Workspace-scoped opaque query uuid is the execution identity Space
         # shows for this lane; it is a stable UUID for every pooled query.
-        execution_id = str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
+        ingress_event_id = (query.variables or {}).get('_ingress_event_id')
+        execution_id = ingress_event_id or str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
         # A lane with no inbound platform event in flight (WebChat, WebUI debug,
         # HTTP pipeline run) synthesizes its virtual inbound event here, so every
         # execution starts at an event boundary and the Runner is never the trace
         # origin. A lane running under a platform route nests inside that ingress.
-        synthesizing = trace_mod.current() is None
+        synthesizing = trace_mod.current() is None and not ingress_event_id
         try:
             with ingress(
                 self.ap,
@@ -446,7 +454,12 @@ class RuntimePipeline:
                     lane_outcome = 'success'
                     lane_error = ''
                     try:
-                        return await self._process_query(query)
+                        from ..platform.processing_indicator import processing_indicator
+
+                        async with processing_indicator(
+                            query.adapter, query.launcher_type.value.lower(), query.launcher_id
+                        ):
+                            return await self._process_query(query)
                     except asyncio.CancelledError:
                         lane_outcome = 'cancelled'
                         lane_error = 'cancelled'

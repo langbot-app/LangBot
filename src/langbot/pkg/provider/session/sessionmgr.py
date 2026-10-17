@@ -271,8 +271,22 @@ class SessionManager:
     async def get_session(self, query: pipeline_query.Query) -> provider_session.Session:
         """获取会话"""
         session_key, execution_context = _query_session_key(query)
+        from ...agent.runner.context_reset import get_reset_generation
+
+        generation = None
+        persistence = getattr(self.ap, 'persistence_mgr', None)
+        if persistence is not None:
+            generation = await get_reset_generation(
+                persistence.get_db_engine(),
+                execution_context.workspace_uuid,
+                query.bot_uuid,
+                f'{str(query.launcher_type.value).lower()}_{query.launcher_id}',
+            )
         now = time.monotonic()
         session = self._session_index.get(session_key)
+        if session is not None and getattr(session, '_context_generation', None) != generation:
+            self._remove_session(session)
+            session = None
         if session is not None:
             self._touch_session(session, session_key, now)
             return session
@@ -319,6 +333,7 @@ class SessionManager:
         object.__setattr__(session, 'bot_uuid', query.bot_uuid)
         object.__setattr__(session, '_execution_context', session_context)
         object.__setattr__(session, '_langbot_session_key', session_key)
+        object.__setattr__(session, '_context_generation', generation)
         object.__setattr__(session, '_langbot_session_concurrency', session_concurrency)
         session._semaphore = asyncio.Semaphore(session_concurrency)
         self._session_index[session_key] = session

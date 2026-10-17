@@ -24,6 +24,7 @@ from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 from langbot.pkg.cloud.launch import SpaceLaunchError, SpaceLaunchService
 from langbot.pkg.cloud.support_admin import SupportAdminSessionService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.support_admin import SupportAdminTemporarySession
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import (
@@ -124,6 +125,9 @@ class _TenantUow:
         self._transaction = await self.session.begin()
         return self
 
+    async def execute(self, statement):
+        return await self.session.execute(statement)
+
     async def __aexit__(self, exc_type, exc, traceback):
         try:
             if exc_type is None:
@@ -173,6 +177,7 @@ async def support_admin_api(tmp_path):
             tables=[
                 User.__table__,
                 Workspace.__table__,
+                WorkspaceMetadata.__table__,
                 WorkspaceExecutionState.__table__,
                 WorkspaceMembership.__table__,
                 SupportAdminTemporarySession.__table__,

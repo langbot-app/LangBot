@@ -113,7 +113,15 @@ def build_lane(pipelinemgr, ap):
 
 
 def build_query(**overrides):
-    query = types.SimpleNamespace(query_uuid='exec-lane', query_id=1, pipeline_config={}, variables={})
+    query = types.SimpleNamespace(
+        query_uuid='exec-lane',
+        query_id=1,
+        pipeline_config={},
+        variables={},
+        adapter=None,
+        launcher_type=types.SimpleNamespace(value='private'),
+        launcher_id='user',
+    )
     for key, value in overrides.items():
         setattr(query, key, value)
     return query
@@ -152,8 +160,13 @@ async def test_lane_step_owns_the_apis_and_runner_it_calls():
 
     async def fake_process(_query):
         execution.record(
-            ap, CONTEXT, family='platform_api', operation='send_message',
-            adapter='AiocqhttpAdapter', mode='pipeline', outcome='success',
+            ap,
+            CONTEXT,
+            family='platform_api',
+            operation='send_message',
+            adapter='AiocqhttpAdapter',
+            mode='pipeline',
+            outcome='success',
         )
         with trace.stage_scope() as run_node:
             seen['run'] = run_node
@@ -162,8 +175,13 @@ async def test_lane_step_owns_the_apis_and_runner_it_calls():
             )
         # A reply issued after the runner still belongs to the lane.
         execution.record(
-            ap, CONTEXT, family='platform_api', operation='reply_message',
-            adapter='AiocqhttpAdapter', mode='pipeline', outcome='success',
+            ap,
+            CONTEXT,
+            family='platform_api',
+            operation='reply_message',
+            adapter='AiocqhttpAdapter',
+            mode='pipeline',
+            outcome='success',
         )
 
     lane._process_query = fake_process
@@ -212,13 +230,23 @@ async def test_lane_node_nests_under_the_platform_route_that_called_it():
         with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-routed'):
             with trace.stage_scope() as event_node:
                 execution.record(
-                    ap, CONTEXT, family='platform_event', operation='message.received',
-                    adapter='AiocqhttpAdapter', outcome='success', node=event_node,
+                    ap,
+                    CONTEXT,
+                    family='platform_event',
+                    operation='message.received',
+                    adapter='AiocqhttpAdapter',
+                    outcome='success',
+                    node=event_node,
                 )
                 with trace.stage_scope() as route_node:
                     execution.record(
-                        ap, CONTEXT, family='event_route', operation='message.received',
-                        adapter='AiocqhttpAdapter', outcome='success', node=route_node,
+                        ap,
+                        CONTEXT,
+                        family='event_route',
+                        operation='message.received',
+                        adapter='AiocqhttpAdapter',
+                        outcome='success',
+                        node=route_node,
                     )
                     await lane.process_query(query)
         await stop_counters(counters)

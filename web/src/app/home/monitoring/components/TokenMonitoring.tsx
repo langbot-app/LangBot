@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { MetricCard } from './overview-cards/MetricCard';
-import { Alert, AlertTitle } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { TabState } from './TabState';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getErrorMessage } from '../utils';
@@ -77,6 +77,8 @@ interface TokenStatistics {
 }
 
 interface TokenMonitoringProps {
+  mode?: 'all' | 'real' | 'debug';
+  statusGroup?: string;
   botIds?: string[];
   pipelineIds?: string[];
   startTime?: string;
@@ -103,6 +105,8 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 export default function TokenMonitoring({
+  mode,
+  statusGroup,
   botIds,
   pipelineIds,
   startTime,
@@ -123,6 +127,9 @@ export default function TokenMonitoring({
     setError(null);
     try {
       const result = await httpClient.getTokenStatistics({
+        mode,
+        status:
+          statusGroup && statusGroup !== 'all' ? [statusGroup] : undefined,
         botId: botIds,
         pipelineId: pipelineIds,
         startTime,
@@ -136,7 +143,16 @@ export default function TokenMonitoring({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botIdsKey, pipelineIdsKey, startTime, endTime, bucket, refreshKey]);
+  }, [
+    mode,
+    statusGroup,
+    botIdsKey,
+    pipelineIdsKey,
+    startTime,
+    endTime,
+    bucket,
+    refreshKey,
+  ]);
 
   useEffect(() => {
     fetchStats();
@@ -152,15 +168,18 @@ export default function TokenMonitoring({
     }));
   }, [stats]);
 
-  if (loading) {
+  if (loading && !stats) {
     return <TabState loading rows={6} />;
   }
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>{t('monitoring.tokens.loadError', { error })}</AlertTitle>
-      </Alert>
+      <LoadErrorState
+        title={t('monitoring.loadError')}
+        description={error}
+        onRetry={fetchStats}
+        busy={loading}
+      />
     );
   }
 

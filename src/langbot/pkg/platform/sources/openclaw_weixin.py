@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import os
 import traceback
 import typing
@@ -256,6 +257,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
     # context_token cache: from_user_id -> context_token
     _context_tokens: dict[str, str] = pydantic.PrivateAttr(default_factory=dict)
 
+    _typing_indicator: typing.Any = pydantic.PrivateAttr(default=None)
+
     _polling: bool = pydantic.PrivateAttr(default=False)
     _poll_task: typing.Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
     _bot_uuid: typing.Optional[str] = pydantic.PrivateAttr(default=None)
@@ -347,6 +350,18 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         # Persist token to database so it survives restart
         await self._persist_config()
 
+    @contextlib.asynccontextmanager
+    async def processing_indicator(self, target_type, target_id):
+        if target_type not in ('person', 'friend'):
+            yield
+            return
+        from langbot.libs.openclaw_weixin_api.typing_indicator import TypingIndicator
+
+        if self._typing_indicator is None:
+            self._typing_indicator = TypingIndicator(self.client, lambda peer: self._context_tokens.get(peer, ''))
+        async with self._typing_indicator.processing(target_id):
+            yield
+
     async def send_message(
         self,
         target_type: str,
@@ -385,6 +400,7 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                 await self.logger.error(
                     f'Failed to send component {type(component).__name__}: {traceback.format_exc()}'
                 )
+                raise
 
     async def reply_message(
         self,
@@ -478,6 +494,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             token=self.config.get('token', token),
         )
         self.bot_account_id = self.config.get('account_id', 'openclaw-weixin')
+        from langbot.libs.openclaw_weixin_api.typing_indicator import TypingIndicator
+
+        self._typing_indicator = TypingIndicator(self.client, lambda peer: self._context_tokens.get(peer, ''))
         self._polling = True
 
         # Start the long-poll loop
@@ -488,6 +507,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             await self._poll_task
         except asyncio.CancelledError:
             pass
+        finally:
+            if self._typing_indicator is not None:
+                await self._typing_indicator.close()
 
     async def _poll_loop(self):
         """Long-poll loop: call getUpdates continuously.
@@ -522,6 +544,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                         await self.logger.error('OpenClaw WeChat session expired, attempting re-login...')
                         try:
                             await self._do_login()
+                            if self._typing_indicator is not None:
+                                await self._typing_indicator.close()
+                                self._typing_indicator = None
                             # Rebuild client with new credentials
                             self.client = OpenClawWeixinClient(
                                 base_url=self.config.get('base_url', DEFAULT_BASE_URL),
@@ -615,6 +640,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
     async def kill(self) -> bool:
         """Stop the adapter."""
         self._polling = False
+        if self._typing_indicator is not None:
+            await self._typing_indicator.close()
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             try:

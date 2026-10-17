@@ -60,6 +60,18 @@ class TestQueryToEventEnvelope:
 
         assert event.conversation_id == 'conv-uuid-123'
 
+    @pytest.mark.parametrize('launcher_id', [123456789, -100123456789, 'launcher-123'])
+    def test_query_to_event_accepts_platform_launcher_ids(self, mock_query, launcher_id):
+        """Telegram private and group IDs are numeric at the Query boundary."""
+        mock_query.launcher_id = launcher_id
+        mock_query.session.using_conversation.uuid = None
+
+        event = QueryEntryAdapter.query_to_event(mock_query)
+        context = QueryEntryAdapter._build_conversation_context(mock_query)
+
+        assert context.launcher_id == str(launcher_id)
+        assert event.conversation_id == f'person_{launcher_id}'
+
     def test_query_to_event_prefers_variable_conversation_id_when_conversation_uuid_missing(self, mock_query):
         """Pipeline variables can provide the conversation identity for state scope."""
         mock_query.session.using_conversation.uuid = None
