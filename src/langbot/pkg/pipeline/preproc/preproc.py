@@ -349,8 +349,10 @@ class PreProcessor(stage.PipelineStage):
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
                 if keep_image_inputs:
-                    if me.base64 is not None:
+                    if me.base64:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
+                    elif me.url:
+                        content_list.append(provider_message.ContentElement.from_image_url(me.url))
                 else:
                     content_list.append(provider_message.ContentElement.from_text('[Image]'))
                     plain_text += '[Image]'
@@ -371,8 +373,10 @@ class PreProcessor(stage.PipelineStage):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
                         if keep_image_inputs:
-                            if msg.base64 is not None:
+                            if msg.base64:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
+                            elif msg.url:
+                                content_list.append(provider_message.ContentElement.from_image_url(msg.url))
                         else:
                             content_list.append(provider_message.ContentElement.from_text('[Image]'))
                             plain_text += '[Image]'

@@ -235,7 +235,8 @@ class TestPreProcessorImageSegment:
     """Tests for image segment handling."""
 
     @pytest.mark.asyncio
-    async def test_image_with_vision_model(self):
+    @pytest.mark.parametrize('image_source', ['base64', 'url'])
+    async def test_image_with_vision_model(self, image_source):
         """Image should be included when model supports vision."""
         preproc = get_preproc_module()
 
@@ -262,15 +263,20 @@ class TestPreProcessorImageSegment:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        # Image query with base64
+        # Exercise both supported image transports.
         query = image_query(text='look at this', url=None)
-        # Set base64 on the image component
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
         chain = platform_message.MessageChain(
             [
                 platform_message.Plain(text='look at this'),
-                platform_message.Image(base64='data:image/png;base64,abc123'),
+                platform_message.Image(
+                    **(
+                        {'base64': 'data:image/png;base64,abc123'}
+                        if image_source == 'base64'
+                        else {'url': 'https://cdn.example/image.png'}
+                    )
+                ),
             ]
         )
         query.message_chain = chain
@@ -279,12 +285,22 @@ class TestPreProcessorImageSegment:
 
         assert result.result_type == preproc.entities.ResultType.CONTINUE
         assert result.new_query.use_llm_model_uuid == 'vision-model'
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
         from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
-        assert result.new_query.user_message.content == [
-            ContentElement.from_text('look at this'),
-            ContentElement.from_image_base64('data:image/png;base64,abc123'),
-        ]
+        expected_image = (
+            ContentElement.from_image_base64('data:image/png;base64,abc123')
+            if image_source == 'base64'
+            else ContentElement.from_image_url('https://cdn.example/image.png')
+        )
+        assert result.new_query.user_message.content == [ContentElement.from_text('look at this'), expected_image]
+        contents = [part.model_dump() for part in result.new_query.user_message.content]
+        attachments = QueryEntryAdapter._build_attachments(result.new_query, contents)
+        assert len(attachments) == 1
+        if image_source == 'url':
+            assert attachments[0]['url'] == 'https://cdn.example/image.png'
+        else:
+            assert attachments[0]['content'] == 'data:image/png;base64,abc123'
 
     @pytest.mark.asyncio
     async def test_image_without_vision_model(self):

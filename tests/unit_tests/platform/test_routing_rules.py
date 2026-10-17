@@ -645,7 +645,8 @@ class TestInteractionResumeRouting:
             send_message=AsyncMock(),
         )
 
-        await bot._handle_interaction_submission(self._event(), adapter)
+        event = self._event()
+        await bot._handle_interaction_submission(event, adapter)
 
         envelope, binding, adapter_context = captured[0]
         assert envelope.event_type == 'interaction.submitted'
@@ -653,7 +654,11 @@ class TestInteractionResumeRouting:
         assert binding.binding_id == 'binding-1'
         assert binding.processor_type == 'agent'
         assert binding.processor_id == 'agent-1'
-        assert adapter_context == {'_delivery_adapter': adapter}
+        assert adapter_context == {
+            '_delivery_adapter': adapter,
+            '_platform_event': event,
+            '_execution_context': TEST_CONTEXT,
+        }
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_reply is False
         adapter.send_message.assert_not_awaited()
