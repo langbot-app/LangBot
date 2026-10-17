@@ -144,6 +144,7 @@ class FakeApplication:
             get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase('kb_001'))
         )
         self.skill_mgr = types.SimpleNamespace(
+            reload_skills=AsyncMock(),
             get_skills=lambda context: {
                 'demo': {
                     'name': 'demo',
@@ -155,7 +156,7 @@ class FakeApplication:
                     'display_name': 'Hidden Skill',
                     'description': 'Not bound to this pipeline.',
                 },
-            }
+            },
         )
 
 
@@ -1038,7 +1039,7 @@ class TestQueryEntrySessionQueryId:
 
     @pytest.mark.asyncio
     async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
-        """Pure event-first flow has query_id=None in session."""
+        """Pure event-first flow ignores the previous run's conversation pins."""
         from langbot.pkg.agent.runner.host_models import (
             AgentEventEnvelope,
             AgentBinding,
@@ -1049,6 +1050,8 @@ class TestQueryEntrySessionQueryId:
         )
         from langbot_plugin.api.entities.builtin.runner.input import AgentInput
         from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILL_NAMES_STATE_KEY, ACTIVATED_SKILLS_KEY
 
         db_engine = clean_agent_state
         descriptor = make_descriptor()
@@ -1061,6 +1064,10 @@ class TestQueryEntrySessionQueryId:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
 
         async def build_resource_context(execution_query):
             from langbot.pkg.provider.tools.loaders.mcp import (
@@ -1116,9 +1123,20 @@ class TestQueryEntrySessionQueryId:
                 'mcp-resource-agent-read-enabled': True,
             },
             resource_policy=ResourcePolicy(),
-            state_policy=StatePolicy(enable_state=False, state_scopes=[]),
+            state_policy=StatePolicy(enable_state=True, state_scopes=['conversation']),
             delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
         )
+
+        success, error = await get_persistent_state_store(db_engine).apply_update_from_event(
+            event.model_copy(update={'workspace_id': TEST_CONTEXT.workspace_uuid}),
+            binding,
+            descriptor,
+            'conversation',
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            [{'name': 'demo', 'revision': revision}],
+            None,
+        )
+        assert success is True and error is None
 
         messages = [
             message
@@ -1145,6 +1163,8 @@ class TestQueryEntrySessionQueryId:
         assert execution_query.message_event.type == event.event_type
         assert '_host_box_scope' not in execution_query.variables
         assert execution_query.variables['_pipeline_bound_skills'] == ['demo', 'hidden']
+        assert ACTIVATED_SKILLS_KEY not in execution_query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
         assert execution_query.variables['_pipeline_mcp_resource_attachments'][0]['server_uuid'] == 'srv-1'
         assert execution_query.variables['_pipeline_mcp_resource_agent_read_enabled'] is True
         assert 'MCP resource context selected by LangBot host:' in plugin_connector.contexts[0]['input']['text']
@@ -1375,8 +1395,9 @@ class TestQueryEntryAdapterHostCapabilities:
         assert snapshot['conversation']['external.test_key'] == 'test_value'
 
     @pytest.mark.asyncio
-    async def test_run_from_query_restores_activated_skills_from_state(self, clean_agent_state):
-        """Persisted activated skill names are restored into the next Query run."""
+    @pytest.mark.parametrize('legacy_state', [False, True])
+    async def test_new_query_does_not_restore_conversation_skill_pins(self, clean_agent_state, legacy_state):
+        """New runs ignore both revision and legacy name-only conversation pins."""
         from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
         from langbot.pkg.provider.tools.loaders.skill import (
             ACTIVATED_SKILL_NAMES_STATE_KEY,
@@ -1394,6 +1415,10 @@ class TestQueryEntryAdapterHostCapabilities:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
 
@@ -1407,7 +1432,7 @@ class TestQueryEntryAdapterHostCapabilities:
             descriptor,
             'conversation',
             ACTIVATED_SKILL_NAMES_STATE_KEY,
-            ['demo'],
+            ['demo'] if legacy_state else [{'name': 'demo', 'revision': revision}],
             None,
         )
         assert success is True
@@ -1416,7 +1441,8 @@ class TestQueryEntryAdapterHostCapabilities:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         assert len(messages) == 1
-        assert query.variables[ACTIVATED_SKILLS_KEY]['demo']['name'] == 'demo'
+        assert ACTIVATED_SKILLS_KEY not in query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_event_log_and_transcript_written(self, clean_agent_state):

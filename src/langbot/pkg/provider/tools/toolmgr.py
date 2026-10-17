@@ -77,6 +77,15 @@ class ToolManager:
         except Exception:
             return False
 
+    @staticmethod
+    def _sandbox_unavailable_result(name: str) -> dict[str, typing.Any]:
+        return {
+            'ok': False,
+            'code': 'sandbox_unavailable',
+            'tool': name,
+            'message': 'This operation requires Box execution, but Box is not configured or available.',
+        }
+
     async def initialize(self):
         from langbot.pkg.utils import importutil
         from langbot.pkg.provider.tools import loaders
@@ -113,8 +122,8 @@ class ToolManager:
         sandbox_available = await self._workspace_sandbox_available(context)
         if sandbox_available:
             all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring and sandbox_available:
-            all_functions.extend(await self.skill_tool_loader.get_tools())
+        if include_skill_authoring:
+            all_functions.extend(await self.skill_tool_loader.get_tools(sandbox_available=sandbox_available))
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
             await self.mcp_tool_loader.get_tools(
@@ -153,8 +162,12 @@ class ToolManager:
         sandbox_available = await self._workspace_sandbox_available(context)
         if sandbox_available:
             append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
-        if include_skill_authoring and sandbox_available:
-            append_tools('skill', 'LangBot', await self.skill_tool_loader.get_tools())
+        if include_skill_authoring:
+            append_tools(
+                'skill',
+                'LangBot',
+                await self.skill_tool_loader.get_tools(sandbox_available=sandbox_available),
+            )
         catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
 
         if self.mcp_tool_loader:
@@ -296,10 +309,9 @@ class ToolManager:
             tool = await active_loader.get_tool(name)
             if tool:
                 return tool
-        if sandbox_available:
-            tool = await self.skill_tool_loader.get_tool(name)
-            if tool:
-                return tool
+        tool = await self.skill_tool_loader.get_tool(name, sandbox_available=sandbox_available)
+        if tool:
+            return tool
 
         return await self.mcp_tool_loader.get_tool(context, name)
 
@@ -363,7 +375,8 @@ class ToolManager:
         if source in {'builtin', 'native'}:
             return await self.native_tool_loader.get_tool(name)
         if source == 'skill':
-            return await self.skill_tool_loader.get_tool(name)
+            sandbox_available = await self._workspace_sandbox_available(context)
+            return await self.skill_tool_loader.get_tool(name, sandbox_available=sandbox_available)
         if source == 'plugin':
             if not source_id:
                 return None
@@ -569,11 +582,11 @@ class ToolManager:
                 telemetry_source = 'native'
                 exists = await loader.has_tool(name)
             elif source == 'skill':
-                if not sandbox_available:
+                if not sandbox_available and self.skill_tool_loader.is_sandbox_tool(name):
                     raise ToolNotFoundError(name)
                 loader = self.skill_tool_loader
                 telemetry_source = 'skill'
-                exists = await loader.has_tool(name)
+                exists = await loader.has_tool(name, sandbox_available=sandbox_available)
             elif source == 'plugin' and source_id:
                 loader = self.plugin_tool_loader
                 telemetry_source = 'plugin'
@@ -593,6 +606,9 @@ class ToolManager:
 
             if not exists:
                 raise ToolNotFoundError(name)
+
+            if source == 'skill' and isinstance(getattr(query, 'variables', None), dict):
+                query.variables['_skill_execution_available'] = sandbox_available
 
             async def invoke_selected_tool() -> typing.Any:
                 if source == 'mcp':
@@ -641,7 +657,10 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
             )
-        if sandbox_available and await self.skill_tool_loader.has_tool(name):
+        if await self.skill_tool_loader.has_tool(name, sandbox_available=sandbox_available):
+            variables = getattr(query, 'variables', None)
+            if isinstance(variables, dict):
+                variables['_skill_execution_available'] = sandbox_available
             return await self._invoke_tool_with_monitoring(
                 source='skill',
                 name=name,
@@ -649,6 +668,13 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.skill_tool_loader.invoke_tool(name, parameters, query),
             )
+        recognizes_native = getattr(self.native_tool_loader, 'recognizes_tool', None)
+        is_sandbox_skill_tool = getattr(self.skill_tool_loader, 'is_sandbox_tool', None)
+        if not sandbox_available and (
+            (callable(recognizes_native) and recognizes_native(name) is True)
+            or (callable(is_sandbox_skill_tool) and is_sandbox_skill_tool(name) is True)
+        ):
+            return self._sandbox_unavailable_result(name)
         raise ToolNotFoundError(name)
 
     async def shutdown(self):

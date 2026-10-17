@@ -1,139 +1,60 @@
-# Sandbox Skill Authoring
+# Skill publication and execution acceptance
 
-## Goal
-
-Verify that Local Agent can use sandbox tools to create, register, activate, and use a LangBot skill package through the same path a user would exercise in Debug Chat.
-
-This flow applies to Docker, nsjail, E2B, and the explicit host development backend. Host runs commands directly as the Box Runtime user and must never be treated as sandbox-isolation coverage. API calls are useful diagnostics, but the primary pass/fail signal is the model-driven Debug Chat tool sequence.
+Verify through Debug Chat that instructions and text resources work without Box,
+and that executable packages use the revision activated by the current run.
+API and direct backend checks diagnose failures; they do not establish UI acceptance.
 
 ## Preconditions
 
-1. Read `../.env` and use `LANGBOT_FRONTEND_URL` and `LANGBOT_BACKEND_URL`.
-2. Start LangBot with the intended backend:
-   - `BOX_BACKEND=e2b` when validating E2B.
-   - `BOX_BACKEND=nsjail` when validating nsjail.
-   - `BOX_BACKEND=local` or `docker` when validating local container fallback.
-   - `BOX_BACKEND=host` only when validating explicit, trusted local direct execution.
-3. Confirm `/api/v1/box/status` reports `available: true` and the expected backend name.
-4. Confirm Debug Chat uses a model with function-calling ability.
-5. Confirm backend logs say native sandbox tools are available.
+Use the frontend/backend and Local Agent pipeline selected in the machine's
+`skills/.env.local`. The model must support tool calling. Do not record credentials.
+Use Docker/Podman, nsjail, or a configured E2B service. The runner may acquire an
+empty Box before activation; adding a revision must preserve that Box. Host mode
+provides no sandbox isolation evidence.
 
-Do not store sandbox provider keys, JWTs, OAuth tokens, or localStorage values in the case or notes.
+## Read-only path
 
-## Debug Chat Prompt Pattern
+Install a unique Skill with instructions and a UTF-8 reference, then disable Box.
+Ask the Agent to activate it and read the reference. Check the reported revision,
+reference contents, and absence of sandbox creation. Execution requests must fail
+clearly; activation must not claim that files are already mounted.
 
-Use a unique skill name per run, for example:
+## Publish and execute
 
-```text
-lb-sandbox-agent-e2e-<timestamp>
-```
+1. With Box enabled, create a draft under `/workspace/skill-drafts/<name>`.
+   Include `SKILL.md`, `scripts/use.py`, and `data/input.json`. Resolve resource
+   files relative to `__file__`; the script should print a deterministic marker.
+2. Call `register_skill` with the draft path, then `activate`. Record revision v1.
+3. Execute the script under the `mount_path` returned by activation. Write results to the
+   run's outbox or draft directory, never the published package.
+4. Attempt to overwrite a published file. The operation must fail and its contents
+   must remain unchanged. Check UI results, tool logs, and the published package.
 
-Send a prompt that requires the model to do all of the following:
+## Update an existing Skill
 
-1. Use `exec` to create a multi-file skill under `/workspace/<skill-name>`.
-2. Include at least:
-   - `SKILL.md`
-   - `scripts/use.py`
-   - `data/input.json`
-3. In the same first `exec`, run the script and verify a deterministic marker such as:
+Copy v1 to a separate writable draft. Modify the draft and publish with
+`base_revision=v1`; record v2. The existing run must continue reading/executing v1,
+including when `activate` is called again. A new run in the same conversation must
+activate v2. A stale `base_revision` update must fail. Removing the Skill from the
+new run's authorization must not break startup or restore the old activation.
+Verify a second UI edit/save adopts the revision returned by the first save.
 
-   ```text
-   SANDBOX_COMPLEX_SKILL_OK sum=10 product=24
-   ```
+## Shared Box and recovery
 
-4. Call `register_skill` with `path=/workspace/<skill-name>`.
-5. Call `activate` with `skill_name=<skill-name>`.
-6. Call `exec` with `workdir=/workspace/.skills/<skill-name>` and run:
+With nsjail, alternate two authorized runs using v1 and v2 in the same Box. Check
+each script's independent version marker, retained `/tmp` state, and a running
+managed process. Neither activation nor a changed mount set may recreate the Box.
+Docker/Podman and E2B must likewise add v2 at its digest path while v1 and the
+existing Box remain usable. On fixed-mount backends, changing ordinary host mounts must fail without
+removing the session. Programs sharing a Box can see its cached packages; test
+version consistency without claiming that the shared filesystem isolates runs.
 
-   ```bash
-   python3 scripts/use.py && echo SANDBOX_ACTIVATED_WRITEBACK_OK > activated_writeback.txt && cat activated_writeback.txt
-   ```
+Pins are Host-owned run ledger data, not conversation state. An active run whose
+in-memory pin is reloaded must use its recorded revision, even after publication
+or deletion of the current catalog entry. A missing recorded package must fail.
+A Core process restart expires tool sessions; calls from those sessions must be
+rejected. Do not report this as automatic run recovery.
 
-7. Require the final answer to contain only an explicit success marker:
-
-   ```text
-   E2E_OK:<skill-name>
-   ```
-
-Keep the test script robust to working-directory changes. Prefer resolving data paths from `__file__`:
-
-```python
-from pathlib import Path
-data_path = Path(__file__).resolve().parent.parent / "data" / "input.json"
-```
-
-## Success Criteria
-
-The UI should show an assistant final response containing `E2E_OK:<skill-name>`.
-
-Backend logs should show:
-
-- `exec tool invoked`
-- `register_skill`
-- `activate`
-- a second `exec` whose workdir is `/workspace/.skills/<skill-name>`
-- `backend=e2b`, `backend=nsjail`, `backend=host`, or the expected local backend
-
-After the run, verify the skill store through the UI or API:
-
-- Skill root lists `SKILL.md`, `scripts`, `data`, and `activated_writeback.txt`.
-- `scripts/use.py` is readable.
-- `data/input.json` is readable.
-- `activated_writeback.txt` contains `SANDBOX_ACTIVATED_WRITEBACK_OK`.
-- `/api/v1/box/errors` is empty.
-
-## Existing Skill Edit Variant
-
-The base `sandbox-skill-authoring-e2e` case only proves create, register,
-activate, and use. To prove that an already activated skill can be modified,
-run `sandbox-skill-authoring-edit-existing-e2e` or use its prompt pattern.
-
-The edit variant must include these additional checks:
-
-- The second `exec` uses `workdir=/workspace/.skills/<skill-name>`.
-- The second `exec` overwrites `SKILL.md`, `data/input.json`, and
-  `scripts/use.py` under the activated skill path.
-- The modified script prints a deterministic marker such as:
-
-  ```text
-  SANDBOX_SKILL_MODIFIED_OK sum=11 product=56 marker=<updated-marker>
-  ```
-
-- `grep -q <updated-marker> SKILL.md scripts/use.py data/input.json` succeeds
-  in the same activated-path command.
-- Filesystem evidence under the Box-managed skill store shows the updated
-  marker, not only the original create marker.
-
-If the model stops after activation and only reruns the original script, treat
-that run as a failed edit-existing E2E even when create/register/activate
-succeeded.
-
-## Diagnostic Checks
-
-Use these only after the model-driven Debug Chat flow fails:
-
-- `/api/v1/box/status` to confirm backend selection and recent errors.
-- `/api/v1/box/sessions` to check leaked or conflicting sessions.
-- Direct backend probes to separate provider credentials from LangBot integration.
-- Filesystem inspection under the configured Box-managed skill store.
-
-For E2B raw HTTP diagnostics, include a valid template id such as `base`; a missing template can produce schema validation errors that are unrelated to authentication.
-
-## Known Pitfalls
-
-- When Box is available, skills may be owned by the Box runtime and stored in Box-managed skill storage. Do not assume `data/skills` is the active source of truth.
-- Public E2B does not provide local bind mounts. Main workspace and activated skill extra mounts must be synchronized into and back out of the E2B sandbox.
-- Session metadata should keep LangBot logical paths such as `/workspace`; storing provider-internal paths can make later requests look incompatible.
-- nsjail versions differ. Some expose only `--disable_clone_new*` flags and use `--bindmount` instead of `--rw_bind`.
-- On WSL, cgroup v2 may exist but not be writable. The backend should warn and fall back to rlimits rather than fail the sandbox.
-- The host backend does not honor sandbox image, network, rootfs, process, or
-  resource isolation. Use a disposable workspace and low-privilege account.
-- If `ALL_PROXY` uses a SOCKS URL and `socksio` is not installed, some Python HTTP clients can fail during startup. Prefer consistent HTTP proxy variables unless SOCKS support is installed.
-
-## Related Troubleshooting
-
-- `sandbox-native-tools-unavailable`
-- `e2b-extra-mount-sync-missing`
-- `box-session-conflict-logical-metadata`
-- `nsjail-cli-compatibility`
-- `socks-proxy-without-socksio`
+Capture the visible assistant results, relevant tool logs, revisions, and file
+contents. Public E2B credentials and deployment topology are separate prerequisites;
+mocked or local backend results do not establish E2B service acceptance.

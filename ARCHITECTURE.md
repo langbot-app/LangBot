@@ -190,14 +190,17 @@ The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable 
 remains subject to Runtime idle expiry. Persistent workspace files survive expiry,
 but processes and container-local state do not.
 
-Box is the sandbox subsystem used by native agent tools, stdio MCP servers, skill authoring, and managed processes.
+Box is the optional sandbox subsystem used by native execution tools, stdio MCP servers, agent-side skill authoring, and managed processes. Skill storage and read-only access are Core responsibilities and remain available without Box.
 
 In this repo:
 
-- `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, skill CRUD, status, reconnects, quotas, mounts, and sandbox profiles.
+- `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
-- `pkg/provider/tools/loaders/native.py`, `mcp_stdio.py`, and skill loaders depend on Box availability.
-- `pkg/skill/manager.py` loads skills from the Box runtime, falling back to local `data/skills` when needed.
+- `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
+  Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
+  and execution-backed tools depend on Box availability.
+- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; `skills.root` owns its location independently of Box. Core's registry points to immutable content-addressed publications, and every update carries `base_revision` so concurrent writers fail instead of overwriting each other.
+- `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Durable Box Workspace storage is shared across placement generations, but
 sandbox sessions and managed processes are generation-scoped. LangBot validates
@@ -208,11 +211,42 @@ retires stale processes and closes already-attached relays.
 In `langbot-plugin-sdk`:
 
 - `src/langbot_plugin/box/server.py` implements `lbp box` and the WebSocket endpoints on `:5410`.
-- `src/langbot_plugin/box/runtime.py` owns sandbox sessions and managed processes.
+- `src/langbot_plugin/box/runtime.py` owns sandbox sessions, generic read-only mounts, and managed processes.
 - `backend.py`, `nsjail_backend.py`, and `e2b_backend.py` implement sandbox backends.
-- `skill_store.py` manages skill packages from the Box side.
+- `src/langbot_plugin/skill_store.py` is consumed by Core, not Box. Activation
+  pins the first revision for a run in Host-owned run ledger metadata; instructions,
+  resource reads, execution mounts, and revision-scoped dependency state use that
+  exact publication. A new run refreshes the Workspace catalog and resolves the
+  current revision, ignoring old conversation activation state. Lost in-memory
+  pins in an active authorized run are reloaded from its ledger. After a Core
+  process restart, expired run sessions cannot call tools: the Host rejects them
+  rather than silently resolving a new version. This does not add automatic run resumption. Core mounts only activated and authorized Skills. Published
+  trees are never agent write targets: authoring happens in Workspace drafts and
+  an explicit registration/update atomically publishes the next revision. Core
+  turns those package roots and content digests into generic read-only mounts;
+  Box does not understand Skill names, metadata, revisions, files, or CRUD.
 
-Important config keys live under `box:` in `src/langbot/templates/config.yaml`: `box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. Start LangBot with `--standalone-box` when connecting to an externally launched Box runtime.
+Skill execution paths include the publication digest (`/opt/langbot-artifacts/<digest>`).
+Docker/Podman mount a read-only cache when creating the Box and atomically add
+verified packages before execution; E2B seals and verifies a private staging copy
+before publishing a stable projection. nsjail applies the requested mounts in a
+separate namespace for each execution. Activating a Skill after acquiring a Box
+therefore does not recreate the session or stop its managed processes. Ordinary
+host mount changes still fail explicitly on fixed-mount backends.
+
+A shared Box remains a Workspace filesystem sharing boundary: its commands can
+see previously materialized packages. Run pins prevent revision switching; they
+are not access isolation between mutually untrusted programs in the same Box.
+Use package-relative script paths or the path returned by activation. Core tools
+translate legacy `/workspace/.skills/<name>` command paths to the run's digest
+path, but do not rewrite paths embedded inside scripts. Published packages remain
+read-only; use writable drafts and the existing per-run outbox for output.
+
+Skill storage uses `skills.root`. Box execution config lives under `box:`:
+`box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. The old
+`box.local.skills_root` key is read only as an online-upgrade fallback and is
+marked for removal in the next major version. Start LangBot with
+`--standalone-box` when connecting to an externally launched Box runtime.
 
 ## HTTP API, Web UI, and MCP Server
 

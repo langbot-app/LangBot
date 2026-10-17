@@ -106,6 +106,8 @@ class AgentResourceBuilder:
             descriptor,
             runner_config,
         )
+        if getattr(self.ap, 'skill_mgr', None) is not None:
+            await self.ap.skill_mgr.reload_skills(execution_context)
         skills = self._build_skills_from_binding(
             execution_context,
             resource_policy,

@@ -47,9 +47,6 @@ from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
 
 
-ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
-
-
 class AgentRunOrchestrator:
     """Coordinate one Runner execution.
 
@@ -176,24 +173,21 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
+        authorized_skill_names = [
+            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
+        ]
+        # Every invocation owns a new run; conversation state is not a recovery snapshot.
+        prepare_execution_query(execution_query, event, authorized_skill_names)
+        execution_query.variables.pop(skill_loader.ACTIVATED_SKILLS_KEY, None)
+
         session_query_id = None
         if adapter_context:
-            if execution_query is not None:
-                skill_loader.restore_activated_skills_from_state(
-                    self.ap,
-                    execution_query,
-                    context.get('state', {}),
-                )
             session_query_id = adapter_context.get('query_id')
             if execution_query is not None or session_query_id is not None:
                 context['context']['available_apis']['prompt_get'] = True
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
 
-        authorized_skill_names = [
-            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
-        ]
-        prepare_execution_query(execution_query, event, authorized_skill_names)
         context['variables'] = {
             key: value
             for key, value in (execution_query.variables or {}).items()

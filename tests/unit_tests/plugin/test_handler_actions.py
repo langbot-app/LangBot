@@ -1630,7 +1630,7 @@ class TestAgentRunProxyActions:
         app.box_service.execute_tool.assert_awaited_once_with(
             {'command': 'pwd'},
             query,
-            skill_name=None,
+            read_only_mounts=[],
         )
 
     @pytest.mark.asyncio
