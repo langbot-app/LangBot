@@ -194,16 +194,11 @@ class TestLogCache:
         assert result == ''
 
     def test_get_log_by_pointer_nonexistent_page(self):
-        """get_log_by_pointer handles nonexistent page number."""
+        """A cursor beyond the tail returns no logs and resumes at the actual tail."""
         cache = LogCache()
-
         cache.add_log('log 1')
 
-        # Request page that doesn't exist
-        result, page_num, offset = cache.get_log_by_pointer(99, 0)
-
-        # Returns empty or last available
-        # Behavior depends on implementation
+        assert cache.get_log_by_pointer(99, 0) == ('', 0, 1)
 
     def test_max_cached_pages_constant(self):
         """MAX_CACHED_PAGES is defined and reasonable."""

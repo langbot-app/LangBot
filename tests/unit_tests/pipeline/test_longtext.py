@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
+from types import SimpleNamespace
 
 from tests.factories import (
     FakeApp,
@@ -73,7 +74,7 @@ class TestLongTextProcessStageInit:
     async def test_initialize_forward_strategy(self):
         """Initialize with strategy='forward' should use ForwardComponentStrategy."""
         longtext = get_longtext_module()
-        strategy = get_strategy_module()
+        forward = import_module('langbot.pkg.pipeline.longtext.strategies.forward')
 
         app = FakeApp()
         stage = longtext.LongTextProcessStage(app)
@@ -82,8 +83,7 @@ class TestLongTextProcessStageInit:
 
         await stage.initialize(pipeline_config)
 
-        assert stage.strategy_impl is not None
-        assert isinstance(stage.strategy_impl, strategy.LongTextStrategy)
+        assert isinstance(stage.strategy_impl, forward.ForwardComponentStrategy)
 
     @pytest.mark.asyncio
     async def test_initialize_unknown_strategy_raises(self):
@@ -340,10 +340,11 @@ class TestLongTextProcessStageImageStrategy:
     """Tests for image strategy handling (requires PIL/font)."""
 
     @pytest.mark.asyncio
-    async def test_image_strategy_missing_font_fallback(self):
+    async def test_image_strategy_missing_font_fallback(self, monkeypatch):
         """Missing font should fallback to forward strategy."""
         longtext = get_longtext_module()
-        strategy = get_strategy_module()
+        forward = import_module('langbot.pkg.pipeline.longtext.strategies.forward')
+        monkeypatch.setattr(longtext, 'os', SimpleNamespace(name='posix', path=SimpleNamespace(exists=lambda _: False)))
 
         app = FakeApp()
         stage = longtext.LongTextProcessStage(app)
@@ -354,6 +355,5 @@ class TestLongTextProcessStageImageStrategy:
         # On non-Windows without font, should fallback to forward
         await stage.initialize(pipeline_config)
 
-        # Should have initialized (possibly with fallback strategy)
-        if stage.strategy_impl is not None:
-            assert isinstance(stage.strategy_impl, strategy.LongTextStrategy)
+        assert pipeline_config['output']['long-text-processing']['strategy'] == 'forward'
+        assert isinstance(stage.strategy_impl, forward.ForwardComponentStrategy)

@@ -2247,8 +2247,7 @@ class MonitoringService(ExecutionDetailsMixin):
     @_workspace_transaction
     async def reset_session_context(self, context: TenantContext, bot_id: str, session_id: str) -> dict:
         """Reset model context without deleting monitoring history or other sessions."""
-        from ....agent.runner.context_reset import HOST_RESET_RUNNER, reset_scope
-        from ....entity.persistence.runner_state import RunnerState
+        from ....agent.runner.context_reset import reset_runner_context
 
         if not isinstance(bot_id, str) or not bot_id or not isinstance(session_id, str) or not session_id:
             raise ValueError('bot_id and session_id are required')
@@ -2325,29 +2324,7 @@ class MonitoringService(ExecutionDetailsMixin):
         ).first()
         if busy or pending or waiting:
             raise RuntimeError('Session is processing a task; wait until it finishes')
-        await execute(
-            sqlalchemy.delete(RunnerState).where(
-                RunnerState.workspace_id == workspace,
-                RunnerState.bot_id == bot_id,
-                RunnerState.conversation_id == conversation,
-                RunnerState.scope == 'conversation',
-            )
-        )
-        generation = str(uuid.uuid4())
-        await execute(
-            sqlalchemy.insert(RunnerState).values(
-                runner_id=HOST_RESET_RUNNER,
-                binding_identity=HOST_RESET_RUNNER,
-                scope='conversation',
-                scope_key=reset_scope(workspace, bot_id, conversation),
-                state_key='generation',
-                value_json=json.dumps(generation),
-                workspace_id=workspace,
-                bot_id=bot_id,
-                conversation_id=conversation,
-                created_at=datetime.datetime.utcnow(),
-            )
-        )
+        await reset_runner_context(self.ap.persistence_mgr, workspace, bot_id, conversation)
         return {'reset': True, 'session_id': session_id}
 
     async def get_sessions(

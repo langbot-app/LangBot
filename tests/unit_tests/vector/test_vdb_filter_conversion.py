@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from importlib import import_module
 
+import pytest
+from sqlalchemy import create_engine, select, text
+
 
 def get_qdrant_module():
     """Lazy import qdrant module."""
@@ -261,6 +264,37 @@ class TestPgVectorFilterConversion:
     Tests use only these supported fields.
     """
 
+    @pytest.fixture
+    def matching_file_ids(self):
+        """Execute generated predicates against fixed rows, including the range boundary."""
+        pgvector_module = get_pgvector_module()
+        engine = create_engine('sqlite://')
+        try:
+            with engine.begin() as connection:
+                connection.execute(text('CREATE TABLE langbot_vectors (file_id TEXT, chunk_uuid TEXT, text TEXT)'))
+                connection.execute(
+                    text('INSERT INTO langbot_vectors VALUES (:file_id, :chunk_uuid, :text)'),
+                    [
+                        {'file_id': 'abc', 'chunk_uuid': 'uuid_099', 'text': 'keep'},
+                        {'file_id': 'deleted', 'chunk_uuid': 'uuid_100', 'text': ''},
+                        {'file_id': 'def', 'chunk_uuid': 'uuid_101', 'text': 'keep'},
+                        {'file_id': 'outside', 'chunk_uuid': 'uuid_102', 'text': 'keep'},
+                    ],
+                )
+
+                def matching(filter_dict):
+                    entry = pgvector_module.PgVectorEntry
+                    statement = (
+                        select(entry.file_id)
+                        .where(*pgvector_module._build_pg_conditions(filter_dict))
+                        .order_by(entry.chunk_uuid)
+                    )
+                    return connection.execute(statement).scalars().all()
+
+                yield matching
+        finally:
+            engine.dispose()
+
     def test_empty_filter_returns_empty_list(self):
         """Empty filter dict returns empty list."""
         pgvector_module = get_pgvector_module()
@@ -268,73 +302,40 @@ class TestPgVectorFilterConversion:
         result = pgvector_module._build_pg_conditions({})
         assert result == []
 
-    def test_eq_operator_creates_equality_condition(self):
+    def test_eq_operator_creates_equality_condition(self, matching_file_ids):
         """$eq operator creates SQLAlchemy == condition."""
-        pgvector_module = get_pgvector_module()
+        assert matching_file_ids({'file_id': 'abc'}) == ['abc']
 
-        result = pgvector_module._build_pg_conditions({'file_id': 'abc'})
-
-        assert len(result) == 1
-        # Verify it's a SQLAlchemy BinaryExpression
-        from sqlalchemy.sql.expression import BinaryExpression
-
-        assert isinstance(result[0], BinaryExpression)
-
-    def test_ne_operator_creates_inequality_condition(self):
+    def test_ne_operator_creates_inequality_condition(self, matching_file_ids):
         """$ne operator creates SQLAlchemy != condition."""
-        pgvector_module = get_pgvector_module()
+        assert matching_file_ids({'file_id': {'$ne': 'deleted'}}) == ['abc', 'def', 'outside']
 
-        result = pgvector_module._build_pg_conditions({'file_id': {'$ne': 'deleted'}})
-
-        assert len(result) == 1
-        # Operator should be ne (not equals)
-        assert '!=' in str(result[0]) or 'ne' in str(result[0].operator)
-
-    def test_comparison_operators(self):
+    def test_comparison_operators(self, matching_file_ids):
         """$gt, $gte, $lt, $lte create comparison conditions."""
-        pgvector_module = get_pgvector_module()
-
-        # Test all comparison operators with supported field
-        for op, expected_op in [
-            ('$gt', '>'),
-            ('$gte', '>='),
-            ('$lt', '<'),
-            ('$lte', '<='),
+        for op, expected_ids in [
+            ('$gt', ['def', 'outside']),
+            ('$gte', ['deleted', 'def', 'outside']),
+            ('$lt', ['abc']),
+            ('$lte', ['abc', 'deleted']),
         ]:
-            result = pgvector_module._build_pg_conditions({'chunk_uuid': {op: 'uuid_100'}})
-            assert len(result) == 1
-            assert expected_op in str(result[0])
+            assert matching_file_ids({'chunk_uuid': {op: 'uuid_100'}}) == expected_ids
 
-    def test_in_operator_creates_in_condition(self):
+    def test_in_operator_creates_in_condition(self, matching_file_ids):
         """$in operator creates SQLAlchemy in_ condition."""
-        pgvector_module = get_pgvector_module()
+        assert matching_file_ids({'file_id': {'$in': ['abc', 'deleted']}}) == ['abc', 'deleted']
 
-        result = pgvector_module._build_pg_conditions({'file_id': {'$in': ['a', 'b', 'c']}})
-
-        assert len(result) == 1
-        assert 'IN' in str(result[0]).upper()
-
-    def test_nin_operator_creates_notin_condition(self):
+    def test_nin_operator_creates_notin_condition(self, matching_file_ids):
         """$nin operator creates SQLAlchemy notin_ condition."""
-        pgvector_module = get_pgvector_module()
+        assert matching_file_ids({'file_id': {'$nin': ['abc', 'deleted']}}) == ['def', 'outside']
 
-        result = pgvector_module._build_pg_conditions({'file_id': {'$nin': ['a', 'b']}})
-
-        assert len(result) == 1
-        assert 'NOT IN' in str(result[0]).upper()
-
-    def test_multiple_conditions_list(self):
+    def test_multiple_conditions_list(self, matching_file_ids):
         """Multiple conditions return list of conditions."""
-        pgvector_module = get_pgvector_module()
-
-        result = pgvector_module._build_pg_conditions(
+        assert matching_file_ids(
             {
-                'file_id': 'abc',
-                'chunk_uuid': {'$ne': 'def'},
+                'file_id': {'$in': ['abc', 'deleted']},
+                'chunk_uuid': {'$ne': 'uuid_100'},
             }
-        )
-
-        assert len(result) == 2
+        ) == ['abc']
 
     def test_unsupported_field_dropped(self):
         """Unsupported fields are dropped (not in _PG_SUPPORTED_FIELDS)."""
@@ -343,27 +344,17 @@ class TestPgVectorFilterConversion:
         result = pgvector_module._build_pg_conditions({'unknown_field': 'value'})
         assert result == []
 
-    def test_uuid_alias_resolved(self):
+    def test_uuid_alias_resolved(self, matching_file_ids):
         """'uuid' alias is resolved to 'chunk_uuid'."""
-        pgvector_module = get_pgvector_module()
+        assert matching_file_ids({'uuid': 'uuid_100'}) == ['deleted']
 
-        result = pgvector_module._build_pg_conditions({'uuid': 'abc'})
-
-        assert len(result) == 1
-        # Should reference chunk_uuid column
-        assert 'chunk_uuid' in str(result[0])
-
-    def test_supported_fields_only(self):
+    def test_supported_fields_only(self, matching_file_ids):
         """Only supported fields (text, file_id, chunk_uuid) are kept."""
-        pgvector_module = get_pgvector_module()
-
-        result = pgvector_module._build_pg_conditions(
+        assert matching_file_ids(
             {
                 'text': {'$ne': ''},
-                'file_id': 'abc',
-                'chunk_uuid': {'$in': ['x', 'y']},
+                'file_id': {'$in': ['abc', 'deleted', 'outside']},
+                'chunk_uuid': {'$in': ['uuid_099', 'uuid_100', 'uuid_101']},
                 'unsupported': 'value',
             }
-        )
-
-        assert len(result) == 3  # Only supported fields
+        ) == ['abc']

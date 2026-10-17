@@ -365,7 +365,10 @@ class TestSessionManagerGetConversation:
         )
 
         assert conversation.prompt.name == 'default'
-        assert len(conversation.prompt.messages) == 2
+        assert [(message.role, message.content) for message in conversation.prompt.messages] == [
+            ('system', 'System message'),
+            ('user', 'User message'),
+        ]
 
 
 class TestSessionManagerWorkspaceIsolation:

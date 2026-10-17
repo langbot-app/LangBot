@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import sqlite3
+from contextlib import closing
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -184,7 +186,16 @@ def _delta(
 
 async def test_directory_delta_requests_model_catalog_sync_after_commit(projection_context):
     application, _session_factory = projection_context
-    request_sync = Mock()
+    observed_revisions = []
+
+    def observe_committed_revision():
+        with closing(sqlite3.connect(application.persistence_mgr.engine.url.database)) as connection:
+            row = connection.execute(
+                'SELECT projection_revision FROM workspaces WHERE uuid = ?', (WORKSPACE_UUID,)
+            ).fetchone()
+            observed_revisions.append(row[0])
+
+    request_sync = Mock(side_effect=observe_committed_revision)
     application.cloud_model_catalog_service = SimpleNamespace(request_sync=request_sync)
     event = DirectoryEvent(
         cursor=2,
@@ -209,10 +220,12 @@ async def test_directory_delta_requests_model_catalog_sync_after_commit(projecti
     )
     await service.initialize()
     request_sync.reset_mock()
+    observed_revisions.clear()
 
     await service.sync_once()
 
     request_sync.assert_called_once_with()
+    assert observed_revisions == [2]
 
 
 async def test_targeted_reconciliation_projects_new_workspace_without_advancing_event_cursor(projection_context):
@@ -247,11 +260,7 @@ async def test_targeted_reconciliation_projects_new_workspace_without_advancing_
 async def test_targeted_reconciliation_preserves_existing_account_until_ordered_event_projection(projection_context):
     application, session_factory = projection_context
     targeted_workspace = _workspace(revision=8, name='Renamed Workspace').model_copy(
-        update={
-            'members': [
-                _member(revision=8).model_copy(update={'display_name': 'Changed Account Name'})
-            ]
-        }
+        update={'members': [_member(revision=8).model_copy(update={'display_name': 'Changed Account Name'})]}
     )
     provider = _Provider(
         [_snapshot(7)],
@@ -572,7 +581,13 @@ async def test_account_projection_reads_large_directory_in_bounded_batches(proje
         assert await session.scalar(sqlalchemy.select(sqlalchemy.func.count()).select_from(User)) == 501
 
 
-async def test_archived_and_absent_workspaces_are_execution_fenced(projection_context):
+@pytest.mark.parametrize(
+    ('status', 'execution_state', 'write_fenced', 'membership_status'),
+    [('archived', 'inactive', True, 'removed'), ('active', 'active', False, 'active')],
+)
+async def test_archived_and_absent_workspaces_are_execution_fenced(
+    projection_context, status, execution_state, write_fenced, membership_status
+):
     application, session_factory = projection_context
     service = DirectoryProjectionService(
         application,
@@ -584,17 +599,17 @@ async def test_archived_and_absent_workspaces_are_execution_fenced(projection_co
     await service.apply_snapshot(
         _snapshot(
             2,
-            workspaces=[_workspace(revision=2, status='archived')],
+            workspaces=[_workspace(revision=2, status=status)],
         )
     )
     async with session_factory() as session:
         workspace = await session.get(Workspace, WORKSPACE_UUID)
         execution = await session.get(WorkspaceExecutionState, WORKSPACE_UUID)
         membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
-        assert workspace.status == 'archived'
-        assert execution.state == 'inactive'
-        assert execution.write_fenced is True
-        assert membership.status == 'removed'
+        assert workspace.status == status
+        assert execution.state == execution_state
+        assert execution.write_fenced is write_fenced
+        assert membership.status == membership_status
 
     await service.apply_snapshot(_snapshot(3, workspaces=[]))
     async with session_factory() as session:
@@ -746,7 +761,15 @@ async def test_missing_workspace_in_delta_fences_only_requested_workspace(projec
         high_water_cursor=2,
         events=[event],
     )
-    provider = _Provider([_snapshot(1)], [batch], [_delta(workspaces=[])])
+    second_workspace = _workspace().model_copy(
+        update={
+            'uuid': SECOND_WORKSPACE_UUID,
+            'slug': 'second-workspace',
+            'type': 'team',
+            'members': [_member().model_copy(update={'membership_uuid': SECOND_MEMBERSHIP_UUID})],
+        }
+    )
+    provider = _Provider([_snapshot(1, workspaces=[_workspace(), second_workspace])], [batch], [_delta(workspaces=[])])
     service = DirectoryProjectionService(application, provider, INSTANCE_UUID)
     await service.initialize()
 
@@ -755,7 +778,12 @@ async def test_missing_workspace_in_delta_fences_only_requested_workspace(projec
     async with session_factory() as session:
         workspace = await session.get(Workspace, WORKSPACE_UUID)
         execution = await session.get(WorkspaceExecutionState, WORKSPACE_UUID)
-        membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+        membership = await session.scalar(
+            sqlalchemy.select(WorkspaceMembership).where(WorkspaceMembership.workspace_uuid == WORKSPACE_UUID)
+        )
+        untouched_workspace = await session.get(Workspace, SECOND_WORKSPACE_UUID)
+        untouched_execution = await session.get(WorkspaceExecutionState, SECOND_WORKSPACE_UUID)
+        untouched_membership = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
     assert workspace.status == 'archived'
     assert workspace.projection_revision == 2
     assert execution.state == 'inactive'
@@ -763,6 +791,12 @@ async def test_missing_workspace_in_delta_fences_only_requested_workspace(projec
     assert execution.desired_state_revision == 2
     assert membership.status == 'removed'
     assert membership.projection_revision == 2
+    assert untouched_workspace.status == 'active'
+    assert untouched_workspace.projection_revision == 1
+    assert untouched_execution.state == 'active'
+    assert untouched_execution.write_fenced is False
+    assert untouched_membership.status == 'active'
+    assert untouched_membership.projection_revision == 1
 
     stale_same_cursor_snapshot = _snapshot(
         2,

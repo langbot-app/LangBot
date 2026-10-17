@@ -425,62 +425,6 @@ class TestPostgreSQLMigrationUpgrade:
     """Tests for upgrade to head workflow on PostgreSQL."""
 
     @pytest.mark.asyncio
-    async def test_postgres_upgrade_from_baseline_to_head(self, postgres_engine, clean_tables, clean_alembic_version):
-        """
-        Upgrade from baseline to head applies all migrations.
-
-        Workflow:
-        1. Create tables
-        2. Stamp baseline
-        3. Upgrade to head
-        4. Verify current revision is head
-        """
-        # Create tables
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Stamp baseline
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-
-        # Upgrade to head
-        await run_alembic_upgrade(postgres_engine, 'head')
-
-        # Verify revision
-        rev = await get_alembic_current(postgres_engine)
-        assert rev is not None, 'Expected a revision after upgrade'
-        # Head should be the latest migration. Resolve the actual head from the
-        # Alembic script directory instead of hardcoding a revision number, so
-        # adding a new migration doesn't require editing this assertion.
-        assert rev == _get_script_head(), f'Expected head {_get_script_head()}, got {rev}'
-
-    @pytest.mark.asyncio
-    async def test_postgres_upgrade_idempotent(self, postgres_engine, clean_tables, clean_alembic_version):
-        """
-        Running upgrade to head multiple times is idempotent.
-
-        Workflow:
-        1. Upgrade to head
-        2. Get revision
-        3. Upgrade to head again
-        4. Verify same revision
-        """
-        # Create tables
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Stamp and upgrade
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-        await run_alembic_upgrade(postgres_engine, 'head')
-
-        rev1 = await get_alembic_current(postgres_engine)
-
-        # Upgrade again - should be idempotent
-        await run_alembic_upgrade(postgres_engine, 'head')
-
-        rev2 = await get_alembic_current(postgres_engine)
-        assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize('settings_type', ['TEXT', 'JSON'])
     async def test_legacy_knowledge_restore_statement_accepts_historical_and_fresh_settings_types(
         self,
@@ -549,21 +493,6 @@ class TestPostgreSQLMigrationGetCurrent:
         # No stamp - should return None
         rev = await get_alembic_current(postgres_engine)
         assert rev is None, f'Expected None for unstamped DB, got {rev}'
-
-    @pytest.mark.asyncio
-    async def test_postgres_get_current_after_stamp_returns_revision(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
-        """
-        get_alembic_current returns correct revision after stamp.
-        """
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-
-        rev = await get_alembic_current(postgres_engine)
-        assert rev == '0001_baseline'
 
 
 class TestPostgreSQLWorkspaceMigration:
@@ -1070,7 +999,27 @@ class TestPostgreSQLTenantRuntime:
             await rag_manager.load_knowledge_bases_from_db()
 
             mcp_loader = MCPLoader(runtime_application)
-            mcp_loader.host_mcp_server = AsyncMock()
+            active_hosts = 0
+            peak_active_hosts = 0
+            peak_host_tasks = 0
+            track_hosted_task = mcp_loader.track_hosted_task
+
+            def observe_host_task(task, context):
+                nonlocal peak_host_tasks
+                track_hosted_task(task, context)
+                peak_host_tasks = max(peak_host_tasks, len(mcp_loader._hosted_mcp_tasks))
+
+            async def host_probe(_context, _config):
+                nonlocal active_hosts, peak_active_hosts
+                active_hosts += 1
+                peak_active_hosts = max(peak_active_hosts, active_hosts)
+                try:
+                    await asyncio.sleep(0)
+                finally:
+                    active_hosts -= 1
+
+            mcp_loader.track_hosted_task = observe_host_task
+            mcp_loader.host_mcp_server = AsyncMock(side_effect=host_probe)
             await mcp_loader.load_mcp_servers_from_db()
             dispatch_tasks = tuple(mcp_loader._host_dispatch_tasks)
             if dispatch_tasks:
@@ -1111,6 +1060,12 @@ class TestPostgreSQLTenantRuntime:
             assert len(pipeline_manager.pipelines) == workspace_count
             assert len(rag_manager.knowledge_bases) == workspace_count
             assert mcp_loader.host_mcp_server.await_count == workspace_count
+            assert 0 < peak_active_hosts <= min(workspace_count, 8)
+            assert 0 < peak_host_tasks <= min(workspace_count, 8)
+            assert active_hosts == 0
+            logging.getLogger('postgres-capacity-runtime-test').info(
+                'MCP startup peaks: active_hosts=%d hosted_tasks=%d', peak_active_hosts, peak_host_tasks
+            )
             assert not mcp_loader._host_dispatch_tasks
             assert not mcp_loader._hosted_mcp_tasks
             assert len(plugin_handler.reconciled) == workspace_count

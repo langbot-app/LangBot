@@ -164,12 +164,7 @@ async def test_slack_message_converter_maps_common_components_to_text():
         )
     )
 
-    assert 'hi' in text
-    assert '<@U-2>' in text
-    assert '<!channel>' in text
-    assert 'https://example.test/a.png' in text
-    assert 'a.txt' in text
-    assert 'quoted' in text
+    assert text == 'hi\n<@U-2>\n<!channel>\nhttps://example.test/a.png\na.txt\nquoted'
 
 
 @pytest.mark.asyncio

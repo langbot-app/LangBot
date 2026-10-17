@@ -124,6 +124,7 @@ class TestRegistryDiscovery:
     async def test_discover_caches_results(self):
         """Discovery should cache results."""
         ap = FakeApplication()
+        ap.plugin_connector.list_runners = AsyncMock(wraps=ap.plugin_connector.list_runners)
         registry = RunnerRegistry(ap)
 
         # First discovery
@@ -134,6 +135,11 @@ class TestRegistryDiscovery:
 
         assert registry._cache is not None
         assert len(runners1) == len(runners2)
+        ap.plugin_connector.list_runners.assert_awaited_once()
+        assert [runner.id for runner in runners2] == [
+            'plugin:langbot-team/LocalAgent/default',
+            'plugin:alice/my-agent/custom',
+        ]
 
     @pytest.mark.asyncio
     async def test_discover_handles_plugin_disabled(self):

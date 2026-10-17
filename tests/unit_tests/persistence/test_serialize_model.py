@@ -81,7 +81,7 @@ class TestSerializeModel:
 
         result = mgr.serialize_model(TestModel, instance)
 
-        assert '2024-01-15' in result['created_at']
+        assert result['created_at'] == '2024-01-15T10:30:45+00:00'
         assert isinstance(result['created_at'], str)
 
     def test_serialize_none_datetime(self):

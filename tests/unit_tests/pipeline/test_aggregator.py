@@ -465,8 +465,19 @@ class TestMessageAggregatorAddMessage:
             pipeline_uuid=None,  # None -> disabled
         )
 
-        # Should have called query_pool.add_query
-        assert app.query_pool.add_query.called
+        app.query_pool.add_query.assert_awaited_once_with(
+            execution_context=execution_context(),
+            bot_uuid='test-bot',
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id=12345,
+            sender_id=12345,
+            message_event=event,
+            message_chain=chain,
+            adapter=adapter,
+            pipeline_uuid=None,
+            routed_by_rule=False,
+            variables=None,
+        )
 
     @pytest.mark.asyncio
     async def test_enabled_buffers_message(self):
@@ -505,8 +516,27 @@ class TestMessageAggregatorAddMessage:
             pipeline_uuid='test-pipeline',
         )
 
-        # Should have buffered the message
-        assert len(agg.buffers) == 1
+        context = execution_context(pipeline_uuid='test-pipeline')
+        key = aggregation_key(context, pipeline_uuid='test-pipeline')
+        assert list(agg.buffers) == [key]
+        assert agg.buffers[key].execution_context == context
+        assert len(agg.buffers[key].messages) == 1
+        pending = agg.buffers[key].messages[0]
+        assert {key: value for key, value in vars(pending).items() if key != 'timestamp'} == {
+            'execution_context': context,
+            'bot_uuid': 'test-bot',
+            'launcher_type': provider_session.LauncherTypes.PERSON,
+            'launcher_id': 12345,
+            'sender_id': 12345,
+            'message_event': event,
+            'message_chain': chain,
+            'adapter': adapter,
+            'pipeline_uuid': 'test-pipeline',
+            'routed_by_rule': False,
+            'variables': None,
+        }
+        app.query_pool.add_query.assert_not_awaited()
+        await agg.flush_all()
 
     @pytest.mark.asyncio
     async def test_control_variables_bypass_aggregation(self):
@@ -560,19 +590,18 @@ class TestMessageAggregatorAddMessage:
 
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain('hello')
-        event = friend_message_event(chain)
         adapter = mock_adapter()
 
         # Add messages up to MAX_BUFFER_MESSAGES
         for i in range(aggregator.MAX_BUFFER_MESSAGES):
+            chain = text_chain(f'message {i}')
             await agg.add_message(
                 execution_context=execution_context(pipeline_uuid='test-pipeline'),
                 bot_uuid='test-bot',
                 launcher_type=provider_session.LauncherTypes.PERSON,
                 launcher_id=12345,
                 sender_id=12345,
-                message_event=event,
+                message_event=friend_message_event(chain),
                 message_chain=chain,
                 adapter=adapter,
                 pipeline_uuid='test-pipeline',
@@ -588,6 +617,14 @@ class TestMessageAggregatorAddMessage:
             'test-pipeline',
         )
         assert session_id not in agg.buffers or len(agg.buffers[session_id].messages) == 0
+        app.query_pool.add_query.assert_awaited_once()
+        forwarded = app.query_pool.add_query.call_args.kwargs
+        assert str(forwarded['message_chain']) == '\n'.join(
+            f'message {i}' for i in range(aggregator.MAX_BUFFER_MESSAGES)
+        )
+        assert forwarded['execution_context'] == context
+        assert forwarded['bot_uuid'] == 'test-bot'
+        assert forwarded['pipeline_uuid'] == 'test-pipeline'
 
 
 class TestMessageAggregatorMerge:
@@ -658,10 +695,7 @@ class TestMessageAggregatorMerge:
 
         merged = agg._merge_messages([pending1, pending2])
 
-        # Should contain both messages with separator
-        merged_str = str(merged.message_chain)
-        assert 'hello' in merged_str
-        assert 'world' in merged_str
+        assert str(merged.message_chain) == 'hello\nworld'
 
     def test_merge_messages_preserves_routed_by_rule_if_any_input_matches(self):
         """Merged PendingMessage should keep routed_by_rule when any input was rule-routed."""
@@ -760,7 +794,19 @@ class TestMessageAggregatorFlush:
 
         await agg._flush_buffer(key, context)
 
-        assert app.query_pool.add_query.called
+        app.query_pool.add_query.assert_awaited_once_with(
+            execution_context=context,
+            bot_uuid='test-bot',
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id=12345,
+            sender_id=12345,
+            message_event=event,
+            message_chain=chain,
+            adapter=adapter,
+            pipeline_uuid=None,
+            routed_by_rule=False,
+            variables=None,
+        )
         assert key not in agg.buffers
 
     @pytest.mark.asyncio
@@ -825,8 +871,8 @@ class TestMessageAggregatorFlushAll:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain('hello')
-        event = friend_message_event(chain)
+        first_chain = text_chain('first')
+        second_chain = text_chain('second')
         adapter = mock_adapter()
 
         # Create two buffers
@@ -836,8 +882,8 @@ class TestMessageAggregatorFlushAll:
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id=12345,
             sender_id=12345,
-            message_event=event,
-            message_chain=chain,
+            message_event=friend_message_event(first_chain),
+            message_chain=first_chain,
             adapter=adapter,
             pipeline_uuid=None,
         )
@@ -848,8 +894,8 @@ class TestMessageAggregatorFlushAll:
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id=67890,
             sender_id=67890,
-            message_event=event,
-            message_chain=chain,
+            message_event=friend_message_event(second_chain),
+            message_chain=second_chain,
             adapter=adapter,
             pipeline_uuid=None,
         )
@@ -875,7 +921,11 @@ class TestMessageAggregatorFlushAll:
 
         # Both buffers should be flushed
         assert len(agg.buffers) == 0
-        assert app.query_pool.add_query.call_count == 2
+        assert app.query_pool.add_query.await_count == 2
+        assert [
+            (sent.kwargs['launcher_id'], str(sent.kwargs['message_chain']), sent.kwargs['execution_context'])
+            for sent in app.query_pool.add_query.await_args_list
+        ] == [(12345, 'first', context), (67890, 'second', context)]
 
 
 class TestMessageAggregatorWorkspaceIsolation:

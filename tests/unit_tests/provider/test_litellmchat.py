@@ -1048,10 +1048,8 @@ class TestInvokeRerank:
                 documents=['Paris is the capital.', 'London is a city.', 'France is in Europe.'],
             )
 
-            assert len(results) == 3
-            # Scores should be normalized
-            assert results[0]['index'] == 0
-            assert results[0]['relevance_score'] >= 0 and results[0]['relevance_score'] <= 1
+            assert [result['index'] for result in results] == [0, 1, 2]
+            assert [result['relevance_score'] for result in results] == pytest.approx([1.0, 0.0, 0.76923076923])
 
     @pytest.mark.asyncio
     async def test_invoke_rerank_normalization(self):
@@ -1297,8 +1295,8 @@ class TestConvertMessages:
         result = requester._convert_messages(messages)
 
         assert len(result) == 1
-        # LiteLLM handles multiple text parts, we pass them through
-        assert isinstance(result[0]['content'], list)
+        assert result[0]['role'] == 'user'
+        assert result[0]['content'] == [{'type': 'text', 'text': 'Hello'}, {'type': 'text', 'text': 'World'}]
 
 
 class TestScanModels:

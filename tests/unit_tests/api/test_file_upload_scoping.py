@@ -9,6 +9,7 @@ import quart
 from quart.datastructures import FileStorage
 
 from langbot.pkg.api.http.controller.groups.files import FilesRouterGroup
+from langbot.pkg.api.http.context import RequestContext
 
 
 pytestmark = pytest.mark.asyncio
@@ -52,6 +53,13 @@ async def test_document_upload_uses_dedicated_scoped_owner_type():
 
     assert response.status_code == 200
     assert (await response.get_json())['data']['file_id'] == 'scoped-document-key'
+    storage_mgr.save_scoped.assert_awaited_once()
+    context = storage_mgr.save_scoped.await_args.args[0]
+    assert isinstance(context, RequestContext)
+    assert context.instance_uuid == 'instance-test'
+    assert context.workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+    assert context.placement_generation == 3
+    assert context.account_uuid == 'account-test'
     kwargs = storage_mgr.save_scoped.await_args.kwargs
     assert kwargs['owner_type'] == 'upload_document'
     assert kwargs['owner'] == 'account:account-test'

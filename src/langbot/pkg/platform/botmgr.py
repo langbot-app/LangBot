@@ -640,7 +640,6 @@ class RuntimeBot:
         group_id = cls._get_entity_id(group)
         if group_id:
             metadata['group_id'] = group_id
-            return 'group', group_id, metadata
 
         chat_id = getattr(event, 'chat_id', None)
         chat_type = getattr(event, 'chat_type', None)
@@ -650,6 +649,11 @@ class RuntimeBot:
             if chat_type_value == 'group':
                 return 'group', str(chat_id), metadata
             return 'person', str(chat_id), metadata
+
+        # A guild can contain multiple delivery channels. Keep its id for
+        # membership APIs, but prefer the event's explicit chat for replies.
+        if group_id:
+            return 'group', group_id, metadata
 
         session_target_type, session_target_id = cls._session_to_reply_target(getattr(event, 'session_id', None))
         if session_target_type and session_target_id:
@@ -723,6 +727,8 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
+        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
         text = platform_events.event_summary(event)
         contents: list[dict[str, typing.Any]] = []
 
@@ -744,7 +750,7 @@ class RuntimeBot:
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=[],
+            attachments=QueryEntryAdapter._build_attachments(event, contents),
         )
 
     def _eba_event_to_agent_envelope(
@@ -1688,7 +1694,11 @@ class RuntimeBot:
         async for _ in self.ap.agent_run_orchestrator.run(
             envelope,
             binding,
-            adapter_context={'_delivery_adapter': adapter},
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': event,
+                '_execution_context': self.execution_context,
+            },
         ):
             # Resuming an interaction follows the same explicit-action delivery policy.
             pass

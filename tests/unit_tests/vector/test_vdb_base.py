@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.vector.vdb import (
@@ -134,89 +133,3 @@ class TestVectorDatabaseAbstractMethods:
 
         result = asyncio.run(db.list_by_filter('test_collection'))
         assert result == ([], -1)
-
-
-class TestVectorDatabaseInterface:
-    """Tests for VectorDatabase interface contracts."""
-
-    @pytest.fixture
-    def mock_vector_db(self):
-        """Create a minimal mock VectorDatabase for testing."""
-
-        class MockVectorDB(VectorDatabase):
-            def __init__(self):
-                self.add_embeddings = AsyncMock()
-                self.search = AsyncMock(
-                    return_value={
-                        'ids': [['id1', 'id2']],
-                        'distances': [[0.1, 0.2]],
-                        'metadatas': [[{'key': 'val1'}, {'key': 'val2'}]],
-                    }
-                )
-                self.delete_by_file_id = AsyncMock()
-                self.delete_by_filter = AsyncMock(return_value=5)
-                self.get_or_create_collection = AsyncMock()
-                self.delete_collection = AsyncMock()
-
-            async def add_embeddings(self, collection, ids, embeddings_list, metadatas, documents=None):
-                pass
-
-            async def search(
-                self,
-                collection,
-                query_embedding,
-                k=5,
-                search_type='vector',
-                query_text='',
-                filter=None,
-                vector_weight=None,
-            ):
-                pass
-
-            async def delete_by_file_id(self, collection, file_id):
-                pass
-
-            async def delete_by_filter(self, collection, filter):
-                pass
-
-            async def get_or_create_collection(self, collection):
-                pass
-
-            async def delete_collection(self, collection):
-                pass
-
-        return MockVectorDB()
-
-    @pytest.mark.asyncio
-    async def test_add_embeddings_signature(self, mock_vector_db):
-        """add_embeddings has expected signature."""
-        await mock_vector_db.add_embeddings(
-            collection='test',
-            ids=['id1', 'id2'],
-            embeddings_list=[[0.1, 0.2], [0.3, 0.4]],
-            metadatas=[{'a': 1}, {'b': 2}],
-            documents=['doc1', 'doc2'],
-        )
-        mock_vector_db.add_embeddings.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_signature(self, mock_vector_db):
-        """search has expected signature with all optional params."""
-        import numpy as np
-
-        await mock_vector_db.search(
-            collection='test',
-            query_embedding=np.array([0.1, 0.2]),
-            k=10,
-            search_type='hybrid',
-            query_text='search text',
-            filter={'file_id': 'abc'},
-            vector_weight=0.7,
-        )
-        mock_vector_db.search.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_delete_by_filter_returns_int(self, mock_vector_db):
-        """delete_by_filter returns int count."""
-        result = await mock_vector_db.delete_by_filter('test', {'file_id': 'abc'})
-        assert isinstance(result, int)
