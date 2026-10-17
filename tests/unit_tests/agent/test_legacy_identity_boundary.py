@@ -205,14 +205,43 @@ def official_plugin_root():
 @pytest.mark.parametrize(
     'runner,folder,method,error_name,local_identity',
     [
-        ('DifyAgent', 'dify-agent', '_get_user_tag', 'DifyConfigError', 'person_Session_007'),
-        ('N8nAgent', 'n8n-agent', '_get_user_tag', 'N8nConfigError', 'person_Session_007'),
-        ('CozeAgent', 'coze-agent', '_get_user_id', 'CozeConfigError', 'person_launcher-123'),
-        ('TboxAgent', 'tbox-agent', '_get_user_id', 'TboxConfigError', 'bot-uuid-123'),
+        pytest.param(
+            'DifyAgent',
+            'dify-agent',
+            '_get_user_tag',
+            'DifyConfigError',
+            'person_Session_007',
+            marks=pytest.mark.contract('dify_identity'),
+        ),
+        pytest.param(
+            'N8nAgent',
+            'n8n-agent',
+            '_get_user_tag',
+            'N8nConfigError',
+            'person_Session_007',
+            marks=pytest.mark.contract('n8n_identity'),
+        ),
+        pytest.param(
+            'CozeAgent',
+            'coze-agent',
+            '_get_user_id',
+            'CozeConfigError',
+            'person_launcher-123',
+            marks=pytest.mark.contract('coze_identity'),
+        ),
+        pytest.param(
+            'TboxAgent',
+            'tbox-agent',
+            '_get_user_id',
+            'TboxConfigError',
+            'bot-uuid-123',
+            marks=pytest.mark.contract('tbox_identity'),
+        ),
     ],
 )
 @pytest.mark.parametrize('missing', [False, True], ids=['trusted-identity', 'missing-identity'])
 @pytest.mark.parametrize('profile', ['dedicated', 'shared'])
+@pytest.mark.plugin_identity
 async def test_real_plugin_identity_helper_with_host_payload(
     mock_query, monkeypatch, official_plugin_root, runner, folder, method, error_name, local_identity, missing, profile
 ):

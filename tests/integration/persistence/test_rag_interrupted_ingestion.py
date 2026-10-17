@@ -25,6 +25,7 @@ def attach_task_manager(runtime):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('rag_recovery')
 async def test_cancelled_ingestion_retains_recovery_resources(runtime):
     """Local cancellation is interrupted observation, not remote quiescence."""
     file = await seed(runtime)

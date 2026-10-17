@@ -21,6 +21,8 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.asyncio(loop_scope='module')
+@pytest.mark.postgres
+@pytest.mark.contract('monitoring_sessions')
 async def test_postgres_upgrade_rls_and_concurrent_bot_counts(cloud_database):  # noqa: F811
     import asyncio
     import importlib

@@ -12,7 +12,11 @@ from langbot.pkg.persistence.pipeline_admission import lock_pipeline_admission
 from langbot.pkg.entity.persistence.agent_interaction import AgentInteraction
 
 URL = os.environ.get('LANGBOT_ADMISSION_TEST_URL')
-pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not URL, reason='disposable PostgreSQL URL required')]
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.asyncio,
+    pytest.mark.skipif(not URL, reason='disposable PostgreSQL URL required'),
+]
 
 
 @pytest.fixture
@@ -111,6 +115,7 @@ async def test_real_writer_waits_and_revalidates_after_transaction(env, outcome)
         assert (await writer)[0]['status'] == 'pending'
 
 
+@pytest.mark.contract('admission_isolation')
 async def test_real_writer_first_blocks_migration_and_other_tenant_isolated(env):
     await write(env)
     async with env.pm.tenant_uow(base.WS) as uow:

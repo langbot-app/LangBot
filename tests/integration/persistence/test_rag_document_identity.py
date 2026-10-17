@@ -54,7 +54,7 @@ DOCUMENT_IDENTITY_REVISION = '0025_rag_document_identity'
 CONTEXT = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=5)
 
 
-@pytest_asyncio.fixture(params=['sqlite', 'postgres'])
+@pytest_asyncio.fixture(params=['sqlite', pytest.param('postgres', marks=pytest.mark.postgres)])
 async def database(request, tmp_path):
     admin = None
     schema = 'ke_identity_' + uuid.uuid4().hex
@@ -183,6 +183,7 @@ async def read_file_row(runtime, file_id='host-id'):
 @pytest.mark.parametrize(
     'engine_id', ['dify-upstream', 'fastgpt-collection', 'ragflow-upstream', 'host-id', ' opaque ID ']
 )
+@pytest.mark.contract('rag_identity')
 async def test_ingest_persists_exact_engine_identity_and_restart_delete(runtime, engine_id):
     file = await seed(runtime)
     runtime.ap.plugin_connector.call_rag_ingest.return_value['document_id'] = engine_id
