@@ -37,10 +37,13 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
         if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-        # Verified interaction callbacks resume the original run without a new
-        # mention or prefix. Routing ordinary messages only selects a pipeline;
-        # it must not bypass that pipeline's group response rules.
-        if query.variables and query.variables.get('_interaction_submission'):
+        # Interaction submissions and routed platform form callbacks resume the
+        # original run without another mention or prefix. Ordinary routing only
+        # selects a pipeline and must still obey its group response rules.
+        if query.variables and (
+            query.variables.get('_interaction_submission')
+            or (query.variables.get('_routed_by_rule') and query.variables.get('_dify_form_action'))
+        ):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         rules = query.pipeline_config['trigger']['group-respond-rules']
