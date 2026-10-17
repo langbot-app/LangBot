@@ -100,7 +100,7 @@ def transcript_item(row):
 
 
 class ExecutionDetailsMixin:
-    def _session_message_source(self, workspace, bot_ids):
+    def _session_message_source(self, workspace, bot_ids, *, summary_only=False):
         """Combine delivered messages with ingress missing from the legacy ledger."""
         message = models.MonitoringMessage
         conversation = sa.func.coalesce(
@@ -148,7 +148,11 @@ class ExecutionDetailsMixin:
             'event_id': EventLog.event_id,
             'run_id': EventLog.run_id,
         }
-        columns = list(message.__table__.columns)
+        columns = [
+            column
+            for column in message.__table__.columns
+            if not summary_only or column.name not in {'message_content', 'variables'}
+        ]
         stored = sa.select(*columns).where(message.workspace_uuid == workspace, message.bot_id.in_(bot_ids))
         incoming = sa.select(
             *[values.get(column.name, sa.literal(None)).label(column.name) for column in columns]
@@ -184,7 +188,9 @@ class ExecutionDetailsMixin:
         self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset
     ):
         """Read session summaries across processor types without mutating history."""
-        messages = self._session_message_source(workspace, bot_ids)
+        # Window functions sort and retain their input rows. Carrying historical
+        # inline media through that sort can consume gigabytes for a summary.
+        messages = self._session_message_source(workspace, bot_ids, summary_only=True)
         key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
         ranked = (
             sa.select(
