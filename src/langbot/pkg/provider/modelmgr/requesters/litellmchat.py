@@ -878,14 +878,6 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     else:
                         msg_dict.pop('provider_specific_fields', None)
 
-            if reasoning_family == 'groq':
-                # Groq validates message and tool-call fields strictly and does
-                # not accept LiteLLM's provider metadata envelope.
-                msg_dict.pop('provider_specific_fields', None)
-                for tool_call in msg_dict.get('tool_calls') or []:
-                    tool_call.pop('provider_specific_fields', None)
-                    tool_call.get('function', {}).pop('provider_specific_fields', None)
-
             if isinstance(content, list):
                 converted_parts = []
                 for part in content:
@@ -922,6 +914,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             req_messages.append(msg_dict)
 
         return req_messages
+
+    @staticmethod
+    def _adapt_messages_for_provider(messages: list[dict], chat_provider: str | None) -> None:
+        """Adapt serialized request messages in place for the chat transport."""
+        if chat_provider == 'groq':
+            # Groq rejects LiteLLM's metadata envelope on messages and tool calls.
+            for message in messages:
+                message.pop('provider_specific_fields', None)
+                for tool_call in message.get('tool_calls') or []:
+                    tool_call.pop('provider_specific_fields', None)
+                    tool_call.get('function', {}).pop('provider_specific_fields', None)
 
     _THINK_PATTERNS: tuple[str, ...] = (
         r'^\s*(?:(?!<think>).)*?</think>\s*',
@@ -1339,6 +1342,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         # OpenRouter shares requester metadata with OpenAI-compatible non-chat
         # operations, but chat needs its own adapter to preserve cache markers.
         chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        self._adapt_messages_for_provider(req_messages, chat_provider)
         model_name = self._build_litellm_model_name(model.model_entity.name, chat_provider)
         api_key = model.provider.token_mgr.get_token()
 
