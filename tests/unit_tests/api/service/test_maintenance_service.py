@@ -396,9 +396,8 @@ class TestMaintenanceServiceGetStorageAnalysis:
         result = await service.get_storage_analysis(TEST_CONTEXT)
 
         assert result['total_size_bytes'] == 125
-        assert (
-            next(section for section in result['sections'] if section['key'] == 'skills')['path']
-            == '/core/skills/tenants/test'
+        assert next(section for section in result['sections'] if section['key'] == 'skills')['path'] == str(
+            Path('/core/skills/tenants/test')
         )
         assert result['processes'][1]['directories'][0]['key'] == 'artifacts'
         assert result['processes'][2]['directories'][1]['key'] == 'mcp'

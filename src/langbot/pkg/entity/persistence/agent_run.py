@@ -111,6 +111,7 @@ class AgentRun(Base):
     """Additional metadata JSON."""
 
     __table_args__ = (
+        sqlalchemy.Index('ix_agent_run_media_ttl', 'workspace_id', 'created_at', 'id'),
         sqlalchemy.Index(
             'ix_agent_run_scope_status', 'bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'status'
         ),
@@ -202,4 +203,5 @@ class AgentRunEvent(Base):
     __table_args__ = (
         sqlalchemy.UniqueConstraint('run_id', 'sequence', name='uq_agent_run_event_run_sequence'),
         sqlalchemy.Index('ix_agent_run_event_run_sequence', 'run_id', 'sequence'),
+        sqlalchemy.Index('ix_agent_run_event_media_ttl', 'created_at', 'id', 'run_id'),
     )

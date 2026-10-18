@@ -74,6 +74,7 @@ class Transcript(Base):
 
     # Indexes
     __table_args__ = (
+        sqlalchemy.Index('ix_transcript_media_ttl', 'workspace_id', 'created_at', 'id'),
         sqlalchemy.Index('ix_transcript_conversation_seq', 'conversation_id', 'seq'),
         sqlalchemy.Index('ix_transcript_conversation_created', 'conversation_id', 'created_at'),
         sqlalchemy.Index('ix_transcript_scope_seq', 'bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'seq'),

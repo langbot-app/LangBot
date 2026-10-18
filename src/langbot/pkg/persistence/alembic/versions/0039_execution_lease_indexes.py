@@ -15,6 +15,8 @@ def upgrade():
         ('agent_run', 'workspace_id'),
         ('monitoring_messages', 'workspace_uuid'),
     ):
+        if not inspector.has_table(table):
+            continue
         index = f'ix_{table}_workspace_status_lease'
         # Fresh installations create these indexes from ORM metadata before migrations.
         if index not in {item['name'] for item in inspector.get_indexes(table)}:
@@ -24,6 +26,8 @@ def upgrade():
 def downgrade():
     inspector = sa.inspect(op.get_bind())
     for table in ('agent_run', 'monitoring_messages'):
+        if not inspector.has_table(table):
+            continue
         index = f'ix_{table}_workspace_status_lease'
         if index in {item['name'] for item in inspector.get_indexes(table)}:
             op.drop_index(index, table_name=table)

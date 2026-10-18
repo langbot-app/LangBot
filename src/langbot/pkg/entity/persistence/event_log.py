@@ -84,3 +84,5 @@ class EventLog(Base):
 
     metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     """Additional metadata as JSON string."""
+
+    __table_args__ = (sqlalchemy.Index('ix_event_log_media_ttl', 'workspace_id', 'created_at', 'id'),)
