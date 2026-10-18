@@ -6,6 +6,7 @@ import datetime
 
 import sqlalchemy
 
+from ...persistence.media import MediaReferenceText
 from .base import Base
 
 
@@ -107,7 +108,7 @@ class AgentRun(Base):
     authorization_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     """Run-scoped authorization snapshot JSON."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata JSON."""
 
     __table_args__ = (
@@ -185,7 +186,7 @@ class AgentRunEvent(Base):
     type = sqlalchemy.Column(sqlalchemy.String(100), nullable=False, index=True)
     """Result event type."""
 
-    data_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    data_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Result event payload JSON."""
 
     usage_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
@@ -197,7 +198,7 @@ class AgentRunEvent(Base):
     source = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)
     """Source that appended the event."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata JSON."""
 
     __table_args__ = (

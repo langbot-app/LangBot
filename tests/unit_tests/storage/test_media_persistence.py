@@ -11,6 +11,7 @@ import pytest
 import sqlalchemy as sa
 
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
 from langbot.pkg.entity.persistence.agent_run import AgentRunEvent
 from langbot.pkg.entity.persistence.event_log import EventLog
 from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
@@ -178,6 +179,48 @@ async def test_cas_failure_does_not_write_inline_payload_to_database(media_servi
             await conn.execute(sa.select(MonitoringMessage.message_content).where(MonitoringMessage.id == message_id))
         ).scalar_one()
     assert json.loads(stored)[0]['base64'] is None
+    assert not objects
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('field', ['data', 'metadata'])
+async def test_direct_ledger_writes_cannot_bypass_image_persistence(media_service, field):
+    service, objects, _ = media_service
+    engine = service.ap.persistence_mgr.get_db_engine()
+    with pytest.raises(sa.exc.StatementError, match='Inline images cannot be persisted'):
+        await RunLedgerStore(engine).append_event(
+            run_id='run', sequence=1, event_type='tool.call.completed', **{field: {'image': image()}}
+        )
+    async with engine.connect() as conn:
+        assert (await conn.execute(sa.select(sa.func.count()).select_from(AgentRunEvent))).scalar_one() == 0
+    assert not objects
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('write_kind', ['create', 'update'])
+async def test_monitoring_variables_follow_metadata_only_policy(media_service, write_kind):
+    service, objects, _ = media_service
+    variables = json.dumps({'preview': image(), 'count': 0})
+    context = _context(WORKSPACE_A)
+    if write_kind == 'create':
+        message_id = await service.record_message(
+            context,
+            bot_id='same-bot',
+            bot_name='Bot',
+            pipeline_id='pipeline',
+            pipeline_name='Pipeline',
+            message_content='message',
+            session_id='session',
+            variables=variables,
+        )
+    else:
+        message_id = await _record_message(service, context, 'message')
+        await service.update_message_status(context, message_id, 'success', variables=variables)
+    async with service.ap.persistence_mgr.get_db_engine().connect() as conn:
+        stored = (
+            await conn.execute(sa.select(MonitoringMessage.variables).where(MonitoringMessage.id == message_id))
+        ).scalar_one()
+    assert json.loads(stored) == {'preview': {'type': 'Image', 'base64': None}, 'count': 0}
     assert not objects
 
 

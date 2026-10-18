@@ -126,6 +126,8 @@ async def insert_record(ap, model, number, workspace=WORKSPACE_A, timestamp=OLD,
                 content_json=payload,
             )
             field = 'content_json'
+    # Seed the pre-contract database format without applying today's write policy.
+    values[field] = sa.bindparam('historical_payload', payload, type_=sa.Text())
     await ap.persistence_mgr.execute_async(sa.insert(model).values(**values))
     return field
 

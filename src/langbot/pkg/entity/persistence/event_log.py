@@ -6,6 +6,7 @@ import sqlalchemy
 import datetime
 
 from .base import Base
+from ...persistence.media import MediaReferenceText
 
 
 class EventLog(Base):
@@ -66,7 +67,7 @@ class EventLog(Base):
     input_summary = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     """Brief summary of input (truncated text, max 1000 chars)."""
 
-    input_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    input_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Full input JSON if reasonably sized (AgentInput as JSON string)."""
 
     # Raw event reference
@@ -82,7 +83,7 @@ class EventLog(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow)
     """When this record was created."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata as JSON string."""
 
     __table_args__ = (sqlalchemy.Index('ix_event_log_media_ttl', 'workspace_id', 'created_at', 'id'),)

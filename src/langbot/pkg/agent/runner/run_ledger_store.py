@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
 from ...utils.execution_lease import host_execution_lease
 
@@ -384,7 +385,7 @@ class RunLedgerStore:
             if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
                 raise ValueError('Skill activation requires an active run in the current Workspace')
             original = run.metadata_json
-            metadata = _json_loads(original, {})
+            metadata = MediaCache.redact_inline_images(_json_loads(original, {}))
             bindings = metadata.setdefault('activated_skills', {})
             if name in bindings:
                 return str(bindings[name])
@@ -439,7 +440,8 @@ class RunLedgerStore:
             if cost is not None:
                 run.cost_json = _json_dumps(cost)
             if metadata is not None:
-                existing_metadata = _json_loads(run.metadata_json, {})
+                # Discard legacy image bytes before merging; new metadata still uses the write contract.
+                existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
                 if isinstance(existing_metadata, dict):
                     existing_metadata.update(metadata)
                     run.metadata_json = _json_dumps(existing_metadata)

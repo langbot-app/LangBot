@@ -88,6 +88,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 - New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`. LangBot 4.x does not support upgrading 3.x databases.
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
 - User-facing strings must support i18n; follow the backend language rules below for server-generated content.
+- Conversation payload columns, including new ones, must use `MediaReferenceText` and persist image references only. See the [media persistence contract](ARCHITECTURE.md#persistence-and-configuration).
 - Code comments and docstrings must be English.
 - Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
 - Commit message format: `<type>(<scope>): <subject>`.

@@ -580,7 +580,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'user_id': _normalize_user_id(user_id),
             'user_name': user_name,
             'runner_name': runner_name,
-            'variables': variables,
+            'variables': self._sanitize_message_content(variables) if variables is not None else None,
             'role': role,
             'event_id': event_id,
             'run_id': run_id,
@@ -888,7 +888,7 @@ class MonitoringService(ExecutionDetailsMixin):
         if level is not None:
             update_values['level'] = level
         if variables is not None:
-            update_values['variables'] = variables
+            update_values['variables'] = self._sanitize_message_content(variables)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringMessage)

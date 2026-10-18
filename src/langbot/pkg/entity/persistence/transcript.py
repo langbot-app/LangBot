@@ -6,6 +6,7 @@ import sqlalchemy
 import datetime
 
 from .base import Base
+from ...persistence.media import MediaReferenceText
 
 
 class Transcript(Base):
@@ -48,11 +49,11 @@ class Transcript(Base):
     content = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     """Text content summary (may be truncated for large messages, max 4000 chars)."""
 
-    content_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    content_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Full structured content as JSON string (Message model dump)."""
 
     # Attachment references
-    attachment_refs_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    attachment_refs_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Attachment references as JSON string."""
 
     # Sequence for cursor-based pagination
@@ -69,7 +70,7 @@ class Transcript(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow)
     """When this item was created."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata as JSON string (sender_id, platform, etc.)."""
 
     # Indexes
