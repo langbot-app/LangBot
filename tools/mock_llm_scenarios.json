@@ -1,0 +1,20 @@
+{
+  "mock-chat": {
+    "steps": [{"content": "LANGBOT_CHAT_OK"}]
+  },
+  "mock-rag": {
+    "steps": [{"expect_prompt": "aurora-parser-rag-9137", "content": "LANGBOT_RAG_OK"}]
+  },
+  "mock-box": {
+    "steps": [
+      {"tool_calls": [{"name": "exec", "arguments": {"command": "printf LANGBOT_BOX_SENTINEL > /workspace/mock-llm.txt; cat /workspace/mock-llm.txt"}}]},
+      {"expect_tool_output": "LANGBOT_BOX_SENTINEL", "tool_calls": [{"name": "exec", "arguments": {"command": "cat /workspace/mock-llm.txt"}}]},
+      {"expect_tool_output": "LANGBOT_BOX_SENTINEL", "content": "LANGBOT_BOX_OK"}
+    ]
+  },
+  "mock-401": {"status": 401, "steps": [{"content": "unused"}]},
+  "mock-429": {"status": 429, "steps": [{"content": "unused"}]},
+  "mock-503": {"status": 503, "steps": [{"content": "unused"}]},
+  "mock-slow": {"delay_seconds": 2, "steps": [{"content": "LANGBOT_SLOW_OK"}]},
+  "mock-slow-stream": {"chunk_delay_seconds": 0.2, "steps": [{"content": "LANGBOT_SLOW_STREAM_OK"}]}
+}

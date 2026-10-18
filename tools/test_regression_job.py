@@ -1,0 +1,179 @@
+"""Exercise Job ownership and lifecycle with controlled CLI/Docker responses."""
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+import yaml
+
+from regression_job import Job, main
+from test_regression_suite import FAKE_CLI, profile
+
+
+class ControlledJob(Job):
+    def __init__(self, manifest, suite, path, output, health, fail_install=False):
+        super().__init__(manifest, suite, path, output)
+        self.health = health
+        self.fail_install = fail_install
+        self.calls = []
+        self.env['LBCTL_TEST_ROOT'] = str(output.parent)
+
+    def command(self, args, timeout=900):
+        self.calls.append(args)
+        if args[: len(self.cli)] == self.cli:
+            operation = args[len(self.cli) :]
+            if operation[0] == 'install':
+                self.deploy.mkdir()
+                (self.deploy / 'data').mkdir()
+                (self.deploy / 'compose.yaml').write_text('services: {}')
+                (self.deploy / '.env').write_text(
+                    'LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=' + 't' * 32 + '\nLANGBOT_BOX_ENABLED=true\n'
+                )
+                record = {
+                    'deployment_id': 'owned-deployment',
+                    'compose_project': 'test-project',
+                    'compose_file': str(self.deploy / 'compose.yaml'),
+                    'data_dir': str(self.deploy / 'data'),
+                    'env_file': str(self.deploy / '.env'),
+                    'endpoint': self.health,
+                }
+                (self.deploy / 'deployment.yaml').write_text(yaml.safe_dump(record))
+                # Simulate a timeout/failed final probe with no returned record.
+                return (
+                    (1, json.dumps({'data': {}}), 'install failed')
+                    if self.fail_install
+                    else (0, json.dumps({'data': {'record': record}}), '')
+                )
+            if operation[0] == '--endpoint':
+                return 0, json.dumps({'data': {'workspace_uuid': 'test-workspace'}}), ''
+            if operation[0] == 'uninstall':
+                shutil.rmtree(self.deploy / 'data')
+            return 0, json.dumps({'data': {}}), ''
+        if args[:2] == ['docker', 'ps']:
+            if 'label=langbot.box=true' in args:
+                return 0, '', ''
+            return (
+                0,
+                '\n'.join(
+                    f'id-{name} {name}'
+                    for name in ('langbot', 'langbot_plugin_runtime', 'langbot_box', 'regression_mock')
+                ),
+                '',
+            )
+        if args[:2] == ['docker', 'inspect']:
+            if '{{.State.Pid}}' in args:
+                return 0, str(os.getpid()), ''
+            return 0, json.dumps({'network': {'IPAddress': '127.0.0.1'}}), ''
+        if args[:2] == ['docker', 'compose']:
+            if 'logs' in args:
+                return 0, self.redact(self.env.get('LANGBOT_QA_API_KEY', '') + '\n' + 't' * 32), ''
+            return 0, '', ''
+        raise AssertionError(args)
+
+    @staticmethod
+    def ready(url):
+        pass
+
+    def prepare(self):
+        suite = super().prepare()
+        # Real traffic driver and HTTP health probe; infrastructure calls are controlled above.
+        suite.profile['observe'] = {'health': {'core': self.health}}
+        return suite
+
+
+class JobTests(unittest.TestCase):
+    def test_lifecycle_success_and_partial_install_recovery(self):
+        class Health(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"code":0}')
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Health)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                cli = root / 'lbctl-test'
+                cli.write_text(f'#!{sys.executable}\n' + FAKE_CLI)
+                cli.chmod(0o700)
+                manifest = {'lbctl': str(cli), 'deployment': {'version': 'v4.11.0', 'port': 15351}}
+                suite = profile()
+                suite['resources'] = [{'id': 'chat', 'kind': 'pipeline', 'body': {'name': 'QA', 'config': {'ai': {}}}}]
+                suite['cases'][0].update(args=['pipeline', 'run', '${chat}'], expect='TEST_OK')
+                suite['phases'][0].update(duration_seconds=0.5, rps=4, workers=2)
+                health = f'http://127.0.0.1:{server.server_port}'
+                job = ControlledJob(manifest, suite, root / 'profile.json', root / 'success', health)
+                result = job.run()
+                self.assertTrue(result['passed'], result)
+                self.assertEqual(result['phase'], 'cleaned')
+                self.assertFalse((job.deploy / 'data').exists())
+                self.assertFalse((job.private / 'api-key').exists())
+                self.assertIn('--purge-data', job.calls[-1])
+                self.assertNotIn('t' * 32, (job.output / 'services.log').read_text())
+
+                job = ControlledJob(manifest, suite, root / 'profile.json', root / 'failed', health, fail_install=True)
+                result = job.run()
+                self.assertFalse(result['passed'])
+                self.assertEqual(job.state['record']['deployment_id'], 'owned-deployment')
+                self.assertTrue((job.deploy / 'data').exists())
+                self.assertFalse(any('uninstall' in call for call in job.calls))
+                with (
+                    patch.object(sys, 'argv', ['regression_job.py', 'cleanup', '--output', str(job.output)]),
+                    patch('regression_job.Job', return_value=job),
+                ):
+                    main()
+                self.assertFalse((job.deploy / 'data').exists())
+                self.assertEqual(job.state['phase'], 'cleaned')
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_cleanup_refuses_changed_deployment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = Job({}, profile(), root / 'profile.json', root)
+            job.private.mkdir()
+            job.deploy.mkdir()
+            (job.private / 'job-id').write_text(job.state['job_id'])
+            record = {
+                'deployment_id': 'old',
+                'compose_file': str(job.deploy / 'compose.yaml'),
+                'data_dir': str(job.deploy / 'data'),
+                'env_file': str(job.deploy / '.env'),
+            }
+            job.state['record'] = record
+            (job.deploy / 'deployment.yaml').write_text(yaml.safe_dump({**record, 'deployment_id': 'new'}))
+            with self.assertRaisesRegex(RuntimeError, 'identity changed'):
+                job.cleanup()
+
+    def test_sandbox_cleanup_uses_owned_mount_roots(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = Job({}, profile(), root / 'profile.json', root)
+            job.state['record'] = {'data_dir': str(job.deploy / 'data')}
+
+            def checked(args, timeout=900):
+                if args[1] == 'ps':
+                    return 'ours\nother\n'
+                source = str(job.deploy / 'data/box/tenant') if args[-1] == 'ours' else '/unrelated/box/tenant'
+                return json.dumps([{'Source': source}])
+
+            job.checked = checked
+            self.assertEqual(job.owned_sandboxes(), ['ours'])
+
+
+if __name__ == '__main__':
+    unittest.main()

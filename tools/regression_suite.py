@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""Prepare an lbctl regression from JSON, run load phases, and clean owned resources."""
+
+import argparse
+import copy
+import json
+import math
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+KINDS = {'provider', 'model', 'pipeline', 'knowledge-base'}
+REFERENCE = re.compile(r'\$\{([a-zA-Z][a-zA-Z0-9_-]*)\}')
+
+
+def resolve(value, variables):
+    if isinstance(value, dict):
+        return {key: resolve(item, variables) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve(item, variables) for item in value]
+    if isinstance(value, str):
+        return REFERENCE.sub(lambda match: str(variables[match[1]]), value)
+    return value
+
+
+def merge(base, patch):
+    result = copy.deepcopy(base)
+    for key, value in patch.items():
+        result[key] = (
+            merge(result[key], value) if isinstance(value, dict) and isinstance(result.get(key), dict) else value
+        )
+    return result
+
+
+def number(value, label, *, minimum=0, integer=False):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f'{label} must be a finite number')
+    if value < minimum or (integer and not isinstance(value, int)):
+        raise ValueError(f'{label} must be {"an integer " if integer else ""}>= {minimum}')
+
+
+def validate(profile):
+    if not isinstance(profile, dict) or profile.get('version') != 1:
+        raise ValueError('profile version must be 1')
+    allowed = {'version', 'cli', 'vars', 'plugins', 'resources', 'cases', 'phases', 'observe', 'cleanup', 'thresholds'}
+    if extra := profile.keys() - allowed:
+        raise ValueError(f'unknown profile fields: {sorted(extra)}')
+    for field in ('cli', 'vars', 'observe', 'thresholds'):
+        if field in profile and not isinstance(profile[field], dict):
+            raise ValueError(f'{field} must be an object')
+    for field in ('plugins', 'resources', 'cases', 'phases'):
+        if field in profile and (
+            not isinstance(profile[field], list) or any(not isinstance(item, dict) for item in profile[field])
+        ):
+            raise ValueError(f'{field} must be an array of objects')
+    cli = profile.get('cli', {})
+    if not isinstance(cli, dict) or cli.keys() - {'config', 'executable'}:
+        raise ValueError('cli accepts config and executable')
+    if not isinstance(cli.get('config'), str) or not cli['config']:
+        raise ValueError('cli.config must name a Workspace-bound lbctl config')
+    variables = {'profile_dir': '.', 'run_dir': '.', 'workspace_uuid': 'workspace'}
+    supplied = profile.get('vars', {})
+    if not isinstance(supplied, dict) or variables.keys() & supplied.keys():
+        raise ValueError('vars must be an object without reserved names')
+    if any(not isinstance(value, (str, int, float)) or '${' in str(value) for value in supplied.values()):
+        raise ValueError('vars values must be scalar literals, without nested references')
+    variables.update(supplied)
+    for plugin in profile.get('plugins', []):
+        if plugin.keys() - {'source', 'file'}:
+            raise ValueError('plugins accept source and file')
+        if plugin.get('source') not in {'local', 'github', 'marketplace'} or not plugin.get('file'):
+            raise ValueError('plugins need source local/github/marketplace and file')
+        resolve(plugin, variables)
+    for item in profile.get('resources', []):
+        if item.keys() - {'id', 'kind', 'type', 'body', 'documents'}:
+            raise ValueError('unknown resource field')
+        name = item.get('id', '')
+        if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_-]*', name) or name in variables:
+            raise ValueError(f'invalid or duplicate resource id: {name}')
+        if item.get('kind') not in KINDS or not isinstance(item.get('body'), dict):
+            raise ValueError(f'{name}: resource needs kind and body')
+        if 'uuid' in item['body']:
+            raise ValueError(f'{name}: resources must create new objects; body.uuid is forbidden')
+        if item['kind'] == 'model' and item.get('type') not in {'llm', 'embedding', 'rerank'}:
+            raise ValueError(f'{name}: model type must be llm/embedding/rerank')
+        resolve(item['body'], variables)  # References must point backwards; never guess missing UUIDs.
+        variables[name] = name
+        documents = item.get('documents', [])
+        if not isinstance(documents, list) or any(not isinstance(doc, dict) for doc in documents):
+            raise ValueError(f'{name}: documents must be an array of objects')
+        for document in documents:
+            if item['kind'] != 'knowledge-base' or not document.get('file') or not document.get('parser_plugin_id'):
+                raise ValueError(f'{name}: documents need file and parser_plugin_id on a knowledge-base')
+            resolve(document, variables)
+    cases = profile.get('cases')
+    if not isinstance(cases, list) or not cases:
+        raise ValueError('cases must be a non-empty array')
+    names = set()
+    for case in cases:
+        if case.keys() - {'name', 'weight', 'args', 'expect', 'body'}:
+            raise ValueError('unknown case field')
+        if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
+            raise ValueError('case names must be non-empty and unique')
+        names.add(case['name'])
+        if (
+            not isinstance(case.get('args'), list)
+            or not case['args']
+            or not all(isinstance(x, str) for x in case['args'])
+        ):
+            raise ValueError('case args must be a non-empty string array')
+        if not isinstance(case.get('expect'), str) or not case['expect']:
+            raise ValueError('case expect must be a non-empty string')
+        number(case.get('weight', 1), 'case weight', minimum=1, integer=True)
+        resolve(case, variables)
+        if 'body' in case and (not isinstance(case['body'], dict) or '--file' in case['args']):
+            raise ValueError('case body must be an object and cannot coexist with --file')
+    if sum(case.get('weight', 1) for case in cases) > 1000:
+        raise ValueError('total case weight must be <= 1000')
+    phases = profile.get('phases')
+    if not isinstance(phases, list) or not phases:
+        raise ValueError('phases must be a non-empty array')
+    names = set()
+    for phase in phases:
+        name = phase.get('name', '')
+        if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_-]*', name) or name in names:
+            raise ValueError('phase names must be unique simple names')
+        names.add(name)
+        if phase.keys() - {'name', 'duration_seconds', 'rps', 'workers', 'cooldown_seconds'}:
+            raise ValueError(f'{name}: unknown phase field')
+        number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
+        number(phase.get('rps'), 'rps', minimum=0.001)
+        number(phase.get('workers'), 'workers', minimum=1, integer=True)
+        number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
+        if phase['workers'] > 32:
+            raise ValueError('workers must be <= 32')
+    if profile.get('cleanup', 'on-success') not in {'always', 'on-success', 'never'}:
+        raise ValueError('cleanup must be always/on-success/never')
+    thresholds = profile.get('thresholds', {})
+    if extra := thresholds.keys() - {'min_rps_ratio', 'max_p95_seconds'}:
+        raise ValueError(f'unknown thresholds: {sorted(extra)}')
+    number(thresholds.get('min_rps_ratio', 0), 'min_rps_ratio')
+    if thresholds.get('min_rps_ratio', 0) > 1:
+        raise ValueError('min_rps_ratio must be <= 1')
+    if not isinstance(thresholds.get('max_p95_seconds', {}), dict):
+        raise ValueError('max_p95_seconds must map case names to seconds')
+    for name, value in thresholds.get('max_p95_seconds', {}).items():
+        if name not in {case['name'] for case in cases}:
+            raise ValueError(f'unknown case in max_p95_seconds: {name}')
+        number(value, 'max_p95_seconds', minimum=0.001)
+    observed = resolve(profile.get('observe', {}), variables)
+    if not isinstance(observed, dict) or observed.keys() - {'health', 'pids', 'pid_files', 'containers'}:
+        raise ValueError('observe accepts health, pids, pid_files, containers')
+    if not isinstance(observed.get('health'), dict) or not observed['health']:
+        raise ValueError('observe.health must contain at least one health endpoint')
+    for name, url in observed['health'].items():
+        if not isinstance(name, str) or not isinstance(url, str) or not url.startswith(('http://', 'https://')):
+            raise ValueError('health endpoints must map names to HTTP(S) URLs')
+    for field in ('pids', 'pid_files'):
+        if not isinstance(observed.get(field, {}), dict):
+            raise ValueError(f'observe.{field} must be an object')
+    for pid in observed.get('pids', {}).values():
+        number(pid, 'PID', minimum=1, integer=True)
+    if not isinstance(observed.get('containers', []), list) or any(
+        not isinstance(item, str) or not item for item in observed.get('containers', [])
+    ):
+        raise ValueError('observe.containers must be an array of container names/IDs')
+
+
+class Suite:
+    def __init__(self, profile, profile_path, output, env=None):
+        self.profile = profile
+        self.output = output.resolve()
+        self.variables = {
+            **profile.get('vars', {}),
+            'profile_dir': str(profile_path.parent.resolve()),
+            'run_dir': str(self.output),
+        }
+        self.cli = [
+            profile.get('cli', {}).get('executable', 'lbctl'),
+            '--config',
+            self.path(profile['cli']['config']),
+            '-o',
+            'json',
+        ]
+        self.owned = []
+        self.env = env
+        self.secrets = [value for key, value in (env or os.environ).items() if 'API_KEY' in key and value]
+
+    def path(self, value):
+        path = Path(resolve(value, self.variables)).expanduser()
+        return str(path if path.is_absolute() else Path(self.variables['profile_dir']) / path)
+
+    def write(self, name, value):
+        path = self.output / name
+        path.write_text(json.dumps(value, ensure_ascii=False, indent=2))
+        path.chmod(0o600)
+        return str(path)
+
+    def call(self, args, body=None):
+        command = [*self.cli, *args]
+        if body is not None:
+            command += ['--file', self.write('request.json', body)]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=360, env=self.env)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError('lbctl timed out; outcome unknown, no automatic retry') from exc
+        if result.returncode:
+            error = result.stdout + result.stderr
+            for secret in self.secrets:
+                error = error.replace(secret, '[REDACTED]')
+            raise RuntimeError(error[:3000])
+        return json.loads(result.stdout)['data']
+
+    def journal(self):
+        self.write('owned.json', {'workspace_uuid': self.variables['workspace_uuid'], 'resources': self.owned})
+
+    def prepare(self):
+        identity = self.call(['whoami'])
+        self.variables['workspace_uuid'] = identity['workspace_uuid']
+        self.journal()
+        for plugin in self.profile.get('plugins', []):
+            self.call(['plugin', 'install', plugin['source'], '--file', self.path(plugin['file']), '--wait'])
+        for item in self.profile.get('resources', []):
+            kind = item['kind']
+            body = resolve(item['body'], self.variables)
+            config = body.pop('config', None) if kind == 'pipeline' else None
+            args = [kind, 'apply' if kind == 'pipeline' else 'create']
+            if kind == 'model':
+                args += ['--type', item['type']]
+            created = self.call(args, body)
+            created = created.get('pipeline', created) if kind == 'pipeline' else created
+            uuid = created['uuid']
+            self.variables[item['id']] = uuid
+            self.owned.append({'kind': kind, 'uuid': uuid, **({'type': item['type']} if kind == 'model' else {})})
+            self.journal()  # Record ownership before any later configuration or ingestion can fail.
+            if config is not None:
+                current = self.call(['pipeline', 'get', uuid])
+                current = current.get('pipeline', current)
+                self.call(
+                    ['pipeline', 'apply'],
+                    {
+                        'uuid': uuid,
+                        'name': current['name'],
+                        'description': current['description'],
+                        'config': merge(current['config'], config),
+                    },
+                )
+            for document in item.get('documents', []):
+                self.call(
+                    [
+                        'knowledge-base',
+                        'ingest',
+                        uuid,
+                        '--file',
+                        self.path(document['file']),
+                        '--parser-plugin-id',
+                        document['parser_plugin_id'],
+                        '--wait',
+                    ]
+                )
+        self.write(
+            'resources.json',
+            {key: value for key, value in self.variables.items() if key not in self.profile.get('vars', {})},
+        )
+
+    def cleanup(self):
+        saved = json.loads((self.output / 'owned.json').read_text())
+        identity = self.call(['whoami'])
+        if saved['workspace_uuid'] != identity['workspace_uuid']:
+            raise RuntimeError('cleanup refused: Workspace differs from owned.json')
+        failures = []
+        for resource in reversed(saved['resources'].copy()):
+            args = [resource['kind'], 'delete', resource['uuid'], '--yes']
+            if resource['kind'] == 'model':
+                args += ['--type', resource['type']]
+            try:
+                self.call(args)
+            except (RuntimeError, ValueError, OSError) as exc:
+                failures.append(str(exc))
+            else:
+                saved['resources'].remove(resource)
+                self.write('owned.json', saved)
+        return failures
+
+    def run(self):
+        cases = []
+        for original in self.profile['cases']:
+            case = resolve(original, self.variables)
+            if 'body' in case:
+                case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
+            cases.extend([{key: case[key] for key in ('name', 'args', 'expect')}] * case.get('weight', 1))
+        cases_path = self.write('cases.json', cases)
+        observed = resolve(self.profile.get('observe', {}), self.variables)
+        observe_args = []
+        for name, pid in observed.get('pids', {}).items():
+            observe_args += ['--pid', f'{name}={int(pid)}']
+        for name, path in observed.get('pid_files', {}).items():
+            observe_args += ['--pid', f'{name}={int(Path(self.path(path)).read_text().strip())}']
+        for name, url in observed.get('health', {}).items():
+            observe_args += ['--health', f'{name}={url}']
+        for container in observed.get('containers', []):
+            observe_args += ['--container', container]
+        results = []
+        errors = []
+        for phase in self.profile['phases']:
+            destination = self.output / phase['name']
+            command = [
+                sys.executable,
+                str(Path(__file__).with_name('regression_traffic.py')),
+                '--lbctl',
+                self.cli[0],
+                '--config',
+                self.cli[2],
+                '--cases',
+                cases_path,
+                '--output',
+                str(destination),
+                '--duration',
+                str(phase['duration_seconds']),
+                '--rps',
+                str(phase['rps']),
+                '--workers',
+                str(phase['workers']),
+                '--cooldown',
+                str(phase.get('cooldown_seconds', 0)),
+                '--shared-case-sequence',
+                *observe_args,
+            ]
+            with (self.output / f'{phase["name"]}.log').open('w') as log:
+                result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
+            summary = json.loads((destination / 'summary.json').read_text())
+            summary['name'] = phase['name']
+            summary['achieved_rps'] = summary['requests'] / summary['load_elapsed_seconds']
+            results.append(summary)
+            if result.returncode:
+                errors.append(f'{phase["name"]}: business or health/resource checks failed')
+            thresholds = self.profile.get('thresholds', {})
+            if summary['achieved_rps'] < phase['rps'] * thresholds.get('min_rps_ratio', 0):
+                errors.append(f'{phase["name"]}: achieved RPS below configured threshold')
+            for name, maximum in thresholds.get('max_p95_seconds', {}).items():
+                p95 = summary['cases'][name]['p95_seconds']
+                if p95 is None or p95 > maximum:
+                    errors.append(f'{phase["name"]}/{name}: P95 missing or above configured threshold')
+        return {'phases': results, 'errors': errors}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('validate', 'run', 'cleanup'))
+    parser.add_argument('--profile', required=True, type=Path)
+    parser.add_argument('--output', type=Path, help='New run directory; existing run directory for cleanup')
+    parser.add_argument('--duration', type=float, help='Override duration_seconds in every phase')
+    parser.add_argument('--rps', type=float, help='Override RPS in every phase')
+    parser.add_argument('--workers', type=int, help='Override workers in every phase')
+    args = parser.parse_args()
+    try:
+        profile = json.loads(args.profile.read_text())
+        for phase in profile.get('phases', []):
+            for flag, field in [('duration', 'duration_seconds'), ('rps', 'rps'), ('workers', 'workers')]:
+                if getattr(args, flag) is not None:
+                    phase[field] = getattr(args, flag)
+        validate(profile)
+        if args.action == 'validate':
+            print('Profile valid (no services or resources changed).')
+            return
+        if args.output is None:
+            raise ValueError('--output is required for run/cleanup')
+        suite = Suite(profile, args.profile.resolve(), args.output)
+        if args.action == 'cleanup':
+            errors = suite.cleanup()
+            if errors:
+                raise RuntimeError('\n'.join(errors))
+            return
+        args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
+        suite.write('profile.json', profile)
+        result = {'phases': [], 'errors': []}
+        completed = False
+        try:
+            suite.prepare()
+            result = suite.run()
+            completed = True
+        except KeyboardInterrupt:
+            result['errors'].append('Interrupted; in-flight outcomes may be unknown. Inspect retained resources.')
+        except (RuntimeError, ValueError, OSError, KeyError) as exc:
+            result['errors'].append(str(exc))
+        finally:
+            if not completed and not result['errors']:
+                result['errors'].append('Run aborted before completion; inspect logs and retained resources.')
+            policy = profile.get('cleanup', 'on-success')
+            if policy == 'always' or (policy == 'on-success' and not result['errors']):
+                if (args.output / 'owned.json').exists():
+                    try:
+                        result['errors'].extend(suite.cleanup())
+                    except (RuntimeError, ValueError, OSError, KeyError) as exc:
+                        result['errors'].append(f'cleanup failed: {exc}')
+            result['passed'] = not result['errors']
+            suite.write('summary.json', result)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result['passed']:
+            raise SystemExit(1)
+    except (RuntimeError, ValueError, OSError, KeyError) as exc:
+        parser.exit(1, f'{type(exc).__name__}: {exc}\n')
+
+
+if __name__ == '__main__':
+    main()
