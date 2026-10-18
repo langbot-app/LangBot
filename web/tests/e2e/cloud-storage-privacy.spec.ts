@@ -55,7 +55,9 @@ test('Cloud never exposes or requests storage analysis', async ({ page }) => {
 
   await page.goto('/home/bots?action=showStorageAnalysis');
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Workspace', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Storage Analysis', { exact: true })).toHaveCount(
     0,
   );
