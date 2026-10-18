@@ -1024,11 +1024,13 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
         conn.close()
 
 
+@pytest.mark.parametrize('repair_export', [False, True])
 def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
     capfd,
+    repair_export,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
@@ -1064,6 +1066,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             self.box = box
             self.bindings = []
             self.outboxes = []
+            self.calls_by_run = {}
 
         async def get_resolved_tool_catalog(self, *args, **kwargs):
             return [{'name': 'exec', 'source': 'native', 'source_id': None}]
@@ -1081,16 +1084,25 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             source = next(iter(binding.imported.values()))['path']
             outbox = f'/workspace/outbox/{binding.io_scope}'
             self.outboxes.append(outbox)
+            self.calls_by_run[binding.run_id] = self.calls_by_run.get(binding.run_id, 0) + 1
             # Shell arguments are Host-issued paths, never model input.
             import shlex
 
-            directory_mode = '-m 700 ' if len(self.bindings) == 2 else ''
+            directory_mode = '-m 700 ' if len(self.calls_by_run) == 2 else ''
+            extra = ''
+            if repair_export:
+                if self.calls_by_run[binding.run_id] == 1:
+                    extra = (
+                        f' && for i in $(seq 1 20); do cp {shlex.quote(source)} {shlex.quote(outbox)}/extra-$i; done'
+                    )
+                else:
+                    extra = f' && rm {shlex.quote(outbox)}/extra-*'
             result = await self.box.execute_tool(
                 {
                     'command': (
                         f'mkdir {directory_mode}-p {shlex.quote(outbox)} && '
                         f'cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")} && '
-                        f"stat -c '%u %a' {shlex.quote(outbox)} {shlex.quote(outbox + '/answer.txt')}"
+                        f"stat -c '%u %a' {shlex.quote(outbox)} {shlex.quote(outbox + '/answer.txt')}" + extra
                     )
                 },
                 query,
@@ -1098,7 +1110,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             assert result['ok'], result
             ownership = result['stdout'].strip().splitlines()
             assert ownership[-1] == '0 600', ownership
-            if len(self.bindings) == 2:
+            if len(self.calls_by_run) == 2:
                 assert ownership[0] == '0 700', ownership
             with capfd.disabled():
                 print(f'Core uid={os.geteuid()}; LocalAgent Docker ownership: {ownership}', flush=True)
@@ -1128,6 +1140,8 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
         try:
             for index in range(2):
                 fake.queue_llm_responses(_scripted_tool_call('exec'), 'File is ready.')
+                if repair_export:
+                    fake.queue_llm_responses(_scripted_tool_call('exec'), 'Repaired file is ready.')
                 event = _event(
                     event_id=f'box-event-{index}',
                     conversation_id=f'box-conversation-{index}',
@@ -1156,8 +1170,13 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                 assert inspection.stdout.strip() == '', inspection.stdout
                 status = await RunnerBoxService(box).status(context)
                 assert status['used'] == 1 and status['remaining'] == 0, status
-            assert manager.bindings[0][0] == manager.bindings[1][0]
-            assert manager.bindings[0][1] != manager.bindings[1][1]
+            assert manager.bindings[0][0] == manager.bindings[-1][0]
+            assert manager.bindings[0][1] != manager.bindings[-1][1]
+            if repair_export:
+                assert list(manager.calls_by_run.values()) == [2, 2]
+                assert any(
+                    'Attachment export failed' in text for payload in _invoke_payload_texts(fake) for text in payload
+                )
             from langbot_plugin.box.errors import BoxCapacityExceededError
 
             with pytest.raises(BoxCapacityExceededError):
