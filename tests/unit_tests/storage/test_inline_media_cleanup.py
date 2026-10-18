@@ -214,8 +214,11 @@ async def test_event_scan_budget_advances_past_foreign_events_without_reading_pa
             plan = ' '.join(
                 row[3] for row in await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + statement, parameters)
             )
-            if 'CORRELATED' in plan:
+            # SQLite 3.53 reports a flattened EXISTS lookup instead of a
+            # CORRELATED subquery. Classify the query by SQL, not planner wording.
+            if 'EXISTS (' in statement:
                 assert 'SEARCH agent_run_event USING INTEGER PRIMARY KEY' in plan, plan
+                assert 'USING INDEX ix_agent_run_run_id' in plan, plan
             else:
                 assert 'COVERING INDEX ix_agent_run_event_media_ttl' in plan, plan
             assert 'TEMP B-TREE' not in plan, plan
