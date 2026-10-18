@@ -136,7 +136,9 @@ class NonBlockingConsoleHandler(logging.Handler):
                         self._queue.get_nowait()
                         self.dropped_records += 1
                     except queue.Empty:
-                        pass
+                        # The writer consumed the last record after Full;
+                        # retry inserting the shutdown sentinel.
+                        continue
         self._worker.join(timeout=CONSOLE_CLOSE_TIMEOUT)
 
 
