@@ -245,3 +245,49 @@ async def test_old_active_sessions_are_listed_exported_and_not_cleaned(service):
     assert count == 1
     rows, total = await service.get_sessions(context())
     assert total == 1 and rows[0]['bot_id'] == 'b'
+
+
+async def test_bot_session_summary_never_sorts_inline_message_payloads(service):
+    engine = service.ap.persistence_mgr.get_db_engine()
+    payload = 'historical inline media ' * 16384
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(models.MonitoringMessage),
+            [
+                dict(
+                    id=f'message-{index}',
+                    workspace_uuid='workspace',
+                    session_id='group_42',
+                    **resource('a'),
+                    timestamp=now + dt.timedelta(seconds=index),
+                    role='user' if index == 0 else 'assistant',
+                    message_content=payload,
+                    variables=payload,
+                    status='success',
+                    level='info',
+                    user_id='user',
+                    user_name='User',
+                    platform='test',
+                )
+                for index in range(2)
+            ],
+        )
+
+    def reject_payload_reads(connection, cursor, statement, parameters, context, executemany):
+        assert 'monitoring_messages.message_content' not in statement
+        assert 'monitoring_messages.variables' not in statement
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+    try:
+        rows, total = await service.get_sessions(context('a'), bot_ids=['a'])
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+
+    assert total == 1
+    assert rows[0]['session_id'] == 'group_42'
+    assert rows[0]['message_count'] == 2
+    assert rows[0]['user_name'] == 'User'
+    messages, total = await service.get_messages(context('a'), bot_ids=['a'], session_ids=['group_42'])
+    assert total == 2
+    assert all(message['message_content'] == payload and message['variables'] == payload for message in messages)

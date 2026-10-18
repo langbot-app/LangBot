@@ -129,7 +129,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
-            """Full trace of a single execution (agent run or pipeline query)."""
+            """Read a full trace, its initial overview, or one paginated section."""
             try:
                 detail = await self.ap.monitoring_service.get_execution_detail(
                     request_context,

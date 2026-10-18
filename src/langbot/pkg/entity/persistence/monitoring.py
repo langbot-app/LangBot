@@ -1,5 +1,6 @@
 import sqlalchemy
 
+from ...persistence.media import MediaReferenceText
 from .base import Base
 
 
@@ -19,7 +20,7 @@ class MonitoringMessage(Base):
     bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
-    message_content = sqlalchemy.Column(sqlalchemy.Text, nullable=False)
+    message_content = sqlalchemy.Column(MediaReferenceText, nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     execution_owner_id = sqlalchemy.Column(sqlalchemy.String(36), nullable=True, index=True)
     execution_lease_expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
@@ -31,7 +32,7 @@ class MonitoringMessage(Base):
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
     runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
-    variables = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # Query variables as JSON string
+    variables = sqlalchemy.Column(MediaReferenceText, nullable=True)  # Query variables as JSON string
     role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True, default='user')  # user, assistant
     event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     run_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
@@ -39,7 +40,17 @@ class MonitoringMessage(Base):
 
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_messages_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_messages_media_ttl', 'workspace_uuid', 'timestamp', 'id'),
         sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
+        sqlalchemy.Index(
+            'ix_monitoring_messages_conversation_page', 'workspace_uuid', 'bot_id', 'session_id', 'timestamp', 'id'
+        ),
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_status_lease',
+            'workspace_uuid',
+            'status',
+            'execution_lease_expires_at',
+        ),
     )
 
 

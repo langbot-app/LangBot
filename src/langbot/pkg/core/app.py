@@ -545,7 +545,7 @@ class Application:
                                         if total_deleted > 0:
                                             self.logger.info(
                                                 f'Storage maintenance for Workspace {context.workspace_uuid}: '
-                                                f'deleted expired files: {deleted}'
+                                                f'cleaned expired storage data: {deleted}'
                                             )
                                     except asyncio.CancelledError:
                                         raise

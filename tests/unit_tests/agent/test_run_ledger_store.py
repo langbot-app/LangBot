@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 
 import pytest
 import sqlalchemy
@@ -34,6 +35,81 @@ async def db_engine(tmp_path):
 @pytest.fixture
 def store(db_engine):
     return RunLedgerStore(db_engine)
+
+
+@pytest.fixture
+async def legacy_run(store, db_engine):
+    await store.create_run(
+        run_id='legacy',
+        event_id='event',
+        binding_id='binding',
+        runner_id='runner',
+        workspace_id='ws',
+    )
+    metadata = {
+        'input': [
+            {'type': 'Image', 'base64': 'eA=='},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA==', 'detail': 'low'}},
+            {'type': 'image_url', 'image_url': {'url': 'https://example.com/image.png'}},
+            {'type': 'text', 'text': 'keep this'},
+        ],
+        'attempt': 0,
+        'activated_skills': {'existing': 'v1'},
+    }
+    async with db_engine.begin() as conn:
+        # Explicit TEXT binding simulates data persisted before the media contract.
+        await conn.execute(
+            sqlalchemy.update(AgentRun)
+            .where(AgentRun.run_id == 'legacy')
+            .values(
+                metadata_json=sqlalchemy.bindparam('legacy_metadata', json.dumps(metadata), type_=sqlalchemy.Text())
+            )
+        )
+    return metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['pin', 'finalize'])
+async def test_metadata_update_redacts_legacy_images(store, legacy_run, operation):
+    if operation == 'pin':
+        assert await store.pin_skill_revision('legacy', 'ws', 'demo', 'v2') == 'v2'
+    else:
+        await store.finalize_run(run_id='legacy', status='completed', metadata={'note': 'done'})
+
+    run = await store.get_run('legacy')
+    expected = {
+        **legacy_run,
+        'input': [
+            {'type': 'Image', 'base64': None},
+            {'type': 'image_url', 'image_url': {'url': None, 'detail': 'low'}},
+            *legacy_run['input'][2:],
+        ],
+    }
+    if operation == 'pin':
+        expected['activated_skills'] = {'existing': 'v1', 'demo': 'v2'}
+        assert run['status'] == 'running'
+    else:
+        expected['note'] = 'done'
+        assert run['status'] == 'completed'
+    assert run['metadata'] == expected
+
+
+@pytest.mark.asyncio
+async def test_finalize_without_metadata_preserves_legacy_snapshot(store, legacy_run):
+    run = await store.finalize_run(run_id='legacy', status='completed')
+    assert run['status'] == 'completed'
+    assert run['metadata'] == legacy_run
+
+
+@pytest.mark.asyncio
+async def test_metadata_update_still_rejects_new_inline_images(store, legacy_run):
+    with pytest.raises(sqlalchemy.exc.StatementError, match='Inline images cannot be persisted'):
+        await store.finalize_run(
+            run_id='legacy', status='completed', metadata={'new_image': {'type': 'Image', 'base64': 'eQ=='}}
+        )
+    run = await store.get_run('legacy')
+    assert run['status'] == 'running'
+    assert run['metadata'] == legacy_run
 
 
 @pytest.mark.asyncio
