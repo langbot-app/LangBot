@@ -9,6 +9,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy.ext.asyncio import create_async_engine
 
+# Register users and workspaces so create_all can resolve the foreign keys.
 from langbot.pkg.entity.persistence import user, workspace  # noqa: F401
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence.base import Base
