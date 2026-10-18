@@ -125,7 +125,9 @@ export default function ApiIntegrationPanel({
       const response = (await backendClient.get('/api/v1/apikeys')) as {
         keys: ApiKey[];
       };
-      setApiKeys(response.keys || []);
+      setApiKeys(
+        (response.keys || []).filter((key) => key.status === 'active'),
+      );
     } catch (error) {
       toast.error(`Failed to load API keys: ${error}`);
     } finally {
