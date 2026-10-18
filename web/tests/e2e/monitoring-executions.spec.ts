@@ -575,6 +575,35 @@ test('shares mode and status filters with dashboard charts and records', async (
   }
 });
 
+test('restores filter trigger focus when closing with Escape', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  await page.goto('/home/monitoring');
+  for (const id of ['bot', 'mode', 'status', 'time']) {
+    const trigger = page.locator(`#monitoring-filter-${id}`);
+    await trigger.click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(trigger).toBeFocused();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+  }
+});
+
+test('keeps the custom range dialog focused when its select closes', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  await page.goto('/home/monitoring');
+  await page.locator('#monitoring-filter-time').click();
+  await page
+    .getByRole('option', { name: 'Custom time range', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Custom time range' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input').first()).toBeFocused();
+});
+
 test('remembers all filters on reload and persists resetting them', async ({
   page,
 }) => {
