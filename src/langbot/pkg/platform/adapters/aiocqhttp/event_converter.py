@@ -34,8 +34,6 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return AiocqhttpEventConverter.notice_to_eba(event, bot_user_id)
         if event_type == 'request':
             return AiocqhttpEventConverter.request_to_eba(event)
-        if event_type == 'meta_event':
-            return AiocqhttpEventConverter.platform_specific(event, f'meta.{getattr(event, "detail_type", "")}')
         return None
 
     @staticmethod
@@ -90,7 +88,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
         return platform_events.MessageReceivedEvent(
             type='message.received',
-            adapter_name='aiocqhttp-omni',
+            adapter_name='onebot-v11',
             message_id=getattr(event, 'message_id', ''),
             message_chain=message_chain,
             sender=sender,
@@ -111,13 +109,19 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if notice_type in ('group_recall', 'friend_recall'):
             return platform_events.MessageDeletedEvent(
                 type='message.deleted',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 message_id=getattr(event, 'message_id', ''),
-                operator=AiocqhttpEventConverter.user(getattr(event, 'operator_id', None)),
+                operator=AiocqhttpEventConverter.user(
+                    getattr(event, 'user_id', None)
+                    if notice_type == 'friend_recall'
+                    else getattr(event, 'operator_id', None)
+                ),
                 chat_type=platform_entities.ChatType.GROUP
                 if notice_type == 'group_recall'
                 else platform_entities.ChatType.PRIVATE,
-                chat_id=getattr(event, 'group_id', getattr(event, 'user_id', '')),
+                chat_id=getattr(event, 'group_id', '')
+                if notice_type == 'group_recall'
+                else getattr(event, 'user_id', ''),
                 group=AiocqhttpEventConverter.group_from_event(event) if notice_type == 'group_recall' else None,
                 timestamp=float(getattr(event, 'time', 0) or 0),
                 source_platform_object=event,
@@ -129,7 +133,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if AiocqhttpEventConverter._is_bot_user(getattr(event, 'user_id', None), bot_user_id, event):
                 return platform_events.BotInvitedToGroupEvent(
                     type='bot.invited_to_group',
-                    adapter_name='aiocqhttp-omni',
+                    adapter_name='onebot-v11',
                     group=group,
                     inviter=AiocqhttpEventConverter.user(inviter_id) if inviter_id else None,
                     timestamp=float(getattr(event, 'time', 0) or 0),
@@ -137,7 +141,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             return platform_events.MemberJoinedEvent(
                 type='group.member_joined',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 group=group,
                 member=user,
                 inviter=AiocqhttpEventConverter.user(inviter_id) if inviter_id else None,
@@ -151,7 +155,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if AiocqhttpEventConverter._is_bot_user(getattr(event, 'user_id', None), bot_user_id, event):
                 return platform_events.BotRemovedFromGroupEvent(
                     type='bot.removed_from_group',
-                    adapter_name='aiocqhttp-omni',
+                    adapter_name='onebot-v11',
                     group=group,
                     operator=operator,
                     timestamp=float(getattr(event, 'time', 0) or 0),
@@ -159,7 +163,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             return platform_events.MemberLeftEvent(
                 type='group.member_left',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 group=group,
                 member=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 is_kicked=getattr(event, 'sub_type', '') in ('kick', 'kick_me'),
@@ -175,7 +179,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 event_cls = platform_events.BotMutedEvent if duration > 0 else platform_events.BotUnmutedEvent
                 kwargs: dict[str, typing.Any] = {
                     'type': 'bot.muted' if duration > 0 else 'bot.unmuted',
-                    'adapter_name': 'aiocqhttp-omni',
+                    'adapter_name': 'onebot-v11',
                     'group': group,
                     'operator': operator,
                     'timestamp': float(getattr(event, 'time', 0) or 0),
@@ -187,7 +191,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if duration > 0:
                 return platform_events.MemberBannedEvent(
                     type='group.member_banned',
-                    adapter_name='aiocqhttp-omni',
+                    adapter_name='onebot-v11',
                     group=group,
                     member=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                     operator=operator,
@@ -198,7 +202,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if notice_type == 'friend_add':
             return platform_events.FriendAddedEvent(
                 type='friend.added',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 user=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 timestamp=float(getattr(event, 'time', 0) or 0),
                 source_platform_object=event,
@@ -211,7 +215,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if request_type == 'friend':
             return platform_events.FriendRequestReceivedEvent(
                 type='friend.request_received',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 request_id=getattr(event, 'flag', ''),
                 user=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 message=getattr(event, 'comment', None),
@@ -221,7 +225,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if request_type == 'group' and getattr(event, 'sub_type', '') == 'invite':
             return platform_events.BotInvitedToGroupEvent(
                 type='bot.invited_to_group',
-                adapter_name='aiocqhttp-omni',
+                adapter_name='onebot-v11',
                 group=AiocqhttpEventConverter.group_from_event(event),
                 inviter=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 request_id=getattr(event, 'flag', ''),
@@ -258,7 +262,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def platform_specific(event: aiocqhttp.Event, action: str) -> platform_events.PlatformSpecificEvent:
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
-            adapter_name='aiocqhttp-omni',
+            adapter_name='onebot-v11',
             action=action,
             data={key: value for key, value in dict(event).items() if key not in {'message'}},
             timestamp=float(getattr(event, 'time', 0) or 0),

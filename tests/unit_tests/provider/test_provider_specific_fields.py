@@ -4,15 +4,17 @@ This includes provider_specific_fields round-trip coverage for GitHub issue
 #1899 and token counting preflight behavior for Runner context budgeting.
 """
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from langbot.pkg.provider.modelmgr import requester as model_requester
-from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
+from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester, _LeasedHTTPHandler
 
 
 def _make_requester() -> LiteLLMRequester:
@@ -146,6 +148,132 @@ def test_convert_messages_preserves_message_provider_specific_fields():
     assert len(out) == 1
     assert 'provider_specific_fields' in out[0]
     assert out[0]['provider_specific_fields']['thought_signatures'] == ['sig1', 'sig2']
+
+
+@pytest.mark.parametrize('family', ['', 'openai', 'gemini', 'groq'])
+def test_response_finish_reason_is_not_replayed(family):
+    req = _make_requester()
+    msg = provider_message.Message(
+        role='assistant', content='Hello', provider_specific_fields={'finish_reason': 'stop'}
+    )
+
+    assert req._convert_messages([msg], reasoning_family=family) == [{'role': 'assistant', 'content': 'Hello'}]
+    assert msg.provider_specific_fields == {'finish_reason': 'stop'}
+
+
+def test_response_metadata_removal_preserves_gemini_signatures():
+    req = _make_requester()
+    msg = provider_message.Message(
+        role='assistant',
+        content='Hello',
+        provider_specific_fields={'finish_reason': 'stop', 'thought_signatures': ['signature']},
+    )
+
+    out = req._convert_messages([msg], reasoning_family='gemini')
+
+    assert out[0]['provider_specific_fields'] == {'thought_signatures': ['signature']}
+
+
+@pytest.fixture
+def replayed_tool_message():
+    return provider_message.Message(
+        role='assistant',
+        content='Hello',
+        provider_specific_fields={'finish_reason': 'tool_calls', 'other_response_metadata': True},
+        tool_calls=[
+            provider_message.ToolCall(
+                id='call-1',
+                type='function',
+                function=provider_message.FunctionCall(name='search', arguments='{}'),
+                provider_specific_fields={'thought_signature': 'signature'},
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+@pytest.mark.parametrize('chat_provider,family', [('groq', 'openai'), ('gemini', 'groq'), ('openrouter', 'groq')])
+async def test_completion_metadata_adaptation_uses_chat_provider(stream, chat_provider, family, replayed_tool_message):
+    req = _make_configured_requester()
+    req.requester_cfg['custom_llm_provider'] = chat_provider
+    model = _make_runtime_model()
+    model.model_entity.name = 'openai/gpt-oss-120b'
+    msg = replayed_tool_message
+    original = msg.model_dump()
+
+    with patch.object(req, '_reasoning_family', return_value=family):
+        args = await req._build_completion_args(model, [msg], None, {}, stream=stream)
+
+    assert args['model'] == f'{chat_provider}/openai/gpt-oss-120b'
+    expected = msg.model_dump(exclude_none=True)
+    expected['provider_specific_fields'].pop('finish_reason')
+    if chat_provider == 'groq':
+        expected.pop('provider_specific_fields')
+        expected['tool_calls'][0].pop('provider_specific_fields')
+    assert args['messages'] == [expected]
+    assert msg.model_dump() == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+async def test_groq_http_request_excludes_replayed_metadata(stream, replayed_tool_message):
+    req = _make_configured_requester()
+    req.requester_cfg.update(custom_llm_provider='groq', base_url='https://groq.test/openai/v1')
+    model = _make_runtime_model()
+    model.model_entity.name = 'openai/gpt-oss-120b'
+    msg = replayed_tool_message
+    original = msg.model_dump()
+    bodies = []
+
+    def handle(request):
+        assert request.url == 'https://groq.test/openai/v1/chat/completions'
+        bodies.append(json.loads(request.content))
+        response = {
+            'id': 'completion-1',
+            'object': 'chat.completion',
+            'created': 1,
+            'model': 'openai/gpt-oss-120b',
+            'service_tier': 'on_demand',
+            'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': 'Done'}, 'finish_reason': 'stop'}],
+            'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
+        }
+        if stream:
+            response['object'] = 'chat.completion.chunk'
+            response['choices'][0]['delta'] = response['choices'][0].pop('message')
+            return httpx.Response(
+                200,
+                headers={'content-type': 'text/event-stream'},
+                content=f'data: {json.dumps(response)}\n\ndata: [DONE]\n\n',
+            )
+        return httpx.Response(200, json=response)
+
+    messages = [
+        provider_message.Message(role='user', content='Search'),
+        msg,
+        provider_message.Message(role='tool', tool_call_id='call-1', content='Found'),
+    ]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        extra_args = {'client': _LeasedHTTPHandler(client, 10)}
+        if stream:
+            chunks = [chunk async for chunk in req.invoke_llm_stream(None, model, messages, extra_args=extra_args)]
+            assert ''.join(chunk.content or '' for chunk in chunks) == 'Done'
+        else:
+            result, _ = await req.invoke_llm(None, model, messages, extra_args=extra_args)
+            assert result.content == 'Done'
+
+    assert len(bodies) == 1
+    assert bodies[0]['model'] == 'openai/gpt-oss-120b'
+    assert bodies[0]['messages'] == [
+        {'role': 'user', 'content': 'Search'},
+        {
+            'role': 'assistant',
+            'content': 'Hello',
+            'tool_calls': [{'id': 'call-1', 'type': 'function', 'function': {'name': 'search', 'arguments': '{}'}}],
+        },
+        {'role': 'tool', 'tool_call_id': 'call-1', 'content': 'Found'},
+    ]
+    assert msg.model_dump() == original
 
 
 def test_normalize_stream_tool_calls_preserves_provider_specific_fields():

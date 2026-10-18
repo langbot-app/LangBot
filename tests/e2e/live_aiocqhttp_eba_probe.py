@@ -7,6 +7,7 @@ import json
 import time
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 from langbot.pkg.platform.adapters.aiocqhttp.adapter import AiocqhttpAdapter
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
@@ -36,9 +37,8 @@ def dump_event(event: platform_events.Event) -> dict:
 
 async def main():
     parser = argparse.ArgumentParser(description='Live OneBot v11 / aiocqhttp EBA probe for Matcha or a real endpoint.')
-    parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=2280)
-    parser.add_argument('--access-token', default='')
+    parser.add_argument('--ws-url', required=True, help='Protocol endpoint Universal WebSocket URL')
+    parser.add_argument('--access-token', required=True)
     parser.add_argument('--timeout', type=int, default=120)
     parser.add_argument('--target-type', choices=['private', 'group'], default=None)
     parser.add_argument('--target-id', default=None)
@@ -54,10 +54,18 @@ async def main():
     out_fp = out_path.open('a', encoding='utf-8')
 
     adapter = AiocqhttpAdapter(
-        {'host': args.host, 'port': args.port, 'access-token': args.access_token},
+        {'connection_mode': 'forward_ws', 'ws_url': args.ws_url, 'access-token': args.access_token},
         ProbeLogger(),
     )
 
+    # This standalone converter probe uses a single explicit local runtime.
+    runtime = SimpleNamespace(enable=True, workspace_uuid='probe', bot_entity=SimpleNamespace(uuid='probe'))
+
+    async def resolve_probe(_):
+        return runtime
+
+    runtime.ap = SimpleNamespace(platform_mgr=SimpleNamespace(resolve_public_bot=resolve_probe))
+    adapter.bind_runtime(runtime)
     observed: list[platform_events.Event] = []
     first_message = asyncio.Event()
 
@@ -79,7 +87,7 @@ async def main():
             return None
 
     task = asyncio.create_task(adapter.run_async())
-    print(f'Listening on ws://{args.host}:{args.port}/ws/ . Trigger events from Matcha now.')
+    print('Connecting to the protocol endpoint. Trigger events now.')
 
     api_results: dict[str, str] = {}
     try:

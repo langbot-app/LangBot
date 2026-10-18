@@ -57,11 +57,13 @@ def test_box_reuse_template_is_preserved_for_runner(template):
     assert result['config']['ai']['runner_config'][result['target_runner_id']]['box-session-id-template'] == template
 
 
-def test_empty_box_template_requires_correction():
+def test_empty_box_template_is_defaulted_with_warning():
     source = {'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': copy.deepcopy(FIXTURES['local-agent'])}}
     source['ai']['local-agent']['box-session-id-template'] = ''
     result = plan_legacy_pipeline(source)
-    assert result['state'] == 'blocked'
-    assert {'code': 'local.box_template_invalid', 'field': 'ai.local-agent.box-session-id-template'} in result[
-        'blockers'
+    assert result['state'] == 'ready'
+    selected = result['config']['ai']['runner_config'][result['target_runner_id']]
+    assert selected['box-session-id-template'] == '{launcher_type}_{launcher_id}'
+    assert {'code': 'local.box_template_defaulted', 'field': 'ai.local-agent.box-session-id-template'} in result[
+        'warnings'
     ]

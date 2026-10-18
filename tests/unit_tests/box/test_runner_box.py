@@ -12,11 +12,12 @@ from langbot.pkg.box.runner import RunnerBoxService, RunBoxBinding, exported_mes
 def service():
     sessions = {}
 
-    async def create(context, spec):
+    async def create(context, spec, **kwargs):
         sessions.setdefault(spec['session_id'], spec)
         return sessions[spec['session_id']]
 
     box = SimpleNamespace(
+        ap=SimpleNamespace(),
         enabled=True,
         managed_admission_required=False,
         _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
@@ -24,7 +25,6 @@ def service():
         require_workspace_sandbox=AsyncMock(side_effect=lambda context: context),
         _action_context=lambda context: context,
         client=SimpleNamespace(get_sessions=AsyncMock(side_effect=lambda **kw: list(sessions.values()))),
-        build_skill_extra_mounts=lambda query: [],
     )
     return RunnerBoxService(box)
 
@@ -37,7 +37,7 @@ async def test_acquire_reuses_key_and_bind_is_explicit_and_run_scoped():
         api.acquire('workspace', {'reuse_key': 'global'}),
     )
     assert first == second
-    q1, q2 = SimpleNamespace(), SimpleNamespace()
+    q1, q2 = SimpleNamespace(variables={}), SimpleNamespace(variables={})
     a = await api.bind('workspace', q1, 'run-a', first['id'])
     b = await api.bind('workspace', q2, 'run-b', first['id'])
     assert a['box_id'] == b['box_id']
@@ -54,7 +54,7 @@ async def test_concurrent_binding_cannot_switch_boxes():
     api = service()
     a = await api.acquire('ws', {'reuse_key': 'a'})
     b = await api.acquire('ws', {'reuse_key': 'b'})
-    q = SimpleNamespace()
+    q = SimpleNamespace(variables={})
     results = await asyncio.gather(
         api.bind('ws', q, 'run', a['id']), api.bind('ws', q, 'run', b['id']), return_exceptions=True
     )

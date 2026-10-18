@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from ....i18n import t
+
+from contextlib import aclosing
+
 import datetime
 import copy
 import fnmatch
@@ -45,7 +49,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 AGENT_KIND_AGENT = 'agent'
 AGENT_KIND_PIPELINE = 'pipeline'
 AGENT_KIND_EVENT_PROCESSOR = 'event_processor'
-PIPELINE_EVENT_PATTERNS = ['message.*']
+PIPELINE_EVENT_PATTERNS = ['message.received']
 AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
 
@@ -348,25 +352,45 @@ class AgentService:
                 execution_events.append(visible_result)
 
         final_text = ''
-        async for output in self.ap.agent_run_orchestrator.run(
-            event,
-            binding,
-            adapter_context={
-                '_query': execution_query,
-                '_execution_context': execution_context,
-                '_result_observer': observe_result,
-            },
+        # A debug run has no platform event: the synthetic event envelope is the
+        # execution's inbound boundary, so the chain is opened here with the real
+        # event id and marked as a debug WebUI/API execution. The Runner inside
+        # then joins this chain instead of becoming a trace origin of its own.
+        from ....telemetry.execution import ingress as execution_ingress
+
+        principal_type = str(getattr(getattr(context, 'principal', None), 'principal_type', '') or '')
+        origin = 'api' if principal_type == 'api_key' else 'webui'
+        with execution_ingress(
+            self.ap,
+            'event_done',
+            execution_context,
+            event_id,
+            debug=True,
+            origin=origin,
+            synthetic_event=event_type,
         ):
-            output_text = self._provider_output_to_text(output)
-            if output_text:
-                final_text = output_text
-            output_items.append(
-                {
-                    'kind': output.__class__.__name__,
-                    'role': str(getattr(output, 'role', '') or ''),
-                    'text': output_text,
-                }
-            )
+            async with aclosing(
+                self.ap.agent_run_orchestrator.run(
+                    event,
+                    binding,
+                    adapter_context={
+                        '_query': execution_query,
+                        '_execution_context': execution_context,
+                        '_result_observer': observe_result,
+                    },
+                )
+            ) as owned_stream:
+                async for output in owned_stream:
+                    output_text = self._provider_output_to_text(output)
+                    if output_text:
+                        final_text = output_text
+                    output_items.append(
+                        {
+                            'kind': output.__class__.__name__,
+                            'role': str(getattr(output, 'role', '') or ''),
+                            'text': output_text,
+                        }
+                    )
 
         return {
             'event_id': event_id,
@@ -410,7 +434,7 @@ class AgentService:
             pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
                 context,
                 {
-                    'name': agent_data.get('name') or 'New Pipeline',
+                    'name': agent_data.get('name') or t('New Pipeline'),
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
                     'config': {},
@@ -427,12 +451,19 @@ class AgentService:
             config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(config)
             await self._validate_runner_for_agent(context, runner_id)
+            if runner_id:
+                descriptor = await self.ap.runner_registry.get(context, runner_id)
+                config['runner_config'][runner_id] = await self.ap.llm_model_service.apply_default_model(
+                    context,
+                    descriptor.config_schema,
+                    config['runner_config'][runner_id],
+                )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
         new_uuid = str(uuid.uuid4())
         values = {
             'workspace_uuid': workspace_uuid,
             'uuid': new_uuid,
-            'name': agent_data.get('name') or 'New Agent',
+            'name': agent_data.get('name') or t('New Agent'),
             'description': agent_data.get('description') or '',
             'emoji': agent_data.get('emoji') or ('🧩' if kind == AGENT_KIND_EVENT_PROCESSOR else '🤖'),
             'kind': kind,
@@ -509,6 +540,7 @@ class AgentService:
 
     async def _prepare_event_processor(self, context, data, existing=None):
         """Resolve an installed component and keep its capability declaration authoritative."""
+        draft = existing is None and 'config' not in data and 'parameters' not in data
         config = copy.deepcopy(data.get('config', existing.config if existing is not None else {}))
         if not isinstance(config, dict):
             raise ValueError('Processor configuration must be an object')
@@ -537,13 +569,19 @@ class AgentService:
             parameters = runner_config.get(component_ref)
         if parameters is None:
             parameters = self.ap.pipeline_service._get_default_values_from_schema(descriptor.config_schema)
+        if draft:
+            parameters = await self.ap.llm_model_service.apply_default_model(
+                context, descriptor.config_schema, parameters
+            )
         if not isinstance(parameters, dict):
             raise ValueError('Processor parameters must be an object')
         for field in descriptor.config_schema:
-            if field.get('required') and parameters.get(field['name']) in (None, ''):
+            if not draft and field.get('required') and parameters.get(field['name']) in (None, ''):
                 raise ValueError(f'Required processor parameter: {field["name"]}')
         config['runner_config'] = {component_ref: parameters}
-        return config, component_ref, descriptor.supported_event_patterns
+        # Component-only creation keeps defaults for the detail form, but does
+        # not subscribe to events until configuration is saved and validated.
+        return config, component_ref, [] if draft else descriptor.supported_event_patterns
 
     async def get_processor_runs(self, context, processor_id, *, before_id=None):
         """Read only this Workspace's Agent or plugin processor runs."""

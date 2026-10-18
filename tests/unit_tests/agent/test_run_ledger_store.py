@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 
 import pytest
 import sqlalchemy
@@ -34,6 +35,81 @@ async def db_engine(tmp_path):
 @pytest.fixture
 def store(db_engine):
     return RunLedgerStore(db_engine)
+
+
+@pytest.fixture
+async def legacy_run(store, db_engine):
+    await store.create_run(
+        run_id='legacy',
+        event_id='event',
+        binding_id='binding',
+        runner_id='runner',
+        workspace_id='ws',
+    )
+    metadata = {
+        'input': [
+            {'type': 'Image', 'base64': 'eA=='},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA==', 'detail': 'low'}},
+            {'type': 'image_url', 'image_url': {'url': 'https://example.com/image.png'}},
+            {'type': 'text', 'text': 'keep this'},
+        ],
+        'attempt': 0,
+        'activated_skills': {'existing': 'v1'},
+    }
+    async with db_engine.begin() as conn:
+        # Explicit TEXT binding simulates data persisted before the media contract.
+        await conn.execute(
+            sqlalchemy.update(AgentRun)
+            .where(AgentRun.run_id == 'legacy')
+            .values(
+                metadata_json=sqlalchemy.bindparam('legacy_metadata', json.dumps(metadata), type_=sqlalchemy.Text())
+            )
+        )
+    return metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['pin', 'finalize'])
+async def test_metadata_update_redacts_legacy_images(store, legacy_run, operation):
+    if operation == 'pin':
+        assert await store.pin_skill_revision('legacy', 'ws', 'demo', 'v2') == 'v2'
+    else:
+        await store.finalize_run(run_id='legacy', status='completed', metadata={'note': 'done'})
+
+    run = await store.get_run('legacy')
+    expected = {
+        **legacy_run,
+        'input': [
+            {'type': 'Image', 'base64': None},
+            {'type': 'image_url', 'image_url': {'url': None, 'detail': 'low'}},
+            *legacy_run['input'][2:],
+        ],
+    }
+    if operation == 'pin':
+        expected['activated_skills'] = {'existing': 'v1', 'demo': 'v2'}
+        assert run['status'] == 'running'
+    else:
+        expected['note'] = 'done'
+        assert run['status'] == 'completed'
+    assert run['metadata'] == expected
+
+
+@pytest.mark.asyncio
+async def test_finalize_without_metadata_preserves_legacy_snapshot(store, legacy_run):
+    run = await store.finalize_run(run_id='legacy', status='completed')
+    assert run['status'] == 'completed'
+    assert run['metadata'] == legacy_run
+
+
+@pytest.mark.asyncio
+async def test_metadata_update_still_rejects_new_inline_images(store, legacy_run):
+    with pytest.raises(sqlalchemy.exc.StatementError, match='Inline images cannot be persisted'):
+        await store.finalize_run(
+            run_id='legacy', status='completed', metadata={'new_image': {'type': 'Image', 'base64': 'eQ=='}}
+        )
+    run = await store.get_run('legacy')
+    assert run['status'] == 'running'
+    assert run['metadata'] == legacy_run
 
 
 @pytest.mark.asyncio
@@ -499,3 +575,91 @@ async def test_agent_run_pages_include_old_bindings_without_leaking_other_agents
     page, cursor, more, total = await store.list_runs(agent_id='one', workspace_id='w', before_id=cursor, limit=2)
     assert [run['run_id'] for run in page] == ['old']
     assert not more and total == 3
+
+
+@pytest.mark.asyncio
+async def test_skill_pins_belong_to_run_and_survive_store_restart(store, db_engine):
+    for run_id in ('old', 'new'):
+        await store.create_run(
+            run_id=run_id,
+            event_id=run_id,
+            binding_id='binding',
+            runner_id='runner',
+            workspace_id='ws',
+            conversation_id='same',
+            status='running',
+        )
+    assert await store.pin_skill_revision('old', 'ws', 'demo', 'v1') == 'v1'
+    restarted = RunLedgerStore(db_engine)
+    assert await restarted.pin_skill_revision('old', 'ws', 'demo', 'v2') == 'v1'
+    assert await restarted.pin_skill_revision('new', 'ws', 'demo', 'v2') == 'v2'
+    assert (await restarted.get_run('old'))['metadata']['activated_skills'] == {'demo': 'v1'}
+    with pytest.raises(ValueError, match='current Workspace'):
+        await restarted.pin_skill_revision('old', 'other', 'demo', 'v2')
+    await store.finalize_run(run_id='old', status='completed')
+    with pytest.raises(ValueError, match='active run'):
+        await restarted.pin_skill_revision('old', 'ws', 'demo', 'v2')
+
+
+@pytest.mark.asyncio
+async def test_activation_uses_new_revision_only_for_new_run(store, db_engine, tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.skill.repository import SkillRepository
+    from langbot.pkg.skill.manager import SkillManager
+    from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+
+    context = ExecutionContext(instance_uuid='instance', workspace_uuid='ws', placement_generation=1)
+
+    async def binding(workspace_uuid, **kwargs):
+        return context
+
+    app = SimpleNamespace(
+        logger=Mock(),
+        instance_config=SimpleNamespace(data={'skills': {'root': str(tmp_path / 'skills')}}),
+        workspace_service=SimpleNamespace(get_execution_binding=binding),
+        persistence_mgr=SimpleNamespace(get_db_engine=lambda: db_engine),
+    )
+    app.skill_repository = SkillRepository(app)
+    app.skill_mgr = SkillManager(app)
+    loader = SkillToolLoader(app)
+    first = await app.skill_repository.create_skill(context, {'name': 'demo', 'instructions': 'version one'})
+    await app.skill_mgr.reload_skills(context)
+
+    def query(run_id):
+        return SimpleNamespace(
+            instance_uuid='instance',
+            workspace_uuid='ws',
+            placement_generation=1,
+            variables={'_pipeline_bound_skills': ['demo']},
+            _execution_context=context,
+            _agent_run_session={'run_id': run_id},
+        )
+
+    for name in ('old', 'new'):
+        await store.create_run(
+            run_id=name,
+            event_id=name,
+            binding_id='binding',
+            runner_id='runner',
+            workspace_id='ws',
+            conversation_id='same',
+            status='running',
+        )
+    old = query('old')
+    assert 'version one' in (await loader._invoke_activate_skill({'skill_name': 'demo'}, old))['content']
+    second = await app.skill_repository.update_skill(
+        context, 'demo', {'instructions': 'version two'}, base_revision=first['revision']
+    )
+    await app.skill_mgr.reload_skills(context)
+    assert 'version two' in (await loader._invoke_activate_skill({'skill_name': 'demo'}, query('new')))['content']
+    assert 'version one' in (await loader._invoke_activate_skill({'skill_name': 'demo'}, old))['content']
+    await app.skill_repository.delete_skill(context, 'demo')
+    await app.skill_mgr.reload_skills(context)
+    assert 'version one' in (await loader._invoke_activate_skill({'skill_name': 'demo'}, query('old')))['content']
+    assert (await store.get_run('new'))['metadata']['activated_skills']['demo'] == second['revision']
+    revoked = query('old')
+    revoked.variables['_pipeline_bound_skills'] = []
+    with pytest.raises(ValueError, match='not authorized'):
+        await loader._invoke_activate_skill({'skill_name': 'demo'}, revoked)

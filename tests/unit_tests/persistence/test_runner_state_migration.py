@@ -39,4 +39,6 @@ def test_two_populated_tables_fail_without_discarding_either():
             with pytest.raises(RuntimeError, match='Both .* contain state'):
                 migration.upgrade()
         assert set(sa.inspect(conn).get_table_names()) == {'agent_runner_state', 'runner_state'}
+        assert conn.execute(sa.text('SELECT id FROM agent_runner_state')).all() == [(1,)]
+        assert conn.execute(sa.text('SELECT id FROM runner_state')).all() == [(1,)]
     engine.dispose()

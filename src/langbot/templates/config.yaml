@@ -224,7 +224,8 @@ storage:
     max_object_read_bytes: 10485760
     # Media content cache (images & attachments externalized from monitoring and pipelines)
     media_cache:
-        # Retention period in days for cached media (defaults to 30 days)
+        # Retention for CAS files and historical inline images (defaults to 30 days).
+        # Inline images expire by record creation time; message text is retained.
         retention_days: 30
         # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
         max_size_mb: 0
@@ -357,13 +358,20 @@ monitoring:
         # Prevent one large Workspace backlog from monopolizing PostgreSQL.
         # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
         max_batches_per_table_per_run: 4
+skills:
+    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
+    # revisions remain available when Box is disabled.
+    # TODO(next-major): change the fresh-install default to './data/skills'
+    # after the online-upgrade window for the historical Box path closes.
+    root: './data/box/skills'
+
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box
-    # subprocess. Disabling Box also disables every feature that depends on it:
-    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
-    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
-    # be listed read-only and http/sse MCP servers continue to work.
+    # subprocess. Disabling Box disables execution-backed features: native
+    # sandbox tools (exec/read/write/edit/glob/grep), agent-side skill
+    # registration, and stdio-mode MCP servers. Skill management, activation,
+    # and read-only package resources remain available without Box.
     enabled: true
     # 'host' runs commands directly as the Box Runtime user without sandbox
     # isolation. It is never auto-selected and is only for trusted local
@@ -408,11 +416,10 @@ box:
         workspace_quota_mb: 0
         readiness_cache_sec: 15
     local:
-        profile: 'default'
+        profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
-        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'
@@ -444,11 +451,34 @@ space:
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
     # Per-event execution traces: off | failures | sampled | all.
-    # 'sampled' keeps every failed run plus every N-th successful one
-    # (N is execution_trace_sample) and always keeps WebUI debug runs.
-    execution_trace: sampled
+    # Every eligible execution is reported by default: one record per workflow
+    # node plus one terminal chain record. 'failures' keeps only broken chains;
+    # 'sampled' keeps broken chains plus about 1/N of successful ones, selected
+    # by event hash (N is execution_trace_sample); 'off' reports no executions.
+    # Unmatched/discarded platform events are never reported unless a plugin
+    # subscription matches. Matched delivery failures and valid interaction
+    # resumptions remain eligible, as do independent API/WebUI executions.
+    # Cloud uses 'all' but still applies this route eligibility filter.
+    execution_trace: all
     execution_trace_sample: 20
     # How often buffered execution records are uploaded, in seconds.
-    # Records of complete executions are batched as {"records": [...]}; a
-    # still-running execution is never uploaded half-written.
+    # Complete execution records are batched as {"records": [...]}; records are
+    # removed from the buffer only once the sender accepted them.
     telemetry_flush_seconds: 180
+
+# Host-owned LLM policy. Models/calls may override through extra_args.request_policy.
+llm_request_policy:
+    retries: 0
+    total_timeout: 300
+    first_event_timeout: 120
+    stream_idle_timeout: 120
+    connect_timeout: 10
+    read_timeout: 120
+    write_timeout: 30
+    pool_timeout: 10
+    backoff_base: 0.5
+    backoff_max: 8
+    attribution: true
+    # Optional: x-session-id, x-litellm-session-id, x-langbot-conversation-id.
+    # OpenRouter uses x-session-id automatically; other providers default to none.
+    conversation_header: null

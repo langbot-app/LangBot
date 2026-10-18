@@ -60,7 +60,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             'Call this tool to send a message; Agent output text is not sent automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
-        ('message.*', 'friend.*', 'group.*', 'feedback.*'),
+        ('message.*', 'friend.*', 'group.*', 'feedback.*', 'interaction.submitted'),
         'reply_target',
     ),
     PlatformToolDefinition(
@@ -465,7 +465,11 @@ def build_platform_tool_resources(
         reason = None
         if definition is None:
             reason = 'unknown_tool'
-        elif definition.api not in supported_apis:
+        elif definition.api not in supported_apis and not (
+            definition.name == 'event_reply'
+            and {'reply_message', 'get_message'} <= supported_apis
+            and (event.delivery.reply_target or {}).get('message_id')
+        ):
             reason = 'adapter_api_unsupported'
         elif definition.scope == 'event' and not _event_matches(event.event_type, definition.event_patterns):
             reason = 'event_incompatible'
@@ -727,9 +731,36 @@ async def execute_platform_tool(
         bot = await ap.platform_mgr.get_bot_by_uuid(execution_context, bot_id)
         if bot is None:
             raise ValueError(f'Bot {bot_id} is not running')
-        if definition.api not in set(bot.adapter.get_supported_apis() or []):
+        supported_apis = set(bot.adapter.get_supported_apis() or [])
+        reply_via_source = (
+            definition.name == 'event_reply'
+            and 'send_message' not in supported_apis
+            and {'reply_message', 'get_message'} <= supported_apis
+            and (delivery.get('reply_target') or {}).get('message_id')
+        )
+        if definition.api not in supported_apis and not reply_via_source:
             raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
         api_func = getattr(bot.adapter, definition.api, None)
+        if reply_via_source:
+
+            async def api_func(target_type, target_id, message):
+                source = await bot.adapter.get_message(
+                    chat_type=target_type,
+                    chat_id=target_id,
+                    message_id=delivery['reply_target']['message_id'],
+                )
+                return await bot.adapter.reply_message(source, message)
+
+        # Some platforms require a one-time event credential instead of an
+        # ordinary conversation send. Only pass the Host-frozen event context.
+        event_reply_handler = getattr(bot.adapter, 'reply_to_event', None)
+        if definition.name == 'event_reply' and callable(event_reply_handler):
+
+            async def api_func(target_type, target_id, message):
+                return await event_reply_handler(
+                    context=context, target_type=target_type, target_id=target_id, message=message
+                )
+
         if not callable(api_func):
             raise ValueError(f'Platform API {definition.api} is declared but not implemented')
         if definition.api == 'send_message':
@@ -743,10 +774,45 @@ async def execute_platform_tool(
         from ...telemetry.platform import processing_mode
 
         token = processing_mode.set(authorization.get('processor_type', 'none'))
+        delivery_error = None
         try:
             return await api_func(**normalized)
+        except Exception as exc:
+            delivery_error = str(exc)
+            raise
         finally:
             processing_mode.reset(token)
+            if definition.api == 'send_message' and getattr(ap, 'monitoring_service', None) is not None:
+                try:
+                    import json
+
+                    chain = normalized.get('message')
+                    content = chain.model_dump(mode='json') if hasattr(chain, 'model_dump') else str(chain or '')
+                    await ap.monitoring_service.record_message(
+                        execution_context,
+                        bot_id=bot_id,
+                        bot_name=str(getattr(getattr(bot, 'bot_entity', None), 'name', bot_id)),
+                        pipeline_id=str(authorization.get('processor_id') or ''),
+                        pipeline_name=str(authorization.get('processor_id') or authorization.get('runner_id') or ''),
+                        message_content=content
+                        if isinstance(content, (list, dict))
+                        else json.dumps(content, ensure_ascii=False),
+                        session_id=str(authorization.get('conversation_id') or ''),
+                        role='assistant',
+                        status='error' if delivery_error else 'success',
+                        level='error' if delivery_error else 'info',
+                        run_id=execution_id,
+                        parent_message_id=execution_id,
+                        variables=json.dumps(
+                            {
+                                'delivery_error': delivery_error,
+                                'target_type': normalized.get('target_type'),
+                                'target_id': normalized.get('target_id'),
+                            }
+                        ),
+                    )
+                except Exception as exc:
+                    ap.logger.warning(f'Failed to record platform delivery: {exc}')
     finally:
         reset_execution_id(execution_token)
 

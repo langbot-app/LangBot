@@ -20,6 +20,8 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
@@ -194,6 +196,19 @@ class RuntimePipeline:
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
         query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
+        # Telemetry: the bindings this lane runs with. None means "all enabled",
+        # which the *_all flags make explicit in the chain record.
+        try:
+            from ..telemetry import resources as telemetry_resources
+
+            telemetry_resources.note_pipeline(
+                plugins=self.bound_plugins,
+                plugins_all=self.enable_all_plugins,
+                mcp_servers=self.bound_mcp_servers,
+                mcp_all=self.enable_all_mcp_servers,
+            )
+        except Exception:
+            pass
 
         # Record query start for monitoring
         try:
@@ -370,7 +385,43 @@ class RuntimePipeline:
 
             i += 1
 
+    @staticmethod
+    def _synthetic_origin(query: pipeline_query.Query) -> str:
+        """Origin of a lane that starts without an inbound platform event."""
+        try:
+            variables = getattr(query, 'variables', None)
+            declared = str(variables.get('_telemetry_origin') or '').strip() if isinstance(variables, dict) else ''
+        except Exception:
+            declared = ''
+        if declared in ('webui', 'api'):
+            return declared
+        adapter = getattr(query, 'adapter', None)
+        if adapter is not None and adapter.__class__.__name__ == 'WebSocketAdapter':
+            # WebChat and the CLI diagnostic surface both speak through the
+            # WebSocket proxy adapter; the CLI marks itself in its variables.
+            try:
+                variables = getattr(query, 'variables', None)
+                if isinstance(variables, dict) and '_cli_run_status' in variables:
+                    return 'api'
+            except Exception:
+                pass
+            return 'webui'
+        return 'api'
+
+    @staticmethod
+    def _synthetic_event_type(query: pipeline_query.Query) -> str:
+        """Event type of the virtual inbound event a synthetic lane stands for."""
+        event = getattr(query, 'message_event', None)
+        event_type = str(getattr(event, 'type', None) or '').strip()
+        return event_type[:160] or 'message.received'
+
     async def process_query(self, query: pipeline_query.Query):
+        workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
+        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+            return await self._process_query_with_language(query)
+
+    async def _process_query_with_language(self, query: pipeline_query.Query):
+        from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
         from ..telemetry.execution import record as record_execution
         from ..telemetry.platform import processing_mode
@@ -379,11 +430,23 @@ class RuntimePipeline:
         token = processing_mode.set('pipeline')
         # The Workspace-scoped opaque query uuid is the execution identity Space
         # shows for this lane; it is a stable UUID for every pooled query.
-        execution_id = str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
+        ingress_event_id = (query.variables or {}).get('_ingress_event_id')
+        execution_id = ingress_event_id or str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
+        # A lane with no inbound platform event in flight (WebChat, WebUI debug,
+        # HTTP pipeline run) synthesizes its virtual inbound event here, so every
+        # execution starts at an event boundary and the Runner is never the trace
+        # origin. A lane running under a platform route nests inside that ingress.
+        synthesizing = trace_mod.current() is None and not ingress_event_id
         try:
-            # Callers without a platform event (Webchat, HTTP API) still get one
-            # trace for the whole Pipeline lane; nested calls reuse the trace.
-            with ingress(self.ap, 'pipeline_done', getattr(self, 'execution_context', None), execution_id=execution_id):
+            with ingress(
+                self.ap,
+                'pipeline_done',
+                getattr(self, 'execution_context', None),
+                execution_id=execution_id,
+                debug=synthesizing,
+                origin=self._synthetic_origin(query) if synthesizing else 'platform',
+                synthetic_event=self._synthetic_event_type(query) if synthesizing else '',
+            ):
                 # The lane is its own workflow step: acknowledgements and replies it
                 # sends directly, and the runner it drives, hang under this node.
                 # When the lane runs under a platform route the node nests there.
@@ -391,7 +454,12 @@ class RuntimePipeline:
                     lane_outcome = 'success'
                     lane_error = ''
                     try:
-                        return await self._process_query(query)
+                        from ..platform.processing_indicator import processing_indicator
+
+                        async with processing_indicator(
+                            query.adapter, query.launcher_type.value.lower(), query.launcher_id
+                        ):
+                            return await self._process_query(query)
                     except asyncio.CancelledError:
                         lane_outcome = 'cancelled'
                         lane_error = 'cancelled'
@@ -576,14 +644,8 @@ class RuntimePipeline:
             state = current_trace()
             # The runner orchestrator already lands its own failed ``runner/execute``
             # node when the break happens inside a runner; in that case only carry the
-            # reason over instead of repeating the node on the trace.
-            already_recorded = bool(
-                state is not None
-                and any(
-                    stage.get('family') == 'runner' and stage.get('outcome') not in ('success', 'skipped')
-                    for stage in state.stages
-                )
-            )
+            # reason over instead of repeating the node on the chain.
+            already_recorded = bool(state is not None and state.runner_failed)
             if not already_recorded:
                 # The lane failure is its own workflow step, hanging under whatever
                 # step routed into it (or a root when nothing did).

@@ -369,11 +369,13 @@ async def test_ws_stream_sends_cumulative_snapshots_to_wecom():
 
     assert await client.push_stream_chunk('msg-1', '你', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '<think>test</think>你好', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
 
     assert sent == [
         ('req-1', 'stream-1', '你', False),
         ('req-1', 'stream-1', '你好', False),
+        ('req-1', 'stream-1', '<think>test</think>你好', False),
         ('req-1', 'stream-1', '你好', True),
     ]
 
@@ -385,6 +387,7 @@ async def test_webhook_stream_queues_cumulative_snapshots_for_followups():
 
     assert await client.push_stream_chunk('msg-1', '你', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
+    assert await client.push_stream_chunk('msg-1', '<think>test</think>你好', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
 
     assert session.queue.qsize() == 1
@@ -566,3 +569,132 @@ def test_action_stage_only_shows_content_after_fields_without_placeholders():
     assert card['sub_title_text'] == '请选择操作'
     assert '{{#$output.' not in card['sub_title_text']
     assert [button['text'] for button in card['button_list']] == ['yes', 'no']
+
+
+@pytest.mark.asyncio
+async def test_webhook_enter_chat_returns_welcome_without_message_stream():
+    from unittest.mock import AsyncMock
+    from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
+
+    logger = types.SimpleNamespace(info=AsyncMock(), debug=AsyncMock(), error=AsyncMock(), warning=AsyncMock())
+    client = WecomBotClient('', '', '', logger, unified_mode=True)
+    client._encrypt_and_reply = AsyncMock(side_effect=lambda reply, nonce: reply)
+    ordinary = AsyncMock()
+    client.on_message('single')(ordinary)
+
+    async def welcome(event):
+        assert isinstance(event, WecomBotEvent)
+        await client.reply_welcome(event.message_id, 'Welcome')
+
+    client.on_message('event')(welcome)
+    result = await client._handle_enter_chat(
+        {
+            'msgid': 'entry-1',
+            'msgtype': 'event',
+            'chattype': 'single',
+            'from': {'userid': 'visitor'},
+            'event': {'eventtype': 'enter_chat'},
+        },
+        'nonce',
+    )
+    assert result == {'msgtype': 'text', 'text': {'content': 'Welcome'}}
+    ordinary.assert_not_awaited()
+    assert not client._welcome_replies
+    with pytest.raises(ValueError, match='expired'):
+        await client.reply_welcome('entry-1', 'too late')
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_webhook_unmanaged_card_dispatches_but_expired_dify_does_not():
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    logger = types.SimpleNamespace(info=AsyncMock(), debug=AsyncMock(), error=AsyncMock(), warning=AsyncMock())
+    client = WecomBotClient('', '', '', logger, unified_mode=True)
+    client._encrypt_and_reply = AsyncMock(return_value={})
+    handler = AsyncMock()
+    client.on_message('template_card_event')(handler)
+    for task_id in ['business-card', 'dify-expired']:
+        await client._handle_template_card_event(
+            {
+                'msgid': task_id,
+                'msgtype': 'event',
+                'chattype': 'single',
+                'from': {'userid': 'visitor'},
+                'event': {
+                    'eventtype': 'template_card_event',
+                    'template_card_event': {
+                        'task_id': task_id,
+                        'event_key': 'approve',
+                    },
+                },
+            },
+            'nonce',
+        )
+    await asyncio.gather(*client._dispatch_tasks)
+    handler.assert_awaited_once()
+    assert handler.await_args.args[0].userid == 'visitor'
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_ws_welcome_uses_dedicated_command():
+    from unittest.mock import AsyncMock
+
+    client = WecomBotWsClient('bot-id', 'secret', object())
+    client._send_reply = AsyncMock(return_value={})
+    await client.reply_welcome('req-1', 'Welcome')
+    client._send_reply.assert_awaited_once_with(
+        'req-1', {'msgtype': 'text', 'text': {'content': 'Welcome'}}, cmd='aibot_respond_welcome_msg'
+    )
+
+
+@pytest.mark.asyncio
+async def test_expired_custom_managed_card_never_becomes_business_event():
+    from unittest.mock import AsyncMock
+
+    logger = types.SimpleNamespace(info=AsyncMock(), debug=AsyncMock(), error=AsyncMock(), warning=AsyncMock())
+    client = WecomBotWsClient('bot-id', 'secret', logger)
+    handler = AsyncMock()
+    client.on_message('template_card_event')(handler)
+    client._drop_pending_form_task('custom-managed-task', {})
+    body = {
+        'msgtype': 'event',
+        'event': {
+            'eventtype': 'template_card_event',
+            'template_card_event': {
+                'task_id': 'custom-managed-task',
+                'event_key': 'approve',
+            },
+        },
+    }
+    await client._handle_template_card_event_frame({'headers': {'req_id': 'r1'}}, body)
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_webhook_welcome_timeout_cleans_pending_reply(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    logger = types.SimpleNamespace(info=AsyncMock(), debug=AsyncMock(), error=AsyncMock(), warning=AsyncMock())
+    client = WecomBotClient('', '', '', logger, unified_mode=True)
+    client._encrypt_and_reply = AsyncMock(side_effect=lambda reply, nonce: reply)
+
+    async def timeout(awaitable, timeout):
+        awaitable.cancel()
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(asyncio, 'wait_for', timeout)
+    result = await client._handle_enter_chat(
+        {
+            'msgid': 'no-reply',
+            'msgtype': 'event',
+            'event': {'eventtype': 'enter_chat'},
+        },
+        'nonce',
+    )
+    assert result == {}
+    assert not client._welcome_replies
+    await client.close()

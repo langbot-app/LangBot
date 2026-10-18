@@ -147,7 +147,15 @@ export default function PipelineMigration({
       ['migrated', 'already_current'].includes(item.state),
     );
   const rows = preview?.items ?? [];
+  // Custom 4.10 runners cannot be migrated automatically; they are listed
+  // for attention but never submitted.
   const count = rows.filter(
+    (item) =>
+      !['already_current', 'not_legacy', 'unsupported_runner'].includes(
+        item.state,
+      ),
+  ).length;
+  const attention = rows.filter(
     (item) => !['already_current', 'not_legacy'].includes(item.state),
   ).length;
 
@@ -189,7 +197,10 @@ export default function PipelineMigration({
     )
       return;
     let items = rows.filter(
-      (item) => !['already_current', 'not_legacy'].includes(item.state),
+      (item) =>
+        !['already_current', 'not_legacy', 'unsupported_runner'].includes(
+          item.state,
+        ),
     );
     setInstallations([]);
     setDataOnly(!installPlugins);
@@ -340,16 +351,12 @@ export default function PipelineMigration({
 
   return (
     <>
-      {(count > 0 || previewError || results.length > 0) && (
+      {(attention > 0 || results.length > 0) && (
         <Alert className="mb-4 shrink-0 border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>{t('pipelineMigration.title')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-3 text-amber-800 dark:text-amber-200">
-            <span>
-              {previewError
-                ? t('pipelineMigration.previewError')
-                : t('pipelineMigration.detected', { count })}
-            </span>
+            <span>{t('pipelineMigration.detected', { count: attention })}</span>
             <Button
               variant="outline"
               size="sm"
@@ -408,7 +415,7 @@ export default function PipelineMigration({
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {t('pipelineMigration.detected', { count })}
+                {t('pipelineMigration.detected', { count: attention })}
               </p>
             )}
             <MigrationInstallProgress installations={installations} />
@@ -421,7 +428,7 @@ export default function PipelineMigration({
                 })}
               </p>
             )}
-            {(count > 0 || results.length > 0) && (
+            {(attention > 0 || results.length > 0) && (
               <Collapsible>
                 <CollapsibleTrigger asChild>
                   <Button
@@ -472,6 +479,11 @@ export default function PipelineMigration({
                               {item.target_plugin && (
                                 <p className="text-xs text-muted-foreground">
                                   {item.target_plugin.name}
+                                </p>
+                              )}
+                              {item.state === 'unsupported_runner' && (
+                                <p className="text-xs text-destructive break-words">
+                                  {t('pipelineMigration.notices.customRunner')}
                                 </p>
                               )}
                               {item.warnings.some(

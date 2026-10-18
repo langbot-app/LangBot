@@ -204,19 +204,17 @@ function buildToolSourceGroups(
         (rightIndex === -1 ? TOOL_SOURCE_ORDER.length : rightIndex)
       );
     })
-    .map(
-      ([source, providerGroups]): ToolSourceGroup => ({
-        key: source,
-        label: sourceLabels[source] || source,
-        groups: Array.from(providerGroups.values()).sort((left, right) =>
-          left.name.localeCompare(right.name),
-        ),
-        total: Array.from(providerGroups.values()).reduce(
-          (count, group) => count + group.tools.length,
-          0,
-        ),
-      }),
-    );
+    .map(([source, providerGroups]): ToolSourceGroup => ({
+      key: source,
+      label: sourceLabels[source] || source,
+      groups: Array.from(providerGroups.values()).sort((left, right) =>
+        left.name.localeCompare(right.name),
+      ),
+      total: Array.from(providerGroups.values()).reduce(
+        (count, group) => count + group.tools.length,
+        0,
+      ),
+    }));
 }
 
 function buildMCPToolOwners(servers: MCPServer[]) {

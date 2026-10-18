@@ -32,8 +32,6 @@ import {
 import { Plugin } from '@/app/infra/entities/plugin';
 import { MCPServer, Skill } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
-import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 
 function PluginThumbnail({ author, name }: { author: string; name: string }) {
@@ -81,11 +79,6 @@ export default function PipelineExtension({
   pipelineId: string;
 }) {
   const { t } = useTranslation();
-  const {
-    available: boxAvailable,
-    hint: boxHint,
-    reason: boxReason,
-  } = useBoxStatus();
   const [loading, setLoading] = useState(true);
   const [enableAllPlugins, setEnableAllPlugins] = useState(true);
   const [enableAllMCPServers, setEnableAllMCPServers] = useState(true);
@@ -583,13 +576,9 @@ export default function PipelineExtension({
               id="enable-all-skills"
               checked={enableAllSkills}
               onCheckedChange={handleToggleEnableAllSkills}
-              disabled={!boxAvailable}
             />
           </div>
         </div>
-        {!boxAvailable && (
-          <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-        )}
         <div className="space-y-2">
           {enableAllSkills ? (
             <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
@@ -627,7 +616,6 @@ export default function PipelineExtension({
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemoveSkill(skill.name)}
-                    disabled={!boxAvailable}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -641,7 +629,7 @@ export default function PipelineExtension({
           onClick={handleOpenSkillDialog}
           variant="outline"
           className="w-full"
-          disabled={enableAllSkills || !boxAvailable}
+          disabled={enableAllSkills}
         >
           <Plus className="mr-2 h-4 w-4" />
           {t('pipelines.extensions.addSkill')}

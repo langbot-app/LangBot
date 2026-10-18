@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import pathlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import yaml
@@ -38,7 +38,7 @@ class DummyLogger(AbstractEventLogger):
 class DummyDingTalkClient(DingTalkClient):
     def __init__(self, *args, **kwargs):
         self._message_handlers = {}
-        self.client = SimpleNamespace(register_callback_handler=AsyncMock())
+        self.client = SimpleNamespace(register_callback_handler=Mock(), register_all_event_handler=Mock())
         self.markdown_card = kwargs.get('markdown_card', True)
         self.access_token = ''
         self.send_message = AsyncMock()
@@ -243,7 +243,7 @@ async def test_dingtalk_message_converter_maps_inbound_components():
     assert isinstance(chain[0], platform_message.Source)
     assert isinstance(chain[1], platform_message.At)
     assert isinstance(chain[2], platform_message.Plain)
-    assert chain[2].text == ' hello'
+    assert chain[2].text == '@LangBot hello'
     assert isinstance(chain[3], platform_message.File)
     assert isinstance(chain[4], platform_message.Quote)
     assert str(chain[4].origin) == 'quoted text'
@@ -287,8 +287,8 @@ async def test_dingtalk_event_converter_maps_card_feedback():
     assert feedback.session_id == 'space-1'
     assert feedback.message_id == 'bot-msg-1'
 
-    assert isinstance(callback, platform_events.PlatformSpecificEvent)
-    assert callback.action == 'card.callback'
+    assert isinstance(callback, platform_events.DingTalkCardActionEvent)
+    assert callback.action == 'open_details'
 
 
 @pytest.mark.asyncio
@@ -522,3 +522,40 @@ async def test_dingtalk_adapter_dispatches_native_input_submission():
     assert calls[0].data['callback_token'] == 'callback-token'
     assert calls[0].data['values'] == {'score': 42.5}
     assert result['message_id'] not in adapter.interaction_callback_contexts
+
+
+def test_dingtalk_subscription_member_and_group_mapping():
+    from dingtalk_stream.frames import EventMessage
+    from langbot.pkg.platform.adapters.dingtalk.subscriptions import subscription_events
+
+    message = EventMessage()
+    message.headers.event_type = 'chat_add_member'
+    message.data = {'OpenConversationId': 'group', 'UserId': ['a', 'b']}
+    converted = list(subscription_events(message))
+    assert [event.member.id for event in converted] == ['a', 'b']
+    assert all(event.type == 'group.member_joined' for event in converted)
+    message.headers.event_type = 'chat_update_owner'
+    message.data = {'OpenConversationId': 'group', 'Owner': 'new-owner'}
+    event = list(subscription_events(message))[0]
+    assert event.changed_fields == ['owner_id']
+    assert event.group.owner_id == 'new-owner'
+    message.headers.event_type = 'chat_add_member'
+    message.data = {'chatId': 'group', 'unionId': ['union-id']}
+    assert list(subscription_events(message))[0].type == 'platform.specific'
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_subscription_retry_does_not_repeat_successful_members():
+    from dingtalk_stream.frames import EventMessage
+    from langbot.pkg.platform.adapters.dingtalk.subscriptions import DingTalkSubscriptionHandler
+
+    message = EventMessage()
+    message.headers.event_id = 'event-1'
+    message.headers.event_type = 'chat_add_member'
+    message.data = {'OpenConversationId': 'group', 'UserId': ['a', 'b']}
+    adapter = SimpleNamespace(_dispatch_eba_event=AsyncMock(side_effect=[None, RuntimeError('retry'), None]))
+    handler = DingTalkSubscriptionHandler(adapter)
+    assert (await handler.process(message))[0] == 500
+    assert (await handler.process(message))[0] == 200
+    assert (await handler.process(message))[0] == 200
+    assert [call.args[0].member.id for call in adapter._dispatch_eba_event.await_args_list] == ['a', 'b', 'b']

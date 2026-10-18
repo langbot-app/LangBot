@@ -19,6 +19,8 @@ from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLO
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
+from .media import MediaReferenceText
+
 
 TENANT_SETTING = 'langbot.workspace_uuid'
 ACCOUNT_SETTING = 'langbot.account_uuid'
@@ -218,7 +220,7 @@ _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES = {
     'now': sqlalchemy.sql.functions.now,
     'sum': sqlalchemy.sql.functions.sum,
 }
-_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'strftime'})
+_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'row_number', 'strftime'})
 _ALLOWED_SCOPED_CUSTOM_OPERATORS = frozenset({'<=>'})
 _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.dml.UpdateBase,
@@ -292,7 +294,7 @@ def _validate_scoped_sql_type(
 
     if type(sql_type) in {Vector, HALFVEC}:
         return
-    if not type(sql_type).__module__.startswith('sqlalchemy.'):
+    if type(sql_type) is not MediaReferenceText and not type(sql_type).__module__.startswith('sqlalchemy.'):
         raise ScopedSessionTransactionError('TenantUnitOfWork does not allow custom SQL types in public statements')
 
     for identifier_attribute in ('name', 'schema', 'collation'):
@@ -483,9 +485,18 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 and getattr(getattr(source, 'table', None), 'name', None) == 'legacy_pipelines'
                 and source.name in {'config', 'stages', 'extensions_preferences'}
             )
-            if not pipeline_json_cas:
+            monitoring_metadata = (
+                type(element.type) is sqlalchemy.JSON
+                and isinstance(source, sqlalchemy.Column)
+                and type(source.type) in {sqlalchemy.Text, MediaReferenceText}
+                and getattr(getattr(source, 'table', None), 'name', None) in {'event_log', 'agent_run'}
+                and (
+                    source.name == 'metadata_json' or (source.table.name == 'event_log' and source.name == 'input_json')
+                )
+            )
+            if not (pipeline_json_cas or monitoring_metadata):
                 raise ScopedSessionTransactionError(
-                    'TenantUnitOfWork only allows trusted pgvector and Pipeline JSON CAS casts'
+                    'TenantUnitOfWork only allows trusted pgvector, Pipeline JSON CAS and monitoring metadata casts'
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):

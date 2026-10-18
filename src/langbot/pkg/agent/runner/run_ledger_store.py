@@ -12,6 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...storage.media import MediaCache
+from ...utils.inflight import inflight_hub
+from ...utils.execution_lease import host_execution_lease
 
 from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 
@@ -136,6 +139,7 @@ class RunLedgerStore:
                 thread_id=thread_id,
                 workspace_id=workspace_id,
                 bot_id=bot_id,
+                **(host_execution_lease() if status == 'running' and queue_name is None else {}),
                 status=status,
                 queue_name=queue_name,
                 priority=priority,
@@ -149,6 +153,7 @@ class RunLedgerStore:
             )
             session.add(run)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def claim_next_run(
@@ -206,6 +211,7 @@ class RunLedgerStore:
             run.last_claimed_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run, include_claim_token=True)
 
     async def renew_claim(
@@ -226,6 +232,7 @@ class RunLedgerStore:
             run.claim_lease_expires_at = as_naive_utc(now + datetime.timedelta(seconds=max(int(lease_seconds), 1)))
             run.updated_at = as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def release_claim(
@@ -254,6 +261,7 @@ class RunLedgerStore:
             if status in TERMINAL_STATUSES:
                 run.finished_at = run.finished_at or as_naive_utc(now)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def release_expired_claims(
@@ -332,6 +340,7 @@ class RunLedgerStore:
             )
             session.add(row)
             await session.commit()
+            inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
     async def append_audit_event(
@@ -366,7 +375,35 @@ class RunLedgerStore:
             )
             session.add(row)
             await session.commit()
+            inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
+
+    async def pin_skill_revision(self, run_id: str, workspace_id: str, name: str, revision: str) -> str:
+        """Pin a Host-owned revision without overwriting concurrent run metadata."""
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
+                raise ValueError('Skill activation requires an active run in the current Workspace')
+            original = run.metadata_json
+            metadata = MediaCache.redact_inline_images(_json_loads(original, {}))
+            bindings = metadata.setdefault('activated_skills', {})
+            if name in bindings:
+                return str(bindings[name])
+            bindings[name] = revision
+            result = await session.execute(
+                sqlalchemy.update(AgentRun)
+                .where(
+                    AgentRun.run_id == run_id,
+                    AgentRun.metadata_json == original,
+                    AgentRun.status.notin_(TERMINAL_STATUSES),
+                )
+                .values(metadata_json=_json_dumps(metadata))
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
+                raise ValueError('Concurrent run update; retry Skill activation')
+            await session.commit()
+            return revision
 
     async def finalize_run(
         self,
@@ -403,13 +440,15 @@ class RunLedgerStore:
             if cost is not None:
                 run.cost_json = _json_dumps(cost)
             if metadata is not None:
-                existing_metadata = _json_loads(run.metadata_json, {})
+                # Discard legacy image bytes before merging; new metadata still uses the write contract.
+                existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
                 if isinstance(existing_metadata, dict):
                     existing_metadata.update(metadata)
                     run.metadata_json = _json_dumps(existing_metadata)
                 else:
                     run.metadata_json = _json_dumps(metadata)
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def validate_active_claim(
@@ -443,6 +482,7 @@ class RunLedgerStore:
             run.updated_at = as_naive_utc(now)
             run.status_reason = status_reason or run.status_reason
             await session.commit()
+            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:

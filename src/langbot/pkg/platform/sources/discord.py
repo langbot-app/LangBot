@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n import t
+from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+
 import discord
 from discord import ui as discord_ui
 
@@ -219,11 +222,13 @@ class VoiceConnectionManager:
                 # 获取服务器和频道对象
                 guild = self.bot.get_guild(guild_id)
                 if not guild:
-                    raise VoiceConnectionError(f'无法找到服务器 {guild_id}', 'GUILD_NOT_FOUND', guild_id)
+                    raise VoiceConnectionError(t('Resource not found') + f': {guild_id}', 'GUILD_NOT_FOUND', guild_id)
 
                 channel = guild.get_channel(channel_id)
                 if not channel or not isinstance(channel, discord.VoiceChannel):
-                    raise VoiceConnectionError(f'无法找到语音频道 {channel_id}', 'CHANNEL_NOT_FOUND', guild_id)
+                    raise VoiceConnectionError(
+                        t('Resource not found') + f': {channel_id}', 'CHANNEL_NOT_FOUND', guild_id
+                    )
 
                 # 验证用户是否在语音频道中（如果提供了用户ID）
                 if user_id:
@@ -258,12 +263,14 @@ class VoiceConnectionManager:
                 return voice_client
 
             except discord.ClientException as e:
-                raise VoiceNetworkError(f'Discord 客户端错误: {str(e)}')
+                raise VoiceNetworkError(t('Voice connection failed') + f': {e}')
             except discord.opus.OpusNotLoaded as e:
-                raise VoiceConnectionError(f'Opus 编码器未加载: {str(e)}', 'OPUS_NOT_LOADED', guild_id)
+                raise VoiceConnectionError(
+                    t('Voice service is unavailable') + f': Opus: {e}', 'OPUS_NOT_LOADED', guild_id
+                )
             except Exception as e:
                 await self.logger.error(f'连接语音频道时发生未知错误: {str(e)}')
-                raise VoiceConnectionError(f'连接失败: {str(e)}', 'UNKNOWN_ERROR', guild_id)
+                raise VoiceConnectionError(t('Voice connection failed') + f': {e}', 'UNKNOWN_ERROR', guild_id)
 
     async def leave_voice_channel(self, guild_id: int) -> bool:
         """
@@ -494,11 +501,13 @@ class VoiceConnectionManager:
         """
         member = guild.get_member(user_id)
         if not member:
-            raise VoicePermissionError(f'无法找到用户 {user_id}', ['member_not_found'], user_id, channel.id)
+            raise VoicePermissionError(
+                t('Resource not found') + f': {user_id}', ['member_not_found'], user_id, channel.id
+            )
 
         if not member.voice or member.voice.channel != channel:
             raise VoicePermissionError(
-                f'用户 {member.display_name} 不在语音频道 {channel.name} 中',
+                t('User is not in the voice channel') + f': {member.display_name}, {channel.name}',
                 ['user_not_in_channel'],
                 user_id,
                 channel.id,
@@ -528,7 +537,7 @@ class VoiceConnectionManager:
 
         if missing_permissions:
             raise VoicePermissionError(
-                f'机器人在频道 {channel.name} 中缺少权限: {", ".join(missing_permissions)}',
+                t('Permission denied') + f': {channel.name}: {", ".join(missing_permissions)}',
                 missing_permissions,
                 channel_id=channel.id,
             )
@@ -843,7 +852,7 @@ class DiscordFormView(discord_ui.View):
         # silently — most Dify forms have ≤10 actions in practice.
         for idx, action in enumerate(actions[:25]):
             action_id = str(action.get('id') or '')
-            label = str(action.get('title') or action_id or f'Option {idx + 1}')
+            label = str(action.get('title') or action_id or adapter_t(adapter, 'Option {number}', number=idx + 1))
             style = self._STYLE_MAP.get(
                 str(action.get('button_style') or '').lower(),
                 discord.ButtonStyle.secondary,
@@ -966,6 +975,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self._pending_forms.pop(next(iter(self._pending_forms)), None)
 
     # Voice functionality methods
+    @localized_adapter
     async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
         """
         加入语音频道
@@ -990,7 +1000,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             VoiceConnectionError: 其他连接错误
         """
         if not self.voice_manager:
-            raise VoiceConnectionError('语音管理器未初始化', 'MANAGER_NOT_READY')
+            raise VoiceConnectionError(t('Voice service is unavailable'), 'MANAGER_NOT_READY')
 
         return await self.voice_manager.join_voice_channel(guild_id, channel_id, user_id)
 
@@ -1358,7 +1368,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 )
             return
 
-        node_title = str(form_data.get('node_title') or 'Confirmation needed')
+        node_title = str(form_data.get('node_title') or adapter_t(self, 'Confirmation needed'))
         form_content = str(form_data.get('form_content') or '').strip()
 
         # Two paths:

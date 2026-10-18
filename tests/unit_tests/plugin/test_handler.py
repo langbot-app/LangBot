@@ -5,6 +5,7 @@ Tests handler helper methods that don't require full handler setup.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
@@ -16,6 +17,38 @@ from langbot_plugin.entities.io.context import (
     PluginExecutionMode,
     PluginInstallationDesiredState,
 )
+
+
+@pytest.mark.asyncio
+async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch):
+    reset = AsyncMock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.reset_runner_context', reset)
+    transactions = []
+
+    @asynccontextmanager
+    async def tenant_uow(workspace):
+        transactions.append(workspace)
+        yield
+
+    query = SimpleNamespace(
+        bot_uuid='bot-a',
+        launcher_type=SimpleNamespace(value='group'),
+        launcher_id='guild-a',
+        sender_id='user-a',
+        variables={},
+        session=SimpleNamespace(using_conversation=SimpleNamespace(uuid=None)),
+    )
+    app = SimpleNamespace(
+        query_pool=SimpleNamespace(cached_queries={'query-a': query}),
+        persistence_mgr=SimpleNamespace(tenant_uow=tenant_uow),
+        logger=SimpleNamespace(debug=Mock(), warning=Mock()),
+    )
+    h = make_handler(app)
+    response = await h.actions[PluginToRuntimeAction.CREATE_NEW_CONVERSATION.value]({'query_id': 'query-a'})
+    assert response.code == 0
+    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', 'group_guild-a')
+    assert transactions == ['workspace-a']
+    assert query.session.using_conversation is None
 
 
 def make_handler(app):

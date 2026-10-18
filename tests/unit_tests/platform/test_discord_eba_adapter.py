@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import yaml
@@ -344,3 +344,160 @@ async def test_discord_send_and_reply_omit_empty_files_and_return_message_result
     assert channel.send.await_args.kwargs['content'] == 'reply'
     assert channel.send.await_args.kwargs['reference'] is source_message
     assert channel.send.await_args.kwargs['mention_author'] is False
+
+
+def stream_adapter():
+    adapter = make_adapter()
+    sent = SimpleNamespace(content='', edit=AsyncMock())
+    sent.edit.return_value = sent
+    channel = SimpleNamespace(send=AsyncMock(return_value=sent))
+    adapter._stream_buffer['stream'] = {
+        'channel': channel,
+        'sent_message': None,
+        'last_content': '',
+        'chunk_count': 0,
+        'updated_at': 0,
+    }
+    return adapter, channel, sent
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_delivers_all_text_across_message_limit():
+    adapter, channel, sent = stream_adapter()
+    source = platform_events.MessageReceivedEvent(message_id=1)
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream'},
+        platform_message.MessageChain([platform_message.Plain(text='preview')]),
+    )
+    sent.content = 'preview'
+    content = '0123456789' * 450 + 'END'
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream'},
+        platform_message.MessageChain([platform_message.Plain(text=content)]),
+        is_final=True,
+    )
+    sent.edit.assert_awaited_once_with(content=content[:2000])
+    remainder = ''.join(call.args[0] for call in channel.send.await_args_list[1:])
+    assert content[:2000] + remainder == content
+    assert all(len(call.args[0]) <= 2000 for call in channel.send.await_args_list)
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_keeps_tool_round_and_delivers_terminal_attachment():
+    adapter, channel, sent = stream_adapter()
+    object.__setattr__(adapter, 'reply_message', AsyncMock())
+    source = platform_events.MessageReceivedEvent(message_id=1)
+    attachment = platform_message.File(name='result.txt', base64='T0s=')
+    message = platform_message.MessageChain([attachment])
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream', 'tool_calls': [{'id': 'tool'}]},
+        message,
+        is_final=True,
+    )
+    assert 'stream' in adapter._stream_buffer
+    adapter.reply_message.assert_not_awaited()
+    await adapter.reply_message_chunk(source, {'resp_message_id': 'stream'}, message, is_final=True)
+    adapter.reply_message.assert_awaited_once_with(source, message, False)
+    channel.send.assert_not_awaited()
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_final_failure_is_not_reported_as_success():
+    adapter, channel, _ = stream_adapter()
+    channel.send.side_effect = RuntimeError('delivery failed')
+    with pytest.raises(RuntimeError, match='delivery failed'):
+        await adapter.reply_message_chunk(
+            platform_events.MessageReceivedEvent(message_id=1),
+            {'resp_message_id': 'stream'},
+            platform_message.MessageChain([platform_message.Plain(text='reply')]),
+            is_final=True,
+        )
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_gateway_uses_one_raw_path_for_cached_events():
+    adapter = make_adapter()
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    assert not hasattr(adapter.bot, 'on_reaction_add')
+    assert not hasattr(adapter.bot, 'on_reaction_remove')
+    assert not hasattr(adapter.bot, 'on_message_delete')
+    payload = SimpleNamespace(user_id=123)
+    await adapter.bot.on_raw_reaction_add(payload)
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('raw_reaction_add', payload, None)
+    adapter._dispatch_gateway_tuple.reset_mock()
+    cached = fake_message()
+    await adapter.bot.on_raw_message_delete(SimpleNamespace(cached_message=cached))
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('message_delete', cached, None)
+
+
+@pytest.mark.asyncio
+async def test_discord_does_not_route_its_own_stream_edits():
+    adapter = make_adapter()
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    before = fake_message(author=fake_user(bot=True))
+    await adapter.bot.on_message_edit(before, before)
+    adapter._dispatch_gateway_tuple.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_uncached_edit_fetches_message_without_duplicate_or_preview_events():
+    adapter = make_adapter()
+    after = fake_message()
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=after))
+    object.__setattr__(adapter, '_get_channel', AsyncMock(return_value=channel))
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    payload = SimpleNamespace(cached_message=None, data={'content': 'edited'}, channel_id=12, message_id=34)
+    await adapter.bot.on_raw_message_edit(payload)
+    channel.fetch_message.assert_awaited_once_with(34)
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('message_edit', (None, after), None)
+    adapter._dispatch_gateway_tuple.reset_mock()
+    channel.fetch_message.reset_mock()
+    payload.cached_message = after
+    await adapter.bot.on_raw_message_edit(payload)
+    payload.cached_message = None
+    payload.data = {'embeds': []}
+    await adapter.bot.on_raw_message_edit(payload)
+    payload.data = {'content': 'bot edit', 'author': {'bot': True}}
+    await adapter.bot.on_raw_message_edit(payload)
+    channel.fetch_message.assert_not_awaited()
+    adapter._dispatch_gateway_tuple.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_uses_system_channel(monkeypatch, guild_id, expected_guild_id):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=456)))
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=channel))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    adapter._get_channel = AsyncMock()
+    result = await adapter.send_message(
+        'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+    )
+    assert result.message_id == 456
+    get_guild.assert_called_once_with(expected_guild_id)
+    channel.send.assert_awaited_once_with(content='Welcome')
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_without_system_channel_does_not_pick_another_channel(
+    monkeypatch, guild_id, expected_guild_id
+):
+    adapter = make_adapter()
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=None))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='no system channel'):
+        await adapter.send_message(
+            'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+        )
+    get_guild.assert_called_once_with(expected_guild_id)
+    adapter._get_channel.assert_not_awaited()

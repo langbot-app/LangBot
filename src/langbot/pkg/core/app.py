@@ -47,6 +47,7 @@ from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
+from ..skill import repository as skill_repository
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
@@ -91,6 +92,7 @@ class Application:
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
     box_service: box_service_module.BoxService = None
+    skill_repository: skill_repository.SkillRepository = None
 
     # ======= Config manager =======
 
@@ -309,6 +311,14 @@ class Application:
         if runtime_ops_reporter is not None:
             runtime_ops_stats = runtime_ops_reporter.get_stats()
 
+        telemetry_stats = {}
+        telemetry_health = getattr(self.telemetry, 'health', None)
+        if callable(telemetry_health):
+            try:
+                telemetry_stats = telemetry_health()
+            except Exception:
+                telemetry_stats = {}
+
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
@@ -320,7 +330,7 @@ class Application:
             'models': model_stats,
             'runtimes': runtime_stats,
             'runtime_ops': runtime_ops_stats,
-            'telemetry_tasks': len(getattr(self.telemetry, 'send_tasks', ())),
+            'telemetry': telemetry_stats,
         }
 
     async def initialize(self):
@@ -350,6 +360,13 @@ class Application:
 
     async def run(self):
         self.event_loop_monitor.start()
+        from ..utils.execution_lease import maintain_execution_leases
+
+        self.task_mgr.create_task(
+            maintain_execution_leases(self),
+            name='execution-lease-maintenance',
+            scopes=[core_entities.LifecycleControlScope.APPLICATION],
+        )
         try:
             if (
                 self.directory_projection_service is not None
@@ -412,7 +429,10 @@ class Application:
 
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            monitoring_enabled = auto_cleanup_cfg.get('enabled', True)
+            monitoring_enabled = (
+                auto_cleanup_cfg.get('enabled', True)
+                or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            )
             retention_days = self._get_positive_int_config(
                 auto_cleanup_cfg.get('retention_days', 30),
                 default=30,
@@ -525,7 +545,7 @@ class Application:
                                         if total_deleted > 0:
                                             self.logger.info(
                                                 f'Storage maintenance for Workspace {context.workspace_uuid}: '
-                                                f'deleted expired files: {deleted}'
+                                                f'cleaned expired storage data: {deleted}'
                                             )
                                     except asyncio.CancelledError:
                                         raise

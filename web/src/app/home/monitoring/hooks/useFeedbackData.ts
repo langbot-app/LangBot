@@ -4,6 +4,8 @@ import { FeedbackRecord, FeedbackStats } from '../types/monitoring';
 import { parseUTCTimestamp } from '../utils/dateUtils';
 
 interface UseFeedbackDataParams {
+  mode?: 'all' | 'real' | 'debug';
+  statusGroup?: string;
   botIds?: string[];
   pipelineIds?: string[];
   startTime?: string;
@@ -60,6 +62,9 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
   const fetchStats = useCallback(async () => {
     try {
       const queryParams = new URLSearchParams();
+      if (params.mode) queryParams.append('mode', params.mode);
+      if (params.statusGroup && params.statusGroup !== 'all')
+        queryParams.append('status', params.statusGroup);
       if (params.botIds) {
         params.botIds.forEach((id) => queryParams.append('botId', id));
       }
@@ -99,7 +104,14 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
     } catch (err) {
       console.error('Failed to fetch feedback stats:', err);
     }
-  }, [params.botIds, params.pipelineIds, params.startTime, params.endTime]);
+  }, [
+    params.mode,
+    params.statusGroup,
+    params.botIds,
+    params.pipelineIds,
+    params.startTime,
+    params.endTime,
+  ]);
 
   const fetchFeedback = useCallback(async () => {
     setLoading(true);
@@ -107,6 +119,9 @@ export function useFeedbackData(params: UseFeedbackDataParams = {}) {
 
     try {
       const queryParams = new URLSearchParams();
+      if (params.mode) queryParams.append('mode', params.mode);
+      if (params.statusGroup && params.statusGroup !== 'all')
+        queryParams.append('status', params.statusGroup);
       if (params.botIds) {
         params.botIds.forEach((id) => queryParams.append('botId', id));
       }

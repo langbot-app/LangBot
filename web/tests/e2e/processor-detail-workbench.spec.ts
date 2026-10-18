@@ -77,6 +77,16 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab')).toHaveCount(2);
+    const tabs = await flow.getByRole('tab').all();
+    const positions = await Promise.all(tabs.map((tab) => tab.boundingBox()));
+    expect(positions.every((position) => position !== null)).toBe(true);
+    for (let index = 1; index < positions.length; index++) {
+      expect(
+        Math.abs(positions[index]!.y - positions[0]!.y),
+      ).toBeLessThanOrEqual(1);
+      expect(positions[index]!.x).toBeGreaterThan(positions[index - 1]!.x);
+    }
     await expect(flow.getByRole('tab').nth(0)).toContainText('Runner');
     await expect(flow.getByRole('tab').nth(1)).toContainText('Events & tools');
     await expect(flow.getByRole('tab')).toHaveCount(2);
@@ -490,6 +500,16 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab')).toHaveCount(3);
+    const tabs = await flow.getByRole('tab').all();
+    const positions = await Promise.all(tabs.map((tab) => tab.boundingBox()));
+    expect(positions.every((position) => position !== null)).toBe(true);
+    for (let index = 1; index < positions.length; index++) {
+      expect(
+        Math.abs(positions[index]!.y - positions[0]!.y),
+      ).toBeLessThanOrEqual(1);
+      expect(positions[index]!.x).toBeGreaterThan(positions[index - 1]!.x);
+    }
     await expect(flow.getByRole('tab').nth(0)).toContainText('Trigger');
     await expect(flow.getByRole('tab').nth(1)).toContainText('AI');
     await expect(flow.getByRole('tab').nth(2)).toContainText('Output');

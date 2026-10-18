@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import json
+import sqlalchemy
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -25,6 +26,7 @@ import time
 
 from langbot.pkg.api.http.service.space import SpaceService
 from langbot.pkg.entity.persistence.user import User
+from langbot.pkg.entity.persistence.model import LLMModel, ModelProvider
 from langbot.pkg.utils import constants
 
 
@@ -157,6 +159,8 @@ class TestSpaceServiceGetUserByEmail:
         # Verify
         assert result is not None
         assert result.user == 'found@example.com'
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.whereclause.compare(User.user == 'found@example.com')
 
     async def test_get_user_by_email_not_found(self):
         """Returns None when user not found."""
@@ -478,6 +482,9 @@ class TestSpaceServiceRefreshToken:
 
         # Verify
         assert result['access_token'] == 'new_access_token'
+        mock_session_obj.post.assert_called_once_with(
+            'https://space.langbot.app/api/v1/accounts/token/refresh', json={'refresh_token': 'old_refresh_token'}
+        )
 
     async def test_refresh_token_api_error(self):
         """Raises ValueError on API error."""
@@ -662,6 +669,9 @@ class TestSpaceServiceGetUserInfoRaw:
         # Verify
         assert result['email'] == 'test@example.com'
         assert result['credits'] == 100
+        mock_session_obj.get.assert_called_once_with(
+            'https://space.langbot.app/api/v1/accounts/me', headers={'Authorization': 'Bearer access_token'}
+        )
 
     async def test_get_user_info_raw_api_error(self):
         """Raises ValueError on API error."""
@@ -737,7 +747,8 @@ class TestSpaceServiceGetUserInfo:
         result = await service.get_user_info('test@example.com')
 
         # Verify
-        assert result['email'] == 'test@example.com'
+        assert result == {'email': 'test@example.com', 'credits': 100}
+        service.get_user_info_raw.assert_awaited_once_with('valid_token')
 
 
 class TestSpaceServiceGetModels:
@@ -980,6 +991,20 @@ class TestSpaceServiceGetModelSelection:
         service.get_model_selection.assert_awaited_once_with('chat')
         model_mgr.sync_new_models_from_space.assert_awaited_once()
         assert persistence.execute_async.await_count == 2
+        execution = model_mgr.sync_new_models_from_space.await_args.args[0]
+        assert (execution.instance_uuid, execution.workspace_uuid, execution.placement_generation) == (
+            'instance',
+            'workspace',
+            1,
+        )
+        for call in persistence.execute_async.await_args_list:
+            assert call.args[0].whereclause.compare(
+                sqlalchemy.and_(
+                    LLMModel.workspace_uuid == 'workspace',
+                    ModelProvider.requester == 'space-chat-completions',
+                    sqlalchemy.or_(LLMModel.uuid == 'best-upstream-uuid', LLMModel.name == 'best-chat-model'),
+                )
+            )
 
 
 class TestSpaceServiceCreditsCache:
@@ -1025,3 +1050,45 @@ class TestSpaceServiceCreditsCache:
         assert result == 500
         assert 'test@example.com' in service._credits_cache
         assert service._credits_cache['test@example.com'][0] == 500
+
+
+@pytest.mark.parametrize('status', [200, 503])
+async def test_assistant_recommendation_uses_dedicated_endpoint_without_fallback(status):
+    service = SpaceService(SimpleNamespace(instance_config=SimpleNamespace(data={})))
+    service.get_model_selection = AsyncMock()
+    service._resolve_recommended_model = AsyncMock(return_value={'uuid': 'local', 'name': 'deepseek-v4-flash'})
+    response = MagicMock(status=status)
+    _set_response_body(
+        response,
+        {
+            'code': 0,
+            'data': {
+                'model': {
+                    'uuid': 'upstream',
+                    'model_id': 'deepseek-v4-flash',
+                    'category': 'chat',
+                    'provider': 'deepseek',
+                    'status': 'active',
+                }
+            },
+        },
+    )
+    session = MagicMock()
+    session.get.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+    context = object()
+    with patch('langbot.pkg.api.http.service.space.httpclient.get_session', return_value=session):
+        if status == 200:
+            assert await service.get_recommended_assistant_model(context) == {
+                'uuid': 'local',
+                'name': 'deepseek-v4-flash',
+            }
+            args = service._resolve_recommended_model.await_args.args
+            assert args[0] is context
+            assert args[1].model_id == 'deepseek-v4-flash'
+        else:
+            with pytest.raises(ValueError, match='No recommended assistant model'):
+                await service.get_recommended_assistant_model(context)
+            service._resolve_recommended_model.assert_not_awaited()
+    service.get_model_selection.assert_not_awaited()
+    session.get.assert_called_once_with('https://space.langbot.app/api/v1/models/assistant/recommendation')

@@ -25,7 +25,12 @@ from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.event_log import EventLog
 from langbot.pkg.entity.persistence.transcript import Transcript
 
-pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.asyncio,
+]
 
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 9, 22, 4, 5, 6, 123000, tzinfo=UTC)
@@ -34,7 +39,11 @@ TABLES = [AgentRun.__table__, AgentRunEvent.__table__, AgentRuntime.__table__, E
 
 def _published_schema(connection):
     with Operations.context(MigrationContext.configure(connection)):
-        for revision in ('58846a8d7a81_add_event_log_and_transcript_tables', '8d3a1f2c4b6e_add_agent_run_ledger'):
+        for revision in (
+            '58846a8d7a81_add_event_log_and_transcript_tables',
+            '8d3a1f2c4b6e_add_agent_run_ledger',
+            '0036_execution_host_leases',
+        ):
             importlib.import_module(f'langbot.pkg.persistence.alembic.versions.{revision}').upgrade()
 
 
@@ -106,6 +115,7 @@ async def _legacy_run(engine, *, status='queued'):
         )
 
 
+@pytest.mark.contract('runner_timestamps')
 async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
     store = run_ledger_store.RunLedgerStore(pg_engine)
     deadline = NOW + dt.timedelta(minutes=5)
@@ -119,6 +129,7 @@ async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
             bot_id=None,
             event_type='message.received',
             source='debug',
+            data={},
             delivery=SimpleNamespace(model_dump=lambda **kwargs: {}),
         ),
         binding=SimpleNamespace(binding_id='binding', agent_id='agent', processor_id='agent', processor_type='agent'),

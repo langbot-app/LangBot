@@ -137,10 +137,7 @@ async def test_officialaccount_message_converter_maps_components_to_passive_text
         )
     )
 
-    assert 'hi' in content
-    assert '[Image]' in content
-    assert '[File: a.txt]' in content
-    assert 'quoted' in content
+    assert content == 'hi\n[Image]\n[File: a.txt]\nquoted'
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+
 import lark_oapi
 from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody, CreateFileRequest, CreateFileRequestBody
 import traceback
@@ -1241,7 +1243,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-                    return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '操作成功'}})
+                    return P2CardActionTriggerResponse(
+                        {'toast': {'type': 'success', 'content': adapter_t(self, 'Done')}}
+                    )
 
                 if action_value == '有帮助':
                     feedback_type = 1
@@ -1250,7 +1254,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 else:
                     from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-                    return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '操作成功'}})
+                    return P2CardActionTriggerResponse(
+                        {'toast': {'type': 'success', 'content': adapter_t(self, 'Done')}}
+                    )
 
                 operator = getattr(event.event, 'operator', None)
                 context = getattr(event.event, 'context', None)
@@ -1287,13 +1293,17 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-                return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
+                return P2CardActionTriggerResponse(
+                    {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
+                )
             except Exception:
                 traceback.print_exc()
                 schedule_on_app_loop(self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}'))
                 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-                return P2CardActionTriggerResponse({'toast': {'type': 'error', 'content': '反馈处理失败'}})
+                return P2CardActionTriggerResponse(
+                    {'toast': {'type': 'error', 'content': adapter_t(self, 'Failed to process feedback')}}
+                )
 
         event_handler = (
             lark_oapi.EventDispatcherHandler.builder('', '')
@@ -1546,6 +1556,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         return True
         return False
 
+    @localized_adapter
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
@@ -1810,7 +1821,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                     'elements': [
                                         {
                                             'tag': 'markdown',
-                                            'content': '<font color="grey-600">以上内容由 AI 生成，仅供参考。更多详细、准确信息可点击引用链接查看</font>',
+                                            'content': '<font color="grey-600">'
+                                            + adapter_t(
+                                                self, 'AI-generated content. Refer to the cited sources for details.'
+                                            )
+                                            + '</font>',
                                             'text_align': 'left',
                                             'text_size': 'notation',
                                             'margin': '4px 0px 0px 0px',
@@ -1841,7 +1856,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'width': 'fill',
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
-                                            'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                            'hover_tips': {'tag': 'plain_text', 'content': adapter_t(self, 'Helpful')},
                                             'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
@@ -1865,7 +1880,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                             'width': 'default',
                                             'size': 'medium',
                                             'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
-                                            'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                            'hover_tips': {
+                                                'tag': 'plain_text',
+                                                'content': adapter_t(self, 'Not helpful'),
+                                            },
                                             'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
                                             'margin': '0px 0px 0px 0px',
                                         }
@@ -2065,6 +2083,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
         return new_card_id
 
+    @localized_adapter
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -2175,6 +2194,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
 
+    @localized_adapter
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -2492,7 +2512,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'tag': 'select_static',
                         'name': component_name,
                         'label': {'tag': 'plain_text', 'content': field_name},
-                        'placeholder': {'tag': 'plain_text', 'content': '请选择'},
+                        'placeholder': {'tag': 'plain_text', 'content': adapter_t(self, 'Select an option')},
                         'options': [
                             {
                                 'text': {'tag': 'plain_text', 'content': option},
@@ -2526,7 +2546,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     'tag': 'input',
                     'name': component_name,
                     'label': {'tag': 'plain_text', 'content': field_name},
-                    'placeholder': {'tag': 'plain_text', 'content': '请输入'},
+                    'placeholder': {'tag': 'plain_text', 'content': adapter_t(self, 'Enter a value')},
                     'default_value': _dify_default_value(field),
                     'width': 'fill',
                     'required': False,
@@ -2821,7 +2841,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                 'elements': [
                                     {
                                         'tag': 'markdown',
-                                        'content': '<font color="grey-600">以上内容由 AI 生成，仅供参考。更多详细、准确信息可点击引用链接查看</font>',
+                                        'content': '<font color="grey-600">'
+                                        + adapter_t(
+                                            self, 'AI-generated content. Refer to the cited sources for details.'
+                                        )
+                                        + '</font>',
                                         'text_align': 'left',
                                         'text_size': 'notation',
                                         'margin': '4px 0px 0px 0px',
@@ -2856,7 +2880,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                                 'width': 'fill',
                                                 'size': 'medium',
                                                 'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
-                                                'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                                'hover_tips': {
+                                                    'tag': 'plain_text',
+                                                    'content': adapter_t(self, 'Helpful'),
+                                                },
                                                 'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
                                                 'margin': '0px 0px 0px 0px',
                                             }
@@ -2880,7 +2907,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                                                 'width': 'default',
                                                 'size': 'medium',
                                                 'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
-                                                'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                                'hover_tips': {
+                                                    'tag': 'plain_text',
+                                                    'content': adapter_t(self, 'Not helpful'),
+                                                },
                                                 'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
                                                 'margin': '0px 0px 0px 0px',
                                             }
@@ -3007,6 +3037,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             token = data.get('token')
         return isinstance(token, str) and hmac.compare_digest(expected.encode('utf-8'), token.encode('utf-8'))
 
+    @localized_adapter
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         """处理统一 webhook 请求。
         Args:
@@ -3178,14 +3209,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             },
                         )
 
-                        return {'toast': {'type': 'success', 'content': '操作成功'}}
+                        return {'toast': {'type': 'success', 'content': adapter_t(self, 'Done')}}
 
                     if action_value == '有帮助':
                         feedback_type = 1
                     elif action_value == '无帮助':
                         feedback_type = 2
                     else:
-                        return {'toast': {'type': 'success', 'content': '操作成功'}}
+                        return {'toast': {'type': 'success', 'content': adapter_t(self, 'Done')}}
 
                     user_id = operator.get('open_id') or operator.get('user_id')
                     open_chat_id = context_data.get('open_chat_id')
@@ -3217,10 +3248,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     if platform_events.FeedbackEvent in self.listeners:
                         await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
 
-                    return {'toast': {'type': 'success', 'content': '感谢您的反馈'}}
+                    return {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
                 except Exception:
                     await self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}')
-                    return {'toast': {'type': 'error', 'content': '反馈处理失败'}}
+                    return {'toast': {'type': 'error', 'content': adapter_t(self, 'Failed to process feedback')}}
 
             elif 'im.chat.member.bot.added_v1' == type:
                 try:
@@ -3273,6 +3304,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.logger.error(f'Error in lark callback: {traceback.format_exc()}')
             return {'code': 500, 'message': 'error'}
 
+    @localized_adapter
     async def run_async(self):
         enable_webhook = self.config['enable-webhook']
 

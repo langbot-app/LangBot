@@ -364,6 +364,39 @@ test.describe('wizard and QR platform regressions', () => {
       .toBe(true);
   });
 
+  test('a normal Page Bot embed has no wizard notice and stays closed until opened', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.goto('/login');
+    const source = fs
+      .readFileSync(
+        path.resolve(process.cwd(), '../src/langbot/templates/embed/widget.js'),
+        'utf8',
+      )
+      .replaceAll('__LANGBOT_LOCALE__', 'en_US')
+      .replaceAll('__LANGBOT_BOT_UUID__', 'bot-1')
+      .replaceAll('__LANGBOT_BASE_URL__', 'https://embed.test')
+      .replaceAll('__LANGBOT_TURNSTILE_SITE_KEY__', '')
+      .replaceAll('__LANGBOT_BUBBLE_ICON__', 'chat');
+    await page.addScriptTag({ content: source });
+    const root = page.locator('#langbot-widget-root');
+    await expect(root).toBeAttached();
+    expect(
+      await root.evaluate(
+        (element) =>
+          element.shadowRoot?.querySelectorAll('.lb-test-notice').length,
+      ),
+    ).toBe(0);
+    expect(
+      await root.evaluate((element) =>
+        element.shadowRoot
+          ?.querySelector('.lb-panel')
+          ?.classList.contains('lb-visible'),
+      ),
+    ).toBe(false);
+  });
+
   test('binds HTTP Bot before its signed inbound verification request', async ({
     page,
   }) => {
@@ -446,6 +479,16 @@ test.describe('wizard and QR platform regressions', () => {
       async (route) => {
         inboundTestCount += 1;
         expect(route.request().method()).toBe('POST');
+        expect(route.request().postDataJSON()).toEqual({
+          message: 'Explicit HTTP verification',
+        });
+        expect(route.request().headers().authorization).toBe(
+          'Bearer playwright-token',
+        );
+        expect(route.request().headers()['x-workspace-id']).toBe(
+          'workspace-playwright',
+        );
+        expect(boundPipelineUuid).toBe('pipeline-1');
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -467,152 +510,186 @@ test.describe('wizard and QR platform regressions', () => {
     await expect.poll(() => boundPipelineUuid).toBe('pipeline-1');
     await expect.poll(() => savedInboundSecret).toMatch(/^[a-f0-9]{64}$/);
 
+    await page
+      .getByRole('button', { name: 'Send Test Message', exact: true })
+      .locator('..')
+      .locator('input')
+      .fill('  Explicit HTTP verification  ');
     await page.getByRole('button', { name: 'Send Test' }).click();
     await expect.poll(() => inboundTestCount).toBe(1);
   });
 
-  test('creates only a message pipeline after message verification and valid Runner configuration', async ({
-    page,
-  }) => {
-    await installLangBotApiMocks(page, {
-      authenticated: true,
-      withAdapterEvents: true,
-    });
-    const processorRequests: string[] = [];
-    page.on('request', (request) => {
-      const path = new URL(request.url()).pathname;
-      if (
-        request.method() === 'POST' &&
-        ['/api/v1/pipelines', '/api/v1/agents'].includes(path)
-      ) {
-        processorRequests.push(path);
-      }
-    });
-    let messageReceived = false;
-    await page.route('**/api/v1/platform/bots/*/logs', async (route) => {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: ok({
-          logs: messageReceived
-            ? [
-                {
-                  seq_id: 1,
-                  timestamp: Date.now() / 1000,
-                  level: 'info',
-                  text: 'Received message',
-                  images: [],
-                  message_session_id: 'person_123',
-                },
-              ]
-            : [],
-          total_count: messageReceived ? 1 : 0,
-        }),
+  for (const accountType of ['local', 'space'] as const) {
+    test(`creates only a message pipeline after message verification and valid Runner configuration for ${accountType}`, async ({
+      page,
+    }) => {
+      await installLangBotApiMocks(page, {
+        authenticated: true,
+        withAdapterEvents: true,
       });
-    });
-    await page.route('**/api/v1/pipelines/_/metadata', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: ok({
-          configs: [
-            {
-              name: 'ai',
-              label: { en_US: 'AI Feature', zh_Hans: 'AI 能力' },
-              stages: [
-                {
-                  name: 'plugin:langbot-team/LocalAgent/default',
-                  config: [
-                    {
-                      name: 'model',
-                      type: 'model-fallback-selector',
-                      required: true,
-                      default: { primary: 'llm-valid', fallbacks: [] },
-                    },
-                  ],
-                },
-                {
-                  name: 'runner',
-                  label: { en_US: 'Runtime', zh_Hans: '运行方式' },
-                  config: [
-                    {
-                      name: 'id',
-                      label: { en_US: 'Runner', zh_Hans: '运行器' },
-                      type: 'select',
-                      required: true,
-                      default: 'external-runner',
-                      options: [
-                        {
-                          name: 'external-runner',
-                          label: {
-                            en_US: 'External Runner',
-                            zh_Hans: '外部运行器',
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  name: 'external-runner',
-                  label: {
-                    en_US: 'External Runner',
-                    zh_Hans: '外部运行器',
-                  },
-                  config: [
-                    {
-                      id: 'api-key',
-                      name: 'api-key',
-                      label: { en_US: 'API Key', zh_Hans: 'API 密钥' },
-                      type: 'secret',
-                      required: true,
-                      default: 'your-api-key',
-                    },
-                  ],
-                },
-              ],
+      await page.route('**/api/v1/user/info', (route) =>
+        route.fulfill({
+          json: {
+            code: 0,
+            data: {
+              account_uuid:
+                accountType === 'space' ? 'account-playwright' : null,
+              user: 'admin@example.com',
+              account_type: accountType,
+              has_password: true,
             },
-          ],
+          },
         }),
+      );
+      const processorRequests: string[] = [];
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+          request.method() === 'POST' &&
+          ['/api/v1/pipelines', '/api/v1/agents'].includes(path)
+        ) {
+          processorRequests.push(path);
+        }
       });
+      let messageReceived = false;
+      await page.route('**/api/v1/platform/bots/*/logs', async (route) => {
+        await route.fulfill({
+          contentType: 'application/json',
+          body: ok({
+            logs: messageReceived
+              ? [
+                  {
+                    seq_id: 1,
+                    timestamp: Date.now() / 1000,
+                    level: 'info',
+                    text: 'Received message',
+                    images: [],
+                    message_session_id: 'person_123',
+                  },
+                ]
+              : [],
+            total_count: messageReceived ? 1 : 0,
+          }),
+        });
+      });
+      await page.route('**/api/v1/pipelines/_/metadata', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: ok({
+            configs: [
+              {
+                name: 'ai',
+                label: { en_US: 'AI Feature', zh_Hans: 'AI 能力' },
+                stages: [
+                  {
+                    name: 'plugin:langbot-team/LocalAgent/default',
+                    config: [
+                      {
+                        name: 'model',
+                        type: 'model-fallback-selector',
+                        required: true,
+                        default: { primary: 'llm-valid', fallbacks: [] },
+                      },
+                    ],
+                  },
+                  {
+                    name: 'runner',
+                    label: { en_US: 'Runtime', zh_Hans: '运行方式' },
+                    config: [
+                      {
+                        name: 'id',
+                        label: { en_US: 'Runner', zh_Hans: '运行器' },
+                        type: 'select',
+                        required: true,
+                        default: 'external-runner',
+                        options: [
+                          {
+                            name: 'external-runner',
+                            label: {
+                              en_US: 'External Runner',
+                              zh_Hans: '外部运行器',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    name: 'external-runner',
+                    label: {
+                      en_US: 'External Runner',
+                      zh_Hans: '外部运行器',
+                    },
+                    config: [
+                      {
+                        id: 'api-key',
+                        name: 'api-key',
+                        label: { en_US: 'API Key', zh_Hans: 'API 密钥' },
+                        type: 'secret',
+                        required: true,
+                        default: 'your-api-key',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      });
+
+      await page.goto('/wizard');
+      await page.getByText('Playwright Adapter', { exact: true }).click();
+      await page.getByRole('button', { name: 'Confirm, Create Bot' }).click();
+      await page.getByRole('button', { name: 'Save & Enable Bot' }).click();
+      await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+      messageReceived = true;
+      await expect(
+        page.getByRole('button', { name: 'Next', exact: true }),
+      ).toBeEnabled();
+      const localWarning = page.getByText(
+        'The bot-side connection is configured correctly and received an IM message. Because you are not signed in with a LangBot Account, model calls may fail; continue to the next step to add your own model.',
+        { exact: true },
+      );
+      if (accountType === 'local') await expect(localWarning).toBeVisible();
+      else await expect(localWarning).toHaveCount(0);
+      await page.getByRole('button', { name: 'Next' }).click();
+      await expect(
+        page.getByText('Use the default setup', { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByText('Connect an External Agent', { exact: true })
+        .click();
+      await page
+        .locator('[data-slot="card"]')
+        .filter({ has: page.getByText('External Runner', { exact: true }) })
+        .getByRole('button', { name: 'Use This Runner' })
+        .click();
+
+      const deployButton = page.getByRole('button', {
+        name: 'Create & Deploy',
+      });
+      await expect(deployButton).toBeDisabled();
+      await page.getByRole('textbox').fill('app-real-api-key');
+      await expect(deployButton).toBeEnabled();
+      const bindingRequest = page.waitForRequest(
+        (request) =>
+          request.method() === 'PUT' &&
+          new URL(request.url()).pathname === '/api/v1/pipelines/pipeline-1',
+      );
+      await deployButton.click();
+      const body = (await bindingRequest).postDataJSON();
+      expect(body.config.ai.runner.id).toBe('external-runner');
+      expect(body.config.ai.runner_config['external-runner']['api-key']).toBe(
+        'app-real-api-key',
+      );
+      await expect(
+        page.getByRole('button', { name: 'Back to Workbench' }),
+      ).toBeVisible();
+      expect(processorRequests).toEqual(['/api/v1/pipelines']);
     });
-
-    await page.goto('/wizard');
-    await page.getByText('Playwright Adapter', { exact: true }).click();
-    await page.getByRole('button', { name: 'Confirm, Create Bot' }).click();
-    await page.getByRole('button', { name: 'Save & Enable Bot' }).click();
-    await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
-    messageReceived = true;
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(
-      page.getByText('Use the default setup', { exact: true }),
-    ).toBeVisible();
-    await page.getByText('Connect an External Agent', { exact: true }).click();
-    await page
-      .locator('[data-slot="card"]')
-      .filter({ has: page.getByText('External Runner', { exact: true }) })
-      .getByRole('button', { name: 'Use This Runner' })
-      .click();
-
-    const deployButton = page.getByRole('button', { name: 'Create & Deploy' });
-    await expect(deployButton).toBeDisabled();
-    await page.getByRole('textbox').fill('app-real-api-key');
-    await expect(deployButton).toBeEnabled();
-    const bindingRequest = page.waitForRequest(
-      (request) =>
-        request.method() === 'PUT' &&
-        new URL(request.url()).pathname === '/api/v1/pipelines/pipeline-1',
-    );
-    await deployButton.click();
-    const body = (await bindingRequest).postDataJSON();
-    expect(body.config.ai.runner.id).toBe('external-runner');
-    expect(body.config.ai.runner_config['external-runner']['api-key']).toBe(
-      'app-real-api-key',
-    );
-    await expect(
-      page.getByRole('button', { name: 'Back to Workbench' }),
-    ).toBeVisible();
-    expect(processorRequests).toEqual(['/api/v1/pipelines']);
-  });
+  }
 
   for (const qrPlatform of qrPlatforms) {
     test(`${qrPlatform.label} requests and displays its QR code`, async ({
@@ -715,6 +792,8 @@ test.describe('wizard and QR platform regressions', () => {
     await expect(dialog.getByRole('button', { name: 'Retry' })).toBeEnabled();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^Save$/ })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Save(?: and enable)?$/ }),
+    ).toBeVisible();
   });
 });

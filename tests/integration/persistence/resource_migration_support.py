@@ -202,6 +202,7 @@ async def create_legacy_resource_schema(engine, *, instance_uuid: str) -> None:
             table.append_column(sa.Column(name, sa.String(255)))
         if table_name == 'monitoring_messages':
             table.append_column(sa.Column('bot_id', sa.String(255), nullable=False, default='bot-1'))
+            table.append_column(sa.Column('status', sa.String(50), nullable=False, default='success'))
             table.append_column(sa.Column('role', sa.String(50)))
         else:
             table.append_column(sa.Column('message_count', sa.Integer, nullable=False, default=1))

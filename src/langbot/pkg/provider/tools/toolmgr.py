@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import time
+import asyncio
 import inspect
 from typing import TYPE_CHECKING
 
@@ -76,6 +77,15 @@ class ToolManager:
         except Exception:
             return False
 
+    @staticmethod
+    def _sandbox_unavailable_result(name: str) -> dict[str, typing.Any]:
+        return {
+            'ok': False,
+            'code': 'sandbox_unavailable',
+            'tool': name,
+            'message': 'This operation requires Box execution, but Box is not configured or available.',
+        }
+
     async def initialize(self):
         from langbot.pkg.utils import importutil
         from langbot.pkg.provider.tools import loaders
@@ -112,8 +122,8 @@ class ToolManager:
         sandbox_available = await self._workspace_sandbox_available(context)
         if sandbox_available:
             all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring and sandbox_available:
-            all_functions.extend(await self.skill_tool_loader.get_tools())
+        if include_skill_authoring:
+            all_functions.extend(await self.skill_tool_loader.get_tools(sandbox_available=sandbox_available))
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
             await self.mcp_tool_loader.get_tools(
@@ -152,8 +162,12 @@ class ToolManager:
         sandbox_available = await self._workspace_sandbox_available(context)
         if sandbox_available:
             append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
-        if include_skill_authoring and sandbox_available:
-            append_tools('skill', 'LangBot', await self.skill_tool_loader.get_tools())
+        if include_skill_authoring:
+            append_tools(
+                'skill',
+                'LangBot',
+                await self.skill_tool_loader.get_tools(sandbox_available=sandbox_available),
+            )
         catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
 
         if self.mcp_tool_loader:
@@ -295,10 +309,9 @@ class ToolManager:
             tool = await active_loader.get_tool(name)
             if tool:
                 return tool
-        if sandbox_available:
-            tool = await self.skill_tool_loader.get_tool(name)
-            if tool:
-                return tool
+        tool = await self.skill_tool_loader.get_tool(name, sandbox_available=sandbox_available)
+        if tool:
+            return tool
 
         return await self.mcp_tool_loader.get_tool(context, name)
 
@@ -362,7 +375,8 @@ class ToolManager:
         if source in {'builtin', 'native'}:
             return await self.native_tool_loader.get_tool(name)
         if source == 'skill':
-            return await self.skill_tool_loader.get_tool(name)
+            sandbox_available = await self._workspace_sandbox_available(context)
+            return await self.skill_tool_loader.get_tool(name, sandbox_available=sandbox_available)
         if source == 'plugin':
             if not source_id:
                 return None
@@ -448,6 +462,19 @@ class ToolManager:
         start_time = time.perf_counter()
         try:
             result = await invoke()
+        except asyncio.CancelledError:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            await self._record_tool_call(
+                name=name,
+                source=source,
+                parameters=parameters,
+                query=query,
+                duration_ms=duration_ms,
+                status='error',
+                error_message='cancelled',
+            )
+            self._trace_tool_call(source=source, name=name, query=query, outcome='cancelled', error='cancelled')
+            raise
         except Exception as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             await self._record_tool_call(
@@ -458,6 +485,14 @@ class ToolManager:
                 duration_ms=duration_ms,
                 status='error',
                 error_message=str(e),
+            )
+            outcome = 'timeout' if isinstance(e, TimeoutError) else 'failed'
+            self._trace_tool_call(
+                source=source,
+                name=name,
+                query=query,
+                outcome=outcome,
+                error=str(e) or type(e).__name__,
             )
             raise
 
@@ -471,7 +506,59 @@ class ToolManager:
             status='success',
             result=result,
         )
+        self._trace_tool_call(source=source, name=name, query=query, outcome='success')
         return result
+
+    def _trace_tool_call(
+        self,
+        *,
+        source: str,
+        name: str,
+        query: pipeline_query.Query,
+        outcome: str,
+        error: str = '',
+    ) -> None:
+        """Report one tool invocation as its own step of the execution chain.
+
+        Every tool call a Run makes - sandbox, skill, plugin or MCP - is the
+        observable action of that Run, so the chain shows it under the step that
+        issued it instead of collapsing the Run into a single opaque node.
+
+        An Agent's tool call is executed for the Runtime's RPC task, which never
+        inherited the chain context. The Run id the caller already carries is the
+        alias that task's record resolves the owning execution through.
+        """
+        # Imported here: telemetry pulls the application, and the tool manager is
+        # constructed while the application is still assembling.
+        from ...telemetry.execution import record as record_execution
+        from ...telemetry.platform import processing_mode
+
+        try:
+            record_execution(
+                self.ap,
+                get_query_execution_context(query),
+                execution_id=self._trace_execution_id(query),
+                family='tool',
+                operation=name,
+                adapter=source,
+                mode=processing_mode.get(),
+                outcome=outcome,
+                error=error,
+            )
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to record tool call trace: {e}')
+
+    @staticmethod
+    def _trace_execution_id(query: pipeline_query.Query) -> str:
+        """The execution chain this call belongs to, when the caller knows it.
+
+        ``''`` lets the emitter fall back to the task's own trace context, which
+        is what a Pipeline-lane tool call has.
+        """
+        session = getattr(query, '_agent_run_session', None)
+        if not isinstance(session, dict):
+            return ''
+        return str(session.get('run_id') or '').strip()
 
     async def execute_func_call(
         self,
@@ -480,8 +567,6 @@ class ToolManager:
         query: pipeline_query.Query,
         source_ref: ToolSourceRef | None = None,
     ) -> typing.Any:
-        from langbot.pkg.telemetry import features as telemetry_features
-
         source_ref = source_ref or self.get_query_tool_source(query, name)
         if source_ref is not None:
             execution_context = get_query_execution_context(query)
@@ -497,11 +582,11 @@ class ToolManager:
                 telemetry_source = 'native'
                 exists = await loader.has_tool(name)
             elif source == 'skill':
-                if not sandbox_available:
+                if not sandbox_available and self.skill_tool_loader.is_sandbox_tool(name):
                     raise ToolNotFoundError(name)
                 loader = self.skill_tool_loader
                 telemetry_source = 'skill'
-                exists = await loader.has_tool(name)
+                exists = await loader.has_tool(name, sandbox_available=sandbox_available)
             elif source == 'plugin' and source_id:
                 loader = self.plugin_tool_loader
                 telemetry_source = 'plugin'
@@ -522,6 +607,9 @@ class ToolManager:
             if not exists:
                 raise ToolNotFoundError(name)
 
+            if source == 'skill' and isinstance(getattr(query, 'variables', None), dict):
+                query.variables['_skill_execution_available'] = sandbox_available
+
             async def invoke_selected_tool() -> typing.Any:
                 if source == 'mcp':
                     return await loader.invoke_tool(
@@ -534,7 +622,6 @@ class ToolManager:
                     return await loader.invoke_tool(name, parameters, query, source_id=source_id)
                 return await loader.invoke_tool(name, parameters, query)
 
-            telemetry_features.increment(query, 'tool_calls', telemetry_source)
             return await self._invoke_tool_with_monitoring(
                 source=telemetry_source,
                 name=name,
@@ -547,7 +634,6 @@ class ToolManager:
         await self._bind_plugin_workspace(execution_context)
         sandbox_available = await self._workspace_sandbox_available(execution_context)
         if sandbox_available and await self.native_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'native')
             return await self._invoke_tool_with_monitoring(
                 source='native',
                 name=name,
@@ -556,7 +642,6 @@ class ToolManager:
                 invoke=lambda: self.native_tool_loader.invoke_tool(name, parameters, query),
             )
         if await self.plugin_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'plugin')
             return await self._invoke_tool_with_monitoring(
                 source='plugin',
                 name=name,
@@ -565,7 +650,6 @@ class ToolManager:
                 invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
             )
         if await self.mcp_tool_loader.has_tool(execution_context, name):
-            telemetry_features.increment(query, 'tool_calls', 'mcp')
             return await self._invoke_tool_with_monitoring(
                 source='mcp',
                 name=name,
@@ -573,8 +657,10 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
             )
-        if sandbox_available and await self.skill_tool_loader.has_tool(name):
-            telemetry_features.increment(query, 'tool_calls', 'skill')
+        if await self.skill_tool_loader.has_tool(name, sandbox_available=sandbox_available):
+            variables = getattr(query, 'variables', None)
+            if isinstance(variables, dict):
+                variables['_skill_execution_available'] = sandbox_available
             return await self._invoke_tool_with_monitoring(
                 source='skill',
                 name=name,
@@ -582,6 +668,13 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.skill_tool_loader.invoke_tool(name, parameters, query),
             )
+        recognizes_native = getattr(self.native_tool_loader, 'recognizes_tool', None)
+        is_sandbox_skill_tool = getattr(self.skill_tool_loader, 'is_sandbox_tool', None)
+        if not sandbox_available and (
+            (callable(recognizes_native) and recognizes_native(name) is True)
+            or (callable(is_sandbox_skill_tool) and is_sandbox_skill_tool(name) is True)
+        ):
+            return self._sandbox_unavailable_result(name)
         raise ToolNotFoundError(name)
 
     async def shutdown(self):

@@ -11,6 +11,7 @@ on:
       - 'uv.lock'
       - 'run_tests.sh'
       - 'scripts/test-*.sh'
+      - 'pytest.ini'
   push:
     branches:
       - master
@@ -46,6 +47,19 @@ jobs:
 
       - name: Run unit + smoke tests
         run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short
+
+      - name: Run required security regressions
+        run: |
+          uv run pytest --required-suite security \
+            -q --tb=short -rs --junitxml=cwe94-results.xml
+
+      - name: Upload security regression results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cwe94-results-${{ matrix.python-version }}
+          path: cwe94-results.xml
+          if-no-files-found: ignore
 
       - name: Test Summary
         if: always()
@@ -84,9 +98,30 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-  e2e:
-    name: E2E Startup Tests
+  postgres-contracts:
+    name: PostgreSQL Contract Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only this disposable, loopback-bound CI service uses trust authentication.
+    # Admission fixtures create a separate unprivileged role with no password;
+    # the literal postgres@ URL lets that fixture switch to the runtime role.
+    env:
+      TEST_POSTGRES_URL: postgresql+asyncpg://postgres@localhost:5432/langbot_test
+      LANGBOT_ADMISSION_TEST_URL: postgresql+asyncpg://postgres@localhost:5432/langbot_admission_test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: langbot_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd="pg_isready -U postgres -d langbot_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout code
@@ -101,10 +136,90 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
+        run: uv sync --dev --frozen
+
+      - name: Create isolated admission test database
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          -c 'CREATE DATABASE langbot_admission_test;'
+
+      - name: Run required PostgreSQL contracts
+        run: |
+          uv run pytest --required-suite postgres \
+            -q --tb=short -rs --durations=10 --junitxml=postgres-contract-results.xml
+
+      - name: Upload PostgreSQL contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-contract-results
+          path: postgres-contract-results.xml
+          if-no-files-found: ignore
+
+  e2e:
+    name: E2E Startup Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read official plugin source pin
+        id: plugin-source
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          lock = json.loads(Path('tests/fixtures/legacy_plugin_identity_sources.json').read_text())
+          assert lock['repository'] == 'langbot-app/langbot-plugins'
+          assert re.fullmatch(r'[0-9a-f]{40}', lock['revision'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"revision={lock['revision']}\n")
+          PY
+
+      - name: Checkout pinned official plugin sources
+        uses: actions/checkout@v4
+        with:
+          repository: langbot-app/langbot-plugins
+          ref: ${{ steps.plugin-source.outputs.revision }}
+          path: .contract-sources/langbot-plugins
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
         run: uv sync --dev
 
       - name: Run E2E startup tests
-        run: uv run pytest tests/e2e -q --tb=short
+        run: uv run pytest tests/e2e -m "not local_agent" -q --tb=short
+
+      - name: Check Docker for the required LocalAgent Box contract
+        run: docker info
+
+      - name: Run required LocalAgent contracts
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/.contract-sources/langbot-plugins
+        run: |
+          uv run --no-sync pytest --required-suite local_agent \
+            -q --tb=short -rs --junitxml=local-agent-results.xml
+
+      - name: Upload LocalAgent contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-agent-contract-results
+          path: local-agent-results.xml
+          if-no-files-found: ignore
 
       - name: E2E Test Summary
         if: always()
@@ -148,9 +263,16 @@ jobs:
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest
-    needs: [test, integration]
+    needs: [test, integration, postgres-contracts]
+    if: always()
 
     steps:
+      - name: Verify required test jobs
+        run: |
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          test "${{ needs.postgres-contracts.result }}" = success
+
       - name: Checkout code
         uses: actions/checkout@v4
 

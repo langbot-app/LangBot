@@ -21,6 +21,8 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.asyncio(loop_scope='module')
+@pytest.mark.postgres
+@pytest.mark.contract('monitoring_sessions')
 async def test_postgres_upgrade_rls_and_concurrent_bot_counts(cloud_database):  # noqa: F811
     import asyncio
     import importlib
@@ -183,6 +185,31 @@ async def test_analysis_fails_closed_and_scopes_statistics(service):
     assert result['session']['bot_id'] == 'b'
 
 
+async def test_single_message_analysis_without_tool_calls(service):
+    from langbot.pkg.api.http.controller.groups.monitoring import validate_monitoring_window
+    from werkzeug.exceptions import BadRequest
+
+    await service.record_session_start(context('a'), session_id='person_42', **resource('a'))
+    await service.record_message(context('a'), session_id='person_42', message_content='hi', **resource('a'))
+    row = (await service.ap.persistence_mgr.execute_async(sa.select(models.MonitoringMessage.timestamp))).one()
+    timestamp = row.timestamp
+    validate_monitoring_window(timestamp, timestamp, allow_point_window=True)
+    result = await service.get_session_analysis(
+        context(), 'person_42', bot_id='a', start_time=timestamp, end_time=timestamp
+    )
+    assert result['found'] is True
+    assert result['message_stats']['total'] == 1
+    assert result['tool_calls'] == []
+    for start, end in [
+        (timestamp + dt.timedelta(seconds=1), timestamp),
+        (timestamp, timestamp + dt.timedelta(days=366)),
+    ]:
+        with pytest.raises(BadRequest):
+            validate_monitoring_window(start, end, allow_point_window=True)
+    with pytest.raises(BadRequest):
+        validate_monitoring_window(timestamp, timestamp)
+
+
 async def test_activity_requires_bot_and_upsert_counts_racing_first_queries(service):
     for _ in range(2):
         await service.record_session_start(context('a'), session_id='person_42', **resource('a'))
@@ -218,3 +245,49 @@ async def test_old_active_sessions_are_listed_exported_and_not_cleaned(service):
     assert count == 1
     rows, total = await service.get_sessions(context())
     assert total == 1 and rows[0]['bot_id'] == 'b'
+
+
+async def test_bot_session_summary_never_sorts_inline_message_payloads(service):
+    engine = service.ap.persistence_mgr.get_db_engine()
+    payload = 'historical inline media ' * 16384
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(models.MonitoringMessage),
+            [
+                dict(
+                    id=f'message-{index}',
+                    workspace_uuid='workspace',
+                    session_id='group_42',
+                    **resource('a'),
+                    timestamp=now + dt.timedelta(seconds=index),
+                    role='user' if index == 0 else 'assistant',
+                    message_content=payload,
+                    variables=payload,
+                    status='success',
+                    level='info',
+                    user_id='user',
+                    user_name='User',
+                    platform='test',
+                )
+                for index in range(2)
+            ],
+        )
+
+    def reject_payload_reads(connection, cursor, statement, parameters, context, executemany):
+        assert 'monitoring_messages.message_content' not in statement
+        assert 'monitoring_messages.variables' not in statement
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+    try:
+        rows, total = await service.get_sessions(context('a'), bot_ids=['a'])
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+
+    assert total == 1
+    assert rows[0]['session_id'] == 'group_42'
+    assert rows[0]['message_count'] == 2
+    assert rows[0]['user_name'] == 'User'
+    messages, total = await service.get_messages(context('a'), bot_ids=['a'], session_ids=['group_42'])
+    assert total == 2
+    assert all(message['message_content'] == payload and message['variables'] == payload for message in messages)

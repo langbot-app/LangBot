@@ -335,6 +335,8 @@ class QueryEntryAdapter:
 
         # Handle launcher_id
         launcher_id = getattr(query, 'launcher_id', None)
+        if launcher_id is not None:
+            launcher_id = str(launcher_id)
 
         # Build session_id from launcher info if available
         session_id = None

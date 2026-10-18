@@ -6,7 +6,6 @@ Tests cover:
 - Early return conditions (disabled, empty config, no server)
 - URL construction (with actual URL verification)
 - HTTP request success/failure scenarios
-- Source code bug: send_tasks should be instance variable
 """
 
 from __future__ import annotations
@@ -84,7 +83,9 @@ class TestTelemetrySendEarlyReturn:
         manager.telemetry_config = {}
 
         # Should return without making HTTP calls
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         # No HTTP client should be created, no logs should be written
         mock_app.logger.debug.assert_not_called()
@@ -100,7 +101,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'disable_telemetry': True, 'url': 'https://example.com'}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -114,7 +117,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': ''}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -628,54 +633,3 @@ class TestAuthenticatedWorkspaceReporter:
         assert mock_client.post.call_args.kwargs['headers'] == {
             'Authorization': 'Bearer refreshed-workspace-owner-token'
         }
-
-
-class TestStartSendTask:
-    """Tests for start_send_task() method."""
-
-    @pytest.mark.asyncio
-    async def test_start_send_task_creates_task(self):
-        """Test that start_send_task creates an asyncio task."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {}
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {}
-
-        await manager.start_send_task({'query_id': 'test'})
-
-        # Task should be added to send_tasks list
-        assert len(manager.send_tasks) >= 1
-
-        # Clean up the task
-        for task in manager.send_tasks:
-            if not task.done():
-                task.cancel()
-        manager.send_tasks.clear()
-
-    @pytest.mark.asyncio
-    async def test_start_send_task_multiple_tasks(self):
-        """Test that multiple tasks are tracked."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {}
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {}
-
-        await manager.start_send_task({'query_id': 'test1'})
-        await manager.start_send_task({'query_id': 'test2'})
-        await manager.start_send_task({'query_id': 'test3'})
-
-        assert len(manager.send_tasks) >= 3
-
-        # Clean up
-        for task in manager.send_tasks:
-            if not task.done():
-                task.cancel()
-        manager.send_tasks.clear()

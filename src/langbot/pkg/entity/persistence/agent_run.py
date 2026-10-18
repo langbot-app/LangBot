@@ -6,6 +6,7 @@ import datetime
 
 import sqlalchemy
 
+from ...persistence.media import MediaReferenceText
 from .base import Base
 
 
@@ -43,6 +44,10 @@ class AgentRun(Base):
 
     bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     """Bot UUID this run belongs to."""
+
+    execution_owner_id = sqlalchemy.Column(sqlalchemy.String(36), nullable=True, index=True)
+    execution_lease_expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
+    """Host process lease, independent of execution duration and remote queue claims."""
 
     status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)
     """Run lifecycle status."""
@@ -103,15 +108,17 @@ class AgentRun(Base):
     authorization_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     """Run-scoped authorization snapshot JSON."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata JSON."""
 
     __table_args__ = (
+        sqlalchemy.Index('ix_agent_run_media_ttl', 'workspace_id', 'created_at', 'id'),
         sqlalchemy.Index(
             'ix_agent_run_scope_status', 'bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'status'
         ),
         sqlalchemy.Index('ix_agent_run_runner_status', 'runner_id', 'status'),
         sqlalchemy.Index('ix_agent_run_queue_claim', 'queue_name', 'status', 'priority', 'id'),
+        sqlalchemy.Index('ix_agent_run_workspace_status_lease', 'workspace_id', 'status', 'execution_lease_expires_at'),
     )
 
 
@@ -179,7 +186,7 @@ class AgentRunEvent(Base):
     type = sqlalchemy.Column(sqlalchemy.String(100), nullable=False, index=True)
     """Result event type."""
 
-    data_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    data_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Result event payload JSON."""
 
     usage_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
@@ -191,10 +198,11 @@ class AgentRunEvent(Base):
     source = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)
     """Source that appended the event."""
 
-    metadata_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    metadata_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     """Additional metadata JSON."""
 
     __table_args__ = (
         sqlalchemy.UniqueConstraint('run_id', 'sequence', name='uq_agent_run_event_run_sequence'),
         sqlalchemy.Index('ix_agent_run_event_run_sequence', 'run_id', 'sequence'),
+        sqlalchemy.Index('ix_agent_run_event_media_ttl', 'created_at', 'id', 'run_id'),
     )

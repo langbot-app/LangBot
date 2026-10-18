@@ -38,6 +38,7 @@ class TestEventRouteTrace:
         bot = object.__new__(RuntimeBot)
         bot.bot_entity = SimpleNamespace(
             uuid='bot-1',
+            adapter='aiocqhttp',
             workspace_uuid=TEST_CONTEXT.workspace_uuid,
             event_bindings=event_bindings,
         )
@@ -170,7 +171,9 @@ class TestEventRouteTrace:
             agent_service=SimpleNamespace(get_agent=AsyncMock(side_effect=[malformed_agent, valid_agent])),
             agent_run_orchestrator=SimpleNamespace(run=fake_run),
         )
-        event = SimpleNamespace(type='platform.member.joined')
+        from langbot_plugin.api.entities.builtin.platform.events import EBAEvent
+
+        event = EBAEvent.model_construct(type='platform.member.joined')
 
         failed = await bot._dispatch_eba_event_to_processor(event, Mock())
         delivered = await bot._dispatch_eba_event_to_processor(event, Mock())
@@ -642,7 +645,8 @@ class TestInteractionResumeRouting:
             send_message=AsyncMock(),
         )
 
-        await bot._handle_interaction_submission(self._event(), adapter)
+        event = self._event()
+        await bot._handle_interaction_submission(event, adapter)
 
         envelope, binding, adapter_context = captured[0]
         assert envelope.event_type == 'interaction.submitted'
@@ -650,7 +654,11 @@ class TestInteractionResumeRouting:
         assert binding.binding_id == 'binding-1'
         assert binding.processor_type == 'agent'
         assert binding.processor_id == 'agent-1'
-        assert adapter_context == {'_delivery_adapter': adapter}
+        assert adapter_context == {
+            '_delivery_adapter': adapter,
+            '_platform_event': event,
+            '_execution_context': TEST_CONTEXT,
+        }
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_reply is False
         adapter.send_message.assert_not_awaited()
@@ -701,7 +709,10 @@ async def test_installed_event_processor_never_receives_unbound_events():
     from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
     bot = TestEventRouteTrace._make_bot([])
-    bot.ap = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=AsyncMock()))
+    bot.ap = SimpleNamespace(
+        workspace_service=active_workspace_service(),
+        plugin_connector=SimpleNamespace(emit_event=AsyncMock()),
+    )
     bot._record_adapter_event = AsyncMock()
     await bot._handle_platform_event(MemberJoinedEvent(), Mock())
     bot.ap.plugin_connector.emit_event.assert_not_called()
@@ -767,6 +778,7 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     """Draining runner results must not send text, duplicate replies, or stream cards."""
     from langbot_plugin.api.entities.builtin.platform import entities, events, message
     from langbot_plugin.api.entities.builtin.provider import message as provider_message
+    from datetime import datetime
 
     from langbot.pkg.agent.runner.platform_tools import execute_platform_tool, freeze_platform_context
 
@@ -783,6 +795,10 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     completed = []
 
     async def run(envelope, binding, adapter_context):
+        if kind == 'event_processor':
+            restored = message.MessageChain.model_validate(envelope.data['message_chain'])
+            assert restored.source.id == 'source-1'
+            assert restored.source.time == datetime(2026, 10, 8, 12)
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_streaming is False
         assert binding.delivery_policy.enable_reply is False
@@ -823,7 +839,9 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
     )
     event = events.MessageReceivedEvent(
         message_id='message-1',
-        message_chain=message.MessageChain([message.Plain(text='hello')]),
+        message_chain=message.MessageChain(
+            [message.Source(id='source-1', time=datetime(2026, 10, 8, 12)), message.Plain(text='hello')]
+        ),
         sender=entities.User(id='user-1', nickname='QA'),
         chat_type=entities.ChatType.PRIVATE,
         chat_id='user-1',

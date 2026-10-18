@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from langbot.pkg.telemetry.execution import ExecutionCounters
+from langbot.pkg.telemetry.trace import TraceState
 from langbot.pkg.utils import constants
 
 
@@ -8,8 +9,10 @@ def test_cloud_counts_are_not_sampled(monkeypatch):
     monkeypatch.setattr(constants, 'edition', 'cloud')
     counters = ExecutionCounters(SimpleNamespace(telemetry_config={'execution_trace': 'sampled'}))
     assert counters.trace_mode() == 'all'
-    state = SimpleNamespace(failure_reason='', stages=[], synthetic=False, trace_id='00000001')
-    assert counters._trace_emitted(state)
+    state = TraceState('00000001')
+    counters.configure(state)
+    assert state.emit_nodes is True
+    assert counters._chain_emitted(state) is True
 
 
 def test_community_retains_sampling(monkeypatch):

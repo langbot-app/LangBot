@@ -28,19 +28,52 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant,
+  status,
   asChild = false,
   ...props
 }: React.ComponentProps<'span'> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  VariantProps<typeof badgeVariants> & { asChild?: boolean; status?: string }) {
   const Comp = asChild ? Slot : 'span';
 
   return (
     <Comp
       data-slot="badge"
-      className={cn(badgeVariants({ variant }), className)}
+      className={cn(
+        badgeVariants({ variant: status ? 'outline' : variant }),
+        status && statusBadgeClass(status),
+        className,
+      )}
       {...props}
     />
   );
+}
+
+function statusBadgeClass(status: string): string {
+  if (
+    [
+      'completed',
+      'success',
+      'succeeded',
+      'delivered',
+      'ready',
+      'enabled',
+      'connected',
+    ].includes(status)
+  )
+    return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+  if (['failed', 'error', 'timeout', 'disconnected'].includes(status))
+    return 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300';
+  if (['running', 'active', 'connecting'].includes(status))
+    return 'border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300';
+  if (
+    ['queued', 'pending', 'created', 'claimed', 'waiting', 'warning'].includes(
+      status,
+    )
+  )
+    return 'border-amber-500/25 bg-amber-500/10 text-amber-800 dark:text-amber-300';
+  if (['mock', 'simulated', 'debug'].includes(status))
+    return 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300';
+  return 'border-border bg-muted text-muted-foreground';
 }
 
 export { Badge, badgeVariants };

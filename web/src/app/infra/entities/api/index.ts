@@ -938,6 +938,7 @@ export interface Skill {
   description: string;
   instructions?: string;
   package_root?: string;
+  revision?: string;
   is_builtin?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -950,3 +951,20 @@ export interface ApiRespSkills {
 export interface ApiRespSkill {
   skill: Skill;
 }
+
+export type {
+  ExecutionSource,
+  ExecutionSourceFilter,
+  ExecutionModeFilter,
+  ExecutionUsage,
+  ExecutionRow,
+  ExecutionOverview,
+  TokenCoverage,
+  ExecutionSummary,
+  ExecutionListResult,
+  PipelineMessageRow,
+  ExecutionCallRow,
+  AgentExecutionDetail,
+  PipelineExecutionDetail,
+  ExecutionDetail,
+} from './monitoring-executions';

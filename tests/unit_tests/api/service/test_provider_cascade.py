@@ -15,6 +15,7 @@ from langbot.pkg.api.http.controller.groups.provider.providers import ModelProvi
 from langbot.pkg.api.http.service.provider import ModelProviderService
 from langbot.pkg.entity.persistence.model import CodexCredential, EmbeddingModel, LLMModel, ModelProvider, RerankModel
 from langbot.pkg.entity.persistence.user import User
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
@@ -51,7 +52,7 @@ async def deletion(tmp_path):
             }
 
     async with engine.begin() as conn:
-        for table in (User, Workspace, ModelProvider, CodexCredential, *MODEL_TYPES):
+        for table in (User, Workspace, WorkspaceMetadata, ModelProvider, CodexCredential, *MODEL_TYPES):
             await conn.run_sync(table.__table__.create)
         for workspace in contexts:
             await conn.execute(

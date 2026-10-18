@@ -1,7 +1,9 @@
 import logging
 import logging.handlers
 import os
+import queue
 import sys
+import threading
 import time
 
 import colorlog
@@ -22,6 +24,122 @@ LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10MB per file
 LOG_FILE_BACKUP_COUNT = 5  # Keep 5 backup files (total ~50MB max)
 
 LOG_DIR = 'data/logs'
+
+CONSOLE_QUEUE_CAPACITY = 256
+CONSOLE_RECORD_MAX_BYTES = 16 * 1024
+CONSOLE_CLOSE_TIMEOUT = 0.2
+
+
+class NonBlockingConsoleHandler(logging.Handler):
+    """Isolate a stalled console from callers with at most 4 MiB of queued bytes.
+
+    Only formatted UTF-8 bytes cross the thread boundary, so queued records do
+    not retain arguments or exception frames. Overflow drops console copies;
+    other handlers still receive the original records.
+    """
+
+    def __init__(self, stream, *, capacity: int = CONSOLE_QUEUE_CAPACITY):
+        if capacity <= 0:
+            raise ValueError('Console queue capacity must be positive')
+        # Drain startup prints before the worker can fill the pipe. Otherwise
+        # interpreter finalization could block flushing the original stream.
+        stream.flush()
+        super().__init__()
+        self._queue: queue.Queue[bytes | None] = queue.Queue(maxsize=capacity)
+        # logging.shutdown holds Handler.lock while joining the worker.
+        self._state_lock = threading.Lock()
+        self._failed = threading.Event()
+        self.dropped_records = 0
+        self.write_error: str | None = None
+        # The worker owns this descriptor. Do not share a buffered Python stream
+        # lock with the main thread or interpreter finalization.
+        self._fd = os.dup(stream.fileno())
+        self._worker = threading.Thread(target=self._consume, name='langbot-console-log', daemon=True)
+        try:
+            self._worker.start()
+        except Exception:
+            os.close(self._fd)
+            super().close()
+            raise
+
+    def emit(self, record: logging.LogRecord) -> None:
+        with self._state_lock:
+            if self._closed or self._failed.is_set() or self._queue.full():
+                self.dropped_records += 1
+                return
+            try:
+                text = self.format(record)
+                payload = (text[:CONSOLE_RECORD_MAX_BYTES] + '\n').encode('utf-8', errors='backslashreplace')
+                if len(text) > CONSOLE_RECORD_MAX_BYTES or len(payload) > CONSOLE_RECORD_MAX_BYTES:
+                    marker = b'\n[console log truncated]\n'
+                    payload = (
+                        payload[: CONSOLE_RECORD_MAX_BYTES - len(marker)]
+                        .decode('utf-8', errors='ignore')
+                        .encode('utf-8')
+                        + marker
+                    )
+                self._queue.put_nowait(payload)
+            except queue.Full:
+                self.dropped_records += 1
+            except Exception:
+                # Logging's default handleError writes to stderr, which may
+                # share the same stalled container logging driver.
+                self.dropped_records += 1
+
+    def _write(self, payload: bytes) -> None:
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(self._fd, remaining)
+            if written == 0:
+                raise OSError('Console write made no progress')
+            remaining = remaining[written:]
+
+    def _consume(self) -> None:
+        reported_drops = 0
+        try:
+            while (payload := self._queue.get()) is not None:
+                self._write(payload)
+                with self._state_lock:
+                    dropped = self.dropped_records
+                if dropped > reported_drops:
+                    self._write(
+                        f'[WARNING] Console logging dropped {dropped - reported_drops} records.\n'.encode('utf-8')
+                    )
+                    reported_drops = dropped
+        except OSError as exc:
+            with self._state_lock:
+                self.write_error = str(exc)
+                self._failed.set()
+                self.dropped_records += 1
+        finally:
+            os.close(self._fd)
+            with self._state_lock:
+                while True:
+                    try:
+                        if self._queue.get_nowait() is not None:
+                            self.dropped_records += 1
+                    except queue.Empty:
+                        break
+
+    def close(self) -> None:
+        with self._state_lock:
+            if self._closed:
+                return
+            super().close()
+            # A full queue must not make shutdown wait for the writer.
+            while True:
+                try:
+                    self._queue.put_nowait(None)
+                    break
+                except queue.Full:
+                    try:
+                        self._queue.get_nowait()
+                        self.dropped_records += 1
+                    except queue.Empty:
+                        # The writer consumed the last record after Full;
+                        # retry inserting the shutdown sentinel.
+                        continue
+        self._worker.join(timeout=CONSOLE_CLOSE_TIMEOUT)
 
 
 class DailyGroupedRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -94,6 +212,10 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
 
     qcg_logger = logging.getLogger('langbot')
 
+    for handler in qcg_logger.handlers[:]:
+        qcg_logger.removeHandler(handler)
+        handler.close()
+
     qcg_logger.setLevel(level)
 
     color_formatter = colorlog.ColoredFormatter(
@@ -102,10 +224,7 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
         log_colors=log_colors_config,
     )
 
-    stream_handler = logging.StreamHandler(sys.stdout)
-    # stream_handler.setLevel(level)
-    # stream_handler.setFormatter(color_formatter)
-    stream_handler.stream = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+    stream_handler = NonBlockingConsoleHandler(sys.stdout)
 
     # Rotate by size within a day and switch files when the date changes,
     # so long-running processes still produce a log file for the current day.

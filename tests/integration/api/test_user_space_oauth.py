@@ -27,6 +27,7 @@ async def space_oauth_api():
         execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=1),
     )
     application = Mock()
+    application._message_language_cache = None
     application.deployment = SimpleNamespace(multi_workspace_enabled=False, mode='oss')
     application.directory_projection_service = None
     application.persistence_mgr = None
@@ -234,39 +235,6 @@ async def test_redirect_rejects_invalid_callback_shape(space_oauth_api):
 
 
 @pytest.mark.asyncio
-async def test_explicit_server_side_webui_origin_supports_split_dev_server(space_oauth_api):
-    application, client = space_oauth_api
-    application.instance_config.data['api'] = {'webui_url': 'http://localhost:5173'}
-
-    response = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'http://localhost:5173/auth/space/callback'},
-        headers={'Origin': 'https://irrelevant.example'},
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['code'] == 0
-
-
-@pytest.mark.asyncio
-async def test_server_side_webhook_origin_supports_bundled_ui(space_oauth_api):
-    application, client = space_oauth_api
-    application.instance_config.data['api'] = {
-        'webui_url': '',
-        'webhook_prefix': 'https://langbot.example/base/path',
-    }
-
-    response = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://langbot.example/auth/space/callback'},
-        headers={'Host': 'attacker.example'},
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['code'] == 0
-
-
-@pytest.mark.asyncio
 async def test_login_callback_requires_and_consumes_server_state(space_oauth_api):
     application, client = space_oauth_api
 
@@ -422,6 +390,9 @@ async def test_oss_login_callback_does_not_request_cloud_reconciliation(space_oa
     )
 
     assert response.status_code == 200
+    payload = await response.get_json()
+    assert payload['code'] == 0
+    assert payload['data']['token'] == 'space-login-token'
     application.directory_projection_service.reconcile_workspaces.assert_not_awaited()
 
 
@@ -556,6 +527,7 @@ async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_
 async def test_direct_launch_assertion_does_not_consume_normal_oauth_state(space_oauth_api):
     application, client = space_oauth_api
     application.user_service.consume_space_oauth_state.reset_mock()
+    application.user_service.consume_space_oauth_state_details.reset_mock()
     application.space_service.exchange_oauth_code.reset_mock()
     application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
 
@@ -577,6 +549,7 @@ async def test_direct_launch_assertion_does_not_consume_normal_oauth_state(space
         expected_workspace_uuid=WORKSPACE_UUID,
     )
     application.user_service.consume_space_oauth_state.assert_not_awaited()
+    application.user_service.consume_space_oauth_state_details.assert_not_awaited()
     application.space_service.exchange_oauth_code.assert_not_awaited()
 
 
@@ -590,7 +563,24 @@ async def test_direct_launch_reconciles_exact_workspace_before_resolving_access(
         status='active',
     )
     application.user_service.get_user_by_uuid = AsyncMock(return_value=projected_account)
-    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
+    events = []
+
+    async def reconcile(_workspaces):
+        events.append('reconcile')
+
+    async def get_account(_account_uuid):
+        events.append('account')
+        return projected_account
+
+    access = application.workspace_collaboration_service.resolve_account_workspace.return_value
+
+    async def resolve_access(*_args, **_kwargs):
+        events.append('access')
+        return access
+
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock(side_effect=reconcile))
+    application.user_service.get_user_by_uuid.side_effect = get_account
+    application.workspace_collaboration_service.resolve_account_workspace.side_effect = resolve_access
 
     response = await client.post(
         '/api/v1/user/space/callback',
@@ -604,3 +594,5 @@ async def test_direct_launch_reconciles_exact_workspace_before_resolving_access(
     assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
     application.directory_projection_service.reconcile_workspaces.assert_awaited_once_with((WORKSPACE_UUID,))
     application.user_service.get_user_by_uuid.assert_awaited_once_with('account-a')
+
+    assert events == ['reconcile', 'account', 'access']

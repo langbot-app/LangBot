@@ -272,11 +272,14 @@ class TestFixedWindowAlgo:
         algo = fixedwin.FixedWindowAlgo(mock_app_for_algo)
         await algo.initialize()
 
-        # release_access is empty in current implementation
+        await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
+        containers = dict(algo.containers)
+        records = {key: dict(container.records) for key, container in containers.items()}
+
         await algo.release_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
-        # Should not raise or change state
-        assert 'person_12345' not in algo.containers
+        assert algo.containers == containers
+        assert {key: dict(container.records) for key, container in algo.containers.items()} == records
 
 
 # Original mock-based tests for RateLimit stage integration

@@ -92,38 +92,38 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     await adapter_self.logger.error(f'Error in Discord interaction callback: {traceback.format_exc()}')
 
             async def on_message_edit(self: discord.Client, before: discord.Message, after: discord.Message):
+                if after.author.bot:
+                    return
                 await adapter_self._dispatch_gateway_tuple(
                     'message_edit', (before, after), self.user.id if self.user else None
                 )
 
-            async def on_message_delete(self: discord.Client, message: discord.Message):
-                await adapter_self._dispatch_gateway_tuple(
-                    'message_delete', message, self.user.id if self.user else None
-                )
+            async def on_raw_message_edit(self: discord.Client, payload: discord.RawMessageUpdateEvent):
+                # Cached edits are handled above. Ignore embed-only updates, which
+                # Discord also emits after resolving previews.
+                if payload.cached_message is not None or not {'content', 'attachments'} & payload.data.keys():
+                    return
+                if payload.data.get('author', {}).get('bot'):
+                    return
+                try:
+                    channel = await adapter_self._get_channel(payload.channel_id)
+                    after = await channel.fetch_message(payload.message_id)
+                except discord.HTTPException:
+                    await adapter_self.logger.warning('Unable to fetch edited Discord message')
+                    return
+                if not after.author.bot:
+                    await adapter_self._dispatch_gateway_tuple(
+                        'message_edit', (None, after), self.user.id if self.user else None
+                    )
 
             async def on_raw_message_delete(self: discord.Client, payload: discord.RawMessageDeleteEvent):
+                # Raw callbacks also fire for cached messages. Dispatch only once,
+                # retaining the cached payload when Discord supplies one.
+                cached = getattr(payload, 'cached_message', None)
                 await adapter_self._dispatch_gateway_tuple(
-                    'raw_message_delete',
-                    payload,
+                    'message_delete' if cached is not None else 'raw_message_delete',
+                    cached if cached is not None else payload,
                     self.user.id if self.user else None,
-                )
-
-            async def on_reaction_add(
-                self: discord.Client, reaction: discord.Reaction, user: discord.User | discord.Member
-            ):
-                if self.user and user.id == self.user.id:
-                    return
-                await adapter_self._dispatch_gateway_tuple(
-                    'reaction_add', (reaction, user), self.user.id if self.user else None
-                )
-
-            async def on_reaction_remove(
-                self: discord.Client, reaction: discord.Reaction, user: discord.User | discord.Member
-            ):
-                if self.user and user.id == self.user.id:
-                    return
-                await adapter_self._dispatch_gateway_tuple(
-                    'reaction_remove', (reaction, user), self.user.id if self.user else None
                 )
 
             async def on_raw_reaction_add(self: discord.Client, payload: discord.RawReactionActionEvent):
@@ -212,7 +212,15 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content, files = await self.message_converter.yiri2target(message)
-        channel = await self._get_channel(target_id)
+        guild = self.bot.get_guild(int(target_id)) if target_type == 'group' else None
+        if guild is not None:
+            # Guild-level events have no originating channel. Use only the
+            # server's explicitly configured system channel for their replies.
+            channel = guild.system_channel
+            if channel is None:
+                raise ValueError('Discord guild has no system channel configured for event replies')
+        else:
+            channel = await self._get_channel(target_id)
         kwargs = {'content': content}
         if files:
             kwargs['files'] = files
@@ -323,58 +331,55 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             else getattr(bot_message, 'resp_message_id', None)
         )
 
-        text_parts = [m.text for m in message if isinstance(m, platform_message.Plain)]
-        chunk_text = '\n\n'.join(t for t in text_parts if t)
-
+        tool_calls = (
+            bot_message.get('tool_calls') if isinstance(bot_message, dict) else getattr(bot_message, 'tool_calls', None)
+        )
+        terminal = is_final and not tool_calls
+        chunk_text = '\n\n'.join(m.text for m in message if isinstance(m, platform_message.Plain) and m.text)
         ctx = self._stream_buffer.get(msg_id) if msg_id else None
-        if ctx is not None:
-            ctx['updated_at'] = time.time()
-
         if ctx is None:
-            try:
-                if is_final and chunk_text:
-                    await self.reply_message(message_source, message, quote_origin)
-            finally:
-                self._stream_buffer.pop(msg_id, None)
+            if terminal and message:
+                await self.reply_message(message_source, message, quote_origin)
             return
 
-        # Progressive streaming path: send first chunk, edit subsequent.
+        ctx['updated_at'] = time.time()
         ctx['chunk_count'] += 1
-
-        # Runner yields the full accumulated text on each chunk, so we
-        # always replace (not append).
         if chunk_text:
-            ctx['last_content'] = chunk_text[:2000]
+            ctx['last_content'] = chunk_text
 
-        sent = ctx['sent_message']
-
-        if sent is None:
-            # First non-empty chunk — send the initial message.
-            if not ctx['last_content']:
-                return  # No content yet, wait for next chunk.
-            try:
-                sent = await ctx['channel'].send(ctx['last_content'])
-                ctx['sent_message'] = sent
-            except Exception:
-                await self.logger.error(f'Discord stream send failed: {traceback.format_exc()}')
+        try:
+            content = ctx['last_content']
+            sent = ctx['sent_message']
+            if content:
+                # Discord limits each message to 2000 characters. Keep the first
+                # message as the live preview and deliver the remainder at completion.
+                preview = content[:2000]
+                if sent is None:
+                    sent = await ctx['channel'].send(preview)
+                    ctx['sent_message'] = sent
+                elif is_final or ctx['chunk_count'] % self._STREAM_EDIT_INTERVAL == 0:
+                    if preview != sent.content:
+                        try:
+                            ctx['sent_message'] = await sent.edit(content=preview)
+                        except discord.NotFound:
+                            ctx['sent_message'] = await ctx['channel'].send(preview)
+                if terminal:
+                    for offset in range(2000, len(content), 2000):
+                        await ctx['channel'].send(content[offset : offset + 2000])
+            if terminal:
+                attachments = platform_message.MessageChain(
+                    [
+                        part
+                        for part in message
+                        if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+                    ]
+                )
+                if attachments:
+                    await self.reply_message(message_source, attachments, quote_origin)
+        finally:
+            # Tool-call completions are intermediate rounds, not the end of a reply.
+            if terminal:
                 self._stream_buffer.pop(msg_id, None)
-                return
-
-        if is_final:
-            # Final chunk — edit to the full content, then clean up.
-            if ctx['last_content'] and ctx['last_content'] != sent.content:
-                try:
-                    await sent.edit(content=ctx['last_content'][:2000])
-                except Exception:
-                    pass  # Best-effort
-            self._stream_buffer.pop(msg_id, None)
-        elif (ctx['chunk_count'] % self._STREAM_EDIT_INTERVAL) == 0:
-            # Intermediate edit — throttle to avoid rate limits.
-            if ctx['last_content'] and ctx['last_content'] != sent.content:
-                try:
-                    await sent.edit(content=ctx['last_content'][:2000])
-                except Exception:
-                    pass  # Rate-limited or deleted — ignore.
 
     async def run_async(self):
         await self.bot.start(self.config['token'], reconnect=True)

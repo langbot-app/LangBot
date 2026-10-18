@@ -8,6 +8,7 @@ import {
   Voice,
   Quote,
 } from '@/app/infra/entities/message';
+import { Badge } from '@/components/ui/badge';
 import ImagePreviewDialog from '@/app/home/pipelines/components/debug-dialog/ImagePreviewDialog';
 
 interface MessageContentRendererProps {
@@ -48,23 +49,23 @@ export function MessageContentRenderer({
         const displayName =
           atComponent.display || atComponent.target?.toString() || '';
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm"
           >
             @{displayName}
-          </span>
+          </Badge>
         );
       }
 
       case 'AtAll':
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm"
           >
             @All
-          </span>
+          </Badge>
         );
 
       case 'Image': {
@@ -73,12 +74,12 @@ export function MessageContentRenderer({
 
         if (!imageUrl) {
           return (
-            <span
+            <Badge
               key={index}
-              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
+              className="mx-0.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-sm"
             >
               [Image]
-            </span>
+            </Badge>
           );
         }
 
@@ -101,41 +102,41 @@ export function MessageContentRenderer({
       case 'File': {
         const file = component as MessageChainComponent & { name?: string };
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-sm [&>svg]:size-3.5"
           >
-            <Paperclip className="w-3.5 h-3.5 mr-1" />
+            <Paperclip className="mr-1" />
             {file.name || 'File'}
-          </span>
+          </Badge>
         );
       }
 
       case 'Voice': {
         const voice = component as Voice;
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-sm [&>svg]:size-3.5"
           >
-            <AudioLines className="w-3.5 h-3.5 mr-1" />
+            <AudioLines className="mr-1" />
             Voice{voice.length ? ` ${voice.length}s` : ''}
-          </span>
+          </Badge>
         );
       }
 
       case 'Quote': {
         const quote = component as Quote;
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm border-l-2 border-muted-foreground/50"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-sm border-l-2 border-l-muted-foreground/50"
           >
             {quote.origin
               ?.filter((c) => (c as MessageChainComponent).type === 'Plain')
               .map((c) => (c as MessageChainComponent as Plain).text)
               .join('') || '[Quote]'}
-          </span>
+          </Badge>
         );
       }
 
@@ -144,12 +145,12 @@ export function MessageContentRenderer({
 
       default:
         return (
-          <span
+          <Badge
             key={index}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-muted text-muted-foreground text-sm"
+            className="mx-0.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-sm"
           >
             [{component.type}]
-          </span>
+          </Badge>
         );
     }
   };

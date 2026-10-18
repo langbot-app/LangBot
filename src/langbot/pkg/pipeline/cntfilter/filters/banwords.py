@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import pipeline_notice
+
 from .. import filter as filter_model
 from .. import entities
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -35,13 +37,19 @@ class BanWordFilter(filter_model.ContentFilter):
             return entities.FilterResult(
                 level=entities.ResultLevel.BLOCK,
                 replacement='',
-                user_notice='内容检查规则执行失败，请联系管理员',
+                user_notice=pipeline_notice(
+                    query, 'content-filter-error-hint', 'Content checking failed. Please contact the administrator.'
+                ),
                 console_notice=f'Sensitive-word regex rejected: {exc}',
             )
 
         return entities.FilterResult(
             level=entities.ResultLevel.MASKED if found else entities.ResultLevel.PASS,
             replacement=current,
-            user_notice='消息中存在不合适的内容, 请修改' if found else '',
+            user_notice=pipeline_notice(
+                query, 'content-filter-hint', 'Your message contains inappropriate content. Please revise it.'
+            )
+            if found
+            else '',
             console_notice='',
         )

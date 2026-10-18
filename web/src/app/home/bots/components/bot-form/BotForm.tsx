@@ -27,18 +27,22 @@ import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import {
   Cable,
+  TriangleAlert,
   Check,
   ExternalLink,
   ChevronDown,
   ChevronRight,
   Webhook,
+  Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EventBindingsEditor from './EventBindingsEditor';
+import EventRoutingHelp from './EventRoutingHelp';
+import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginProcessorBindings from './PluginProcessorBindings';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -152,7 +156,8 @@ function detectConnectionMode(
   if (!webhookField.show_if) return 'webhook';
   return conditionMatches(
     webhookField.show_if,
-    values[webhookField.show_if.field],
+    values[webhookField.show_if.field] ??
+      config.find((item) => item.name === webhookField.show_if?.field)?.default,
   )
     ? 'webhook'
     : 'persistent';
@@ -273,7 +278,26 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   useEffect(() => {
     onAdapterLabelChange?.(adapterLabel);
   }, [adapterLabel, onAdapterLabelChange]);
-  const currentAdapterConfig = form.watch('adapter_config');
+  const currentAdapterConfig = form.getValues('adapter_config');
+  const embedTitle = useWatch({
+    control: form.control,
+    name: 'adapter_config',
+    compute: (config) => config?.title,
+  });
+  const dynamicFormSystemContext = useMemo(
+    () => ({
+      bot_uuid: initBotId,
+      webhook_url: webhookUrl,
+      onebot_ws_url: webhookUrl
+        ? webhookUrl.replace(/^http/, 'ws').replace(/\/$/, '') +
+          '/onebot/v11/ws'
+        : '',
+      extra_webhook_url: extraWebhookUrl,
+      adapter_config: { title: embedTitle },
+      outbound_ips: systemInfo.outbound_ips,
+    }),
+    [initBotId, webhookUrl, extraWebhookUrl, embedTitle],
+  );
 
   // Group adapters by category for the Select dropdown. Legacy adapters are
   // split out and shown in a collapsed group at the bottom so they're
@@ -290,6 +314,16 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     () => groupByCategory(activeAdapters),
     [activeAdapters],
   );
+  const [adapterSearch, setAdapterSearch] = useState('');
+  const adapterQuery = adapterSearch.trim().toLocaleLowerCase();
+  const matchesAdapterSearch = (adapter: IChooseAdapterEntity) =>
+    `${adapter.label} ${adapter.value} ${adapterDescriptionList[adapter.value] ?? ''}`
+      .toLocaleLowerCase()
+      .includes(adapterQuery);
+  const galleryGroups = groupByCategory(
+    activeAdapters.filter(matchesAdapterSearch),
+  );
+  const galleryLegacyAdapters = legacyAdapters.filter(matchesAdapterSearch);
 
   // Whether the collapsed legacy adapter group is expanded in the Select.
   const [showLegacyAdapters, setShowLegacyAdapters] = useState(false);
@@ -464,8 +498,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         .then((res) => {
           const bot = res.bot;
           const runtimeValues = bot.adapter_runtime_values as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           resolve({
             adapter: bot.adapter,
             description: bot.description,
@@ -475,11 +508,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             event_bindings: bot.event_bindings ?? [],
             plugin_processors: bot.plugin_processors ?? [],
             webhook_full_url: runtimeValues?.webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
-              | string
-              | undefined,
+              string | undefined,
           });
         })
         .catch((err) => {
@@ -522,6 +553,17 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   }
 
   function selectAdapter(adapterName: string) {
+    if (!form.getValues('name')?.trim()) {
+      const selectedAdapter = adapterNameList.find(
+        (adapter) => adapter.value === adapterName,
+      );
+      if (selectedAdapter) {
+        form.setValue('name', selectedAdapter.label, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+    }
     form.setValue('adapter', adapterName, {
       shouldDirty: !isInitializing.current,
       shouldValidate: true,
@@ -551,6 +593,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         : [],
     [adapterNameToDynamicConfigMap, currentAdapter],
   );
+
+  const connectionModeControllerNames = useMemo(() => {
+    if (supportedConnectionModes.length <= 1) return [];
+    const webhookField = dynamicFormConfigList.find(
+      (item) => item.type === DynamicFormItemType.WEBHOOK_URL,
+    );
+    return webhookField?.show_if?.field ? [webhookField.show_if.field] : [];
+  }, [dynamicFormConfigList, supportedConnectionModes.length]);
 
   const botGuideSteps = useMemo<GuidedTourStep[]>(() => {
     const steps: GuidedTourStep[] = [];
@@ -649,7 +699,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       description: form.getValues().description ?? '',
       adapter: form.getValues().adapter,
       adapter_config: form.getValues().adapter_config,
-      enable: form.getValues().enable,
+      enable: true,
       event_bindings: form.getValues().event_bindings ?? [],
       plugin_processors: form.getValues().plugin_processors ?? [],
     };
@@ -657,7 +707,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       .updateBot(initBotId, updateBot)
       .then(() => {
         // Reset dirty baseline to current values so isDirty becomes false
-        form.reset(form.getValues());
+        form.reset({ ...form.getValues(), enable: true });
         onFormSubmit(form.getValues());
         toast.success(t('bots.saveSuccess'));
       })
@@ -668,6 +718,18 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         setIsLoading(false);
       });
   }
+
+  const hasProcessing =
+    (form.watch('event_bindings') ?? []).some(
+      (binding) =>
+        binding.enabled !== false &&
+        !!binding.event_pattern &&
+        (binding.target_type === 'discard' ||
+          agentNameList.some((agent) => agent.uuid === binding.target_uuid)),
+    ) ||
+    (form.watch('plugin_processors') ?? []).some(
+      (processor) => processor.enabled !== false && !!processor.processor_uuid,
+    );
 
   if (loadFailed)
     return (
@@ -740,17 +802,44 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 data-testid="adapter-gallery"
                 className="min-w-0 space-y-8 py-2"
               >
-                <div className="max-w-2xl">
-                  <h2 className="text-xl font-semibold">
-                    {t('guidedTour.bot.adapter.title')}
-                  </h2>
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-xl font-semibold">
+                      {t('guidedTour.bot.adapter.title')}
+                    </h2>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="search"
+                        value={adapterSearch}
+                        onChange={(event) =>
+                          setAdapterSearch(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.preventDefault();
+                        }}
+                        placeholder={t('bots.searchAdapters')}
+                        aria-label={t('bots.searchAdapters')}
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {t('guidedTour.bot.adapter.description')}
                   </p>
                 </div>
 
                 <div className="space-y-8">
-                  {groupedAdapters.map((group) => (
+                  {galleryGroups.length === 0 &&
+                    galleryLegacyAdapters.length === 0 && (
+                      <p
+                        className="py-8 text-center text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        {t('bots.noMatchingAdapters')}
+                      </p>
+                    )}
+                  {galleryGroups.map((group) => (
                     <section
                       key={group.categoryId ?? 'uncategorized'}
                       data-adapter-category={
@@ -805,30 +894,35 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     </section>
                   ))}
 
-                  {legacyAdapters.length > 0 && (
+                  {galleryLegacyAdapters.length > 0 && (
                     <section
                       className="border-t pt-5"
                       data-adapter-category="legacy"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setShowLegacyAdapters((value) => !value)}
-                        className="flex w-full items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
-                        aria-expanded={showLegacyAdapters}
-                      >
-                        {showLegacyAdapters ? (
-                          <ChevronDown className="size-4" />
-                        ) : (
-                          <ChevronRight className="size-4" />
-                        )}
-                        {t('bots.legacyAdapters')}
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
-                          {legacyAdapters.length}
-                        </span>
-                      </button>
-                      {showLegacyAdapters && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowLegacyAdapters((value) => !value)
+                          }
+                          className="flex items-center gap-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+                          aria-expanded={showLegacyAdapters || !!adapterQuery}
+                        >
+                          {showLegacyAdapters || adapterQuery ? (
+                            <ChevronDown className="size-4" />
+                          ) : (
+                            <ChevronRight className="size-4" />
+                          )}
+                          {t('bots.legacyAdapters')}
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                            {galleryLegacyAdapters.length}
+                          </span>
+                        </button>
+                        <LegacyAdapterHelp />
+                      </div>
+                      {(showLegacyAdapters || !!adapterQuery) && (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          {legacyAdapters.map((item) => (
+                          {galleryLegacyAdapters.map((item) => (
                             <button
                               key={`legacy:${item.value}`}
                               type="button"
@@ -1140,19 +1234,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   <div data-guide="bot-adapter-parameters">
                     <DynamicFormComponent
                       itemConfigList={dynamicFormConfigList}
+                      hiddenItemNames={connectionModeControllerNames}
                       initialValues={currentAdapterConfig}
                       onSubmit={(values) => {
                         form.setValue('adapter_config', values, {
                           shouldDirty: !isInitializing.current,
                         });
                       }}
-                      systemContext={{
-                        webhook_url: webhookUrl,
-                        extra_webhook_url: extraWebhookUrl,
-                        bot_uuid: initBotId || '',
-                        adapter_config: form.getValues('adapter_config') || {},
-                        outbound_ips: systemInfo.outbound_ips,
-                      }}
+                      systemContext={dynamicFormSystemContext}
                     />
                   </div>
                 )}
@@ -1166,11 +1255,27 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               data-guide="bot-routing"
               className={cn(
                 'min-w-0',
+                !hasProcessing && 'pt-0',
                 initBotId && 'lg:min-h-0 lg:overflow-hidden',
               )}
             >
+              {!hasProcessing && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-start gap-2.5 rounded-t-xl border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm leading-relaxed text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  <TriangleAlert
+                    className="mt-0.5 size-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <p>{t('botSetup.warning')}</p>
+                </div>
+              )}
               <CardHeader>
-                <CardTitle>{t('bots.eventRouting')}</CardTitle>
+                <CardTitle className="flex items-center gap-1.5">
+                  {t('bots.eventRouting')}
+                  <EventRoutingHelp />
+                </CardTitle>
                 <CardDescription>
                   {t('bots.eventRoutingDescription')}
                 </CardDescription>
@@ -1183,6 +1288,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
               >
                 <EventBindingsEditor
                   form={form}
+                  onAgentCreated={(agent) =>
+                    setAgentNameList((items) => [
+                      ...items.filter((item) => item.uuid !== agent.uuid),
+                      agent,
+                    ])
+                  }
                   botId={initBotId}
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList.filter(

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.storage.media import MediaCache
 
 
 @pytest.mark.asyncio
@@ -52,7 +53,37 @@ async def test_agent_run_snapshot_records_identity_and_redacts_inline_attachment
     assert raw_input['contents'][0]['image_base64'] == 'large-image-data'
     assert raw_input['attachments'][0]['content'] == 'large-file-data'
 
-    if event_type != 'message.received':
-        assert saved['metadata']['input_event'] == event.data
-    else:
-        assert 'input_event' not in saved['metadata']
+    assert saved['metadata']['input_event'] == event.data
+
+
+def test_event_snapshot_preserves_custom_values_and_redacts_nested_binary():
+    data = {
+        'member': {'id': 'u1', 'active': False},
+        'count': 0,
+        'custom': {'contents': [{'type': 'image_base64', 'image_base64': 'secret'}]},
+        'attachments': [{'name': 'file.txt', 'content': 'secret'}],
+    }
+    saved = AgentRunJournal._sanitize_event_data(data)
+    assert saved['member'] == data['member']
+    assert saved['count'] == 0
+    assert saved['custom']['contents'][0]['image_base64'] is None
+    assert saved['attachments'][0]['content'] is None
+    assert data['custom']['contents'][0]['image_base64'] == 'secret'
+
+
+@pytest.mark.parametrize(
+    'image',
+    [
+        {'type': 'Image', 'base64': 'eA=='},
+        {'type': 'image_base64', 'image_base64': 'eA=='},
+        {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,eA=='}},
+    ],
+)
+def test_metadata_and_transcript_redaction_cover_all_image_encodings(image):
+    content = AgentRunJournal._sanitize_content_item(image)
+    event = AgentRunJournal._sanitize_event_data({'nested': [image]})
+    assert not MediaCache.has_inline_images(content)
+    assert not MediaCache.has_inline_images(event)
+    assert content['content_redacted'] is True
+    assert event['nested'][0]['content_redacted'] is True
+    assert MediaCache.has_inline_images(image)

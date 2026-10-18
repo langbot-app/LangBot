@@ -8,9 +8,9 @@ metadata:
     zh_Hans: Slack
     zh_Hant: Slack
   description:
-    en_US: Slack adapter with event-driven orchestration support, using LangBot's unified webhook endpoint.
-    zh_Hans: Slack 适配器，支持事件驱动编排，通过 LangBot 统一 Webhook 接收 Slack 事件订阅消息。
-    zh_Hant: Slack 適配器，支援事件驅動編排，透過 LangBot 統一 Webhook 接收 Slack 事件訂閱訊息。
+    en_US: Slack adapter with event-driven orchestration, supporting Webhook and Socket Mode.
+    zh_Hans: Slack 适配器，支持事件驱动编排，可使用 Webhook 或无需公网地址的长连接。
+    zh_Hant: Slack 適配器，支援事件驅動編排，可使用 Webhook 或無需公開網址的長連線。
   icon: slack.png
 
 spec:
@@ -22,7 +22,26 @@ spec:
     en: https://langbot.app/docs/en/usage/platforms/slack
     ja: https://langbot.app/docs/ja/usage/platforms/slack
   config:
+    - name: quick_setup
+      label: {en_US: Quick Slack setup, zh_Hans: Slack 快速配置, zh_Hant: Slack 快速設定, ja_JP: Slack クイック設定}
+      description: {en_US: Create and configure an app using App Configuration Tokens., zh_Hans: 填入配置令牌，自动创建应用并配置权限，授权后填入凭据。, zh_Hant: 填入設定權杖，自動建立應用程式並設定權限，授權後填入憑證。, ja_JP: 設定トークンでアプリを作成し、承認後に認証情報を入力します。}
+      type: qr-code-login
+      login_platform: slack
+      required: false
+    - name: socket_mode
+      label: {en_US: Socket Mode, zh_Hans: 长连接模式, zh_Hant: 長連線模式, ja_JP: Socket Mode}
+      type: boolean
+      default: false
+      required: false
+    - name: app_token
+      label: {en_US: App-Level Token, zh_Hans: App-Level Token, zh_Hant: App-Level Token, ja_JP: App-Level Token}
+      description: {en_US: Generate an xapp- token with connections:write in Basic Information., zh_Hans: 在 Basic Information 中生成带 connections:write 权限的 xapp- 令牌。, zh_Hant: 在 Basic Information 產生具有 connections:write 權限的 xapp- 權杖。, ja_JP: Basic Information で connections:write 権限の xapp- トークンを生成してください。}
+      type: string
+      required: false
+      default: ''
+      show_if: {field: socket_mode, operator: eq, value: true}
     - name: webhook_url
+      show_if: {field: socket_mode, operator: eq, value: false}
       label:
         en_US: Webhook Callback URL
         zh_Hans: Webhook 回调地址
@@ -43,16 +62,25 @@ spec:
       required: true
       default: ""
     - name: signing_secret
+      show_if: {field: socket_mode, operator: eq, value: false}
       label:
         en_US: Signing Secret
         zh_Hans: 签名密钥
         zh_Hant: 簽名密鑰
       type: string
-      required: true
+      required: false
       default: ""
 
   supported_events:
     - message.received
+    - message.edited
+    - message.deleted
+    - message.reaction
+    - group.member_joined
+    - group.member_left
+    - group.info_updated
+    - bot.invited_to_group
+    - bot.removed_from_group
     - platform.specific
 
   supported_apis:

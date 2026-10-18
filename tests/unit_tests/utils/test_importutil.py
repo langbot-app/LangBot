@@ -15,13 +15,14 @@ Uses mocking for import operations to avoid actual module imports.
 
 import pytest
 import importlib
-from unittest.mock import patch, MagicMock
+import os
+from unittest.mock import patch, MagicMock, call
 
 
 class TestImportDir:
     """Test import_dir function."""
 
-    def test_calls_importlib_for_each_python_file(self, tmp_path):
+    def test_calls_importlib_for_each_python_file(self, tmp_path, monkeypatch):
         """Should call importlib.import_module for each .py file."""
         module_dir = tmp_path / 'test_modules'
         module_dir.mkdir()
@@ -33,12 +34,17 @@ class TestImportDir:
 
         from langbot.pkg.utils import importutil
 
+        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
         with patch.object(importlib, 'import_module') as mock_import:
             importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
             # Should call import_module for each .py file (excluding __init__.py)
             assert mock_import.call_count == 2
+            mock_import.assert_has_calls(
+                [call('test_prefix.test_modules.module_a'), call('test_prefix.test_modules.module_b')],
+                any_order=True,
+            )
 
-    def test_skips_init_py(self, tmp_path):
+    def test_skips_init_py(self, tmp_path, monkeypatch):
         """Should skip __init__.py when importing."""
         module_dir = tmp_path / 'test_modules'
         module_dir.mkdir()
@@ -48,15 +54,12 @@ class TestImportDir:
 
         from langbot.pkg.utils import importutil
 
+        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
         with patch.object(importlib, 'import_module') as mock_import:
             importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
-            # __init__.py should be skipped
-            mock_import.assert_called_once()
-            # The call should not include __init__
-            call_args = mock_import.call_args[0][0]
-            assert '__init__' not in call_args
+            mock_import.assert_called_once_with('test_prefix.test_modules.regular')
 
-    def test_ignores_non_py_files(self, tmp_path):
+    def test_ignores_non_py_files(self, tmp_path, monkeypatch):
         """Should ignore non-.py files."""
         module_dir = tmp_path / 'test_modules'
         module_dir.mkdir()
@@ -67,10 +70,10 @@ class TestImportDir:
 
         from langbot.pkg.utils import importutil
 
+        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
         with patch.object(importlib, 'import_module') as mock_import:
             importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
-            # Only .py files should be imported
-            assert mock_import.call_count == 1
+            mock_import.assert_called_once_with('test_prefix.test_modules.module')
 
 
 class TestImportModulesInPkg:
@@ -107,7 +110,7 @@ class TestImportModulesInPkgs:
 
         with patch.object(importutil, 'import_modules_in_pkg') as mock_import:
             importutil.import_modules_in_pkgs([mock_pkg1, mock_pkg2])
-            assert mock_import.call_count == 2
+            assert mock_import.call_args_list == [call(mock_pkg1), call(mock_pkg2)]
 
 
 class TestImportDotStyleDir:
@@ -124,10 +127,7 @@ class TestImportDotStyleDir:
 
         with patch.object(importutil, 'import_dir') as mock_import_dir:
             importutil.import_dot_style_dir('my.pkg.test')
-            # The path should be converted using os.path.join
-            call_path = mock_import_dir.call_args[0][0]
-            # Should contain the path components joined
-            assert 'my' in call_path
+            mock_import_dir.assert_called_once_with(os.path.join('my', 'pkg', 'test'))
 
 
 class TestReadResourceFile:

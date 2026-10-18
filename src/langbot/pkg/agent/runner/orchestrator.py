@@ -5,9 +5,11 @@ from __future__ import annotations
 import time
 import asyncio
 import contextlib
+import copy
 import typing
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
+from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -18,6 +20,7 @@ from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
+from .config_schema import extract_prompt_config
 from .execution_context import (
     append_mcp_resource_context_to_event,
     build_mcp_resource_context_addition,
@@ -37,13 +40,11 @@ from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
+from ...telemetry import resources as telemetry_resources
 from ...telemetry import trace as trace_mod
 from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
-
-
-ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
 
 
 class AgentRunOrchestrator:
@@ -114,6 +115,12 @@ class AgentRunOrchestrator:
 
         if execution_query is None:
             execution_query = build_execution_query(event, [])
+            # Event runs bypass pipeline prompt preparation, just like debug runs.
+            prompt_config = extract_prompt_config(descriptor, binding.runner_config, [])
+            execution_query.prompt = provider_prompt.Prompt(
+                name='default',
+                messages=[provider_message.Message(**item) for item in copy.deepcopy(prompt_config)],
+            )
             # Synthetic events must expose the same trusted scope as pipeline queries.
             for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
                 object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
@@ -142,6 +149,22 @@ class AgentRunOrchestrator:
             binding=binding,
             descriptor=descriptor,
         )
+        # Telemetry: report what this run was granted (never what it used). The
+        # materialized resource list is authoritative for tools/skills/models;
+        # the Runner's own config form is authoritative for its selectors.
+        try:
+            from . import config_schema as runner_config_schema
+
+            capabilities = getattr(descriptor, 'capabilities', None)
+            telemetry_resources.note_agent(
+                runner_id=descriptor.id,
+                resources=resources,
+                selectors=runner_config_schema.extract_selected_resources(descriptor, binding.runner_config),
+                capabilities=capabilities.model_dump() if hasattr(capabilities, 'model_dump') else None,
+                tools_all=getattr(binding.resource_policy, 'allow_all_tools', None),
+            )
+        except Exception:
+            pass
 
         context = await self.context_builder.build_context_from_event(
             event=execution_event,
@@ -150,24 +173,21 @@ class AgentRunOrchestrator:
             resources=resources,
         )
 
+        authorized_skill_names = [
+            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
+        ]
+        # Every invocation owns a new run; conversation state is not a recovery snapshot.
+        prepare_execution_query(execution_query, event, authorized_skill_names)
+        execution_query.variables.pop(skill_loader.ACTIVATED_SKILLS_KEY, None)
+
         session_query_id = None
         if adapter_context:
-            if execution_query is not None:
-                skill_loader.restore_activated_skills_from_state(
-                    self.ap,
-                    execution_query,
-                    context.get('state', {}),
-                )
             session_query_id = adapter_context.get('query_id')
             if execution_query is not None or session_query_id is not None:
                 context['context']['available_apis']['prompt_get'] = True
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
 
-        authorized_skill_names = [
-            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
-        ]
-        prepare_execution_query(execution_query, event, authorized_skill_names)
         context['variables'] = {
             key: value
             for key, value in (execution_query.variables or {}).items()
@@ -177,6 +197,21 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
+
+        # Monitoring attributes every call to the processor that ran it and to the
+        # record that owns it; a Runner has to claim both itself, since no
+        # Pipeline did. Runs before the Runner is invoked and before the run
+        # context is handed to it, so its own variables stay private.
+        from ...pipeline import monitoring_helper
+
+        await monitoring_helper.prepare_monitoring_identity(
+            self.ap,
+            execution_query,
+            processor_type=binding.processor_type,
+            processor_id=binding.processor_id,
+            runner_id=binding.runner_id,
+            execution_record_id=run_id,
+        )
         context['context']['available_apis']['reply_stream'] = hasattr(PluginToRuntimeAction, 'REPLY_STREAM') and any(
             tool.get('tool_name') == 'event_reply' and tool.get('tool_type') == 'platform'
             for tool in resources.get('tools', [])
@@ -232,6 +267,11 @@ class AgentRunOrchestrator:
                 context=context,
                 authorization=run_authorization,
             )
+            monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
+            if monitoring_id and monitoring_id != run_id:
+                await self.ap.monitoring_service.link_execution_message(
+                    get_query_execution_context(execution_query), monitoring_id, run_id, event.event_id
+                )
             await self._session_registry.register(
                 run_id=run_id,
                 runner_id=descriptor.id,
@@ -314,16 +354,25 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
                             run_id=run_id,
                             sequence=sequence_int,
                         )
+                        journal_ms = (time.monotonic() - journal_started) * 1000
 
                         # Trusted Host observers receive validated events before message-only normalization.
                         result_observer = (adapter_context or {}).get('_result_observer')
+                        observer_started = time.monotonic()
                         if result_observer is not None:
                             await result_observer(result_dict)
+                        observer_ms = (time.monotonic() - observer_started) * 1000
+                        if journal_ms + observer_ms >= 100:
+                            self.ap.logger.debug(
+                                f'Slow runner event consumer run={run_id} type={result_type} '
+                                f'journal_ms={journal_ms:.1f} observer_ms={observer_ms:.1f}'
+                            )
 
                         if result_type == 'state.updated':
                             await self.journal.handle_state_updated_event(
@@ -409,9 +458,15 @@ class AgentRunOrchestrator:
                 terminal_status or '', 'unknown'
             )
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             execution_outcome = 'cancelled'
             execution_error = 'cancelled'
+            await self.journal.finalize_run(
+                run_id=run_id,
+                status='cancelled',
+                status_reason='consumer_cancelled',
+                usage=terminal_usage,
+            )
             raise
         except Exception as exc:
             execution_outcome = 'timeout' if self._is_deadline_exhausted(context) else 'failed'

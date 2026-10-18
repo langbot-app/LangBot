@@ -73,10 +73,7 @@ export interface OperationLogRecord {
 
 /** Verification filter accepted by the listing endpoint. */
 export type OperationIntegrityFilter =
-  | 'all'
-  | 'issues'
-  | 'hash_mismatch'
-  | 'chain_broken';
+  'all' | 'issues' | 'hash_mismatch' | 'chain_broken';
 
 export interface OperationLogPage {
   records: OperationLogRecord[];
