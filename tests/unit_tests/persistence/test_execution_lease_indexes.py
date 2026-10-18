@@ -53,9 +53,10 @@ def test_lease_index_migration_preserves_data_and_existing_indexes(source):
                     assert original_indexes[table] <= indexes.keys()
 
                 MIGRATION.downgrade()
-                for table, (index, _) in LEASE_INDEXES.items():
+                for table in LEASE_INDEXES:
                     remaining = {item['name'] for item in sa.inspect(connection).get_indexes(table)}
-                    assert remaining == original_indexes[table] - {index}
+                    removed = {index for index_table, index, _ in MIGRATION.INDEXES if index_table == table}
+                    assert remaining == original_indexes[table] - removed
                 assert connection.scalar(sa.select(AgentRun.status)) == 'completed'
 
                 MIGRATION.upgrade()

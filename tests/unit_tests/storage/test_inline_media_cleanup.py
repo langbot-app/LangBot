@@ -306,7 +306,7 @@ async def test_storage_maintenance_uses_media_ttl_for_inline_records(application
 
 
 def test_ttl_indexes_migrate_idempotently_and_support_cursor_queries():
-    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0041_inline_media_ttl_indexes')
+    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0039_execution_lease_indexes')
     engine = sa.create_engine('sqlite:///:memory:')
     try:
         with engine.begin() as connection:
@@ -315,14 +315,12 @@ def test_ttl_indexes_migrate_idempotently_and_support_cursor_queries():
                 migration.downgrade()
                 migration.upgrade()
                 migration.upgrade()
-                for table, columns in migration.INDEXES:
+                for table, name, columns in migration.INDEXES:
                     indexes = {
                         index['name']: index['column_names'] for index in sa.inspect(connection).get_indexes(table)
                     }
-                    assert indexes[f'ix_{table}_media_ttl'] == columns
-                    orm_index = next(
-                        index for index in Base.metadata.tables[table].indexes if index.name == f'ix_{table}_media_ttl'
-                    )
+                    assert indexes[name] == columns
+                    orm_index = next(index for index in Base.metadata.tables[table].indexes if index.name == name)
                     assert [column.name for column in orm_index.columns] == columns
                 query = (
                     sa.select(MonitoringMessage.id, MonitoringMessage.message_content)
@@ -343,11 +341,8 @@ def test_ttl_indexes_migrate_idempotently_and_support_cursor_queries():
         engine.dispose()
 
 
-@pytest.mark.parametrize(
-    'revision', ['0039_execution_lease_indexes', '0040_conversation_page_index', '0041_inline_media_ttl_indexes']
-)
-def test_index_migrations_allow_historical_schemas_without_monitoring_tables(revision):
-    migration = importlib.import_module(f'langbot.pkg.persistence.alembic.versions.{revision}')
+def test_index_migration_allows_historical_schemas_without_monitoring_tables():
+    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0039_execution_lease_indexes')
     engine = sa.create_engine('sqlite:///:memory:')
     try:
         with engine.begin() as connection:
