@@ -164,15 +164,31 @@ class JobTests(unittest.TestCase):
             root = Path(folder)
             job = Job({}, profile(), root / 'profile.json', root)
             job.state['record'] = {'data_dir': str(job.deploy / 'data')}
+            containers = ['ours', 'other']
 
             def checked(args, timeout=900):
                 if args[1] == 'ps':
-                    return 'ours\nother\n'
-                source = str(job.deploy / 'data/box/tenant') if args[-1] == 'ours' else '/unrelated/box/tenant'
-                return json.dumps([{'Source': source}])
+                    return '\n'.join(containers)
+                return '\n'.join(
+                    json.dumps(
+                        {
+                            'Id': container,
+                            'Mounts': [
+                                {
+                                    'Source': str(job.deploy / 'data/box/tenant')
+                                    if container != 'other'
+                                    else '/unrelated/box/tenant'
+                                }
+                            ],
+                        }
+                    )
+                    for container in args[4:]
+                )
 
             job.checked = checked
             self.assertEqual(job.owned_sandboxes(), ['ours'])
+            containers.append('later')
+            self.assertEqual(job.owned_sandboxes(), ['ours', 'later'])
 
 
 if __name__ == '__main__':

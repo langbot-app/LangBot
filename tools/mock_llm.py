@@ -17,6 +17,39 @@ import uuid
 
 MAX_BODY_BYTES = 1024 * 1024
 USAGE = {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}
+GROUP_TURN = re.compile(r'LB_GROUP=(\S+) LB_TURN=(\d+) LB_TOKEN=([a-f0-9]+) LB_PREVIOUS=(none|[a-f0-9]+)')
+
+
+def group_ack(messages, start):
+    """Require a real previous user turn and reply, with no other group's history."""
+    turns = []
+    for index, message in enumerate(messages):
+        if message.get('role') == 'user':
+            for match in GROUP_TURN.finditer(str(message.get('content', ''))):
+                turns.append((index, *match.groups()))
+    if not turns:
+        return ''
+    position, group, turn, token, previous = turns[-1]
+    if position != start or any(item[1] != group for item in turns):
+        raise ValueError('group history contains another group or lacks the current turn')
+    if int(turn) == 1:
+        if len(turns) != 1 or previous != 'none':
+            raise ValueError('first group turn must have an empty history')
+    else:
+        if len(turns) < 2:
+            raise ValueError('previous group turn is missing from model history')
+        prior_position, _, prior_turn, prior_token, _ = turns[-2]
+        replies = messages[prior_position + 1 : start]
+        if (
+            int(prior_turn) != int(turn) - 1
+            or prior_token != previous
+            or not any(
+                message.get('role') == 'assistant' and f'GROUP_ACK={previous}' in str(message.get('content', ''))
+                for message in replies
+            )
+        ):
+            raise ValueError('previous group turn or assistant acknowledgement does not match')
+    return f' GROUP_ACK={token}'
 
 
 def mock_embeddings(body):
@@ -67,6 +100,7 @@ def select_message(body, scenario):
     )
     if start is None:
         raise ValueError('a user message is required')
+    acknowledgement = group_ack(messages, start)
     turn = messages[start:]
     calls = [i for i, m in enumerate(turn) if m.get('role') == 'assistant' and m.get('tool_calls')]
     for index, position in enumerate(calls):
@@ -88,7 +122,8 @@ def select_message(body, scenario):
         result_text = '\n'.join(str(m.get('content', '')) for m in results if m.get('role') == 'tool')
         if expected not in result_text:
             raise ValueError(f'tool result must contain {expected!r}')
-    message = {'role': 'assistant', 'content': step.get('content')}
+    content = step.get('content')
+    message = {'role': 'assistant', 'content': content + acknowledgement if content is not None else None}
     if tool_calls := step.get('tool_calls'):
         tools = body.get('tools', [])
         if not isinstance(tools, list) or any(

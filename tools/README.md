@@ -1,4 +1,4 @@
-# Mock LLM for regression tests
+# LangBot regression tools
 
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
@@ -32,6 +32,9 @@ tool result must contain `LANGBOT_BOX_SENTINEL` before the next step is returned
 Tool-call IDs and fragmented streaming arguments use the normal OpenAI protocol.
 Scenario progress comes from each request's current conversation turn, so
 concurrent sessions and retries do not consume a shared script counter.
+Tagged group traffic additionally requires the previous user turn and assistant
+acknowledgement in the model input, and rejects another group's history. Final
+responses carry a per-turn acknowledgement checked by the traffic driver.
 
 Add fixed response/tool sequences with `--scenarios path/to/scenarios.json`, using
 `mock_llm_scenarios.json` as the example. `expect_tool_output` checks a substring
@@ -97,8 +100,10 @@ any failed health probe or process/container resource read.
 
 [`regression_suite.py`](regression_suite.py) turns a JSON profile into a repeatable
 resource preparation, traffic, observation, verdict, and cleanup sequence. Start
-with [`regression_profiles/normal.json`](regression_profiles/normal.json), which
-defines the chat/Box/RAG mix from the ten-minute trial.
+with [`regression_profiles/groups.json`](regression_profiles/groups.json) for
+continuous group conversations. The earlier
+[`normal.json`](regression_profiles/normal.json) profile retains independent CLI
+requests; parallel CLI workers alone do not simulate persistent groups.
 
 Use a dedicated QA Workspace. First provision the instance with `lbctl install`
 or your source deployment, enable Docker Box, start the mock and embedding
@@ -110,9 +115,9 @@ paths resolve against the profile directory, so adjust them if you move it.
 Run on the Linux test host:
 
 ```sh
-python3 tools/regression_suite.py validate --profile tools/regression_profiles/normal.json
+python3 tools/regression_suite.py validate --profile tools/regression_profiles/groups.json
 python3 tools/regression_suite.py run \
-  --profile tools/regression_profiles/normal.json --output .qa/regression/run-001
+  --profile tools/regression_profiles/groups.json --output .qa/regression/run-001
 ```
 
 `validate` checks profile syntax and references without contacting the instance.
@@ -124,12 +129,13 @@ The profile controls:
 
 - `plugins`: local archives or GitHub/marketplace request files, installed with
   `lbctl plugin install ... --wait`.
-- `resources`: Providers, models, knowledge bases, document ingestion, and
-  Pipelines, created in dependency order. `${resource_id}` refers to a UUID
+- `resources`: Providers, models, knowledge bases, document ingestion, Pipelines,
+  and Bots, created in dependency order. `${resource_id}` refers to a UUID
   returned by an earlier creation; `${workspace_uuid}` is the current Workspace.
-  Pipeline config patches merge with actual server defaults. Existing resources
-  can instead be supplied through `vars`, leaving `resources` empty.
-- `cases`: CLI argument arrays and expected business text. Integer `weight`
+  Pipeline config patches merge with actual server defaults. Independent CLI
+  cases can use existing resources supplied through `vars`; group mode creates
+  its own signed HTTP Bots.
+- `cases`: CLI argument arrays or `http_group` settings and expected business text. Integer `weight`
   values set the mix; `2/1/1/1` means `40/20/20/20`. An optional `body` object
   becomes the case's request file. All workers share the weighted sequence.
 - `phases`: each phase has a name, duration, target RPS, worker limit, and optional
@@ -137,6 +143,10 @@ The profile controls:
   end; the concurrency limit can reduce achieved RPS.
 - `observe`: health URLs, host PIDs, PID files, and Docker container names/IDs.
   Set PIDs for disjoint process trees to avoid counting descendants twice.
+  `box_data_root` discovers Box containers mounted below that deployment's data
+  directory on every sample, including sandboxes created as new groups speak.
+  The complete Job sets it automatically; on an existing instance, set it to
+  the instance's Box data directory when sampling dynamic Docker sandboxes.
 - `thresholds`: minimum achieved/target RPS ratio and maximum P95 seconds per
   case, in addition to the existing business and health/resource checks. The
   sample limits are starting acceptance settings, not established product SLOs.
@@ -150,7 +160,7 @@ same profile and credentials:
 
 ```sh
 python3 tools/regression_suite.py cleanup \
-  --profile tools/regression_profiles/normal.json --output .qa/regression/run-001
+  --profile tools/regression_profiles/groups.json --output .qa/regression/run-001
 ```
 
 Cleanup checks the Workspace against `owned.json` and records remaining items
@@ -161,13 +171,61 @@ target/achieved RPS, phase results, threshold failures, and the final verdict.
 
 The `regression_suite.py` entry reuses an existing instance and backend processes.
 Use the complete lifecycle Job below to own deployment, credentials and backends.
-Cases still use the existing text oracle and new-session CLI entry; continuous
-conversations, IM adapter acceptance, and resource-leak verdicts need separate
-scenarios. Test the suite plumbing on Linux with:
+The independent `normal.json` cases use a new-session CLI entry. Group traffic
+uses the signed HTTP Bot adapter instead, as described below. Real IM adapter
+acceptance and resource-leak verdicts need separate scenarios. Test the suite
+plumbing on Linux with:
 
 ```sh
 python3 -m unittest discover -s tools -p test_regression_suite.py -v
 ```
+
+### Persistent group traffic
+
+The group profile creates three HTTP Bots routed to chat, Box, and RAG Pipelines.
+Their signed `/bots/<uuid>/sync` ingress produces real `GroupMessage` events and
+uses Core's session manager. Four groups follow a `2/1/1` case assignment;
+members take turns within each group. The same member IDs appear in different
+groups to exercise group isolation. Box session selection uses the group launcher ID.
+
+In each group phase, `groups` selects the number of stable sessions and
+`members_per_group` selects the rotating member identities. `rps` remains the
+aggregate target, so a group's target speaking interval is `groups / rps`
+seconds. `workers` bounds total in-flight requests independently of group count.
+For example, 8 groups at 4 RPS target one message every 2 seconds per group.
+Both the Suite and Job accept `--groups` and `--members-per-group` overrides.
+The group count must cover the full weighted case sequence (4 in the sample).
+
+Only one request is in flight per group. A failure or unknown outcome stops that
+group without retry while other groups continue. Every selected group must
+complete at least two turns in total for the phase to pass. The fake model checks
+that the preceding user message and assistant acknowledgement survived in actual
+model input, including when a different member speaks next. Cross-group markers
+fail the oracle. The normal Box/tool-output and RAG-context checks still apply.
+
+`group-state.json` carries group IDs, turn numbers and acknowledgements across
+phases; existing groups keep their conversations when later phases add groups.
+It refuses changed cases or a state left in progress by interruption. Do not
+clear that marker to blindly resume: inspect the run and use a fresh output
+directory when the last turn's outcome is unknown. Each phase summary includes
+group-level turn counts and member IDs alongside case latency and health data.
+
+The Suite generates the HTTP Bot signing secret and passes it through
+`LANGBOT_QA_GROUP_SECRET`. Resource request bodies containing credentials are
+stored under `.private/`; do not share that directory. Cases specify `http_group`
+with `url`, `secret_env`, and `message` instead of CLI `args`. Core needs no code
+changes. The `/sync` response collapses streaming parts: this tests multi-turn
+group processing, not real IM delivery or callback streaming order.
+Every selected group must also receive traffic in each phase. Group latency
+measures the signed HTTP request through its completed reply; independent CLI
+latency includes CLI startup. Compare results within the same traffic mode.
+
+`lbctl` v0.3 may report Bot verification failure after a successful creation
+because its safe projection omits event bindings. The Suite records the returned
+Bot UUID before reading the full Core Bot API with the endpoint, Workspace and
+environment credential confirmed by `lbctl whoami`. It then
+checks the masked signing secret and effective route with a signed warmup turn
+before load. The creation is not retried.
 
 ## Complete lifecycle Job
 

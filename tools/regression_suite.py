@@ -8,11 +8,17 @@ import math
 import os
 from pathlib import Path
 import re
+import secrets
 import subprocess
 import sys
+import urllib.error
+import urllib.request
+from uuid import uuid4
+
+from regression_traffic import group_request
 
 
-KINDS = {'provider', 'model', 'pipeline', 'knowledge-base'}
+KINDS = {'provider', 'model', 'pipeline', 'knowledge-base', 'bot'}
 REFERENCE = re.compile(r'\$\{([a-zA-Z][a-zA-Z0-9_-]*)\}')
 
 
@@ -33,6 +39,21 @@ def merge(base, patch):
             merge(result[key], value) if isinstance(value, dict) and isinstance(result.get(key), dict) else value
         )
     return result
+
+
+def contains_fields(actual, expected):
+    """Check submitted fields while allowing server-generated defaults."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and contains_fields(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(actual, list)
+            and len(actual) == len(expected)
+            and all(contains_fields(left, right) for left, right in zip(actual, expected))
+        )
+    return actual == expected
 
 
 def number(value, label, *, minimum=0, integer=False):
@@ -61,7 +82,7 @@ def validate(profile):
         raise ValueError('cli accepts config and executable')
     if not isinstance(cli.get('config'), str) or not cli['config']:
         raise ValueError('cli.config must name a Workspace-bound lbctl config')
-    variables = {'profile_dir': '.', 'run_dir': '.', 'workspace_uuid': 'workspace'}
+    variables = {'profile_dir': '.', 'run_dir': '.', 'workspace_uuid': 'workspace', 'group_secret': 'private'}
     supplied = profile.get('vars', {})
     if not isinstance(supplied, dict) or variables.keys() & supplied.keys():
         raise ValueError('vars must be an object without reserved names')
@@ -84,6 +105,16 @@ def validate(profile):
             raise ValueError(f'{name}: resource needs kind and body')
         if 'uuid' in item['body']:
             raise ValueError(f'{name}: resources must create new objects; body.uuid is forbidden')
+        if item['kind'] == 'bot' and (
+            item['body'].get('adapter') != 'http_bot'
+            or not isinstance(item['body'].get('adapter_config'), dict)
+            or item['body'].get('adapter_config', {}).get('inbound_secret') != '${group_secret}'
+            or not any(
+                isinstance(case.get('http_group'), dict) and '${' + name + '}' in case['http_group'].get('url', '')
+                for case in profile.get('cases', [])
+            )
+        ):
+            raise ValueError('Bot resources require http_bot, ${group_secret}, and a matching http_group case')
         if item['kind'] == 'model' and item.get('type') not in {'llm', 'embedding', 'rerank'}:
             raise ValueError(f'{name}: model type must be llm/embedding/rerank')
         resolve(item['body'], variables)  # References must point backwards; never guess missing UUIDs.
@@ -100,12 +131,26 @@ def validate(profile):
         raise ValueError('cases must be a non-empty array')
     names = set()
     for case in cases:
-        if case.keys() - {'name', 'weight', 'args', 'expect', 'body'}:
+        if case.keys() - {'name', 'weight', 'args', 'expect', 'body', 'http_group'}:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
             raise ValueError('case names must be non-empty and unique')
         names.add(case['name'])
-        if (
+        if 'http_group' in case:
+            settings = case['http_group']
+            if (
+                'args' in case
+                or 'body' in case
+                or not isinstance(settings, dict)
+                or set(settings) != {'url', 'secret_env', 'message'}
+                or any(not isinstance(value, str) or not value for value in settings.values())
+                or not resolve(settings['url'], variables).startswith(('http://', 'https://'))
+                or settings['secret_env'] != 'LANGBOT_QA_GROUP_SECRET'
+            ):
+                raise ValueError(
+                    'http_group needs url, message and secret_env=LANGBOT_QA_GROUP_SECRET; no CLI args/body'
+                )
+        elif (
             not isinstance(case.get('args'), list)
             or not case['args']
             or not all(isinstance(x, str) for x in case['args'])
@@ -128,7 +173,15 @@ def validate(profile):
         if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_-]*', name) or name in names:
             raise ValueError('phase names must be unique simple names')
         names.add(name)
-        if phase.keys() - {'name', 'duration_seconds', 'rps', 'workers', 'cooldown_seconds'}:
+        if phase.keys() - {
+            'name',
+            'duration_seconds',
+            'rps',
+            'workers',
+            'cooldown_seconds',
+            'groups',
+            'members_per_group',
+        }:
             raise ValueError(f'{name}: unknown phase field')
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
         number(phase.get('rps'), 'rps', minimum=0.001)
@@ -136,6 +189,17 @@ def validate(profile):
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
         if phase['workers'] > 32:
             raise ValueError('workers must be <= 32')
+        number(phase.get('groups', 0), 'groups', integer=True)
+        number(phase.get('members_per_group', 3), 'members_per_group', minimum=1, integer=True)
+        if phase.get('groups', 0) > 4096 or phase.get('members_per_group', 3) > 1000:
+            raise ValueError('groups must be <= 4096 and members_per_group <= 1000')
+        group_cases = ['http_group' in case for case in cases]
+        if any(group_cases) and (
+            not all(group_cases) or phase.get('groups', 0) < sum(case.get('weight', 1) for case in cases)
+        ):
+            raise ValueError('group phases need only http_group cases and enough groups for all weighted cases')
+        if not any(group_cases) and phase.get('groups', 0):
+            raise ValueError('groups require http_group cases')
     if profile.get('cleanup', 'on-success') not in {'always', 'on-success', 'never'}:
         raise ValueError('cleanup must be always/on-success/never')
     thresholds = profile.get('thresholds', {})
@@ -151,8 +215,18 @@ def validate(profile):
             raise ValueError(f'unknown case in max_p95_seconds: {name}')
         number(value, 'max_p95_seconds', minimum=0.001)
     observed = resolve(profile.get('observe', {}), variables)
-    if not isinstance(observed, dict) or observed.keys() - {'health', 'pids', 'pid_files', 'containers'}:
-        raise ValueError('observe accepts health, pids, pid_files, containers')
+    if not isinstance(observed, dict) or observed.keys() - {
+        'health',
+        'pids',
+        'pid_files',
+        'containers',
+        'box_data_root',
+    }:
+        raise ValueError('observe accepts health, pids, pid_files, containers, box_data_root')
+    if 'box_data_root' in observed and (
+        not isinstance(observed['box_data_root'], str) or not observed['box_data_root']
+    ):
+        raise ValueError('observe.box_data_root must name the deployment Box data directory')
     if not isinstance(observed.get('health'), dict) or not observed['health']:
         raise ValueError('observe.health must contain at least one health endpoint')
     for name, url in observed['health'].items():
@@ -186,8 +260,14 @@ class Suite:
             'json',
         ]
         self.owned = []
-        self.env = env
-        self.secrets = [value for key, value in (env or os.environ).items() if 'API_KEY' in key and value]
+        self.connection = {}
+        self.env = dict(os.environ if env is None else env)
+        if any('http_group' in case for case in profile['cases']):
+            self.variables['group_secret'] = secrets.token_urlsafe(32)
+            self.env['LANGBOT_QA_GROUP_SECRET'] = self.variables['group_secret']
+        self.secrets = [
+            value for key, value in self.env.items() if ('API_KEY' in key or key == 'LANGBOT_QA_GROUP_SECRET') and value
+        ]
 
     def path(self, value):
         path = Path(resolve(value, self.variables)).expanduser()
@@ -195,11 +275,15 @@ class Suite:
 
     def write(self, name, value):
         path = self.output / name
+        if name == 'request.json':
+            private = self.output / '.private'
+            private.mkdir(exist_ok=True, mode=0o700)
+            path = private / name
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2))
         path.chmod(0o600)
         return str(path)
 
-    def call(self, args, body=None):
+    def call(self, args, body=None, *, defer_bot_readback=False):
         command = [*self.cli, *args]
         if body is not None:
             command += ['--file', self.write('request.json', body)]
@@ -208,11 +292,50 @@ class Suite:
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError('lbctl timed out; outcome unknown, no automatic retry') from exc
         if result.returncode:
+            if defer_bot_readback and args == ['bot', 'create']:
+                response = json.loads(result.stdout)
+                data = response.get('data', {})
+                if (
+                    response.get('error', {}).get('type') == 'verification_failed'
+                    and data.get('operation') == 'bot.create'
+                    and data.get('uuid')
+                    and data.get('bot', {}).get('uuid') == data['uuid']
+                ):
+                    return data
             error = result.stdout + result.stderr
             for secret in self.secrets:
                 error = error.replace(secret, '[REDACTED]')
             raise RuntimeError(error[:3000])
-        return json.loads(result.stdout)['data']
+        response = json.loads(result.stdout)
+        if args == ['whoami']:
+            self.connection = response.get('meta') or {}
+        return response['data']
+
+    def read_bot(self, bot_uuid):
+        """Read full Bot fields using the endpoint and environment credential confirmed by lbctl."""
+        source = self.connection.get('credential_source', '')
+        key = self.env.get(source.removeprefix('env:')) if source.startswith('env:') else None
+        if not key or not self.connection.get('endpoint'):
+            raise RuntimeError('Group Bot readback requires environment-backed lbctl credentials')
+        self.secrets.append(key)
+        request = urllib.request.Request(
+            self.connection['endpoint'].rstrip('/') + '/api/v1/platform/bots/' + bot_uuid,
+            headers={'Authorization': 'Bearer ' + key, 'X-Workspace-Id': self.variables['workspace_uuid']},
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(request, timeout=30) as response:
+                payload = json.load(response)
+        except (urllib.error.URLError, OSError) as exc:
+            raise RuntimeError('Bot readback request failed; the creation was not retried') from exc
+        if (
+            not isinstance(payload, dict)
+            or payload.get('code') != 0
+            or not isinstance(payload.get('data'), dict)
+            or not isinstance(payload['data'].get('bot'), dict)
+        ):
+            raise RuntimeError('Bot readback did not return a successful Bot resource')
+        return payload['data']['bot']
 
     def journal(self):
         self.write('owned.json', {'workspace_uuid': self.variables['workspace_uuid'], 'resources': self.owned})
@@ -230,12 +353,19 @@ class Suite:
             args = [kind, 'apply' if kind == 'pipeline' else 'create']
             if kind == 'model':
                 args += ['--type', item['type']]
-            created = self.call(args, body)
+            created = self.call(args, body, defer_bot_readback=True) if kind == 'bot' else self.call(args, body)
             created = created.get('pipeline', created) if kind == 'pipeline' else created
             uuid = created['uuid']
             self.variables[item['id']] = uuid
             self.owned.append({'kind': kind, 'uuid': uuid, **({'type': item['type']} if kind == 'model' else {})})
             self.journal()  # Record ownership before any later configuration or ingestion can fail.
+            if kind == 'bot':
+                # lbctl 0.3's Bot projection omits event bindings; verify the existing Core API instead.
+                actual = self.read_bot(uuid)
+                expected = copy.deepcopy(body)
+                expected['adapter_config'].pop('inbound_secret')
+                if not contains_fields(actual, expected):
+                    raise RuntimeError(f'Bot readback differs from submitted non-secret fields: {uuid}')
             if config is not None:
                 current = self.call(['pipeline', 'get', uuid])
                 current = current.get('pipeline', current)
@@ -263,8 +393,20 @@ class Suite:
                 )
         self.write(
             'resources.json',
-            {key: value for key, value in self.variables.items() if key not in self.profile.get('vars', {})},
+            {
+                key: value
+                for key, value in self.variables.items()
+                if key not in self.profile.get('vars', {}) and key != 'group_secret'
+            },
         )
+        warmups = []
+        for case in self.profile['cases']:
+            if 'http_group' in case:
+                case = resolve(case, self.variables)
+                group = f'qa-warmup-{uuid4().hex[:12]}'
+                response = group_request(case, group, 'qa-member-000', 1, uuid4().hex, 'none', self.env)
+                warmups.append({'case': case['name'], 'output': response})
+                self.write('warmup.json', warmups)
 
     def cleanup(self):
         saved = json.loads((self.output / 'owned.json').read_text())
@@ -291,7 +433,10 @@ class Suite:
             case = resolve(original, self.variables)
             if 'body' in case:
                 case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
-            cases.extend([{key: case[key] for key in ('name', 'args', 'expect')}] * case.get('weight', 1))
+            cases.extend(
+                [{key: case[key] for key in ('name', 'args', 'expect', 'http_group') if key in case}]
+                * case.get('weight', 1)
+            )
         cases_path = self.write('cases.json', cases)
         observed = resolve(self.profile.get('observe', {}), self.variables)
         observe_args = []
@@ -303,6 +448,8 @@ class Suite:
             observe_args += ['--health', f'{name}={url}']
         for container in observed.get('containers', []):
             observe_args += ['--container', container]
+        if observed.get('box_data_root'):
+            observe_args += ['--box-data-root', self.path(observed['box_data_root'])]
         results = []
         errors = []
         for phase in self.profile['phases']:
@@ -327,6 +474,12 @@ class Suite:
                 '--cooldown',
                 str(phase.get('cooldown_seconds', 0)),
                 '--shared-case-sequence',
+                '--groups',
+                str(phase.get('groups', 0)),
+                '--members-per-group',
+                str(phase.get('members_per_group', 3)),
+                '--group-state',
+                str(self.output / 'group-state.json'),
                 *observe_args,
             ]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
@@ -355,11 +508,19 @@ def main():
     parser.add_argument('--duration', type=float, help='Override duration_seconds in every phase')
     parser.add_argument('--rps', type=float, help='Override RPS in every phase')
     parser.add_argument('--workers', type=int, help='Override workers in every phase')
+    parser.add_argument('--groups', type=int, help='Override group count in every group phase')
+    parser.add_argument('--members-per-group', type=int)
     args = parser.parse_args()
     try:
         profile = json.loads(args.profile.read_text())
         for phase in profile.get('phases', []):
-            for flag, field in [('duration', 'duration_seconds'), ('rps', 'rps'), ('workers', 'workers')]:
+            for flag, field in [
+                ('duration', 'duration_seconds'),
+                ('rps', 'rps'),
+                ('workers', 'workers'),
+                ('groups', 'groups'),
+                ('members_per_group', 'members_per_group'),
+            ]:
                 if getattr(args, flag) is not None:
                     phase[field] = getattr(args, flag)
         validate(profile)

@@ -66,6 +66,19 @@ class MockLLMTest(unittest.TestCase):
         self.assertEqual(content, 'LANGBOT_CHAT_OK')
         self.assertEqual(chunks[-1]['usage']['total_tokens'], 15)
 
+    def test_group_history_requires_previous_user_reply_and_isolation(self):
+        first = {'role': 'user', 'content': 'LB_GROUP=group-a LB_TURN=1 LB_TOKEN=aaa LB_PREVIOUS=none'}
+        second = {'role': 'user', 'content': 'LB_GROUP=group-a LB_TURN=2 LB_TOKEN=bbb LB_PREVIOUS=aaa'}
+        reply = json.loads(self.post(messages=[first]))['choices'][0]['message']
+        self.assertIn('GROUP_ACK=aaa', reply['content'])
+        result = json.loads(self.post(messages=[first, reply, second]))['choices'][0]['message']
+        self.assertIn('GROUP_ACK=bbb', result['content'])
+        other = {'role': 'user', 'content': 'LB_GROUP=group-b LB_TURN=1 LB_TOKEN=ccc LB_PREVIOUS=none'}
+        for messages in ([second], [first, second], [other, reply, second]):
+            with self.subTest(messages=messages), self.assertRaises(HTTPError) as failure:
+                self.post(messages=messages)
+            self.assertEqual(failure.exception.code, 400)
+
     def test_embedding_http_float_base64_and_validation(self):
         def embed(**patch):
             body = {'model': 'mock-embedding', 'input': ['repeatable fixture', 'another fixture'], **patch}

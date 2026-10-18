@@ -17,6 +17,7 @@ import urllib.request
 import yaml
 
 from regression_suite import Suite, number, resolve, validate
+from regression_traffic import owned_box_containers
 
 
 KEY_ENV = 'LANGBOT_QA_API_KEY'
@@ -222,6 +223,7 @@ class Job:
             raise RuntimeError('Docker daemon has existing Box sandboxes; use an idle dedicated test daemon')
         key = secrets.token_urlsafe(32)
         self.env[KEY_ENV] = key
+        self.env['LANGBOT_API_KEY'] = key
         self.redactions.append(key)
         (self.private / 'api-key').write_text(key)
         (self.private / 'api-key').chmod(0o600)
@@ -301,6 +303,7 @@ class Job:
         )
         self.save()
         profile = self.suite_profile
+        profile.setdefault('vars', {})['core_base_url'] = endpoint
         profile['cli'] = {'executable': self.cli[0], 'config': str(self.cli_config)}
         profile['observe'] = {'health': health, 'pids': {}, 'containers': list(containers.values())}
         for service, container in containers.items():
@@ -309,15 +312,18 @@ class Job:
         destination = self.output / 'suite'
         destination.mkdir(mode=0o700)
         suite = Suite(profile, self.suite_path, destination, env=self.env)
+        self.redactions.extend(suite.secrets)
         suite.write('profile.json', profile)
         suite.prepare()
         # Prime every configured business case before measuring steady load.
         for case in profile['cases']:
             case = resolve(case, suite.variables)
+            if 'http_group' in case:
+                continue  # Suite preparation already verifies signed group ingress and the masked secret.
             data = suite.call(case['args'], case.get('body'))
             if case['expect'] not in json.dumps(data, ensure_ascii=False):
                 raise RuntimeError(f'warmup oracle failed: {case["name"]}')
-        profile['observe']['containers'] += self.owned_sandboxes()
+        profile['observe']['box_data_root'] = str(Path(self.state['record']['data_dir']) / 'box')
         suite.write('profile.json', profile)
         return suite
 
@@ -325,16 +331,7 @@ class Job:
         record = self.state.get('record')
         if not record:
             return []
-        root = (Path(record['data_dir']) / 'box').resolve()
-        candidates = self.checked(
-            ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}']
-        ).splitlines()
-        owned = []
-        for container in candidates:
-            mounts = json.loads(self.checked(['docker', 'inspect', '--format', '{{json .Mounts}}', container]))
-            if any(Path(mount['Source']).resolve().is_relative_to(root) for mount in mounts if mount.get('Source')):
-                owned.append(container)
-        return owned
+        return owned_box_containers(Path(record['data_dir']) / 'box', self.checked)
 
     def collect(self):
         self.recover_record()
@@ -424,6 +421,8 @@ def main():
     parser.add_argument('--duration', type=float)
     parser.add_argument('--rps', type=float)
     parser.add_argument('--workers', type=int)
+    parser.add_argument('--groups', type=int)
+    parser.add_argument('--members-per-group', type=int)
     args = parser.parse_args()
     try:
         if args.action == 'cleanup':
@@ -435,6 +434,7 @@ def main():
             if (job.private / 'api-key').exists():
                 key = (job.private / 'api-key').read_text()
                 job.env[KEY_ENV] = key
+                job.env['LANGBOT_API_KEY'] = key
                 job.redactions.append(key)
             job.cleanup()
             return
@@ -442,7 +442,13 @@ def main():
             raise ValueError('--profile is required for run/validate')
         profile, suite, path = load_profile(args.profile.resolve())
         for phase in suite['phases']:
-            for flag, field in [('duration', 'duration_seconds'), ('rps', 'rps'), ('workers', 'workers')]:
+            for flag, field in [
+                ('duration', 'duration_seconds'),
+                ('rps', 'rps'),
+                ('workers', 'workers'),
+                ('groups', 'groups'),
+                ('members_per_group', 'members_per_group'),
+            ]:
                 if getattr(args, flag) is not None:
                     phase[field] = getattr(args, flag)
         validate(suite)
