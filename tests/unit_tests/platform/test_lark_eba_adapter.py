@@ -934,9 +934,10 @@ async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
 
 @pytest.mark.asyncio
 async def test_lark_webhook_rejects_unsigned_callback_with_no_encrypt_key():
-    """A bot with Webhook Mode on but no Encrypt Key set must not process
-    inbound events at all, since there is no way to authenticate the
-    caller. Spoofed message.received events must never reach a listener."""
+    """A bot without either callback credential must reject inbound events.
+
+    Spoofed message.received events must never reach a listener.
+    """
     adapter = make_adapter({'enable-webhook': True})
     calls: list[platform_events.Event] = []
 

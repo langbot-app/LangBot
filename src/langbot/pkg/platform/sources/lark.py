@@ -2995,6 +2995,18 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         expected = hashlib.sha256((timestamp + nonce + encrypt_key).encode('utf-8') + raw_body).hexdigest()
         return hmac.compare_digest(expected, signature)
 
+    def _verify_webhook_token(self, data) -> bool:
+        """Authenticate plaintext callbacks when encryption is not configured."""
+        expected = self.config.get('verification-token', '')
+        if not isinstance(expected, str) or not expected or not isinstance(data, dict) or 'encrypt' in data:
+            return False
+        if data.get('schema') == '2.0':
+            header = data.get('header')
+            token = header.get('token') if isinstance(header, dict) else None
+        else:
+            token = data.get('token')
+        return isinstance(token, str) and hmac.compare_digest(expected.encode('utf-8'), token.encode('utf-8'))
+
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         """处理统一 webhook 请求。
         Args:
@@ -3006,10 +3018,19 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """
         try:
             raw_body = await request.get_data()
-            if not self._verify_webhook_signature(request, raw_body):
+            encrypted_mode = bool(self.config.get('encrypt-key'))
+            if encrypted_mode and not self._verify_webhook_signature(request, raw_body):
                 await self.logger.error('Lark webhook signature verification failed, rejecting callback')
                 return {'code': 403, 'message': 'signature verification failed'}, 403
-            data = json.loads(raw_body)
+            try:
+                data = json.loads(raw_body)
+            except (ValueError, UnicodeDecodeError):
+                return {'code': 400, 'message': 'invalid JSON body'}, 400
+            if not isinstance(data, dict):
+                return {'code': 400, 'message': 'invalid callback body'}, 400
+            if not encrypted_mode and not self._verify_webhook_token(data):
+                await self.logger.error('Lark webhook token verification failed, rejecting callback')
+                return {'code': 403, 'message': 'token verification failed'}, 403
 
             if 'encrypt' in data:
                 encrypted = data['encrypt']
