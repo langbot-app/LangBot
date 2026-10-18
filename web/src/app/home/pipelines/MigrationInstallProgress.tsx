@@ -166,6 +166,16 @@ export default function MigrationInstallProgress({
               <p className="break-all text-muted-foreground">
                 {item.author}/{item.name}
               </p>
+              {item.diagnostic && (
+                <p className="text-destructive">
+                  {t('pipelineMigration.networkDiagnostic', {
+                    kind: item.diagnostic.kind,
+                  })}
+                  {item.diagnostic.http_status !== undefined
+                    ? ` · HTTP ${item.diagnostic.http_status}`
+                    : ''}
+                </p>
+              )}
               {item.steps.map((step, index) => (
                 <div key={index} className="flex justify-between gap-2">
                   <span

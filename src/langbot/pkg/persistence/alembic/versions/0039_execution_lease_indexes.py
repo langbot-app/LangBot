@@ -33,6 +33,10 @@ def upgrade():
     for table, index, columns in INDEXES:
         if not inspector.has_table(table):
             continue
+        # Partial historical schemas may predate individual payload/lease columns.
+        # Index only available columns; do not invent missing application data.
+        if not set(columns) <= {item['name'] for item in inspector.get_columns(table)}:
+            continue
         # Fresh installations create these indexes from ORM metadata before migrations.
         if index not in {item['name'] for item in inspector.get_indexes(table)}:
             op.create_index(index, table, columns)

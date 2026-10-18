@@ -82,6 +82,38 @@ async def test_try_claim_steering_sets_pipeline_context_before_claiming():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('text,expected', [('ordinary chat', False), ('qa: hello', True)])
+async def test_busy_group_steering_obeys_response_rules(sample_query, text, expected):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    pipeline = make_pipeline()
+    pipeline.pipeline_entity.config['trigger'] = {
+        'group-respond-rules': {'at': True, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
+    }
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
+    app.agent_run_orchestrator.try_claim_steering_from_query.return_value = True
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text=text)])
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+    assert claimed is expected, app.logger.warning.call_args
+    assert str(sample_query.message_chain) == text
+    if expected:
+        forwarded = app.agent_run_orchestrator.try_claim_steering_from_query.await_args.args[0]
+        assert str(forwarded.message_chain) == ' hello'
+    else:
+        app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_consumer_transfers_query_from_queue_to_running_task():
     app = make_app()
     app.query_pool = QueryPool()

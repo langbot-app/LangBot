@@ -1,4 +1,5 @@
 export default {
+  networkDiagnostic: 'ネットワーク診断: {{kind}}',
   complete: '完了',
   checkingPlugin: 'プラグインを確認',
   preparingPlugin: 'インストールを準備',

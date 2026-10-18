@@ -12,7 +12,9 @@ Scope (first version): core read operations plus the most common writes for
 bots, pipelines, LLM/embedding models, knowledge bases, MCP servers, skills,
 and read-only system info. This intentionally does NOT expose every one of the
 ~25 HTTP route groups — that keeps the agent surface small, safe, and
-maintainable. Extend deliberately.
+maintainable. Extend deliberately. Pipeline migration remains HTTP-only; its
+installation task metadata includes credential-free diagnostic.kind and optional
+diagnostic.http_status fields, never raw network exception text.
 """
 
 from __future__ import annotations

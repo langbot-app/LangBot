@@ -1,4 +1,5 @@
 export default {
+  networkDiagnostic: 'การวินิจฉัยเครือข่าย: {{kind}}',
   complete: 'เสร็จสิ้น',
   checkingPlugin: 'ตรวจสอบปลั๊กอิน',
   preparingPlugin: 'เตรียมติดตั้ง',

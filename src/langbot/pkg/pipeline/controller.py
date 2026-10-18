@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import traceback
 
 from ..core import app
@@ -59,6 +60,25 @@ class Controller:
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
+                from .resprule.resprule import GroupRespondRuleCheckStage
+                from .entities import ResultType
+
+                # Busy sessions reach steering before the normal stage chain.
+                # Check on a copy: matchers strip mentions/prefixes, and a
+                # failed claim must leave the queued message untouched.
+                candidate = copy.copy(query)
+                candidate.message_chain = query.message_chain.model_copy(deep=True)
+                candidate.variables = dict(query.variables)
+                gate = GroupRespondRuleCheckStage(self.ap)
+                await gate.initialize(query.pipeline_config)
+                result = await gate.process(candidate, 'GroupRespondRuleCheckStage')
+                random_key = '_group_response_random_draw'
+                if random_key in candidate.variables:
+                    query.variables[random_key] = candidate.variables[random_key]
+                if result.result_type == ResultType.INTERRUPT:
+                    return False
+                query = candidate
             return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
         except Exception as exc:
             self.ap.logger.warning(

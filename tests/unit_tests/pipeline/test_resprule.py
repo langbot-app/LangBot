@@ -282,3 +282,17 @@ async def test_incomplete_form_callback_does_not_bypass_response_rules(mock_app,
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
     assert result.result_type == entities.ResultType.INTERRUPT
+
+
+@pytest.mark.asyncio
+async def test_random_response_draw_is_reused_across_queue_rechecks(sample_query, mock_app, monkeypatch):
+    from langbot.pkg.pipeline.resprule.rules.random import RandomRespRule
+    from unittest.mock import Mock
+
+    draw = Mock(side_effect=[0.9, 0.1])
+    monkeypatch.setattr('langbot.pkg.pipeline.resprule.rules.random.random.random', draw)
+    matcher = RandomRespRule(mock_app)
+    for _ in range(3):
+        result = await matcher.match('hello', sample_query.message_chain, {'random': 0.5}, sample_query)
+        assert result.matching is False
+    draw.assert_called_once()
