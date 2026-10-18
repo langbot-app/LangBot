@@ -62,7 +62,6 @@ async def main(loop: asyncio.AbstractEventLoop):
         import signal
 
         def signal_handler(sig, frame):
-            print('[Signal] Program exit.')
             runtime_loop.call_soon_threadsafe(shutdown_requested.set)
 
         signal.signal(signal.SIGINT, signal_handler)
