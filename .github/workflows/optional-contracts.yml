@@ -9,7 +9,6 @@ on:
       - 'pyproject.toml'
       - 'pytest.ini'
       - 'uv.lock'
-      - 'scripts/assert-required-tests.py'
       - '.github/workflows/optional-contracts.yml'
   push:
     branches: [master, develop]
@@ -19,7 +18,6 @@ on:
       - 'pyproject.toml'
       - 'pytest.ini'
       - 'uv.lock'
-      - 'scripts/assert-required-tests.py'
       - '.github/workflows/optional-contracts.yml'
   workflow_dispatch:
 
@@ -87,12 +85,8 @@ jobs:
         env:
           LANGBOT_CLI_BIN: ${{ runner.temp }}/langbot-cli/lbctl
         run: |
-          uv run --no-sync pytest \
-            tests/unit_tests/api/service/test_cli_diagnostics.py::test_compiled_cli_against_core_http \
+          uv run --no-sync pytest --required-suite compiled_cli \
             -q --tb=short -rs --junitxml=compiled-cli-results.xml
-          python scripts/assert-required-tests.py compiled-cli-results.xml \
-            --module tests.unit_tests.api.service.test_cli_diagnostics \
-            --name-prefix test_compiled_cli_against_core_http --expected-tests 1
 
       - name: Upload compiled CLI contract result
         if: always()
@@ -151,12 +145,8 @@ jobs:
         env:
           LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/.contract-sources/langbot-plugins
         run: |
-          uv run --no-sync pytest \
-            tests/unit_tests/agent/test_legacy_identity_boundary.py::test_real_plugin_identity_helper_with_host_payload \
+          uv run --no-sync pytest --required-suite plugin_identity \
             -q --tb=short -rs --junitxml=plugin-identity-results.xml
-          python scripts/assert-required-tests.py plugin-identity-results.xml \
-            --module tests.unit_tests.agent.test_legacy_identity_boundary \
-            --name-prefix test_real_plugin_identity_helper_with_host_payload --expected-tests 16
 
       - name: Upload plugin identity results
         if: always()
@@ -198,11 +188,9 @@ jobs:
 
           print(f"pyseekdb={version('pyseekdb')}, pylibseekdb={version('pylibseekdb')}")
           PY
-          uv run --no-sync pytest tests/integration/vector/test_seekdb.py \
-            -m slow -q --tb=short -rs --durations=5 \
+          uv run --no-sync pytest --required-suite seekdb \
+            -q --tb=short -rs --durations=5 \
             --basetemp="$SEEKDB_TEST_TMP" --junitxml=seekdb-contract-results.xml
-          python scripts/assert-required-tests.py seekdb-contract-results.xml \
-            --module tests.integration.vector.test_seekdb --name-prefix test_ --expected-tests 2
 
       - name: Upload SeekDB results and startup logs
         if: always()

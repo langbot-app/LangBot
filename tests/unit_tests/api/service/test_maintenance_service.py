@@ -14,8 +14,9 @@ Source: src/langbot/pkg/api/http/service/maintenance.py
 from __future__ import annotations
 
 import contextlib
+import os
 import pytest
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock, call
 from types import SimpleNamespace
 import datetime
 from pathlib import Path
@@ -91,6 +92,8 @@ class TestMaintenanceServiceCleanupExpiredFiles:
 
         # Execute
         result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._cleanup_expired_log_files.assert_called_once_with(3)
 
         # Verify - returns counts
         assert 'uploaded_files' in result
@@ -128,6 +131,8 @@ class TestMaintenanceServiceCleanupExpiredFiles:
 
         # Execute
         result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 14)
+        service._cleanup_expired_log_files.assert_called_once_with(7)
 
         # Verify
         assert result['uploaded_files'] == 2
@@ -152,7 +157,10 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         service = MaintenanceService(ap)
 
         # Mock the internal cleanup methods
-        service._cleanup_expired_uploaded_files = AsyncMock(return_value=1)
+        service._expired_s3_upload_candidates = AsyncMock(return_value=[{'key': 'scoped/expired-upload'}])
+        protected = Mock()
+        protected.scalars.return_value.all.return_value = []
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=protected))
         service._cleanup_expired_log_files = Mock(return_value=0)  # NOT async
 
         # Execute
@@ -161,6 +169,8 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         # Verify
         assert result['uploaded_files'] == 1
         assert result['log_files'] == 0
+        service._expired_s3_upload_candidates.assert_awaited_once_with(TEST_CONTEXT, 7)
+        s3_provider.delete.assert_awaited_once_with('scoped/expired-upload')
 
     async def test_cleanup_expired_files_invalid_retention(self):
         """Uses default for invalid retention config."""
@@ -192,6 +202,8 @@ class TestMaintenanceServiceCleanupExpiredFiles:
 
         # Execute
         result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._cleanup_expired_log_files.assert_called_once_with(3)
 
         # Verify - warning logged, defaults used
         assert ap.logger.warning.called
@@ -280,7 +292,25 @@ class TestMaintenanceServiceGetStorageAnalysis:
         assert 'cleanup_policy' in result
         assert 'sections' in result
         assert 'database' in result
-        assert 'cleanup_candidates' in result
+        assert result['cleanup_policy'] == {'uploaded_file_retention_days': 7, 'log_retention_days': 3}
+        assert {
+            section['key']: (Path(section['path']).as_posix(), section['size_bytes'], section['file_count'])
+            for section in result['sections']
+        } == {
+            'database': ('data/langbot.db', 1000, 5),
+            'logs': ('data/logs', 1000, 5),
+            'storage': ('data/storage', 1000, 5),
+            'vector_store': ('data/chroma', 1000, 5),
+            'temp': ('data/temp', 1000, 5),
+        }
+        assert result['total_size_bytes'] == 5000
+        assert result['database'] == {
+            'type': 'sqlite',
+            'monitoring_counts': {'messages': 10, 'errors': 0},
+            'binary_storage': {'count': 5, 'size_bytes': 500},
+        }
+        assert result['cleanup_candidates'] == {'uploaded_files': [], 'log_files': []}
+        assert result['tasks'] == {'running': 0}
 
     async def test_get_storage_analysis_sections(self):
         """Returns all storage sections."""
@@ -462,8 +492,12 @@ class TestMaintenanceServiceGetStorageAnalysis:
         result = await service.get_storage_analysis(TEST_CONTEXT)
 
         # Verify
-        assert len(result['cleanup_candidates']['uploaded_files']) == 1
-        assert len(result['cleanup_candidates']['log_files']) == 1
+        assert result['cleanup_candidates'] == {
+            'uploaded_files': [{'key': 'old_file', 'size_bytes': 100}],
+            'log_files': [{'name': 'old_log', 'size_bytes': 50}],
+        }
+        service._expired_uploaded_candidates.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._expired_log_candidates.assert_called_once_with(3)
 
 
 class TestMaintenanceServiceMonitoringCounts:
@@ -484,12 +518,9 @@ class TestMaintenanceServiceMonitoringCounts:
         result = await service._monitoring_counts(TEST_CONTEXT)
 
         # Verify - all table keys present
-        assert 'messages' in result
-        assert 'llm_calls' in result
-        assert 'embedding_calls' in result
-        assert 'errors' in result
-        assert 'sessions' in result
-        assert 'feedback' in result
+        assert result == dict.fromkeys(
+            ['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'errors', 'sessions', 'feedback'], 42
+        )
 
     async def test_monitoring_counts_zero_results(self):
         """Returns zero counts when tables empty."""
@@ -506,7 +537,9 @@ class TestMaintenanceServiceMonitoringCounts:
         result = await service._monitoring_counts(TEST_CONTEXT)
 
         # Verify - all zero
-        assert all(v == 0 for v in result.values())
+        assert result == dict.fromkeys(
+            ['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'errors', 'sessions', 'feedback'], 0
+        )
 
 
 class TestMaintenanceServiceBinaryStorageStats:
@@ -573,7 +606,7 @@ class TestMaintenanceServiceBinaryStorageStats:
 
         # Verify - warning logged, size_bytes None or 0
         assert ap.logger.warning.called
-        assert result['count'] == 5
+        assert result == {'count': 5, 'size_bytes': None}
 
 
 class TestMaintenanceServicePathSize:
@@ -788,11 +821,17 @@ class TestMaintenanceServiceIsUploadedFileKey:
         service = MaintenanceService(ap)
 
         # Execute - simple filename without path
-        key = f'{ap.storage_mgr.scoped_prefix(TEST_CONTEXT, owner_type="upload")}uploaded_file.txt'
+        ap.storage_mgr.scoped_prefix = Mock(side_effect=lambda context, *, owner_type: f'scoped/{owner_type}/')
+        ap.storage_mgr.is_scoped_object_key = Mock(return_value=True)
+        key = 'scoped/upload/uploaded_file.txt'
         result = service._is_uploaded_file_key(TEST_CONTEXT, key)
 
         # Verify
         assert result is True
+        assert ap.storage_mgr.scoped_prefix.call_args_list == [
+            call(TEST_CONTEXT, owner_type=owner) for owner in ('upload_image', 'upload_document', 'upload')
+        ]
+        ap.storage_mgr.is_scoped_object_key.assert_called_once_with(key, expected_owner_type='upload')
 
     def test_is_uploaded_file_key_with_path(self):
         """Returns False for key with path separator."""
@@ -907,7 +946,7 @@ class TestMaintenanceServiceExpiredLogCandidates:
                 result = service._expired_log_candidates(3, include_paths=True)
 
         # Verify - path included
-        assert 'path' in result[0]
+        assert result[0]['path'] == '/data/logs/' + old_log_name
 
 
 class TestMaintenanceServiceExpiredLocalUploadCandidates:
@@ -928,40 +967,38 @@ class TestMaintenanceServiceExpiredLocalUploadCandidates:
         # Verify
         assert result == []
 
-    def test_expired_local_upload_candidates_filters_uploaded(self):
-        """Only returns uploaded files matching pattern."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.logger = SimpleNamespace()
-        ap.storage_mgr = _scoped_storage_manager()
+    def test_expired_local_upload_candidates_filters_uploaded(self, tmp_path, monkeypatch):
+        """Only expired files below this Workspace's upload roots are candidates."""
+        monkeypatch.chdir(tmp_path)
+        prefix = Mock(side_effect=lambda context, *, owner_type: f'scoped/{context.workspace_uuid}/{owner_type}/')
+        ap = SimpleNamespace(logger=SimpleNamespace(warning=Mock()), storage_mgr=SimpleNamespace(scoped_prefix=prefix))
+        storage_root = Path('data/storage')
+        upload_root = storage_root / 'scoped/test-workspace/upload'
+        upload_root.mkdir(parents=True)
+        old = upload_root / 'valid_upload.txt'
+        old.write_bytes(b'x' * 100)
+        os.utime(old, (0, 0))
+        recent = upload_root / 'recent.txt'
+        recent.write_text('keep')
+        (upload_root / 'directory').mkdir()
+        foreign = storage_root / 'scoped/other-workspace/upload/foreign.txt'
+        foreign.parent.mkdir(parents=True)
+        foreign.write_text('keep')
+        os.utime(foreign, (0, 0))
 
-        service = MaintenanceService(ap)
-        # Create one file and one non-file entry under the scoped upload root.
-        mock_entry_valid = Mock(spec=Path)
-        mock_entry_valid.is_file = Mock(return_value=True)
-        mock_entry_valid.name = 'valid_upload.txt'
-        mock_stat = Mock()
-        mock_stat.st_size = 100
-        mock_stat.st_mtime = 0  # Very old
-        mock_entry_valid.stat = Mock(return_value=mock_stat)
-        mock_entry_valid.relative_to = Mock(return_value=Path('scoped/valid_upload.txt'))
+        result = MaintenanceService(ap)._expired_local_upload_candidates(TEST_CONTEXT, 7)
 
-        mock_entry_plugin = Mock(spec=Path)
-        mock_entry_plugin.is_file = Mock(return_value=False)
-        mock_entry_plugin.name = 'plugin_config_test.json'
-        mock_stat2 = Mock()
-        mock_stat2.st_size = 200
-        mock_stat2.st_mtime = 0
-        mock_entry_plugin.stat = Mock(return_value=mock_stat2)
-
-        with patch.object(Path, 'exists', return_value=True):
-            with patch.object(Path, 'rglob') as mock_rglob:
-                mock_rglob.return_value = [mock_entry_valid, mock_entry_plugin]
-                result = service._expired_local_upload_candidates(TEST_CONTEXT, 7)
-
-        # Verify - only valid upload included
-        assert len(result) == 1
-        assert result[0]['key'] == 'scoped/valid_upload.txt'
+        assert result == [
+            {
+                'key': 'scoped/test-workspace/upload/valid_upload.txt',
+                'size_bytes': 100,
+                'modified_at': '1970-01-01T00:00:00+00:00',
+            }
+        ]
+        assert prefix.call_args_list == [
+            call(TEST_CONTEXT, owner_type=owner) for owner in ('upload_image', 'upload_document', 'upload')
+        ]
+        assert recent.read_text() == foreign.read_text() == 'keep'
 
     def test_expired_local_upload_candidates_includes_path(self):
         """Includes path when include_paths=True."""
@@ -991,7 +1028,7 @@ class TestMaintenanceServiceExpiredLocalUploadCandidates:
                 )
 
         # Verify - path included
-        assert 'path' in result[0]
+        assert result[0]['path'] == '/data/storage/old_file.txt'
 
     def test_expired_local_upload_candidates_respects_run_limit(self):
         ap = SimpleNamespace(

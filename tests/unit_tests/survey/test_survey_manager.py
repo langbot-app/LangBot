@@ -234,6 +234,12 @@ class TestTriggerEvent:
         await manager.trigger_event('new_event')
 
         assert 'new_event' in manager._triggered_events
+        statements = mock_app.persistence_mgr.execute_async.await_args_list
+        assert len(statements) == 2
+        assert statements[-1].args[0].compile().params == {
+            'key': 'survey_triggered_events',
+            'value': '["new_event"]',
+        }
 
 
 class TestRecordBotResponseSuccess:
@@ -255,8 +261,9 @@ class TestRecordBotResponseSuccess:
         await manager.record_bot_response_success()
 
         assert manager._bot_response_count == 1
-        # select + insert for the count key
-        assert mock_app.persistence_mgr.execute_async.call_count >= 2
+        statements = mock_app.persistence_mgr.execute_async.await_args_list
+        assert len(statements) == 2
+        assert statements[-1].args[0].compile().params == {'key': 'survey_bot_response_count', 'value': '1'}
 
     @pytest.mark.asyncio
     async def test_fires_milestone_event_at_threshold(self):

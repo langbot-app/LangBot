@@ -868,6 +868,8 @@ async def test_event_processor_rejects_invalid_component_and_missing_parameters(
     service = AgentService(app)
     with pytest.raises(ValueError, match='Select an installed'):
         await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'invalid:a/b/c'})
+    app.persistence_mgr.execute_async.assert_not_awaited()
+    app.runner_registry.get.assert_not_awaited()
     app.runner_registry = SimpleNamespace(
         get=AsyncMock(
             return_value=SimpleNamespace(
@@ -882,6 +884,8 @@ async def test_event_processor_rejects_invalid_component_and_missing_parameters(
         await service.create_agent(
             WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c', 'parameters': {}}
         )
+    app.persistence_mgr.execute_async.assert_not_awaited()
+    app.runner_registry.get.assert_awaited_once_with(WORKSPACE_UUID, 'plugin:a/b/c')
 
 
 async def test_unavailable_event_processor_can_still_be_renamed():

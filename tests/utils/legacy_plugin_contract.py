@@ -1,4 +1,4 @@
-"""Load identity consumers from integrity-checked official plugin source."""
+"""Load contract fixtures from integrity-checked official plugin source."""
 
 import ast
 import hashlib
@@ -14,7 +14,7 @@ from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
 SOURCE_LOCK = Path(__file__).resolve().parents[1] / 'fixtures' / 'legacy_plugin_identity_sources.json'
 
 
-def verified_plugin_root() -> Path:
+def verified_plugin_root(*, files_key: str = 'files') -> Path:
     """Allow optional local execution, but never skip an explicitly provisioned source."""
     configured = os.environ.get('LANGBOT_LEGACY_PLUGIN_ROOT')
     if configured is None:
@@ -23,7 +23,7 @@ def verified_plugin_root() -> Path:
         pytest.fail('LANGBOT_LEGACY_PLUGIN_ROOT is set but empty', pytrace=False)
     root = Path(configured).resolve()
     lock = json.loads(SOURCE_LOCK.read_text())
-    for relative, expected in lock['files'].items():
+    for relative, expected in lock[files_key].items():
         path = root / relative
         if not path.resolve().is_relative_to(root) or not path.is_file():
             pytest.fail(f'Official plugin fixture is missing or outside its root: {relative}', pytrace=False)

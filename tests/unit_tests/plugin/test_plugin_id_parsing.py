@@ -5,10 +5,6 @@ import pytest
 from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
 
-def test_parse_plugin_id_accepts_author_name():
-    assert PluginRuntimeConnector._parse_plugin_id('langbot/rag-engine') == ('langbot', 'rag-engine')
-
-
 @pytest.mark.parametrize(
     'plugin_id',
     [

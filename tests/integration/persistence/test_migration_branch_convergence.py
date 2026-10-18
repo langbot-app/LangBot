@@ -39,7 +39,7 @@ ACCOUNT = '41100000-0000-4000-8000-000000000002'
 NOW = datetime.datetime(2026, 9, 1)
 
 
-@pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=pytest.mark.slow)])
+@pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=[pytest.mark.slow, pytest.mark.postgres])])
 async def convergence_engine(request, tmp_path):
     if request.param == 'sqlite':
         engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "convergence.db"}')
@@ -107,6 +107,18 @@ async def _seed_common(engine):
             requester='openai',
             base_url='https://fixture.invalid',
             api_keys=['fixture-key'],
+        )
+        await _insert(
+            conn,
+            'llm_models',
+            uuid='model-1',
+            workspace_uuid=WORKSPACE,
+            name='Fixture model',
+            provider_uuid='provider-1',
+            abilities=['vision'],
+            extra_args={'sentinel': 'preserve-model'},
+            prefered_ranking=7,
+            reasoning_config={'level': 'provider_default'},
         )
         await _insert(
             conn,
@@ -261,6 +273,31 @@ async def _assert_merged_schema_and_data(engine, source):
         assert await conn.scalar(sa.text('SELECT password FROM users')) == 'hash'
         assert await conn.scalar(sa.text('SELECT COUNT(*) FROM workspace_memberships')) == 1
         assert await conn.scalar(sa.text('SELECT name FROM model_providers')) == 'Fixture provider'
+        models = await conn.run_sync(lambda sync: sa.Table('llm_models', sa.MetaData(), autoload_with=sync))
+        model = (
+            await conn.execute(
+                sa.select(
+                    models.c.name,
+                    models.c.abilities,
+                    models.c.extra_args,
+                    models.c.prefered_ranking,
+                    models.c.reasoning_config,
+                )
+            )
+        ).one()
+        assert tuple(model) == (
+            'Fixture model',
+            ['vision'],
+            {'sentinel': 'preserve-model'},
+            7,
+            {'level': 'provider_default'},
+        )
+        reasoning_column = await conn.run_sync(
+            lambda sync: next(
+                column for column in sa.inspect(sync).get_columns('llm_models') if column['name'] == 'reasoning_config'
+            )
+        )
+        assert reasoning_column['nullable'] is False
         assert await conn.scalar(sa.text('SELECT description FROM legacy_pipelines')) == 'preserve pipeline'
         assert (
             await conn.execute(sa.text('SELECT message_content FROM monitoring_messages ORDER BY id'))
@@ -306,8 +343,19 @@ async def _assert_merged_schema_and_data(engine, source):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('source', ['baseline', 'master', 'beta'])
-async def test_historical_schema_and_populated_branch_upgrade(convergence_engine, source):
+@pytest.mark.parametrize(
+    ('source', 'checkpoint'),
+    [
+        ('baseline', None),
+        ('baseline', '0016_space_launch_replay'),
+        ('baseline', '0018_merge_workspace_heads'),
+        ('baseline', '0018_llm_reasoning_config'),
+        ('master', None),
+        ('beta', None),
+    ],
+)
+@pytest.mark.contract('migration_history')
+async def test_historical_schema_and_populated_branch_upgrade(convergence_engine, source, checkpoint):
     engine = convergence_engine
     fixture = json.loads((FIXTURES / f'{source}_schema.json').read_text())
     async with engine.begin() as conn:
@@ -338,6 +386,9 @@ async def test_historical_schema_and_populated_branch_upgrade(convergence_engine
         await run_alembic_upgrade(engine, '0010_scope_resources')
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+    if checkpoint is not None:
+        await run_alembic_upgrade(engine, checkpoint)
+        assert await get_alembic_current(engine) == checkpoint
     await run_alembic_upgrade(engine, 'head')
     await _assert_merged_schema_and_data(engine, source)
     await run_alembic_upgrade(engine, 'head')
@@ -345,12 +396,37 @@ async def test_historical_schema_and_populated_branch_upgrade(convergence_engine
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('migration_fresh_schema')
 async def test_empty_database_startup_schema_then_real_migrations(convergence_engine):
     engine = convergence_engine
     async with engine.begin() as conn:
         assert await conn.run_sync(lambda sync: sa.inspect(sync).get_table_names()) == []
         # This is the documented fresh-install contract: create_all precedes Alembic.
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            Base.metadata.tables['metadata'].insert().values(key='instance_uuid', value='migration-convergence-fresh')
+        )
+        await conn.execute(
+            Base.metadata.tables['users']
+            .insert()
+            .values(
+                uuid=ACCOUNT, user='fresh@example.com', normalized_email='fresh@example.com', password='fresh-password'
+            )
+        )
+    await run_alembic_upgrade(engine, 'head')
+    assert await get_alembic_current(engine) == get_alembic_head()
+    async with engine.connect() as conn:
+        tables = await conn.run_sync(lambda sync: set(sa.inspect(sync).get_table_names()))
+        assert {
+            'users',
+            'bots',
+            'agents',
+            'runner_state',
+            'directory_projection_inbox',
+            'passkey_credentials',
+        } <= tables
+        assert await conn.scalar(sa.text('SELECT password FROM users')) == 'fresh-password'
+
     await run_alembic_upgrade(engine, 'head')
     assert await get_alembic_current(engine) == get_alembic_head()
 
@@ -478,18 +554,6 @@ async def test_certification_artifact_digest_backfill_is_safe_and_keeps_legacy_d
                 )
                 is PluginExecutionMode.DEDICATED
             )
-
-
-@pytest.mark.asyncio
-async def test_certification_artifact_digest_backfill_accepts_fresh_current_schema(convergence_engine):
-    engine = convergence_engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    await run_alembic_upgrade(engine, 'head')
-    await run_alembic_upgrade(engine, 'head')
-
-    assert await get_alembic_current(engine) == get_alembic_head()
 
 
 @pytest.mark.asyncio

@@ -1129,12 +1129,10 @@ class BoxService:
     async def collect_outbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
         """Collect files the agent produced in the sandbox outbox.
 
-        Reads ``/workspace/outbox/<query_id>/`` (recursively) — directly from
-        the bind-mounted host directory when available (no size limit), else
-        via the exec channel — returns a list of ``{type, name, base64}``
-        ready to become platform message components, then clears the outbox so
-        a later turn in the same session does not re-send stale files. Returns
-        ``[]`` when nothing was produced.
+        Read regular files within the configured attachment limits from the
+        current run's outbox. Private container output uses the bound sandbox
+        channel; invalid or truncated responses retain the files. Clear a
+        successful collection and return ``{type, name, base64}`` descriptors.
         """
         if not self._available:
             return []
@@ -1143,7 +1141,11 @@ class BoxService:
 
         host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
         if host_dir is not None:
-            entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+            try:
+                entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+            except PermissionError:
+                # Root-owned container output can be private to its sandbox UID.
+                entries = await self._read_outbox_via_exec(query)
         else:
             entries = await self._read_outbox_via_exec(query)
 
@@ -1187,57 +1189,17 @@ class BoxService:
         """
         import json as _json
 
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
-        # Outbound bytes travel in raw stdout, not argv. Use the regular
-        # attachment limits rather than the smaller inbound command limit.
+        from .sandbox_files import outbox_script
+
         max_file_bytes = self._ATTACHMENT_MAX_BYTES
-        max_files = self._ATTACHMENT_MAX_FILES
         max_total_bytes = self._ATTACHMENT_MAX_TOTAL_BYTES
-        max_scan_entries = 1000
-        script = (
-            'import base64, json, os\n'
-            f'target = {target_dir!r}\n'
-            f'max_file_bytes = {max_file_bytes}\n'
-            f'max_files = {max_files}\n'
-            f'max_total_bytes = {max_total_bytes}\n'
-            f'max_scan_entries = {max_scan_entries}\n'
-            'out = []\n'
-            'total_bytes = 0\n'
-            'scanned_entries = 0\n'
-            'stack = [target]\n'
-            'if os.path.isdir(target):\n'
-            '    while stack and len(out) < max_files and scanned_entries < max_scan_entries:\n'
-            '        current = stack.pop()\n'
-            '        try:\n'
-            '            with os.scandir(current) as iterator:\n'
-            '                entries = sorted(iterator, key=lambda item: item.name, reverse=True)\n'
-            '        except OSError:\n'
-            '            continue\n'
-            '        for entry in entries:\n'
-            '            scanned_entries += 1\n'
-            '            if scanned_entries > max_scan_entries:\n'
-            '                break\n'
-            '            try:\n'
-            '                if entry.is_dir(follow_symlinks=False):\n'
-            '                    stack.append(entry.path)\n'
-            '                    continue\n'
-            '                if not entry.is_file(follow_symlinks=False):\n'
-            '                    continue\n'
-            '                size = entry.stat(follow_symlinks=False).st_size\n'
-            '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
-            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
-            "                with open(entry.path, 'rb') as f:\n"
-            '                    data = f.read(max_file_bytes + 1)\n'
-            '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
-            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
-            '            except OSError:\n'
-            '                continue\n'
-            '            rel = os.path.relpath(entry.path, target)\n'
-            "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
-            '            total_bytes += len(data)\n'
-            '            if len(out) >= max_files:\n'
-            '                break\n'
-            'print(json.dumps(out))\n'
+        script = outbox_script(
+            self.OUTBOX_MOUNT_DIR,
+            self._attachment_query_key(query),
+            operation='read',
+            max_file_bytes=max_file_bytes,
+            max_files=self._ATTACHMENT_MAX_FILES,
+            max_total_bytes=max_total_bytes,
         )
         spec_payload: dict = {
             'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
@@ -1288,19 +1250,37 @@ class BoxService:
                 try:
                     secure_fs.reset_directory(tenant_root, subdir, query_key)
                     return False
+                except secure_fs.UnsafeWorkspacePathError:
+                    raise
                 except OSError:
                     return True
 
-            survived = await asyncio.to_thread(_clear)
+            try:
+                survived = await asyncio.to_thread(_clear)
+            except secure_fs.UnsafeWorkspacePathError as exc:
+                self.ap.logger.warning(f'Failed to clear unsafe sandbox outbox {target_dir}: {exc}')
+                return
             if not survived:
                 return
             # Root-owned container files survived the host delete — fall through.
 
         try:
-            await self.execute_tool(
-                {'command': f'rm -rf {target_dir} && mkdir -p {target_dir}', 'timeout_sec': 30},
+            from .sandbox_files import outbox_script
+
+            script = outbox_script(
+                self.OUTBOX_MOUNT_DIR,
+                self._attachment_query_key(query),
+                operation='clear',
+                max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+                max_files=self._ATTACHMENT_MAX_FILES,
+                max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            )
+            result = await self.execute_tool(
+                {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 30},
                 query,
             )
+            if not result.get('ok'):
+                raise BoxValidationError('Sandbox outbox cleanup failed')
         except Exception as exc:
             self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
 

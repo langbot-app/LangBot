@@ -15,7 +15,7 @@ import asyncio
 import contextvars
 import inspect
 import sys
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from contextlib import contextmanager
 from typing import Generator
 
@@ -181,12 +181,14 @@ class TestTaskContext:
         ctx.set_current_action('test_action')
         ctx.trace('Test message')
         ctx.metadata['key'] = 'value'
+        ctx.metadata['count'] = 5
+        ctx.metadata['items'] = ['a', 'b', 'c']
 
         result = ctx.to_dict()
 
         assert result['current_action'] == 'test_action'
         assert 'Test message' in result['log']
-        assert result['metadata'] == {'key': 'value'}
+        assert result['metadata'] == {'key': 'value', 'count': 5, 'items': ['a', 'b', 'c']}
 
     def test_static_new_factory(self):
         """Test TaskContext.new() factory method."""
@@ -209,18 +211,8 @@ class TestTaskContext:
             ctx1 = TaskContext.placeholder()
             ctx2 = TaskContext.placeholder()
 
+            assert isinstance(ctx1, TaskContext)
             assert ctx1 is ctx2
-
-    def test_metadata_is_mutable_dict(self):
-        """Test that metadata is a mutable dict."""
-        TaskContext, _, _ = get_taskmgr_classes()
-        ctx = TaskContext()
-
-        ctx.metadata['count'] = 5
-        ctx.metadata['items'] = ['a', 'b', 'c']
-
-        assert ctx.metadata['count'] == 5
-        assert len(ctx.metadata['items']) == 3
 
 
 class TestTaskWrapper:
@@ -346,7 +338,8 @@ class TestTaskWrapper:
         async def successful_coro():
             return {'file_id': 'file-a'}
 
-        wrapper = TaskWrapper(mock_app, successful_coro(), kind='knowledge_base.store')
+        with patch('time.time', return_value=1720000000.25):
+            wrapper = TaskWrapper(mock_app, successful_coro(), kind='knowledge_base.store')
         await wrapper.task
 
         result = wrapper.to_public_dict()
@@ -358,7 +351,7 @@ class TestTaskWrapper:
             'status': 'succeeded',
             'error': None,
             'result': {'file_id': 'file-a'},
-            'created_at': result['created_at'],
+            'created_at': 1720000000.25,
         }
         assert 'runtime' not in result
         assert 'traceback' not in str(result).lower()
@@ -428,6 +421,29 @@ class TestTaskWrapper:
 
 class TestAsyncTaskManager:
     """Tests for AsyncTaskManager class."""
+
+    @pytest.mark.asyncio
+    async def test_completed_retention_keeps_newest_tasks_and_running_task(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention']['completed_limit'] = 2
+        manager = AsyncTaskManager(mock_app)
+        running = manager.create_task(asyncio.Event().wait())
+
+        async def immediate_coro():
+            return 'done'
+
+        try:
+            completed = [manager.create_task(immediate_coro()) for _ in range(2)]
+            await asyncio.gather(*(wrapper.task for wrapper in completed))
+            assert manager.tasks == [running, *completed]
+
+            newest = manager.create_task(immediate_coro())
+            await newest.task
+            assert manager.tasks == [running, completed[1], newest]
+        finally:
+            running.cancel()
+            await asyncio.gather(running.task, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_create_task_adds_to_list(self):

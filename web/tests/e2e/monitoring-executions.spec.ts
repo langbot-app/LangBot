@@ -646,9 +646,20 @@ test('remembers all filters on reload and persists resetting them', async ({
   for (const [id, label] of selections) {
     await page.locator(`#monitoring-filter-${id}`).click();
     if (id === 'processor') {
-      await page.getByRole('checkbox', { name: label, exact: true }).check();
+      const checkbox = page.getByRole('dialog').getByRole('checkbox', {
+        name: label,
+        exact: true,
+      });
+      await checkbox.check();
+      await expect(checkbox).toBeChecked();
       await page.keyboard.press('Escape');
-    } else await page.getByRole('option', { name: label, exact: true }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    } else {
+      await page.getByRole('option', { name: label, exact: true }).click();
+      await expect(page.getByRole('listbox')).toHaveCount(0);
+    }
+    // The previous popup must finish restoring focus before opening another.
+    await expect(page.locator(`#monitoring-filter-${id}`)).toBeFocused();
   }
   await page.reload();
   for (const [id, label] of selections) {

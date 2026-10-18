@@ -70,8 +70,8 @@ class TestGetQQImageDownloadableUrl:
         url = 'http://example.com/image.jpg#fragment'
         result_url, query = get_qq_image_downloadable_url(url)
 
-        # Fragment is not included in query string parsing
-        assert 'http://example.com/image.jpg' in result_url
+        assert result_url == 'http://example.com/image.jpg'
+        assert query == {}
 
     def test_https_url(self):
         """Parse HTTPS URL and preserve its scheme."""

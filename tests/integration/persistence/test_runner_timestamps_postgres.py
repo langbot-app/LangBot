@@ -25,7 +25,12 @@ from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.event_log import EventLog
 from langbot.pkg.entity.persistence.transcript import Transcript
 
-pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.asyncio,
+]
 
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 9, 22, 4, 5, 6, 123000, tzinfo=UTC)
@@ -110,6 +115,7 @@ async def _legacy_run(engine, *, status='queued'):
         )
 
 
+@pytest.mark.contract('runner_timestamps')
 async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
     store = run_ledger_store.RunLedgerStore(pg_engine)
     deadline = NOW + dt.timedelta(minutes=5)

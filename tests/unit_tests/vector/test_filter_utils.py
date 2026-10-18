@@ -198,6 +198,4 @@ class TestSupportedOpsConstant:
 
     def test_supported_ops_is_frozenset(self):
         """SUPPORTED_OPS is a frozenset for immutability."""
-        from collections.abc import Set
-
-        assert isinstance(SUPPORTED_OPS, Set)
+        assert isinstance(SUPPORTED_OPS, frozenset)

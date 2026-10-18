@@ -14,7 +14,9 @@ class UnsafeWorkspacePathError(OSError):
 _DIRECTORY_FLAGS = (
     os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
 )
-_FILE_READ_FLAGS = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
+_FILE_READ_FLAGS = (
+    os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_NONBLOCK', 0)
+)
 _FILE_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
 _MAX_REMOVAL_ENTRIES = 4096
 _MAX_REMOVAL_DEPTH = 16
@@ -45,6 +47,8 @@ def _unsafe(path: str, exc: BaseException | None = None) -> UnsafeWorkspacePathE
 def _root_fd(root: str):
     try:
         fd = os.open(root, _DIRECTORY_FLAGS)
+    except PermissionError:
+        raise
     except OSError as exc:
         raise _unsafe(root, exc)
     try:
@@ -64,6 +68,8 @@ def _open_dir_at(parent_fd: int, name: str, *, create: bool) -> int:
             pass
     try:
         fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+    except PermissionError:
+        raise
     except OSError as exc:
         raise _unsafe(name, exc)
     if not stat.S_ISDIR(os.fstat(fd).st_mode):
@@ -91,6 +97,8 @@ def _remove_entry(
             child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent_fd)
         except FileNotFoundError:
             return
+        except PermissionError:
+            raise
         except OSError as exc:
             if exc.errno not in {errno.ELOOP, errno.ENOTDIR, errno.EACCES}:
                 raise
@@ -198,6 +206,8 @@ def _read_directory(
                 remaining_directories[0] -= 1
                 try:
                     child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=directory_fd)
+                except PermissionError:
+                    raise
                 except OSError:
                     continue
                 try:
@@ -218,6 +228,8 @@ def _read_directory(
                 continue
             try:
                 file_fd = os.open(name, _FILE_READ_FLAGS, dir_fd=directory_fd)
+            except PermissionError:
+                raise
             except OSError:
                 continue
             try:

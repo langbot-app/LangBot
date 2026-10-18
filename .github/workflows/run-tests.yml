@@ -11,7 +11,7 @@ on:
       - 'uv.lock'
       - 'run_tests.sh'
       - 'scripts/test-*.sh'
-      - 'scripts/assert-required-tests.py'
+      - 'pytest.ini'
   push:
     branches:
       - master
@@ -50,11 +50,8 @@ jobs:
 
       - name: Run required security regressions
         run: |
-          uv run pytest tests/test_cwe94_debug_exec.py \
+          uv run pytest --required-suite security \
             -q --tb=short -rs --junitxml=cwe94-results.xml
-          python scripts/assert-required-tests.py cwe94-results.xml \
-            --module tests.test_cwe94_debug_exec \
-            --name-prefix test_no_ --expected-tests 2
 
       - name: Upload security regression results
         if: always()
@@ -149,36 +146,8 @@ jobs:
 
       - name: Run required PostgreSQL contracts
         run: |
-          uv run pytest \
-            tests/integration/persistence/test_pipeline_admission_postgres.py \
-            tests/integration/persistence/test_rag_document_identity.py \
-            tests/integration/persistence/test_rag_interrupted_ingestion.py \
-            tests/integration/persistence/test_migration_branch_convergence.py \
-            tests/integration/persistence/test_runner_timestamps_postgres.py \
-            -k postgres -q --tb=short -rs --durations=10 \
-            --junitxml=postgres-contract-results.xml
-          python - <<'PY'
-          from collections import Counter
-          import xml.etree.ElementTree as ET
-
-          cases = list(ET.parse('postgres-contract-results.xml').getroot().iter('testcase'))
-          expected = {
-              'test_pipeline_admission_postgres': 27,
-              'test_rag_document_identity': 34,
-              'test_rag_interrupted_ingestion': 22,
-              'test_migration_branch_convergence': 7,
-              'test_runner_timestamps_postgres': 32,
-          }
-          counts = Counter(case.get('classname', '').rsplit('.', 1)[-1] for case in cases)
-          for module, minimum in expected.items():
-              assert counts[module] >= minimum, f'{module}: expected at least {minimum} cases, got {counts[module]}'
-          unsuccessful = [
-              case.get('name') for case in cases
-              if any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error'))
-          ]
-          assert not unsuccessful, f'PostgreSQL contracts must pass without skips: {unsuccessful}'
-          print(f'PostgreSQL contracts: {len(cases)} passed, 0 skipped; {dict(counts)}')
-          PY
+          uv run pytest --required-suite postgres \
+            -q --tb=short -rs --durations=10 --junitxml=postgres-contract-results.xml
 
       - name: Upload PostgreSQL contract results
         if: always()
@@ -196,6 +165,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Read official plugin source pin
+        id: plugin-source
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          lock = json.loads(Path('tests/fixtures/legacy_plugin_identity_sources.json').read_text())
+          assert lock['repository'] == 'langbot-app/langbot-plugins'
+          assert re.fullmatch(r'[0-9a-f]{40}', lock['revision'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"revision={lock['revision']}\n")
+          PY
+
+      - name: Checkout pinned official plugin sources
+        uses: actions/checkout@v4
+        with:
+          repository: langbot-app/langbot-plugins
+          ref: ${{ steps.plugin-source.outputs.revision }}
+          path: .contract-sources/langbot-plugins
+          persist-credentials: false
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -208,7 +201,25 @@ jobs:
         run: uv sync --dev
 
       - name: Run E2E startup tests
-        run: uv run pytest tests/e2e -q --tb=short
+        run: uv run pytest tests/e2e -m "not local_agent" -q --tb=short
+
+      - name: Check Docker for the required LocalAgent Box contract
+        run: docker info
+
+      - name: Run required LocalAgent contracts
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/.contract-sources/langbot-plugins
+        run: |
+          uv run --no-sync pytest --required-suite local_agent \
+            -q --tb=short -rs --junitxml=local-agent-results.xml
+
+      - name: Upload LocalAgent contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-agent-contract-results
+          path: local-agent-results.xml
+          if-no-files-found: ignore
 
       - name: E2E Test Summary
         if: always()

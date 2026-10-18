@@ -62,9 +62,7 @@ async def _create_client(role: str):
     application.provider_service = SimpleNamespace(
         get_providers=AsyncMock(side_effect=get_providers),
         get_provider=AsyncMock(side_effect=get_provider),
-        get_provider_model_counts=AsyncMock(
-            return_value={'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1}
-        ),
+        get_provider_model_counts=AsyncMock(return_value={'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1}),
     )
 
     def model_service(list_name: str, get_name: str):
@@ -136,8 +134,15 @@ async def test_default_preserves_secrets_and_explicit_false_redacts_high_permiss
     false_data = await false_response.get_json()
     default_value = default_data['data'].get('providers', default_data['data'].get('models'))[0]
     false_value = false_data['data'].get('providers', false_data['data'].get('models'))[0]
-    assert '***' not in str(default_value)
+    expected = (
+        {**RAW_PROVIDER, 'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1}
+        if endpoint.endswith('/providers')
+        else RAW_MODEL
+    )
+    assert default_value == expected
     assert '***' in str(false_value)
+    assert 'provider-secret' not in str(false_data)
+    assert 'model-secret' not in str(false_data)
 
 
 @pytest.mark.parametrize(
@@ -158,6 +163,8 @@ async def test_explicit_true_does_not_grant_low_permission_reads(endpoint):
     data = await response.get_json()
     value = data['data'].get('providers', data['data'].get('models'))[0]
     assert '***' in str(value)
+    assert 'provider-secret' not in str(data)
+    assert 'model-secret' not in str(data)
 
 
 @pytest.mark.parametrize(

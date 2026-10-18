@@ -236,6 +236,8 @@ async def test_extension_discovery_preserves_empty_bindings_and_redacts_plugins(
     ap.plugin_connector.require_workspace_context.assert_awaited_once_with(request_context())
 
 
+@pytest.mark.compiled_cli
+@pytest.mark.contract('cli_http')
 async def test_compiled_cli_against_core_http(service, tmp_path):  # noqa: F811
     """Optional cross-repo check: real HTTP/SQLite/Pipeline, synthetic runtime providers."""
     import json

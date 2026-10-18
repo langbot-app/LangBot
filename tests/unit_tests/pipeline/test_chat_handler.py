@@ -89,6 +89,25 @@ def set_runner(fake_app):
     return _set_runner
 
 
+@pytest.fixture
+def chat_session():
+    from langbot_plugin.api.entities.builtin.provider.session import Session, Conversation, LauncherTypes
+    from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
+
+    return Session(
+        launcher_type=LauncherTypes.PERSON,
+        launcher_id=12345,
+        sender_id=12345,
+        bot_uuid='test-bot-uuid',
+        using_conversation=Conversation(
+            prompt=Prompt(name='default', messages=[]),
+            messages=[],
+            pipeline_uuid='test-pipeline-uuid',
+            bot_uuid='test-bot-uuid',
+        ),
+    )
+
+
 # ============== CACHED LAZY IMPORTS ==============
 
 _chat_handler_module = None
@@ -189,7 +208,7 @@ class TestChatMessageHandlerReal:
     async def test_user_message_alter_string(self, fake_app, mock_event_ctx, set_runner):
         """user_message_alter as string updates query.user_message."""
         from tests.factories import text_query
-        from langbot_plugin.api.entities.builtin.provider.message import Message
+        from langbot_plugin.api.entities.builtin.provider.message import Message, ContentElement
 
         chat = get_chat_handler()
 
@@ -200,7 +219,8 @@ class TestChatMessageHandlerReal:
         query = text_query('original')
         query.adapter = Mock()
         query.adapter.is_stream_output_supported = AsyncMock(return_value=False)
-        query.user_message = Message(role='user', content=[])
+        query.user_message = Message(role='user', content=[ContentElement.from_text('original')])
+        received_contents = []
 
         class QuickRunner:
             name = 'local-agent'
@@ -210,6 +230,7 @@ class TestChatMessageHandlerReal:
                 self.config = config
 
             async def run(self, query):
+                received_contents.append(query.user_message.content)
                 yield Message(role='assistant', content='ok')
 
         set_runner(QuickRunner)
@@ -220,10 +241,14 @@ class TestChatMessageHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
-        assert query.user_message.content is not None
+        expected_content = [ContentElement.from_text('altered text')]
+        assert query.user_message.content == expected_content
+        assert received_contents == [expected_content]
 
     @pytest.mark.asyncio
-    async def test_adapter_without_stream_method_defaults_non_stream(self, fake_app, mock_event_ctx, set_runner):
+    async def test_adapter_without_stream_method_defaults_non_stream(
+        self, fake_app, mock_event_ctx, set_runner, chat_session
+    ):
         """Adapter without is_stream_output_supported defaults to non-stream."""
         from tests.factories import text_query
         from langbot_plugin.api.entities.builtin.provider.message import Message, ContentElement
@@ -237,6 +262,7 @@ class TestChatMessageHandlerReal:
         query = text_query('test')
         query.adapter = Mock(spec=[])
         query.user_message = Message(role='user', content=[ContentElement.from_text('test')])
+        query.session = chat_session
 
         class SingleRunner:
             name = 'local-agent'
@@ -256,7 +282,9 @@ class TestChatMessageHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
-        assert len(results) >= 1
+        assert len(results) == 1
+        assert results[0].result_type == get_entities().ResultType.CONTINUE
+        assert [(message.role, message.content) for message in query.resp_messages] == [('assistant', 'response')]
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -315,7 +343,7 @@ class TestChatHandlerStreaming:
         query.adapter.create_message_card.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_streaming_chunks_collected(self, fake_app, mock_event_ctx, set_runner):
+    async def test_streaming_chunks_collected(self, fake_app, mock_event_ctx, set_runner, chat_session):
         """Streaming produces multiple results."""
         from tests.factories import text_query
         from langbot_plugin.api.entities.builtin.provider.message import Message, ContentElement, MessageChunk
@@ -330,6 +358,7 @@ class TestChatHandlerStreaming:
         query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
         query.adapter.create_message_card = AsyncMock()
         query.user_message = Message(role='user', content=[ContentElement.from_text('test')])
+        query.session = chat_session
 
         class StreamRunner:
             name = 'local-agent'
@@ -340,17 +369,24 @@ class TestChatHandlerStreaming:
 
             async def run(self, query):
                 yield MessageChunk(role='assistant', content='Hello', is_final=False)
-                yield MessageChunk(role='assistant', content=' World', is_final=True)
+                yield MessageChunk(role='assistant', content='Hello World', is_final=True)
 
         set_runner(StreamRunner)
 
         handler = chat.ChatMessageHandler(fake_app)
 
         results = []
+        delivered = []
         async for result in handler.handle(query):
             results.append(result)
+            delivered.append(query.resp_messages[-1])
 
-        assert len(results) >= 1
+        assert len(results) == 2
+        assert all(result.result_type == get_entities().ResultType.CONTINUE for result in results)
+        assert [chunk.content for chunk in delivered] == ['Hello', 'Hello World']
+        assert [chunk.is_final for chunk in delivered] == [False, True]
+        assert len({chunk.resp_message_id for chunk in delivered}) == 1
+        query.adapter.create_message_card.assert_awaited_once()
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -536,7 +572,7 @@ class TestChatHandlerHelper:
         chat = get_chat_handler()
         handler = chat.ChatMessageHandler(fake_app)
         result = handler.cut_str('first line\nsecond line')
-        assert '...' in result
+        assert result == 'first line...'
 
     def test_response_size_limit_uses_instance_config(self, fake_app):
         from langbot_plugin.api.entities.builtin.provider.message import Message
