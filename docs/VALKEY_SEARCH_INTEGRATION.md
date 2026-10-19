@@ -37,7 +37,7 @@ Windows; LangBot remains usable there, but the Valkey Search backend is unavaila
 client manually on a supported platform:
 
 ```bash
-pip install 'valkey-glide>=2.4.1,<3.0.0'
+pip install 'valkey-glide>=2.5.2,<3.0.0'
 ```
 
 You also need a running Valkey server with the Search module loaded. The simplest way is the
