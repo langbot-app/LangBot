@@ -183,7 +183,12 @@ Box is allowed when no additional capacity remains.
 A run binds one Box before native sandbox tools or file transfer. The Host does not
 choose a conversation scope or stage attachments before starting the Runner. Input
 references retain the original attachment metadata; import yields paths specific to
-the run. Output export reads only that run's outbox and returns opaque file handles.
+the run. Output export requires explicit normalized absolute sandbox file paths and returns
+opaque handles scoped to that run. The selected files are validated as one batch
+before registration; successful export removes only those files, and cleanup
+failure is a warning with accepted handles retained. Writing an outbox file alone
+does not deliver it. Core and LocalAgent currently pin SDK PR #180's exact commit
+until a release includes the selected-path API.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
@@ -195,6 +200,7 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
+- [Outbox export failures](docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`

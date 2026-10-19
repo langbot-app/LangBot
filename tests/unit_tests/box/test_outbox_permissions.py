@@ -158,7 +158,7 @@ def racing_open(path, flags, *args, **kwargs):
         if replacement == 'symlink':
             os.symlink({str(secret)!r}, path, dir_fd=fd)
         elif replacement == 'fifo':
-            os.mkfifo(path, dir_fd=fd)
+            os.mkfifo({str(current / 'answer.txt')!r})
         else:
             os.mkdir(path, dir_fd=fd)
             child = original_open(path, os.O_RDONLY | os.O_DIRECTORY, dir_fd=fd)
@@ -205,24 +205,25 @@ def test_sandbox_output_limits_fail_without_removing_files(tmp_path, limit):
     assert set(current.iterdir()) == before
 
 
-def test_sandbox_output_count_and_depth_are_bounded(tmp_path):
-    import json
-
+def test_sandbox_output_count_and_depth_limits_retain_all_files(tmp_path):
     current = tmp_path / 'workspace' / 'outbox' / 'run'
     current.mkdir(parents=True)
     (current / 'a.txt').write_bytes(b'a')
     (current / 'b.txt').write_bytes(b'b')
     result = _run_script(_script(tmp_path, max_files=1))
-    assert result.returncode == 0, result.stderr
-    assert len(json.loads(result.stdout)) == 1
+    assert result.returncode != 0
+    assert 'file-count limit' in result.stderr
+    assert (current / 'a.txt').read_bytes() == b'a'
+    assert (current / 'b.txt').read_bytes() == b'b'
     (current / 'a.txt').unlink()
     (current / 'b.txt').unlink()
     deep = current.joinpath(*('nested' for _ in range(9)))
     deep.mkdir(parents=True)
     (deep / 'too-deep.txt').write_bytes(b'not exported')
     result = _run_script(_script(tmp_path))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == []
+    assert result.returncode != 0
+    assert 'depth limit' in result.stderr
+    assert (deep / 'too-deep.txt').read_bytes() == b'not exported'
 
 
 @pytest.mark.parametrize('operation', ['read', 'clear'])

@@ -1938,7 +1938,7 @@ class TestAttachmentHelpers:
             {'name': 'report.pdf', 'b64': 'CCC'},
             {'name': 'sub/dir/photo.JPG', 'b64': 'DDD'},
             {'name': 'noext', 'b64': 'EEE'},
-            {'name': 'skip', 'b64': ''},  # dropped (no payload)
+            {'name': 'empty.txt', 'b64': ''},  # valid zero-byte file
         ]
         out = BoxService._classify_outbound_entries(entries)
         by_name = {a['name']: a for a in out}
@@ -1951,7 +1951,7 @@ class TestAttachmentHelpers:
         # nested path collapses to basename, case-insensitive ext
         assert by_name['photo.JPG']['type'] == 'Image'
         assert by_name['noext']['type'] == 'File'
-        assert 'skip' not in by_name
+        assert by_name['empty.txt']['base64'] == ''
 
     @pytest.mark.asyncio
     async def test_component_to_bytes_from_data_uri(self):
@@ -2092,8 +2092,8 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_client_execute(spec, *, action_context=None):
-            assert action_context.workspace_uuid == query.workspace_uuid
+        async def fake_client_execute(spec, *, action_context):
+            assert action_context == _ACTION_CONTEXT
             cmd = spec.cmd
             calls.append(cmd)
             if 'os.scandir' in cmd:
@@ -2294,7 +2294,7 @@ class TestAttachmentHostPath:
         for index in range(513):
             os.symlink(harmless_target, os.path.join(outbox, f'entry-{index}'))
 
-        with pytest.raises(BoxValidationError, match='symbolic link'):
+        with pytest.raises(BoxValidationError, match='directory-entry limit'):
             await service.collect_outbound_attachments(query)
         assert harmless_target.read_bytes() == b'x'
 

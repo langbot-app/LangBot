@@ -11,6 +11,15 @@ class UnsafeWorkspacePathError(OSError):
     """A tenant-controlled path could not be opened without following links."""
 
 
+class WorkspaceReadLimitError(ValueError):
+    """The outbox cannot be read completely within the export limits."""
+
+    def __init__(self, kind: str, limit: int, actual: int, path: str = '', *, lower_bound: bool = False):
+        self.kind, self.limit, self.actual, self.path = kind, limit, actual, path
+        self.lower_bound = lower_bound
+        super().__init__(f'Sandbox outbox exceeds the {kind} limit')
+
+
 _DIRECTORY_FLAGS = (
     os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
 )
@@ -185,16 +194,16 @@ def _read_directory(
     total: list[int],
     remaining_entries: list[int],
     remaining_directories: list[int],
+    max_entries: int,
+    max_directories: int,
     depth: int,
 ) -> None:
     if depth > 8:
-        return
+        raise WorkspaceReadLimitError('depth', 8, depth, prefix, lower_bound=True)
     with os.scandir(directory_fd) as iterator:
         for entry in iterator:
-            if len(output) >= max_files or total[0] >= max_total_bytes:
-                return
             if remaining_entries[0] <= 0:
-                raise UnsafeWorkspacePathError('Sandbox outbox exceeds the directory-entry limit')
+                raise WorkspaceReadLimitError('entries', max_entries, max_entries + 1, prefix, lower_bound=True)
             remaining_entries[0] -= 1
             name = _component(entry.name)
             relative = f'{prefix}/{name}' if prefix else name
@@ -202,14 +211,11 @@ def _read_directory(
                 continue
             if entry.is_dir(follow_symlinks=False):
                 if remaining_directories[0] <= 0:
-                    raise UnsafeWorkspacePathError('Sandbox outbox exceeds the directory limit')
+                    raise WorkspaceReadLimitError(
+                        'directories', max_directories, max_directories + 1, relative, lower_bound=True
+                    )
                 remaining_directories[0] -= 1
-                try:
-                    child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=directory_fd)
-                except PermissionError:
-                    raise
-                except OSError:
-                    continue
+                child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=directory_fd)
                 try:
                     _read_directory(
                         child_fd,
@@ -221,28 +227,37 @@ def _read_directory(
                         total=total,
                         remaining_entries=remaining_entries,
                         remaining_directories=remaining_directories,
+                        max_entries=max_entries,
+                        max_directories=max_directories,
                         depth=depth + 1,
                     )
                 finally:
                     os.close(child_fd)
                 continue
-            try:
-                file_fd = os.open(name, _FILE_READ_FLAGS, dir_fd=directory_fd)
-            except PermissionError:
-                raise
-            except OSError:
+            if not entry.is_file(follow_symlinks=False):
                 continue
+            file_fd = os.open(name, _FILE_READ_FLAGS, dir_fd=directory_fd)
             try:
                 metadata = os.fstat(file_fd)
-                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_file_bytes:
+                if not stat.S_ISREG(metadata.st_mode):
                     continue
+                if len(output) >= max_files:
+                    raise WorkspaceReadLimitError('file_count', max_files, len(output) + 1, relative, lower_bound=True)
+                if metadata.st_size > max_file_bytes:
+                    raise WorkspaceReadLimitError('file_bytes', max_file_bytes, metadata.st_size, relative)
                 remaining = max_total_bytes - total[0]
                 if metadata.st_size > remaining:
-                    continue
+                    raise WorkspaceReadLimitError(
+                        'collection_bytes', max_total_bytes, total[0] + metadata.st_size, relative, lower_bound=True
+                    )
                 with os.fdopen(file_fd, 'rb', closefd=False) as file_obj:
                     data = file_obj.read(max_file_bytes + 1)
-                if len(data) > max_file_bytes or len(data) > remaining:
-                    continue
+                if len(data) > max_file_bytes:
+                    raise WorkspaceReadLimitError('file_bytes', max_file_bytes, len(data), relative, lower_bound=True)
+                if len(data) > remaining:
+                    raise WorkspaceReadLimitError(
+                        'collection_bytes', max_total_bytes, total[0] + len(data), relative, lower_bound=True
+                    )
                 output.append((relative, data))
                 total[0] += len(data)
             finally:
@@ -260,7 +275,11 @@ def read_regular_files(
     max_entries: int = 512,
     max_directories: int = 64,
 ) -> list[tuple[str, bytes]]:
-    """Read bounded regular files without following tenant-created links."""
+    """Read regular files completely within bounds, without following links.
+
+    Missing outboxes are empty. Unreadable files/directories and exhausted
+    limits raise, so a caller cannot mistake a partial read for a complete export.
+    """
 
     output: list[tuple[str, bytes]] = []
     try:
@@ -275,13 +294,18 @@ def read_regular_files(
                 total=[0],
                 remaining_entries=[max_entries],
                 remaining_directories=[max_directories],
+                max_entries=max_entries,
+                max_directories=max_directories,
                 depth=0,
             )
-    except (FileNotFoundError, UnsafeWorkspacePathError):
-        # A missing directory is an empty outbox. An unsafe existing path is
-        # deliberately surfaced to the caller rather than followed.
-        if os.path.lexists(os.path.join(root, subdir, query_key)):
-            raise
+    except UnsafeWorkspacePathError as exc:
+        # Only failure to open a missing outbox is empty. A file disappearing
+        # during traversal, or a permission failure, is an incomplete read.
+        if isinstance(exc.__cause__, FileNotFoundError):
+            return []
+        if isinstance(exc.__cause__, PermissionError):
+            raise exc.__cause__ from None
+        raise
     return output
 
 

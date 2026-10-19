@@ -20,6 +20,7 @@ from langbot_plugin.box.security import BOX_SHARED_WORKSPACE_PROBE_PREFIX
 from .admission import SandboxAdmissionController, require_cloud_admission_policy
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
+from .export_errors import export_error, script_export_error, transport_export_error
 from ..utils import httpclient
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
@@ -1126,40 +1127,52 @@ class BoxService:
             )
         return result
 
-    async def collect_outbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+    async def collect_outbound_attachments(self, query: pipeline_query.Query, *, clear: bool = True) -> list[dict]:
         """Collect files the agent produced in the sandbox outbox.
 
         Read regular files within the configured attachment limits from the
         current run's outbox. Private container output uses the bound sandbox
         channel; invalid or truncated responses retain the files. Clear a
         successful collection and return ``{type, name, base64}`` descriptors.
+        Read and traversal limits fail without clearing output. Runner export
+        defers cleanup until its cumulative run limits have also been checked.
         """
         if not self._available:
+            if not clear:
+                raise BoxError('Box runtime is not available; output files were retained')
             return []
         if self._cloud_managed:
             await self.require_workspace_sandbox(self._query_execution_context(query))
 
         host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
-        if host_dir is not None:
-            try:
-                entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
-            except PermissionError:
-                # Root-owned container output can be private to its sandbox UID.
+        try:
+            if host_dir is not None:
+                try:
+                    entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+                except PermissionError:
+                    # Root-owned container output can be unreadable to Core.
+                    # Retry the complete read inside the already-bound Box.
+                    entries = await self._read_outbox_via_exec(query)
+            else:
                 entries = await self._read_outbox_via_exec(query)
-        else:
-            entries = await self._read_outbox_via_exec(query)
+        except OSError as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
 
-        attachments = self._classify_outbound_entries(entries)
+        attachments = self._classify_outbound_entries(entries, include_source_path=not clear)
 
-        # Always clear the per-query outbox after reading — even when nothing
-        # was collected — so a later turn that reuses the same query_id (the
-        # counter resets across restarts) never inherits stale files.
-        await self._clear_outbox(query, host_dir)
+        # A successful empty read still clears stale state, but an incomplete
+        # read must never reach cleanup. Export can be retried after the failure.
+        if clear:
+            await self._clear_outbox(query, host_dir)
         if attachments:
             self.ap.logger.info(
                 f'Collected {len(attachments)} outbound attachment(s) from sandbox: query_id={query.query_id}'
             )
         return attachments
+
+    async def clear_outbound_attachments(self, query: pipeline_query.Query) -> None:
+        """Clear output after a complete read has been accepted by the Runner."""
+        await self._clear_outbox(query, self._host_query_dir(self.OUTBOX_SUBDIR, query))
 
     def _read_outbox_host(self, host_dir: str) -> list[dict]:
         """Read outbox files straight off the bind-mounted host directory."""
@@ -1179,53 +1192,128 @@ class BoxService:
             )
         except secure_fs.UnsafeWorkspacePathError as exc:
             raise BoxValidationError('Sandbox outbox contains an unsafe symbolic link') from exc
+        except secure_fs.WorkspaceReadLimitError as exc:
+            raise export_error(
+                exc.kind, limit=exc.limit, actual=exc.actual, path=exc.path, lower_bound=exc.lower_bound
+            ) from exc
         return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
-    async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
+    async def _read_outbox_via_exec(self, query: pipeline_query.Query, paths=None) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
         Use the same Workspace-scoped execution path as tools, retaining raw
         stdout because base64 payloads can exceed the display truncation limit.
         """
-        import json as _json
-
+        import base64
+        import binascii
         from .sandbox_files import outbox_script
 
         max_file_bytes = self._ATTACHMENT_MAX_BYTES
+        max_files = self._ATTACHMENT_MAX_FILES
         max_total_bytes = self._ATTACHMENT_MAX_TOTAL_BYTES
         script = outbox_script(
             self.OUTBOX_MOUNT_DIR,
             self._attachment_query_key(query),
             operation='read',
             max_file_bytes=max_file_bytes,
-            max_files=self._ATTACHMENT_MAX_FILES,
+            max_files=max_files,
             max_total_bytes=max_total_bytes,
         )
+        if paths is not None:
+            from .selected_files import selected_files_script
+
+            script = selected_files_script(paths, max_file_bytes=max_file_bytes, max_total_bytes=max_total_bytes)
         spec_payload: dict = {
             'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
             'timeout_sec': 120,
             'session_id': self.resolve_box_session_id(query),
         }
-        result = await self._execute_spec_payload_result(spec_payload, query)
-        if not result.ok:
-            if 'Sandbox output attachment exceeds the export size limit' in (result.stderr or ''):
-                raise BoxValidationError(
-                    f'Sandbox output attachments exceed the export limit '
-                    f'({max_file_bytes} bytes per file, {max_total_bytes} bytes total); files were retained'
-                )
-            raise BoxValidationError(f'Failed to read sandbox outbox (exit code {result.exit_code})')
         try:
-            entries = _json.loads(str(result.stdout or '').strip().splitlines()[-1])
-            if not isinstance(entries, list) or any(
-                not isinstance(entry, dict)
-                or not isinstance(entry.get('name'), str)
-                or not isinstance(entry.get('b64'), str)
-                for entry in entries
-            ):
-                raise ValueError('Invalid attachment list')
-            return entries
-        except (ValueError, IndexError) as exc:
-            raise BoxValidationError('Sandbox outbox returned invalid attachment data') from exc
+            result = await self._execute_spec_payload_result(spec_payload, query)
+        except BoxError:
+            raise
+        except Exception as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
+        if not result.ok:
+            failure = script_export_error(
+                result.stderr or '',
+                result.exit_code,
+                {
+                    'file_bytes': max_file_bytes,
+                    'collection_bytes': max_total_bytes,
+                    'file_count': max_files,
+                    'depth': 8,
+                    'entries': 512,
+                    'directories': 64,
+                },
+                selected_paths=paths,
+            )
+            if failure is not None:
+                raise failure
+            raise BoxValidationError(
+                f'Failed to read sandbox outbox or selected files (exit code {result.exit_code}); '
+                f'output files were retained: {(result.stderr or "")[-4000:]}'
+            )
+        truncated = transport_export_error(result.stdout)
+        if truncated is not None:
+            raise truncated
+        try:
+            entries = json.loads(result.stdout)
+            if not isinstance(entries, list) or len(entries) > max_files:
+                raise ValueError('Invalid file list')
+            total_bytes = 0
+            for entry in entries:
+                if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
+                    raise ValueError('Invalid file entry')
+                if paths is None and entry['name'].startswith('/'):
+                    raise ValueError('Expected a relative outbox path')
+                if paths is not None and entry['name'] not in paths:
+                    raise ValueError('Unexpected exported path')
+                for component in entry['name'].lstrip('/').split('/'):
+                    secure_fs._component(component)
+                encoded = entry.get('b64')
+                if not isinstance(encoded, str) or len(encoded) > 4 * ((max_file_bytes + 2) // 3):
+                    raise ValueError('Invalid file payload')
+                size = len(base64.b64decode(encoded, validate=True))
+                total_bytes += size
+                if size > max_file_bytes or total_bytes > max_total_bytes:
+                    raise ValueError('File payload exceeds export limits')
+        except (TypeError, ValueError, OSError, binascii.Error) as exc:
+            raise export_error('invalid_response') from exc
+        return entries
+
+    async def collect_selected_files(self, query, paths):
+        if not self._available:
+            raise BoxError('Box runtime is not available')
+        entries = await self._read_outbox_via_exec(query, paths)
+        if len(entries) != len(paths) or {e['name'] for e in entries} != set(paths):
+            raise BoxValidationError('Incomplete selected file export; files were retained')
+        return self._classify_outbound_entries(entries, include_source_path=True)
+
+    async def clear_selected_files(self, query, items):
+        import base64
+        import hashlib
+        from .selected_files import selected_files_script
+
+        digests = {
+            item['_outbox_path']: hashlib.sha256(base64.b64decode(item['base64'].split(';base64,')[-1])).hexdigest()
+            for item in items
+        }
+        script = selected_files_script(
+            list(digests),
+            max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+            max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            cleanup=digests,
+        )
+        result = await self._execute_spec_payload_result(
+            {
+                'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
+                'timeout_sec': 120,
+                'session_id': self.resolve_box_session_id(query),
+            },
+            query,
+        )
+        return None if result.ok else 'Files accepted, but cleanup failed; do not repeat delivery.'
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
         """Empty the per-query outbox after collection.
@@ -1285,7 +1373,7 @@ class BoxService:
             self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
 
     @staticmethod
-    def _classify_outbound_entries(entries: list[dict]) -> list[dict]:
+    def _classify_outbound_entries(entries: list[dict], *, include_source_path: bool = False) -> list[dict]:
         """Classify outbox files into Image/Voice/File component descriptors."""
         image_exts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
         voice_exts = {'wav', 'mp3', 'silk', 'amr', 'ogg', 'm4a', 'aac'}
@@ -1301,17 +1389,20 @@ class BoxService:
         for entry in entries or []:
             name = str(entry.get('name', '') or '')
             b64 = entry.get('b64')
-            if not name or not b64:
+            if not name or not isinstance(b64, str):
                 continue
             ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
             base_name = os.path.basename(name)
             if ext in image_exts:
                 mime = mime_by_ext.get(ext, 'image/png')
-                attachments.append({'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'})
+                item = {'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'}
             elif ext in voice_exts:
-                attachments.append({'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'})
+                item = {'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'}
             else:
-                attachments.append({'type': 'File', 'name': base_name, 'base64': b64})
+                item = {'type': 'File', 'name': base_name, 'base64': b64}
+            if include_source_path:
+                item['_outbox_path'] = name
+            attachments.append(item)
         return attachments
 
     async def shutdown(self):
