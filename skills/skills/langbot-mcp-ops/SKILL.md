@@ -75,6 +75,13 @@ create another Slack application; inspect the returned `app_id` first.
 
 The tools wrap the LangBot service layer. Current tools (v1):
 
+`create_pipeline` and HTTP `POST /api/v1/pipelines` preserve a supplied `config`
+and `extensions_preferences`; omit `config` to use installed Runner defaults.
+Selecting `ai.runner.id` never grants extension access: an empty `plugins` list
+with `enable_all_plugins=false` still denies that plugin's Tool, EventListener
+and Command components, while allowing its selected Runner. Editing and copying
+a pipeline retain these independent settings.
+
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
@@ -104,6 +111,13 @@ Pass `is_default: true` to `create_pipeline` only when the Workspace does not
 already have a default pipeline.
 
 ## How to use
+
+Pipeline plugin extension switches authorize only EventListener, Tool and Command
+components. Select the Runner independently in AI settings. An empty extension
+allowlist does not prevent saving, copying or running that Runner. Never enable
+all plugins or add its plugin to the allowlist as a Runner workaround: that also
+authorizes its other components. The Runner plugin must still be installed and
+enabled in the authenticated Workspace, with an available Plugin Runtime.
 
 1. Get an API key (web UI key, or set `api.global_api_key` in config.yaml).
 2. Point your MCP client at `http://<host>:5300/mcp` with the key header.

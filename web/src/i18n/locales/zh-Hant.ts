@@ -1514,6 +1514,13 @@ const zhHant = {
     viewMarketplace: '查看市場',
     restoringRunnerInstall: '正在恢復運行器插件安裝並等待運行器就緒…',
     noInstalledRunners: '尚未安裝任何運行器擴展。',
+    runnerDiagnosis: {
+      missing: '所選運行器或其外掛不存在，請安裝或還原外掛。',
+      disabled: '所選運行器外掛已停用，請在外掛頁面啟用。',
+      runtime: '外掛執行環境無法使用或已停用，請恢復連線後再執行。',
+      repair: '管理外掛和執行環境',
+      draft: '修復頁面將在新分頁開啟，目前的運行器選擇和未儲存的草稿將保留。',
+    },
     installingRunner: '正在安裝 {{runner}}...',
     runnerInstallSuccess: '{{runner}} 已安裝，可從已安裝列表中選擇',
     selectedRunnerUnavailable: '所選運行器不可用',
@@ -2089,6 +2096,10 @@ const zhHant = {
       addPlugin: '新增插件',
       selectPlugins: '選擇插件',
       pluginsTitle: '插件',
+      pluginScopeHint:
+        '此處僅控制本流水線使用的事件監聽器、工具和命令元件，不影響 AI 設定中選擇的執行器（Runner）。',
+      runnerScopeHint:
+        '執行器在此獨立選擇，不受擴充整合中的外掛開關控制；其所屬外掛仍須已安裝且可用。',
       mcpServersTitle: 'MCP 伺服器',
       mcpResourcesTitle: 'MCP 資源',
       noMCPServersSelected: '未選擇任何 MCP 伺服器',

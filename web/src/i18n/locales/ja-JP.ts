@@ -1618,6 +1618,17 @@ const jaJP = {
     restoringRunnerInstall:
       'Runner プラグインのインストールを復元し、ランナーを待機しています…',
     noInstalledRunners: 'Runner 拡張機能はまだインストールされていません。',
+    runnerDiagnosis: {
+      missing:
+        '選択した Runner またはプラグインが見つかりません。プラグインをインストールまたは復元してください。',
+      disabled:
+        '選択した Runner プラグインは無効です。プラグイン画面で有効にしてください。',
+      runtime:
+        'プラグインランタイムが利用できないか無効です。接続を復旧してから実行してください。',
+      repair: 'プラグインとランタイムを管理',
+      draft:
+        '修復画面は新しいタブで開きます。Runner の選択と未保存の下書きは保持されます。',
+    },
     installingRunner: '{{runner}} をインストールしています...',
     runnerInstallSuccess:
       '{{runner}} をインストールしました。インストール済み一覧から選択できます',
@@ -2228,6 +2239,10 @@ const jaJP = {
       addPlugin: 'プラグインを追加',
       selectPlugins: 'プラグインを選択',
       pluginsTitle: 'プラグイン',
+      pluginScopeHint:
+        'このパイプラインのイベントリスナー、ツール、コマンドのみを制御します。AI 設定で選択した Runner には影響しません。',
+      runnerScopeHint:
+        'Runner は拡張機能のプラグインスイッチと独立して選択します。対応するプラグインはインストール済みで利用可能である必要があります。',
       mcpServersTitle: 'MCPサーバー',
       mcpResourcesTitle: 'MCPリソース',
       noMCPServersSelected: 'MCPサーバーが選択されていません',

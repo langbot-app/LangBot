@@ -189,7 +189,8 @@ class PipelineService:
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
 
-        pipeline_data['config'] = await self.get_default_pipeline_config(context)
+        if 'config' not in pipeline_data:
+            pipeline_data['config'] = await self.get_default_pipeline_config(context)
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default

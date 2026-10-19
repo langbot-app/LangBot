@@ -723,6 +723,9 @@ const PipelineFormComponent = forwardRef<
           <Card key={stage.name}>
             <CardHeader>
               <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+              <CardDescription>
+                {t('pipelines.extensions.runnerScopeHint')}
+              </CardDescription>
               {stage.description && (
                 <CardDescription>
                   {extractI18nObject(stage.description)}
