@@ -311,7 +311,13 @@ async def test_telegram_interaction_callback_answers_and_dispatches_once():
 
 @pytest.mark.asyncio
 async def test_telegram_converter_maps_message_and_edited_message_events():
-    update = make_update({'message': base_message_payload(text='hello @test_bot')})
+    update = make_update(
+        {
+            'message': base_message_payload(
+                text='hello @test_bot', entities=[{'type': 'mention', 'offset': 6, 'length': 9}]
+            )
+        }
+    )
     event = await TelegramEventConverter.target2yiri(update, make_adapter().bot, 'test_bot')
 
     assert isinstance(event, platform_events.MessageReceivedEvent)
