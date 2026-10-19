@@ -94,7 +94,7 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
                     # Exercise the real remote reader here; Linux CI must reach
                     # it via the actual host PermissionError, without patching.
                     patch.setattr(box, '_host_query_dir', lambda *args: None)
-                exported = await api.export_files(query)
+                exported = await api.export_files(query, [target])
             assert len(exported['items']) == 1
             item = exported['items'][0]
             assert item['size'] == len(payload)
