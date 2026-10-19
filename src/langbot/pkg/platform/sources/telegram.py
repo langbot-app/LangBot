@@ -153,12 +153,12 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             text: str, entities: dict[telegram.MessageEntity, str]
         ) -> list[platform_message.MessageComponent]:
             msg_components = []
-            mention = f'@{bot_account_id}'
+            mention = f'@{bot_account_id}'.lower()
             bot_mentions = [
                 entity
                 for entity, value in entities.items()
-                if (entity.type == telegram.MessageEntity.MENTION and value == mention)
-                or (entity.type == telegram.MessageEntity.BOT_COMMAND and value.endswith(mention))
+                if (entity.type == telegram.MessageEntity.MENTION and value.lower() == mention)
+                or (entity.type == telegram.MessageEntity.BOT_COMMAND and value.lower().endswith(mention))
             ]
 
             if bot_mentions:

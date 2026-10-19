@@ -40,6 +40,8 @@ TELEGRAM_FILE_URL = f'https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/phot
     [
         ('hello', [], 'hello', False),
         ('hello @test_bot', [('mention', 6, 9)], 'hello ', True),
+        ('😀 @TEST_BOT!', [('mention', 3, 9)], '😀 !', True),
+        ('/help@TeSt_BoT', [('bot_command', 0, 14)], '/help', True),
         ('@test_bot_extra hello', [('mention', 0, 15)], '@test_bot_extra hello', False),
         ('@test_bot', [('code', 0, 9)], '@test_bot', False),
         ('@test_bot', [('pre', 0, 9)], '@test_bot', False),
@@ -83,8 +85,23 @@ async def test_telegram_mentions_use_entity_boundaries(text, entities, expected_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('media_type', ['photo', 'voice', 'document'])
-@pytest.mark.parametrize('entity_type', ['mention', 'code'])
-async def test_telegram_caption_mentions_preserve_media(monkeypatch, media_type, entity_type):
+@pytest.mark.parametrize(
+    ('caption', 'caption_entities', 'expected_text', 'mentioned'),
+    [
+        ('😀 @test_bot', [('mention', 3, 9)], '😀 ', True),
+        ('😀 @TEST_BOT', [('mention', 3, 9)], '😀 ', True),
+        ('😀 @test_bot', [('code', 3, 9)], '😀 @test_bot', False),
+        ('😀 @test_bot', [('pre', 3, 9)], '😀 @test_bot', False),
+        ('https://example.com/@test_bot', [('url', 0, 29)], 'https://example.com/@test_bot', False),
+        ('@test_bot_extra', [('mention', 0, 15)], '@test_bot_extra', False),
+        ('ordinary caption', [], 'ordinary caption', False),
+        ('😀 @TEST_BOT @test_bot', [('mention', 3, 9), ('mention', 13, 9)], '😀  ', True),
+        ('😀 @TEST_BOT @test_bot', [('mention', 3, 9), ('code', 13, 9)], '😀  @test_bot', True),
+    ],
+)
+async def test_telegram_caption_mentions_preserve_media(
+    monkeypatch, media_type, caption, caption_entities, expected_text, mentioned
+):
     media = {'file_id': 'file-1', 'file_unique_id': 'unique-1'}
     if media_type == 'photo':
         media = [{**media, 'width': 1, 'height': 1}]
@@ -97,8 +114,10 @@ async def test_telegram_caption_mentions_preserve_media(monkeypatch, media_type,
             'message_id': 10,
             'date': 1700000000,
             'chat': {'id': 123, 'type': 'private'},
-            'caption': '😀 @test_bot',
-            'caption_entities': [{'type': entity_type, 'offset': 3, 'length': 9}],
+            'caption': caption,
+            'caption_entities': [
+                {'type': kind, 'offset': offset, 'length': length} for kind, offset, length in caption_entities
+            ],
             media_type: media,
         },
         SimpleNamespace(get_file=AsyncMock(return_value=SimpleNamespace(file_path=TELEGRAM_FILE_URL))),
@@ -123,11 +142,9 @@ async def test_telegram_caption_mentions_preserve_media(monkeypatch, media_type,
 
     chain = list(await TelegramMessageConverter.target2yiri(message, None, 'test_bot'))
 
-    if entity_type == 'mention':
+    if mentioned:
         assert chain.pop(0) == platform_message.At(target='test_bot')
-        assert chain.pop(0) == platform_message.Plain(text='😀 ')
-    else:
-        assert chain.pop(0) == platform_message.Plain(text='😀 @test_bot')
+    assert chain.pop(0) == platform_message.Plain(text=expected_text)
     assert len(chain) == 1
     expected_type = {
         'photo': platform_message.Image,
