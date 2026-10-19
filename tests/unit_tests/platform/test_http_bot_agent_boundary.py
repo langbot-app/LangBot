@@ -244,8 +244,9 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
         }
         query = SimpleNamespace(_box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'))
         box = SimpleNamespace(
+            _ATTACHMENT_MAX_FILES=10,
             _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
-            collect_outbound_attachments=AsyncMock(
+            collect_selected_files=AsyncMock(
                 return_value=[
                     {
                         'type': 'File',
@@ -255,7 +256,9 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                 ]
             ),
         )
-        exported = await RunnerBoxService(box).export_files(query)
+        paths = ['/workspace/generated-proof.txt']
+        exported = await RunnerBoxService(box).export_files(query, paths)
+        box.collect_selected_files.assert_awaited_once_with(query, paths)
         file_ids = [item['id'] for item in exported['items']]
         app = SimpleNamespace(
             platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=live_adapter)))
@@ -292,7 +295,7 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
         assert status == 200
         payload = (await response.get_json())['data']
     assert payload['reply_to'] == message_id
-    assert len(payload['message']) == 2
+    assert len(payload['message']) == 2, adapter.logger.mock_calls
     assert payload['message'][0] == {'type': 'Plain', 'text': content.decode()}
     delivered = payload['message'][1]
     assert delivered['type'] == 'File'

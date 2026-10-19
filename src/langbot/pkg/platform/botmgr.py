@@ -728,8 +728,6 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
-
         text = platform_events.event_summary(event)
         contents: list[dict[str, typing.Any]] = []
 
