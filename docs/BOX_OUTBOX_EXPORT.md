@@ -1,47 +1,69 @@
-# Box outbox export failures
+# Explicit Box file export
 
-Runner file export reads only the bound run's outbox. A missing or empty
-outbox is a successful empty read. Unreadable files/directories, I/O failures,
-exceeded traversal/export limits, and malformed exec responses are failures.
-They must not be converted into an empty or partial successful export.
+A Runner calls `ctx.export_box_files(paths)` with a non-empty list of normalized
+absolute paths inside its bound sandbox. The run's outbox is the recommended place
+for deliverables. Writing a file alone does not deliver it; LocalAgent exposes an
+`export_box_files` model tool and performs no final directory scan.
 
-If Core lacks permission to read host-mounted output, it retries the complete
-read inside the already-bound Box. The retry preserves the Box configuration,
-Workspace identity and generation checks. Both readers use bounded,
-descriptor-relative reads and do not follow symbolic links. The sandbox path
-uses the upstream read/clear script and preserves its nonblocking FIFO handling. Unsafe
-host paths and quota failures do not trigger this permission fallback.
+Core validates every selected file before registering any new handles. Missing,
+unreadable, non-regular or symlinked paths, exceeded quotas and malformed runtime
+responses fail the whole batch and retain its files. The selected-file reader runs
+inside the existing Box with its original configuration and Workspace/generation
+fencing. It opens directories and files without following symlinks and uses
+nonblocking opens to avoid hanging on FIFOs.
 
-Host and exec exports retain the upstream limits: up to 20 files and 50 MiB
-per collection, with a 10 MiB per-file limit. Exec export uses raw stdout;
-the smaller inbound command limit does not apply. SDK 0.7.13 still caps raw
-stdout at 1 MiB per stream, including base64/JSON overhead. Larger private
-exports can therefore fail before reaching the reader's nominal file limit.
-Truncated or over-limit output fails explicitly and remains in the outbox so
-the producer can reduce it and retry; this change does not extend that SDK cap.
+The existing limits remain: 20 files and 50 MiB per call, 10 MiB per file, and
+100 files / 50 MiB cumulatively per run. Raw SDK stdout is capped at 1 MiB per
+stream including base64/JSON overhead, so transport may reject a batch below its
+nominal file quotas. Only explicit SDK clipping notices are classified as
+truncation; ordinary invalid JSON is not guessed to be a size failure. Quota
+errors include the threshold, known actual value or lower bound, sandbox paths,
+retention state and suggested action.
 
-Runner export also checks its cumulative 100-file and 50 MiB run limits before
-registering any new file handles or clearing the outbox. Failed reads and
-rejected run budgets leave the existing handles and output files intact.
-Cleanup follows successful acceptance, including a successful empty read.
-This is retry protection within the current Box/run lifetime, not durable
-archival; existing Box expiry and startup cleanup policies are unchanged.
+Successful acceptance returns opaque run-scoped handles and removes only selected
+files whose content still matches the accepted bytes. Unselected files remain.
+Cleanup failure is a warning on accepted handles; it must not cause duplicate
+registration or delivery. Re-reading unchanged retained files reuses their IDs;
+changed content or distinct source paths produces distinct handles. Already
+submitted IDs are never returned for another delivery.
+
+`message.completed.file_ids` attaches accepted files to automatic Pipeline output.
+Explicit Agent replies use `ctx.reply_files()`. Platform-send failure after Core
+acceptance terminates LocalAgent rather than regenerating or resending possibly
+already-delivered files. Model export retries use ordinary paired tool-call
+messages within the original tool/context/deadline budgets. There is no separate
+two-attempt completion recovery loop. Streaming text already sent cannot be
+retracted. Retention lasts only within the existing Box/run lifetime; expiry and
+startup cleanup remain in effect.
+
+## Coordinated dependency
+
+This API requires the matching Core, LocalAgent and SDK implementation. The current
+Core and LocalAgent uv locks pin SDK commit
+`b300830b0e5339e7989be237efa811bedf761d55` from SDK PR #180. Published SDK 0.7.4 and
+0.7.13 do not include the paths argument. LocalAgent rejects an older Runtime SDK
+before preparing its file tool. Maintainers must coordinate the SDK release and
+Runtime upgrade before release deployment.
+
+The internal directory-collection helpers retain their strict bounded reads and
+host-permission fallback; they do not define the explicit Runner export API.
 
 ## Regression checks
 
 ```bash
-uv run pytest tests/unit_tests/box -q
-uv run pytest tests/integration_tests/box/test_outbox_export.py -v -s
+uv run --no-sync pytest tests/unit_tests/box -q
+uv run --no-sync pytest tests/integration_tests/box/test_outbox_export.py -v -s
+LANGBOT_LEGACY_PLUGIN_ROOT=/path/to/pinned/plugins uv run --no-sync pytest --required-suite local_agent -q
 ```
 
-The Docker integration test prints the copied file's uid, gid and mode,
-checks exact attachment bytes across two runs sharing one Box, and rejects
-cross-run file references. Linux CI runs Core as a non-root user and must hit
-the permission fallback for root-owned mode-0600 output. Docker Desktop has
-different bind-mount ownership semantics, so its test explicitly selects the
-remote reader; that result alone does not establish the Linux permission case.
+The Docker integration records uid/gid/mode, checks exact bytes from root-owned
+0600 output using a non-root Core on Linux, verifies Box reuse and rejects
+cross-run handle reuse. The required LocalAgent suite uses the integrity-checked
+plugin source in `tests/fixtures/legacy_plugin_identity_sources.json`; Core,
+Runtime, SQLite and Docker are real while the model and faults are scripted.
+Cases cover selection, repair, streaming, tool-budget exhaustion, cleanup retry,
+invalid response, timeout, real-ledger cancellation and no implicit export.
 
-With `LANGBOT_LEGACY_PLUGIN_ROOT` pointing to the official revision pinned in
-`tests/fixtures/legacy_plugin_identity_sources.json`, the
-`test_local_runner_owns_box_reuse_and_explicit_files` E2E additionally exercises
-Core, Plugin Runtime, LocalAgent, Host file APIs and Docker with a scripted model.
+The opt-in `test_live_explicit_export.py` additionally needs dedicated
+`BOX_LIVE_API_KEY` and `BOX_LIVE_MODEL` configuration. Its absence is a skip,
+not evidence of a live-model acceptance run.

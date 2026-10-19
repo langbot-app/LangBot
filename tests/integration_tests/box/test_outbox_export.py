@@ -36,7 +36,7 @@ class _Client(_InProcessBoxRuntimeClient):
 
 
 @pytest.mark.asyncio
-async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, monkeypatch, capfd):
+async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, capfd):
     logger = logging.getLogger('test.box.outbox')
     backend = _TestDockerBackend(logger)
     if not await backend.is_available():
@@ -88,13 +88,8 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
                 # Linux CI exercises the issue's exact root-owned 0600 case.
                 assert metadata['uid'] == 0
                 assert metadata['gid'] == 0
-            with monkeypatch.context() as patch:
-                if sys.platform != 'linux':
-                    # Docker Desktop maps ownership/permissions across its VM.
-                    # Exercise the real remote reader here; Linux CI must reach
-                    # it via the actual host PermissionError, without patching.
-                    patch.setattr(box, '_host_query_dir', lambda *args: None)
-                exported = await api.export_files(query, [target])
+            # Explicit selections always use the reader inside the bound Box.
+            exported = await api.export_files(query, [target])
             assert len(exported['items']) == 1
             item = exported['items'][0]
             assert item['size'] == len(payload)
