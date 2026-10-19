@@ -35,6 +35,10 @@ def prepare_input_files(query, agent_input):
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
 
     originals = input_files(query)
+    # References are scoped to this query's previous preparation, not to the
+    # platform message order or to any caller-supplied filesystem path.
+    prepared = getattr(query, '_box_inputs', None)
+    previous_refs = {f'attachment-{i}': item for i, item in enumerate(prepared or [])}
     if not agent_input.attachments:
         from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 
@@ -55,6 +59,11 @@ def prepare_input_files(query, agent_input):
         if cls is pm.File:
             fields.update(name=attachment.name or '', id=attachment.id or '')
         component = cls(**fields)
+        referenced = previous_refs.get(attachment.ref)
+        if type(referenced) is cls and not attachment.content and not attachment.url:
+            components.append(referenced)
+            attachment.ref, attachment.path = f'attachment-{i}', None
+            continue
         # Match by payload, never by list position (contents and message chains
         # can describe attachments in different orders).
         for original in originals:

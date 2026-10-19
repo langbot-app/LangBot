@@ -8,7 +8,7 @@ import litellm
 from litellm import acompletion, aembedding, arerank
 
 from .. import errors, reasoning, requester
-from ....utils import httpclient
+from ....utils import httpclient, image
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -760,7 +760,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                             if isinstance(raw_image_url, dict):
                                 fallback_url = raw_image_url.get('url')
                         if image_b64 or fallback_url:
-                            part['image_url'] = {'url': image_b64 or fallback_url}
+                            part['image_url'] = {
+                                'url': image.normalize_image_data_url(image_b64) if image_b64 else fallback_url
+                            }
                             part['type'] = 'image_url'
                             part.pop('image_base64', None)
                         else:

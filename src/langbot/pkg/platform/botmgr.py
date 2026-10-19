@@ -28,6 +28,7 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
+from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 from ..entity.persistence import workspace as persistence_workspace
 
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -733,7 +734,7 @@ class RuntimeBot:
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=[],
+            attachments=QueryEntryAdapter._build_attachments(event, contents),
         )
 
     def _eba_event_to_agent_envelope(
