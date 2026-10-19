@@ -2253,6 +2253,10 @@ const esES = {
       addPlugin: 'Añadir plugin',
       selectPlugins: 'Seleccionar plugins',
       pluginsTitle: 'Plugins',
+      pluginScopeHint:
+        'Solo controla los escuchadores de eventos, herramientas y comandos de este pipeline; no afecta al Runner elegido en los ajustes de IA.',
+      runnerScopeHint:
+        'El Runner se elige aquí independientemente de los interruptores de plugins de extensiones. Su plugin debe estar instalado y disponible.',
       mcpServersTitle: 'Servidores MCP',
       mcpResourcesTitle: 'Recursos MCP',
       noMCPServersSelected: 'No hay servidores MCP seleccionados',

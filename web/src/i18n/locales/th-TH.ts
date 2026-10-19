@@ -2172,6 +2172,10 @@ const thTH = {
       addPlugin: 'เพิ่มปลั๊กอิน',
       selectPlugins: 'เลือกปลั๊กอิน',
       pluginsTitle: 'ปลั๊กอิน',
+      pluginScopeHint:
+        'ควบคุมเฉพาะตัวรับฟังเหตุการณ์ เครื่องมือ และคำสั่งของไปป์ไลน์นี้ ไม่ส่งผลต่อ Runner ที่เลือกในการตั้งค่า AI',
+      runnerScopeHint:
+        'เลือก Runner ได้อย่างอิสระจากสวิตช์ปลั๊กอินส่วนขยาย โดยปลั๊กอินของ Runner ต้องติดตั้งแล้วและพร้อมใช้งาน',
       mcpServersTitle: 'เซิร์ฟเวอร์ MCP',
       mcpResourcesTitle: 'ทรัพยากร MCP',
       noMCPServersSelected: 'ไม่ได้เลือกเซิร์ฟเวอร์ MCP',

@@ -2205,6 +2205,10 @@ const viVN = {
       addPlugin: 'Thêm Plugin',
       selectPlugins: 'Chọn Plugin',
       pluginsTitle: 'Plugin',
+      pluginScopeHint:
+        'Chỉ kiểm soát trình lắng nghe sự kiện, công cụ và lệnh của pipeline này; không ảnh hưởng đến Runner được chọn trong cài đặt AI.',
+      runnerScopeHint:
+        'Chọn Runner độc lập tại đây, không phụ thuộc vào công tắc plugin tiện ích. Plugin của Runner vẫn phải được cài đặt và khả dụng.',
       mcpServersTitle: 'Máy chủ MCP',
       mcpResourcesTitle: 'Tài nguyên MCP',
       noMCPServersSelected: 'Chưa chọn máy chủ MCP nào',

@@ -2219,6 +2219,10 @@ const enUS = {
       addPlugin: 'Add Plugin',
       selectPlugins: 'Select Plugins',
       pluginsTitle: 'Plugins',
+      pluginScopeHint:
+        'Only controls event listeners, tools and commands for this pipeline; does not affect the Runner selected in AI settings.',
+      runnerScopeHint:
+        'Select the Runner independently here, regardless of extension plugin switches. Its plugin must still be installed and available.',
       mcpServersTitle: 'MCP Servers',
       mcpResourcesTitle: 'MCP Resources',
       noMCPServersSelected: 'No MCP servers selected',

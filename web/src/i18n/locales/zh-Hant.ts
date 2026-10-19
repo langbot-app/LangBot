@@ -2089,6 +2089,10 @@ const zhHant = {
       addPlugin: '新增插件',
       selectPlugins: '選擇插件',
       pluginsTitle: '插件',
+      pluginScopeHint:
+        '此處僅控制本流水線使用的事件監聽器、工具和命令元件，不影響 AI 設定中選擇的執行器（Runner）。',
+      runnerScopeHint:
+        '執行器在此獨立選擇，不受擴充整合中的外掛開關控制；其所屬外掛仍須已安裝且可用。',
       mcpServersTitle: 'MCP 伺服器',
       mcpResourcesTitle: 'MCP 資源',
       noMCPServersSelected: '未選擇任何 MCP 伺服器',

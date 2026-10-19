@@ -132,7 +132,13 @@ class LangBotMCPServer:
                 await ap.pipeline_service.get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
             )
 
-        @mcp.tool(description='Replace all Pipeline extension bindings. All binding lists and switches are required.')
+        @mcp.tool(
+            description=(
+                'Replace all Pipeline extension bindings. All binding lists and switches are required. '
+                'Plugin switches control EventListener, Tool and Command only, not the independently selected Runner. '
+                'Do not add a Runner plugin here just to run it; installation, global enablement and Workspace access still apply.'
+            )
+        )
         async def update_pipeline_extensions(
             pipeline_uuid: str,
             bound_plugins: list[dict],

@@ -2243,6 +2243,10 @@ const ruRU = {
       addPlugin: 'Добавить плагин',
       selectPlugins: 'Выберите плагины',
       pluginsTitle: 'Плагины',
+      pluginScopeHint:
+        'Управляет только обработчиками событий, инструментами и командами этого конвейера, но не Runner, выбранным в настройках ИИ.',
+      runnerScopeHint:
+        'Runner выбирается независимо от переключателей плагинов расширений. Его плагин должен быть установлен и доступен.',
       mcpServersTitle: 'MCP-серверы',
       mcpResourcesTitle: 'MCP-ресурсы',
       noMCPServersSelected: 'MCP-серверы не выбраны',

@@ -2092,6 +2092,10 @@ const zhHans = {
       addPlugin: '添加插件',
       selectPlugins: '选择插件',
       pluginsTitle: '插件',
+      pluginScopeHint:
+        '此处仅控制本流水线使用的事件监听器、工具和命令组件，不影响 AI 设置中选择的运行器（Runner）。',
+      runnerScopeHint:
+        '运行器在此独立选择，不受扩展集成中的插件开关控制；其所属插件仍需已安装且可用。',
       mcpServersTitle: 'MCP 服务器',
       mcpResourcesTitle: 'MCP 资源',
       noMCPServersSelected: '未选择任何 MCP 服务器',

@@ -105,6 +105,13 @@ already have a default pipeline.
 
 ## How to use
 
+Pipeline plugin extension switches authorize only EventListener, Tool and Command
+components. Select the Runner independently in AI settings. An empty extension
+allowlist does not prevent saving, copying or running that Runner. Never enable
+all plugins or add its plugin to the allowlist as a Runner workaround: that also
+authorizes its other components. The Runner plugin must still be installed and
+enabled in the authenticated Workspace, with an available Plugin Runtime.
+
 1. Get an API key (web UI key, or set `api.global_api_key` in config.yaml).
 2. Point your MCP client at `http://<host>:5300/mcp` with the key header.
 3. Call `get_system_info` to confirm connectivity.

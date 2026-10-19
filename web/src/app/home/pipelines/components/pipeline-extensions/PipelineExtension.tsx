@@ -353,6 +353,9 @@ export default function PipelineExtension({
     <div className="space-y-6">
       {/* Plugins Section */}
       <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          {t('pipelines.extensions.pluginScopeHint')}
+        </p>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">
             {t('pipelines.extensions.pluginsTitle')}
