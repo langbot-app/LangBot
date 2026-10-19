@@ -200,6 +200,26 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Set up Node.js for real-stack browser tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.9.2
+
+      - name: Install frontend dependencies and Chromium
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Build frontend for real-stack browser tests
+        working-directory: web
+        run: pnpm build
+
       - name: Run E2E startup tests
         run: uv run pytest tests/e2e -m "not local_agent" -q --tb=short
 
