@@ -39,6 +39,15 @@ ACCOUNT = '41100000-0000-4000-8000-000000000002'
 NOW = datetime.datetime(2026, 9, 1)
 
 
+def _create_bootstrap_tables(connection):
+    # Match PersistenceManager.create_tables: 0010/0023 rewrite the session PK,
+    # so only 0040 may create the dependent receipt table after those migrations.
+    Base.metadata.create_all(
+        connection,
+        tables=[table for table in Base.metadata.sorted_tables if table.name != 'monitoring_session_receipts'],
+    )
+
+
 @pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=[pytest.mark.slow, pytest.mark.postgres])])
 async def convergence_engine(request, tmp_path):
     if request.param == 'sqlite':
@@ -385,7 +394,7 @@ async def test_historical_schema_and_populated_branch_upgrade(convergence_engine
         # RLS 0011 requires those tables (including monitoring_tool_calls).
         await run_alembic_upgrade(engine, '0010_scope_resources')
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_create_bootstrap_tables)
     if checkpoint is not None:
         await run_alembic_upgrade(engine, checkpoint)
         assert await get_alembic_current(engine) == checkpoint
@@ -401,8 +410,9 @@ async def test_empty_database_startup_schema_then_real_migrations(convergence_en
     engine = convergence_engine
     async with engine.begin() as conn:
         assert await conn.run_sync(lambda sync: sa.inspect(sync).get_table_names()) == []
-        # This is the documented fresh-install contract: create_all precedes Alembic.
-        await conn.run_sync(Base.metadata.create_all)
+        # Startup bootstraps compatible tables before Alembic creates dependent tables.
+        await conn.run_sync(_create_bootstrap_tables)
+        assert not await conn.run_sync(lambda sync: sa.inspect(sync).has_table('monitoring_session_receipts'))
         await conn.execute(
             Base.metadata.tables['metadata'].insert().values(key='instance_uuid', value='migration-convergence-fresh')
         )
@@ -424,8 +434,23 @@ async def test_empty_database_startup_schema_then_real_migrations(convergence_en
             'runner_state',
             'directory_projection_inbox',
             'passkey_credentials',
+            'monitoring_session_receipts',
         } <= tables
         assert await conn.scalar(sa.text('SELECT password FROM users')) == 'fresh-password'
+        assert await conn.run_sync(
+            lambda sync: sa.inspect(sync).get_pk_constraint('monitoring_sessions')['constrained_columns']
+        ) == ['workspace_uuid', 'bot_id', 'session_id']
+        receipt_keys = await conn.run_sync(
+            lambda sync: sa.inspect(sync).get_foreign_keys('monitoring_session_receipts')
+        )
+        assert any(
+            key['referred_table'] == 'monitoring_sessions'
+            and key['constrained_columns'] == key['referred_columns'] == ['workspace_uuid', 'bot_id', 'session_id']
+            and key['options']['ondelete'] == 'CASCADE'
+            for key in receipt_keys
+        )
+        if engine.dialect.name == 'sqlite':
+            assert (await conn.exec_driver_sql('PRAGMA foreign_key_check')).all() == []
 
     await run_alembic_upgrade(engine, 'head')
     assert await get_alembic_current(engine) == get_alembic_head()
@@ -449,7 +474,7 @@ def _legacy_shared_certification(**overrides):
 async def test_certification_artifact_digest_backfill_is_safe_and_keeps_legacy_dedicated(convergence_engine):
     engine = convergence_engine
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_create_bootstrap_tables)
     await run_alembic_upgrade(engine, '0031_merge_totp_assistant')
 
     valid_digest = 'a' * 64
@@ -560,7 +585,7 @@ async def test_certification_artifact_digest_backfill_is_safe_and_keeps_legacy_d
 async def test_merge_only_downgrade_preserves_both_branch_schemas(convergence_engine):
     engine = convergence_engine
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_create_bootstrap_tables)
     await run_alembic_upgrade(engine, 'head')
     await _seed_common(engine)
     await _seed_branch_data(engine, 'master')
