@@ -1635,6 +1635,17 @@ const esES = {
     restoringRunnerInstall:
       'Restaurando la instalación del plugin y esperando al ejecutor…',
     noInstalledRunners: 'Aún no hay extensiones de ejecutor instaladas.',
+    runnerDiagnosis: {
+      missing:
+        'No se encuentra el Runner seleccionado o su complemento. Instale o restaure el complemento.',
+      disabled:
+        'El complemento del Runner seleccionado está deshabilitado. Actívelo en Complementos.',
+      runtime:
+        'El entorno de ejecución de complementos no está disponible o está deshabilitado. Restablezca la conexión antes de ejecutar.',
+      repair: 'Gestionar complementos y entorno de ejecución',
+      draft:
+        'La reparación se abre en otra pestaña. La selección del Runner y el borrador sin guardar se conservan aquí.',
+    },
     installingRunner: 'Instalando {{runner}}...',
     runnerInstallSuccess:
       '{{runner}} está instalado y listo para seleccionarse',

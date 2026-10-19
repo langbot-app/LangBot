@@ -400,7 +400,8 @@ class LangBotMCPServer:
         @mcp.tool(
             description=(
                 'Create a pipeline. `pipeline_data` matches the LangBot POST '
-                '/api/v1/pipelines body. Returns the new pipeline UUID.'
+                '/api/v1/pipelines body. Supplied config and extension preferences are preserved; '
+                'omitting config uses installed Runner defaults. Returns the new pipeline UUID.'
             )
         )
         async def create_pipeline(pipeline_data: dict) -> str:

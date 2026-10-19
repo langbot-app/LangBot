@@ -75,6 +75,13 @@ create another Slack application; inspect the returned `app_id` first.
 
 The tools wrap the LangBot service layer. Current tools (v1):
 
+`create_pipeline` and HTTP `POST /api/v1/pipelines` preserve a supplied `config`
+and `extensions_preferences`; omit `config` to use installed Runner defaults.
+Selecting `ai.runner.id` never grants extension access: an empty `plugins` list
+with `enable_all_plugins=false` still denies that plugin's Tool, EventListener
+and Command components, while allowing its selected Runner. Editing and copying
+a pipeline retain these independent settings.
+
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |

@@ -1514,6 +1514,13 @@ const zhHant = {
     viewMarketplace: '查看市場',
     restoringRunnerInstall: '正在恢復運行器插件安裝並等待運行器就緒…',
     noInstalledRunners: '尚未安裝任何運行器擴展。',
+    runnerDiagnosis: {
+      missing: '所選運行器或其外掛不存在，請安裝或還原外掛。',
+      disabled: '所選運行器外掛已停用，請在外掛頁面啟用。',
+      runtime: '外掛執行環境無法使用或已停用，請恢復連線後再執行。',
+      repair: '管理外掛和執行環境',
+      draft: '修復頁面將在新分頁開啟，目前的運行器選擇和未儲存的草稿將保留。',
+    },
     installingRunner: '正在安裝 {{runner}}...',
     runnerInstallSuccess: '{{runner}} 已安裝，可從已安裝列表中選擇',
     selectedRunnerUnavailable: '所選運行器不可用',

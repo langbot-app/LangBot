@@ -1516,6 +1516,13 @@ const zhHans = {
     viewMarketplace: '查看市场',
     restoringRunnerInstall: '正在恢复运行器插件安装并等待运行器就绪…',
     noInstalledRunners: '尚未安装任何运行器扩展。',
+    runnerDiagnosis: {
+      missing: '所选运行器或其插件不存在，请安装或恢复插件。',
+      disabled: '所选运行器插件已禁用，请在插件页面启用。',
+      runtime: '插件运行时不可用或已禁用，请恢复连接后再运行。',
+      repair: '管理插件和运行时',
+      draft: '修复页面将在新标签页打开，当前运行器选择和未保存的草稿将保留。',
+    },
     installingRunner: '正在安装 {{runner}}...',
     runnerInstallSuccess: '{{runner}} 已安装，可从已安装列表中选择',
     selectedRunnerUnavailable: '所选运行器不可用',

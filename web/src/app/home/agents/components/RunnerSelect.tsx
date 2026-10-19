@@ -3,7 +3,7 @@ import { Bot, Puzzle, ExternalLink, Loader2, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
@@ -233,6 +233,45 @@ export default function RunnerSelect({
     useState<RunnerCatalog['installedPluginDescriptions']>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
+  const [runnerProblem, setRunnerProblem] = useState<
+    'missing' | 'disabled' | 'runtime' | null
+  >(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const diagnoseRunner = useCallback(async () => {
+    const pluginId = runnerPluginId(value);
+    if (!pluginId) return null;
+    const status = await httpClient.getPluginSystemStatus();
+    if (!status.is_enable || !status.is_connected) return 'runtime' as const;
+    const { plugins } = await httpClient.getPlugins();
+    const plugin = plugins.find((item) => {
+      const metadata = item.manifest.manifest.metadata;
+      return `${metadata.author}/${metadata.name}` === pluginId;
+    });
+    if (!plugin) return 'missing' as const;
+    if (!plugin.enabled) return 'disabled' as const;
+    return options.some((option) => option.name === value)
+      ? null
+      : ('missing' as const);
+  }, [value, options]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRunnerProblem(null);
+    setDiagnosing(true);
+    void diagnoseRunner()
+      .then((problem) => {
+        if (!cancelled) setRunnerProblem(problem);
+      })
+      .catch(() => {
+        if (!cancelled) setRunnerProblem('runtime');
+      })
+      .finally(() => {
+        if (!cancelled) setDiagnosing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [diagnoseRunner]);
   const [pendingInstall, setPendingInstall] = useState(() =>
     readPendingRunnerInstall(installScope),
   );
@@ -405,6 +444,8 @@ export default function RunnerSelect({
               option={selectedOption}
               eventProcessor={usage === 'event'}
             />
+          ) : value ? (
+            <span className="truncate">{value}</span>
           ) : (
             <SelectValue
               placeholder={t(
@@ -539,6 +580,24 @@ export default function RunnerSelect({
           </a>
         </SelectContent>
       </Select>
+      {!diagnosing && runnerProblem && (
+        <div
+          role="alert"
+          className="space-y-1 text-xs text-amber-700 dark:text-amber-400"
+        >
+          <p>{t(`agents.runnerDiagnosis.${runnerProblem}`)}</p>
+          <a
+            href="/home/plugins"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 underline"
+          >
+            {t('agents.runnerDiagnosis.repair')}
+            <ExternalLink className="size-3" />
+          </a>
+          <p>{t('agents.runnerDiagnosis.draft')}</p>
+        </div>
+      )}
 
       {installError && (
         <p role="alert" className="text-sm text-destructive">

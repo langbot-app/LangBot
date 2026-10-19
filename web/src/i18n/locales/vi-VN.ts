@@ -1601,6 +1601,17 @@ const viVN = {
     viewMarketplace: 'Xem chợ tiện ích',
     restoringRunnerInstall: 'Đang khôi phục cài đặt plugin và chờ trình chạy…',
     noInstalledRunners: 'Chưa cài tiện ích trình chạy nào.',
+    runnerDiagnosis: {
+      missing:
+        'Không tìm thấy Runner đã chọn hoặc tiện ích của nó. Hãy cài đặt hoặc khôi phục tiện ích.',
+      disabled:
+        'Tiện ích Runner đã chọn bị tắt. Hãy bật nó trong trang Tiện ích.',
+      runtime:
+        'Môi trường chạy tiện ích không khả dụng hoặc bị tắt. Hãy khôi phục kết nối trước khi chạy.',
+      repair: 'Quản lý tiện ích và môi trường chạy',
+      draft:
+        'Trang sửa lỗi mở trong thẻ mới. Lựa chọn Runner và bản nháp chưa lưu vẫn được giữ ở đây.',
+    },
     installingRunner: 'Đang cài {{runner}}...',
     runnerInstallSuccess: 'Đã cài {{runner}} và có thể chọn',
     selectedRunnerUnavailable: 'Trình chạy đã chọn không khả dụng',

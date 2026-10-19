@@ -1611,6 +1611,16 @@ const enUS = {
     restoringRunnerInstall:
       'Restoring the Runner plugin installation and waiting for the runner…',
     noInstalledRunners: 'No Runner extension is installed yet.',
+    runnerDiagnosis: {
+      missing:
+        'The selected Runner or its plugin is missing. Install or restore the plugin.',
+      disabled: 'The selected Runner plugin is disabled. Enable it in Plugins.',
+      runtime:
+        'The Plugin Runtime is unavailable or disabled. Restore its connection before running.',
+      repair: 'Manage plugins and runtime',
+      draft:
+        'Repair opens in a new tab. Your Runner selection and unsaved draft stay here.',
+    },
     installingRunner: 'Installing {{runner}}...',
     runnerInstallSuccess: '{{runner}} is installed and ready to select',
     selectedRunnerUnavailable: 'Selected runner is unavailable',
