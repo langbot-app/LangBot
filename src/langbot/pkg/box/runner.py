@@ -215,10 +215,23 @@ class RunnerBoxService:
                 binding.imported[key] = {'id': key, **items[0]}
             return {'items': [binding.imported[key] for key in ids]}
 
-    async def export_files(self, query):
+    async def export_files(self, query, paths):
         binding = binding_for(query)
+        if not isinstance(paths, list) or not paths or len(paths) > self.box._ATTACHMENT_MAX_FILES:
+            raise BoxValidationError(f'paths must contain 1 to {self.box._ATTACHMENT_MAX_FILES} file paths')
+        if any(
+            not isinstance(p, str)
+            or not p.startswith('/')
+            or '\\' in p
+            or '\x00' in p
+            or any(c in {'', '.', '..'} for c in p.split('/')[1:])
+            for p in paths
+        ):
+            raise BoxValidationError('paths must be normalized absolute sandbox file paths')
+        if len(set(paths)) != len(paths):
+            raise BoxValidationError('Duplicate export file paths')
         async with binding.lock:
-            items = await self.box.collect_outbound_attachments(query, clear=False)
+            items = await self.box.collect_selected_files(query, paths)
             unseen = {}
             for item in items:
                 data = base64.b64decode(item['base64'].split(';base64,')[-1])
@@ -257,11 +270,15 @@ class RunnerBoxService:
                 fingerprints[fingerprint] = key
             binding.exported.update(pending)
             binding.exported_fingerprints.update(fingerprints)
-            await self.box.clear_outbound_attachments(query)
+            try:
+                warning = await self.box.clear_selected_files(query, items)
+            except Exception:
+                warning = 'Files accepted, but cleanup failed; do not repeat delivery.'
             return {
+                'warning': warning,
                 'items': [
                     {k: v for k, v in item.items() if k not in {'base64', '_outbox_path'}}
                     for key, item in binding.exported.items()
                     if key not in binding.submitted
-                ]
+                ],
             }

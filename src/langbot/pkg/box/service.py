@@ -1198,7 +1198,7 @@ class BoxService:
             ) from exc
         return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
-    async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
+    async def _read_outbox_via_exec(self, query: pipeline_query.Query, paths=None) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
         Use the same Workspace-scoped execution path as tools, retaining raw
@@ -1219,6 +1219,10 @@ class BoxService:
             max_files=max_files,
             max_total_bytes=max_total_bytes,
         )
+        if paths is not None:
+            from .selected_files import selected_files_script
+
+            script = selected_files_script(paths, max_file_bytes=max_file_bytes, max_total_bytes=max_total_bytes)
         spec_payload: dict = {
             'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
             'timeout_sec': 120,
@@ -1246,7 +1250,8 @@ class BoxService:
             if failure is not None:
                 raise failure
             raise BoxValidationError(
-                f'Failed to read sandbox outbox (exit code {result.exit_code}); output files were retained'
+                f'Failed to read sandbox outbox or selected files (exit code {result.exit_code}); '
+                f'output files were retained: {(result.stderr or "")[-4000:]}'
             )
         truncated = transport_export_error(result.stdout)
         if truncated is not None:
@@ -1259,7 +1264,9 @@ class BoxService:
             for entry in entries:
                 if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
                     raise ValueError('Invalid file entry')
-                for component in entry['name'].split('/'):
+                if paths is not None and entry['name'] not in paths:
+                    raise ValueError('Unexpected exported path')
+                for component in entry['name'].lstrip('/').split('/'):
                     secure_fs._component(component)
                 encoded = entry.get('b64')
                 if not isinstance(encoded, str) or len(encoded) > 4 * ((max_file_bytes + 2) // 3):
@@ -1271,6 +1278,39 @@ class BoxService:
         except (TypeError, ValueError, OSError, binascii.Error) as exc:
             raise export_error('invalid_response') from exc
         return entries
+
+    async def collect_selected_files(self, query, paths):
+        if not self._available:
+            raise BoxError('Box runtime is not available')
+        entries = await self._read_outbox_via_exec(query, paths)
+        if len(entries) != len(paths) or {e['name'] for e in entries} != set(paths):
+            raise BoxValidationError('Incomplete selected file export; files were retained')
+        return self._classify_outbound_entries(entries, include_source_path=True)
+
+    async def clear_selected_files(self, query, items):
+        import base64
+        import hashlib
+        from .selected_files import selected_files_script
+
+        digests = {
+            item['_outbox_path']: hashlib.sha256(base64.b64decode(item['base64'].split(';base64,')[-1])).hexdigest()
+            for item in items
+        }
+        script = selected_files_script(
+            list(digests),
+            max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+            max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            cleanup=digests,
+        )
+        result = await self._execute_spec_payload_result(
+            {
+                'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
+                'timeout_sec': 120,
+                'session_id': self.resolve_box_session_id(query),
+            },
+            query,
+        )
+        return None if result.ok else 'Files accepted, but cleanup failed; do not repeat delivery.'
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
         """Empty the per-query outbox after collection.

@@ -46,7 +46,7 @@ def register(h):
         if action == Action.IMPORT_BOX_ATTACHMENTS:
             return ActionResponse.success(await service.import_attachments(query, data.get('attachment_ids')))
         if action == Action.EXPORT_BOX_FILES:
-            return ActionResponse.success(await service.export_files(query))
+            return ActionResponse.success(await service.export_files(query, data.get('paths')))
         raise ValueError('Unsupported Box action')
 
     def register_action(action):

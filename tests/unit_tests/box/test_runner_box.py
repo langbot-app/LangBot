@@ -21,7 +21,8 @@ def service():
         enabled=True,
         managed_admission_required=False,
         _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
-        clear_outbound_attachments=AsyncMock(),
+        clear_selected_files=AsyncMock(return_value=None),
+        _ATTACHMENT_MAX_FILES=100,
         create_session=AsyncMock(side_effect=create),
         require_workspace_sandbox=AsyncMock(side_effect=lambda context: context),
         _action_context=lambda context: context,
@@ -111,12 +112,12 @@ async def test_selective_import_is_idempotent_and_separates_duplicate_names():
 async def test_export_does_not_send_and_references_cannot_cross_runs_or_repeat():
     api = service()
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'))
-    api.box.collect_outbound_attachments = AsyncMock(
+    api.box.collect_selected_files = AsyncMock(
         return_value=[
             {'name': 'answer.txt', 'type': 'File', 'base64': base64.b64encode(b'answer').decode()},
         ]
     )
-    result = await api.export_files(q)
+    result = await api.export_files(q, ['/workspace/a'])
     file = result['items'][0]
     assert 'base64' not in file and file['size'] == 6
     other = SimpleNamespace(_box_binding=RunBoxBinding('other-run', 'box', {}, 'other-run'))
@@ -173,17 +174,17 @@ def test_attachment_references_follow_metadata_not_platform_list_order():
 async def test_image_export_accepts_data_url_and_enforces_total_bytes():
     api = service()
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'))
-    api.box.collect_outbound_attachments = AsyncMock(
+    api.box.collect_selected_files = AsyncMock(
         return_value=[{'name': 'a.png', 'type': 'Image', 'base64': 'data:image/png;base64,YQ=='}]
     )
-    result = await api.export_files(q)
+    result = await api.export_files(q, ['/workspace/a'])
     assert result['items'][0]['size'] == 1
     # Retrying unchanged content reuses the accepted ID; new content consumes budget.
-    assert await api.export_files(q) == result
-    api.box.collect_outbound_attachments.return_value[0]['base64'] = 'data:image/png;base64,Yg=='
+    assert await api.export_files(q, ['/workspace/a']) == result
+    api.box.collect_selected_files.return_value[0]['base64'] = 'data:image/png;base64,Yg=='
     api.box._ATTACHMENT_MAX_TOTAL_BYTES = 1
     with pytest.raises(BoxValidationError, match='byte limit'):
-        await api.export_files(q)
+        await api.export_files(q, ['/workspace/a'])
 
 
 @pytest.mark.asyncio
@@ -191,22 +192,22 @@ async def test_cleanup_retry_preserves_ids_and_never_redelivers_consumed_files()
     api = service()
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'))
     # A best-effort cleanup can leave the same files in the outbox.
-    api.box.collect_outbound_attachments = AsyncMock(
+    api.box.collect_selected_files = AsyncMock(
         return_value=[
             {'name': 'same.txt', '_outbox_path': 'a/same.txt', 'type': 'File', 'base64': 'YQ=='},
             {'name': 'same.txt', '_outbox_path': 'b/same.txt', 'type': 'File', 'base64': 'YQ=='},
             {'name': 'empty.txt', '_outbox_path': 'empty.txt', 'type': 'File', 'base64': ''},
         ]
     )
-    first = await api.export_files(q)
+    first = await api.export_files(q, ['/workspace/a'])
     assert len(first['items']) == 3
     assert all('_outbox_path' not in item for item in first['items'])
-    assert await api.export_files(q) == first
+    assert await api.export_files(q, ['/workspace/a']) == first
     exported_message(q, [item['id'] for item in first['items']], consume=True)
-    assert await api.export_files(q) == {'items': []}
+    assert await api.export_files(q, ['/workspace/a']) == {'items': [], 'warning': None}
     assert len(q._box_binding.exported) == 3
-    api.box.collect_outbound_attachments.return_value[0]['base64'] = 'Yg=='
-    changed = await api.export_files(q)
+    api.box.collect_selected_files.return_value[0]['base64'] = 'Yg=='
+    changed = await api.export_files(q, ['/workspace/a'])
     assert len(changed['items']) == 1
     assert changed['items'][0]['id'] not in {item['id'] for item in first['items']}
 
@@ -218,20 +219,20 @@ async def test_run_quota_failure_is_atomic_and_reports_remaining_budget():
     api = service()
     api.box._ATTACHMENT_MAX_TOTAL_BYTES = 2
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'))
-    api.box.collect_outbound_attachments = AsyncMock(
+    api.box.collect_selected_files = AsyncMock(
         return_value=[
             {'name': 'a.txt', 'type': 'File', 'base64': 'YQ=='},
         ]
     )
-    await api.export_files(q)
-    api.box.collect_outbound_attachments.return_value = [
+    await api.export_files(q, ['/workspace/a'])
+    api.box.collect_selected_files.return_value = [
         {'name': 'b.txt', 'type': 'File', 'base64': 'Yg=='},
         {'name': 'c.txt', 'type': 'File', 'base64': 'Yw=='},
     ]
     with pytest.raises(BoxExportError) as caught:
-        await api.export_files(q)
+        await api.export_files(q, ['/workspace/a'])
     assert caught.value.error.details['limit'] == 2
     assert caught.value.error.details['actual'] == 3
     assert caught.value.error.details['remaining'] == 1
     assert len(q._box_binding.exported) == len(q._box_binding.exported_fingerprints) == 1
-    api.box.clear_outbound_attachments.assert_awaited_once()
+    api.box.clear_selected_files.assert_awaited_once()

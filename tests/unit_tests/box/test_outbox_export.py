@@ -303,6 +303,7 @@ async def test_run_limit_failure_preserves_files_and_export_references_for_retry
 
     box, query, outbox = env
     api = RunnerBoxService(box)
+    box.client.execute = AsyncMock(side_effect=execute_script)
     binding = binding_for(query)
     (outbox / 'one').write_bytes(b'ab')
     (outbox / 'two').write_bytes(b'cd')
@@ -313,14 +314,14 @@ async def test_run_limit_failure_preserves_files_and_export_references_for_retry
         binding.exported['existing'] = {'size': 2}
     before = dict(binding.exported)
     with pytest.raises(BoxValidationError):
-        await api.export_files(query)
+        await api.export_files(query, [str(p) for p in outbox.iterdir()])
     assert binding.exported == before
     assert (outbox / 'one').read_bytes() == b'ab'
     assert (outbox / 'two').read_bytes() == b'cd'
 
     # After the caller reduces its output, it can retry without duplicate IDs.
     (outbox / 'two').unlink()
-    exported = await api.export_files(query)
+    exported = await api.export_files(query, [str(p) for p in outbox.iterdir()])
     assert len(binding.exported) == len(before) + 1
     assert any(item['name'] == 'one' for item in exported['items'] if 'name' in item)
     assert list(outbox.iterdir()) == []
@@ -334,7 +335,7 @@ async def test_unavailable_box_does_not_turn_runner_export_into_empty_cleanup(en
     box._available = False
     (outbox / 'answer.txt').write_bytes(b'keep')
     with pytest.raises(BoxError, match='not available'):
-        await RunnerBoxService(box).export_files(query)
+        await RunnerBoxService(box).export_files(query, [str(outbox / 'answer.txt')])
     assert (outbox / 'answer.txt').read_bytes() == b'keep'
 
 
