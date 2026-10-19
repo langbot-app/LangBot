@@ -761,7 +761,7 @@ class NativeToolLoader(loader.ToolLoader):
         command = (
             'PYTHON_BIN=$(command -v python3 || true); '
             'if [ -z "$PYTHON_BIN" ]; then '
-            "printf '%s\\n' '{\"ok\": false, \"error\": \"Python 3 interpreter not found in Box (python3 required for native file tools)\"}'; "
+            'printf \'%s\\n\' \'{"ok": false, "error": "Python 3 interpreter not found in Box (python3 required for native file tools)"}\'; '
             'exit 0; '
             'fi; '
             f'"$PYTHON_BIN" - <<\'PY\'\n{script}\nPY'
