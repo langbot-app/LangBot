@@ -359,6 +359,9 @@ class Application:
         return task
 
     async def run(self):
+        from ..persistence.session_summary_backfill import initialize_application_summaries
+
+        await initialize_application_summaries(self)
         self.event_loop_monitor.start()
         from ..utils.execution_lease import maintain_execution_leases
 

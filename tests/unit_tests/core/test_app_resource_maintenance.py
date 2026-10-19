@@ -32,11 +32,33 @@ async def _wait_forever() -> None:
     await asyncio.Event().wait()
 
 
+@pytest.mark.session_summary
+@pytest.mark.contract('summary_backfill')
+async def test_failed_summary_initialization_prevents_producer_startup(monkeypatch):
+    async def failed(_ap):
+        raise RuntimeError('summary initialization failed')
+
+    monkeypatch.setattr('langbot.pkg.persistence.session_summary_backfill.initialize_application_summaries', failed)
+    application = Application()
+    started = []
+    application.event_loop_monitor = SimpleNamespace(start=lambda: started.append(True))
+    with pytest.raises(RuntimeError, match='summary initialization failed'):
+        await application.run()
+    assert started == []
+
+
 async def test_resource_maintenance_waits_and_shares_workspace_discovery(monkeypatch) -> None:
     async def idle_leases(_ap):
         await _wait_forever()
 
     monkeypatch.setattr('langbot.pkg.utils.execution_lease.maintain_execution_leases', idle_leases)
+
+    async def initialized(_ap):
+        return None
+
+    monkeypatch.setattr(
+        'langbot.pkg.persistence.session_summary_backfill.initialize_application_summaries', initialized
+    )
     stop = asyncio.Event()
     completed = asyncio.Event()
     discovery_calls = 0
@@ -67,7 +89,7 @@ async def test_resource_maintenance_waits_and_shares_workspace_discovery(monkeyp
     application.event_loop = asyncio.get_running_loop()
     application.event_loop_monitor = SimpleNamespace(start=lambda: None)
     application.task_mgr = _TaskManager(stop)
-    application.plugin_connector = SimpleNamespace(initialize_plugins=lambda: asyncio.sleep(0))
+    application.plugin_connector = SimpleNamespace(initialize=lambda: asyncio.sleep(0), schedule_reconnect=lambda: None)
     application.platform_mgr = SimpleNamespace(run=_wait_forever)
     application.ctrl = SimpleNamespace(run=_wait_forever)
     application.http_ctrl = SimpleNamespace(run=_wait_forever)

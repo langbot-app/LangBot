@@ -300,6 +300,17 @@ class TestMonitoringSessionsEndpoint:
         assert kwargs['limit'] == 20
         assert kwargs['offset'] == 40
 
+    @pytest.mark.asyncio
+    @pytest.mark.session_summary
+    @pytest.mark.parametrize('query', ['mode=real', 'mode=debug', 'status=failed'])
+    async def test_session_list_rejects_execution_filters(self, quart_test_client, fake_monitoring_app, query):
+        response = await quart_test_client.get(
+            '/api/v1/monitoring/sessions?' + query,
+            headers={'Authorization': 'Bearer test_token'},
+        )
+        assert response.status_code == 400
+        fake_monitoring_app.monitoring_service.get_sessions.assert_not_awaited()
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringErrorsEndpoint:
@@ -363,6 +374,98 @@ class TestMonitoringAllDataEndpoint:
             'sessions': 20,
             'errors': 2,
         }
+
+    @pytest.mark.asyncio
+    @pytest.mark.session_summary
+    @pytest.mark.contract('reader_http')
+    @pytest.mark.parametrize(
+        'query,mode,statuses',
+        [
+            ('/data?mode=all', 'all', None),
+            ('/data?mode=real&status=failed', 'real', ['failed']),
+            ('/data?mode=debug&status=running', 'debug', ['running']),
+            ('/data?status=completed&status=failed', 'all', ['completed', 'failed']),
+            ('/sessions?mode=all&userQuery=Alice', None, None),
+        ],
+    )
+    async def test_http_session_queries_only_read_summaries(
+        self,
+        quart_test_client,
+        fake_monitoring_app,
+        monkeypatch,
+        query,
+        mode,
+        statuses,
+    ):
+        """Other /data records may read history; its session query may not."""
+        import datetime
+        import sqlite3
+        from contextlib import asynccontextmanager
+        import sqlalchemy as sa
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from langbot.pkg.api.http.service.monitoring import MonitoringService
+        from langbot.pkg.entity.persistence.monitoring import MonitoringSession
+        from langbot.pkg.persistence.session_summary_reader import SqlSessionSummaryReader
+
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(MonitoringSession.__table__.create)
+                await connection.execute(
+                    sa.insert(MonitoringSession).values(
+                        workspace_uuid='00000000-0000-0000-0000-00000000000a',
+                        bot_id='bot-a',
+                        session_id='summary',
+                        bot_name='Bot',
+                        pipeline_id='pipeline-a',
+                        pipeline_name='Pipeline',
+                        message_count=7,
+                        start_time=datetime.datetime(2026, 1, 2),
+                        last_activity=datetime.datetime(2026, 1, 2),
+                        user_name='Alice',
+                    )
+                )
+
+            @asynccontextmanager
+            async def scope(workspace):
+                assert workspace == '00000000-0000-0000-0000-00000000000a'
+                async with AsyncSession(engine) as session:
+                    yield session
+
+            service = MonitoringService(fake_monitoring_app)
+            service._session_list = SqlSessionSummaryReader(scope)
+            monkeypatch.setattr(fake_monitoring_app.monitoring_service, 'get_sessions', service.get_sessions)
+
+            def authorize(action, table, column, database, trigger):
+                if action == sqlite3.SQLITE_READ and table != 'monitoring_sessions':
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK
+
+            async with engine.connect() as connection:
+                await connection.run_sync(
+                    lambda sync: sync.connection.dbapi_connection.run_async(
+                        lambda raw: raw._execute(raw._conn.set_authorizer, authorize)
+                    )
+                )
+            with patch(
+                'langbot.pkg.api.http.controller.groups.monitoring.get_traffic_series',
+                new=AsyncMock(return_value={}),
+            ):
+                response = await quart_test_client.get(
+                    '/api/v1/monitoring' + query + '&botId=bot-a&pipelineId=pipeline-a'
+                    '&startTime=2026-01-01T00:00:00&endTime=2026-01-03T00:00:00',
+                    headers={'Authorization': 'Bearer test_token'},
+                )
+            assert response.status_code == 200
+            result = (await response.get_json())['data']
+            assert [row['session_id'] for row in result['sessions']] == ['summary']
+            assert result['sessions'][0]['message_count'] == 7
+            assert (result['totalCount']['sessions'] if mode is not None else result['total']) == 1
+            if mode is not None:
+                kwargs = fake_monitoring_app.monitoring_service.get_messages.await_args.kwargs
+                assert kwargs['mode'] == mode and kwargs['execution_statuses'] == statuses
+        finally:
+            await engine.dispose()
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

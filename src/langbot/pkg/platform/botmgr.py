@@ -1386,26 +1386,6 @@ class RuntimeBot:
                 user_name=sender_name,
             )
 
-            # Ensure the session exists so the message appears in the session monitor.
-            # Don't overwrite pipeline info — a session may have messages from
-            # multiple pipelines; discarding shouldn't change the displayed pipeline.
-            session_updated = await self.ap.monitoring_service.update_session_activity(
-                self.execution_context,
-                session_id,
-            )
-            if not session_updated:
-                # No session yet (first message for this launcher was discarded).
-                await self.ap.monitoring_service.record_session_start(
-                    self.execution_context,
-                    session_id=session_id,
-                    bot_id=self.bot_entity.uuid,
-                    bot_name=self.bot_entity.name or self.bot_entity.uuid,
-                    pipeline_id=self.PIPELINE_DISCARD,
-                    pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
-                    platform=platform,
-                    user_id=str(sender_id),
-                    user_name=sender_name,
-                )
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 

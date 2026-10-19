@@ -130,7 +130,7 @@ class MonitoringHelper:
     ) -> str:
         """Record the start of query processing, returns message_id"""
         try:
-            # Check if session exists, if not, record session start
+            # Message persistence updates the summary in the same transaction.
             session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
@@ -170,31 +170,6 @@ class MonitoringHelper:
                 runner_name=runner_name,
                 variables=None,  # Will be updated in record_query_success
             )
-
-            # Update session activity or create new session if it doesn't exist
-            # Always pass pipeline info to handle pipeline switches
-            session_updated = await ap.monitoring_service.update_session_activity(
-                get_query_execution_context(query),
-                session_id,
-                bot_id=bot_id,
-                pipeline_id=pipeline_id,
-                pipeline_name=pipeline_name,
-            )
-            if not session_updated:
-                # Session doesn't exist, create it
-                await ap.monitoring_service.record_session_start(
-                    get_query_execution_context(query),
-                    session_id=session_id,
-                    bot_id=bot_id,
-                    bot_name=bot_name,
-                    pipeline_id=pipeline_id,
-                    pipeline_name=pipeline_name,
-                    platform=query.launcher_type.value
-                    if hasattr(query.launcher_type, 'value')
-                    else str(query.launcher_type),
-                    user_id=query.sender_id,
-                    user_name=sender_name,
-                )
 
             return message_id
         except Exception as e:

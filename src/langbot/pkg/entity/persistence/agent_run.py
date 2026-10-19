@@ -112,6 +112,7 @@ class AgentRun(Base):
     """Additional metadata JSON."""
 
     __table_args__ = (
+        sqlalchemy.Index('ix_agent_run_summary_event', 'workspace_id', 'bot_id', 'event_id', 'id'),
         sqlalchemy.Index('ix_agent_run_media_ttl', 'workspace_id', 'created_at', 'id'),
         sqlalchemy.Index(
             'ix_agent_run_scope_status', 'bot_id', 'workspace_id', 'conversation_id', 'thread_id', 'status'

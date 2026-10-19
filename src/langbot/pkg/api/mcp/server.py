@@ -182,7 +182,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind. Sessions read stored conversation summaries and do not support mode or execution_statuses.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -201,6 +201,7 @@ class LangBotMCPServer:
             if kind == 'embedding_calls':
                 allowed.add('knowledge_base_id')
             if kind == 'sessions':
+                allowed -= {'mode', 'execution_statuses'}
                 allowed |= {'user_query', 'is_active'}
             kwargs = dict(filters or {})
             if set(kwargs) - allowed:
