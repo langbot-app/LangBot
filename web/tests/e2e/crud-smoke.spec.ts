@@ -312,7 +312,7 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
     await page.getByRole('tab', { name: /^AI$/ }).click();
 
-    await expect(page.getByText('Runtime')).toBeVisible();
+    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
     await expect(
       page.locator('[data-slot="card-title"]').filter({
         hasText: 'Local Agent',
