@@ -36,14 +36,24 @@ def prepare_input_files(query, agent_input):
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
-    from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 
     originals = input_files(query)
+    # References are scoped to this query's previous preparation, not to the
+    # platform message order or to any caller-supplied filesystem path.
+    prepared = getattr(query, '_box_inputs', None)
+    previous_refs = {f'attachment-{i}': item for i, item in enumerate(prepared or [])}
     if not agent_input.attachments:
+        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
         agent_input.attachments = [
             InputAttachment.model_validate(item)
             for item in QueryEntryAdapter._build_attachments(query, [c.model_dump() for c in agent_input.contents])
         ]
+    inline_images = {
+        content.image_base64
+        for content in (agent_input.contents or [])
+        if content.type == 'image_base64' and content.image_base64
+    }
     components = []
     for i, attachment in enumerate(agent_input.attachments):
         kind = (attachment.type or 'file').lower()
@@ -52,6 +62,11 @@ def prepare_input_files(query, agent_input):
         if cls is pm.File:
             fields.update(name=attachment.name or '', id=attachment.id or '')
         component = cls(**fields)
+        referenced = previous_refs.get(attachment.ref)
+        if type(referenced) is cls and not attachment.content and not attachment.url:
+            components.append(referenced)
+            attachment.ref, attachment.path = f'attachment-{i}', None
+            continue
         # Match by payload, never by list position (contents and message chains
         # can describe attachments in different orders).
         for original in originals:
@@ -77,6 +92,8 @@ def prepare_input_files(query, agent_input):
                 break
         components.append(component)
         attachment.ref, attachment.path = f'attachment-{i}', None
+        if kind == 'image' and attachment.content in inline_images:
+            attachment.content = None
     object.__setattr__(query, '_box_inputs', components)
 
 

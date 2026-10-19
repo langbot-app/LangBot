@@ -17,6 +17,30 @@ _INSECURE_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 DEFAULT_BASE64_MEDIA_LIMIT = 10 * 1024 * 1024
 
 
+def normalize_image_data_url(value: str) -> str:
+    """Wrap raw image base64 with its detected MIME type, never a guessed one.
+
+    Existing data URLs are preserved for provider-specific compatibility.
+    Bound decoding before inspecting untrusted image headers.
+    """
+    if value.startswith('data:'):
+        return value
+    if len(value) > 4 * ((DEFAULT_BASE64_MEDIA_LIMIT + 2) // 3):
+        raise ValueError('Base64 image exceeds the media size limit')
+    try:
+        decoded = base64.b64decode(value, validate=True)
+        if len(decoded) > DEFAULT_BASE64_MEDIA_LIMIT:
+            raise ValueError('Base64 image exceeds the media size limit')
+        with PIL.Image.open(io.BytesIO(decoded)) as image:
+            mime = PIL.Image.MIME.get(image.format or '')
+            image.verify()
+        if not mime or not mime.startswith('image/'):
+            raise ValueError('Unknown image MIME type')
+    except (ValueError, OSError, PIL.Image.DecompressionBombError) as exc:
+        raise ValueError('Invalid base64 image: expected encoded image bytes') from exc
+    return f'data:{mime};base64,{value}'
+
+
 def _detect_image_format(file_bytes: bytes) -> str:
     with PIL.Image.open(io.BytesIO(file_bytes)) as image:
         return str(image.format or 'jpeg').lower()

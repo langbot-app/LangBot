@@ -156,6 +156,55 @@ def test_event_attachments_preserved_without_eager_io_or_host_path_access():
     assert image.attachments[0].url == 'https://example.invalid/image.png'
 
 
+def test_duplicate_inline_image_payload_is_replaced_by_attachment_reference():
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput, InputAttachment
+    from langbot.pkg.box.runner import input_files, prepare_input_files
+
+    image_base64 = 'data:image/png;base64,YQ=='
+    query = SimpleNamespace(message_chain=MessageChain([]))
+    value = AgentInput(
+        contents=[ContentElement.from_image_base64(image_base64)],
+        attachments=[
+            InputAttachment(type='image', source='base64', content=image_base64),
+            InputAttachment(type='image', source='base64', content='data:image/png;base64,Yg=='),
+        ],
+    )
+
+    prepare_input_files(query, value)
+
+    assert value.contents[0].image_base64 == image_base64
+    assert value.attachments[0].content is None
+    assert value.attachments[0].ref == 'attachment-0'
+    assert value.attachments[1].content == 'data:image/png;base64,Yg=='
+    assert value.attachments[1].ref == 'attachment-1'
+    assert input_files(query)[0].base64 == image_base64
+
+
+def test_repeated_prepare_preserves_deduplicated_images_after_reordering():
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput, InputAttachment
+    from langbot.pkg.box.runner import input_files, prepare_input_files
+
+    images = ['data:image/png;base64,YQ==', 'data:image/png;base64,Yg==']
+    query = SimpleNamespace(message_chain=MessageChain([]))
+    value = AgentInput(
+        contents=[ContentElement.from_image_base64(image) for image in images],
+        attachments=[InputAttachment(type='image', content=image) for image in images],
+    )
+    prepare_input_files(query, value)
+    value = AgentInput.model_validate(value.model_dump())
+    value.attachments.reverse()
+    for _ in range(3):
+        prepare_input_files(query, value)
+        assert [item.base64 for item in input_files(query)] == images[::-1]
+        assert all(item.content is None for item in value.attachments)
+
+    other_query = SimpleNamespace(message_chain=MessageChain([]))
+    prepare_input_files(other_query, value)
+    assert all(not item.base64 for item in input_files(other_query))
+
+
 def test_attachment_references_follow_metadata_not_platform_list_order():
     from langbot_plugin.api.entities.builtin.runner.input import AgentInput, InputAttachment
     from langbot.pkg.box.runner import prepare_input_files, input_files
