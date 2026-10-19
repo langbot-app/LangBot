@@ -24,6 +24,178 @@ const pageOf = (
   next_offset = items.length,
 ) => ({ items, has_more, next_offset });
 
+test('loads collapsed history on demand, retries and pages without reloading it on reopen', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    monitoringData: monitoring,
+  });
+  const requests: string[] = [];
+  let failHistory = true;
+  await page.route('**/api/v1/monitoring/executions/*/*?*', async (route) => {
+    const url = new URL(route.request().url());
+    const section = url.searchParams.get('section');
+    requests.push(url.search);
+    if (section === 'conversation' && failHistory) {
+      failHistory = false;
+      await route.fulfill({
+        status: 500,
+        json: { code: 500, msg: 'Temporary failure' },
+      });
+      return;
+    }
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const pages =
+      section === 'overview'
+        ? {
+            inputs: pageOf([{ id: 'input', content: 'Selected message' }]),
+            outputs: pageOf([]),
+            deliveries: pageOf([]),
+            errors: pageOf([]),
+          }
+        : section === 'conversation'
+          ? {
+              conversation: pageOf(
+                [
+                  {
+                    id: `history-${offset}`,
+                    content: offset ? 'Older history' : 'Recent history',
+                  },
+                ],
+                offset === 0,
+                offset + 1,
+              ),
+            }
+          : { related: pageOf([]) };
+    await route.fulfill({
+      json: { code: 0, data: { source: 'pipeline', row, pages } },
+    });
+  });
+  await page.goto('/home/monitoring');
+  await page
+    .getByRole('button')
+    .filter({ hasText: 'Open this execution' })
+    .click();
+  const sheet = page.getByRole('dialog');
+  await expect(
+    sheet.getByText('Selected message').filter({ visible: true }),
+  ).toBeVisible();
+  expect(requests).toEqual(['?section=overview']);
+  const history = sheet.locator('details').filter({
+    has: page.locator('summary', { hasText: /^Conversation context/ }),
+  });
+  await history.locator(':scope > summary').click();
+  await expect(history.getByRole('alert')).toBeVisible();
+  await history.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(
+    history.getByText('Recent history').filter({ visible: true }),
+  ).toBeVisible();
+  await history.getByRole('button', { name: 'Load more', exact: true }).click();
+  await expect(
+    history.getByText('Older history').filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    history.getByText('Recent history').filter({ visible: true }),
+  ).toBeVisible();
+  const count = requests.length;
+  await history.locator(':scope > summary').click();
+  await history.locator(':scope > summary').click();
+  await expect(
+    history.getByText('Older history').filter({ visible: true }),
+  ).toBeVisible();
+  expect(requests).toHaveLength(count);
+  expect(requests.every((query) => !query.includes('section=related'))).toBe(
+    true,
+  );
+});
+
+test('ignores a late history response after selecting a different execution', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    monitoringData: monitoring,
+  });
+  let releaseHistory: (() => void) | undefined;
+  const requested: string[] = [];
+  await page.route('**/api/v1/monitoring/executions/*/*?*', async (route) => {
+    const url = new URL(route.request().url());
+    const section = url.searchParams.get('section');
+    const sibling = url.pathname.endsWith('/sibling');
+    requested.push(`${sibling ? 'sibling' : 'original'}:${section}`);
+    if (section === 'conversation')
+      await new Promise<void>((resolve) => {
+        releaseHistory = resolve;
+      });
+    const pages =
+      section === 'overview'
+        ? {
+            inputs: pageOf([
+              {
+                id: 'input',
+                content: sibling ? 'Sibling selection' : 'Original selection',
+              },
+            ]),
+            outputs: pageOf([]),
+            deliveries: pageOf([]),
+            errors: pageOf([]),
+          }
+        : section === 'related'
+          ? {
+              related: pageOf([
+                { ...row, id: 'sibling', target_name: 'Processor B' },
+              ]),
+            }
+          : {
+              conversation: pageOf([
+                { id: 'late', content: 'Late old history' },
+              ]),
+            };
+    await route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          source: 'pipeline',
+          row: sibling ? { ...row, id: 'sibling' } : row,
+          pages,
+        },
+      },
+    });
+  });
+  await page.goto('/home/monitoring');
+  await page
+    .getByRole('button')
+    .filter({ hasText: 'Open this execution' })
+    .click();
+  const sheet = page.getByRole('dialog');
+  await expect(
+    sheet.getByText('Original selection').filter({ visible: true }),
+  ).toBeVisible();
+  await sheet
+    .locator('summary')
+    .filter({ hasText: /^Conversation context/ })
+    .click();
+  await expect.poll(() => !!releaseHistory).toBe(true);
+  await sheet
+    .locator('summary')
+    .filter({ hasText: /^Related executions/ })
+    .click();
+  await sheet.getByRole('button', { name: /Processor B/ }).click();
+  await expect(
+    sheet.getByText('Sibling selection').filter({ visible: true }),
+  ).toBeVisible();
+  const response = page.waitForResponse(
+    (res) => new URL(res.url()).searchParams.get('section') === 'conversation',
+  );
+  releaseHistory!();
+  await response;
+  await expect(sheet.getByText('Late old history')).toHaveCount(0);
+  expect(requested.filter((value) => value.startsWith('sibling:'))).toEqual([
+    'sibling:overview',
+  ]);
+});
+
 test('renders typed and custom events without duplicate text or empty attachment messages', async ({
   page,
 }) => {
@@ -401,6 +573,35 @@ test('shares mode and status filters with dashboard charts and records', async (
     await page.getByRole('option', { name: option, exact: true }).click();
     await Promise.all(requests);
   }
+});
+
+test('restores filter trigger focus when closing with Escape', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  await page.goto('/home/monitoring');
+  for (const id of ['bot', 'mode', 'status', 'time']) {
+    const trigger = page.locator(`#monitoring-filter-${id}`);
+    await trigger.click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(trigger).toBeFocused();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+  }
+});
+
+test('keeps the custom range dialog focused when its select closes', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  await page.goto('/home/monitoring');
+  await page.locator('#monitoring-filter-time').click();
+  await page
+    .getByRole('option', { name: 'Custom time range', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Custom time range' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input').first()).toBeFocused();
 });
 
 test('remembers all filters on reload and persists resetting them', async ({

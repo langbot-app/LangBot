@@ -203,6 +203,9 @@ message or event identifier outside the current list page. The detail exposes
 `inputs`, `outputs` (generated content), `deliveries` (recorded platform sends),
 `events`, `llm_calls`, `tool_calls`, `errors`, `related`, and `conversation` in
 `pages`. Follow each section's `has_more` and `next_offset` independently.
+Start with `section=overview` to load only inputs, outputs, deliveries and errors.
+Request `conversation`, `related`, calls and events separately when needed;
+omitting `section` retains the complete trace response for existing consumers.
 Conversation history supplies context; historical messages without explicit
 links must not be asserted to belong to the selected execution. Events without
 a processor run use `source=event`. All lookups remain Workspace-scoped.

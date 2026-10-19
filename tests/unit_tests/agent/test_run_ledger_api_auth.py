@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import datetime
+import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import sqlalchemy
@@ -17,6 +18,7 @@ from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.entity.persistence import agent_run as agent_run_model
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+from langbot.pkg.storage.media import MediaCache
 from langbot_plugin.api.entities.builtin.runner.run_ledger import (
     AgentRun,
     AgentRunEvent,
@@ -1062,6 +1064,50 @@ async def test_run_append_result_basic_path(session_registry, db_engine):
     assert event.type == 'tool.call.started'
     assert event.data == {'tool_call_id': 'call_1', 'tool_name': 'weather'}
     assert event.usage == {'output_tokens': 1}
+
+
+@pytest.mark.asyncio
+async def test_run_append_result_uses_cas_and_redacts_metadata(session_registry, db_engine):
+    await _register_session(session_registry, available_apis={'run_append_result': True})
+    await _create_run(db_engine)
+    handler = _handler(db_engine)
+    objects = {}
+
+    async def save(key, data):
+        objects[key] = data
+
+    storage = SimpleNamespace(
+        storage_provider=SimpleNamespace(exists=AsyncMock(return_value=False), save=AsyncMock(side_effect=save))
+    )
+    storage.media_cache = MediaCache(handler.ap, storage)
+    handler.ap.storage_mgr = storage
+    image = {'type': 'Image', 'base64': 'eA=='}
+    result = await handler.actions[PluginToRuntimeAction.RUN_APPEND_RESULT.value](
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+            'sequence': 2,
+            'event_type': 'tool.call.completed',
+            'data': {'tool_call_id': 'call_1', 'tool_name': 'image', 'result': {'images': [image]}},
+            'metadata': {'preview': image},
+        }
+    )
+    assert result.code == 0
+    event = AgentRunEvent.model_validate(result.data)
+    saved = event.data['result']['images'][0]
+    assert saved['base64'] is None
+    assert saved['url'].startswith('/api/v1/files/media/')
+    assert objects == {saved['storage_key']: b'x'}
+    async with db_engine.connect() as conn:
+        metadata = (
+            await conn.execute(
+                sqlalchemy.select(agent_run_model.AgentRunEvent.metadata_json).where(
+                    agent_run_model.AgentRunEvent.sequence == 2
+                )
+            )
+        ).scalar_one()
+    assert json.loads(metadata)['preview']['base64'] is None
+    assert image['base64'] == 'eA=='
 
 
 @pytest.mark.asyncio

@@ -424,6 +424,99 @@ async def test_execution_detail_for_agent_and_pipeline(engine, service):
 
 
 @pytest.mark.asyncio
+async def test_detail_overview_does_not_query_collapsed_sections(engine, service, monkeypatch):
+    await _seed(engine)
+    page = service._execution_page
+    converters = []
+
+    async def capture(workspace, statement, convert, offset, limit):
+        converters.append(convert.__name__)
+        return await page(workspace, statement, convert, offset, limit)
+
+    async def reject_history(*args, **kwargs):
+        pytest.fail('Collapsed conversation history must not be loaded')
+
+    monkeypatch.setattr(service, '_execution_page', capture)
+    monkeypatch.setattr(service, '_conversation_message_page', reject_history)
+    detail = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user', section='overview')
+
+    assert set(detail['pages']) == {'inputs', 'outputs', 'deliveries', 'errors'}
+    assert detail['pages']['inputs']['items'][0]['id'] == 'msg-user'
+    assert len(converters) == 4
+    assert 'events' not in detail
+
+
+@pytest.mark.asyncio
+async def test_conversation_pages_identities_from_covering_index_before_payloads(engine, service):
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    message = persistence_monitoring.MonitoringMessage
+    payload = 'historical inline media ' * 4096
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(message),
+            [
+                dict(
+                    id=f'history-{index:02d}',
+                    workspace_uuid=workspace,
+                    bot_id=bot,
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    session_id='session-1',
+                    timestamp=_dt(12),
+                    role='user',
+                    message_content=payload,
+                    variables=payload,
+                    status='success',
+                    level='info',
+                )
+                for index, (workspace, bot) in enumerate(
+                    [(WORKSPACE, 'bot-1')] * 5 + [(WORKSPACE, 'other-bot'), ('other-workspace', 'bot-1')]
+                )
+            ],
+        )
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('SELECT'):
+            statements.append((statement, parameters))
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        first = await service.get_execution_detail(WORKSPACE, 'pipeline', 'msg-user', section='conversation', limit=2)
+        second = await service.get_execution_detail(
+            WORKSPACE, 'pipeline', 'msg-user', section='conversation', limit=2, offset=2
+        )
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    page = first['pages']['conversation']
+    assert [row['id'] for row in page['items']] == ['history-04', 'history-03']
+    assert page['has_more'] and page['next_offset'] == 2
+    assert all(row['content'] == payload for row in page['items'])
+    assert [row['id'] for row in second['pages']['conversation']['items']] == ['history-02', 'history-01']
+    identities = [(sql, params) for sql, params in statements if sql.startswith('SELECT monitoring_messages.id \n')]
+    assert len(identities) == 2
+    async with engine.connect() as connection:
+        for sql, params in identities:
+            assert 'message_content' not in sql and 'variables' not in sql
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, params)).all()
+            assert any('COVERING INDEX ix_monitoring_messages_conversation_page' in row[3] for row in plan), plan
+            assert not any('TEMP B-TREE' in row[3] for row in plan), plan
+        payload_queries = [(sql, params) for sql, params in statements if 'JOIN monitoring_messages ON' in sql]
+        assert len(payload_queries) == 2
+        assert {value for value in payload_queries[0][1] if str(value).startswith('history-')} == {
+            'history-04',
+            'history-03',
+        }
+        for sql, params in payload_queries:
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, params)).all()
+            assert any('sqlite_autoindex_monitoring_messages_1 (id=?)' in row[3] for row in plan), plan
+
+
+@pytest.mark.asyncio
 async def test_explicit_deliveries_context_and_tenant_isolation(engine, service):
     import sqlalchemy as sa
 
@@ -737,6 +830,217 @@ async def test_pipeline_debug_is_consistent_across_rows_rollups_and_telemetry(en
     assert real_calls == 1 and real_rows[0]['id'] == 'llm-2'
     traffic = await get_traffic_series(service.ap, WORKSPACE, mode='debug', pipeline_ids=['pipeline-1'])
     assert sum(p['llm_calls'] for p in traffic['points']) == 1
+
+
+@pytest.mark.asyncio
+async def test_inflight_excludes_unowned_and_expired_messages_without_rewriting_history(engine, service):
+    import sqlalchemy as sa
+
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    Message = persistence_monitoring.MonitoringMessage
+    async with AsyncSession(engine) as session:
+        for message_id, owner, expiry, timestamp in [
+            ('legacy', None, None, _dt(1)),
+            ('recent-unowned', None, now + datetime.timedelta(minutes=1), now),
+            ('expired', 'stopped-host', now - datetime.timedelta(seconds=1), _dt(1)),
+            ('long-running', 'live-host', now + datetime.timedelta(minutes=1), _dt(1)),
+        ]:
+            session.add(
+                Message(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE,
+                    timestamp=timestamp,
+                    bot_id='bot',
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    session_id='session',
+                    message_content='historical message',
+                    status='pending',
+                    level='info',
+                    execution_owner_id=owner,
+                    execution_lease_expires_at=expiry,
+                )
+            )
+        session.add(
+            persistence_agent_run.AgentRun(
+                run_id='remote-queue',
+                workspace_id=WORKSPACE,
+                runner_id='runner',
+                status='queued',
+                queue_name='remote',
+                created_at=_dt(1),
+            )
+        )
+        await session.commit()
+    # A previous connection must not reintroduce unowned pending rows either.
+    snapshot = await service.get_inflight_snapshot(WORKSPACE, [{'source': 'pipeline', 'id': 'legacy'}])
+    assert snapshot['active_total'] == 2
+    assert {row['id'] for row in snapshot['items']} == {'long-running', 'remote-queue'}
+    async with AsyncSession(engine) as session:
+        statuses = (await session.execute(sa.select(Message.status))).scalars().all()
+    assert statuses == ['pending'] * 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('source', ['all', 'pipeline'])
+@pytest.mark.parametrize('statuses', [['running'], ['running', 'queued']])
+async def test_active_inflight_count_and_page_use_the_indexed_lease_range(engine, service, source, statuses):
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-user')
+            .values(status='pending', message_content='historical payload ' * 8192)
+        )
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('SELECT '):
+            statements.append((statement, parameters))
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        result = await service.get_executions(
+            WORKSPACE, statuses=statuses, source=source, include_summary=False, for_inflight=True
+        )
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    assert result == {'items': [], 'total': 0, 'has_more': False}
+    assert len(statements) == 2  # Both COUNT and the sorted page must skip historical payloads.
+    async with engine.connect() as connection:
+        for statement, parameters in statements:
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + statement, parameters)).all()
+            assert any(
+                'ix_monitoring_messages_workspace_status_lease' in row[3] and 'execution_lease_expires_at>?' in row[3]
+                for row in plan
+            ), plan
+
+
+@pytest.mark.asyncio
+async def test_empty_inflight_snapshot_skips_linked_history_and_clears_tracking(engine, service, monkeypatch):
+    import sqlalchemy as sa
+    from langbot.pkg.utils.inflight import inflight_hub
+
+    await _seed(engine)
+    monkeypatch.setattr(inflight_hub, 'run_workspaces', {'finished-run': WORKSPACE, 'other-run': 'other-workspace'})
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        snapshot = await service.get_inflight_snapshot(WORKSPACE)
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    assert snapshot == {'items': [], 'active_total': 0, 'truncated': False}
+    assert inflight_hub.run_workspaces == {'other-run': 'other-workspace'}
+    assert not any('JOIN monitoring_messages ON' in query or 'FROM agent_run_event' in query for query in statements)
+
+
+@pytest.mark.asyncio
+async def test_inflight_never_loads_payloads_in_active_recent_or_terminal_rows(engine, service, monkeypatch):
+    import json
+    import sqlalchemy as sa
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    payload = json.dumps({'text': 'full input', 'attachment': 'x' * (2 * 1024 * 1024)})
+    async with AsyncSession(engine) as session:
+        for message_id, status, timestamp in [
+            ('active-message', 'pending', _dt(1)),
+            ('recent-message', 'success', now),
+            ('finished-message', 'success', _dt(1)),
+        ]:
+            session.add(
+                persistence_monitoring.MonitoringMessage(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE,
+                    timestamp=timestamp,
+                    bot_id='bot',
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    session_id='session',
+                    message_content=payload,
+                    variables=payload,
+                    status=status,
+                    level='info',
+                    event_id=message_id,
+                    run_id='linked-run' if status == 'pending' else None,
+                    execution_owner_id='host' if status == 'pending' else None,
+                    execution_lease_expires_at=now + datetime.timedelta(minutes=1) if status == 'pending' else None,
+                )
+            )
+            session.add(
+                EventLog(
+                    event_id=message_id,
+                    workspace_id=WORKSPACE,
+                    event_type='message.received',
+                    source='platform',
+                    input_summary='small summary',
+                    input_json=payload,
+                    metadata_json=json.dumps({'platform': 'test', 'unused_payload': payload}),
+                )
+            )
+        for run_id in ['linked-run', 'standalone-run']:
+            session.add(
+                persistence_agent_run.AgentRun(
+                    run_id=run_id,
+                    workspace_id=WORKSPACE,
+                    runner_id='runner',
+                    status='running',
+                    created_at=_dt(1),
+                    authorization_json=payload,
+                    metadata_json=json.dumps(
+                        {'event_type': 'message.received', 'agent_name': 'Agent', 'input': {'text': payload}}
+                    ),
+                )
+            )
+        await session.commit()
+
+    linkage_queries = []
+
+    def reject_payload_reads(connection, cursor, statement, parameters, context, executemany):
+        for column in [
+            'monitoring_messages.message_content',
+            'monitoring_messages.variables',
+            'agent_run.authorization_json',
+            'event_log.input_json',
+        ]:
+            assert column not in statement
+        if statement.startswith('SELECT agent_run.run_id,') and 'monitoring_messages.id AS message_id' in statement:
+            linkage_queries.append((statement, parameters))
+
+    deserialize = service._deserialize_json
+
+    def bounded_metadata(raw):
+        assert not raw or len(raw) < 10000
+        return deserialize(raw)
+
+    monkeypatch.setattr(service, '_deserialize_json', bounded_metadata)
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+    try:
+        snapshot = await service.get_inflight_snapshot(WORKSPACE, [{'source': 'pipeline', 'id': 'finished-message'}])
+        rows = {row['id']: row for row in snapshot['items']}
+        assert rows['active-message']['input_preview'] == 'small summary'
+        assert rows['recent-message']['status_group'] == 'completed'
+        assert rows['finished-message']['status_group'] == 'completed'
+        assert rows['standalone-run']['target_name'] == 'Agent'
+        assert snapshot['active_total'] == 2
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', reject_payload_reads)
+    assert linkage_queries
+    async with engine.connect() as connection:
+        for statement, parameters in linkage_queries:
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + statement, parameters)).all()
+            message_lookups = [row[3] for row in plan if 'SEARCH monitoring_messages' in row[3]]
+            assert message_lookups and all('(id=?)' in lookup for lookup in message_lookups), plan
 
 
 @pytest.mark.asyncio

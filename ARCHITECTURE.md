@@ -268,11 +268,14 @@ Persistence is centered on `pkg/persistence/mgr.py`.
 
 - SQLite is the default database; PostgreSQL is supported.
 - Models live under `pkg/entity/persistence/`.
+- `pkg/persistence/media.py::MediaReferenceText` validates bound conversation payloads on ORM/Core writes while preserving the existing TEXT schema and string API. It rejects recognized structured inline images: retained images go through `MediaCache.externalize_chain_dump()` before serialization, while metadata-only snapshots and transcripts use `redact_inline_images()`. Reads and comparisons preserve historical values for incremental cleanup. Runtime/adapter messages, arbitrary diagnostic text, and opaque strings are outside this contract.
 - Timezone-less SQL `DateTime` columns store UTC-naive values on both backends. Normalize aware values with `pkg/persistence/datetime_utils.py::as_naive_utc` at the bind boundary, including deadlines, leases, event times, and query/retention cutoffs; do not merely strip an offset. Existing naive rows represent UTC. Restore UTC awareness for application comparisons and epoch serialization. Runner ledger/event/transcript stores follow this existing schema contract without a data migration or changes to journal/tenant authorization.
 - Fresh schemas are created from current metadata, then Alembic migrations run to head. LangBot 4.x does not upgrade 3.x databases.
 - New schema changes use Alembic under `pkg/persistence/alembic/versions/`; there is no legacy migration chain in 4.x.
 
 Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Most long-lived managers read from `ap.instance_config.data`.
+
+Storage maintenance applies `storage.media_cache.retention_days` to both CAS files and historical inline images. Inline image expiry uses the owning record's creation time and preserves text, URLs, and record identity. It does not backfill CAS. `pkg/storage/inline_media_cleanup.py` processes one payload row at a time, with a per-table limit of 100 indexed candidates or 8 MiB of JSON characters per maintenance pass (one oversized row may exceed the latter limit). Run events lack a Workspace column, so their candidate cursor also advances past foreign or missing records; payloads are loaded only after checking Workspace ownership. Durable Workspace metadata cursors and timestamp/identity indexes keep completed history out of subsequent scans; newly written history must retain its actual creation timestamp. Updates and cursor advancement commit together. Invalid historical JSON is preserved. SQLite pages become reusable after payload removal; the database file is not automatically vacuumed by this task.
 
 ## Frontend
 

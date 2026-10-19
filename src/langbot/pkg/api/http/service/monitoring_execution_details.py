@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from types import SimpleNamespace
 from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
 import sqlalchemy as sa
@@ -99,7 +100,7 @@ def transcript_item(row):
 
 
 class ExecutionDetailsMixin:
-    def _session_message_source(self, workspace, bot_ids):
+    def _session_message_source(self, workspace, bot_ids, *, summary_only=False):
         """Combine delivered messages with ingress missing from the legacy ledger."""
         message = models.MonitoringMessage
         conversation = sa.func.coalesce(
@@ -147,7 +148,11 @@ class ExecutionDetailsMixin:
             'event_id': EventLog.event_id,
             'run_id': EventLog.run_id,
         }
-        columns = list(message.__table__.columns)
+        columns = [
+            column
+            for column in message.__table__.columns
+            if not summary_only or column.name not in {'message_content', 'variables'}
+        ]
         stored = sa.select(*columns).where(message.workspace_uuid == workspace, message.bot_id.in_(bot_ids))
         incoming = sa.select(
             *[values.get(column.name, sa.literal(None)).label(column.name) for column in columns]
@@ -183,7 +188,9 @@ class ExecutionDetailsMixin:
         self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset
     ):
         """Read session summaries across processor types without mutating history."""
-        messages = self._session_message_source(workspace, bot_ids)
+        # Window functions sort and retain their input rows. Carrying historical
+        # inline media through that sort can consume gigabytes for a summary.
+        messages = self._session_message_source(workspace, bot_ids, summary_only=True)
         key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
         ranked = (
             sa.select(
@@ -354,8 +361,44 @@ class ExecutionDetailsMixin:
         async with AsyncSession(self.ap.persistence_mgr.get_db_engine()) as session:
             return await session.execute(statement)
 
-    async def _execution_rows(self, workspace, statement):
-        return list((await self._execution_query(workspace, statement)).scalars().all())
+    async def _execution_rows(self, workspace, statement, *, summary_only=False):
+        result = await self._execution_query(workspace, statement)
+        if not summary_only:
+            return list(result.scalars().all())
+        records = []
+        for row in result.mappings():
+            fields = dict(row)
+            metadata = {
+                key.removeprefix('display_metadata_'): fields.pop(key)
+                for key in row
+                if key.startswith('display_metadata_')
+            }
+            if metadata:
+                fields['metadata_json'] = json.dumps(metadata, ensure_ascii=False)
+            records.append(SimpleNamespace(**fields))
+        return records
+
+    def _execution_statement(self, model, *, summary_only=False):
+        """Keep periodic snapshots independent of message and attachment sizes."""
+        if not summary_only:
+            return sa.select(model)
+        columns = [
+            column
+            for column in model.__table__.columns
+            if column.name not in {'message_content', 'variables', 'input_json', 'authorization_json', 'metadata_json'}
+        ]
+        if model is models.MonitoringMessage:
+            return sa.select(*columns)
+        keys = (
+            ('processor_id', 'processor_type', 'event_type', 'agent_name', 'target_name', 'bot_name')
+            if model is AgentRun
+            else ('platform', 'bot_name')
+        )
+        # Metadata also contains complete inputs. Project only the small display
+        # fields in SQL, rather than deserializing an attachment-bearing object.
+        for key in keys:
+            columns.append(self._execution_json_text(model.metadata_json, key).label(f'display_metadata_{key}'))
+        return sa.select(*columns)
 
     async def _execution_page(self, workspace, statement, convert, offset, limit):
         rows = await self._execution_rows(workspace, statement.offset(offset).limit(limit + 1))
@@ -363,6 +406,35 @@ class ExecutionDetailsMixin:
             'items': [convert(row) for row in rows[:limit]],
             'has_more': len(rows) > limit,
             'next_offset': offset + min(len(rows), limit),
+        }
+
+    async def _conversation_message_page(self, workspace, statement, offset, limit):
+        """Select a page from the covering index before loading its payloads."""
+        message = models.MonitoringMessage
+        identities = list(
+            (
+                await self._execution_query(
+                    workspace, statement.with_only_columns(message.id).offset(offset).limit(limit + 1)
+                )
+            ).scalars()
+        )
+        selected = identities[:limit]
+        records = {}
+        if selected:
+            # Equality joins keep SQLite on the primary key even for multiple IDs.
+            page = sa.union_all(*[sa.select(sa.literal(identity).label('id')) for identity in selected]).subquery()
+            rows = await self._execution_rows(
+                workspace,
+                sa.select(message)
+                .select_from(page)
+                .join(message, message.id == page.c.id)
+                .where(message.workspace_uuid == workspace),
+            )
+            records = {row.id: row for row in rows}
+        return {
+            'items': [message_item(records[identity]) for identity in selected if identity in records],
+            'has_more': len(identities) > limit,
+            'next_offset': offset + len(selected),
         }
 
     def _unhandled_event_conditions(self, workspace, bot_ids=None, start_time=None, end_time=None):
@@ -445,14 +517,21 @@ class ExecutionDetailsMixin:
             or None,
         }
 
-    async def enrich_execution_rows(self, workspace, items):
+    async def enrich_execution_rows(self, workspace, items, *, summary_only=False):
         pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
         if pipeline_items:
             # Pipeline rows own the UI identity; their linked Runner ledger owns
             # timing and usage. Read them in one batch for both list and detail.
             linked = await self._execution_query(
                 workspace,
-                sa.select(models.MonitoringMessage.id, AgentRun)
+                sa.select(
+                    models.MonitoringMessage.id,
+                    AgentRun.started_at,
+                    AgentRun.finished_at,
+                    AgentRun.usage_json,
+                    AgentRun.cost_json,
+                )
+                .select_from(models.MonitoringMessage)
                 .join(
                     AgentRun,
                     sa.and_(
@@ -465,10 +544,15 @@ class ExecutionDetailsMixin:
                     models.MonitoringMessage.id.in_(pipeline_items),
                 ),
             )
-            for message_id, run in linked.all():
-                metrics = self._serialize_agent_execution(run)
-                pipeline_items[message_id].update(
-                    {key: metrics[key] for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')}
+            for run in linked.all():
+                pipeline_items[run.id].update(
+                    started_at_ms=epoch(run.started_at),
+                    finished_at_ms=epoch(run.finished_at),
+                    duration_ms=int(round((run.finished_at - run.started_at).total_seconds() * 1000))
+                    if run.started_at and run.finished_at
+                    else None,
+                    usage=self._deserialize_json(run.usage_json) or None,
+                    cost=self._deserialize_json(run.cost_json) or None,
                 )
 
             calls = models.MonitoringLLMCall
@@ -498,10 +582,11 @@ class ExecutionDetailsMixin:
             return
         events = await self._execution_rows(
             workspace,
-            sa.select(EventLog).where(
+            self._execution_statement(EventLog, summary_only=summary_only).where(
                 EventLog.workspace_id == workspace,
                 EventLog.event_id.in_(ids),
             ),
+            summary_only=summary_only,
         )
         by_id = {row.event_id: row for row in events}
         for item in items:
@@ -510,7 +595,9 @@ class ExecutionDetailsMixin:
                 meta = parsed(event.metadata_json, {})
                 item.update(
                     event_type=event.event_type,
-                    input_preview=event_preview(parsed(event.input_json), event.input_summary, event.event_type),
+                    input_preview=event_preview(
+                        None if summary_only else parsed(event.input_json), event.input_summary, event.event_type
+                    ),
                     user_id=event.actor_id,
                     user_name=event.actor_name,
                     platform=meta.get('platform') or event.source,
@@ -532,8 +619,13 @@ class ExecutionDetailsMixin:
             'tool_calls',
             'errors',
         }
-        if section is not None and section not in sections:
+        if section is not None and section not in sections | {'overview'}:
             raise ValueError('Unknown execution section')
+        requested = (
+            sections
+            if section is None
+            else ({'inputs', 'outputs', 'deliveries', 'errors'} if section == 'overview' else {section})
+        )
 
         run = message = event = None
         if source in {'agent', 'auto'}:
@@ -700,8 +792,12 @@ class ExecutionDetailsMixin:
 
         pages = {}
         for name, (query, convert) in statements.items():
-            if section is None or section == name:
-                pages[name] = await self._execution_page(workspace, query, convert, offset, limit)
+            if name in requested:
+                pages[name] = (
+                    await self._conversation_message_page(workspace, query, offset, limit)
+                    if name == 'conversation' and message
+                    else await self._execution_page(workspace, query, convert, offset, limit)
+                )
         if run:
             meta = parsed(run.metadata_json, {})
             for item in pages.get('inputs', {}).get('items', []):
@@ -709,17 +805,12 @@ class ExecutionDetailsMixin:
                 # Do not apply the root snapshot to later steering events.
                 if item['id'] == run.event_id and not item.get('metadata', {}).get('input_event'):
                     item['content'] = event_content(item['content'], meta.get('input_event'))
-        if message and (section is None or section == 'inputs'):
+        if message and 'inputs' in requested:
             # The original rich message is authoritative even when the event
             # log is absent or only retained a compact event summary.
             if offset == 0:
                 pages['inputs']['items'].insert(0, message_item(message))
-        if (
-            run
-            and not pages.get('inputs', {}).get('items')
-            and offset == 0
-            and (section is None or section == 'inputs')
-        ):
+        if run and not pages.get('inputs', {}).get('items') and offset == 0 and 'inputs' in requested:
             meta = parsed(run.metadata_json, {})
             content = event_content(meta.get('input'), meta.get('input_event'))
             if content:
@@ -727,7 +818,7 @@ class ExecutionDetailsMixin:
                     {'id': run.event_id or run.run_id, 'content': content, 'timestamp_ms': epoch(run.created_at)}
                 ]
 
-        if section is None or section == 'related':
+        if 'related' in requested:
             # Union of ledger executions and legacy pipeline roots. SQL paging
             # avoids silently dropping siblings on highly fanned-out events.
             related_runs = sa.select(

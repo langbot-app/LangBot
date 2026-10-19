@@ -14,16 +14,14 @@ import uuid
 
 import pytest
 
-pytest.importorskip('pyseekdb')
-
-from langbot.pkg.vector.vdbs.seekdb import SeekDBVectorDatabase
-
-
-pytestmark = [pytest.mark.integration, pytest.mark.slow]
+pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.seekdb]
 
 
 @pytest.fixture
 async def backend(tmp_path):
+    pytest.importorskip('pyseekdb')
+    from langbot.pkg.vector.vdbs.seekdb import SeekDBVectorDatabase
+
     app = SimpleNamespace(
         instance_config=SimpleNamespace(
             data={
@@ -51,6 +49,7 @@ async def backend(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('vector_round_trip')
 async def test_upsert_and_text_round_trip(backend) -> None:
     database, collection = backend
     original = 'He said "hello".\nC:\\notes\\file.txt isn\'t empty. 中文'
@@ -80,6 +79,7 @@ async def test_upsert_and_text_round_trip(backend) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('hybrid_relevance')
 async def test_full_text_and_hybrid_results_keep_relevance_order(backend) -> None:
     database, collection = backend
     documents = [

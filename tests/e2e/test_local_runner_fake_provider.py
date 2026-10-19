@@ -26,7 +26,7 @@ import pytest
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
 from tests.utils.legacy_plugin_contract import verified_plugin_root
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.local_agent]
 
 
 LOCAL_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
@@ -564,6 +564,7 @@ def _run_local_agent_probe(tmpdir: Path, probe):
             return runner.run(_run())
 
 
+@pytest.mark.contract('agent_ledger')
 def test_local_runner_uses_host_fake_provider_and_persists_ledger(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -626,6 +627,7 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         conn.close()
 
 
+@pytest.mark.contract('agent_tools')
 def test_local_runner_executes_authorized_tool_loop_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -695,6 +697,7 @@ def test_local_runner_executes_authorized_tool_loop_through_host_action(
         conn.close()
 
 
+@pytest.mark.contract('agent_rag')
 def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -769,6 +772,7 @@ def test_local_runner_retrieves_authorized_rag_context_through_host_action(
         conn.close()
 
 
+@pytest.mark.contract('agent_compaction')
 def test_local_runner_compacts_history_and_persists_checkpoint(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -862,6 +866,7 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
         conn.close()
 
 
+@pytest.mark.contract('agent_multi_turn')
 def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -1025,6 +1030,7 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
 
 
 @pytest.mark.parametrize('repair_export', [False, True])
+@pytest.mark.contract('agent_box')
 def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,

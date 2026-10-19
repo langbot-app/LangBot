@@ -7,6 +7,7 @@ from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody, Crea
 import traceback
 import typing
 import asyncio
+import hmac
 import re
 import base64
 import uuid
@@ -3003,6 +3004,39 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             return data['type']
 
+    def _verify_webhook_signature(self, request, raw_body: bytes) -> bool:
+        """Verify the Lark/Feishu event-subscription callback signature.
+
+        Per Lark's event-security-verification protocol, a callback is
+        authentic only if its ``X-Lark-Signature`` header equals
+        sha256(timestamp + nonce + encrypt_key + body). Without this check
+        any caller who reaches this webhook path can inject fabricated
+        events (spoofed messages, card actions) regardless of whether they
+        hold the app's Encrypt Key.
+        """
+        encrypt_key = self.config.get('encrypt-key', '') or ''
+        if not encrypt_key:
+            return False
+        timestamp = request.headers.get('X-Lark-Request-Timestamp', '')
+        nonce = request.headers.get('X-Lark-Request-Nonce', '')
+        signature = request.headers.get('X-Lark-Signature', '')
+        if not timestamp or not nonce or not signature:
+            return False
+        expected = hashlib.sha256((timestamp + nonce + encrypt_key).encode('utf-8') + raw_body).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
+    def _verify_webhook_token(self, data) -> bool:
+        """Authenticate plaintext callbacks when encryption is not configured."""
+        expected = self.config.get('verification-token', '')
+        if not isinstance(expected, str) or not expected or not isinstance(data, dict) or 'encrypt' in data:
+            return False
+        if data.get('schema') == '2.0':
+            header = data.get('header')
+            token = header.get('token') if isinstance(header, dict) else None
+        else:
+            token = data.get('token')
+        return isinstance(token, str) and hmac.compare_digest(expected.encode('utf-8'), token.encode('utf-8'))
+
     @localized_adapter
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         """处理统一 webhook 请求。
@@ -3014,7 +3048,20 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             响应数据
         """
         try:
-            data = await request.json
+            raw_body = await request.get_data()
+            encrypted_mode = bool(self.config.get('encrypt-key'))
+            if encrypted_mode and not self._verify_webhook_signature(request, raw_body):
+                await self.logger.error('Lark webhook signature verification failed, rejecting callback')
+                return {'code': 403, 'message': 'signature verification failed'}, 403
+            try:
+                data = json.loads(raw_body)
+            except (ValueError, UnicodeDecodeError):
+                return {'code': 400, 'message': 'invalid JSON body'}, 400
+            if not isinstance(data, dict):
+                return {'code': 400, 'message': 'invalid callback body'}, 400
+            if not encrypted_mode and not self._verify_webhook_token(data):
+                await self.logger.error('Lark webhook token verification failed, rejecting callback')
+                return {'code': 403, 'message': 'token verification failed'}, 403
 
             if 'encrypt' in data:
                 encrypted = data['encrypt']
@@ -3022,7 +3069,6 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             type = self.get_event_type(data)
             context = EventContext(data)
             if 'url_verification' == type:
-                # todo 验证verification token
                 return {'challenge': data.get('challenge')}
             elif 'app_ticket' == type:
                 self.app_ticket = context.event['app_ticket']

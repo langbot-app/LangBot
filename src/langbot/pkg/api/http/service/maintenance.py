@@ -114,6 +114,10 @@ class MaintenanceService:
         }
         if media_cache is not None and is_singleton:
             result['media_files'] = media_cleanup.get('expired_deleted', 0) + media_cleanup.get('size_deleted', 0)
+        if media_cache is not None:
+            from ....storage.inline_media_cleanup import cleanup_inline_media
+
+            result['inline_media_records'] = await cleanup_inline_media(self.ap, context, media_retention_days)
         return result
 
     async def get_storage_analysis(self, context: TenantContext) -> dict[str, Any]:

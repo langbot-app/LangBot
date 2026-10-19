@@ -49,7 +49,7 @@ def wrap_python_command_with_env(
 
     writable_state_path = state_path or mount_path
     bootstrap = textwrap.dedent(
-        f"""
+        rf"""
         set -e
 
         _LB_VENV_DIR="{writable_state_path}/.venv"

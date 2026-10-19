@@ -294,7 +294,7 @@ class TestMaintenanceServiceGetStorageAnalysis:
         assert 'database' in result
         assert result['cleanup_policy'] == {'uploaded_file_retention_days': 7, 'log_retention_days': 3}
         assert {
-            section['key']: (section['path'], section['size_bytes'], section['file_count'])
+            section['key']: (Path(section['path']).as_posix(), section['size_bytes'], section['file_count'])
             for section in result['sections']
         } == {
             'database': ('data/langbot.db', 1000, 5),
@@ -426,9 +426,8 @@ class TestMaintenanceServiceGetStorageAnalysis:
         result = await service.get_storage_analysis(TEST_CONTEXT)
 
         assert result['total_size_bytes'] == 125
-        assert (
-            next(section for section in result['sections'] if section['key'] == 'skills')['path']
-            == '/core/skills/tenants/test'
+        assert next(section for section in result['sections'] if section['key'] == 'skills')['path'] == str(
+            Path('/core/skills/tenants/test')
         )
         assert result['processes'][1]['directories'][0]['key'] == 'artifacts'
         assert result['processes'][2]['directories'][1]['key'] == 'mcp'
