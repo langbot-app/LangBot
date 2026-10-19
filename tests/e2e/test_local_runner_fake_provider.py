@@ -1029,18 +1029,23 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
         conn.close()
 
 
-@pytest.mark.parametrize('repair_export', [False, True])
+@pytest.mark.parametrize(
+    'scenario', ['normal', 'repair', 'streaming', 'exhausted', 'cleanup', 'invalid', 'timeout', 'cancelled']
+)
 @pytest.mark.contract('agent_box')
 def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
     capfd,
-    repair_export,
+    scenario,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
     import base64
+    from unittest.mock import AsyncMock
+
+    repair_export = scenario in {'repair', 'streaming', 'exhausted', 'cancelled'}
     from langbot_plugin.box.backend import DockerBackend
     from langbot_plugin.box.runtime import BoxRuntime
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
@@ -1073,6 +1078,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             self.bindings = []
             self.outboxes = []
             self.calls_by_run = {}
+            self.queries = []
 
         async def get_resolved_tool_catalog(self, *args, **kwargs):
             return [{'name': 'exec', 'source': 'native', 'source_id': None}]
@@ -1085,6 +1091,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             }
 
         async def execute_func_call(self, name, parameters, query=None, source_ref=None):
+            self.queries.append(query)
             binding = binding_for(query)
             self.bindings.append((binding.session_id, binding.run_id))
             source = next(iter(binding.imported.values()))['path']
@@ -1101,7 +1108,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     extra = (
                         f' && for i in $(seq 1 20); do cp {shlex.quote(source)} {shlex.quote(outbox)}/extra-$i; done'
                     )
-                else:
+                elif scenario != 'exhausted':
                     extra = f' && rm {shlex.quote(outbox)}/extra-*'
             result = await self.box.execute_tool(
                 {
@@ -1139,15 +1146,66 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
         box = BoxService(ap, client=Client(ap.logger, runtime))
         ap.box_service = box
         await box.initialize()
+        collect = box.collect_outbound_attachments
+        export_calls = []
+
+        async def observed_collect(query, **kwargs):
+            export_calls.append(query._box_binding.run_id)
+            if scenario == 'cancelled' and export_calls.count(query._box_binding.run_id) == 2:
+                from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+
+                row = await RunLedgerStore(ap.persistence_mgr.get_db_engine()).request_cancel(
+                    run_id=query._box_binding.run_id,
+                    status_reason='cancel during export recovery',
+                )
+                assert row is not None
+                await asyncio.sleep(10)
+                raise RuntimeError('Cancelled export must not resume generation')
+            if scenario == 'invalid':
+                from langbot.pkg.box.export_errors import export_error
+
+                raise export_error('invalid_response')
+            if scenario == 'timeout':
+                await asyncio.sleep(6)
+                raise TimeoutError('Injected stalled export')
+            return await collect(query, **kwargs)
+
+        box.collect_outbound_attachments = observed_collect
+        if scenario == 'cleanup':
+            # A failed best-effort cleanup leaves successfully accepted files.
+            box._clear_outbox = AsyncMock()
         manager = ToolManager(box)
         ap.tool_mgr = manager
         fake = await _inject_fake_llm_model(ap)
+        if scenario == 'streaming':
+            from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+            async def scripted_stream(*args, **kwargs):
+                message = await fake.invoke_llm(*args, **kwargs)
+                yield MessageChunk(
+                    role='assistant', content=message.content, tool_calls=message.tool_calls, is_final=True
+                )
+
+            fake.invoke_llm_stream = scripted_stream
         context = await ap.plugin_connector._current_execution_context()
+
+        async def assert_retained():
+            inspection = await box.execute_in_context(
+                context,
+                {
+                    'cmd': f'test -f {shlex.quote(manager.outboxes[-1] + "/answer.txt")}',
+                    'session_id': manager.bindings[-1][0],
+                },
+            )
+            assert inspection.ok, inspection
+
         try:
             for index in range(2):
                 fake.queue_llm_responses(_scripted_tool_call('exec'), 'File is ready.')
                 if repair_export:
-                    fake.queue_llm_responses(_scripted_tool_call('exec'), 'Repaired file is ready.')
+                    fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair-1'), 'Repaired file is ready.')
+                    if scenario == 'exhausted':
+                        fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair-2'), 'Still not repaired.')
                 event = _event(
                     event_id=f'box-event-{index}',
                     conversation_id=f'box-conversation-{index}',
@@ -1164,7 +1222,62 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     runner_config={'box-enabled': True, 'box-session-id-template': '{global}'},
                 )
                 binding.processor_type = 'pipeline'
-                messages = await _run_runner(ap, event, binding)
+                if scenario == 'streaming':
+                    event.delivery.supports_streaming = True
+                    binding.delivery_policy.enable_streaming = True
+                if scenario == 'timeout':
+                    binding.runner_config['timeout'] = 5
+                events = []
+
+                async def observe(result):
+                    events.append(result)
+                    if scenario == 'cleanup' and result['type'] == 'run.completed':
+                        query = manager.queries[-1]
+                        accepted = set(query._box_binding.exported)
+                        assert len(accepted) == 1
+                        assert (await RunnerBoxService(box).export_files(query))['items'] == []
+                        assert set(query._box_binding.exported) == accepted
+
+                from langbot.pkg.agent.runner.errors import RunnerExecutionError
+
+                messages = []
+                failure = None
+                try:
+                    async for message in ap.agent_run_orchestrator.run(
+                        event,
+                        binding,
+                        adapter_context={'_execution_context': context, '_result_observer': observe},
+                    ):
+                        messages.append(message)
+                except RunnerExecutionError as exc:
+                    failure = exc
+                terminals = [e for e in events if e['type'] in {'run.completed', 'run.failed'}]
+                if scenario == 'timeout':
+                    assert failure is not None and 'timed out' in str(failure)
+                    assert not any(e['type'] in {'run.completed', 'message.completed'} for e in events)
+                    assert not any(message.attachments for message in messages)
+                    await assert_retained()
+                    continue
+                assert len(terminals) == 1, events
+                if scenario in {'exhausted', 'invalid', 'cancelled'}:
+                    assert failure is not None
+                    assert terminals[0]['type'] == 'run.failed', events
+                    assert not any(e['type'] == 'message.completed' for e in events), events
+                    assert not any(message.attachments for message in messages), messages
+                    if scenario == 'exhausted':
+                        assert 'two repair opportunities' in terminals[0]['data']['error']
+                    elif scenario == 'cancelled':
+                        assert terminals[0]['data']['code'] == 'cancelled'
+                    else:
+                        assert 'invalid attachment data' in terminals[0]['data']['error']
+                    await assert_retained()
+                    continue
+                assert failure is None, failure
+                assert terminals[0]['type'] == 'run.completed', events
+                assert sum(e['type'] == 'message.completed' for e in events) == 1
+                if scenario == 'streaming':
+                    deltas = [e for e in events if e['type'] == 'message.delta']
+                    assert deltas and all(not e['data'].get('file_ids') for e in deltas)
                 output = [component for message in messages for component in (message.attachments or [])]
                 assert len(output) == 1, messages
                 assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
@@ -1173,16 +1286,32 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     {'cmd': f'ls -A {shlex.quote(manager.outboxes[-1])}', 'session_id': manager.bindings[-1][0]},
                 )
                 assert inspection.exit_code == 0, inspection
-                assert inspection.stdout.strip() == '', inspection.stdout
+                assert inspection.stdout.strip() == ('answer.txt' if scenario == 'cleanup' else ''), inspection.stdout
                 status = await RunnerBoxService(box).status(context)
                 assert status['used'] == 1 and status['remaining'] == 0, status
             assert manager.bindings[0][0] == manager.bindings[-1][0]
             assert manager.bindings[0][1] != manager.bindings[-1][1]
             if repair_export:
-                assert list(manager.calls_by_run.values()) == [2, 2]
+                assert list(manager.calls_by_run.values()) == ([3, 3] if scenario == 'exhausted' else [2, 2])
                 assert any(
                     'Attachment export failed' in text for payload in _invoke_payload_texts(fake) for text in payload
                 )
+                feedback = [
+                    text for payload in _invoke_payload_texts(fake) for text in payload if 'Host export details' in text
+                ]
+                assert feedback and all('"limit": 20' in text and '"actual": 21' in text for text in feedback)
+                assert all('"files_retained": true' in text for text in feedback)
+            expected_exports = {
+                'normal': 1,
+                'repair': 2,
+                'streaming': 2,
+                'exhausted': 3,
+                'cleanup': 2,
+                'invalid': 1,
+                'timeout': 1,
+                'cancelled': 2,
+            }[scenario]
+            assert len(export_calls) == 2 * expected_exports
             from langbot_plugin.box.errors import BoxCapacityExceededError
 
             with pytest.raises(BoxCapacityExceededError):

@@ -336,3 +336,65 @@ async def test_unavailable_box_does_not_turn_runner_export_into_empty_cleanup(en
     with pytest.raises(BoxError, match='not available'):
         await RunnerBoxService(box).export_files(query)
     assert (outbox / 'answer.txt').read_bytes() == b'keep'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('remote', [False, True])
+async def test_export_diagnostics_include_limit_actual_relative_path_and_retention(env, monkeypatch, remote):
+    from langbot.pkg.box.export_errors import BoxExportError
+
+    box, query, outbox = env
+    (outbox / 'nested').mkdir()
+    (outbox / 'nested' / 'answer.txt').write_bytes(b'1234')
+    monkeypatch.setattr(box, '_ATTACHMENT_MAX_BYTES', 3)
+    box.client.execute = AsyncMock(side_effect=execute_script)
+    if remote:
+        monkeypatch.setattr(box, '_host_query_dir', lambda *args: None)
+    with pytest.raises(BoxExportError) as caught:
+        await box.collect_outbound_attachments(query)
+    error = caught.value.error
+    assert error.code == 'box.export.limit_exceeded' and error.retryable
+    assert error.details['limit_type'] == 'file_bytes'
+    assert error.details['limit'] == 3 and error.details['actual'] == 4
+    assert error.details['relative_paths'] == ['nested/answer.txt']
+    assert error.details['files_retained'] is True and error.details['suggested_action']
+    assert (outbox / 'nested' / 'answer.txt').read_bytes() == b'1234'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'stdout,code,actual',
+    [
+        ('[{"name":', 'box.export.invalid_response', None),
+        ('not json', 'box.export.invalid_response', None),
+        (
+            '[{\n... [raw output clipped at 1048576 bytes, 12 bytes discarded]',
+            'box.export.transport_truncated',
+            1048588,
+        ),
+        ('[{\n... [output clipped at 1048576 bytes]', 'box.export.transport_truncated', None),
+    ],
+)
+async def test_only_explicit_transport_clipping_is_repairable(env, monkeypatch, stdout, code, actual):
+    from langbot.pkg.box.export_errors import BoxExportError
+
+    box, query, outbox = env
+    (outbox / 'answer.txt').write_bytes(b'keep')
+    monkeypatch.setattr(box, '_host_query_dir', lambda *args: None)
+    box.client.execute = AsyncMock(return_value=result(stdout))
+    with pytest.raises(BoxExportError) as caught:
+        await box.collect_outbound_attachments(query)
+    assert caught.value.error.code == code
+    assert caught.value.error.retryable is (code == 'box.export.transport_truncated')
+    assert caught.value.error.details['actual'] == actual
+    assert (outbox / 'answer.txt').read_bytes() == b'keep'
+
+
+def test_untrusted_script_error_is_not_classified_as_a_quota_failure():
+    from langbot.pkg.box.export_errors import script_export_error
+
+    payload = 'LANGBOT_OUTBOX_LIMIT:' + json.dumps({'kind': 'file_count', 'limit': 20, 'actual': 21, 'path': 'a.txt'})
+    assert script_export_error(payload, 73, {'file_count': 20}) is not None
+    assert script_export_error(payload, 1, {'file_count': 20}) is None
+    assert script_export_error(payload, 73, {'file_count': 10}) is None
+    assert script_export_error(payload.replace('a.txt', '../a'), 73, {'file_count': 20}) is None

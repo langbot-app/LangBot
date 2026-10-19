@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from langbot_plugin.api.entities.builtin.platform import message as pm
 from langbot_plugin.api.entities.builtin.runner.box import BoxAcquireRequest
 from langbot_plugin.box.errors import BoxValidationError
+from .export_errors import export_error
 
 
 @dataclass
@@ -25,6 +26,7 @@ class RunBoxBinding:
     submitted: set = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     read_only_mounts: list[dict] = field(default_factory=list)
+    exported_fingerprints: dict = field(default_factory=dict)
 
 
 def prepare_input_files(query, agent_input):
@@ -217,26 +219,48 @@ class RunnerBoxService:
         binding = binding_for(query)
         async with binding.lock:
             items = await self.box.collect_outbound_attachments(query, clear=False)
-            if len(binding.exported) + len(items) > 100:
-                raise BoxValidationError('At most 100 output files may be exported per run')
-            total_bytes = sum(x['size'] for x in binding.exported.values())
-            pending = {}
+            unseen = {}
             for item in items:
-                size = len(base64.b64decode(item['base64'].split(';base64,')[-1]))
-                total_bytes += size
-                if total_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
-                    raise BoxValidationError('Output files exceed the per-run byte limit')
+                data = base64.b64decode(item['base64'].split(';base64,')[-1])
+                fingerprint = (item.get('_outbox_path', item['name']), item['type'], hashlib.sha256(data).hexdigest())
+                if fingerprint not in binding.exported_fingerprints:
+                    unseen[fingerprint] = (item, len(data))
+            if len(binding.exported) + len(unseen) > 100:
+                first = next(iter(unseen.values()))[0]
+                raise export_error(
+                    'run_files',
+                    limit=100,
+                    actual=len(binding.exported) + len(unseen),
+                    remaining=max(0, 100 - len(binding.exported)),
+                    path=first.get('_outbox_path', first['name']),
+                )
+            total_bytes = sum(x['size'] for x in binding.exported.values())
+            batch_bytes = sum(size for _, size in unseen.values())
+            if unseen and total_bytes + batch_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
+                first = next(iter(unseen.values()))[0]
+                raise export_error(
+                    'run_bytes',
+                    limit=self.box._ATTACHMENT_MAX_TOTAL_BYTES,
+                    actual=total_bytes + batch_bytes,
+                    remaining=max(0, self.box._ATTACHMENT_MAX_TOTAL_BYTES - total_bytes),
+                    path=first.get('_outbox_path', first['name']),
+                )
+            pending = {}
+            fingerprints = {}
+            for fingerprint, (item, size) in unseen.items():
                 key = str(uuid.uuid4())
                 pending[key] = {
                     **item,
                     'id': key,
                     'size': size,
                 }
+                fingerprints[fingerprint] = key
             binding.exported.update(pending)
+            binding.exported_fingerprints.update(fingerprints)
             await self.box.clear_outbound_attachments(query)
             return {
                 'items': [
-                    {k: v for k, v in item.items() if k != 'base64'}
+                    {k: v for k, v in item.items() if k not in {'base64', '_outbox_path'}}
                     for key, item in binding.exported.items()
                     if key not in binding.submitted
                 ]

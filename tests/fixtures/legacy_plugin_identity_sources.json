@@ -1,6 +1,6 @@
 {
   "repository": "langbot-app/langbot-plugins",
-  "revision": "d3067ad80c00c786febbca85b4649310b26f578a",
+  "revision": "c19dfce7332191f9db465a9796f00fbbfbe48890",
   "contract": "Current dedicated-workspace and trusted shared-installation identity; see each plugin SHARED_RUNTIME.md.",
   "files": {
     "Runner/dify-agent/components/runner/default.py": "8ca64052fb8df872272726aa060e21ba3b4afa454346b6babcc7e9d2df600980",
@@ -18,16 +18,16 @@
   },
   "local_agent_files": {
     "Runner/LocalAgent/assets/icon.svg": "7e1cb51793e898fca810ec72ba6fe9af377074f52139cdd56c93e87f3459f964",
-    "Runner/LocalAgent/components/runner/default.py": "8d5f15b2c0e5ae1eb76ef22eed922526da588ed791834a090eb95125458d3805",
+    "Runner/LocalAgent/components/runner/default.py": "42846a673546d50e740e7e3892e972724c63c038b2a0cfdd855c23d5d8e552d6",
     "Runner/LocalAgent/components/runner/default.yaml": "c1364cf0f211162bb701e27ed92b351fd9ff4cfa0b4469cfeb83ad58136cdf47",
     "Runner/LocalAgent/main.py": "0cde45d7f6f411563fbded09be70d0a497c7c7999b5eaa27f83052383348277f",
     "Runner/LocalAgent/manifest.yaml": "e71e03f2670dade9ae43e58ddf787bb87254ba9f05e1a691822679f3641bb885",
     "Runner/LocalAgent/pkg/__init__.py": "ce5142b4971e8d7945fb3c202bacbc28011b033de0ddcb612d5d29106d6985ec",
     "Runner/LocalAgent/pkg/agent_core/__init__.py": "56e95f2391f796e17aee6a168603853ea78b59df97a136bfa33532aede2fa413",
     "Runner/LocalAgent/pkg/agent_core/langbot.py": "def70b57cb142c28b7b3c3ae5f13d906be15836149e7be8ecaa7ca1e87cd0505",
-    "Runner/LocalAgent/pkg/agent_core/loop.py": "a9ba16c83bd9d9a8e76f00e94834d92e37ccc390d441d31d2a7f234fa1b36f7d",
+    "Runner/LocalAgent/pkg/agent_core/loop.py": "fc0db2eac2125028af87c52aa42fc93d4c355b45fcbea32b0c521184a4cba152",
     "Runner/LocalAgent/pkg/agent_core/types.py": "df82b1a17cd2b73f65ebbde22ab8f204ffd27b8d68814b404a1ecce9988e1fcf",
-    "Runner/LocalAgent/pkg/box.py": "afd11b20f7982ff92237014c302d763b07fb18aca84c6fb8981a2b8952865974",
+    "Runner/LocalAgent/pkg/box.py": "896aa25946432a3452b348f8d22666eb91f079a9bebf889d6c6a1deedf5f4c92",
     "Runner/LocalAgent/pkg/config.py": "8dee31aecbcdba4c1e79e1735499c3c7ee826ec395032b045169652b38216faf",
     "Runner/LocalAgent/pkg/context_pipeline.py": "8f338aa10e9ee384719f215f6e87607baa6caae970fd0aab04303103502c5298",
     "Runner/LocalAgent/pkg/messages.py": "620a0a225e95c5f2c8c6e977801413e553d4a1da3fb2ddea14e527ad41f7a3af",

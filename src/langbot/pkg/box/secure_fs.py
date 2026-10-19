@@ -14,6 +14,11 @@ class UnsafeWorkspacePathError(OSError):
 class WorkspaceReadLimitError(ValueError):
     """The outbox cannot be read completely within the export limits."""
 
+    def __init__(self, kind: str, limit: int, actual: int, path: str = '', *, lower_bound: bool = False):
+        self.kind, self.limit, self.actual, self.path = kind, limit, actual, path
+        self.lower_bound = lower_bound
+        super().__init__(f'Sandbox outbox exceeds the {kind} limit')
+
 
 _DIRECTORY_FLAGS = (
     os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
@@ -189,14 +194,16 @@ def _read_directory(
     total: list[int],
     remaining_entries: list[int],
     remaining_directories: list[int],
+    max_entries: int,
+    max_directories: int,
     depth: int,
 ) -> None:
     if depth > 8:
-        raise WorkspaceReadLimitError('Sandbox outbox exceeds the directory-depth limit')
+        raise WorkspaceReadLimitError('depth', 8, depth, prefix, lower_bound=True)
     with os.scandir(directory_fd) as iterator:
         for entry in iterator:
             if remaining_entries[0] <= 0:
-                raise WorkspaceReadLimitError('Sandbox outbox exceeds the directory-entry limit')
+                raise WorkspaceReadLimitError('entries', max_entries, max_entries + 1, prefix, lower_bound=True)
             remaining_entries[0] -= 1
             name = _component(entry.name)
             relative = f'{prefix}/{name}' if prefix else name
@@ -204,7 +211,9 @@ def _read_directory(
                 continue
             if entry.is_dir(follow_symlinks=False):
                 if remaining_directories[0] <= 0:
-                    raise WorkspaceReadLimitError('Sandbox outbox exceeds the directory limit')
+                    raise WorkspaceReadLimitError(
+                        'directories', max_directories, max_directories + 1, relative, lower_bound=True
+                    )
                 remaining_directories[0] -= 1
                 child_fd = os.open(name, _DIRECTORY_FLAGS, dir_fd=directory_fd)
                 try:
@@ -218,6 +227,8 @@ def _read_directory(
                         total=total,
                         remaining_entries=remaining_entries,
                         remaining_directories=remaining_directories,
+                        max_entries=max_entries,
+                        max_directories=max_directories,
                         depth=depth + 1,
                     )
                 finally:
@@ -231,16 +242,22 @@ def _read_directory(
                 if not stat.S_ISREG(metadata.st_mode):
                     continue
                 if len(output) >= max_files:
-                    raise WorkspaceReadLimitError('Sandbox outbox exceeds the file-count limit')
+                    raise WorkspaceReadLimitError('file_count', max_files, len(output) + 1, relative, lower_bound=True)
                 if metadata.st_size > max_file_bytes:
-                    raise WorkspaceReadLimitError('Sandbox outbox exceeds the per-file byte limit')
+                    raise WorkspaceReadLimitError('file_bytes', max_file_bytes, metadata.st_size, relative)
                 remaining = max_total_bytes - total[0]
                 if metadata.st_size > remaining:
-                    raise WorkspaceReadLimitError('Sandbox outbox exceeds the total-byte limit')
+                    raise WorkspaceReadLimitError(
+                        'collection_bytes', max_total_bytes, total[0] + metadata.st_size, relative, lower_bound=True
+                    )
                 with os.fdopen(file_fd, 'rb', closefd=False) as file_obj:
                     data = file_obj.read(max_file_bytes + 1)
-                if len(data) > max_file_bytes or len(data) > remaining:
-                    raise WorkspaceReadLimitError('Sandbox outbox exceeds the byte limits')
+                if len(data) > max_file_bytes:
+                    raise WorkspaceReadLimitError('file_bytes', max_file_bytes, len(data), relative, lower_bound=True)
+                if len(data) > remaining:
+                    raise WorkspaceReadLimitError(
+                        'collection_bytes', max_total_bytes, total[0] + len(data), relative, lower_bound=True
+                    )
                 output.append((relative, data))
                 total[0] += len(data)
             finally:
@@ -277,6 +294,8 @@ def read_regular_files(
                 total=[0],
                 remaining_entries=[max_entries],
                 remaining_directories=[max_directories],
+                max_entries=max_entries,
+                max_directories=max_directories,
                 depth=0,
             )
     except UnsafeWorkspacePathError as exc:

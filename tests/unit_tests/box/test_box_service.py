@@ -1938,7 +1938,7 @@ class TestAttachmentHelpers:
             {'name': 'report.pdf', 'b64': 'CCC'},
             {'name': 'sub/dir/photo.JPG', 'b64': 'DDD'},
             {'name': 'noext', 'b64': 'EEE'},
-            {'name': 'skip', 'b64': ''},  # dropped (no payload)
+            {'name': 'empty.txt', 'b64': ''},  # valid zero-byte file
         ]
         out = BoxService._classify_outbound_entries(entries)
         by_name = {a['name']: a for a in out}
@@ -1951,7 +1951,7 @@ class TestAttachmentHelpers:
         # nested path collapses to basename, case-insensitive ext
         assert by_name['photo.JPG']['type'] == 'Image'
         assert by_name['noext']['type'] == 'File'
-        assert 'skip' not in by_name
+        assert by_name['empty.txt']['base64'] == ''
 
     @pytest.mark.asyncio
     async def test_component_to_bytes_from_data_uri(self):

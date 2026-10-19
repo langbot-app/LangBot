@@ -23,11 +23,17 @@ def outbox_script(
         'max_total_bytes': max_total_bytes,
     }
     return f'settings = {settings!r}\n' + textwrap.dedent("""\
-        import base64, errno, json, os, stat
+        import base64, errno, json, os, stat, sys
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
         out = []
         budget = {'entries': 512, 'directories': 64, 'bytes': 0}
+
+        def reject(kind, limit, actual, path):
+            failure = {'kind': kind, 'limit': limit, 'actual': actual, 'path': path}
+            print('Sandbox outbox exceeds the ' + kind.replace('_', '-') + ' limit', file=sys.stderr)
+            print('LANGBOT_OUTBOX_LIMIT:' + json.dumps(failure), file=sys.stderr)
+            raise SystemExit(73)
 
         def component(value):
             if (not value or value in {'.', '..'} or len(os.fsencode(value)) > 240
@@ -37,11 +43,11 @@ def outbox_script(
 
         def read_directory(fd, prefix='', depth=0):
             if depth > 8:
-                raise RuntimeError('Sandbox outbox exceeds the depth limit')
+                reject('depth', 8, depth, prefix)
             with os.scandir(fd) as entries:
                 for entry in entries:
                     if budget['entries'] <= 0:
-                        raise RuntimeError('Sandbox outbox exceeds the directory-entry limit')
+                        reject('entries', 512, 513, prefix)
                     budget['entries'] -= 1
                     name = component(entry.name)
                     relative = prefix + '/' + name if prefix else name
@@ -49,7 +55,7 @@ def outbox_script(
                         continue
                     if entry.is_dir(follow_symlinks=False):
                         if budget['directories'] <= 0:
-                            raise RuntimeError('Sandbox outbox exceeds the directory limit')
+                            reject('directories', 64, 65, relative)
                         budget['directories'] -= 1
                         flags = directory_flags
                     elif entry.is_file(follow_symlinks=False):
@@ -70,14 +76,18 @@ def outbox_script(
                         if not stat.S_ISREG(metadata.st_mode):
                             continue
                         if len(out) >= settings['max_files']:
-                            raise RuntimeError('Sandbox outbox exceeds the file-count limit')
+                            reject('file_count', settings['max_files'], len(out) + 1, relative)
                         remaining = settings['max_total_bytes'] - budget['bytes']
-                        if metadata.st_size > settings['max_file_bytes'] or metadata.st_size > remaining:
-                            raise RuntimeError('Sandbox output attachment exceeds the export size limit')
+                        if metadata.st_size > settings['max_file_bytes']:
+                            reject('file_bytes', settings['max_file_bytes'], metadata.st_size, relative)
+                        if metadata.st_size > remaining:
+                            reject('collection_bytes', settings['max_total_bytes'], budget['bytes'] + metadata.st_size, relative)
                         with os.fdopen(child_fd, 'rb', closefd=False) as source:
                             data = source.read(settings['max_file_bytes'] + 1)
-                        if len(data) > settings['max_file_bytes'] or len(data) > remaining:
-                            raise RuntimeError('Sandbox output attachment exceeds the export size limit')
+                        if len(data) > settings['max_file_bytes']:
+                            reject('file_bytes', settings['max_file_bytes'], len(data), relative)
+                        if len(data) > remaining:
+                            reject('collection_bytes', settings['max_total_bytes'], budget['bytes'] + len(data), relative)
                         out.append({'name': relative, 'b64': base64.b64encode(data).decode('ascii')})
                         budget['bytes'] += len(data)
                     finally:

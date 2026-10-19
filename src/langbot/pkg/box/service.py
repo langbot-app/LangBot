@@ -20,6 +20,7 @@ from langbot_plugin.box.security import BOX_SHARED_WORKSPACE_PROBE_PREFIX
 from .admission import SandboxAdmissionController, require_cloud_admission_policy
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
+from .export_errors import export_error, script_export_error, transport_export_error
 from ..utils import httpclient
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
@@ -1157,7 +1158,7 @@ class BoxService:
         except OSError as exc:
             raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
 
-        attachments = self._classify_outbound_entries(entries)
+        attachments = self._classify_outbound_entries(entries, include_source_path=not clear)
 
         # A successful empty read still clears stale state, but an incomplete
         # read must never reach cleanup. Export can be retried after the failure.
@@ -1192,7 +1193,9 @@ class BoxService:
         except secure_fs.UnsafeWorkspacePathError as exc:
             raise BoxValidationError('Sandbox outbox contains an unsafe symbolic link') from exc
         except secure_fs.WorkspaceReadLimitError as exc:
-            raise BoxValidationError(str(exc)) from exc
+            raise export_error(
+                exc.kind, limit=exc.limit, actual=exc.actual, path=exc.path, lower_bound=exc.lower_bound
+            ) from exc
         return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
@@ -1228,13 +1231,26 @@ class BoxService:
         except Exception as exc:
             raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
         if not result.ok:
-            if 'Sandbox outbox exceeds ' in (result.stderr or '') or (
-                'Sandbox output attachment exceeds the export size limit' in (result.stderr or '')
-            ):
-                raise BoxValidationError('Sandbox outbox exceeds the export or traversal limits; files were retained')
+            failure = script_export_error(
+                result.stderr or '',
+                result.exit_code,
+                {
+                    'file_bytes': max_file_bytes,
+                    'collection_bytes': max_total_bytes,
+                    'file_count': max_files,
+                    'depth': 8,
+                    'entries': 512,
+                    'directories': 64,
+                },
+            )
+            if failure is not None:
+                raise failure
             raise BoxValidationError(
                 f'Failed to read sandbox outbox (exit code {result.exit_code}); output files were retained'
             )
+        truncated = transport_export_error(result.stdout)
+        if truncated is not None:
+            raise truncated
         try:
             entries = json.loads(result.stdout)
             if not isinstance(entries, list) or len(entries) > max_files:
@@ -1253,9 +1269,7 @@ class BoxService:
                 if size > max_file_bytes or total_bytes > max_total_bytes:
                     raise ValueError('File payload exceeds export limits')
         except (TypeError, ValueError, OSError, binascii.Error) as exc:
-            raise BoxValidationError(
-                'Sandbox outbox returned invalid attachment data; output files were retained'
-            ) from exc
+            raise export_error('invalid_response') from exc
         return entries
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
@@ -1316,7 +1330,7 @@ class BoxService:
             self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
 
     @staticmethod
-    def _classify_outbound_entries(entries: list[dict]) -> list[dict]:
+    def _classify_outbound_entries(entries: list[dict], *, include_source_path: bool = False) -> list[dict]:
         """Classify outbox files into Image/Voice/File component descriptors."""
         image_exts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
         voice_exts = {'wav', 'mp3', 'silk', 'amr', 'ogg', 'm4a', 'aac'}
@@ -1332,17 +1346,20 @@ class BoxService:
         for entry in entries or []:
             name = str(entry.get('name', '') or '')
             b64 = entry.get('b64')
-            if not name or not b64:
+            if not name or not isinstance(b64, str):
                 continue
             ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
             base_name = os.path.basename(name)
             if ext in image_exts:
                 mime = mime_by_ext.get(ext, 'image/png')
-                attachments.append({'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'})
+                item = {'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'}
             elif ext in voice_exts:
-                attachments.append({'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'})
+                item = {'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'}
             else:
-                attachments.append({'type': 'File', 'name': base_name, 'base64': b64})
+                item = {'type': 'File', 'name': base_name, 'base64': b64}
+            if include_source_path:
+                item['_outbox_path'] = name
+            attachments.append(item)
         return attachments
 
     async def shutdown(self):
