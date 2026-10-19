@@ -399,3 +399,36 @@ def test_untrusted_script_error_is_not_classified_as_a_quota_failure():
     assert script_export_error(payload, 1, {'file_count': 20}) is None
     assert script_export_error(payload, 73, {'file_count': 10}) is None
     assert script_export_error(payload.replace('a.txt', '../a'), 73, {'file_count': 20}) is None
+
+
+@pytest.mark.asyncio
+async def test_selected_file_quota_reports_absolute_sandbox_path_and_retains_batch(env, monkeypatch):
+    from langbot.pkg.box.export_errors import BoxExportError
+
+    box, query, outbox = env
+    (outbox / 'answer.txt').write_bytes(b'1234')
+    (outbox / 'keep.txt').write_bytes(b'unselected')
+    monkeypatch.setattr(box, '_ATTACHMENT_MAX_BYTES', 3)
+    box.client.execute = AsyncMock(side_effect=execute_script)
+    path = str(outbox / 'answer.txt')
+    with pytest.raises(BoxExportError) as caught:
+        await box.collect_selected_files(query, [path])
+    details = caught.value.error.details
+    assert details['limit_type'] == 'file_bytes'
+    assert details['limit'] == 3 and details['actual'] == 4
+    assert details['sandbox_paths'] == [path] and details['relative_paths'] == []
+    assert details['files_retained'] is True
+    assert (outbox / 'answer.txt').read_bytes() == b'1234'
+    assert (outbox / 'keep.txt').read_bytes() == b'unselected'
+
+
+@pytest.mark.asyncio
+async def test_directory_export_still_rejects_absolute_response_paths(env, monkeypatch):
+    from langbot.pkg.box.export_errors import BoxExportError
+
+    box, query, outbox = env
+    monkeypatch.setattr(box, '_host_query_dir', lambda *args: None)
+    box.client.execute = AsyncMock(return_value=result('[{"name":"/unrequested","b64":"YQ=="}]'))
+    with pytest.raises(BoxExportError) as caught:
+        await box.collect_outbound_attachments(query)
+    assert caught.value.error.code == 'box.export.invalid_response'

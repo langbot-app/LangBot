@@ -6,8 +6,12 @@ import textwrap
 def selected_files_script(paths, *, max_file_bytes, max_total_bytes, cleanup=None):
     settings = dict(paths=paths, max_file_bytes=max_file_bytes, max_total_bytes=max_total_bytes, cleanup=cleanup)
     return f'settings = {settings!r}\n' + textwrap.dedent("""\
-        import os, stat, json, base64, hashlib
+        import os, stat, json, base64, hashlib, sys
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        def reject(kind, limit, actual, path):
+            print('LANGBOT_OUTBOX_LIMIT:' + json.dumps(dict(kind=kind, limit=limit, actual=actual, path=path)), file=sys.stderr)
+            raise SystemExit(73)
+
         result = []
         total = 0
         for path in settings['paths']:
@@ -26,11 +30,13 @@ def selected_files_script(paths, *, max_file_bytes, max_total_bytes, cleanup=Non
                     if not stat.S_ISREG(metadata.st_mode):
                         raise ValueError('Not a regular file: ' + path)
                     if metadata.st_size > settings['max_file_bytes']:
-                        raise ValueError(f"File {path}: {metadata.st_size} bytes exceeds {settings['max_file_bytes']}")
+                        reject('file_bytes', settings['max_file_bytes'], metadata.st_size, path)
                     data = source.read(settings['max_file_bytes'] + 1)
                     total += len(data)
-                    if len(data) > settings['max_file_bytes'] or total > settings['max_total_bytes']:
-                        raise ValueError(f"Export size exceeded at {path}; total={total}, limit={settings['max_total_bytes']}")
+                    if len(data) > settings['max_file_bytes']:
+                        reject('file_bytes', settings['max_file_bytes'], len(data), path)
+                    if total > settings['max_total_bytes']:
+                        reject('collection_bytes', settings['max_total_bytes'], total, path)
                     digest = hashlib.sha256(data).hexdigest()
                     if settings['cleanup'] is not None:
                         current = os.stat(parts[-1], dir_fd=fd, follow_symlinks=False)

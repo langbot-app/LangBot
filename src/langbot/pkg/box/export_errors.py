@@ -38,6 +38,7 @@ def export_error(
     path: str = '',
     lower_bound: bool = False,
     remaining: int | None = None,
+    absolute_path: bool = False,
 ) -> BoxExportError:
     if kind in LIMIT_LABELS:
         code = 'box.export.limit_exceeded'
@@ -68,7 +69,8 @@ def export_error(
                 'actual': actual,
                 'actual_is_lower_bound': lower_bound,
                 'remaining': remaining,
-                'relative_paths': [path] if path else [],
+                'relative_paths': [path] if path and not absolute_path else [],
+                'sandbox_paths': [path] if path and absolute_path else [],
                 'files_retained': True,
                 'suggested_action': action,
             },
@@ -76,7 +78,9 @@ def export_error(
     )
 
 
-def script_export_error(stderr: str, exit_code: int, limits: dict[str, int]) -> BoxExportError | None:
+def script_export_error(
+    stderr: str, exit_code: int, limits: dict[str, int], *, selected_paths: list[str] | None = None
+) -> BoxExportError | None:
     if exit_code != SCRIPT_ERROR_EXIT_CODE or len(stderr) > 8192:
         return None
     line = stderr.strip().splitlines()[-1] if stderr.strip() else ''
@@ -93,13 +97,16 @@ def script_export_error(stderr: str, exit_code: int, limits: dict[str, int]) -> 
             or actual <= limit
             or not isinstance(path, str)
             or len(path) > 2400
-            or path.startswith('/')
+            or (selected_paths is None and path.startswith('/'))
+            or (selected_paths is not None and path not in selected_paths)
             or '\\' in path
             or '\x00' in path
             or '..' in path.split('/')
         ):
             return None
-        return export_error(kind, limit=limit, actual=actual, path=path, lower_bound=True)
+        return export_error(
+            kind, limit=limit, actual=actual, path=path, lower_bound=True, absolute_path=selected_paths is not None
+        )
     except (ValueError, TypeError, KeyError):
         return None
 

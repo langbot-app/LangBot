@@ -1246,6 +1246,7 @@ class BoxService:
                     'entries': 512,
                     'directories': 64,
                 },
+                selected_paths=paths,
             )
             if failure is not None:
                 raise failure
@@ -1264,6 +1265,8 @@ class BoxService:
             for entry in entries:
                 if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
                     raise ValueError('Invalid file entry')
+                if paths is None and entry['name'].startswith('/'):
+                    raise ValueError('Expected a relative outbox path')
                 if paths is not None and entry['name'] not in paths:
                     raise ValueError('Unexpected exported path')
                 for component in entry['name'].lstrip('/').split('/'):

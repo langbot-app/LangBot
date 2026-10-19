@@ -234,3 +234,7 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+# Coordinated explicit-export API from langbot-plugin-sdk PR #180.
+[tool.uv.sources]
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git", rev = "b300830b0e5339e7989be237efa811bedf761d55" }

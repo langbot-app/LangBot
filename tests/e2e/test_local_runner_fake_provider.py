@@ -1030,7 +1030,8 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
 
 
 @pytest.mark.parametrize(
-    'scenario', ['normal', 'repair', 'streaming', 'exhausted', 'cleanup', 'invalid', 'timeout', 'cancelled']
+    'scenario',
+    ['normal', 'repair', 'streaming', 'tool_limit', 'cleanup', 'invalid', 'timeout', 'cancelled', 'no_export'],
 )
 @pytest.mark.contract('agent_box')
 def test_local_runner_owns_box_reuse_and_explicit_files(
@@ -1045,7 +1046,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
     import base64
     from unittest.mock import AsyncMock
 
-    repair_export = scenario in {'repair', 'streaming', 'exhausted', 'cancelled'}
+    repair_export = scenario in {'repair', 'streaming', 'tool_limit', 'cancelled'}
     from langbot_plugin.box.backend import DockerBackend
     from langbot_plugin.box.runtime import BoxRuntime
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
@@ -1102,14 +1103,9 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             import shlex
 
             directory_mode = '-m 700 ' if len(self.calls_by_run) == 2 else ''
-            extra = ''
-            if repair_export:
-                if self.calls_by_run[binding.run_id] == 1:
-                    extra = (
-                        f' && for i in $(seq 1 20); do cp {shlex.quote(source)} {shlex.quote(outbox)}/extra-$i; done'
-                    )
-                elif scenario != 'exhausted':
-                    extra = f' && rm {shlex.quote(outbox)}/extra-*'
+            extra = f' && printf KEEP > {shlex.quote(outbox + "/keep.txt")}'
+            if repair_export and self.calls_by_run[binding.run_id] == 1:
+                extra += f' && printf 1234567890123456789012345 > {shlex.quote(outbox + "/answer.txt")}'
             result = await self.box.execute_tool(
                 {
                     'command': (
@@ -1146,10 +1142,12 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
         box = BoxService(ap, client=Client(ap.logger, runtime))
         ap.box_service = box
         await box.initialize()
-        collect = box.collect_outbound_attachments
+        if repair_export:
+            box._ATTACHMENT_MAX_BYTES = 8
+        collect = box.collect_selected_files
         export_calls = []
 
-        async def observed_collect(query, **kwargs):
+        async def observed_collect(query, paths):
             export_calls.append(query._box_binding.run_id)
             if scenario == 'cancelled' and export_calls.count(query._box_binding.run_id) == 2:
                 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
@@ -1168,12 +1166,14 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             if scenario == 'timeout':
                 await asyncio.sleep(6)
                 raise TimeoutError('Injected stalled export')
-            return await collect(query, **kwargs)
+            return await collect(query, paths)
 
-        box.collect_outbound_attachments = observed_collect
+        box.collect_selected_files = observed_collect
         if scenario == 'cleanup':
             # A failed best-effort cleanup leaves successfully accepted files.
-            box._clear_outbox = AsyncMock()
+            box.clear_selected_files = AsyncMock(
+                return_value='Files accepted, but cleanup failed; do not repeat delivery.'
+            )
         manager = ToolManager(box)
         ap.tool_mgr = manager
         fake = await _inject_fake_llm_model(ap)
@@ -1201,11 +1201,42 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
 
         try:
             for index in range(2):
-                fake.queue_llm_responses(_scripted_tool_call('exec'), 'File is ready.')
-                if repair_export:
-                    fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair-1'), 'Repaired file is ready.')
-                    if scenario == 'exhausted':
-                        fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair-2'), 'Still not repaired.')
+
+                def export_call(**kwargs):
+                    from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, Message, ToolCall
+
+                    return Message(
+                        role='assistant',
+                        content='',
+                        tool_calls=[
+                            ToolCall(
+                                id=f'export-{len(export_calls)}',
+                                type='function',
+                                function=FunctionCall(
+                                    name='export_box_files',
+                                    arguments=json.dumps(
+                                        {
+                                            'paths': [manager.outboxes[-1] + '/answer.txt'],
+                                        }
+                                    ),
+                                ),
+                            )
+                        ],
+                    )
+
+                fake.queue_llm_responses(_scripted_tool_call('exec'))
+                if scenario == 'no_export':
+                    fake.queue_llm_responses('Created the file without exporting it.')
+                else:
+                    fake.queue_llm_responses(export_call)
+                    if scenario in {'repair', 'streaming', 'cancelled'}:
+                        fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair'), export_call)
+                    elif scenario in {'cleanup', 'tool_limit'}:
+                        fake.queue_llm_responses(export_call)
+                    if scenario == 'tool_limit':
+                        fake.queue_llm_responses(export_call)
+                    elif scenario not in {'invalid', 'timeout', 'cancelled'}:
+                        fake.queue_llm_responses('File accepted.')
                 event = _event(
                     event_id=f'box-event-{index}',
                     conversation_id=f'box-conversation-{index}',
@@ -1227,16 +1258,16 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     binding.delivery_policy.enable_streaming = True
                 if scenario == 'timeout':
                     binding.runner_config['timeout'] = 5
+                if scenario == 'tool_limit':
+                    binding.runner_config['max-tool-iterations'] = 3
                 events = []
 
                 async def observe(result):
                     events.append(result)
                     if scenario == 'cleanup' and result['type'] == 'run.completed':
                         query = manager.queries[-1]
-                        accepted = set(query._box_binding.exported)
-                        assert len(accepted) == 1
-                        assert (await RunnerBoxService(box).export_files(query))['items'] == []
-                        assert set(query._box_binding.exported) == accepted
+                        assert len(query._box_binding.exported) == 1
+                        assert len(query._box_binding.submitted) == 1
 
                 from langbot.pkg.agent.runner.errors import RunnerExecutionError
 
@@ -1259,14 +1290,12 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     await assert_retained()
                     continue
                 assert len(terminals) == 1, events
-                if scenario in {'exhausted', 'invalid', 'cancelled'}:
+                if scenario in {'invalid', 'cancelled'}:
                     assert failure is not None
                     assert terminals[0]['type'] == 'run.failed', events
                     assert not any(e['type'] == 'message.completed' for e in events), events
                     assert not any(message.attachments for message in messages), messages
-                    if scenario == 'exhausted':
-                        assert 'two repair opportunities' in terminals[0]['data']['error']
-                    elif scenario == 'cancelled':
+                    if scenario == 'cancelled':
                         assert terminals[0]['data']['code'] == 'cancelled'
                     else:
                         assert 'invalid attachment data' in terminals[0]['data']['error']
@@ -1279,37 +1308,51 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     deltas = [e for e in events if e['type'] == 'message.delta']
                     assert deltas and all(not e['data'].get('file_ids') for e in deltas)
                 output = [component for message in messages for component in (message.attachments or [])]
-                assert len(output) == 1, messages
-                assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
+                if scenario in {'tool_limit', 'no_export'}:
+                    assert not output, messages
+                    await assert_retained()
+                    if scenario == 'tool_limit':
+                        assert any('limit' in _message_text(message).lower() for message in messages)
+                else:
+                    assert len(output) == 1, messages
+                    assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
                 inspection = await box.execute_in_context(
                     context,
-                    {'cmd': f'ls -A {shlex.quote(manager.outboxes[-1])}', 'session_id': manager.bindings[-1][0]},
+                    {
+                        'cmd': f'ls -A {shlex.quote(manager.outboxes[-1])}',
+                        'session_id': manager.bindings[-1][0],
+                    },
                 )
-                assert inspection.exit_code == 0, inspection
-                assert inspection.stdout.strip() == ('answer.txt' if scenario == 'cleanup' else ''), inspection.stdout
+                assert inspection.ok, inspection
+                expected_files = {'keep.txt'}
+                if scenario in {'cleanup', 'tool_limit', 'no_export'}:
+                    expected_files.add('answer.txt')
+                assert set(inspection.stdout.split()) == expected_files
                 status = await RunnerBoxService(box).status(context)
                 assert status['used'] == 1 and status['remaining'] == 0, status
             assert manager.bindings[0][0] == manager.bindings[-1][0]
             assert manager.bindings[0][1] != manager.bindings[-1][1]
             if repair_export:
-                assert list(manager.calls_by_run.values()) == ([3, 3] if scenario == 'exhausted' else [2, 2])
-                assert any(
-                    'Attachment export failed' in text for payload in _invoke_payload_texts(fake) for text in payload
-                )
+                assert list(manager.calls_by_run.values()) == ([1, 1] if scenario == 'tool_limit' else [2, 2])
                 feedback = [
-                    text for payload in _invoke_payload_texts(fake) for text in payload if 'Host export details' in text
+                    text for payload in _invoke_payload_texts(fake) for text in payload if 'LANGBOT_EXPORT_V1:' in text
                 ]
-                assert feedback and all('"limit": 20' in text and '"actual": 21' in text for text in feedback)
-                assert all('"files_retained": true' in text for text in feedback)
+                assert feedback and all(
+                    '"limit":8' in text.replace(' ', '') and '"actual":25' in text.replace(' ', '') for text in feedback
+                )
+                assert all(
+                    'file_bytes' in text and 'answer.txt' in text and 'files_retained' in text for text in feedback
+                )
             expected_exports = {
                 'normal': 1,
                 'repair': 2,
                 'streaming': 2,
-                'exhausted': 3,
+                'tool_limit': 2,
                 'cleanup': 2,
                 'invalid': 1,
                 'timeout': 1,
                 'cancelled': 2,
+                'no_export': 0,
             }[scenario]
             assert len(export_calls) == 2 * expected_exports
             from langbot_plugin.box.errors import BoxCapacityExceededError

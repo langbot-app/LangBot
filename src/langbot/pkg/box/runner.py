@@ -246,6 +246,7 @@ class RunnerBoxService:
                     actual=len(binding.exported) + len(unseen),
                     remaining=max(0, 100 - len(binding.exported)),
                     path=first.get('_outbox_path', first['name']),
+                    absolute_path=True,
                 )
             total_bytes = sum(x['size'] for x in binding.exported.values())
             batch_bytes = sum(size for _, size in unseen.values())
@@ -257,6 +258,7 @@ class RunnerBoxService:
                     actual=total_bytes + batch_bytes,
                     remaining=max(0, self.box._ATTACHMENT_MAX_TOTAL_BYTES - total_bytes),
                     path=first.get('_outbox_path', first['name']),
+                    absolute_path=True,
                 )
             pending = {}
             fingerprints = {}
