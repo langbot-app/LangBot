@@ -212,8 +212,10 @@ test.describe('wizard and QR platform regressions', () => {
         pipelineCreateCount += 1;
       }
       if (
-        request.method() === 'PUT' &&
-        url.pathname === '/api/v1/platform/bots/bot-1'
+        (request.method() === 'POST' &&
+          url.pathname === '/api/v1/platform/bots') ||
+        (request.method() === 'PUT' &&
+          url.pathname === '/api/v1/platform/bots/bot-1')
       ) {
         const body = request.postDataJSON() as {
           event_bindings?: Array<{
@@ -227,7 +229,9 @@ test.describe('wizard and QR platform regressions', () => {
             item.event_pattern === 'message.received' &&
             item.target_type === 'pipeline',
         );
-        boundPipelineUuid = binding?.target_uuid ?? null;
+        if (body.event_bindings) {
+          boundPipelineUuid = binding?.target_uuid ?? null;
+        }
       }
     });
 
@@ -413,8 +417,10 @@ test.describe('wizard and QR platform regressions', () => {
         pipelineCreateCount += 1;
       }
       if (
-        request.method() === 'PUT' &&
-        url.pathname === '/api/v1/platform/bots/bot-1'
+        (request.method() === 'POST' &&
+          url.pathname === '/api/v1/platform/bots') ||
+        (request.method() === 'PUT' &&
+          url.pathname === '/api/v1/platform/bots/bot-1')
       ) {
         const body = request.postDataJSON() as {
           adapter_config?: { inbound_secret?: string };
@@ -430,7 +436,9 @@ test.describe('wizard and QR platform regressions', () => {
             item.event_pattern === 'message.received' &&
             item.target_type === 'pipeline',
         );
-        boundPipelineUuid = binding?.target_uuid ?? null;
+        if (body.event_bindings) {
+          boundPipelineUuid = binding?.target_uuid ?? null;
+        }
       }
     });
 

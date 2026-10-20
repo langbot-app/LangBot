@@ -23,6 +23,7 @@ import { UUID } from 'uuidjs';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
+import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import {
@@ -220,6 +221,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   ref,
 ) {
   const { t } = useTranslation();
+  const { refreshPipelines } = useSidebarData();
   const formSchema = getFormSchema(t);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -668,8 +670,30 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     };
 
     try {
+      // A failed metadata refresh must not prevent creating the bot.
+      const before = await httpClient.getPipelines().catch(() => null);
       const res = await httpClient.createBot(newBot);
-      toast.success(t('bots.createSuccess'));
+      const [created] = await Promise.all([
+        httpClient.getBot(res.uuid).catch(() => null),
+        refreshPipelines(),
+      ]);
+      const automaticallyCreatedPipeline =
+        before !== null &&
+        created?.bot.event_bindings?.some(
+          (binding) =>
+            binding.event_pattern === 'message.received' &&
+            binding.target_type === 'pipeline' &&
+            !before.pipelines.some(
+              (pipeline) => pipeline.uuid === binding.target_uuid,
+            ),
+        );
+      toast.success(
+        t(
+          automaticallyCreatedPipeline
+            ? 'bots.autoCreatedPipeline'
+            : 'bots.createSuccess',
+        ),
+      );
       onNewBotCreated(res.uuid);
     } catch (error) {
       const err = error as CustomApiError & {

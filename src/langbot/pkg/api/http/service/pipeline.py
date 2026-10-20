@@ -189,7 +189,7 @@ class PipelineService:
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
 
-        if 'config' not in pipeline_data:
+        if 'config' not in pipeline_data or pipeline_data['config'] == {}:
             pipeline_data['config'] = await self.get_default_pipeline_config(context)
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 

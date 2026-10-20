@@ -952,6 +952,8 @@ const jaJP = {
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     createSuccess: '作成が完了しました。イベントルーティングを設定してください',
+    autoCreatedPipeline:
+      'パイプラインを自動作成し、メッセージイベントに関連付けました',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
@@ -1020,7 +1022,7 @@ const jaJP = {
     dragEventRoute: 'ルート {{index}} をドラッグ',
     behaviorReplyMessages: '受信メッセージに返信',
     behaviorReplyMessagesDescription:
-      '受信メッセージをプロセッサーに渡します。',
+      '個別メッセージと、このボットにメンションしたグループメッセージを処理します。',
     behaviorWelcomeMembers: '新しいメンバーを歓迎',
     behaviorWelcomeMembersDescription:
       'グループへの参加時にプロセッサーを実行します。',
@@ -1247,6 +1249,9 @@ const jaJP = {
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
     addFilter: '条件を追加',
+    filterIsAtBot: 'このボットへのメンション',
+    mentionYes: 'はい',
+    mentionNo: 'いいえ',
     filterChatType: 'セッションタイプ',
     filterChatId: 'セッション ID',
     filterMessageText: 'メッセージ本文',

@@ -965,6 +965,8 @@ const esES = {
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
     createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
+    autoCreatedPipeline:
+      'Se ha creado un pipeline automáticamente y se han vinculado los eventos de mensajes',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
@@ -1034,7 +1036,7 @@ const esES = {
     dragEventRoute: 'Arrastrar ruta {{index}}',
     behaviorReplyMessages: 'Responder a mensajes',
     behaviorReplyMessagesDescription:
-      'Envía los mensajes entrantes a un procesador.',
+      'Procesa mensajes privados y mensajes de grupo que mencionen a este bot.',
     behaviorWelcomeMembers: 'Dar la bienvenida a nuevos miembros',
     behaviorWelcomeMembersDescription:
       'Ejecuta un procesador cuando alguien se une a un grupo.',
@@ -1261,6 +1263,9 @@ const esES = {
       'Deben cumplirse todas las condiciones. Déjalo vacío para activar siempre.',
     conditionsEmpty: 'Sin condiciones: siempre se activa.',
     addFilter: 'Añadir condición',
+    filterIsAtBot: 'Menciona a este bot',
+    mentionYes: 'Sí',
+    mentionNo: 'No',
     filterChatType: 'Tipo de sesión',
     filterChatId: 'ID de sesión',
     filterMessageText: 'Texto del mensaje',

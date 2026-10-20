@@ -16,8 +16,16 @@ stages:
           en_US: At
           zh_Hans: '@'
         description:
-          en_US: Whether to trigger when the message mentions the bot
-          zh_Hans: 是否在消息@机器人时触发
+          en_US: >-
+            Whether to trigger when the message @-mentions the bot (fallback filter
+            inside the pipeline). For new bots this check is handled earlier at the
+            routing layer via the is_at_bot filter — keeping it enabled here applies
+            it a second time. Use the group-filter migration assistant to move the
+            check to the routing layer and disable this option.
+          zh_Hans: >-
+            是否仅响应 @机器人 的群消息（流水线内部过滤，兜底用）。新建机器人的路由层已通过
+            is_at_bot 条件提前过滤，再启用此项会重复检查。建议使用群消息过滤迁移助手将过滤
+            前移到路由层后，再关闭此开关。
         type: boolean
         required: true
         default: false

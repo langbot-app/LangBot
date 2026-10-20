@@ -949,6 +949,8 @@ const viVN = {
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
+    autoCreatedPipeline:
+      'Đã tự động tạo pipeline và liên kết các sự kiện tin nhắn',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
@@ -1017,7 +1019,8 @@ const viVN = {
     commonScenarios: 'Tình huống phổ biến',
     dragEventRoute: 'Kéo tuyến {{index}}',
     behaviorReplyMessages: 'Trả lời tin nhắn',
-    behaviorReplyMessagesDescription: 'Gửi tin nhắn đến bộ xử lý.',
+    behaviorReplyMessagesDescription:
+      'Xử lý tin nhắn riêng và tin nhắn nhóm nhắc đến bot này.',
     behaviorWelcomeMembers: 'Chào mừng thành viên mới',
     behaviorWelcomeMembersDescription:
       'Chạy bộ xử lý khi có người tham gia nhóm.',
@@ -1235,6 +1238,9 @@ const viVN = {
       'Phải khớp mọi điều kiện để kích hoạt. Để trống để luôn kích hoạt.',
     conditionsEmpty: 'Không có điều kiện — luôn kích hoạt.',
     addFilter: 'Thêm điều kiện',
+    filterIsAtBot: 'Nhắc đến bot này',
+    mentionYes: 'Có',
+    mentionNo: 'Không',
     filterChatType: 'Loại phiên',
     filterChatId: 'ID phiên',
     filterMessageText: 'Nội dung tin nhắn',
