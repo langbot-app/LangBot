@@ -437,7 +437,6 @@ class AgentService:
                     'name': agent_data.get('name') or t('New Pipeline'),
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
-                    'config': {},
                 },
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}

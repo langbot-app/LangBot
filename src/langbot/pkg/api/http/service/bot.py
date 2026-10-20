@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import typing
 import json
+import asyncio
 import sqlalchemy
 
 from ....core import app
@@ -18,6 +19,7 @@ from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
 from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
+from ....i18n import t
 
 
 class BotService:
@@ -43,6 +45,7 @@ class BotService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+        self._default_pipeline_lock = asyncio.Lock()
 
     def _get_adapter_component(self, adapter_name: str) -> engine.Component | None:
         """Return the discovered platform adapter component for an adapter name."""
@@ -518,10 +521,16 @@ class BotService:
         do not match never create a pipeline task. Existing bots keep their
         current bindings; this only applies to bots created without any.
         """
-        pipelines = await self.ap.pipeline_service.get_pipelines(context)
-        if not pipelines:
-            return []
-        pipeline_uuid = pipelines[0].get('uuid')
+        # Serialize first-bot setup without retaining an unbounded lock per Workspace.
+        async with self._default_pipeline_lock:
+            pipelines = await self.ap.pipeline_service.get_pipelines(context)
+            if pipelines:
+                selected = next((item for item in pipelines if item.get('is_default')), pipelines[0])
+                pipeline_uuid = selected.get('uuid')
+            else:
+                pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
+                    context, {'name': t('New Pipeline'), 'description': '', 'emoji': '⚙️'}, default=True
+                )
         if not pipeline_uuid:
             return []
 

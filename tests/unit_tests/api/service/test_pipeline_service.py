@@ -249,7 +249,8 @@ class TestPipelineServiceCreatePipeline:
         with pytest.raises(ValueError, match='Maximum number of pipelines'):
             await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline'})
 
-    async def test_create_pipeline_no_limit(self):
+    @pytest.mark.parametrize('config_fields', [{}, {'config': {}}])
+    async def test_create_pipeline_no_limit(self, config_fields):
         """Creates pipeline without limit when max_pipelines=-1."""
         # Setup
         ap = SimpleNamespace()
@@ -276,7 +277,7 @@ class TestPipelineServiceCreatePipeline:
             with patch(
                 'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
             ):
-                bot_uuid = await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline'})
+                bot_uuid = await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline', **config_fields})
 
         # Verify
         assert bot_uuid is not None

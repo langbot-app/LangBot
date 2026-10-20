@@ -1029,7 +1029,7 @@ const ruRU = {
     dragEventRoute: 'Перетащить маршрут {{index}}',
     behaviorReplyMessages: 'Отвечать на сообщения',
     behaviorReplyMessagesDescription:
-      'Передавайте входящие сообщения обработчику.',
+      'Обрабатывать личные сообщения и сообщения группы с упоминанием этого бота.',
     behaviorWelcomeMembers: 'Приветствовать новых участников',
     behaviorWelcomeMembersDescription:
       'Запускайте обработчик при вступлении участника в группу.',
@@ -1259,6 +1259,9 @@ const ruRU = {
       'Для срабатывания должны выполняться все условия. Пустой список означает срабатывание всегда.',
     conditionsEmpty: 'Нет условий — срабатывает всегда.',
     addFilter: 'Добавить условие',
+    filterIsAtBot: 'Упоминает этого бота',
+    mentionYes: 'Да',
+    mentionNo: 'Нет',
     filterChatType: 'Тип сеанса',
     filterChatId: 'ID сеанса',
     filterMessageText: 'Текст сообщения',

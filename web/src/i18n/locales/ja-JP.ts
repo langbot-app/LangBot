@@ -1020,7 +1020,7 @@ const jaJP = {
     dragEventRoute: 'ルート {{index}} をドラッグ',
     behaviorReplyMessages: '受信メッセージに返信',
     behaviorReplyMessagesDescription:
-      '受信メッセージをプロセッサーに渡します。',
+      '個別メッセージと、このボットにメンションしたグループメッセージを処理します。',
     behaviorWelcomeMembers: '新しいメンバーを歓迎',
     behaviorWelcomeMembersDescription:
       'グループへの参加時にプロセッサーを実行します。',
@@ -1247,6 +1247,9 @@ const jaJP = {
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
     addFilter: '条件を追加',
+    filterIsAtBot: 'このボットへのメンション',
+    mentionYes: 'はい',
+    mentionNo: 'いいえ',
     filterChatType: 'セッションタイプ',
     filterChatId: 'セッション ID',
     filterMessageText: 'メッセージ本文',

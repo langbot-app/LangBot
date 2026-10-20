@@ -778,7 +778,6 @@ class TestAgentServiceCreateUpdateDelete:
                 'name': 'Pipeline Agent',
                 'description': 'Legacy pipeline',
                 'emoji': 'P',
-                'config': {},
             },
         )
         app.pipeline_service.update_pipeline.assert_awaited_once_with(

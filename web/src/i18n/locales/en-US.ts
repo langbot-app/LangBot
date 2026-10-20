@@ -1018,7 +1018,8 @@ const enUS = {
     commonScenarios: 'Common scenarios',
     dragEventRoute: 'Drag route {{index}}',
     behaviorReplyMessages: 'Reply to messages',
-    behaviorReplyMessagesDescription: 'Send incoming messages to a processor.',
+    behaviorReplyMessagesDescription:
+      'Handle private messages and group messages that mention this bot.',
     behaviorWelcomeMembers: 'Welcome new members',
     behaviorWelcomeMembersDescription:
       'Run a processor when someone joins a group.',
@@ -1242,6 +1243,9 @@ const enUS = {
       'All conditions must match to trigger this binding. Leave empty to always trigger.',
     conditionsEmpty: 'No conditions — always triggers.',
     addFilter: 'Add condition',
+    filterIsAtBot: 'Mentions this bot',
+    mentionYes: 'Yes',
+    mentionNo: 'No',
     filterChatType: 'Session type',
     filterChatId: 'Session ID',
     filterMessageText: 'Message text',
