@@ -2060,7 +2060,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 query = query.where(source.c.timestamp <= end_time)
             return await self._conversation_projection_page(
                 workspace_uuid,
-                query.order_by(source.c.timestamp.desc(), source.c.id.desc()),
+                query.order_by(source.c.timestamp.desc(), source.c.id.desc(), source.c._source),
                 limit,
                 offset,
             )

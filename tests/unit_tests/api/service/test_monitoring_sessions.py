@@ -979,6 +979,232 @@ async def test_conversation_detail_dedup_uses_point_indexes(service):
     assert 'sqlite_autoindex_monitoring_messages_1' in plan
 
 
+async def test_conversation_page_does_not_materialize_old_payloads(service):
+    """A small page must work even when historical rows exceed SQLite's read limit."""
+    import sqlite3
+
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    engine = service.ap.persistence_mgr.get_db_engine()
+    now = dt.datetime(2026, 1, 2)
+    payload = 'historical payload ' * 16384
+    messages = [
+        dict(
+            id=f'old-{index}',
+            workspace_uuid='workspace',
+            **resource('a'),
+            session_id='group_42',
+            timestamp=now - dt.timedelta(days=1),
+            message_content=payload,
+            variables=payload,
+            role='user',
+            status='success',
+            level='info',
+        )
+        for index in range(16)
+    ]
+    for identity in ('new-a', 'new-b', 'new-c'):
+        messages.append(
+            dict(
+                id=identity,
+                workspace_uuid='workspace',
+                **resource('a'),
+                session_id='group_42',
+                timestamp=now,
+                message_content=identity,
+                variables='{"delivery":true}',
+                role='assistant' if identity == 'new-c' else 'user',
+                status='success',
+                level='info',
+            )
+        )
+    async with engine.begin() as connection:
+        await connection.execute(sa.insert(models.MonitoringMessage), messages)
+        await connection.execute(
+            sa.insert(EventLog),
+            [
+                dict(
+                    event_id=identity,
+                    workspace_id='workspace',
+                    bot_id='a',
+                    event_type='message.received',
+                    source='platform',
+                    conversation_id='group_42',
+                    event_time=now + dt.timedelta(seconds=1),
+                    input_json='{"text":"ingress"}',
+                    metadata_json='{"bot_name":"A","routes":[{"target_uuid":"pipeline"}]}',
+                )
+                for identity in ('new-a', 'new-c')
+            ],
+        )
+
+    async def set_read_limit(limit):
+        async with engine.connect() as connection:
+            return await connection.run_sync(
+                lambda sync: sync.connection.dbapi_connection.run_async(
+                    lambda raw: raw._execute(raw._conn.setlimit, sqlite3.SQLITE_LIMIT_LENGTH, limit)
+                )
+            )
+
+    previous_limit = await set_read_limit(65536)
+    try:
+        first, total = await service.get_messages(context(), bot_ids=['a'], session_ids=['group_42'], limit=2)
+        assert total == 20
+        # A delivery and an uncovered ingress may share the same public ID.
+        assert [(row['id'], row['role']) for row in first] == [('new-c', 'user'), ('new-c', 'assistant')]
+        assert first[0]['message_content'] == '{"text":"ingress"}'
+        assert first[0]['pipeline_id'] == 'pipeline'
+        assert first[1]['variables'] == '{"delivery":true}'
+        second, second_total = await service.get_messages(
+            context(), bot_ids=['a'], session_ids=['group_42'], limit=2, offset=2
+        )
+        assert second_total == total
+        assert [row['id'] for row in second] == ['new-b', 'new-a']
+        empty, empty_total = await service.get_messages(
+            context(), bot_ids=['a'], session_ids=['group_42'], limit=2, offset=100
+        )
+        assert empty == [] and empty_total == total
+    finally:
+        await set_read_limit(previous_limit)
+
+
+@pytest.mark.parametrize('bot_ids', [['a'], ['a', 'b']])
+async def test_conversation_page_scopes_sources_and_time_window(service, bot_ids):
+    """Pagination preserves tenant filters, event resolution and deduplication."""
+    from langbot.pkg.entity.persistence.agent_run import AgentRun
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    engine = service.ap.persistence_mgr.get_db_engine()
+    now = dt.datetime(2026, 1, 2)
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(models.MonitoringMessage),
+            [
+                dict(
+                    id=identity,
+                    workspace_uuid=workspace,
+                    **resource(bot),
+                    session_id=session,
+                    timestamp=now,
+                    message_content=identity,
+                    event_id='linked-event' if identity == 'a-message' else None,
+                    role='user',
+                    status='success',
+                    level='info',
+                )
+                for identity, workspace, bot, session in [
+                    ('a-message', 'workspace', 'a', 'group_42'),
+                    ('b-message', 'workspace', 'b', 'group_42'),
+                    ('foreign-message', 'other', 'a', 'group_42'),
+                    ('other-session', 'workspace', 'a', 'group_other'),
+                ]
+            ],
+        )
+        await connection.execute(
+            sa.insert(EventLog),
+            [
+                dict(
+                    event_id=identity,
+                    workspace_id=workspace,
+                    bot_id=bot,
+                    event_type='message.received',
+                    source='platform',
+                    conversation_id=conversation,
+                    event_time=timestamp,
+                    input_json='{"chat_type":"group","chat_id":"42"}',
+                )
+                for identity, workspace, bot, conversation, timestamp in [
+                    ('linked-event', 'workspace', 'a', 'group_42', now),
+                    ('a-message', 'workspace', 'b', 'group_42', now),
+                    ('json-conversation', 'workspace', 'a', None, now),
+                    ('runner-conversation', 'workspace', 'a', None, now),
+                    ('foreign-event', 'other', 'a', 'group_42', now),
+                    ('outside-window', 'workspace', 'a', 'group_42', now + dt.timedelta(seconds=1)),
+                ]
+            ],
+        )
+        await connection.execute(
+            sa.insert(AgentRun).values(
+                run_id='run',
+                runner_id='runner',
+                workspace_id='workspace',
+                bot_id='a',
+                event_id='runner-conversation',
+                conversation_id='group_other',
+                status='completed',
+            )
+        )
+
+    filters = dict(bot_ids=bot_ids, session_ids=['group_42'], start_time=now, end_time=now)
+    expected = [('a', 'json-conversation'), ('a', 'a-message')]
+    if 'b' in bot_ids:
+        expected = [('a', 'json-conversation'), ('b', 'b-message'), ('b', 'a-message'), ('a', 'a-message')]
+    paginated = []
+    for offset in range(len(expected) + 1):
+        rows, total = await service.get_messages(context(), **filters, limit=1, offset=offset)
+        assert total == len(expected)
+        assert all('_source' not in row for row in rows)
+        paginated.extend((row['bot_id'], row['id']) for row in rows)
+    assert paginated == expected
+
+
+@pytest.mark.asyncio(loop_scope='module')
+@pytest.mark.postgres
+async def test_postgres_conversation_page_hydrates_only_own_workspace(cloud_database):  # noqa: F811
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from tests.integration.persistence.test_monitoring_postgres import WORKSPACE_A, WORKSPACE_B, _context, _read
+
+    ap, admin = cloud_database
+    now = dt.datetime(2026, 1, 2)
+    async with admin.begin() as connection:
+        for workspace, suffix in ((WORKSPACE_A, 'a'), (WORKSPACE_B, 'b')):
+            await connection.execute(
+                sa.insert(models.MonitoringMessage).values(
+                    id=f'page-message-{suffix}',
+                    workspace_uuid=workspace,
+                    **resource('page-bot'),
+                    session_id='page-session',
+                    timestamp=now,
+                    message_content=workspace,
+                    variables='{"delivery":true}',
+                    role='assistant',
+                    status='success',
+                    level='info',
+                )
+            )
+            await connection.execute(
+                sa.insert(EventLog).values(
+                    event_id=f'page-message-{suffix}',
+                    workspace_id=workspace,
+                    bot_id='page-bot',
+                    event_type='message.received',
+                    source='platform',
+                    conversation_id='page-session',
+                    event_time=now,
+                    input_json=f'{{"text":"{workspace}"}}',
+                )
+            )
+    for workspace, suffix in ((WORKSPACE_A, 'a'), (WORKSPACE_B, 'b')):
+        page = []
+        for offset in range(3):
+            rows, total = await _read(
+                ap.monitoring_service,
+                'get_messages',
+                _context(workspace),
+                bot_ids=['page-bot'],
+                session_ids=['page-session'],
+                limit=1,
+                offset=offset,
+            )
+            assert total == 2
+            page.extend(rows)
+        assert [(row['id'], row['role']) for row in page] == [
+            (f'page-message-{suffix}', 'user'),
+            (f'page-message-{suffix}', 'assistant'),
+        ]
+        assert all(row['workspace_uuid'] == workspace and workspace in row['message_content'] for row in page)
+
+
 async def test_ingress_credit_is_replaced_but_distinct_message_rows_count(service):
     from langbot.pkg.entity.persistence.event_log import EventLog
 

@@ -101,6 +101,19 @@ def transcript_item(row):
 
 class ExecutionDetailsMixin:
     def _conversation_message_source(self, workspace, bot_ids):
+        """Count and page identities without carrying historical payloads."""
+        fields = ('id', 'workspace_uuid', 'timestamp', 'bot_id', 'session_id')
+        return sa.union_all(
+            *[
+                query.with_only_columns(
+                    *[query.selected_columns[field] for field in fields],
+                    sa.literal(origin).label('_source'),
+                )
+                for origin, query in zip(('message', 'event'), self._conversation_message_queries(workspace, bot_ids))
+            ]
+        ).subquery()
+
+    def _conversation_message_queries(self, workspace, bot_ids):
         """Combine delivered messages with ingress missing from the legacy ledger."""
         message = models.MonitoringMessage
         conversation = sa.func.coalesce(
@@ -176,17 +189,47 @@ class ExecutionDetailsMixin:
                 )
             ),
         )
-        return sa.union_all(stored, incoming).subquery()
+        return stored, incoming
 
     async def _conversation_projection_page(self, workspace, statement, limit, offset):
         count = (
-            await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))
+            await self._execution_query(
+                workspace, sa.select(sa.func.count()).select_from(statement.order_by(None).subquery())
+            )
         ).scalar_one()
-        rows = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
-        return [
-            {key: value.isoformat() if isinstance(value, datetime.datetime) else value for key, value in row.items()}
-            for row in rows
-        ], count
+        page = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
+        if not page:
+            return [], count
+
+        # Fetch payloads only for identities selected by the bounded page.
+        queries = self._conversation_message_queries(workspace, list({row['bot_id'] for row in page}))
+        rows = {}
+        for origin, query in zip(('message', 'event'), queries):
+            keys = [(row['bot_id'], row['id']) for row in page if row['_source'] == origin]
+            if not keys:
+                continue
+            selected = query.selected_columns
+            result = await self._execution_query(
+                workspace,
+                sa.select(*selected).where(
+                    selected.workspace_uuid == workspace,
+                    sa.tuple_(selected.bot_id, selected.id).in_(keys),
+                ),
+            )
+            for row in result.mappings():
+                rows[(origin, row['bot_id'], row['id'])] = row
+
+        messages = []
+        for identity in page:
+            row = rows.get((identity['_source'], identity['bot_id'], identity['id']))
+            if row is not None:
+                messages.append(
+                    {
+                        key: value.isoformat() if isinstance(value, datetime.datetime) else value
+                        for key, value in row.items()
+                    }
+                )
+        return messages, count
 
     def _execution_json_text(self, column, key):
         # SQLite JSON functions accept TEXT directly; PostgreSQL operators
