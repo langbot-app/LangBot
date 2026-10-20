@@ -283,6 +283,14 @@ class MonitoringHelper:
     ) -> str:
         """Record query processing error, returns message_id"""
         try:
+            original_message_id = (query.variables or {}).get('_monitoring_message_id')
+            if original_message_id:
+                await ap.monitoring_service.update_message_status(
+                    get_query_execution_context(query),
+                    message_id=original_message_id,
+                    status='error',
+                    level='error',
+                )
             session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
