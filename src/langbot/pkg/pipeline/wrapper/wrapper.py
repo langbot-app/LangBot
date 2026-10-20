@@ -10,7 +10,6 @@ from .. import stage
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as events
 
 
@@ -26,50 +25,6 @@ class ResponseWrapper(stage.PipelineStage):
 
     async def initialize(self, pipeline_config: dict):
         pass
-
-    def _is_final_assistant_message(self, result) -> bool:
-        """Whether *result* is the agent's final, tool-call-free answer.
-
-        Intermediate streaming chunks and tool-call rounds must NOT trigger
-        outbound attachment collection — only the terminal assistant message.
-        """
-        if getattr(result, 'role', None) != 'assistant':
-            return False
-        if result.tool_calls:
-            return False
-        if isinstance(result, provider_message.MessageChunk):
-            return bool(result.is_final)
-        return True
-
-    async def _append_outbound_attachments(
-        self,
-        query: pipeline_query.Query,
-        message_chain: platform_message.MessageChain,
-    ) -> None:
-        """Collect sandbox outbox files and append them to *message_chain*.
-
-        Runs at most once per query (guarded by a query variable) and never
-        raises into the pipeline — attachment delivery is best-effort.
-        """
-        if query.variables.get('_sandbox_outbound_collected'):
-            return
-        box_service = getattr(self.ap, 'box_service', None)
-        if box_service is None or not getattr(box_service, 'available', False):
-            return
-        query.variables['_sandbox_outbound_collected'] = True
-        try:
-            attachments = await box_service.collect_outbound_attachments(query)
-        except Exception as e:
-            self.ap.logger.warning(f'Outbound attachment collection failed: {e}')
-            return
-        for att in attachments:
-            att_type = att.get('type')
-            if att_type == 'Image':
-                message_chain.append(platform_message.Image(base64=att['base64']))
-            elif att_type == 'Voice':
-                message_chain.append(platform_message.Voice(base64=att['base64']))
-            else:
-                message_chain.append(platform_message.File(name=att.get('name', 'file'), base64=att['base64']))
 
     async def process(
         self,
@@ -107,7 +62,7 @@ class ResponseWrapper(stage.PipelineStage):
 
                     reply_text = ''
 
-                    if result.content:  # 有内容
+                    if result.content or getattr(result, 'attachments', None):
                         reply_text = str(result.get_content_platform_message_chain())
 
                         # ============= 触发插件事件 ===============
@@ -142,11 +97,6 @@ class ResponseWrapper(stage.PipelineStage):
                                 reply_chain = result.get_content_platform_message_chain()
                                 is_plugin_reply = False
 
-                            # Only collect Box outbox files for a terminal assistant
-                            # response; also accept provider final chunks here.
-                            if self._is_final_assistant_message(result):
-                                await self._append_outbound_attachments(query, reply_chain)
-
                             query.resp_message_chain.append(reply_chain)
                             if is_plugin_reply:
                                 plugin_diagnostics.record_last_plugin_response_source(
@@ -160,20 +110,6 @@ class ResponseWrapper(stage.PipelineStage):
                                 result_type=entities.ResultType.CONTINUE,
                                 new_query=query,
                             )
-                    elif (
-                        isinstance(result, provider_message.MessageChunk) and result.is_final and not result.tool_calls
-                    ):
-                        # A blank final chunk may carry Box outbox files, but do not
-                        # send an empty chain: streaming adapters treat it as final.
-                        reply_chain = platform_message.MessageChain([])
-                        await self._append_outbound_attachments(query, reply_chain)
-                        if len(reply_chain) > 0:
-                            query.resp_message_chain.append(reply_chain)
-                            yield entities.StageProcessResult(
-                                result_type=entities.ResultType.CONTINUE,
-                                new_query=query,
-                            )
-
                     if result.tool_calls is not None and len(result.tool_calls) > 0:  # 有函数调用
                         function_names = [tc.function.name for tc in result.tool_calls]
 
