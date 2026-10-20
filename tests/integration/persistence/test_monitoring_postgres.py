@@ -224,7 +224,7 @@ def _query(context, sender_id):
 
 
 @pytest.mark.parametrize('user_id', [123456789, -100123456789, 0, None, '', '00123', '  opaque用户  '])
-@pytest.mark.parametrize('record_type', ['message', 'session', 'feedback'])
+@pytest.mark.parametrize('record_type', ['message', 'feedback'])
 async def test_optional_user_ids_round_trip_through_asyncpg(service, user_id, record_type):
     context = _context(WORKSPACE_A)
     expected = str(user_id) if isinstance(user_id, int) else user_id
@@ -238,8 +238,6 @@ async def test_optional_user_ids_round_trip_through_asyncpg(service, user_id, re
         )
         details = await _read(service, 'get_message_details', context, record_id)
         assert details['message']['user_id'] == expected
-    elif record_type == 'session':
-        await service.record_session_start(context, **RESOURCE, session_id='same-session', user_id=user_id)
         rows, total = await _read(service, 'get_sessions', context)
         assert total == 1
         assert rows[0]['user_id'] == expected
@@ -302,7 +300,7 @@ async def test_query_error_persists_error_message_and_linked_log(service, user_i
 
 
 @pytest.mark.parametrize('user_id', [True, 1.5, b'123', ['123']])
-@pytest.mark.parametrize('record_type', ['message', 'session', 'feedback'])
+@pytest.mark.parametrize('record_type', ['message', 'feedback'])
 async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id, record_type):
     context = _context(WORKSPACE_A)
     with pytest.raises(TypeError, match='user_id must be a string, integer, or None'):
@@ -314,8 +312,6 @@ async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id,
                 session_id='session',
                 user_id=user_id,
             )
-        elif record_type == 'session':
-            await service.record_session_start(context, **RESOURCE, session_id='session', user_id=user_id)
         else:
             await service.record_feedback(context, feedback_id='feedback', feedback_type=1, user_id=user_id)
     async with service.ap.persistence_mgr.tenant_scope(WORKSPACE_A):
@@ -326,7 +322,6 @@ async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id,
 
 async def test_session_analysis_aggregates_under_cloud_sql_guard(service):
     context = _context(WORKSPACE_A)
-    await service.record_session_start(context, **RESOURCE, session_id='same-session')
     await service.record_message(context, **RESOURCE, session_id='same-session', message_content='hello')
     result = await _read(service, 'get_session_analysis', context, 'same-session')
     assert result['found'] is True

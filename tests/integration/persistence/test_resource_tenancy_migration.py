@@ -107,7 +107,10 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
             )
             assert (
                 await conn.scalar(
-                    sa.text('SELECT COUNT(*) FROM workspace_metadata WHERE workspace_uuid = :workspace_uuid'),
+                    sa.text(
+                        'SELECT COUNT(*) FROM workspace_metadata WHERE workspace_uuid = :workspace_uuid '
+                        "AND key IN ('wizard_status', 'wizard_progress', 'rag_plugin_migration_needed')"
+                    ),
                     {'workspace_uuid': workspace_uuid},
                 )
                 == 3
@@ -296,7 +299,15 @@ async def test_fresh_sqlite_schema_matches_resource_tenancy_contract(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "fresh-resources.db"}')
     try:
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            # Match PersistenceManager: 0040 creates the receipt FK after older PK migrations.
+            await conn.run_sync(
+                lambda sync: Base.metadata.create_all(
+                    sync,
+                    tables=[
+                        table for table in Base.metadata.sorted_tables if table.name != 'monitoring_session_receipts'
+                    ],
+                )
+            )
         await run_alembic_stamp(engine, '0001_baseline')
         await run_alembic_upgrade(engine, 'head')
 
@@ -310,5 +321,78 @@ async def test_fresh_sqlite_schema_matches_resource_tenancy_contract(tmp_path):
             assert columns['workspace_uuid']['nullable'] is False, table_name
             if table_name == 'knowledge_bases':
                 assert columns['legacy_vector_collection']['nullable'] is False
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.session_summary
+@pytest.mark.contract('summary_schema')
+@pytest.mark.parametrize('has_history', [False, True])
+async def test_legacy_sqlite_without_monitoring_tables_initializes_summaries(tmp_path, monkeypatch, has_history):
+    import datetime
+    import logging
+    from types import SimpleNamespace
+
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.api.http.service.monitoring import MonitoringService
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from langbot.pkg.persistence.mgr import PersistenceManager
+    from langbot.pkg.persistence.session_summary_backfill import SessionSummaryBackfill, require_initialized
+    from langbot.pkg.utils import constants
+
+    instance = str(uuid.uuid4())
+    monkeypatch.setattr(constants, 'instance_id', instance)
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "legacy-without-monitoring.db"}')
+    try:
+        await create_legacy_resource_schema(engine, instance_uuid=instance)
+        async with engine.begin() as conn:
+            for name in TENANT_TABLES:
+                if name.startswith('monitoring_'):
+                    await conn.exec_driver_sql(f'DROP TABLE {name}')
+            if has_history:
+                await conn.run_sync(EventLog.__table__.create)
+                await conn.execute(
+                    sa.insert(EventLog).values(
+                        event_id='legacy-event',
+                        event_type='message.received',
+                        source='platform',
+                        workspace_id=instance,
+                        bot_id='bot-1',
+                        conversation_id='group_legacy',
+                        created_at=datetime.datetime(2026, 1, 1),
+                    )
+                )
+        await run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+        ap = SimpleNamespace(logger=logging.getLogger(__name__))
+        ap.persistence_mgr = PersistenceManager(ap)
+        ap.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
+        await ap.persistence_mgr._initialize_managed_schema()
+        await ap.persistence_mgr._enable_sqlite_foreign_keys_after_migration()
+        tables = await _inspect(engine, lambda conn: set(sa.inspect(conn).get_table_names()))
+        assert {'monitoring_sessions', 'monitoring_session_receipts'} <= tables
+        service = MonitoringService(ap)
+        if has_history:
+            with pytest.raises(RuntimeError, match='offline initialization'):
+                async with service._summary_session(instance) as session:
+                    await require_initialized(session, instance)
+        worker = SessionSummaryBackfill(service._summary_session, 'sqlite')
+        while not await worker.run_batch(instance):
+            pass
+        ctx = ExecutionContext(instance_uuid=instance, workspace_uuid=instance, placement_generation=1)
+        await service.record_message(
+            ctx,
+            bot_id='bot-1',
+            bot_name='Bot',
+            pipeline_id='pipeline-1',
+            pipeline_name='Pipeline',
+            session_id='group_live',
+            message_content='hello',
+        )
+        await ap.persistence_mgr._initialize_managed_schema()
+        rows, total = await service.get_sessions(ctx)
+        assert total == 1 + int(has_history)
+        assert all(row['message_count'] == 1 for row in rows)
+        async with engine.connect() as conn:
+            assert (await conn.exec_driver_sql('PRAGMA foreign_key_check')).all() == []
     finally:
         await engine.dispose()

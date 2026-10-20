@@ -71,6 +71,7 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'monitoring_llm_calls': 'workspace_uuid',
     'monitoring_tool_calls': 'workspace_uuid',
     'monitoring_sessions': 'workspace_uuid',
+    'monitoring_session_receipts': 'workspace_uuid',
     'monitoring_errors': 'workspace_uuid',
     'monitoring_embedding_calls': 'workspace_uuid',
     'monitoring_feedback': 'workspace_uuid',

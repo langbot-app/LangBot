@@ -89,6 +89,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
 - User-facing strings must support i18n; follow the backend language rules below for server-generated content.
 - Conversation payload columns, including new ones, must use `MediaReferenceText` and persist image references only. See the [media persistence contract](ARCHITECTURE.md#persistence-and-configuration).
+- Interactive session lists use `SessionSummaryReader` to read only `monitoring_sessions`; `SessionSummaryWriter` maintains summaries in the source transaction. Historical initialization completes before writers start, never in requests or application background tasks. Follow the [conversation summary contract](ARCHITECTURE.md#conversation-summary-boundary) and keep `uv run pytest --required-suite session_summary` passing.
 - Code comments and docstrings must be English.
 - Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
 - Commit message format: `<type>(<scope>): <subject>`.

@@ -8,6 +8,7 @@ import typing
 import uuid
 
 import sqlalchemy
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
@@ -70,6 +71,7 @@ class EventLogStore:
         runner_id: str | None = None,
         event_time: datetime.datetime | None = None,
         metadata: dict[str, typing.Any] | None = None,
+        session: AsyncSession | None = None,
     ) -> str:
         """Append an event to the event log.
 
@@ -93,6 +95,7 @@ class EventLogStore:
             runner_id: Runner ID processing this event
             event_time: When the event occurred
             metadata: Additional metadata
+            session: Optional owning transaction; the caller commits or rolls back
 
         Returns:
             The event_id
@@ -104,59 +107,69 @@ class EventLogStore:
         if input_summary and len(input_summary) > self.MAX_INPUT_SUMMARY_LENGTH:
             input_summary = input_summary[: self.MAX_INPUT_SUMMARY_LENGTH - 3] + '...'
 
-        async with self._session_factory() as session:
-            event = EventLog(
-                event_id=event_id,
-                event_type=event_type,
-                event_time=as_naive_utc(event_time),
-                source=source,
-                bot_id=bot_id,
-                workspace_id=workspace_id,
-                conversation_id=conversation_id,
-                thread_id=thread_id,
-                actor_type=actor_type,
-                actor_id=actor_id,
-                actor_name=actor_name,
-                subject_type=subject_type,
-                subject_id=subject_id,
-                input_summary=input_summary,
-                input_json=json.dumps(input_json) if input_json else None,
-                raw_ref=raw_ref,
-                run_id=run_id,
-                runner_id=runner_id,
-                metadata_json=json.dumps(metadata) if metadata else None,
-                created_at=as_naive_utc(_utc_now()),
-            )
-            session.add(event)
-            try:
-                await session.commit()
-            except sqlalchemy.exc.IntegrityError:
-                await session.rollback()
-                existing = (
-                    (await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id)))
-                    .scalars()
-                    .first()
-                )
-                if existing is None or existing.workspace_id != workspace_id or existing.bot_id != bot_id:
-                    raise
-                # Complete the ingress snapshot once a runner claims it. A
-                # second subscriber must not replace another run's identity.
-                for field, value in {
-                    'run_id': run_id,
-                    'runner_id': runner_id,
-                    'conversation_id': conversation_id,
-                    'thread_id': thread_id,
-                    'actor_id': actor_id,
-                    'actor_name': actor_name,
-                }.items():
-                    if getattr(existing, field) is None and value is not None:
-                        setattr(existing, field, value)
-                if input_json and ('contents' in input_json or 'attachments' in input_json):
-                    existing.input_json = json.dumps(input_json)
-                    existing.input_summary = input_summary
-                await session.commit()
-
+        values = dict(
+            event_id=event_id,
+            event_type=event_type,
+            event_time=as_naive_utc(event_time),
+            source=source,
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            thread_id=thread_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            actor_name=actor_name,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            input_summary=input_summary,
+            input_json=json.dumps(input_json) if input_json else None,
+            raw_ref=raw_ref,
+            run_id=run_id,
+            runner_id=runner_id,
+            metadata_json=json.dumps(metadata) if metadata else None,
+            created_at=as_naive_utc(_utc_now()),
+        )
+        if session is not None:
+            await self._append_in_transaction(session, values, input_json)
+        else:
+            async with self._session_factory() as owned:
+                await self._append_in_transaction(owned, values, input_json)
+                await owned.commit()
         return event_id
+
+    async def _append_in_transaction(self, session, values, input_json):
+        insert = {'postgresql': postgresql.insert, 'sqlite': sqlite.insert}[self.engine.dialect.name]
+        result = await session.execute(
+            insert(EventLog).values(**values).on_conflict_do_nothing(index_elements=['event_id'])
+        )
+        if result.rowcount:
+            return
+        existing = (
+            await session.execute(
+                sqlalchemy.select(EventLog).where(
+                    EventLog.event_id == values['event_id'],
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None or existing.workspace_id != values['workspace_id'] or existing.bot_id != values['bot_id']:
+            raise ValueError('An event ID cannot be reused across Workspaces or bots')
+        # Only fill missing identities; another subscriber cannot replace a claimed run.
+        updates = {
+            field: sqlalchemy.func.coalesce(getattr(EventLog, field), values[field])
+            for field in ('run_id', 'runner_id', 'conversation_id', 'thread_id', 'actor_id', 'actor_name')
+            if values[field] is not None
+        }
+        if input_json and ('contents' in input_json or 'attachments' in input_json):
+            updates.update(input_json=values['input_json'], input_summary=values['input_summary'])
+        if updates:
+            await session.execute(
+                sqlalchemy.update(EventLog)
+                .where(
+                    EventLog.event_id == values['event_id'],
+                    EventLog.workspace_id == values['workspace_id'],
+                )
+                .values(**updates)
+            )
 
     async def get_event(
         self,

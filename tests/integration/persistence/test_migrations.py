@@ -123,6 +123,63 @@ class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
     @pytest.mark.asyncio
+    async def test_execution_filter_index_round_trip_preserves_history(self, sqlite_engine):
+        from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
+
+        index_name = 'ix_monitoring_messages_execution_filter'
+        index = next(item for item in MonitoringMessage.__table__.indexes if item.name == index_name)
+
+        def indexes(connection):
+            return {
+                item['name']: item['column_names']
+                for item in sqlalchemy.inspect(connection).get_indexes('monitoring_messages')
+            }
+
+        async with sqlite_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(
+                sqlalchemy.insert(MonitoringMessage).values(
+                    id='historical-root',
+                    timestamp=sqlalchemy.func.current_timestamp(),
+                    workspace_uuid='workspace',
+                    bot_id='bot',
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    session_id='session',
+                    message_content='preserve historical payload',
+                    status='success',
+                    role='user',
+                    level='info',
+                )
+            )
+            original = await connection.run_sync(indexes)
+
+        await run_alembic_stamp(sqlite_engine, '0039_execution_lease_indexes')
+        # Fresh installations already have the ORM index before Alembic runs.
+        await run_alembic_upgrade(sqlite_engine, 'head')
+        await run_alembic_downgrade(sqlite_engine, '0039_execution_lease_indexes')
+        async with sqlite_engine.connect() as connection:
+            remaining = await connection.run_sync(indexes)
+        expected = {
+            name: columns
+            for name, columns in original.items()
+            if name not in {index_name, 'ix_monitoring_messages_summary_event'}
+        }
+        expected['ix_monitoring_messages_workspace_timestamp'] = ['workspace_uuid', 'timestamp']
+        assert remaining == expected
+
+        # Existing installations receive the same covering index through migration.
+        await run_alembic_upgrade(sqlite_engine, 'head')
+        async with sqlite_engine.connect() as connection:
+            upgraded = await connection.run_sync(indexes)
+            assert upgraded == original
+            assert upgraded[index_name] == [column.name for column in index.columns]
+            assert await connection.scalar(sqlalchemy.select(MonitoringMessage.message_content)) == (
+                'preserve historical payload'
+            )
+
+    @pytest.mark.asyncio
     async def test_upgrade_removes_agent_enabled_column(self, sqlite_engine):
         async with sqlite_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

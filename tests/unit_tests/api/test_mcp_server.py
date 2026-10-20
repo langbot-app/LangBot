@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
+from langbot.pkg.api.mcp import server as mcp_server
 from langbot.pkg.api.mcp.server import LangBotMCPServer
 
 
@@ -77,3 +79,29 @@ async def test_mcp_server_exposes_bot_event_route_tools():
         'th_TH',
         'vi_VN',
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'filters', [{}, {'bot_ids': ['bot-1'], 'user_query': 'Alice'}, {'mode': 'real'}, {'execution_statuses': ['failed']}]
+)
+async def test_monitoring_sessions_accept_only_conversation_filters(monkeypatch, filters):
+    app = _make_app()
+    app.monitoring_service = SimpleNamespace(
+        normalize_page_window=lambda limit, offset: (limit, offset),
+        get_sessions=AsyncMock(return_value=([], 0)),
+    )
+    context = SimpleNamespace(workspace_uuid='workspace-1')
+    monkeypatch.setattr(mcp_server, 'get_request_context', lambda: context)
+    monkeypatch.setattr(mcp_server, '_authorized', lambda permission: context)
+    monkeypatch.setattr(mcp_server, 'get_workspace_language', AsyncMock(return_value='en_US'))
+    server = LangBotMCPServer(app)
+
+    arguments = {'kind': 'sessions', 'filters': filters}
+    if set(filters) & {'mode', 'execution_statuses'}:
+        with pytest.raises(ToolError, match='Unsupported monitoring filter'):
+            await server.mcp.call_tool('get_monitoring_records', arguments)
+        app.monitoring_service.get_sessions.assert_not_awaited()
+    else:
+        await server.mcp.call_tool('get_monitoring_records', arguments)
+        app.monitoring_service.get_sessions.assert_awaited_once_with(context, limit=100, offset=0, **filters)

@@ -282,6 +282,26 @@ Configuration starts from `src/langbot/templates/config.yaml` and is generated i
 
 Storage maintenance applies `storage.media_cache.retention_days` to both CAS files and historical inline images. Inline image expiry uses the owning record's creation time and preserves text, URLs, and record identity. It does not backfill CAS. `pkg/storage/inline_media_cleanup.py` processes one payload row at a time, with a per-table limit of 100 indexed candidates or 8 MiB of JSON characters per maintenance pass (one oversized row may exceed the latter limit). Run events lack a Workspace column, so their candidate cursor also advances past foreign or missing records; payloads are loaded only after checking Workspace ownership. Durable Workspace metadata cursors and timestamp/identity indexes keep completed history out of subsequent scans; newly written history must retain its actual creation timestamp. Updates and cursor advancement commit together. Invalid historical JSON is preserved. SQLite pages become reusable after payload removal; the database file is not automatically vacuumed by this task.
 
+### Conversation summary boundary
+
+`MonitoringService` delegates all interactive session lists to `SessionSummaryReader` in `pkg/persistence/`. The reader selects public columns from `monitoring_sessions` without history joins or repairs, keeping list cost independent of historical payload size. Sessions describe conversations, not executions; API filter semantics are documented in [LangBot MCP Operations](skills/skills/langbot-mcp-ops/SKILL.md#unified-execution-monitoring).
+
+`SessionSummaryWriter` updates summaries in the source write's Workspace transaction. Each distinct message record counts once, including assistant and failure records. A platform `message.received` event contributes only while no non-assistant message matches its event ID or legacy message ID. Replays add no credit; late links retire ingress credit once, including across group/topic sessions. Observed start/activity timestamps never shrink the session's time range. Live writes and offline initialization share the same source mapping.
+
+All display fields come from one source snapshot, including empty values. Missing names display the user ID instead of inheriting another record's name. Non-assistant sources outrank assistant sources, followed by timestamp and binary source-key order. Processor filters match the selected snapshot. Immutable message winners fold into `base_snapshot`; uncovered ingress retains a replaceable `candidate_snapshot` on its receipt. Covering or transferring ingress restores the remaining winner atomically, without reading history.
+
+Receipts and event anchors are Workspace-scoped and expire in bounded batches under history retention. Expiry preserves counters and seals any uncovered ingress snapshot into the base in the same transaction. Summaries are deleted only after their receipts are gone. Deduplication and late linking are guaranteed within this retention window.
+
+Migration `0040_session_summaries` marks historical Workspaces as pending. OSS startup automatically completes `SessionSummaryBackfill` before starting HTTP or message producers, then continues in the same process; no manual backfill or additional container restart is needed. Batches and progress commit together, so an interrupted startup resumes from its cursor. Initialization is bounded, never selects message bodies or variables, and preserves historical counts as a lower bound when source history has expired. Invalid or oversized required metadata stops startup for diagnosis. Fresh databases and completed initialization skip history scanning; pending source writes remain blocked. There is no request-time or background repair.
+
+Cloud runtimes retain the initialization gate because other instances may write concurrently. For Cloud deployment or manual maintenance, stop **all** writers, back up the database, apply the migration, and run the command below for each pending Workspace before starting services. Set the named environment variable to a `sqlite+aiosqlite` or `postgresql+asyncpg` database URL; SQLite must point to an existing file. The connection must have access to the migrated schema and Workspace.
+
+```bash
+uv run python -m langbot.pkg.persistence.session_summary_backfill \
+  --workspace WORKSPACE_UUID --writers-stopped \
+  --database-url-env LANGBOT_SUMMARY_DATABASE_URL
+```
+
 ## Frontend
 
 The frontend lives in `web/` and is a Vite SPA using React Router 7, shadcn/ui, Tailwind CSS, and pnpm. It is not Next.js, despite some historical filenames.

@@ -82,6 +82,7 @@ _ALEMBIC_TENANT_TABLES = {
     'monitoring_llm_calls',
     'monitoring_tool_calls',
     'monitoring_sessions',
+    'monitoring_session_receipts',
     'monitoring_errors',
     'monitoring_embedding_calls',
     'monitoring_feedback',
@@ -273,6 +274,16 @@ class PersistenceManager:
             if self.mode == PersistenceMode.OSS_COMPAT:
                 await self._install_oss_postgres_tenant_scope()
         else:
+            current_revision = await alembic_runner.get_alembic_current(engine)
+            if (
+                current_revision is None
+                or current_revision in _PRE_WORKSPACE_ALEMBIC_REVISIONS
+                or current_revision == _WORKSPACE_ALEMBIC_REVISION
+            ):
+                await self._run_alembic_migrations(_RESOURCE_SCOPE_ALEMBIC_REVISION)
+                # Deferred parent tables must exist before later migrations
+                # create dependent tables such as session summary receipts.
+                await self.create_tables()
             await self._run_alembic_migrations()
 
             # SQLite keeps the historical post-migration create_all pass. New
@@ -294,7 +305,10 @@ class PersistenceManager:
                 # without workspace_uuid and Workspace itself references the
                 # account UUID introduced by 0009.  Alembic must expand those
                 # tables before SQLAlchemy may create any new tenant table.
-                excluded_tables = _ALEMBIC_TENANT_TABLES if legacy_users else set()
+                excluded_tables = set(_ALEMBIC_TENANT_TABLES) if legacy_users else set()
+                # 0010 and 0023 rewrite the session primary key on an OSS bootstrap.
+                # Only 0040 may create its dependent composite receipt foreign key.
+                excluded_tables.add('monitoring_session_receipts')
                 tables_to_create = [table for table in self.meta.sorted_tables if table.name not in excluded_tables]
                 self.meta.create_all(sync_conn, tables=tables_to_create)
 
