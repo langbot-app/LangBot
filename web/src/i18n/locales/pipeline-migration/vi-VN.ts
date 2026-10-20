@@ -1,6 +1,7 @@
 export default {
   networkDiagnostics: {
-    timeout: 'Tải xuống quá thời gian chờ. Kiểm tra mạng hoặc proxy rồi thử lại.',
+    timeout:
+      'Tải xuống quá thời gian chờ. Kiểm tra mạng hoặc proxy rồi thử lại.',
     connection: 'Không thể kết nối kho tiện ích. Kiểm tra mạng hoặc proxy.',
     incomplete: 'Tải xuống bị gián đoạn. Vui lòng thử lại.',
     http: 'Kho tiện ích từ chối tải xuống. Kiểm tra trạng thái rồi thử lại sau.',
