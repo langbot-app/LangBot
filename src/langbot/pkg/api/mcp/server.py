@@ -406,9 +406,7 @@ class LangBotMCPServer:
                 'turns off the pipeline trigger at-bot rule. Idempotent.'
             )
         )
-        async def apply_bot_group_filter_migration(
-            bot_uuid: str, disable_pipeline_at_bot: bool = True
-        ) -> str:
+        async def apply_bot_group_filter_migration(bot_uuid: str, disable_pipeline_at_bot: bool = True) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump(
                 await ap.bot_service.apply_group_filter_migration(

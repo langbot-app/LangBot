@@ -945,15 +945,14 @@ class BotService:
         proposed binding changes plus a per-pipeline summary. Does not persist.
         """
         from ....platform.botmgr import RuntimeBot
+
         bot = await self.get_bot(context, bot_uuid, include_secret=False)
         if bot is None:
             raise WorkspaceNotFoundError('Bot not found')
 
         bindings = RuntimeBot._get_event_bindings_from_value(bot.get('event_bindings') or [])
         pipeline_uuids = {
-            str(b.get('target_uuid'))
-            for b in bindings
-            if b.get('target_type') == 'pipeline' and b.get('target_uuid')
+            str(b.get('target_uuid')) for b in bindings if b.get('target_type') == 'pipeline' and b.get('target_uuid')
         }
 
         # Load each pipeline's trigger config to detect at-bot still enabled.
@@ -991,12 +990,11 @@ class BotService:
             )
             return has_group and has_at
 
-        needs_migration = [
-            pipeline_uuid for pipeline_uuid, flags in pipeline_flags.items() if flags['at_bot_enabled']
-        ]
+        needs_migration = [pipeline_uuid for pipeline_uuid, flags in pipeline_flags.items() if flags['at_bot_enabled']]
         bindings_with_at_filter = [b for b in bindings if _has_group_at_filter(b)]
         bindings_missing_at_filter = [
-            b for b in bindings
+            b
+            for b in bindings
             if b.get('target_type') == 'pipeline'
             and str(b.get('target_uuid') or '') in needs_migration
             and not _has_group_at_filter(b)
@@ -1007,13 +1005,10 @@ class BotService:
             new_binding = json.loads(json.dumps(binding))
             filters = list(new_binding.get('filters') or [])
             if not any(
-                isinstance(f, dict) and f.get('field') == 'chat_type' and f.get('value') == 'group'
-                for f in filters
+                isinstance(f, dict) and f.get('field') == 'chat_type' and f.get('value') == 'group' for f in filters
             ):
                 filters.append({'field': 'chat_type', 'operator': 'eq', 'value': 'group'})
-            if not any(
-                isinstance(f, dict) and f.get('field') == 'is_at_bot' for f in filters
-            ):
+            if not any(isinstance(f, dict) and f.get('field') == 'is_at_bot' for f in filters):
                 filters.append({'field': 'is_at_bot', 'operator': 'eq', 'value': True})
             new_binding['filters'] = filters
             proposed_bindings.append(new_binding)
@@ -1032,10 +1027,7 @@ class BotService:
                     'target_uuid': b.get('target_uuid'),
                     'current_filters': b.get('filters') or [],
                     'proposed_filters': next(
-                        (
-                            p.get('filters') for p in proposed_bindings
-                            if p.get('id') == b.get('id')
-                        ),
+                        (p.get('filters') for p in proposed_bindings if p.get('id') == b.get('id')),
                         b.get('filters') or [],
                     ),
                 }
@@ -1058,6 +1050,7 @@ class BotService:
         prefix/regexp/random rules remain untouched. Idempotent.
         """
         from ....platform.botmgr import RuntimeBot
+
         preview = await self.preview_group_filter_migration(context, bot_uuid)
         if not preview['needs_migration']:
             return {'bot_uuid': bot_uuid, 'applied': False, 'reason': 'no_migration_needed'}
@@ -1106,7 +1099,6 @@ class BotService:
             'updated_bindings': [item['binding_id'] for item in preview['bindings_to_update']],
             'disabled_pipeline_at_bot': updated_pipelines,
         }
-
 
     async def send_http_bot_test_message(
         self,
