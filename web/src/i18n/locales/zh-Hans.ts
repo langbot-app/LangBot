@@ -896,6 +896,7 @@ const zhHans = {
     saveSuccess: '保存成功',
     saveError: '保存失败：',
     createSuccess: '创建成功，请继续配置机器人',
+    autoCreatedPipeline: '已自动创建流水线并绑定消息处理事件',
     createError: '创建失败：',
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',

@@ -893,6 +893,7 @@ const zhHant = {
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
     createSuccess: '建立成功，請設定事件路由',
+    autoCreatedPipeline: '已自動建立流水線並綁定訊息處理事件',
     createError: '建立失敗：',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',

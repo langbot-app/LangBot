@@ -951,6 +951,8 @@ const enUS = {
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
     createSuccess: 'Created successfully. Continue configuring the bot',
+    autoCreatedPipeline:
+      'Automatically created a pipeline and bound message events',
     createError: 'Creation failed: ',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',

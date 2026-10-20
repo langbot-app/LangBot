@@ -952,6 +952,8 @@ const jaJP = {
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     createSuccess: '作成が完了しました。イベントルーティングを設定してください',
+    autoCreatedPipeline:
+      'パイプラインを自動作成し、メッセージイベントに関連付けました',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',

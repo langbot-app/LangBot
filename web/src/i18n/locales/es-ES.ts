@@ -965,6 +965,8 @@ const esES = {
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
     createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
+    autoCreatedPipeline:
+      'Se ha creado un pipeline automáticamente y se han vinculado los eventos de mensajes',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',

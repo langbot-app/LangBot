@@ -949,6 +949,8 @@ const viVN = {
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
+    autoCreatedPipeline:
+      'Đã tự động tạo pipeline và liên kết các sự kiện tin nhắn',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',

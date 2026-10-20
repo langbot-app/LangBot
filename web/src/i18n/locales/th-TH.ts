@@ -932,6 +932,7 @@ const thTH = {
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
+    autoCreatedPipeline: 'สร้างไปป์ไลน์และผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
