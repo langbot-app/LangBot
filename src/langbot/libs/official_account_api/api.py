@@ -4,6 +4,7 @@ import traceback
 from langbot.libs.wecom_api.WXBizMsgCrypt3 import WXBizMsgCrypt
 import xml.etree.ElementTree as ET
 from quart import Quart, request
+from werkzeug.exceptions import Forbidden
 import hashlib
 import hmac
 from typing import Callable
@@ -40,7 +41,8 @@ async def _read_callback_xml(client, req):
             req.args.get('nonce', ''),
         )
         if code != 0:
-            raise ValueError('Official Account callback decryption failed')
+            await client.logger.error(f'OfficialAccount message decryption failed: ret={code}')
+            raise Forbidden('message decryption failed')
         return xml.decode('utf-8') if isinstance(xml, bytes) else xml
     digest = hashlib.sha1(
         ''.join(
@@ -54,7 +56,8 @@ async def _read_callback_xml(client, req):
         ).encode('utf-8')
     ).hexdigest()
     if not hmac.compare_digest(digest, req.args.get('signature', '')):
-        raise ValueError('Official Account callback signature verification failed')
+        await client.logger.error('OfficialAccount callback signature verification failed')
+        raise Forbidden('signature verification failed')
     return body.decode('utf-8')
 
 
@@ -231,9 +234,12 @@ class OAClient:
 
                 return 'success'
 
+        except Forbidden as exc:
+            return exc.description, 403
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return 'callback processing failed', 500
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
@@ -509,9 +515,12 @@ class OAClientForLongerResponse:
 
                         return remember(response_xml)
 
+        except Forbidden as exc:
+            return exc.description, 403
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return 'callback processing failed', 500
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
