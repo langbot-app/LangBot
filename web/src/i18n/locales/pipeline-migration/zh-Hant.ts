@@ -1,4 +1,11 @@
 export default {
+  networkDiagnostics: {
+    timeout: '下載逾時，請檢查網路或代理後重試。',
+    connection: '無法連線至外掛市集，請檢查網路或代理。',
+    incomplete: '下載意外中斷，請重試。',
+    http: '外掛市集拒絕了下載請求，請查看狀態碼並稍後重試。',
+    network: '網路錯誤導致安裝中斷，請檢查連線後重試。',
+  },
   complete: '完成',
   checkingPlugin: '檢查外掛',
   preparingPlugin: '準備安裝',
