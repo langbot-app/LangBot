@@ -229,6 +229,7 @@ class RuntimeBot:
     def _augment_event_data(
         cls,
         event_data: dict[str, typing.Any],
+        bot_account_id: str | None = None,
     ) -> dict[str, typing.Any]:
         """Inject virtual computed fields to simplify common filter patterns."""
         message_chain = event_data.get('message_chain')
@@ -240,6 +241,13 @@ class RuntimeBot:
             event_data['message_element_types'] = [
                 comp.get('type', '') for comp in message_chain if isinstance(comp, dict)
             ]
+            if bot_account_id:
+                event_data['is_at_bot'] = any(
+                    isinstance(comp, dict)
+                    and comp.get('type') == 'At'
+                    and str(comp.get('target', '')) == str(bot_account_id)
+                    for comp in message_chain
+                )
         if 'group' in event_data:
             event_data['chat_type'] = 'group' if event_data.get('group') is not None else 'person'
         return event_data
@@ -249,13 +257,14 @@ class RuntimeBot:
         cls,
         event: platform_events.EBAEvent,
         filters: typing.Any,
+        bot_account_id: str | None = None,
     ) -> bool:
         if not filters:
             return True
         if not isinstance(filters, list):
             return False
 
-        event_data = cls._augment_event_data(cls._safe_model_dump(event))
+        event_data = cls._augment_event_data(cls._safe_model_dump(event), bot_account_id=bot_account_id)
         return all(
             cls._match_event_filter(event_data, event_filter)
             for event_filter in filters
@@ -283,6 +292,7 @@ class RuntimeBot:
         bindings: list[dict[str, typing.Any]],
         event: platform_events.EBAEvent,
         event_type: str,
+        bot_account_id: str | None = None,
     ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
         """Evaluate Bot event bindings with the same precedence used at runtime."""
         matched: list[tuple[int, int, dict[str, typing.Any], dict[str, typing.Any]]] = []
@@ -325,7 +335,7 @@ class RuntimeBot:
                 diagnostic_steps.append(step)
                 continue
 
-            if not cls._match_event_filters(event, binding.get('filters')):
+            if not cls._match_event_filters(event, binding.get('filters'), bot_account_id=bot_account_id):
                 step['failure_code'] = 'filters_mismatch'
                 step['reason'] = 'Event data does not satisfy binding filters'
                 diagnostic_steps.append(step)
@@ -356,7 +366,10 @@ class RuntimeBot:
         event_type: str,
     ) -> dict[str, typing.Any] | None:
         """Resolve the highest priority Bot event binding for a platform event."""
-        selected, _ = self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        bot_account_id = getattr(getattr(self, 'adapter', None), 'bot_account_id', None) or None
+        selected, _ = self._evaluate_eba_event_bindings(
+            self._get_event_bindings(), event, event_type, bot_account_id=bot_account_id
+        )
         return selected
 
     def diagnose_eba_event_binding(
@@ -365,7 +378,10 @@ class RuntimeBot:
         event_type: str,
     ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
         """Return the selected event binding plus per-binding diagnostic steps."""
-        return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        bot_account_id = getattr(getattr(self, 'adapter', None), 'bot_account_id', None) or None
+        return self._evaluate_eba_event_bindings(
+            self._get_event_bindings(), event, event_type, bot_account_id=bot_account_id
+        )
 
     @staticmethod
     def _route_ref(

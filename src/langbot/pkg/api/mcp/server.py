@@ -387,6 +387,37 @@ class LangBotMCPServer:
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
             return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
 
+        @mcp.tool(
+            description=(
+                'Preview promoting the pipeline at-bot trigger rule to a routing-layer '
+                'is_at_bot filter. Reports which bindings and pipelines need migration '
+                'without persisting changes.'
+            )
+        )
+        async def preview_bot_group_filter_migration(bot_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.bot_service.preview_group_filter_migration(context, bot_uuid))
+
+        @mcp.tool(
+            description=(
+                'Apply the group filter migration previewed by '
+                'preview_bot_group_filter_migration. Adds is_at_bot=true filter to group '
+                'message bindings and, when disable_pipeline_at_bot is true (default), '
+                'turns off the pipeline trigger at-bot rule. Idempotent.'
+            )
+        )
+        async def apply_bot_group_filter_migration(
+            bot_uuid: str, disable_pipeline_at_bot: bool = True
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await ap.bot_service.apply_group_filter_migration(
+                    context,
+                    bot_uuid,
+                    disable_pipeline_at_bot=disable_pipeline_at_bot,
+                )
+            )
+
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
