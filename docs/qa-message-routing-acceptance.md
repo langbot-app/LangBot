@@ -51,3 +51,32 @@ disabled routes.
 Use existing `skills/.env` conventions for machine-specific URLs. Apply resource
 stop thresholds before bounded tests; do not treat a short idle sample as a soak
 test or a health endpoint as feature acceptance.
+
+## Wizard regression coverage
+
+The Wizard creates a dedicated Pipeline before creating its disabled Bot, and
+passes the same explicit private/group-mention template used by manual setup.
+Returning to the same platform reuses the Bot and retains unsaved form values.
+A successful Pipeline remains in the in-page draft if Bot creation fails, so a
+retry reuses it. Create/save operations have a synchronous reentry guard.
+Saving adapter settings reads the current Bot and only initializes routes when
+none exist; it never replaces nonempty custom rules or re-enables disabled ones.
+
+For real UI acceptance, use a separate empty data directory and ports; never
+reset the member's database or Wizard progress. Complete registration, platform
+selection, save/enable, receipt of an isolated protocol message, AI choice and
+finish. Refresh the completion page and compare persisted Bot/Pipeline UUIDs.
+Return to the platform step and submit again; assert one Bot, one Pipeline and
+unchanged route IDs. Remove/reapply the message template through the Bot UI and
+repeat the private/unmentioned-group/other-mention/bot-mention protocol probes.
+Disable a rule through the UI, restore a QA-only step-1 Wizard draft pointing to
+the existing Bot/Pipeline, save through the UI, and compare every binding field.
+Verify the disabled rule also stays inactive at runtime.
+
+The 2026-10-20 Mac run completed this flow against real Core/RT using native
+Codex Computer Use. Both default and manual templates created tasks only for
+private messages and mentions of this bot. After custom group-route disablement
+and Wizard resave, even a mention created no task. Model execution failed with
+missing credentials; successful AI replies and real long-running busy model
+sessions are not certified by this run. Busy-session controller/response-rule
+unit tests are a separate regression result, not a substitute for that evidence.
