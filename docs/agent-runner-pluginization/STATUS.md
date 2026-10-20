@@ -1,6 +1,6 @@
 # Runner Pluginization Status
 
-本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
+本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
 状态快照日期：2026-09-05。代码基线为 LangBot `dev/4.11.x` / `a4d36aa2d` 和 SDK `dev/4.11.x` / `f1da058`；本文是本地检视快照，不代表远端最新状态或正式发布批准。
 

@@ -1,6 +1,6 @@
 # 官方 Runner 插件迁移计划
 
-本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。QA 入口和 smoke 记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)。
+本文档描述内置 `RequestRunner` 迁出 LangBot 后，官方 runner 插件如何组织、迁移和验收。它是 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 和 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) 的下游落地计划，不是 LangBot 宿主协议的设计前提。QA 入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 官方 `local-agent` 可以外移，也可以重写。设计重点不是保留旧内置 runner 的内部结构，而是验证一个依附 LangBot host 基础设施的官方 agent 能否完整工作。同时，LangBot host 协议必须服务 Claude Code SDK、Codex、Pi Agent SDK、外部 Agent 平台等自管 context/runtime 的 runner，不能被官方插件的实现细节绑死。
 
@@ -111,7 +111,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ## 7. Code-agent harness runner 当前形态
 
-外部 code-agent harness 由直接 runner 插件承接，例如 `acp-agent-runner`、`claude-code-agent`、`codex-agent`，每个 runner 负责把目标 harness 的 native session、workspace、MCP bridge 和输出事件转换为统一 `RunnerResult`。本地 smoke 验收入口与记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)。
+外部 code-agent harness 由直接 runner 插件承接，例如 `acp-agent-runner`、`claude-code-agent`、`codex-agent`，每个 runner 负责把目标 harness 的 native session、workspace、MCP bridge 和输出事件转换为统一 `RunnerResult`。本地 smoke 验收入口与记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 当前形态：
 
