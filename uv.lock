@@ -2064,7 +2064,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.11.0"
+version = "4.11.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -2190,7 +2190,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", specifier = "==0.7.15" },
+    { name = "langbot-plugin", specifier = "==0.7.16" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2260,7 +2260,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.15"
+version = "0.7.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2281,9 +2281,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/5c/6f8ff33347624020b2626b53edc8a6602259bb0428e2ffdd457a2c4a118d/langbot_plugin-0.7.15.tar.gz", hash = "sha256:e5cc9572b8f95b27ece52c857304ec029f477b4860adb4174ca92e034f2c2d70", size = 718988, upload-time = "2026-10-20T07:44:58.23Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/8c/9582a14fd989c35787254a4e4e4304ce77572439056c594cee5ee98149a4/langbot_plugin-0.7.16.tar.gz", hash = "sha256:f5a99c578f39a3f51d1f87f56a4ecd235b303ee91bdac8853dabc3fd2181bbcf", size = 721978, upload-time = "2026-10-20T15:38:31.489Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/92/fffc67154a6d81540fce92710f23ac02e00e385805ce1b89df2d689ec782/langbot_plugin-0.7.15-py3-none-any.whl", hash = "sha256:5e3fb124fe3c2d48e3d6f38bac87b6772c00c736f8072a4773fca27e7590fdee", size = 459140, upload-time = "2026-10-20T07:44:56.614Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/2b/aed8a96ff33ab8c9a732d9e1ffe62749c3ab0157c9286bd16b3e4b5efe99/langbot_plugin-0.7.16-py3-none-any.whl", hash = "sha256:ecf7ce622862dabb5cb8089b96ccab4a36836746b0a02fa512344eea8ec728a1", size = 459187, upload-time = "2026-10-20T15:38:30.004Z" },
 ]
 
 [[package]]
