@@ -1,0 +1,46 @@
+name: line-omni
+
+execution:
+  type: plugin
+
+supported_events:
+  - message.received
+  - message.edited
+  - message.deleted
+  - feedback.received
+  - group.member_joined
+  - group.member_left
+  - platform.specific
+
+supported_apis:
+  - send_message
+  - reply_message
+  - get_user_info
+  - get_group_info
+  - get_group_member_list
+  - call_platform_api
+
+execution_path: ./pkg
+
+config:
+  - name: channel_access_token
+    display_name: Channel Access Token
+    description: LINE 官方 Bot 频道访问令牌；经 webhook 校验身份
+    type: text
+    value: ""
+    required: true
+    group: line
+    sensitive: true
+  - name: channel_secret
+    display_name: Channel Secret
+    description: LINE Bot Channel Secret；用于 webhook 校验签名
+    type: text
+    value: ""
+    required: true
+    group: line
+    sensitive: true
+
+commands:
+  - name: help
+    function: help
+    args:
