@@ -6,6 +6,7 @@ without cluttering the main pipeline code.
 
 from __future__ import annotations
 
+import asyncio
 import traceback
 import typing
 import time
@@ -117,6 +118,25 @@ async def prepare_monitoring_identity(
 
 class MonitoringHelper:
     """Helper class for monitoring operations"""
+
+    @staticmethod
+    async def finish_query(ap, query, message_id: str, status: str) -> None:
+        """Bound terminal writes and retry transient failures without blocking cleanup."""
+        if not message_id:
+            return
+        for attempt in range(3):
+            try:
+                async with asyncio.timeout(2):
+                    await ap.monitoring_service.update_message_status(
+                        get_query_execution_context(query),
+                        message_id=message_id,
+                        status=status,
+                        level='error' if status == 'error' else 'info',
+                    )
+                return
+            except Exception as exc:
+                ap.logger.warning(f'Terminal monitoring write failed (attempt {attempt + 1}): {exc}')
+        ap.logger.error(f'Unable to finish monitoring message {message_id}: {status}')
 
     @staticmethod
     async def record_query_start(
@@ -285,12 +305,7 @@ class MonitoringHelper:
         try:
             original_message_id = (query.variables or {}).get('_monitoring_message_id')
             if original_message_id:
-                await ap.monitoring_service.update_message_status(
-                    get_query_execution_context(query),
-                    message_id=original_message_id,
-                    status='error',
-                    level='error',
-                )
+                await MonitoringHelper.finish_query(ap, query, original_message_id, 'error')
             session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
