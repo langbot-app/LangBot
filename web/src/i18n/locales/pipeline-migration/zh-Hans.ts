@@ -1,4 +1,11 @@
 export default {
+  networkDiagnostics: {
+    timeout: '下载超时，请检查网络或代理后重试。',
+    connection: '无法连接插件市场，请检查网络或代理。',
+    incomplete: '下载意外中断，请重试。',
+    http: '插件市场拒绝了下载请求，请查看状态码并稍后重试。',
+    network: '网络错误导致安装中断，请检查连接后重试。',
+  },
   complete: '完成',
   checkingPlugin: '检查插件',
   preparingPlugin: '准备安装',

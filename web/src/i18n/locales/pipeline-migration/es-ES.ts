@@ -1,4 +1,11 @@
 export default {
+  networkDiagnostics: {
+    timeout: 'La descarga agotó el tiempo de espera. Revisa la red o el proxy y reintenta.',
+    connection: 'No se pudo conectar al mercado. Revisa la red o el proxy.',
+    incomplete: 'La descarga se interrumpió. Vuelve a intentarlo.',
+    http: 'El mercado rechazó la descarga. Revisa el estado e inténtalo más tarde.',
+    network: 'Un error de red interrumpió la instalación. Revisa la conexión y reintenta.',
+  },
   complete: 'Finalizar',
   checkingPlugin: 'Comprobar plugin',
   preparingPlugin: 'Preparar instalación',

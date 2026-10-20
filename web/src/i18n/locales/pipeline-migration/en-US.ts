@@ -1,4 +1,11 @@
 export default {
+  networkDiagnostics: {
+    timeout: 'The download timed out. Check your network or proxy and retry.',
+    connection: 'Could not connect to the marketplace. Check your network or proxy.',
+    incomplete: 'The download was interrupted. Please retry.',
+    http: 'The marketplace rejected the download. Check the status and retry later.',
+    network: 'A network error interrupted installation. Check your connection and retry.',
+  },
   complete: 'Done',
   checkingPlugin: 'Check plugin',
   preparingPlugin: 'Prepare installation',
