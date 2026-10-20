@@ -404,6 +404,90 @@ async def test_overview_metrics_keep_message_rollup(engine, service):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('filtered', [False, True])
+@pytest.mark.parametrize(
+    ('mode', 'statuses', 'expected'),
+    [
+        ('real', None, (3, 2, 1)),
+        ('debug', None, (0, 0, 0)),
+        ('all', ['completed'], (2, 1, 1)),
+        ('real', ['completed'], (2, 1, 1)),
+        ('real', ['failed'], (0, 0, 0)),
+        ('debug', ['completed'], (0, 0, 0)),
+    ],
+)
+async def test_overview_execution_filters_do_not_read_historical_payload_pages(
+    engine, service, mode, statuses, expected, filtered
+):
+    """Execution membership must read root and link metadata without accessing wide history rows."""
+    import re
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    message = persistence_monitoring.MonitoringMessage
+    payload = 'historical payload ' * 65536
+    async with engine.begin() as connection:
+        await connection.execute(sa.update(message).values(message_content=payload, variables=payload))
+        await connection.execute(
+            sa.update(message).where(message.id == 'msg-assistant').values(parent_message_id='msg-user')
+        )
+        # Vary status selectivity so the planner cannot hide table reads behind a tiny fixture.
+        await connection.execute(
+            sa.insert(message),
+            [
+                dict(
+                    id=f'unlinked-{index}',
+                    workspace_uuid=WORKSPACE,
+                    timestamp=_dt(12),
+                    bot_id='bot-1',
+                    bot_name='Bot',
+                    pipeline_id='pipeline-1',
+                    pipeline_name='Pipeline',
+                    session_id='session-1',
+                    message_content='unlinked assistant output',
+                    role='assistant',
+                    status=('success', 'error', 'discarded', 'skipped', 'rejected', 'running', 'pending')[index % 7],
+                    level='info',
+                )
+                for index in range(64)
+            ],
+        )
+        await connection.exec_driver_sql('ANALYZE')
+
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('SELECT'):
+            statements.append((statement, parameters))
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        filters = (
+            dict(bot_ids=['bot-1'], pipeline_ids=['pipeline-1'], start_time=_dt(9), end_time=_dt(11))
+            if filtered
+            else {}
+        )
+        overview = await service.get_overview_metrics(WORKSPACE, execution_statuses=statuses, mode=mode, **filters)
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    assert (overview['total_messages'], overview['llm_calls'], overview['active_sessions']) == expected
+    checked_accesses = 0
+    async with engine.connect() as connection:
+        for sql, parameters in statements:
+            # Discover aliases from the executed SQL rather than pinning an alias or index name.
+            sources = {message.__tablename__, *re.findall(r'FROM monitoring_messages AS (\w+)', sql)}
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, parameters)).all()
+            accesses = [
+                row[3] for row in plan if row[3].split()[0] in {'SEARCH', 'SCAN'} and row[3].split()[1] in sources
+            ]
+            assert accesses, plan
+            assert all('COVERING INDEX' in access for access in accesses), plan
+            checked_accesses += len(accesses)
+    assert checked_accesses > 0
+
+
+@pytest.mark.asyncio
 async def test_execution_detail_for_agent_and_pipeline(engine, service):
     await _seed(engine)
 

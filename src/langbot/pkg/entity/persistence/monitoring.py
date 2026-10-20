@@ -40,9 +40,34 @@ class MonitoringMessage(Base):
 
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_messages_summary_event', 'workspace_uuid', 'bot_id', 'event_id', 'role'),
-        sqlalchemy.Index('ix_monitoring_messages_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        # Time-windowed aggregates must not fetch execution metadata past historical payloads.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_timestamp',
+            'workspace_uuid',
+            'timestamp',
+            'id',
+            'status',
+            'role',
+            'bot_id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+            'pipeline_id',
+        ),
         sqlalchemy.Index('ix_monitoring_messages_media_ttl', 'workspace_uuid', 'timestamp', 'id'),
         sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
+        # Execution membership must not traverse historical payload overflow pages.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_execution_filter',
+            'workspace_uuid',
+            'status',
+            'role',
+            'bot_id',
+            'id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+        ),
         sqlalchemy.Index(
             'ix_monitoring_messages_conversation_page', 'workspace_uuid', 'bot_id', 'session_id', 'timestamp', 'id'
         ),

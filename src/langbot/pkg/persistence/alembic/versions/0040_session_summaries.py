@@ -1,5 +1,7 @@
 """Persist idempotent conversation summaries independently of message history."""
 
+import contextlib
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -9,10 +11,59 @@ branch_labels = None
 depends_on = None
 
 TABLE = 'monitoring_session_receipts'
+TIME_INDEX = 'ix_monitoring_messages_workspace_timestamp'
 INDEXES = (
     ('monitoring_messages', 'ix_monitoring_messages_summary_event', ['workspace_uuid', 'bot_id', 'event_id', 'role']),
     ('agent_run', 'ix_agent_run_summary_event', ['workspace_id', 'bot_id', 'event_id', 'id']),
+    (
+        'monitoring_messages',
+        'ix_monitoring_messages_execution_filter',
+        ['workspace_uuid', 'status', 'role', 'bot_id', 'id', 'session_id', 'parent_message_id', 'run_id'],
+    ),
+    (
+        'monitoring_messages',
+        TIME_INDEX,
+        [
+            'workspace_uuid',
+            'timestamp',
+            'id',
+            'status',
+            'role',
+            'bot_id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+            'pipeline_id',
+        ],
+    ),
 )
+
+
+@contextlib.contextmanager
+def _suspend_summary_forced_rls(connection):
+    """Let the table-owning migrator mark history without a Workspace scope."""
+    if connection.dialect.name != 'postgresql':
+        yield
+        return
+    tables = (
+        connection.execute(
+            sa.text(
+                'SELECT relname FROM pg_class WHERE relnamespace = current_schema()::regnamespace '
+                'AND relname IN :tables AND relforcerowsecurity'
+            ).bindparams(sa.bindparam('tables', expanding=True)),
+            {'tables': ('workspaces', 'workspace_metadata', 'monitoring_sessions', 'monitoring_messages', 'event_log')},
+        )
+        .scalars()
+        .all()
+    )
+    quote = connection.dialect.identifier_preparer.quote
+    try:
+        for table in tables:
+            connection.execute(sa.text(f'ALTER TABLE {quote(table)} NO FORCE ROW LEVEL SECURITY'))
+        yield
+    finally:
+        for table in tables:
+            connection.execute(sa.text(f'ALTER TABLE {quote(table)} FORCE ROW LEVEL SECURITY'))
 
 
 def upgrade():
@@ -20,8 +71,12 @@ def upgrade():
     for table, index, fields in INDEXES:
         if not sa.inspect(connection).has_table(table):
             continue
-        if index not in {item['name'] for item in sa.inspect(connection).get_indexes(table)}:
-            op.create_index(index, table, fields)
+        existing = {item['name']: item['column_names'] for item in sa.inspect(connection).get_indexes(table)}
+        if existing.get(index) == fields:
+            continue
+        if index in existing:
+            op.drop_index(index, table_name=table)
+        op.create_index(index, table, fields)
     # Bare Alembic and partial-schema upgrades rely on ORM bootstrap for core tables.
     if not sa.inspect(connection).has_table('monitoring_sessions'):
         return
@@ -70,15 +125,16 @@ def upgrade():
                 sources.append('EXISTS (SELECT 1 FROM monitoring_messages m WHERE m.workspace_uuid=w.uuid)')
             if sa.inspect(connection).has_table('event_log'):
                 sources.append('EXISTS (SELECT 1 FROM event_log e WHERE e.workspace_id=w.uuid)')
-            connection.execute(
-                sa.text(
-                    'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
-                    "SELECT w.uuid, 'session_summary_backfill_v1', :cursor FROM workspaces w WHERE ("
-                    + ' OR '.join(sources)
-                    + ') ON CONFLICT (workspace_uuid, key) DO UPDATE SET value=excluded.value'
-                ),
-                {'cursor': '{"source": "messages"}'},
-            )
+            with _suspend_summary_forced_rls(connection):
+                connection.execute(
+                    sa.text(
+                        'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
+                        "SELECT w.uuid, 'session_summary_backfill_v1', :cursor FROM workspaces w WHERE ("
+                        + ' OR '.join(sources)
+                        + ') ON CONFLICT (workspace_uuid, key) DO UPDATE SET value=excluded.value'
+                    ),
+                    {'cursor': '{"source": "messages"}'},
+                )
     collation = '"C"' if connection.dialect.name == 'postgresql' else 'BINARY'
     op.execute(
         sa.text(
@@ -106,6 +162,8 @@ def downgrade():
         if sa.inspect(connection).has_table(table):
             if index in {item['name'] for item in sa.inspect(connection).get_indexes(table)}:
                 op.drop_index(index, table_name=table)
+            if index == TIME_INDEX:
+                op.create_index(index, table, ['workspace_uuid', 'timestamp'])
     if sa.inspect(connection).has_table(TABLE):
         op.drop_table(TABLE)
     if sa.inspect(connection).has_table('monitoring_sessions'):
