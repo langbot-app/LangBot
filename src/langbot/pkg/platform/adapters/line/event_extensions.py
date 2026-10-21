@@ -25,6 +25,7 @@ event_extensions.py — LINE 事件擴充（WO-LINE-04 子模块）。
 
 解耦：据 WO-LINE-02 框架风格（_platform_specific + EBA 事件命名空间）；仅 stdlib + EBA 框架契约。
 """
+
 from __future__ import annotations
 
 import time
@@ -47,23 +48,23 @@ class LineEventExtensions:
     # 据 ops .84 SDK 实测的 event_type 值（见 WO-LINE-02 target2yiri）。
     # blueprint §3.2 明示 LINE 事件 JSON 映射 ⚠️待 LINE 事件 JSON 實測。
     _EVENT_TYPE_MAP = {
-        "message": "message.received",
-        "follow": "user.followed",
-        "unfollow": "user.unfollowed",
-        "join": "group.joined",
-        "left": "group.left",
-        "member_joined": "group.member_joined",
-        "member_left": "group.member_left",
-        "postback": "platform.specific.postback",
-        "beacon": "platform.specific.beacon",
+        'message': 'message.received',
+        'follow': 'user.followed',
+        'unfollow': 'user.unfollowed',
+        'join': 'group.joined',
+        'left': 'group.left',
+        'member_joined': 'group.member_joined',
+        'member_left': 'group.member_left',
+        'postback': 'platform.specific.postback',
+        'beacon': 'platform.specific.beacon',
     }
 
-    def __init__(self, namespace: str = "line-omni") -> None:
+    def __init__(self, namespace: str = 'line-omni') -> None:
         self.namespace = namespace
 
     async def yiri2target(self, event: Any, *args: Any, **kwargs: Any) -> Any:
         """統一事件 → LINE 原生事件（一般不需要，延续 WO-LINE-02 yiri2target）。"""
-        return getattr(event, "source_platform_object", None)
+        return getattr(event, 'source_platform_object', None)
 
     async def target2yiri(self, normalized_event: dict) -> Optional[dict]:
         """归一化事件 dict → EBA 事件映射（框架版）。
@@ -75,32 +76,34 @@ class LineEventExtensions:
         """
         if not isinstance(normalized_event, dict):
             return None
-        event_type = str(normalized_event.get("type", "")).lower()
+        event_type = str(normalized_event.get('type', '')).lower()
         mapped = self._EVENT_TYPE_MAP.get(event_type)
         if mapped is None:
             # 未映射者默认走 platform.specific（action = line.<type>），不宣告 capability
-            return {"type": "platform.specific", "action": f"line.{event_type}",
-                    "raw_type": event_type, "raw": normalized_event}
-        if mapped == "platform.specific.postback":
+            return {
+                'type': 'platform.specific',
+                'action': f'line.{event_type}',
+                'raw_type': event_type,
+                'raw': normalized_event,
+            }
+        if mapped == 'platform.specific.postback':
             # PostbackEvent → platform.specific.postback（保留 action + data）
-            data = normalized_event.get("data") or normalized_event.get("postback", {})
-            return {"type": mapped, "action": "postback",
-                    "params": data, "raw": normalized_event}
-        if mapped == "platform.specific.beacon":
-            data = normalized_event.get("data") or normalized_event.get("beacon", {})
-            return {"type": mapped, "action": "beacon",
-                    "params": data, "raw": normalized_event}
+            data = normalized_event.get('data') or normalized_event.get('postback', {})
+            return {'type': mapped, 'action': 'postback', 'params': data, 'raw': normalized_event}
+        if mapped == 'platform.specific.beacon':
+            data = normalized_event.get('data') or normalized_event.get('beacon', {})
+            return {'type': mapped, 'action': 'beacon', 'params': data, 'raw': normalized_event}
         # group.* / user.* / member_* → EBA 事件命名空間（boxed 框架契约）
         # blueprint §3.2 明示 LINE 事件 JSON 映射 ⚠️待 LINE 事件 JSON 實測
-        sender = normalized_event.get("sender") or {}
+        sender = normalized_event.get('sender') or {}
         return {
-            "type": mapped,
-            "action": mapped,
-            "source_platform_object": normalized_event,
-            "sender_id": str(sender.get("id", "")).strip(),
-            "chat_id": str(sender.get("id", "")).strip(),
-            "timestamp": _parse_event_timestamp(normalized_event.get("timestamp")),
-            "raw": normalized_event,
+            'type': mapped,
+            'action': mapped,
+            'source_platform_object': normalized_event,
+            'sender_id': str(sender.get('id', '')).strip(),
+            'chat_id': str(sender.get('id', '')).strip(),
+            'timestamp': _parse_event_timestamp(normalized_event.get('timestamp')),
+            'raw': normalized_event,
         }
 
     def supported_events(self):
@@ -111,15 +114,15 @@ class LineEventExtensions:
         """
         # 据 EBA 框架契约（boxed）+ blueprint §3.2 映射表；未實測事件不在此宣告。
         return [
-            "message.received",
-            "user.followed",
-            "user.unfollowed",
-            "group.joined",
-            "group.left",
-            "group.member_joined",
-            "group.member_left",
-            "platform.specific.postback",
-            "platform.specific.beacon",
+            'message.received',
+            'user.followed',
+            'user.unfollowed',
+            'group.joined',
+            'group.left',
+            'group.member_joined',
+            'group.member_left',
+            'platform.specific.postback',
+            'platform.specific.beacon',
         ]
 
 
@@ -140,12 +143,12 @@ class LineGroupUserQuery:
 
     # 据 blueprint §3.4 LINE API→EBA 映射表（⚠️待 LINE Messaging API 端實測）
     _API_MAP = {
-        "get_user_profile": "get_user_info",        # LINE getProfile（⚠️待測）
-        "get_group_summary": "get_group_info",       # LINE getGroupSummary（⚠️待測）
-        "get_group_member_profile": "get_group_member_list",  # LINE getGroupMemberIds（⚠️待測）
+        'get_user_profile': 'get_user_info',  # LINE getProfile（⚠️待測）
+        'get_group_summary': 'get_group_info',  # LINE getGroupSummary（⚠️待測）
+        'get_group_member_profile': 'get_group_member_list',  # LINE getGroupMemberIds（⚠️待測）
     }
 
-    def __init__(self, namespace: str = "line-omni") -> None:
+    def __init__(self, namespace: str = 'line-omni') -> None:
         self.namespace = namespace
 
     def supported_apis(self):
@@ -155,9 +158,9 @@ class LineGroupUserQuery:
         仅据 blueprint §3.4 映射表 + ops .84 SDK 实测框架标注實測待確認。
         """
         return [
-            "get_user_info",
-            "get_group_info",
-            "get_group_member_list",
+            'get_user_info',
+            'get_group_info',
+            'get_group_member_list',
         ]
 
     def query_name(self, action: str) -> Optional[str]:

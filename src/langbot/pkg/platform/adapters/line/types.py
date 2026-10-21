@@ -16,20 +16,20 @@ class LineEventType(str, Enum):
     """
 
     # 消息类
-    text = "text"
-    image = "image"
-    video = "video"
-    audio = "audio"
-    sticker = "sticker"
-    file = "file"
+    text = 'text'
+    image = 'image'
+    video = 'video'
+    audio = 'audio'
+    sticker = 'sticker'
+    file = 'file'
     # 交互
-    interactive_message = "interactive"  # ⚠️待实测
-    postback = "postback"  # ⚠️待实测
+    interactive_message = 'interactive'  # ⚠️待实测
+    postback = 'postback'  # ⚠️待实测
     # 群/用户事件
-    group_joined = "group_joined"  # ⚠️待实测
-    group_left = "group_left"  # ⚠️待实测
-    user_joined = "user_joined"  # ⚠️待实测
-    user_left = "user_left"  # ⚠️待实测
+    group_joined = 'group_joined'  # ⚠️待实测
+    group_left = 'group_left'  # ⚠️待实测
+    user_joined = 'user_joined'  # ⚠️待实测
+    user_left = 'user_left'  # ⚠️待实测
     # 关注
-    follow = "follow"  # ⚠️待实测
-    unfollow = "unfollow"  # ⚠️待实测
+    follow = 'follow'  # ⚠️待实测
+    unfollow = 'unfollow'  # ⚠️待实测

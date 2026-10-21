@@ -18,6 +18,7 @@ send_api.py — LINE 訊息發送 API（WO-LINE-03 子模块）。
 
 解耦：不 import 契約層；self-contained。僅 stdlib。
 """
+
 import asyncio
 import random
 from typing import Any, Callable
@@ -35,10 +36,15 @@ class RetryPolicy:
     - 不依賴 SDK 特定 API，可复用于任何 awaitable 发送。
     """
 
-    def __init__(self, retries: int = 3, base_delay: float = 0.5,
-                 backoff_factor: float = 2.0, max_delay: float = 15.0,
-                 jitter: float = 0.3,
-                 retryable: tuple = (TimeoutError, ConnectionError, ConnectionResetError)):
+    def __init__(
+        self,
+        retries: int = 3,
+        base_delay: float = 0.5,
+        backoff_factor: float = 2.0,
+        max_delay: float = 15.0,
+        jitter: float = 0.3,
+        retryable: tuple = (TimeoutError, ConnectionError, ConnectionResetError),
+    ):
         self.retries = max(0, retries)
         self.base_delay = max(0.0, base_delay)
         self.backoff_factor = max(1.0, backoff_factor)
@@ -47,7 +53,7 @@ class RetryPolicy:
         self.retryable = retryable
 
     def backoff(self, attempt: int) -> float:
-        delay = self.base_delay * (self.backoff_factor ** attempt)
+        delay = self.base_delay * (self.backoff_factor**attempt)
         delay = min(delay, self.max_delay)
         if self.jitter > 0:
             # 半抖动：保留退避骨架 + 加 ±jitter 百分比抖动
@@ -67,9 +73,9 @@ class RetryPolicy:
             except self.retryable as e:
                 last_exc = e
                 if attempt < self.retries:
-                    await self._log(f"retriable error on attempt {attempt}: {e}; backoff {self.backoff(attempt):.2f}s")
+                    await self._log(f'retriable error on attempt {attempt}: {e}; backoff {self.backoff(attempt):.2f}s')
                     await asyncio.sleep(self.backoff(attempt))
-        raise SendError(f"发送失败，已重试 {self.retries} 次仍失败: {last_exc}") from last_exc
+        raise SendError(f'发送失败，已重试 {self.retries} 次仍失败: {last_exc}') from last_exc
 
     async def _log(self, msg: str):
         # 轻量日志；外部注入（见 LineSendApi 的 logger 注入）
@@ -94,9 +100,9 @@ class LineSendApi:
 
     async def _log(self, level: str, msg: str):
         if self.logger:
-            fn = getattr(self.logger, level, None) or getattr(self.logger, "info", None)
+            fn = getattr(self.logger, level, None) or getattr(self.logger, 'info', None)
             if fn:
-                await fn(f"[LineSendApi] {msg}")
+                await fn(f'[LineSendApi] {msg}')
 
     # ---------- ②c 主動推播：Push Message（文字／圖片／自訂 Flex）----------
     async def push_message(self, target_id: str, content: dict, timeout: float = 30.0) -> Any:
@@ -110,18 +116,19 @@ class LineSendApi:
         payload dict 形態 vs SDK 對象 ⚠️ 待 SDK 實測確認。
         """
         if not target_id:
-            raise SendError("push target_id 不能为空")
+            raise SendError('push target_id 不能为空')
         payload = self._build_payload(content)
 
         async def _send():
             return await self.client.push_message(to_user=target_id, message=payload)
 
-        await self._log("info", f"push_message to={target_id}")
+        await self._log('info', f'push_message to={target_id}')
         return await self.retry.run(_send)
 
     # ---------- ②b 被動回覆快速通道：ReplyToken 回覆（過期轉 Push）----------
-    async def reply_message(self, target_id: str, content: dict,
-                            timeout: float = 30.0, push_target_id: str = None) -> Any:
+    async def reply_message(
+        self, target_id: str, content: dict, timeout: float = 30.0, push_target_id: str = None
+    ) -> Any:
         """被動回覆：ReplyToken 快速通道。
 
         - 據 §2.2 實測 reply_message(reply_token, message=payload)。
@@ -130,8 +137,8 @@ class LineSendApi:
         """
         if not target_id:
             if not push_target_id:
-                raise SendError("reply 需 reply_token 或 push_target_id")
-            await self._log("warn", "reply_token 缺失，直接轉 Push API")
+                raise SendError('reply 需 reply_token 或 push_target_id')
+            await self._log('warn', 'reply_token 缺失，直接轉 Push API')
             return await self.push_message(push_target_id, content)
 
         payload = self._build_payload(content)
@@ -145,11 +152,10 @@ class LineSendApi:
             # 過期／失敗 → 平滑轉 Push（②b 平滑降级）
             if not push_target_id:
                 raise
-            await self._log("warn",
-                            f"ReplyToken 已過期／失敗（timeout={timeout}s），平滑轉 Push to={push_target_id}")
+            await self._log('warn', f'ReplyToken 已過期／失敗（timeout={timeout}s），平滑轉 Push to={push_target_id}')
             return await self.push_message(push_target_id, content)
-        await self._log("info", "reply_token 回覆完成")
-        return "replied"
+        await self._log('info', 'reply_token 回覆完成')
+        return 'replied'
 
     # ---------- payload 建構（文字／圖片／Flex）----------
     def _build_payload(self, content: dict) -> dict:
@@ -158,26 +164,26 @@ class LineSendApi:
         据 LINE Messaging API 通用認知；dict 形態 vs SDK 對象 ⚠️ 待 SDK 實測確認。
         """
         if content is None:
-            raise SendError("content 不能為空")
-        ctype = content.get("type", "text")
-        if ctype == "text":
-            if not content.get("text"):
-                raise SendError("text message 缺 text 欄")
-            return {"type": "text", "text": content.get("text", "")}
-        if ctype == "image":
-            if not content.get("original_content_url"):
-                raise SendError("image message 缺 original_content_url 欄")
+            raise SendError('content 不能為空')
+        ctype = content.get('type', 'text')
+        if ctype == 'text':
+            if not content.get('text'):
+                raise SendError('text message 缺 text 欄')
+            return {'type': 'text', 'text': content.get('text', '')}
+        if ctype == 'image':
+            if not content.get('original_content_url'):
+                raise SendError('image message 缺 original_content_url 欄')
             return {
-                "type": "image",
-                "original_content_url": content.get("original_content_url", ""),
-                "preview_image_url": content.get("preview_image_url", ""),
+                'type': 'image',
+                'original_content_url': content.get('original_content_url', ''),
+                'preview_image_url': content.get('preview_image_url', ''),
             }
-        if ctype == "flex":
-            if not content.get("flex"):
-                raise SendError("flex message 缺 flex 欄")
+        if ctype == 'flex':
+            if not content.get('flex'):
+                raise SendError('flex message 缺 flex 欄')
             return {
-                "type": "flex",
-                "alternative_text": content.get("alternative_text", ""),
-                "flex": content.get("flex", {}),
+                'type': 'flex',
+                'alternative_text': content.get('alternative_text', ''),
+                'flex': content.get('flex', {}),
             }
-        raise SendError(f"不支持的 message type: {ctype}（仅 text/image/flex）")
+        raise SendError(f'不支持的 message type: {ctype}（仅 text/image/flex）')
