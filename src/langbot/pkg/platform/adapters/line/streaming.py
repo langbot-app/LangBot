@@ -18,7 +18,7 @@ SDK 保活重連）未實測、全部 ⚠️ 提案，需依 LINE Developers 官
 解耦：据 send_api.RetryPolicy（本地导入）；仅 stdlib。
 """
 import asyncio
-from typing import Any, List, Optional
+from typing import Any, List
 
 from send_api import RetryPolicy, SendError
 
