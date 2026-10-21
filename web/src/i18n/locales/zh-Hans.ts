@@ -99,7 +99,8 @@ const zhHans = {
     retentionHelp: '超过保留时长的消息记录会自动清理。',
     credits: '每月赠送 {{count}} 积分',
     creditsLabel: '模型积分',
-    creditsHelp: '每个订阅月自动发放，年付计划同样按月发放。积分用尽后，仍可接入自行配置的模型供应商继续使用。',
+    creditsHelp:
+      '每个订阅月自动发放，年付计划同样按月发放。积分用尽后，仍可接入自行配置的模型供应商继续使用。',
     platforms: '支持主流平台',
     excludedPlatforms: '不支持：{{platforms}}',
     allPlatforms: '支持当前所有可用平台',

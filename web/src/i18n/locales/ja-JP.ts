@@ -103,7 +103,8 @@ const jaJP = {
     retentionHelp: '保存期間を過ぎた履歴は自動的に削除されます。',
     credits: '毎月 {{count}} クレジット',
     creditsLabel: 'モデルクレジット',
-    creditsHelp: '年払いでも、契約の各月にクレジットが付与されます。クレジットが不足しても、独自に設定したモデルプロバイダーを引き続き利用できます。',
+    creditsHelp:
+      '年払いでも、契約の各月にクレジットが付与されます。クレジットが不足しても、独自に設定したモデルプロバイダーを引き続き利用できます。',
     platforms: '主要プラットフォームに対応',
     excludedPlatforms: '対象外：{{platforms}}',
     allPlatforms: '現在利用可能なすべてのプラットフォーム',

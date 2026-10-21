@@ -70,7 +70,9 @@ import { Button } from '@/components/ui/button';
 import WorkspaceSwitcher, {
   OPEN_WORKSPACE_SETTINGS_EVENT,
 } from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
-const CloudPlansDialog = lazy(() => import('@/app/home/components/workspace-settings/CloudPlansDialog'));
+const CloudPlansDialog = lazy(
+  () => import('@/app/home/components/workspace-settings/CloudPlansDialog'),
+);
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import SettingsDialog, {
   SettingsSection,

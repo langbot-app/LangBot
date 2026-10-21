@@ -44,7 +44,9 @@ export default function WorkspaceSwitcher({
           aria-label={t('workspace.switchWorkspace')}
         >
           <Building2 className="size-4 shrink-0" />
-          <span className="max-w-[6rem] truncate">{currentWorkspace.workspace.name}</span>
+          <span className="max-w-[6rem] truncate">
+            {currentWorkspace.workspace.name}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-1.5">
