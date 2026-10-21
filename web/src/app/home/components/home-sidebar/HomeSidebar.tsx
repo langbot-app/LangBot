@@ -2173,9 +2173,9 @@ export default function HomeSidebar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="icon"
-                    className="size-9 shrink-0 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden"
+                    className="size-9 shrink-0 group-data-[collapsible=icon]:hidden"
                     aria-label={t('workspace.upgradePlan')}
                     onClick={() => setCloudPlansOpen(true)}
                   >
