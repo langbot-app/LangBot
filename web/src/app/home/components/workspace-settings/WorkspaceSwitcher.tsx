@@ -40,11 +40,11 @@ export default function WorkspaceSwitcher({
         <Button
           variant="outline"
           size="sm"
-          className={cn('h-9 min-w-0 justify-start px-2.5 text-sm', className)}
+          className={cn('h-9 min-w-0 gap-1.5 px-2.5 text-sm', className)}
           aria-label={t('workspace.switchWorkspace')}
         >
           <Building2 className="size-4 shrink-0" />
-          <span className="truncate">{currentWorkspace.workspace.name}</span>
+          <span className="max-w-[6rem] truncate">{currentWorkspace.workspace.name}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-1.5">

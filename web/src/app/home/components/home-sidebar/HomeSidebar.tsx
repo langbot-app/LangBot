@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
@@ -70,6 +70,7 @@ import { Button } from '@/components/ui/button';
 import WorkspaceSwitcher, {
   OPEN_WORKSPACE_SETTINGS_EVENT,
 } from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
+const CloudPlansDialog = lazy(() => import('@/app/home/components/workspace-settings/CloudPlansDialog'));
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import SettingsDialog, {
   SettingsSection,
@@ -1893,6 +1894,7 @@ export default function HomeSidebar({
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [cloudPlansOpen, setCloudPlansOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -2163,8 +2165,26 @@ export default function HomeSidebar({
         </SidebarHeader>
 
         {showWorkspaceSwitcher && (
-          <div className="px-2 group-data-[collapsible=icon]:px-0">
-            <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+          <div className="flex items-center gap-1 px-2 group-data-[collapsible=icon]:px-0">
+            <WorkspaceSwitcher className="min-w-0 flex-1 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+            {currentWorkspace?.workspace.source === 'cloud_projection' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 shrink-0 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden"
+                    aria-label={t('workspace.upgradePlan')}
+                    onClick={() => setCloudPlansOpen(true)}
+                  >
+                    <ArrowUp className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {t('workspace.upgradePlan')}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         )}
 
@@ -2473,6 +2493,16 @@ export default function HomeSidebar({
         </DialogContent>
       </Dialog>
 
+      {currentWorkspace && (
+        <Suspense fallback={null}>
+          <CloudPlansDialog
+            open={cloudPlansOpen}
+            onOpenChange={setCloudPlansOpen}
+            workspace={currentWorkspace}
+            spaceURL={systemInfo.cloud_service_url}
+          />
+        </Suspense>
+      )}
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={handleSettingsOpenChange}
