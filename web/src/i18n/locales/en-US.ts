@@ -102,7 +102,7 @@ const enUS = {
     retentionLabel: 'Message history retention',
     retentionHelp:
       'Message history is automatically removed after this period.',
-    credits: '{{count}} credits every month',
+    credits: '{{count}} model credits every month',
     creditsLabel: 'Model credits',
     creditsHelp:
       'Credits are granted each subscription month, including on yearly plans. When credits run out, you can still use your own configured model providers.',

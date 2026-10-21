@@ -91,6 +91,24 @@ for (const scenario of [
       Math.abs(upgradeBox!.x + upgradeBox!.width - navBox!.x - navBox!.width),
     ).toBeLessThanOrEqual(1);
     await expect(upgrade).toBeVisible();
+    // The upgrade control is deliberately styled like the workspace switcher:
+    // same height, same visible outline, so the two read as one control row.
+    expect(
+      Math.abs(upgradeBox!.height - triggerBox!.height),
+    ).toBeLessThanOrEqual(1);
+    for (const control of [trigger, upgrade]) {
+      const outline = await control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          width: parseFloat(style.borderTopWidth),
+          color: style.borderTopColor,
+          style: style.borderTopStyle,
+        };
+      });
+      expect(outline.style).not.toBe('none');
+      expect(outline.width).toBeGreaterThan(0);
+      expect(outline.color).not.toBe('rgba(0, 0, 0, 0)');
+    }
     await trigger.click();
     const row = page
       .getByRole('menuitem')

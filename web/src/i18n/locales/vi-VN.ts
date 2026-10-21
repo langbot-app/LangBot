@@ -100,7 +100,7 @@ const viVN = {
     retention: 'Lịch sử tin nhắn · {{count}} ngày',
     retentionLabel: 'Thời gian lưu tin nhắn',
     retentionHelp: 'Tin nhắn được tự động xóa sau thời gian này.',
-    credits: '{{count}} tín dụng mỗi tháng',
+    credits: '{{count}} tín dụng mô hình mỗi tháng',
     creditsLabel: 'Tín dụng hàng tháng',
     creditsHelp: 'Tín dụng được cấp mỗi tháng đăng ký, kể cả gói năm.',
     platforms: 'Hỗ trợ nền tảng phổ biến',

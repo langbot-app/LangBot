@@ -97,7 +97,7 @@ const zhHans = {
     retention: '消息记录保留 {{count}} 天',
     retentionLabel: '消息记录保留时长',
     retentionHelp: '超过保留时长的消息记录会自动清理。',
-    credits: '每月赠送 {{count}} 积分',
+    credits: '每月赠送 {{count}} 模型积分',
     creditsLabel: '模型积分',
     creditsHelp:
       '每个订阅月自动发放，年付计划同样按月发放。积分用尽后，仍可接入自行配置的模型供应商继续使用。',
