@@ -24,6 +24,69 @@ const pageOf = (
   next_offset = items.length,
 ) => ({ items, has_more, next_offset });
 
+test('loads external input images and previews without sending a referrer', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    monitoringData: monitoring,
+  });
+  const imageUrl = 'https://images.example.test/attachment.png';
+  const referrers: (string | undefined)[] = [];
+  await page.route(imageUrl, async (route) => {
+    const referrer = route.request().headers().referer;
+    referrers.push(referrer);
+    // Match providers that return JSON errors for embedded requests.
+    if (referrer) {
+      await route.fulfill({ status: 400, json: { error: 'Invalid referrer' } });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'image/png',
+      headers: { 'Cache-Control': 'no-store' },
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+  });
+  await page.route('**/api/v1/monitoring/executions/*/*?*', async (route) => {
+    await route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          source: 'pipeline',
+          row,
+          pages: {
+            inputs: pageOf([
+              { id: 'image', content: [{ type: 'Image', url: imageUrl }] },
+            ]),
+            outputs: pageOf([]),
+            deliveries: pageOf([]),
+            errors: pageOf([]),
+          },
+        },
+      },
+    });
+  });
+  await page.goto('/home/monitoring');
+  await page
+    .getByRole('button')
+    .filter({ hasText: 'Open this execution' })
+    .click();
+  const thumbnail = page.getByRole('img', { name: 'Message attachment' });
+  await expect
+    .poll(() => thumbnail.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(1);
+  await thumbnail.click();
+  const preview = page.getByRole('img', { name: 'Preview', exact: true });
+  await expect(preview).toBeVisible();
+  await expect
+    .poll(() => preview.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(1);
+  expect(referrers).toEqual([undefined, undefined]);
+});
+
 test('loads collapsed history on demand, retries and pages without reloading it on reopen', async ({
   page,
 }) => {
