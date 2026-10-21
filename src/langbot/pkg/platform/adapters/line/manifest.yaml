@@ -14,7 +14,14 @@ metadata:
     en_US: LINE Bot EBA adapter
     zh_Hant: LINE Bot 事件驅動配接器
 spec:
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/line
+    en: https://link.langbot.app/en/platforms/line
+    ja: https://link.langbot.app/ja/platforms/line
   config:
+    - name: webhook_url
+      type: string
+      required: false
     - name: channel_access_token
       type: string
       required: true
