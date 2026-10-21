@@ -1935,7 +1935,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 models = current_models + [
                     model
                     for model in models
-                    if not (model['type'] == 'llm' and model['id'].lower().startswith(('minimax-m', 'abab')))
+                    if not (
+                        model['type'] == 'llm' and model['id'].lower().startswith(('minimax-m', 'minimax-01', 'abab'))
+                    )
                 ]
             elif self._uses_openrouter_protocol():
                 # Keep gateway-provided metadata and only recommend routes it actually advertises.
@@ -1945,7 +1947,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     model
                     for model in models
                     if not (
-                        model['type'] == 'llm' and model['id'].lower().startswith(('minimax/minimax-m', 'minimax/abab'))
+                        model['type'] == 'llm'
+                        and model['id'].lower().startswith(('minimax/minimax-m', 'minimax/minimax-01', 'minimax/abab'))
                     )
                 ]
 

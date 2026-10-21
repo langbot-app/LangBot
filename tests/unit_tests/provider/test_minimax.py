@@ -47,7 +47,7 @@ def model(request, name=FLASH, level='provider_default'):
 async def test_direct_discovery_recommends_current_models_without_dropping_nontext(monkeypatch, status):
     request = adapter()
     original_client = httpx.AsyncClient
-    items = [FLASH, M3, 'MiniMax-M2.7', 'abab6.5s-chat', 'embo-01', 'speech-02-hd', 'other-chat']
+    items = [FLASH, M3, 'MiniMax-M2.7', 'MiniMax-01', 'abab6.5s-chat', 'embo-01', 'speech-02-hd', 'other-chat']
     monkeypatch.setattr(
         httpx,
         'AsyncClient',
@@ -76,6 +76,7 @@ async def test_gateway_discovery_preserves_advertised_metadata_and_other_models(
         {'id': 'minimax/minimax-m3.1-flash:free', 'context_length': 123456},
         {'id': 'minimax/minimax-m3', 'context_length': 654321},
         {'id': 'minimax/minimax-m2.7'},
+        {'id': 'minimax/minimax-01'},
         {'id': 'other/chat'},
         {'id': 'minimax/speech-02-hd'},
     ]
