@@ -3691,5 +3691,14 @@ const thTH = {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',
   },
+  cloud_banner: {
+    message:
+      'คุณกำลังใช้งาน LangBot Cloud ซึ่งเป็นบริการแบบมีการจัดการ หากต้องการทรัพยากรเฉพาะและโควตาที่สูงขึ้น โปรดพิจารณาใช้',
+    dedicated_link: 'LangBot Cloud (สภาพแวดล้อมเฉพาะ)',
+    or: 'หรือ',
+    self_hosted_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
+    period: '',
+    dismiss: 'ปิด',
+  },
 };
 export default thTH;

@@ -3547,5 +3547,14 @@ const zhHant = {
     selectFromSidebar: '從側邊欄選擇一個插件頁面',
     invalidPage: '無效的插件頁面',
   },
+  cloud_banner: {
+    message:
+      '目前為 LangBot Cloud 雲端服務環境。如需專屬資源與更高配額，可選擇',
+    dedicated_link: '獨立環境版 LangBot Cloud',
+    or: '或',
+    self_hosted_link: '自行部署的開源版本',
+    period: '。',
+    dismiss: '關閉橫幅',
+  },
 };
 export default zhHant;

@@ -562,12 +562,28 @@ export interface WizardProgress {
   selected_runner: string | null;
 }
 
+export interface ApiRespCloudBanner {
+  enabled: boolean;
+  /** Visual tone requested by the deployment: info, warning, maintenance. */
+  level: 'info' | 'warning' | 'maintenance';
+  dismissible: boolean;
+  /** Append the dedicated-environment / self-hosting links after the copy. */
+  show_links: boolean;
+  dedicated_url: string;
+  repository_url: string;
+  /** Language key (`zh_hans`, `en_us`, ...) -> operator-authored copy. */
+  content: Record<string, string>;
+}
+
 export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
   edition: string;
   beta: boolean;
   deployment_mode: 'cloud' | 'oss';
+  /** Cloud-only instance notice from `cloud.banner` in config.yaml. Null for
+   *  OSS deployments or when the banner is disabled. */
+  cloud_banner?: ApiRespCloudBanner | null;
   /** Independent instance-level gate for local stdio MCP transports. */
   mcp_stdio_enabled: boolean;
   cloud_service_url: string;

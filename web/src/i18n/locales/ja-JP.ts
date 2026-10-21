@@ -3775,5 +3775,14 @@ const jaJP = {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',
   },
+  cloud_banner: {
+    message:
+      '現在は LangBot Cloud のマネージド環境です。専用リソースと高い利用上限が必要な場合は、',
+    dedicated_link: 'LangBot Cloud（専用環境）',
+    or: 'または',
+    self_hosted_link: 'セルフホスト版',
+    period: 'をご検討ください。',
+    dismiss: '閉じる',
+  },
 };
 export default jaJP;
