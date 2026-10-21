@@ -3745,5 +3745,14 @@ const viVN = {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
   },
+  cloud_banner: {
+    message:
+      'Bạn đang sử dụng LangBot Cloud, dịch vụ được quản lý. Nếu cần tài nguyên riêng và hạn mức cao hơn, hãy cân nhắc',
+    dedicated_link: 'LangBot Cloud (môi trường riêng)',
+    or: 'hoặc',
+    self_hosted_link: 'phiên bản mã nguồn mở tự lưu trữ',
+    period: '.',
+    dismiss: 'Đóng',
+  },
 };
 export default viVN;

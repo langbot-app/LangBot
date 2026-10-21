@@ -3547,5 +3547,13 @@ const zhHans = {
     selectFromSidebar: '从侧边栏选择一个插件页面',
     invalidPage: '无效的插件页面',
   },
+  cloud_banner: {
+    message: '当前为 LangBot Cloud 云服务环境。如需独享资源与更高配额，可选择',
+    dedicated_link: '独立环境版 LangBot Cloud',
+    or: '或',
+    self_hosted_link: '自部署开源版本',
+    period: '。',
+    dismiss: '关闭横幅',
+  },
 };
 export default zhHans;

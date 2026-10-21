@@ -3832,5 +3832,14 @@ const esES = {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',
   },
+  cloud_banner: {
+    message:
+      'Estás usando LangBot Cloud, el servicio gestionado. Para obtener recursos dedicados y cuotas mayores, considera usar',
+    dedicated_link: 'LangBot Cloud (entorno dedicado)',
+    or: 'o',
+    self_hosted_link: 'la versión de código abierto autoalojada',
+    period: '.',
+    dismiss: 'Cerrar',
+  },
 };
 export default esES;

@@ -203,7 +203,9 @@ function SidebarProvider({
             {
               '--sidebar-width': `${sidebarWidth}px`,
               '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-              height: '100svh',
+              // A Cloud notice banner publishes its height so the shell starts
+              // below the announcement instead of underneath it.
+              height: 'calc(100svh - var(--cloud-banner-height, 0px))',
               ...style,
             } as React.CSSProperties
           }
@@ -300,8 +302,8 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         style={{
-          top: 0,
-          height: '100svh',
+          top: 'var(--cloud-banner-height, 0px)',
+          height: 'calc(100svh - var(--cloud-banner-height, 0px))',
         }}
         className={cn(
           'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex',

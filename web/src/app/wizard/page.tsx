@@ -1088,7 +1088,10 @@ export default function WizardPage() {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+      <div
+        style={{ top: 'var(--cloud-banner-height, 0px)' }}
+        className="fixed inset-x-0 bottom-0 z-50 bg-background flex items-center justify-center"
+      >
         <LoadingSpinner text={t('wizard.loading')} />
       </div>
     );
@@ -1102,7 +1105,10 @@ export default function WizardPage() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div
+      style={{ top: 'var(--cloud-banner-height, 0px)' }}
+      className="fixed inset-x-0 bottom-0 z-50 bg-background flex flex-col"
+    >
       {/* Top bar: Skip button */}
       <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 border-b">
         <div className="flex items-center gap-2">

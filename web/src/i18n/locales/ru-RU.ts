@@ -3790,5 +3790,14 @@ const ruRU = {
     selectFromSidebar: 'Выберите страницу плагина на боковой панели',
     invalidPage: 'Недопустимая страница плагина',
   },
+  cloud_banner: {
+    message:
+      'Вы используете LangBot Cloud — управляемый сервис. Для выделенных ресурсов и повышенных лимитов рекомендуем',
+    dedicated_link: 'LangBot Cloud (выделенная среда)',
+    or: 'или',
+    self_hosted_link: 'версию с открытым исходным кодом на своём сервере',
+    period: '.',
+    dismiss: 'Закрыть',
+  },
 };
 export default ruRU;
