@@ -16,6 +16,7 @@ test_group_user_events.py — WO-LINE-04 群組與使用者事件擴充 selftest
 - 本测试仅验证**框架 + 命名空间映射**（据 blueprint §3.2/§3.4 + EBA 框架契约 + ops .84 SDK 实测框架）；
   未验证 SDK 实际调用（据 blueprint §3.2/§3.4 待實測）—— SDK 调用由 ops/architect 實測後定稿（§9/§23 禁捏造）。
 """
+
 import os
 import sys
 import unittest
@@ -30,54 +31,56 @@ class TestEventMapping(unittest.TestCase):
         self.ext = LineEventExtensions()
 
     def test_message_type(self):
-        result = self.ext.target2yiri({"type": "message", "message": {"id": "m1"}})
-        self.assertEqual(result["type"], "message.received")
+        result = self.ext.target2yiri({'type': 'message', 'message': {'id': 'm1'}})
+        self.assertEqual(result['type'], 'message.received')
 
     def test_follow_type(self):
-        result = self.ext.target2yiri({"type": "follow"})
-        self.assertEqual(result["type"], "user.followed")
+        result = self.ext.target2yiri({'type': 'follow'})
+        self.assertEqual(result['type'], 'user.followed')
 
     def test_unfollow_type(self):
-        result = self.ext.target2yiri({"type": "unfollow"})
-        self.assertEqual(result["type"], "user.unfollowed")
+        result = self.ext.target2yiri({'type': 'unfollow'})
+        self.assertEqual(result['type'], 'user.unfollowed')
 
     def test_join_type(self):
-        result = self.ext.target2yiri({"type": "join"})
-        self.assertEqual(result["type"], "group.joined")
+        result = self.ext.target2yiri({'type': 'join'})
+        self.assertEqual(result['type'], 'group.joined')
 
     def test_leave_type(self):
-        result = self.ext.target2yiri({"type": "left"})
-        self.assertEqual(result["type"], "group.left")
+        result = self.ext.target2yiri({'type': 'left'})
+        self.assertEqual(result['type'], 'group.left')
 
     def test_member_joined_type(self):
-        result = self.ext.target2yiri({"type": "member_joined"})
-        self.assertEqual(result["type"], "group.member_joined")
+        result = self.ext.target2yiri({'type': 'member_joined'})
+        self.assertEqual(result['type'], 'group.member_joined')
 
     def test_member_left_type(self):
-        result = self.ext.target2yiri({"type": "member_left"})
-        self.assertEqual(result["type"], "group.member_left")
+        result = self.ext.target2yiri({'type': 'member_left'})
+        self.assertEqual(result['type'], 'group.member_left')
 
     def test_postback_type(self):
-        result = self.ext.target2yiri({
-            "type": "postback",
-            "data": {"action": "buy", "params": {"qty": 2}},
-        })
-        self.assertEqual(result["type"], "platform.specific.postback")
-        self.assertEqual(result["action"], "postback")
-        self.assertEqual(result["params"], {"action": "buy", "params": {"qty": 2}})
+        result = self.ext.target2yiri(
+            {
+                'type': 'postback',
+                'data': {'action': 'buy', 'params': {'qty': 2}},
+            }
+        )
+        self.assertEqual(result['type'], 'platform.specific.postback')
+        self.assertEqual(result['action'], 'postback')
+        self.assertEqual(result['params'], {'action': 'buy', 'params': {'qty': 2}})
 
     def test_beacon_type(self):
-        result = self.ext.target2yiri({"type": "beacon", "data": {"ptype": "enter"}})
-        self.assertEqual(result["type"], "platform.specific.beacon")
+        result = self.ext.target2yiri({'type': 'beacon', 'data': {'ptype': 'enter'}})
+        self.assertEqual(result['type'], 'platform.specific.beacon')
 
     def test_unknown_type_default_platform_specific(self):
         # 未映射者默认走 platform.specific（action = line.<type>），不宣告 capability
-        result = self.ext.target2yiri({"type": "unknown_type"})
-        self.assertEqual(result["type"], "platform.specific")
-        self.assertEqual(result["action"], "line.unknown_type")
+        result = self.ext.target2yiri({'type': 'unknown_type'})
+        self.assertEqual(result['type'], 'platform.specific')
+        self.assertEqual(result['action'], 'line.unknown_type')
 
     def test_non_dict_returns_none(self):
-        self.assertIsNone(self.ext.target2yiri("not-a-dict"))
+        self.assertIsNone(self.ext.target2yiri('not-a-dict'))
 
 
 class TestSupportedEvents(unittest.TestCase):
@@ -85,36 +88,36 @@ class TestSupportedEvents(unittest.TestCase):
         # 据 EBA 框架契约 + blueprint §3.2 映射表；未實測事件不宣告（architect §c 紅線）
         ext = LineEventExtensions()
         events = ext.supported_events()
-        self.assertIn("message.received", events)
-        self.assertIn("user.followed", events)
-        self.assertIn("user.unfollowed", events)
-        self.assertIn("group.joined", events)
-        self.assertIn("group.left", events)
-        self.assertIn("group.member_joined", events)
-        self.assertIn("group.member_left", events)
-        self.assertIn("platform.specific.postback", events)
-        self.assertIn("platform.specific.beacon", events)
+        self.assertIn('message.received', events)
+        self.assertIn('user.followed', events)
+        self.assertIn('user.unfollowed', events)
+        self.assertIn('group.joined', events)
+        self.assertIn('group.left', events)
+        self.assertIn('group.member_joined', events)
+        self.assertIn('group.member_left', events)
+        self.assertIn('platform.specific.postback', events)
+        self.assertIn('platform.specific.beacon', events)
 
 
 class TestGroupUserQuery(unittest.TestCase):
     def test_api_map(self):
         q = LineGroupUserQuery()
         # 据 blueprint §3.4 LINE API→EBA 映射表
-        self.assertEqual(q.query_name("get_user_profile"), "get_user_info")
-        self.assertEqual(q.query_name("get_group_summary"), "get_group_info")
-        self.assertEqual(q.query_name("get_group_member_profile"), "get_group_member_list")
+        self.assertEqual(q.query_name('get_user_profile'), 'get_user_info')
+        self.assertEqual(q.query_name('get_group_summary'), 'get_group_info')
+        self.assertEqual(q.query_name('get_group_member_profile'), 'get_group_member_list')
 
     def test_api_map_unknown(self):
         q = LineGroupUserQuery()
-        self.assertIsNone(q.query_name("not_a_real_api"))
+        self.assertIsNone(q.query_name('not_a_real_api'))
 
     def test_supported_apis(self):
         q = LineGroupUserQuery()
         apis = q.supported_apis()
         # 据 blueprint §3.4 LINE API→EBA 映射表（可选）
-        self.assertIn("get_user_info", apis)
-        self.assertIn("get_group_info", apis)
-        self.assertIn("get_group_member_list", apis)
+        self.assertIn('get_user_info', apis)
+        self.assertIn('get_group_info', apis)
+        self.assertIn('get_group_member_list', apis)
 
 
 class TestParseTimestamp(unittest.TestCase):
@@ -130,5 +133,5 @@ class TestParseTimestamp(unittest.TestCase):
         self.assertEqual(_parse_event_timestamp(None), 0.0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

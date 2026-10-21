@@ -17,6 +17,7 @@ SDK 保活重連）未實測、全部 ⚠️ 提案，需依 LINE Developers 官
 
 解耦：据 send_api.RetryPolicy（本地导入）；仅 stdlib。
 """
+
 import asyncio
 from typing import Any, List
 
@@ -31,20 +32,23 @@ class LineStreamClient:
     不含未定案 WebSocket 真实连接代码（禁捏造）。
     """
 
-    def __init__(self, logger=None, retry: RetryPolicy = None,
-                 reconnect_retries: int = 3, reconnect_base_delay: float = 1.0):
+    def __init__(
+        self, logger=None, retry: RetryPolicy = None, reconnect_retries: int = 3, reconnect_base_delay: float = 1.0
+    ):
         self.logger = logger
         self.retry = retry or RetryPolicy(
-            retries=reconnect_retries, base_delay=reconnect_base_delay,
-            backoff_factor=2.0, max_delay=30.0,
+            retries=reconnect_retries,
+            base_delay=reconnect_base_delay,
+            backoff_factor=2.0,
+            max_delay=30.0,
         )
         self._connected = False
 
     async def _log(self, level: str, msg: str):
         if self.logger:
-            fn = getattr(self.logger, level, None) or getattr(self.logger, "info", None)
+            fn = getattr(self.logger, level, None) or getattr(self.logger, 'info', None)
             if fn:
-                await fn(f"[LineStreamClient] {msg}")
+                await fn(f'[LineStreamClient] {msg}')
 
     async def start_stream(self):
         """据 blueprint §3.1 A. Streaming 骨架：维护 WebSocket 長連，收事件走 SDK 回调。
@@ -52,15 +56,15 @@ class LineStreamClient:
         ⚠️ SDK 连接入口／版本協議／保活重连 待實測確認（未捏造）。
         run_async（adapter.py）据本骨架维护長連；事件走 native callback → _handle_native_event。
         """
-        await self._log("info", "LineStreamClient.start_stream 骨架初始化（SDK WebSocket 连接待實測）")
+        await self._log('info', 'LineStreamClient.start_stream 骨架初始化（SDK WebSocket 连接待實測）')
         # 据 blueprint §3.1 A：bot streaming API 長連 WebSocket 收事件。
         # SDK 长连入口待 LINE Developers 官方文件 + line-bot-sdk 實測後定稿（禁捏造）。
         self._connected = True
-        return "streaming_skeleton (SDK WebSocket entry 待實測)"
+        return 'streaming_skeleton (SDK WebSocket entry 待實測)'
 
     async def stop_stream(self):
         self._connected = False
-        await self._log("info", "LineStreamClient.stop_stream")
+        await self._log('info', 'LineStreamClient.stop_stream')
         return True
 
     @property
@@ -74,10 +78,10 @@ class LineStreamClient:
         """
         try:
             await self.retry.run(self.start_stream)
-            await self._log("info", "connect_with_retry 成功")
+            await self._log('info', 'connect_with_retry 成功')
             return True
         except SendError:
-            await self._log("error", "connect_with_retry 超限重試仍失败（斷線未癒合）")
+            await self._log('error', 'connect_with_retry 超限重試仍失败（斷線未癒合）')
             raise
 
 
@@ -97,9 +101,9 @@ class LineStreamOutput:
 
     async def _log(self, level: str, msg: str):
         if self.logger:
-            fn = getattr(self.logger, level, None) or getattr(self.logger, "info", None)
+            fn = getattr(self.logger, level, None) or getattr(self.logger, 'info', None)
             if fn:
-                await fn(f"[LineStreamOutput] {msg}")
+                await fn(f'[LineStreamOutput] {msg}')
 
     def is_stream_output_supported(self) -> bool:
         """据 blueprint §82 流式選類。
@@ -116,18 +120,20 @@ class LineStreamOutput:
         - ⚠️ SDK 流式發送端點／chunk 形態 待實測確認（未捏造）。
         """
         if not chunks:
-            raise SendError("chunks 不能為空")
+            raise SendError('chunks 不能為空')
         if len(chunks) > 2000:
             # LINE 單消息上限約 5000 字；流式累積文本超限則警告（据 LINE 通用認知）
-            await self._log("warn", f"流式累積文本超限 {len(chunks) > 2000}，注意 LINE 單消息上限")
+            await self._log('warn', f'流式累積文本超限 {len(chunks) > 2000}，注意 LINE 單消息上限')
         for chunk in chunks:
+
             async def _send_chunk(c=chunk):
                 await self.push_api.push_message(
                     target_id=target_id,
-                    content={"type": "text", "text": c},
+                    content={'type': 'text', 'text': c},
                 )
                 if self.chunk_delay > 0:
                     await asyncio.sleep(self.chunk_delay)
+
             await self.push_api.retry.run(_send_chunk)
-        await self._log("info", f"streaming chunk 打字機推送完成，chunks={len(chunks)}")
-        return "streaming_done"
+        await self._log('info', f'streaming chunk 打字機推送完成，chunks={len(chunks)}')
+        return 'streaming_done'
