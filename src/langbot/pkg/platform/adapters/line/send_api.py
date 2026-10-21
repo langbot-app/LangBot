@@ -20,7 +20,7 @@ send_api.py — LINE 訊息發送 API（WO-LINE-03 子模块）。
 """
 import asyncio
 import random
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 
 class SendError(Exception):

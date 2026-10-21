@@ -27,7 +27,6 @@ event_extensions.py — LINE 事件擴充（WO-LINE-04 子模块）。
 """
 from __future__ import annotations
 
-import typing
 import time
 from typing import Any, Optional
 

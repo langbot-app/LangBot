@@ -138,7 +138,6 @@ class TestLineSendApi(unittest.TestCase):
             )
             self.assertEqual(result, "replied")  # 平滑转 push 后返回
             # 第一次 reply 失败（ConnectionError），重试后仍失败 → 转 push
-            total_reply_fail = client.reply_fail_times
             # 至少一次 push 成功补完
             self.assertTrue(any(c["message"]["type"] == "text" for c in client.push_calls))
         asyncio.run(go())
