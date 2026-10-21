@@ -97,7 +97,7 @@ const zhHant = {
     retention: '訊息記錄保留 {{count}} 天',
     retentionLabel: '訊息記錄保留時間',
     retentionHelp: '超過保留時間的訊息記錄會自動清理。',
-    credits: '每月贈送 {{count}} 積分',
+    credits: '每月贈送 {{count}} 模型積分',
     creditsLabel: '每月贈送積分',
     creditsHelp: '每個訂閱月自動發放，年付方案同樣按月發放。',
     platforms: '支援主流平台',

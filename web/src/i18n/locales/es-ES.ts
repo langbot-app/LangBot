@@ -100,7 +100,7 @@ const esES = {
     retentionLabel: 'Retención del historial',
     retentionHelp:
       'El historial se elimina automáticamente al superar este periodo.',
-    credits: '{{count}} créditos al mes',
+    credits: '{{count}} créditos de modelo al mes',
     creditsLabel: 'Créditos mensuales',
     creditsHelp:
       'Los créditos se conceden cada mes de suscripción, también en los planes anuales.',

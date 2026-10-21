@@ -101,7 +101,7 @@ const jaJP = {
     retention: 'メッセージ履歴 · {{count}} 日間',
     retentionLabel: 'メッセージ履歴の保存期間',
     retentionHelp: '保存期間を過ぎた履歴は自動的に削除されます。',
-    credits: '毎月 {{count}} クレジット',
+    credits: '毎月 {{count}} モデルクレジット',
     creditsLabel: 'モデルクレジット',
     creditsHelp:
       '年払いでも、契約の各月にクレジットが付与されます。クレジットが不足しても、独自に設定したモデルプロバイダーを引き続き利用できます。',
