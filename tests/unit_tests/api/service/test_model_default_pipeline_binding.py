@@ -71,3 +71,36 @@ async def test_model_creation_delegates_default_pipeline_binding_to_runner_schem
     assert args[2] == uuid_value
     # No legacy write path should remain.
     assert 'local-agent' not in json.dumps(pipeline.config)
+
+
+@pytest.mark.asyncio
+async def test_unmigrated_pipeline_still_gets_a_legacy_model(monkeypatch):
+    """A pipeline that has not run the 4.11 migration keeps its old shape."""
+    pipeline = types.SimpleNamespace(
+        uuid='pipeline-b',
+        config={'ai': {'local-agent': {'model': {'primary': '', 'fallbacks': []}}}},
+    )
+    runner_service = Mock()
+    runner_service.set_pipeline_llm_model_if_empty = AsyncMock(return_value=False)
+
+    service = _service(pipeline, runner_service)
+    monkeypatch.setattr(sys.modules['langbot.pkg.api.http.service.model'], '_require_workspace_provider', AsyncMock())
+    monkeypatch.setattr(
+        sys.modules['langbot.pkg.api.http.service.model'], '_assert_cloud_managed_provider_mutable', AsyncMock()
+    )
+    monkeypatch.setattr(sys.modules['langbot.pkg.api.http.service.model'], '_validate_provider_supports', AsyncMock())
+    monkeypatch.setattr(sys.modules['langbot.pkg.api.http.service.model'], '_require_runtime_provider', AsyncMock())
+    monkeypatch.setattr(
+        sys.modules['langbot.pkg.api.http.service.model'], '_normalize_llm_reasoning', lambda data: None
+    )
+    monkeypatch.setattr(
+        sys.modules['langbot.pkg.api.http.service.model'], '_validate_llm_reasoning_capability', lambda *a, **k: None
+    )
+
+    uuid_value = await service.create_llm_model(
+        'workspace-a',
+        {'name': 'deepseek-chat', 'provider_uuid': 'provider-a', 'abilities': ['func_call']},
+    )
+
+    assert pipeline.config['ai']['local-agent']['model']['primary'] == uuid_value
+    service.ap.pipeline_service.update_pipeline.assert_awaited_once()
