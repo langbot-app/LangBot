@@ -11,6 +11,7 @@ on:
       - 'uv.lock'
       - 'run_tests.sh'
       - 'scripts/test-*.sh'
+      - 'scripts/test-*.py'
       - 'pytest.ini'
       - 'AGENTS.md'
       - 'ARCHITECTURE.md'
@@ -325,11 +326,45 @@ jobs:
       - name: Run coverage (unit + smoke)
         run: |
           uv run pytest tests/unit_tests/ tests/smoke/ \
-            --cov=langbot \
-            --cov-report=xml \
+            --cov=langbot --cov-branch \
+            --cov-report=xml --cov-report=json \
             --cov-report=term-missing \
-            --cov-fail-under=18 \
+            --cov-fail-under=0 \
             -q --tb=short
+
+          # Keep the existing line-only gate when branch measurement is enabled.
+          python - <<'PY_GATE'
+          import json
+          totals = json.load(open('coverage.json'))['totals']
+          line_coverage = 100 * totals['covered_lines'] / totals['num_statements']
+          assert line_coverage >= 18, f'Line coverage {line_coverage:.2f}% is below 18%'
+          PY_GATE
+
+      - name: Report source coverage and complexity
+        if: always() && hashFiles('coverage.json') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          args=()
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            args+=(--base-ref "$BASE_SHA")
+          fi
+          uv run python scripts/test-complexity.py \
+            --json complexity.json --summary complexity.md --coverage-json coverage.json "${args[@]}"
+          cat complexity.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload source quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-quality-reports
+          path: |
+            coverage.json
+            coverage.xml
+            complexity.json
+            complexity.md
+          if-no-files-found: ignore
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
