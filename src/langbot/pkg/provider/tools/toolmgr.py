@@ -271,8 +271,11 @@ class ToolManager:
         query: pipeline_query.Query,
         catalog: typing.Iterable[dict[str, typing.Any]],
     ) -> None:
+        catalog = list(catalog)
         query.variables = query.variables or {}
         query.variables[TOOL_SOURCE_REFS_QUERY_KEY] = cls.source_refs_from_catalog(catalog)
+        # Keep Host metadata off the plugin wire; invocation still resolves its live source.
+        object.__setattr__(query, '_host_tool_catalog', tuple(catalog))
 
     @staticmethod
     def get_query_tool_source(

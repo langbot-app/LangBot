@@ -349,9 +349,11 @@ async def test_runtime_pipeline_rejects_stale_generation_before_side_effects(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('streaming', [False, True])
 async def test_runtime_pipeline_revalidates_after_awaited_stage(
     mock_app,
     sample_query,
+    streaming,
 ):
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
@@ -378,8 +380,11 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
         )
         return result
 
+    async def streaming_process(*args):
+        yield await stage_process(*args)
+
     mock_stage = Mock(spec=stage.PipelineStage)
-    mock_stage.process = Mock(side_effect=stage_process)
+    mock_stage.process = Mock(side_effect=streaming_process if streaming else stage_process)
     runtime_pipeline = pipelinemgr.RuntimePipeline(
         mock_app,
         pipeline_entity,

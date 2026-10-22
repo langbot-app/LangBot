@@ -68,6 +68,7 @@ def create_mock_connector():
     instance._target_binding = AsyncMock(return_value=TEST_INSTALLATION_BINDING)
     instance._load_workspace_settings = AsyncMock(return_value=[])
     instance.require_workspace_context = AsyncMock(side_effect=lambda context: context)
+    instance._prepare_workspace_context = AsyncMock(return_value=(TEST_EXECUTION_CONTEXT, []))
     return instance
 
 

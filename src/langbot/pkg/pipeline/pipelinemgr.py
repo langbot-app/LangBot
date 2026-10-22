@@ -346,7 +346,6 @@ class RuntimePipeline:
 
             if isinstance(result, typing.Coroutine):
                 result = await result
-                await self._assert_execution_active(query)
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
                 self.ap.logger.debug(
@@ -369,7 +368,6 @@ class RuntimePipeline:
                         sub_result = await anext(iterator)
                     except StopAsyncIteration:
                         break
-                    await self._assert_execution_active(query)
                     self.ap.logger.debug(
                         f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
                     )

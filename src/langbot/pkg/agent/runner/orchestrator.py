@@ -148,6 +148,7 @@ class AgentRunOrchestrator:
             event=event,
             binding=binding,
             descriptor=descriptor,
+            tool_catalog=getattr(execution_query, '_host_tool_catalog', None),
         )
         # Telemetry: report what this run was granted (never what it used). The
         # materialized resource list is authoritative for tools/skills/models;
