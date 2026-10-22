@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing
+
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,12 +68,48 @@ class WorkspaceRepository:
     async def get_workspace(self, workspace_uuid: str) -> Workspace | None:
         return await self.session.get(Workspace, workspace_uuid)
 
-    async def get_execution_projection(self, workspace_uuid: str) -> sqlalchemy.Row | None:
-        """Read both fencing records together without populating the ORM identity map."""
-        # Core SELECTs do not autoflush caller-owned ORM changes.
-        await self.session.flush()
-        result = await self.session.execute(_EXECUTION_PROJECTION, {'workspace_uuid': workspace_uuid})
-        return result.first()
+    async def get_execution_projection(self, workspace_uuid: str) -> dict[str, typing.Any] | None:
+        """Read current fencing records without flushing caller-owned writes."""
+        with self.session.no_autoflush:
+            result = await self.session.execute(_EXECUTION_PROJECTION, {'workspace_uuid': workspace_uuid})
+        row = result.mappings().first()
+        if row is None:
+            return None
+        projection = dict(row)
+        for entity in self.session.new | self.session.deleted:
+            if isinstance(entity, Workspace) and (
+                entity.uuid == workspace_uuid or sqlalchemy.inspect(entity).identity == (workspace_uuid,)
+            ):
+                # New and deleted directory records cannot authorize execution.
+                return None
+            if isinstance(entity, WorkspaceExecutionState) and (
+                entity.workspace_uuid == workspace_uuid or sqlalchemy.inspect(entity).identity == (workspace_uuid,)
+            ):
+                projection['execution_instance_uuid'] = None
+        for entity in self.session.dirty:
+            if not isinstance(entity, (Workspace, WorkspaceExecutionState)):
+                continue
+            state = sqlalchemy.inspect(entity)
+            if state.identity != (workspace_uuid,):
+                continue
+            identity_field = 'uuid' if isinstance(entity, Workspace) else 'workspace_uuid'
+            if state.attrs[identity_field].history.has_changes():
+                return None
+            if isinstance(entity, Workspace):
+                fields = {name: name for name in ('uuid', 'instance_uuid', 'source', 'status', 'created_at')}
+            else:
+                fields = {
+                    'instance_uuid': 'execution_instance_uuid',
+                    'active_generation': 'active_generation',
+                    'state': 'state',
+                    'write_fenced': 'write_fenced',
+                    'source': 'execution_source',
+                }
+            for name, key in fields.items():
+                history = state.attrs[name].history
+                if history.has_changes():
+                    projection[key] = history.added[0] if history.added else None
+        return projection
 
     def add_workspace(self, workspace: Workspace) -> None:
         self.session.add(workspace)

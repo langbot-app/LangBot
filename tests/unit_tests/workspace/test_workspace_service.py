@@ -23,6 +23,7 @@ from langbot.pkg.workspace import (
     WorkspaceGenerationMismatchError,
     WorkspaceInvariantError,
     WorkspaceLimitExceededError,
+    WorkspaceNotFoundError,
     WorkspaceOwnerAlreadyExistsError,
     WorkspaceService,
 )
@@ -259,6 +260,110 @@ async def test_execution_binding_observes_unflushed_projection_changes(workspace
             setattr(state, name, value)
         with pytest.raises(error):
             await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+
+
+async def test_execution_binding_does_not_lock_unrelated_pending_writes(workspace_test_context):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    engine = service.ap.persistence_mgr.get_db_engine()
+    async with engine.begin() as connection:
+        await connection.exec_driver_sql('PRAGMA journal_mode=WAL')
+    writer_engine = create_async_engine(engine.url, connect_args={'timeout': 0.05})
+    writer_factory = async_sessionmaker(writer_engine, expire_on_commit=False)
+    try:
+        async with session_factory.begin() as session:
+            directory = [
+                await session.get(Workspace, workspace.uuid),
+                await session.get(WorkspaceExecutionState, workspace.uuid),
+            ]
+            pending_account = User(
+                uuid=str(uuid.uuid4()),
+                user='pending@example.com',
+                normalized_email='pending@example.com',
+                password='hashed-password',
+                account_type='local',
+            )
+            session.add(pending_account)
+            binding = await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+            assert binding.placement_generation == 1
+            assert pending_account in session.new
+            async with writer_factory.begin() as writer:
+                await _insert_account(writer, 'independent@example.com')
+            assert all(directory)
+    finally:
+        await writer_engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ('changes', 'error'),
+    [
+        ({'write_fenced': True}, WorkspaceExecutionUnavailableError),
+        ({'active_generation': 2}, WorkspaceGenerationMismatchError),
+    ],
+)
+async def test_execution_binding_keeps_external_updates_over_stale_orm_values(workspace_test_context, changes, error):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    async with session_factory() as session:
+        state = await session.get(WorkspaceExecutionState, workspace.uuid)
+        state.desired_state_revision = 1
+        async with session_factory.begin() as writer:
+            await writer.execute(
+                sqlalchemy.update(WorkspaceExecutionState)
+                .where(WorkspaceExecutionState.workspace_uuid == workspace.uuid)
+                .values(**changes)
+            )
+        with pytest.raises(error):
+            await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+        assert state in session.dirty
+        assert state.write_fenced is False
+        assert state.active_generation == 1
+
+
+@pytest.mark.parametrize('model', [Workspace, WorkspaceExecutionState])
+async def test_execution_binding_rejects_unflushed_directory_deletion(workspace_test_context, model):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    async with session_factory() as session:
+        entity = await session.get(model, workspace.uuid)
+        await session.delete(entity)
+        error = WorkspaceNotFoundError if model is Workspace else WorkspaceExecutionUnavailableError
+        with pytest.raises(error):
+            await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+        assert entity in session.deleted
+
+
+async def test_execution_binding_does_not_publish_new_execution_state(workspace_test_context):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    async with session_factory.begin() as session:
+        await session.execute(
+            sqlalchemy.delete(WorkspaceExecutionState).where(WorkspaceExecutionState.workspace_uuid == workspace.uuid)
+        )
+    async with session_factory() as session:
+        state = WorkspaceExecutionState(
+            workspace_uuid=workspace.uuid,
+            instance_uuid=service.instance_uuid,
+            active_generation=1,
+            state='active',
+            write_fenced=False,
+            source='local',
+            desired_state_revision=0,
+        )
+        session.add(state)
+        with pytest.raises(WorkspaceExecutionUnavailableError):
+            await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+        assert state in session.new
+
+
+async def test_execution_binding_does_not_publish_new_workspace(workspace_test_context):
+    service, session_factory = workspace_test_context
+    workspace = service._new_local_workspace(name='Pending', slug='pending')
+    async with session_factory() as session:
+        session.add(workspace)
+        with pytest.raises(WorkspaceNotFoundError):
+            await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+        assert workspace in session.new
 
 
 async def test_cloud_projection_requires_explicit_general_binding(workspace_test_context):

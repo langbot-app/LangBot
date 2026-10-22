@@ -246,45 +246,45 @@ class WorkspaceService:
             if workspace is None:
                 raise WorkspaceNotFoundError(f'Workspace {selected_uuid!r} does not exist')
 
-            if workspace.instance_uuid != self.instance_uuid:
-                raise WorkspaceInvariantError(f'Workspace {workspace.uuid!r} belongs to another instance')
-            if _require_local and workspace.source != WorkspaceSource.LOCAL.value:
-                raise WorkspaceInvariantError(f'Workspace {workspace.uuid!r} is not an OSS local workspace')
-            if workspace.status != WorkspaceStatus.ACTIVE.value:
-                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace.uuid!r} is not active')
+            if workspace['instance_uuid'] != self.instance_uuid:
+                raise WorkspaceInvariantError(f'Workspace {workspace["uuid"]!r} belongs to another instance')
+            if _require_local and workspace['source'] != WorkspaceSource.LOCAL.value:
+                raise WorkspaceInvariantError(f'Workspace {workspace["uuid"]!r} is not an OSS local workspace')
+            if workspace['status'] != WorkspaceStatus.ACTIVE.value:
+                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace["uuid"]!r} is not active')
 
-            if workspace.execution_instance_uuid is None:
-                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace.uuid!r} has no execution state')
-            if workspace.execution_instance_uuid != self.instance_uuid:
+            if workspace['execution_instance_uuid'] is None:
+                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace["uuid"]!r} has no execution state')
+            if workspace['execution_instance_uuid'] != self.instance_uuid:
                 raise WorkspaceInvariantError(
-                    f'Workspace {workspace.uuid!r} execution state belongs to another instance'
+                    f'Workspace {workspace["uuid"]!r} execution state belongs to another instance'
                 )
             expected_source = (
                 WorkspaceExecutionSource.LOCAL.value
-                if workspace.source == WorkspaceSource.LOCAL.value
+                if workspace['source'] == WorkspaceSource.LOCAL.value
                 else WorkspaceExecutionSource.CLOUD.value
             )
-            if workspace.execution_source != expected_source:
+            if workspace['execution_source'] != expected_source:
                 raise WorkspaceInvariantError(
-                    f'Workspace {workspace.uuid!r} execution source does not match its directory source'
+                    f'Workspace {workspace["uuid"]!r} execution source does not match its directory source'
                 )
-            if workspace.state != WorkspaceExecutionStatus.ACTIVE.value or workspace.write_fenced:
-                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace.uuid!r} execution is unavailable')
-            if workspace.active_generation <= 0:
-                raise WorkspaceInvariantError(f'Workspace {workspace.uuid!r} has an invalid execution generation')
-            if expected_generation is not None and workspace.active_generation != expected_generation:
+            if workspace['state'] != WorkspaceExecutionStatus.ACTIVE.value or workspace['write_fenced']:
+                raise WorkspaceExecutionUnavailableError(f'Workspace {workspace["uuid"]!r} execution is unavailable')
+            if workspace['active_generation'] <= 0:
+                raise WorkspaceInvariantError(f'Workspace {workspace["uuid"]!r} has an invalid execution generation')
+            if expected_generation is not None and workspace['active_generation'] != expected_generation:
                 raise WorkspaceGenerationMismatchError(
-                    f'Workspace {workspace.uuid!r} generation {workspace.active_generation} '
+                    f'Workspace {workspace["uuid"]!r} generation {workspace["active_generation"]} '
                     f'does not match expected generation {expected_generation}'
                 )
 
             return WorkspaceExecutionBinding(
                 instance_uuid=self.instance_uuid,
-                workspace_uuid=workspace.uuid,
-                placement_generation=workspace.active_generation,
-                write_fenced=workspace.write_fenced,
-                state=workspace.state,
-                workspace_created_at=workspace.created_at,
+                workspace_uuid=workspace['uuid'],
+                placement_generation=workspace['active_generation'],
+                write_fenced=workspace['write_fenced'],
+                state=workspace['state'],
+                workspace_created_at=workspace['created_at'],
             )
 
         binding = await self._run(operation, session=session)
