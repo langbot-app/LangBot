@@ -217,6 +217,50 @@ async def test_execution_binding_fails_closed_when_fenced(workspace_test_context
         await service.get_local_execution_context(workspace.uuid)
 
 
+@pytest.mark.parametrize(
+    ('model', 'changes', 'error'),
+    [
+        (Workspace, {'status': 'suspended'}, WorkspaceExecutionUnavailableError),
+        (Workspace, {'instance_uuid': 'another-instance'}, WorkspaceInvariantError),
+        (WorkspaceExecutionState, {'write_fenced': True}, WorkspaceExecutionUnavailableError),
+        (WorkspaceExecutionState, {'active_generation': 2}, WorkspaceGenerationMismatchError),
+        (WorkspaceExecutionState, {'instance_uuid': 'another-instance'}, WorkspaceInvariantError),
+        (WorkspaceExecutionState, {'source': 'cloud'}, WorkspaceInvariantError),
+        (WorkspaceExecutionState, None, WorkspaceExecutionUnavailableError),
+    ],
+)
+async def test_execution_binding_observes_projection_changes(workspace_test_context, model, changes, error):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    assert (await service.get_execution_binding(workspace.uuid, expected_generation=1)).placement_generation == 1
+
+    key = Workspace.uuid if model is Workspace else WorkspaceExecutionState.workspace_uuid
+    statement = sqlalchemy.delete(model) if changes is None else sqlalchemy.update(model).values(**changes)
+    async with session_factory.begin() as session:
+        await session.execute(statement.where(key == workspace.uuid))
+
+    with pytest.raises(error):
+        await service.get_execution_binding(workspace.uuid, expected_generation=1)
+
+
+@pytest.mark.parametrize(
+    ('changes', 'error'),
+    [
+        ({'write_fenced': True}, WorkspaceExecutionUnavailableError),
+        ({'active_generation': 2}, WorkspaceGenerationMismatchError),
+    ],
+)
+async def test_execution_binding_observes_unflushed_projection_changes(workspace_test_context, changes, error):
+    service, session_factory = workspace_test_context
+    workspace = await service.ensure_singleton_workspace()
+    async with session_factory.begin() as session:
+        state = await session.get(WorkspaceExecutionState, workspace.uuid)
+        for name, value in changes.items():
+            setattr(state, name, value)
+        with pytest.raises(error):
+            await service.get_execution_binding(workspace.uuid, expected_generation=1, session=session)
+
+
 async def test_cloud_projection_requires_explicit_general_binding(workspace_test_context):
     service, session_factory = workspace_test_context
     await service.ensure_singleton_workspace()

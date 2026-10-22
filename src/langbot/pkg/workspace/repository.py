@@ -13,6 +13,26 @@ from ..entity.persistence.workspace import (
 )
 
 
+_WORKSPACE_COLUMNS = Workspace.__table__.c
+_EXECUTION_COLUMNS = WorkspaceExecutionState.__table__.c
+_EXECUTION_PROJECTION = (
+    sqlalchemy.select(
+        _WORKSPACE_COLUMNS.uuid,
+        _WORKSPACE_COLUMNS.instance_uuid,
+        _WORKSPACE_COLUMNS.source,
+        _WORKSPACE_COLUMNS.status,
+        _WORKSPACE_COLUMNS.created_at,
+        _EXECUTION_COLUMNS.instance_uuid.label('execution_instance_uuid'),
+        _EXECUTION_COLUMNS.active_generation,
+        _EXECUTION_COLUMNS.state,
+        _EXECUTION_COLUMNS.write_fenced,
+        _EXECUTION_COLUMNS.source.label('execution_source'),
+    )
+    .outerjoin(WorkspaceExecutionState.__table__, _EXECUTION_COLUMNS.workspace_uuid == _WORKSPACE_COLUMNS.uuid)
+    .where(_WORKSPACE_COLUMNS.uuid == sqlalchemy.bindparam('workspace_uuid'))
+)
+
+
 class WorkspaceRepository:
     """Transaction-bound persistence operations for the workspace directory."""
 
@@ -45,6 +65,13 @@ class WorkspaceRepository:
 
     async def get_workspace(self, workspace_uuid: str) -> Workspace | None:
         return await self.session.get(Workspace, workspace_uuid)
+
+    async def get_execution_projection(self, workspace_uuid: str) -> sqlalchemy.Row | None:
+        """Read both fencing records together without populating the ORM identity map."""
+        # Core SELECTs do not autoflush caller-owned ORM changes.
+        await self.session.flush()
+        result = await self.session.execute(_EXECUTION_PROJECTION, {'workspace_uuid': workspace_uuid})
+        return result.first()
 
     def add_workspace(self, workspace: Workspace) -> None:
         self.session.add(workspace)
