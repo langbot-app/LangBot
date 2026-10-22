@@ -18,12 +18,21 @@ from .thinking import card_text_fields, visible_think_markers
 import httpx
 import traceback
 from langbot.pkg.utils import httpclient
+from langbot.pkg.utils.outbound_url import (
+    UnsafeOutboundUrlError,
+    assert_safe_local_media_path,
+    assert_safe_outbound_url,
+)
 
 
 _stdout_logger = logging.getLogger('langbot.dingtalk_api')
 
 
 DINGTALK_OPENAPI_BASE = 'https://api.dingtalk.com'
+# Legitimate session webhooks come from DingTalk itself
+# (https://oapi.dingtalk.com/robot/sendBySession?...). Anything else means the
+# inbound event carried a forged destination.
+DINGTALK_WEBHOOK_DOMAINS = ('dingtalk.com',)
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 _MAX_GATEWAY_MESSAGE_BYTES = 1024 * 1024
 
@@ -301,8 +310,14 @@ class DingTalkClient:
         else:
             payload = {'msgtype': 'text', 'text': {'content': content}}
         payload['at'] = {'atUserIds': [incoming_message.sender_staff_id]}
+        # The webhook URL arrives inside the inbound event, so verify it really
+        # points at DingTalk before posting the reply (and any LLM output) to it.
+        webhook_url = assert_safe_outbound_url(
+            incoming_message.session_webhook,
+            allowed_domains=DINGTALK_WEBHOOK_DOMAINS,
+        )
         async with self._http_client_context() as client:
-            response = await client.post(incoming_message.session_webhook, json=payload, timeout=30.0)
+            response = await client.post(webhook_url, json=payload, timeout=30.0)
         return self._check_send_result(response)
 
     async def send_attachment(self, component, incoming_message):
@@ -320,8 +335,12 @@ class DingTalkClient:
         elif getattr(component, 'path', None):
             body = await asyncio.to_thread(_read_local_media_limited, component.path)
         elif getattr(component, 'url', None):
+            # A message component can carry an arbitrary URL. Attachments are
+            # fetched from user-supplied hosts, so refuse anything that resolves
+            # to loopback, a private range, or link-local metadata.
+            media_url = assert_safe_outbound_url(component.url)
             async with self._http_client_context() as client:
-                async with client.stream('GET', component.url, timeout=30.0) as response:
+                async with client.stream('GET', media_url, timeout=30.0) as response:
                     response.raise_for_status()
                     body = await _read_httpx_media_limited(response)
         else:
@@ -995,14 +1014,23 @@ class DingTalkClient:
                 await self.logger.error(f'DingTalk upload_image_media: file not found {file_path}')
             return None
 
+        try:
+            # Caller-supplied path: confine it to the media roots so a plugin or
+            # external input cannot make the adapter upload arbitrary files.
+            safe_file_path = assert_safe_local_media_path(file_path)
+        except UnsafeOutboundUrlError as exc:
+            if self.logger:
+                await self.logger.error(f'DingTalk upload_image_media: rejected path: {exc}')
+            return None
+
         token = await self.get_legacy_access_token()
         if not token:
             return None
 
         url = 'https://oapi.dingtalk.com/media/upload'
         try:
-            file_bytes = await asyncio.to_thread(_read_local_media_limited, file_path)
-            file_name = os.path.basename(file_path)
+            file_bytes = await asyncio.to_thread(_read_local_media_limited, safe_file_path)
+            file_name = os.path.basename(safe_file_path)
             # Best-effort content-type guess; DingTalk accepts the major image
             # mime types and otherwise infers from the bytes.
             ext = os.path.splitext(file_name)[1].lower().lstrip('.')
