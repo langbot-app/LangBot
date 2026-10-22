@@ -1,3 +1,4 @@
+import socket
 import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -188,13 +189,18 @@ async def test_download_credentials_are_scoped_to_slack(url, authenticated):
     with (
         patch('langbot.libs.slack_api.media.httpclient.get_session') as session,
         patch('langbot.libs.slack_api.media.httpclient.read_limited', new=AsyncMock(return_value=b'png')),
+        # The SSRF guard resolves the host before fetching; the fake hosts in this
+        # test have no DNS record, so resolution is stubbed to a public address.
+        patch(
+            'langbot.pkg.utils.outbound_url.socket.getaddrinfo',
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', 443))],
+        ),
     ):
         session.return_value.get.return_value = context
         assert await download_media(url, 'test-token') == (b'png', 'image/png')
         kwargs = session.return_value.get.call_args.kwargs
         assert bool(kwargs['headers']) == authenticated
-        if authenticated:
-            assert kwargs['allow_redirects'] is False
+        assert kwargs['allow_redirects'] is False
 
 
 @pytest.mark.asyncio
