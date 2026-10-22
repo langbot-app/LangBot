@@ -67,6 +67,9 @@ export default function AccountSettingsPanel({
   const [spaceBindLoading, setSpaceBindLoading] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
+  // Passkeys are OSS-only. The core reports explicit false on cloud deployments,
+  // so an absent flag must not be read as "enabled".
+  const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
   const [totpDialogOpen, setTotpDialogOpen] = useState(false);
@@ -90,7 +93,7 @@ export default function AccountSettingsPanel({
   useEffect(() => {
     if (active) {
       loadUserInfo();
-      loadPasskeys();
+      loadPasskeyCapability();
     }
   }, [active]);
 
@@ -165,6 +168,22 @@ export default function AccountSettingsPanel({
     }
   }
 
+  async function loadPasskeyCapability() {
+    try {
+      const res = await httpClient.getAccountInfo();
+      const supported =
+        res.passkey_login_enabled === true || res.passkey_supported === true;
+      setPasskeySupported(supported);
+      if (supported) {
+        await loadPasskeys();
+      }
+    } catch {
+      // Treat an unreadable capability response as "not supported": the passkey
+      // routes refuse on cloud anyway, and this avoids a spurious error toast.
+      setPasskeySupported(false);
+    }
+  }
+
   async function loadPasskeys() {
     setPasskeyLoading(true);
     try {
@@ -181,7 +200,7 @@ export default function AccountSettingsPanel({
     setRegisteringPasskey(true);
     try {
       const { options, challenge_token } =
-        await httpClient.getPasskeyRegisterOptions(window.location.origin);
+        await httpClient.getPasskeyRegisterOptions();
       const regResp = await startRegistration({ optionsJSON: options });
       const defaultName =
         prompt(t('account.passkeyNamePlaceholder')) || undefined;
@@ -320,104 +339,106 @@ export default function AccountSettingsPanel({
             )}
           </Item>
 
-          {/* Passkey Section */}
-          <div className="pt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-sm font-medium">
-                  {t('account.passkeySectionTitle')}
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  {t('account.passkeySectionDesc')}
-                </p>
+          {/* Passkey Section — OSS-only, so it is not rendered on cloud. */}
+          {passkeySupported && (
+            <div className="pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium">
+                    {t('account.passkeySectionTitle')}
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    {t('account.passkeySectionDesc')}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddPasskey}
+                  disabled={
+                    registeringPasskey || !systemInfo.allow_modify_login_info
+                  }
+                  className="cursor-pointer"
+                >
+                  {registeringPasskey ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  {t('account.addPasskey')}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddPasskey}
-                disabled={
-                  registeringPasskey || !systemInfo.allow_modify_login_info
-                }
-                className="cursor-pointer"
-              >
-                {registeringPasskey ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="mr-2 h-4 w-4" />
-                )}
-                {t('account.addPasskey')}
-              </Button>
-            </div>
 
-            {passkeyLoading ? (
-              <div className="flex justify-center py-4">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : passkeys.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                {t('account.noPasskeys')}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {passkeys.map((pk) => (
-                  <Item
-                    key={pk.uuid}
-                    size="sm"
-                    variant="muted"
-                    className="rounded-lg"
-                  >
-                    <ItemMedia variant="icon">
-                      <Fingerprint className="h-4 w-4" />
-                    </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle>{pk.name}</ItemTitle>
-                      <ItemDescription>
-                        {pk.created_at && (
-                          <span>
-                            {t('account.passkeyCreated', {
-                              date: new Date(
-                                pk.created_at,
-                              ).toLocaleDateString(),
-                            })}
-                          </span>
-                        )}
-                        {pk.last_used_at && (
-                          <span className="ml-2">
-                            ·{' '}
-                            {t('account.passkeyLastUsed', {
-                              date: new Date(
-                                pk.last_used_at,
-                              ).toLocaleDateString(),
-                            })}
-                          </span>
-                        )}
-                      </ItemDescription>
-                    </ItemContent>
-                    <ItemActions>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 cursor-pointer"
-                        onClick={() => handleRenamePasskey(pk.uuid, pk.name)}
-                        disabled={!systemInfo.allow_modify_login_info}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive cursor-pointer hover:text-destructive"
-                        onClick={() => handleDeletePasskey(pk.uuid)}
-                        disabled={!systemInfo.allow_modify_login_info}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </ItemActions>
-                  </Item>
-                ))}
-              </div>
-            )}
-          </div>
+              {passkeyLoading ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : passkeys.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                  {t('account.noPasskeys')}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {passkeys.map((pk) => (
+                    <Item
+                      key={pk.uuid}
+                      size="sm"
+                      variant="muted"
+                      className="rounded-lg"
+                    >
+                      <ItemMedia variant="icon">
+                        <Fingerprint className="h-4 w-4" />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{pk.name}</ItemTitle>
+                        <ItemDescription>
+                          {pk.created_at && (
+                            <span>
+                              {t('account.passkeyCreated', {
+                                date: new Date(
+                                  pk.created_at,
+                                ).toLocaleDateString(),
+                              })}
+                            </span>
+                          )}
+                          {pk.last_used_at && (
+                            <span className="ml-2">
+                              ·{' '}
+                              {t('account.passkeyLastUsed', {
+                                date: new Date(
+                                  pk.last_used_at,
+                                ).toLocaleDateString(),
+                              })}
+                            </span>
+                          )}
+                        </ItemDescription>
+                      </ItemContent>
+                      <ItemActions>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 cursor-pointer"
+                          onClick={() => handleRenamePasskey(pk.uuid, pk.name)}
+                          disabled={!systemInfo.allow_modify_login_info}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive cursor-pointer hover:text-destructive"
+                          onClick={() => handleDeletePasskey(pk.uuid)}
+                          disabled={!systemInfo.allow_modify_login_info}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </ItemActions>
+                    </Item>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* TOTP second factor. The card is informational: changing the factor
               happens from the action on the Account's own row. */}
