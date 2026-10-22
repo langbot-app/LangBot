@@ -1760,11 +1760,13 @@ export class BackendClient extends BaseHttpClient {
   // ============ Passkey (WebAuthn) API ============
   public getPasskeyAuthOptions(
     email?: string,
-    origin?: string,
   ): Promise<{ options: any; challenge_token: string }> {
+    // No origin is sent: the WebAuthn RP ID and expected origin are resolved
+    // server-side from api.webui_url / api.webhook_prefix. Sending a client
+    // origin would only invite a future handler to trust it again.
     return this.post(
       '/api/v1/user/passkey/auth/options',
-      { email, origin },
+      { email },
       { skipWorkspace: true },
     );
   }
@@ -1780,12 +1782,14 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public getPasskeyRegisterOptions(
-    origin?: string,
-  ): Promise<{ options: any; challenge_token: string }> {
+  public getPasskeyRegisterOptions(): Promise<{
+    options: any;
+    challenge_token: string;
+  }> {
+    // See getPasskeyAuthOptions: the origin is server-configured, not supplied.
     return this.post(
       '/api/v1/user/passkey/register/options',
-      { origin },
+      {},
       { skipWorkspace: true },
     );
   }
