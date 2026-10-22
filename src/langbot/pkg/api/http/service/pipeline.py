@@ -183,6 +183,9 @@ class PipelineService:
                 raise ValueError(f'Maximum number of pipelines ({max_pipelines}) reached')
 
         pipeline_data = pipeline_data.copy()
+        # The column is NOT NULL; a caller that omits the optional description
+        # must not get a 500 from the database constraint.
+        pipeline_data.setdefault('description', '')
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['workspace_uuid'] = workspace_uuid
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()

@@ -779,6 +779,9 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
+        # The column is NOT NULL; a caller that omits the optional description
+        # must not get a 500 from the database constraint.
+        bot_data.setdefault('description', '')
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
