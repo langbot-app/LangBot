@@ -1608,7 +1608,14 @@ class PersistenceManager:
         return policies
 
     async def write_space_model_providers(self):
-        if constants.edition != 'community':
+        # Only a single-Workspace deployment may own the process-level
+        # compatibility provider. Genuine multi-tenant Cloud runs in CLOUD_RUNTIME
+        # persistence mode and never reaches this method, but a dedicated
+        # environment is `edition=cloud` on top of OSS persistence, so gating on
+        # the edition alone left it without the provider row -- and the Space OAuth
+        # callback then failed with "Provider not found" on every login.
+        deployment = getattr(self.ap, 'deployment', None)
+        if deployment is not None and getattr(deployment, 'multi_workspace_enabled', False):
             # SaaS Workspace/provider linkage is explicit control-plane state;
             # a process-level compatibility provider must never be projected
             # into an arbitrary cloud Workspace.

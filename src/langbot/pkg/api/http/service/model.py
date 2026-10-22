@@ -402,15 +402,37 @@ class LLMModelsService:
             )
             pipeline = result.first()
             if pipeline is not None:
-                model_config = pipeline.config.get('ai', {}).get('local-agent', {}).get('model', {})
-                if not model_config.get('primary', ''):
-                    pipeline_config = pipeline.config
-                    pipeline_config['ai']['local-agent']['model'] = {
-                        'primary': model_data['uuid'],
-                        'fallbacks': [],
-                    }
-                    pipeline_data = {'config': pipeline_config}
-                    await self.ap.pipeline_service.update_pipeline(context, pipeline.uuid, pipeline_data)
+                # 4.11 pipelines keep the model selector inside
+                # ai.runner_config[<runner id>], not in the pre-4.11
+                # ai.local-agent container, so the schema-aware default-config
+                # service owns this. Touching ai['local-agent'] directly raised
+                # KeyError and turned "add the first model" into a 500 on every
+                # freshly created Workspace.
+                updated = await self.ap.runner_default_config_service.set_pipeline_llm_model_if_empty(
+                    context,
+                    pipeline,
+                    model_data['uuid'],
+                )
+                if not updated:
+                    # Pipelines that have not gone through the 4.11 migration still
+                    # carry the legacy container; keep seeding it, but only when it
+                    # actually exists.
+                    legacy_config = (pipeline.config or {}).get('ai', {}).get('local-agent')
+                    if isinstance(legacy_config, dict):
+                        legacy_model = legacy_config.get('model')
+                        if not isinstance(legacy_model, dict):
+                            legacy_model = {}
+                        if not legacy_model.get('primary', ''):
+                            legacy_config['model'] = {
+                                **legacy_model,
+                                'primary': model_data['uuid'],
+                                'fallbacks': legacy_model.get('fallbacks') or [],
+                            }
+                            await self.ap.pipeline_service.update_pipeline(
+                                context,
+                                pipeline.uuid,
+                                {'config': pipeline.config},
+                            )
 
         return model_data['uuid']
 
