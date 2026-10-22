@@ -925,6 +925,32 @@ class TestUserServiceCreateOrUpdateSpaceUser:
 
         provider_service.update_space_model_provider_api_keys.assert_awaited_once_with('workspace-a', 'owner-api-key')
 
+    async def test_oss_space_provider_refresh_tolerates_missing_provider_row(self):
+        """A missing provider row must not abort the Space OAuth login."""
+        from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+
+        owner_account = _create_mock_user(email='owner@example.com', space_account_uuid='space-owner')
+        access = SimpleNamespace(
+            workspace=SimpleNamespace(uuid='workspace-a'),
+            membership=SimpleNamespace(role='owner'),
+        )
+        provider_service = SimpleNamespace(
+            update_space_model_provider_api_keys=AsyncMock(side_effect=WorkspaceNotFoundError('Provider not found'))
+        )
+        logger = SimpleNamespace(warning=Mock())
+        ap = SimpleNamespace(
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=False)),
+            workspace_collaboration_service=SimpleNamespace(list_account_workspaces=AsyncMock(return_value=[access])),
+            provider_service=provider_service,
+            logger=logger,
+        )
+
+        # Must not raise: authentication already succeeded by this point.
+        await UserService(ap)._update_space_provider_for_account(owner_account, 'owner-api-key')
+
+        provider_service.update_space_model_provider_api_keys.assert_awaited_once_with('workspace-a', 'owner-api-key')
+        logger.warning.assert_called_once()
+
     async def test_create_or_update_space_user_no_expiry(self):
         """Creates Space user without token expiry."""
         # Setup
