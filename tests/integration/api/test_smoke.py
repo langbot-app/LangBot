@@ -335,8 +335,10 @@ class TestUserInitEndpoint:
             'invitation_registration_enabled': False,
             'password_login_enabled': False,
             'space_login_enabled': True,
-            'passkey_login_enabled': True,
-            'passkey_supported': True,
+            # Passkeys are OSS-only: a cloud deployment must advertise neither
+            # passkey login nor passkey support, and the routes refuse it.
+            'passkey_login_enabled': False,
+            'passkey_supported': False,
         }
 
     @pytest.mark.asyncio
