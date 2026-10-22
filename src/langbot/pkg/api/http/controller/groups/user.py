@@ -6,7 +6,6 @@ import asyncio
 import datetime
 import hmac
 import time
-import typing
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
