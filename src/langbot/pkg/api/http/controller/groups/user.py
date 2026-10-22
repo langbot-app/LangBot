@@ -6,7 +6,6 @@ import asyncio
 import datetime
 import hmac
 import time
-import typing
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -16,6 +15,7 @@ from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 from ...service import totp as totp_module
+from .....utils import constants
 
 # Fixed-window admission quota for the unauthenticated reset-password endpoint (#2392).
 # The admission check and slot bump share ONE synchronous critical section with no await
@@ -68,21 +68,49 @@ class UserRouterGroup(group.RouterGroup):
 
         return redirect_uri
 
-    def _extract_origin_and_rp_id(self, json_data: dict[str, typing.Any] | None = None) -> tuple[str, str]:
-        origin = ''
-        if json_data and isinstance(json_data, dict):
-            origin = json_data.get('origin', '')
-        if not origin:
-            origin = quart.request.headers.get('Origin', '')
-        if not origin:
-            origin = quart.request.headers.get('Referer', '')
-        if not origin:
-            origin = quart.request.url_root.rstrip('/')
+    def _resolve_server_origin(self) -> tuple[str, str]:
+        """Return the server-configured browser origin and WebAuthn RP ID.
 
-        parsed = urlsplit(origin)
-        rp_id = parsed.hostname or 'localhost'
-        clean_origin = f'{parsed.scheme}://{parsed.netloc}' if parsed.scheme and parsed.netloc else origin.rstrip('/')
-        return clean_origin, rp_id
+        WebAuthn's anti-phishing guarantee depends on the RP ID and expected
+        origin being values the *server* chose. Deriving them from the request
+        (a JSON `origin` field, the Origin/Referer headers, or the Host header)
+        lets a sibling host under the same registrable domain obtain a valid
+        assertion for the victim's credential. Resolution order matches the
+        OAuth/invitation rule: api.webui_url, then api.webhook_prefix, then the
+        configured API port on loopback. Request data is never consulted.
+        """
+        data = getattr(getattr(self.ap, 'instance_config', None), 'data', {}) or {}
+        api = data.get('api', {}) if isinstance(data.get('api', {}), dict) else {}
+
+        for key in ('webui_url', 'webhook_prefix'):
+            candidate = str(api.get(key, '') or '').strip()
+            if candidate:
+                parsed = urlsplit(candidate)
+                if parsed.scheme and parsed.netloc and parsed.hostname:
+                    return f'{parsed.scheme}://{parsed.netloc}', parsed.hostname
+
+        port = api.get('port', 5300)
+        return f'http://127.0.0.1:{port}', 'localhost'
+
+    def _passkey_supported(self) -> bool:
+        """Passkeys are an OSS-only feature.
+
+        Cloud deployments authenticate through their own account service, so
+        passkey registration and login are refused there outright rather than
+        merely hidden in the UI. Both flavours count as cloud: the multi-tenant
+        Cloud (``system.edition == 'cloud'``) and a standalone cloud-edition
+        instance (``deployment.mode == 'cloud'``).
+        """
+        if constants.edition not in ('community', 'oss'):
+            return False
+        deployment_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', None)
+        return deployment_mode != 'cloud'
+
+    def _passkey_disabled_response(self):
+        """Uniform refusal for every passkey route on a non-OSS edition."""
+        if self._passkey_supported():
+            return None
+        return self.http_status(403, 'edition_unsupported', 'Passkeys are only available in the OSS edition')
 
     async def initialize(self) -> None:
         @self.route('/init', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
@@ -507,8 +535,9 @@ class UserRouterGroup(group.RouterGroup):
                 capabilities['password_login_enabled'] = False
             capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
             capabilities['invitation_registration_enabled'] = not cloud_mode
-            capabilities['passkey_login_enabled'] = True
-            capabilities['passkey_supported'] = True
+            passkey_supported = self._passkey_supported()
+            capabilities['passkey_login_enabled'] = passkey_supported
+            capabilities['passkey_supported'] = passkey_supported
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
@@ -602,14 +631,17 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/register/options', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> str:
             """Generate WebAuthn registration options for current account."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
                 'allow_modify_login_info', True
             )
             if not allow_modify_login_info:
                 return self.http_status(403, -1, 'Modifying login info is disabled')
 
-            json_data = (await quart.request.json) or {}
-            origin, rp_id = self._extract_origin_and_rp_id(json_data)
+            origin, rp_id = self._resolve_server_origin()
 
             try:
                 options, challenge_token = await self.ap.user_service.generate_passkey_registration_options(
@@ -625,6 +657,10 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/register/verify', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> str:
             """Verify WebAuthn registration response and save credential."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
                 'allow_modify_login_info', True
             )
@@ -658,9 +694,13 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/auth/options', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
             """Generate WebAuthn authentication options for passkey login."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             json_data = (await quart.request.json) or {}
             email = json_data.get('email')
-            origin, rp_id = self._extract_origin_and_rp_id(json_data)
+            origin, rp_id = self._resolve_server_origin()
 
             try:
                 options, challenge_token = await self.ap.user_service.generate_passkey_authentication_options(
@@ -675,6 +715,10 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/auth/verify', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
             """Verify WebAuthn authentication response and log in."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             json_data = await quart.request.json
             challenge_token = json_data.get('challenge_token')
             credential = json_data.get('credential') or json_data.get('response')
@@ -699,6 +743,10 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkeys', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> str:
             """List registered passkeys for the current user."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             passkeys = await self.ap.user_service.get_user_passkeys(account.uuid)
             return self.success(
                 data=[
@@ -718,6 +766,10 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/<passkey_uuid>', methods=['PATCH'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account, passkey_uuid: str) -> str:
             """Rename a registered passkey."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
                 'allow_modify_login_info', True
             )
@@ -741,6 +793,10 @@ class UserRouterGroup(group.RouterGroup):
         @self.route('/passkey/<passkey_uuid>', methods=['DELETE'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account, passkey_uuid: str) -> str:
             """Delete/revoke a registered passkey."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
                 'allow_modify_login_info', True
             )
