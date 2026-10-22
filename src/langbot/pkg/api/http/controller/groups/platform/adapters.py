@@ -1297,7 +1297,11 @@ class AdaptersRouterGroup(group.RouterGroup):
                     _stdout_logger.exception('credential session sweep failed')
 
         self._sweep_credential_sessions = _sweep_now
-        self.ap.task_mgr.create_task(
-            _credential_session_sweeper(),
-            name='platform-credential-session-sweeper',
-        )
+        # Some embeddings (notably test harnesses) provide a task manager without
+        # create_task; the per-route cleanups still enforce the TTL there.
+        create_task = getattr(self.ap.task_mgr, 'create_task', None)
+        if callable(create_task):
+            create_task(
+                _credential_session_sweeper(),
+                name='platform-credential-session-sweeper',
+            )
