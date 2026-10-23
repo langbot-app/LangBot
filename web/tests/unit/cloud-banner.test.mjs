@@ -75,6 +75,7 @@ test('every locale carries the cloud_banner copy', () => {
   const expectedKeys = [
     'message',
     'dedicated_link',
+    'cta_dedicated',
     'or',
     'self_hosted_link',
     'period',

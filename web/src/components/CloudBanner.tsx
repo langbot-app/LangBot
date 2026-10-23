@@ -178,7 +178,19 @@ export function CloudBanner() {
         <div className="flex w-full items-start gap-3">
           <span className="flex-1">
             {customCopy ? (
-              customCopy
+              <>
+                {customCopy}{' '}
+                {banner.show_links && (
+                  <a
+                    href={banner.dedicated_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium underline hover:opacity-80"
+                  >
+                    {t('cloud_banner.cta_dedicated')}
+                  </a>
+                )}
+              </>
             ) : (
               <>
                 {t('cloud_banner.message')}{' '}

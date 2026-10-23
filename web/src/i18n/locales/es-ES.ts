@@ -3836,6 +3836,7 @@ const esES = {
     message:
       'Estás usando LangBot Cloud, el servicio gestionado. Para obtener recursos dedicados y cuotas mayores, considera usar',
     dedicated_link: 'LangBot Cloud (entorno dedicado)',
+    cta_dedicated: 'ver los planes dedicados',
     or: 'o',
     self_hosted_link: 'la versión de código abierto autoalojada',
     period: '.',

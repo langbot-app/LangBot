@@ -3779,6 +3779,7 @@ const jaJP = {
     message:
       '現在は LangBot Cloud のマネージド環境です。専用リソースと高い利用上限が必要な場合は、',
     dedicated_link: 'LangBot Cloud（専用環境）',
+    cta_dedicated: '専用環境のプランを見る',
     or: 'または',
     self_hosted_link: 'セルフホスト版',
     period: 'をご検討ください。',
