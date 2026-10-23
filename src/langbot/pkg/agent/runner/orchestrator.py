@@ -15,6 +15,8 @@ from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 from .reply_stream import ReplyStreamSession
 from ...core import app
+from ...i18n import t
+from ...i18n.workspace import get_workspace_language
 from ...api.http.context import ExecutionContext
 from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
@@ -408,8 +410,8 @@ class AgentRunOrchestrator:
                             if isinstance(usage, dict):
                                 terminal_usage = usage
                         elif result_type == 'run.failed':
-                            terminal_status = 'failed'
                             data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                            terminal_status = 'cancelled' if data.get('code') == 'cancelled' else 'failed'
                             terminal_reason = data.get('error') or data.get('code')
                             usage = result_dict.get('usage')
                             if isinstance(usage, dict):
@@ -445,10 +447,37 @@ class AgentRunOrchestrator:
                             yield result
 
                         run_snapshot = await self.journal.get_run(run_id)
-                        if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
+                        if (
+                            terminal_status is None
+                            and run_snapshot
+                            and run_snapshot.get('cancel_requested_at') is not None
+                        ):
                             terminal_status = 'cancelled'
                             terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
-                            break
+                            # The Host closes the stream here, so it owns the missing terminal event.
+                            cancelled_result = {
+                                'type': 'run.failed',
+                                'run_id': run_id,
+                                'sequence': last_sequence + 1,
+                                'data': {
+                                    'code': 'cancelled',
+                                    'error': t(
+                                        'Task was cancelled',
+                                        locale=await get_workspace_language(self.ap, execution_context.workspace_uuid),
+                                    ),
+                                    'retryable': False,
+                                },
+                            }
+                            cancelled_event = await self.journal.append_run_result(
+                                result_dict=cancelled_result,
+                                run_id=run_id,
+                                sequence=None,
+                                source='host',
+                            )
+                            cancelled_result['sequence'] = cancelled_event['sequence']
+                            if result_observer is not None:
+                                await result_observer(cancelled_result)
+                            await self.result_normalizer.normalize(cancelled_result, descriptor)
             await self.journal.finalize_run(
                 run_id=run_id,
                 status=terminal_status or 'completed',
@@ -470,14 +499,20 @@ class AgentRunOrchestrator:
             )
             raise
         except Exception as exc:
-            execution_outcome = 'timeout' if self._is_deadline_exhausted(context) else 'failed'
+            execution_outcome = (
+                'cancelled'
+                if terminal_status == 'cancelled'
+                else 'timeout'
+                if self._is_deadline_exhausted(context)
+                else 'failed'
+            )
             # A chain that broke must always carry a reason, even for a bare exception.
             execution_error = str(exc) or type(exc).__name__
             failed_usage = terminal_usage
             await self.journal.finalize_run(
                 run_id=run_id,
-                status='timeout' if self._is_deadline_exhausted(context) else 'failed',
-                status_reason=str(exc),
+                status=execution_outcome,
+                status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
                 usage=failed_usage,
             )
             raise

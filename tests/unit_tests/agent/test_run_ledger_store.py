@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import asyncio
 import json
 
 import pytest
@@ -416,6 +417,25 @@ async def test_append_audit_event_uses_next_sequence(store):
     assert event['data'] == {'action': 'run_cancel'}
     assert event['metadata'] == {'permission': 'agent_run:admin'}
     assert await store.append_audit_event(run_id='missing', event_type='admin.missing') is None
+
+
+@pytest.mark.asyncio
+async def test_host_events_allocate_sequences_across_stores(store, db_engine):
+    await store.create_run(run_id='concurrent-host', event_id=None, binding_id=None, runner_id='runner')
+    other = RunLedgerStore(db_engine)
+    events = await asyncio.gather(
+        store.append_audit_event(run_id='concurrent-host', event_type='admin.run_cancel'),
+        other.append_event(
+            run_id='concurrent-host',
+            sequence=None,
+            event_type='run.failed',
+            data={'code': 'cancelled'},
+            source='host',
+        ),
+    )
+    assert sorted(event['sequence'] for event in events) == [1, 2]
+    persisted, *_ = await store.page_run_events(run_id='concurrent-host', limit=10)
+    assert {event['type'] for event in persisted} == {'admin.run_cancel', 'run.failed'}
 
 
 @pytest.mark.asyncio

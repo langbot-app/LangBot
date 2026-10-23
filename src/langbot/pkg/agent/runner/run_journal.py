@@ -152,7 +152,7 @@ class AgentRunJournal:
         *,
         result_dict: dict[str, typing.Any],
         run_id: str,
-        sequence: int,
+        sequence: int | None,
         source: str = 'runner',
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
