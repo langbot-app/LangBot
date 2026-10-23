@@ -8,10 +8,12 @@ import typing
 import datetime
 import time
 
-from . import app
 from . import entities as core_entities
 from .errors import TaskCapacityError
 from .task_boundary import create_detached_task
+
+if typing.TYPE_CHECKING:
+    from . import app
 
 
 class TaskContext:
