@@ -40,6 +40,8 @@ pnpm test:e2e
 
 Run the narrowest useful test first, then broader checks when confidence is needed.
 
+Run tests in Linux to match CI; on Windows, use Linux containers through `wslc` of WSL3 to avoid platform-specific failures.
+
 ## Where to Look
 
 - Architecture map: `ARCHITECTURE.md`.
