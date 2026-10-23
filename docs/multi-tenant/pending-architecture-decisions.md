@@ -29,7 +29,7 @@
 | 编号  | 结论                                                                                                                                          | 首期状态                                                             |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码 artifact 可以只读共享 | `IMPLEMENTED — egress/disk-quota pending; restart-storm fault injection pending` |
-| D-002 | 一个共享 Box Runtime；Cloud 固定使用 nsjail；符合套餐的 Workspace 最多一个持久 `global` 逻辑 sandbox，普通执行按需启动 nsjail 进程            | `IMPLEMENTED FAIL-CLOSED — hard filesystem quota provider pending`   |
+| D-002 | 一个共享 Box Runtime；Cloud 固定使用 nsjail；符合计划的 Workspace 最多一个持久 `global` 逻辑 sandbox，普通执行按需启动 nsjail 进程            | `IMPLEMENTED FAIL-CLOSED — hard filesystem quota provider pending`   |
 | D-003 | SaaS 业务数据使用 PostgreSQL shared schema、应用层作用域和 RLS 双重隔离；pgvector 使用同一 PostgreSQL，作为 SaaS 默认向量后端                 | `PARTIALLY IMPLEMENTED — transaction/outbox/deployment gates remain` |
 | D-004 | stdio MCP 与 Box availability 解耦；Cloud v2 首期强制关闭 stdio MCP，避免为每个 Workspace 创建额外的 `mcp-shared` persistent sandbox          | `IMPLEMENTED`                                                        |
 | D-005 | 目录启动使用事务一致的全量快照，运行时按事件涉及的 Workspace 拉取增量；每个 Core replica 独立消费事件，共享 PostgreSQL 投影和 inbox           | `IMPLEMENTED — production fault injection pending`                   |
@@ -47,7 +47,7 @@ Workspace 的具体创建、释放、数据导出和单 Workspace 恢复机制�
 统一评估原则：
 
 1. 注册 Account、自动创建空 Workspace 时，不启动 Plugin worker 或 Box sandbox。
-2. 启用插件后，每个 installation 的常驻成本来自其独立安全边界；首次使用托管 sandbox 后，符合套餐的 Workspace 才承担一个持久逻辑 session 的成本。
+2. 启用插件后，每个 installation 的常驻成本来自其独立安全边界；首次使用托管 sandbox 后，符合计划的 Workspace 才承担一个持久逻辑 session 的成本。
 3. 可信 supervisor、artifact cache、数据库连接池和 Runtime 容量可以多租户共享。
 4. 一个不可信插件进程不能服务多个 installation；一个 sandbox/session 不能服务多个 Workspace。
 5. 默认使用共享 Runtime；dedicated 只作为未来高隔离、大客户或合规资源等级，不建立第二套外部协议。
@@ -221,7 +221,7 @@ v1 connection 的兼容期限，以及进入多 replica 后的 lease TTL、fenci
 - requirements 中存在 Runtime 基础镜像未预装的包时，Supervisor 仍能先完成共享依赖环境准备再启动 worker；
   安装失败不会留下持续重启的半启动进程，也不会影响同 digest 已就绪环境的其他 installation。
 
-## 4. D-002：Box 多租户控制面和套餐边界
+## 4. D-002：Box 多租户控制面和计划边界
 
 状态：`IMPLEMENTED FAIL-CLOSED — production quota provider pending`
 
@@ -236,12 +236,12 @@ v1 connection 的兼容期限，以及进入多 replica 后的 lease TTL、fenci
 - grant-enforced readiness 强制 cgroup、namespace、mount、共享卷、Workspace hard quota、Skill hard quota、ephemeral storage 和 inode quota 全部被证明。
   普通 nsjail backend 对尚未实现的硬磁盘能力明确返回 false，因此当前 Cloud Box 会按设计拒绝启动，直到新部署提供真实 quota provider。
 
-### 4.2 首期套餐与 entitlement 模型
+### 4.2 首期计划与 entitlement 模型
 
-- 闭源订阅管理/Control Plane 负责把套餐映射为版本化 entitlement；Core 和 Box Runtime 不硬编码 `plan == pro`。
-- 首期复用 Cloud Control Plane（可结合现有 Space 的订阅模块）承载闭源套餐、计费和 entitlement 投影，
+- 闭源订阅管理/Control Plane 负责把计划映射为版本化 entitlement；Core 和 Box Runtime 不硬编码 `plan == pro`。
+- 首期复用 Cloud Control Plane（可结合现有 Space 的订阅模块）承载闭源计划、计费和 entitlement 投影，
   不再拆一个独立 billing/tenant microservice；开源 Core 只实现通用 capability 和数值限额。
-- 首期套餐投影为：Pro 的 `managed_sandbox_sessions = 1`，其他套餐为 `0`。建议 capability 形态：
+- 首期计划投影为：Pro 的 `managed_sandbox_sessions = 1`，其他计划为 `0`。建议 capability 形态：
 
 ```json
 {
@@ -260,7 +260,7 @@ v1 connection 的兼容期限，以及进入多 replica 后的 lease TTL、fenci
 - 工具发现层根据 entitlement 隐藏/禁用托管 sandbox。Core 校验 Control Plane 的 entitlement 后，
   通过受认证控制连接向 Box Runtime 下发短期 `SandboxAdmissionGrant`，绑定
   `instance_uuid + workspace_uuid + execution_generation + entitlement_revision + expires_at + max_sessions + max_managed_processes`。
-  Runtime 只验证和执行该内部 grant，不理解 Pro 等套餐名称，也不相信业务调用方提交的 plan、session ID 或 host path。
+  Runtime 只验证和执行该内部 grant，不理解 Pro 等计划名称，也不相信业务调用方提交的 plan、session ID 或 host path。
 - entitlement 缺失、过期或无法验证时失败关闭。并发创建必须用原子 admission 保证同一 Workspace 永远不超过一个 managed session。
 - entitlement 被撤销后停止 managed process 并关闭逻辑 session；Workspace 数据保留/删除策略随未来 Workspace 释放机制一并决定。
 
@@ -292,7 +292,7 @@ v1 connection 的兼容期限，以及进入多 replica 后的 lease TTL、fenci
   低于正常附件上限，不能当作等价 Cloud 文件机制。无法共享路径时必须先扩展传输协议，否则 deployment readiness 失败。
 - 现有执行前后目录扫描只能提供软检查，不能阻止单次命令写满共享卷。生产 Cloud 的 Workspace 总空间上限必须由
   Box-owned volume 的 filesystem project quota/subvolume quota 在写入点原子执行；Box Runtime 负责设置和验证，不能因 Core 看不到路径而跳过。
-- Cloud 的 nsjail CPU、内存、PID、单文件和总空间限制使用运维配置统一设置；套餐只决定 session 数量，
+- Cloud 的 nsjail CPU、内存、PID、单文件和总空间限制使用运维配置统一设置；计划只决定 session 数量，
   不允许 Workspace 放宽 sandbox 上限。
 - Box Runtime 必须在 cgroup v2 hard limit、namespace 和 mount 条件满足后才通过 readiness；不能在共享 SaaS 中告警后降级运行。
 - 同 Workspace 的 `global` session 可以复用持久 `/workspace`，但不同 Workspace 即使使用相同文件名、进程名或逻辑 session ID，
@@ -444,7 +444,7 @@ P1 的 resolver、映射、在线迁移、连接池预算、shard-affine replica
 - 修复前，stdio MCP 的启用条件只检查 transport 为 `stdio` 且 Box available，没有独立 feature gate。
 - 修复前，所有 stdio MCP 使用固定的 `mcp-shared` 逻辑 session，并强制 `persistent=True`。
 - 在该旧逻辑下，如果多租户 Cloud 只通过 `box.enabled` 开放能力，每个配置 stdio MCP 的 Workspace 都会额外保留一个 persistent sandbox，
-  绕过“每 Workspace 最多一个 managed `global` sandbox”的成本和套餐边界。
+  绕过“每 Workspace 最多一个 managed `global` sandbox”的成本和计划边界。
 
 ### 6.2 首期决定
 
@@ -458,7 +458,7 @@ mcp:
 
 - OSS 默认 `true`，保持当前本地部署兼容；Cloud v2 通过 `MCP__STDIO__ENABLED=false` 强制关闭。
 - 该开关与 `box.enabled`、`managed_sandbox` entitlement 和 sandbox session 数量相互独立，不能从任一条件推导。
-- 后续如开放给特定套餐，可在实例开关之上再叠加 Workspace capability；实例开关为 `false` 时任何 entitlement 都不能绕过。
+- 后续如开放给特定计划，可在实例开关之上再叠加 Workspace capability；实例开关为 `false` 时任何 entitlement 都不能绕过。
 - HTTP/SSE/其他远程 MCP transport 不受此开关影响。
 
 ### 6.3 强制检查点
@@ -492,8 +492,8 @@ mcp:
 - Box 通过“共享 Runtime + 每个合资格 Workspace 一个持久逻辑 session + one-shot nsjail exec”避免每租户部署服务和空闲容器。
 - stdio MCP 独立关闭，防止从 Box availability 隐式产生第二套 persistent sandbox。
 - PostgreSQL 和 pgvector 共享数据库组件，但使用显式 tenant key、应用层 scope 和 RLS 防止共享存储变成共享权限。
-- 订阅管理只在闭源 Control Plane 维护套餐与计费规则，并向开源 Core 投影签名/版本化 entitlement；
-  Core/Runtime 执行通用 capability 和数值限额，不复制套餐名称或计费逻辑。
+- 订阅管理只在闭源 Control Plane 维护计划与计费规则，并向开源 Core 投影签名/版本化 entitlement；
+  Core/Runtime 执行通用 capability 和数值限额，不复制计划名称或计费逻辑。
 - 目录同步只在启动或恢复时读取全量快照；常态变更按 Workspace 聚合为签名增量，新增租户不会使每次目录事件退化为全实例重投影。
 
 ## 8. 当前不做分布式时仍保留的能力

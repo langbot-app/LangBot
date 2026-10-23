@@ -122,9 +122,9 @@ LangBot ──> K8s Job per execution
 | **应用层** | Redis 原子计数器 | 并发 session 数/执行次数/CPU 时间预算 |
 | **计费层** | 月度聚合 | 按租户计费（session-hours/execution-count） |
 
-### Profile 与套餐映射
+### Profile 与计划映射
 
-| 套餐 | Profile | locked 字段 | 配额 |
+| 计划 | Profile | locked 字段 | 配额 |
 |------|---------|------------|------|
 | Free | `offline_readonly` | network, host_path_mode, rootfs | 10 exec/天, 0.5 CPU, 256MB |
 | Pro | `default` | (无) | 100 exec/天, 1 CPU, 512MB |

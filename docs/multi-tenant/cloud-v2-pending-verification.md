@@ -154,7 +154,7 @@
 
 1. 注册自动创建个人 Workspace、owner membership、Free subscription、
    entitlement snapshot 和 outbox 事件，且重试不重复创建。
-2. 邀请、成员变更、套餐变更和 Workspace 撤销只影响目标 Workspace。
+2. 邀请、成员变更、计划变更和 Workspace 撤销只影响目标 Workspace。
 3. 全量快照与增量事件覆盖乱序、重复、断点续传、缺页、签名错误、
    high-water gap、snapshot coverage 和消费者重启。
 4. Core、Plugin Runtime 或 Box 重启后，权威 desired state 可恢复；
@@ -173,7 +173,7 @@
    最终关闭，`mcp_projection_retirements` 和
    `mcp_projection_reconcile_active` 在冷却期归零。
 
-### V-06：套餐、Box 与 stdio MCP
+### V-06：计划、Box 与 stdio MCP
 
 1. Free/非 Pro Workspace 不会自动获得 managed sandbox。
 2. 合资格 Workspace 最多只有一个持久 `global` sandbox，且新增 Workspace
