@@ -362,3 +362,42 @@ cases can specify `exit_code` and `stderr` explicitly.
 To use a fresh deployment, select this suite in `job.json`; the Job supplies its
 SQLite/recording paths and uses mock embedding. Smoke skips load warmup and timed
 phases. The dedicated Docker daemon requirement above still applies.
+
+## PR smoke gate
+
+`Core Smoke` runs regression-tool tests and a real Core smoke in parallel on
+GitHub-hosted Linux runners. The smoke starts Core from the checked-out candidate,
+uses the SDK from `uv.lock`, the existing official-plugin source pin, `lbctl`
+v0.3.0, a Docker Box and mock generation/embedding. It needs no model credentials
+or access to a developer's running environment.
+
+Dependency installation, service startup, sandbox image download and plugin
+installation are preparation. After readiness, the gate allows **60 seconds total**
+for API resource creation, 28 cases / 37 requests (two turns per group), verdict
+checks and API cleanup. A missing verdict, failed check or timeout fails the gate.
+The ordinary expanded profile keeps three turns / 43 requests. The entire cold
+workflow takes longer than a minute; it has a separate 15-minute timeout.
+
+On an existing prepared stack, use:
+
+```sh
+uv run --no-sync python tools/regression_gate.py \
+  --profile /path/to/smoke.json --output .qa/gate-001
+```
+
+`gate.json` records the budget, measured duration, verdict and process resource
+peaks. `resources.jsonl` samples configured process trees every second (RSS,
+cumulative CPU time, threads and file descriptors); suite artifacts contain
+per-case timings and business evidence. These are diagnostics, not calibrated
+performance-regression thresholds. Docker sandbox resource sampling remains in
+the longer load runner. A timeout kills the local Suite/CLI process group without
+retrying requests; a reused remote service can still have an in-flight run, so
+inspect its retained ownership journal before cleanup. CI tears down its own
+service processes and owned sandboxes afterward.
+
+The workflow always creates its two checks on PRs and cancels superseded runs.
+After the workflow is merged, configure `Regression tools` and `Core smoke (60s)`
+as required status checks in the repository ruleset. A green workflow alone does
+not enforce merge protection. Longer load and soak tests use the existing Suite
+and Job entry points with separately calibrated latency, throughput and resource
+budgets; the one-minute smoke does not replace them.
