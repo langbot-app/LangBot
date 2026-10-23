@@ -556,6 +556,17 @@ async def test_mcp_resource_cache_is_not_served_to_stale_generation():
 @pytest.mark.asyncio
 async def test_directory_projection_retires_idle_mcp_scope_without_db_poll():
     loader = MCPLoader(_app())
+
+    # Keep the timed path focused on scope retirement rather than Mock
+    # allocation and garbage collection across 100 simulated Workspaces.
+    class Session:
+        def __init__(self, server_name):
+            self.server_name = server_name
+            self.shutdown_calls = 0
+
+        async def shutdown(self):
+            self.shutdown_calls += 1
+
     sessions = []
     for index in range(100):
         context = ExecutionContext(
@@ -563,14 +574,7 @@ async def test_directory_projection_retires_idle_mcp_scope_without_db_poll():
             workspace_uuid=f'workspace-{index}',
             placement_generation=1,
         )
-        session = RuntimeMCPSession(
-            f'server-{index}',
-            {'uuid': f'srv-{index}', 'mode': 'remote'},
-            True,
-            loader.ap,
-            context,
-        )
-        session.shutdown = AsyncMock()
+        session = Session(f'server-{index}')
         loader._register_session(context, session.server_name, session)
         sessions.append(session)
 
@@ -589,7 +593,7 @@ async def test_directory_projection_retires_idle_mcp_scope_without_db_poll():
     assert loader.sessions == {}
     assert loader._scope_generations == {}
     assert loader._pending_projection_retirements == set()
-    assert sum(session.shutdown.await_count for session in sessions) == 100
+    assert all(session.shutdown_calls == 1 for session in sessions)
     loader.ap.workspace_service.get_execution_binding.assert_not_awaited()
 
 
