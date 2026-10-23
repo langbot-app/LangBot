@@ -304,6 +304,8 @@ class Job:
         self.save()
         profile = self.suite_profile
         profile.setdefault('vars', {})['core_base_url'] = endpoint
+        if 'smoke' in profile:
+            profile['smoke']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
         profile['cli'] = {'executable': self.cli[0], 'config': str(self.cli_config)}
         profile['observe'] = {'health': health, 'pids': {}, 'containers': list(containers.values())}
         for service, container in containers.items():
@@ -315,6 +317,8 @@ class Job:
         self.redactions.extend(suite.secrets)
         suite.write('profile.json', profile)
         suite.prepare()
+        if 'smoke' in profile:
+            return suite
         # Prime every configured business case before measuring steady load.
         for case in profile['cases']:
             case = resolve(case, suite.variables)
@@ -441,7 +445,11 @@ def main():
         if args.profile is None:
             raise ValueError('--profile is required for run/validate')
         profile, suite, path = load_profile(args.profile.resolve())
-        for phase in suite['phases']:
+        if 'smoke' in suite and any(
+            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
+        ):
+            raise ValueError('Load overrides are not applicable to smoke mode')
+        for phase in suite.get('phases', []):
             for flag, field in [
                 ('duration', 'duration_seconds'),
                 ('rps', 'rps'),

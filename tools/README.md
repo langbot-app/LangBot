@@ -290,3 +290,50 @@ quality. Run the Job plumbing checks on Linux with:
 ```sh
 uv run --no-sync python -m unittest discover -s tools -p 'test_*.py' -v
 ```
+
+## Finite core smoke
+
+Use [`regression_profiles/smoke.json`](regression_profiles/smoke.json) for a short
+functional check on an existing Core. It provisions fresh providers, models,
+Pipelines, a knowledge base and a signed HTTP Bot through `lbctl`, ingests the
+HTML fixture through GeneralParsers, then sends nine requests across six cases:
+chat, two Docker Box exec calls, explicit file export, RAG chat, direct retrieval,
+and two interleaved groups with two turns each. Group members change between
+turns; the mock checks prior user/reply history and rejects cross-group history.
+
+Start `mock_llm.py` with the bundled scenarios as described above. Copy the smoke
+profile and configure the CLI executable/config, service URLs, plugin archives,
+and `vars.core_db` to the target Core's existing SQLite `langbot.db`. Keep fixture
+paths valid relative to the copied profile. Set `plugins: []` to reuse installed
+plugins; LocalAgent, LangRAG and GeneralParsers must still be enabled and initialized.
+The embedding endpoint must serve the configured model (`all-MiniLM-L6-v2` by
+default). Generation is deterministic mock traffic; Core, plugins, Box, document
+parsing and retrieval execute normally.
+
+```sh
+uv run --no-sync python tools/regression_suite.py validate --profile /path/to/smoke.json
+uv run --no-sync python tools/regression_suite.py run \
+  --profile /path/to/smoke.json --output .qa/smoke-001
+```
+
+A correct reply alone does not pass. Each Pipeline/group request must match one
+new AgentRun in the authenticated workspace with `completed` status and a persisted
+`run.completed` event. Box cases additionally check actual Docker execution,
+exit codes and sentinel output; export checks the delivered filename and exact
+attachment bytes. The ledger is opened read-only. This first version requires
+local SQLite access; remote-only Core and PostgreSQL ledgers are not supported.
+The observation timeout does not extend the Runner deadline or retry requests.
+Unknown outcomes fail the suite; later turns of that group are skipped while
+independent cases continue.
+
+`summary.json` contains the verdict; exit code 0 means all checks and required
+cleanup passed. `cases.json` records per-request evidence, `environment.json`
+records identity/capabilities/plugins, and `owned.json` tracks created resources.
+Successful runs delete those API resources. Failures retain them by default; use
+`uv run --no-sync python tools/regression_suite.py cleanup --profile /path/to/smoke.json --output .qa/smoke-001`
+after inspection. Box sessions and AgentRun records follow the reused service's
+normal retention policy. Load override flags are rejected for smoke.
+
+To use a fresh deployment, select this suite in `job.json`; the Job supplies its
+SQLite path and uses mock embedding. Smoke skips load warmup and timed phases.
+The dedicated Docker daemon requirement above still applies.

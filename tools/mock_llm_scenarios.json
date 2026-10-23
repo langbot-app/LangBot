@@ -16,5 +16,65 @@
   "mock-429": {"status": 429, "steps": [{"content": "unused"}]},
   "mock-503": {"status": 503, "steps": [{"content": "unused"}]},
   "mock-slow": {"delay_seconds": 2, "steps": [{"content": "LANGBOT_SLOW_OK"}]},
-  "mock-slow-stream": {"chunk_delay_seconds": 0.2, "steps": [{"content": "LANGBOT_SLOW_STREAM_OK"}]}
+  "mock-slow-stream": {"chunk_delay_seconds": 0.2, "steps": [{"content": "LANGBOT_SLOW_STREAM_OK"}]},
+  "mock-smoke-box": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf LANGBOT_BOX_SENTINEL > /tmp/langbot-smoke.txt; cat /tmp/langbot-smoke.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_BOX_SENTINEL",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "cat /tmp/langbot-smoke.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_BOX_SENTINEL",
+        "content": "LANGBOT_BOX_OK"
+      }
+    ]
+  },
+  "mock-smoke-export": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf LANGBOT_EXPORT_SENTINEL > /tmp/langbot-smoke-output.txt; cat /tmp/langbot-smoke-output.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_EXPORT_SENTINEL",
+        "tool_calls": [
+          {
+            "name": "export_box_files",
+            "arguments": {
+              "paths": [
+                "/tmp/langbot-smoke-output.txt"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "accepted",
+        "content": "LANGBOT_EXPORT_OK"
+      }
+    ]
+  }
 }

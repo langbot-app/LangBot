@@ -66,7 +66,19 @@ def number(value, label, *, minimum=0, integer=False):
 def validate(profile):
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('profile version must be 1')
-    allowed = {'version', 'cli', 'vars', 'plugins', 'resources', 'cases', 'phases', 'observe', 'cleanup', 'thresholds'}
+    allowed = {
+        'version',
+        'cli',
+        'vars',
+        'plugins',
+        'resources',
+        'cases',
+        'phases',
+        'observe',
+        'cleanup',
+        'thresholds',
+        'smoke',
+    }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
     for field in ('cli', 'vars', 'observe', 'thresholds'):
@@ -131,7 +143,7 @@ def validate(profile):
         raise ValueError('cases must be a non-empty array')
     names = set()
     for case in cases:
-        if case.keys() - {'name', 'weight', 'args', 'expect', 'body', 'http_group'}:
+        if case.keys() - {'name', 'weight', 'args', 'expect', 'body', 'http_group', 'box_exec', 'attachment'}:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
             raise ValueError('case names must be non-empty and unique')
@@ -162,10 +174,54 @@ def validate(profile):
         resolve(case, variables)
         if 'body' in case and (not isinstance(case['body'], dict) or '--file' in case['args']):
             raise ValueError('case body must be an object and cannot coexist with --file')
+        if 'box_exec' in case:
+            check = case['box_exec']
+            if not isinstance(check, dict) or set(check) != {'count', 'backend', 'stdout'}:
+                raise ValueError('box_exec requires count, backend and stdout')
+            number(check['count'], 'box_exec.count', minimum=1, integer=True)
+            if any(not isinstance(check[k], str) or not check[k] for k in ('backend', 'stdout')):
+                raise ValueError('box_exec backend/stdout must be non-empty strings')
+            if 'smoke' not in profile:
+                raise ValueError('box_exec checks require smoke mode')
+            if 'http_group' not in case and case.get('args', [])[:2] != ['pipeline', 'run']:
+                raise ValueError('box_exec requires a Pipeline or group case')
+        if 'attachment' in case:
+            check = case['attachment']
+            if (
+                'smoke' not in profile
+                or case.get('args', [])[:2] != ['pipeline', 'run']
+                or not isinstance(check, dict)
+                or set(check) != {'name', 'text'}
+                or any(not isinstance(value, str) or not value for value in check.values())
+            ):
+                raise ValueError('attachment requires name/text on a smoke Pipeline case')
     if sum(case.get('weight', 1) for case in cases) > 1000:
         raise ValueError('total case weight must be <= 1000')
-    phases = profile.get('phases')
-    if not isinstance(phases, list) or not phases:
+    smoke = profile.get('smoke')
+    if 'smoke' in profile:
+        if not isinstance(smoke, dict) or smoke.keys() - {
+            'ledger_db',
+            'timeout_seconds',
+            'group_turns',
+            'groups_per_case',
+            'required_plugins',
+        }:
+            raise ValueError('invalid smoke settings')
+        if not isinstance(smoke.get('ledger_db'), str) or not smoke['ledger_db']:
+            raise ValueError('smoke.ledger_db must name the target Core SQLite database')
+        resolve(smoke, variables)
+        number(smoke.get('timeout_seconds', 30), 'smoke timeout_seconds', minimum=0.001)
+        number(smoke.get('group_turns', 2), 'smoke group_turns', minimum=2, integer=True)
+        number(smoke.get('groups_per_case', 2), 'smoke groups_per_case', minimum=2, integer=True)
+        if smoke.get('group_turns', 2) > 10 or smoke.get('groups_per_case', 2) > 10:
+            raise ValueError('smoke group_turns/groups_per_case must be <= 10')
+        required = smoke.get('required_plugins', [])
+        if not isinstance(required, list) or any(not isinstance(p, str) or not p for p in required):
+            raise ValueError('smoke.required_plugins must be an array of plugin IDs')
+        if profile.get('phases') or profile.get('thresholds'):
+            raise ValueError('smoke uses fixed case counts; load phases/thresholds are not applicable')
+    phases = profile.get('phases', [])
+    if not isinstance(phases, list) or (smoke is None and not phases):
         raise ValueError('phases must be a non-empty array')
     names = set()
     for phase in phases:
@@ -341,11 +397,25 @@ class Suite:
         self.write('owned.json', {'workspace_uuid': self.variables['workspace_uuid'], 'resources': self.owned})
 
     def prepare(self):
+        if 'smoke' in self.profile and not Path(self.path(self.profile['smoke']['ledger_db'])).is_file():
+            raise ValueError('smoke.ledger_db must be an existing target Core SQLite database')
         identity = self.call(['whoami'])
         self.variables['workspace_uuid'] = identity['workspace_uuid']
         self.journal()
         for plugin in self.profile.get('plugins', []):
             self.call(['plugin', 'install', plugin['source'], '--file', self.path(plugin['file']), '--wait'])
+        if 'smoke' in self.profile:
+            capabilities = self.call(['capabilities'])
+            plugins = self.call(['plugin', 'list'])
+            ready = {
+                f'{item["author"]}/{item["name"]}'
+                for item in plugins['plugins']
+                if item.get('enabled') and item.get('status') == 'initialized'
+            }
+            missing = set(self.profile['smoke'].get('required_plugins', [])) - ready
+            self.write('environment.json', {'identity': identity, 'capabilities': capabilities, 'plugins': plugins})
+            if missing:
+                raise RuntimeError(f'Required plugins are not initialized: {sorted(missing)}')
         for item in self.profile.get('resources', []):
             kind = item['kind']
             body = resolve(item['body'], self.variables)
@@ -399,6 +469,8 @@ class Suite:
                 if key not in self.profile.get('vars', {}) and key != 'group_secret'
             },
         )
+        if 'smoke' in self.profile:
+            return
         warmups = []
         for case in self.profile['cases']:
             if 'http_group' in case:
@@ -428,6 +500,10 @@ class Suite:
         return failures
 
     def run(self):
+        if 'smoke' in self.profile:
+            from regression_smoke import run_smoke
+
+            return run_smoke(self)
         cases = []
         for original in self.profile['cases']:
             case = resolve(original, self.variables)
@@ -513,6 +589,10 @@ def main():
     args = parser.parse_args()
     try:
         profile = json.loads(args.profile.read_text())
+        if 'smoke' in profile and any(
+            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
+        ):
+            raise ValueError('Load overrides are not applicable to smoke mode')
         for phase in profile.get('phases', []):
             for flag, field in [
                 ('duration', 'duration_seconds'),
