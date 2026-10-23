@@ -198,6 +198,12 @@ class PersistenceManager:
             return
 
         await self._initialize_managed_schema()
+        from .sqlite_startup import checkpoint_after_migration
+
+        if engine.dialect.name == 'sqlite':
+            self.ap.logger.info('Completing SQLite startup WAL checkpoint before starting producers...')
+            await checkpoint_after_migration(engine)
+            self.ap.logger.info('SQLite startup WAL checkpoint completed.')
         await self._enable_sqlite_foreign_keys_after_migration()
         from .resource_urls import install
 
