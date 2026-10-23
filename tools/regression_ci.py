@@ -216,7 +216,17 @@ def main():
     parser.add_argument('--lbctl', type=Path, required=True)
     parser.add_argument('--plugins', type=Path, required=True)
     args = parser.parse_args()
-    result = run(args)
+    if args.output.exists():
+        parser.error('--output must be a new directory')
+    try:
+        result = run(args)
+    except Exception as exc:
+        verdict = args.output / 'gate' / 'gate.json'
+        result = json.loads(verdict.read_text()) if verdict.exists() else {}
+        result.update(passed=False, infrastructure_error=f'{type(exc).__name__}: {exc}')
+        verdict.parent.mkdir(parents=True, exist_ok=True)
+        verdict.write_text(json.dumps(result, indent=2) + '\n')
+        raise
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['passed'] else 1)
 

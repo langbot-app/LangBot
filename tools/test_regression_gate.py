@@ -1,10 +1,12 @@
 """A gate must fail closed on timeout, missing verdict, and inner failure."""
 
 import os
+import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from regression_gate import supervise
 
@@ -29,6 +31,30 @@ class GateTest(unittest.TestCase):
             self.assertFalse(result['passed'])
             self.assertTrue(result['timed_out'])
             self.assertLess(result['elapsed_seconds'], 2)
+
+    def test_teardown_failure_overrides_successful_smoke_verdict(self):
+        from regression_ci import main
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'ci'
+
+            def fail_teardown(args):
+                verdict = args.output / 'gate' / 'gate.json'
+                verdict.parent.mkdir(parents=True)
+                verdict.write_text(json.dumps({'passed': True}))
+                raise RuntimeError('sandbox teardown failed')
+
+            with (
+                patch('regression_ci.run', side_effect=fail_teardown),
+                patch.object(
+                    sys, 'argv', ['regression_ci', '--output', str(output), '--lbctl', 'unused', '--plugins', 'unused']
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                main()
+            result = json.loads((output / 'gate/gate.json').read_text())
+            self.assertFalse(result['passed'])
+            self.assertIn('sandbox teardown failed', result['infrastructure_error'])
 
     def test_zero_exit_without_business_verdict_is_failed(self):
         with tempfile.TemporaryDirectory() as directory:

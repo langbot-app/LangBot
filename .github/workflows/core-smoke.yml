@@ -88,7 +88,9 @@ jobs:
               if path.exists():
                   data = json.loads(path.read_text())
                   out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
-                            f"{data['elapsed_seconds']:.2f}/60 seconds; {data['requests']} requests.\n")
+                            f"{data.get('elapsed_seconds', 0):.2f}/60 seconds; {data.get('requests', 0)} requests.\n")
+                  if data.get('infrastructure_error'):
+                      out.write('Preparation or teardown failed; inspect service logs.\n')
                   out.write('Service/dependency preparation is outside the 60-second execution budget.\n')
               else:
                   out.write('Core smoke did not produce a verdict; inspect preparation failure.\n')

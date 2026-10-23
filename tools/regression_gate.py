@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-from regression_suite import validate
+from regression_suite import Suite, validate
 from regression_traffic import read_process_snapshot
 
 
@@ -84,6 +84,10 @@ def main():
     validate(profile)
     if 'smoke' not in profile:
         parser.error('a smoke profile is required')
+    suite = Suite(profile, args.profile.resolve(), args.output / 'suite')
+    pids = dict(profile.get('observe', {}).get('pids', {}))
+    for name, path in profile.get('observe', {}).get('pid_files', {}).items():
+        pids[name] = int(Path(suite.path(path)).read_text().strip())
     result = supervise(
         [
             sys.executable,
@@ -96,7 +100,7 @@ def main():
         ],
         args.output,
         60,
-        profile.get('observe', {}).get('pids', {}),
+        pids,
     )
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['passed'] else 1)
