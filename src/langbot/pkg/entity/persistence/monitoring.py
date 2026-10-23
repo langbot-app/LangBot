@@ -1,6 +1,6 @@
 import sqlalchemy
 
-from ...persistence.media import MediaReferenceText
+from ...persistence.media import MediaReferenceText, MediaReferenceJSON
 from .base import Base
 
 
@@ -107,7 +107,7 @@ class MonitoringLLMCall(Base):
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
-    details = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
+    details = sqlalchemy.Column(MediaReferenceJSON, nullable=True)
 
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_llm_calls_workspace_timestamp', 'workspace_uuid', 'timestamp'),
@@ -137,8 +137,8 @@ class MonitoringToolCall(Base):
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
-    arguments = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
-    result = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    arguments = sqlalchemy.Column(MediaReferenceText, nullable=True)
+    result = sqlalchemy.Column(MediaReferenceText, nullable=True)
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
 
     __table_args__ = (

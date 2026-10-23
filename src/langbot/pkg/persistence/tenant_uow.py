@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLO
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
-from .media import MediaReferenceText
+from .media import MediaReferenceText, MediaReferenceJSON
 
 
 TENANT_SETTING = 'langbot.workspace_uuid'
@@ -295,7 +295,9 @@ def _validate_scoped_sql_type(
 
     if type(sql_type) in {Vector, HALFVEC}:
         return
-    if type(sql_type) is not MediaReferenceText and not type(sql_type).__module__.startswith('sqlalchemy.'):
+    if type(sql_type) not in {MediaReferenceText, MediaReferenceJSON} and not type(sql_type).__module__.startswith(
+        'sqlalchemy.'
+    ):
         raise ScopedSessionTransactionError('TenantUnitOfWork does not allow custom SQL types in public statements')
 
     for identifier_attribute in ('name', 'schema', 'collation'):
@@ -501,6 +503,14 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
+            from .resource_urls import ExpandedResourceURLs
+
+            resource_expansion_allowed = (
+                type(element) is ExpandedResourceURLs
+                and len(list(element.clauses)) == 1
+                and isinstance(list(element.clauses)[0], sqlalchemy.Column)
+                and type(list(element.clauses)[0].type) is MediaReferenceText
+            )
             function_name = str(getattr(element, 'name', '')).casefold()
             package_names = tuple(getattr(element, 'packagenames', ()))
             generic_function_allowed = (
@@ -508,7 +518,9 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 and function_name in _ALLOWED_SCOPED_GENERIC_FUNCTIONS
             )
             builtin_function_allowed = _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES.get(function_name) is type(element)
-            if package_names or not (generic_function_allowed or builtin_function_allowed):
+            if package_names or not (
+                generic_function_allowed or builtin_function_allowed or resource_expansion_allowed
+            ):
                 raise ScopedSessionTransactionError(
                     f'TenantUnitOfWork does not allow SQL function {function_name or "<unknown>"!r}'
                 )

@@ -2,13 +2,17 @@
 
 import asyncio
 import copy
+import datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from langbot.pkg.entity.persistence.resource_url import ResourceURL
 from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs, nt_image_type
 from langbot.pkg.platform.image_urls import refresh_image_payload, refresh_model_images, refresh_history_items
 from langbot_plugin.api.entities.builtin.provider.message import Message
@@ -105,6 +109,7 @@ async def test_other_implementation_uses_original_id_and_caches_messages():
     await peer.image_urls.refresh(model_input)
     assert peer.call_action.await_count == 2
     peer.image_urls.messages.clear()
+    peer.image_urls.urls.clear()
     await peer.image_urls.refresh(model_input)
     assert peer.call_action.await_count == 3
 
@@ -128,21 +133,34 @@ async def test_aggregated_messages_keep_each_original_source():
     assert peer.call_action.await_count == 3
 
 
-def application(peer, workspace='workspace'):
+@pytest.fixture
+async def catalog():
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as db:
+        await db.run_sync(ResourceURL.__table__.create)
+    yield engine
+    await engine.dispose()
+
+
+def application(peer, engine, workspace='workspace'):
     bot = SimpleNamespace(
         workspace_uuid=workspace,
         enable=True,
         bot_entity=SimpleNamespace(adapter='onebot-v11'),
         adapter=SimpleNamespace(bot=SimpleNamespace(connection=peer)),
     )
-    ap = SimpleNamespace(platform_mgr=SimpleNamespace(resolve_public_bot=AsyncMock(return_value=bot)), logger=Mock())
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(resolve_public_bot=AsyncMock(return_value=bot)),
+        persistence_mgr=SimpleNamespace(get_db_engine=lambda: engine),
+        logger=Mock(),
+    )
     return ap, bot
 
 
 @pytest.mark.asyncio
-async def test_scope_failure_backoff_and_no_persistence():
+async def test_scope_failure_backoff_preserves_current_url(catalog):
     peer = connection(lambda *_args, **_kwargs: {'app_name': 'NapCat.Onebot'})
-    ap, bot = application(peer)
+    ap, bot = application(peer, catalog)
     original = payload(url())
     saved = copy.deepcopy(original)
     assert await refresh_image_payload(ap, 'foreign', 'bot', original) is original
@@ -158,14 +176,14 @@ async def test_scope_failure_backoff_and_no_persistence():
 
 
 @pytest.mark.asyncio
-async def test_model_reuse_refreshes_with_current_keys_without_mutating_messages():
+async def test_model_reuse_refreshes_with_current_keys_without_mutating_messages(catalog):
     async def action(name, **_params):
         if name == 'get_version_info':
             return {'app_name': 'NapCat.Onebot'}
         return [{'type': 20, 'time': 1, 'ttl': 10**12, 'rkey': '&rkey=current'}]
 
     peer = connection(action)
-    ap, _ = application(peer)
+    ap, _ = application(peer, catalog)
     messages = [Message(role='user', content=[{'type': 'image_url', 'image_url': {'url': url()}}])]
     context = SimpleNamespace(workspace_uuid='workspace')
     query = SimpleNamespace(bot_uuid='bot')
@@ -180,7 +198,7 @@ async def test_model_reuse_refreshes_with_current_keys_without_mutating_messages
 
 
 @pytest.mark.asyncio
-async def test_disconnected_peer_cannot_return_refreshed_result():
+async def test_disconnected_peer_cannot_return_refreshed_result(catalog):
     async def action(name, **_params):
         if name == 'get_version_info':
             return {'app_name': 'NapCat.Onebot'}
@@ -188,18 +206,18 @@ async def test_disconnected_peer_cannot_return_refreshed_result():
         return [{'type': 20, 'time': 1, 'ttl': 10**12, 'rkey': 'new'}]
 
     peer = connection(action)
-    ap, bot = application(peer)
+    ap, bot = application(peer, catalog)
     original = payload(url())
     assert await refresh_image_payload(ap, 'workspace', 'bot', original) is original
+    async with catalog.connect() as db:
+        assert await db.scalar(sa.select(ResourceURL.url)) == url()
 
 
 @pytest.mark.asyncio
-async def test_history_recovers_scoped_origins_without_rewriting_event_facts():
-    import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import create_async_engine
+async def test_history_recovers_scoped_origins_and_updates_shared_url(catalog):
     from langbot.pkg.entity.persistence.event_log import EventLog
 
-    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    engine = catalog
     original = payload('https://example.test/old')
     metadata = json.dumps({'input_event': {'message_chain': original}})
     async with engine.begin() as db:
@@ -214,6 +232,7 @@ async def test_history_recovers_scoped_origins_without_rewriting_event_facts():
                 metadata_json=metadata,
             )
         )
+        await db.execute(sa.update(ResourceURL).values(created_at=datetime.datetime(2000, 1, 1)))
 
     async def execute(statement):
         async with engine.connect() as db:
@@ -226,8 +245,8 @@ async def test_history_recovers_scoped_origins_without_rewriting_event_facts():
         return {'message': [{'type': 'image', 'data': {'file': '0.jpg', 'url': 'https://example.test/new'}}]}
 
     peer = connection(action)
-    ap, _ = application(peer)
-    ap.persistence_mgr = SimpleNamespace(execute_async=execute)
+    ap, _ = application(peer, catalog)
+    ap.persistence_mgr.execute_async = execute
     item = {
         'bot_id': 'bot',
         'workspace_id': 'workspace',
@@ -240,7 +259,9 @@ async def test_history_recovers_scoped_origins_without_rewriting_event_facts():
         await refresh_history_items(ap, 'workspace', 'bot', [item])
         assert item['content_json']['content'][0]['image_url']['url'] == 'https://example.test/new'
         result = await execute(sa.select(EventLog.metadata_json))
-        assert result.scalar_one() == metadata
+        assert 'https://example.test/new' in result.scalar_one()
+        async with engine.connect() as db:
+            assert 'langbot-resource://' in await db.scalar(sa.text('SELECT metadata_json FROM event_log'))
     finally:
         await engine.dispose()
 

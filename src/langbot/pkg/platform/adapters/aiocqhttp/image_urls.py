@@ -77,6 +77,7 @@ class OneBotImageURLs:
         self.keys = {}
         self.references = OrderedDict()
         self.messages = OrderedDict()
+        self.urls = OrderedDict()
         self.retry_after = 0
 
     def remember(self, url, message_id, image_id):
@@ -87,23 +88,37 @@ class OneBotImageURLs:
         while len(self.references) > 2048:
             self.references.popitem(last=False)
 
+    async def identify(self):
+        """Identify lazily with the same backoff as resource renewal."""
+        async with self.lock:
+            if self.connection.closed or time.monotonic() < self.retry_after:
+                return False
+            try:
+                await self._identify()
+                return True
+            except Exception:
+                self.retry_after = time.monotonic() + 30
+                raise
+
+    async def _identify(self):
+        if self.app_name is None:
+            info = await self.connection.call_action('get_version_info')
+            self.app_name = info.get('app_name', '')
+
     async def refresh(self, payload):
         nodes = list(image_nodes(payload))
         if not nodes or self.connection.closed:
-            return
+            return False
         for node, message_id, image_id in nodes:
             self.remember(node['url'], message_id, image_id)
         async with self.lock:
             if self.connection.closed or time.monotonic() < self.retry_after:
-                return
+                return False
             try:
-                if self.app_name is None:
-                    info = await self.connection.call_action('get_version_info')
-                    self.app_name = info.get('app_name', '')
+                await self._identify()
                 if self.app_name == 'NapCat.Onebot':
-                    await self._napcat(nodes)
-                else:
-                    await self._standard(nodes)
+                    return await self._napcat(nodes)
+                return await self._standard(nodes)
             except Exception:
                 # Failed/unsupported APIs must not break history reads or hammer the peer.
                 self.retry_after = time.monotonic() + 30
@@ -112,7 +127,7 @@ class OneBotImageURLs:
     async def _napcat(self, nodes):
         wanted = {kind for node, _, _ in nodes if (kind := nt_image_type(node['url'])) is not None}
         if not wanted:
-            return
+            return set()
         if any(self.keys.get(kind, ('', 0))[1] <= time.time() for kind in wanted):
             result = await self.connection.call_action('nc_get_rkey')
             keys = {}
@@ -129,10 +144,12 @@ class OneBotImageURLs:
             if not wanted.issubset(keys):
                 raise ValueError('NapCat returned no valid image credentials')
             self.keys.update(keys)
+        completed = set()
         for node, _, _ in nodes:
             kind = nt_image_type(node['url'])
             if kind not in wanted:
                 continue
+            completed.add(node['url'])
             parsed = urlsplit(node['url'])
             parts = parsed.query.split('&')
             # Preserve every other parameter byte-for-byte, including signed resource IDs.
@@ -143,10 +160,17 @@ class OneBotImageURLs:
                 for part in parts
             ]
             node['url'] = urlunsplit(parsed._replace(query='&'.join(parts)))
+        return completed
 
     async def _standard(self, nodes):
+        completed = set()
         for node, _, _ in nodes:
             old_url = node['url']
+            refreshed = self.urls.get(old_url)
+            if refreshed is not None and refreshed[1] > time.monotonic():
+                node['url'] = refreshed[0]
+                completed.add(old_url)
+                continue
             ref = self.references.get(old_url)
             if ref is None:
                 continue
@@ -160,12 +184,19 @@ class OneBotImageURLs:
                         data = segment.data
                         if data.get('file') and remote_image_url(data.get('url')):
                             images[str(data['file'])] = data['url']
-                cached = (images, time.monotonic() + 60)
+                cached = (images, time.monotonic() + 1800)
                 self.messages[str(message_id)] = cached
                 self.messages.move_to_end(str(message_id))
                 while len(self.messages) > 256:
                     self.messages.popitem(last=False)
             new_url = cached[0].get(image_id)
             if new_url:
+                completed.add(old_url)
                 self.remember(new_url, message_id, image_id)
+                deadline = cached[1]
+                self.urls[old_url] = (new_url, deadline)
+                self.urls[new_url] = (new_url, deadline)
+                while len(self.urls) > 2048:
+                    self.urls.popitem(last=False)
                 node['url'] = new_url
+        return completed

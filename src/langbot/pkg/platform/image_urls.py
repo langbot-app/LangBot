@@ -1,4 +1,4 @@
-"""Refresh image references at authorized read/use boundaries, without persistence."""
+"""Refresh image references at authorized read/use boundaries."""
 
 import copy
 import json
@@ -21,7 +21,14 @@ async def refresh_image_payload(ap, workspace_uuid, bot_id, payload):
         return payload
     result = copy.deepcopy(payload)
     try:
-        await connection.image_urls.refresh(result)
+        from ..persistence.resource_urls import refresh_images
+
+        await refresh_images(
+            ap.persistence_mgr.get_db_engine(),
+            connection,
+            result,
+            is_current=lambda: bot.adapter.bot.connection is connection,
+        )
         if bot.adapter.bot.connection is not connection or connection.closed:
             return payload
         return result

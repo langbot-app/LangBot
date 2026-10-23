@@ -84,12 +84,13 @@ async def test_event_properties_survive_detail_snapshot_fallback(engine, service
 @pytest.mark.asyncio
 @pytest.mark.parametrize('napcat', [True, False])
 @pytest.mark.parametrize('source', ['agent', 'pipeline'])
-async def test_execution_details_refresh_existing_images_without_persisting(engine, service, napcat, source):
+async def test_execution_details_refresh_existing_images_through_shared_catalog(engine, service, napcat, source):
     import json
     from unittest.mock import AsyncMock
     import sqlalchemy as sa
     from langbot.pkg.entity.persistence.event_log import EventLog
     from langbot.pkg.entity.persistence.transcript import Transcript
+    from langbot.pkg.entity.persistence.resource_url import ResourceURL
     from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
 
     old = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=existing&rkey=expired'
@@ -140,6 +141,9 @@ async def test_execution_details_refresh_existing_images_without_persisting(engi
         )
         await session.commit()
 
+    async with engine.begin() as db:
+        await db.execute(sa.update(ResourceURL).values(created_at=_dt(10)))
+
     async def action(name, **params):
         if name == 'get_version_info':
             return {'app_name': 'NapCat.Onebot' if napcat else 'standard-peer'}
@@ -170,8 +174,10 @@ async def test_execution_details_refresh_existing_images_without_persisting(engi
     await service.get_execution_detail(WORKSPACE, source, identity, section='conversation')
     assert peer.call_action.await_count == 2
     async with engine.connect() as db:
-        assert old in (await db.execute(sa.select(EventLog.input_json))).scalar_one()
-        assert old in (await db.execute(sa.select(Transcript.content_json))).scalar_one()
+        assert new in (await db.execute(sa.select(EventLog.input_json))).scalar_one()
+        assert new in (await db.execute(sa.select(Transcript.content_json))).scalar_one()
+        raw = (await db.execute(sa.text('SELECT input_json FROM event_log'))).scalar_one()
+        assert 'langbot-resource://' in raw and old not in raw and new not in raw
 
 
 def test_event_content_preserves_conflicting_custom_input_fields():

@@ -102,6 +102,7 @@ class OneBotConnection:
         self.image_urls.keys.clear()
         self.image_urls.references.clear()
         self.image_urls.messages.clear()
+        self.image_urls.urls.clear()
         for future in self.pending.values():
             if not future.done():
                 future.set_exception(ApiNotAvailable('OneBot connection closed'))

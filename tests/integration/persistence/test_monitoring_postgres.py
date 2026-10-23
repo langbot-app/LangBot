@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import datetime
 import logging
+import json
 import os
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -363,6 +365,43 @@ async def test_rls_is_enforced_without_application_workspace_predicates(service,
             assert rows == [(workspace,)]
     with pytest.raises(TenantScopeRequiredError):
         await service.ap.persistence_mgr.execute_async(sa.select(models.MonitoringMessage.id))
+
+
+async def test_shared_resource_urls_preserve_cloud_workspace_authorization(service, cloud_database):
+    from langbot.pkg.entity.persistence.resource_url import ResourceURL
+    from langbot.pkg.persistence.resource_urls import refresh_images
+    from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+    _, admin = cloud_database
+    old, fresh = 'https://example.test/old-image', 'https://example.test/current-image'
+    chain = [{'type': 'Source', 'id': 42}, {'type': 'Image', 'image_id': 'one.jpg', 'url': old}]
+    records = {}
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        records[workspace] = await service.record_message(
+            _context(workspace), **RESOURCE, session_id='shared-url', message_content=json.dumps(chain)
+        )
+    async with admin.begin() as db:
+        assert await db.scalar(sa.select(sa.func.count()).select_from(ResourceURL)) == 1
+        await db.execute(sa.update(ResourceURL).values(created_at=datetime.datetime(2000, 1, 1)))
+
+    async def action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'standard'}
+        assert name == 'get_msg' and params == {'message_id': 42}
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': fresh}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    # Exercise catalog writes using the actual non-superuser runtime role.
+    await refresh_images(service.ap.persistence_mgr.get_db_engine(), peer, chain)
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        details = await _read(service, 'get_message_details', _context(workspace), records[workspace])
+        assert fresh in details['message']['message_content']
+        other = WORKSPACE_B if workspace == WORKSPACE_A else WORKSPACE_A
+        assert (await _read(service, 'get_message_details', _context(workspace), records[other]))['found'] is False
+    async with admin.connect() as db:
+        assert await db.scalar(sa.select(ResourceURL.url)) == fresh
+        assert old not in str((await db.execute(sa.text('SELECT message_content FROM monitoring_messages'))).all())
 
 
 async def test_traffic_series_aggregates_all_rows_under_cloud_rls(service):
