@@ -430,7 +430,7 @@ This profile checks more than reply text:
   P95 limits. Reports retain planned/actual counts, scheduling delay and request
   drain time. The load is bounded by workers and serial group sessions; it is
   not an open arrival-rate capacity benchmark.
-- Process RSS, FD, thread and process-count medians after cooldown are compared
+- Process RSS, FD, thread and process-count medians from the final 30 seconds of cooldown are compared
   with a stable window after the first minute. Docker memory, PIDs and container
   counts are checked separately because sandbox processes are not children of
   the Box service. If a discovered container disappears before stats collection,
@@ -460,7 +460,9 @@ uv run --no-sync python tools/regression_analysis.py \
 
 The comparison rejects failed runs, missing dependency evidence, different enabled
 plugin versions, fixtures, expanded case/resource inputs, phase geometry, budgets,
-or observer-host identity. Target URL origins and credentials may differ; URL
+or observer-host identity. Both runs must use identical load/analysis/smoke oracle
+files and mock scenarios; their hashes are recorded in the contract. Target URL
+hosts, ports and credentials may differ; URL schemes and
 paths, model names and actual stimulus variables remain part of the contract.
 Both runs must use the same hardware allocation, model backend and background
 load; the contract does not establish those external conditions automatically.
