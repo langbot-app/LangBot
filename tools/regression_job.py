@@ -305,6 +305,8 @@ class Job:
         profile = self.suite_profile
         profile.setdefault('vars', {})['core_base_url'] = endpoint
         if 'smoke' in profile:
+            if 'mock_records' in profile['smoke']:
+                profile['smoke']['mock_records'] = str(self.output / 'mock' / 'requests.jsonl')
             profile['smoke']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
         profile['cli'] = {'executable': self.cli[0], 'config': str(self.cli_config)}
         profile['observe'] = {'health': health, 'pids': {}, 'containers': list(containers.values())}

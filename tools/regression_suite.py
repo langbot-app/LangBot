@@ -143,11 +143,59 @@ def validate(profile):
         raise ValueError('cases must be a non-empty array')
     names = set()
     for case in cases:
-        if case.keys() - {'name', 'weight', 'args', 'expect', 'body', 'http_group', 'box_exec', 'attachment'}:
+        if case.keys() - {
+            'name',
+            'weight',
+            'args',
+            'expect',
+            'body',
+            'http_group',
+            'box_exec',
+            'attachment',
+            'stage',
+            'mock_requests',
+            'fields',
+            'forbid',
+            'reject_group',
+        }:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
             raise ValueError('case names must be non-empty and unique')
         names.add(case['name'])
+        if 'stage' in case and (not isinstance(case['stage'], str) or not case['stage']):
+            raise ValueError('case stage must be a non-empty string')
+        if any(key in case for key in ('mock_requests', 'fields', 'forbid', 'reject_group')) and 'smoke' not in profile:
+            raise ValueError('extended case checks require smoke mode')
+        if 'fields' in case and (not isinstance(case['fields'], dict) or not case['fields']):
+            raise ValueError('fields must be a non-empty mapping of dotted paths to exact values')
+        if 'fields' in case and any(not isinstance(key, str) or not key for key in case['fields']):
+            raise ValueError('field paths must be non-empty strings')
+        if 'forbid' in case and (
+            not isinstance(case['forbid'], list)
+            or not case['forbid']
+            or any(not isinstance(item, str) or not item for item in case['forbid'])
+        ):
+            raise ValueError('forbid must contain non-empty response substrings')
+        if 'mock_requests' in case:
+            requests = case['mock_requests']
+            if not isinstance(requests, list) or not requests or not profile.get('smoke', {}).get('mock_records'):
+                raise ValueError('mock_requests requires expected requests and smoke.mock_records')
+            for request in requests:
+                if not isinstance(request, dict) or set(request) != {'model', 'status', 'stream'}:
+                    raise ValueError('mock_requests entries require model, status and stream')
+                if (
+                    not isinstance(request['model'], str)
+                    or not request['model']
+                    or not isinstance(request['stream'], bool)
+                ):
+                    raise ValueError('invalid mock request model/stream')
+                number(request['status'], 'mock request status', minimum=100, integer=True)
+        if 'reject_group' in case and (
+            'http_group' not in case
+            or case['reject_group'] not in ('missing_signature', 'bad_signature')
+            or any(key in case for key in ('box_exec', 'attachment', 'mock_requests'))
+        ):
+            raise ValueError('reject_group must name a signature rejection on an HTTP group case')
         if 'http_group' in case:
             settings = case['http_group']
             if (
@@ -176,8 +224,16 @@ def validate(profile):
             raise ValueError('case body must be an object and cannot coexist with --file')
         if 'box_exec' in case:
             check = case['box_exec']
-            if not isinstance(check, dict) or set(check) != {'count', 'backend', 'stdout'}:
+            if (
+                not isinstance(check, dict)
+                or not {'count', 'backend', 'stdout'} <= set(check)
+                or check.keys() - {'count', 'backend', 'stdout', 'exit_code', 'stderr'}
+            ):
                 raise ValueError('box_exec requires count, backend and stdout')
+            if 'exit_code' in check:
+                number(check['exit_code'], 'box_exec.exit_code', minimum=0, integer=True)
+            if 'stderr' in check and not isinstance(check['stderr'], str):
+                raise ValueError('box_exec.stderr must be a string')
             number(check['count'], 'box_exec.count', minimum=1, integer=True)
             if any(not isinstance(check[k], str) or not check[k] for k in ('backend', 'stdout')):
                 raise ValueError('box_exec backend/stdout must be non-empty strings')
@@ -201,6 +257,7 @@ def validate(profile):
     if 'smoke' in profile:
         if not isinstance(smoke, dict) or smoke.keys() - {
             'ledger_db',
+            'mock_records',
             'timeout_seconds',
             'group_turns',
             'groups_per_case',
@@ -209,6 +266,8 @@ def validate(profile):
             raise ValueError('invalid smoke settings')
         if not isinstance(smoke.get('ledger_db'), str) or not smoke['ledger_db']:
             raise ValueError('smoke.ledger_db must name the target Core SQLite database')
+        if 'mock_records' in smoke and (not isinstance(smoke['mock_records'], str) or not smoke['mock_records']):
+            raise ValueError('smoke.mock_records must name the dedicated mock recording file')
         resolve(smoke, variables)
         number(smoke.get('timeout_seconds', 30), 'smoke timeout_seconds', minimum=0.001)
         number(smoke.get('group_turns', 2), 'smoke group_turns', minimum=2, integer=True)
@@ -486,7 +545,8 @@ class Suite:
         if saved['workspace_uuid'] != identity['workspace_uuid']:
             raise RuntimeError('cleanup refused: Workspace differs from owned.json')
         failures = []
-        for resource in reversed(saved['resources'].copy()):
+        original = saved['resources'].copy()
+        for resource in reversed(original):
             args = [resource['kind'], 'delete', resource['uuid'], '--yes']
             if resource['kind'] == 'model':
                 args += ['--type', resource['type']]
@@ -497,6 +557,13 @@ class Suite:
             else:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
+        if 'smoke' in self.profile:
+            from regression_smoke import verify_cleanup
+
+            try:
+                verify_cleanup(self, [item for item in original if item not in saved['resources']])
+            except (RuntimeError, ValueError, OSError, KeyError) as exc:
+                failures.append(f'cleanup readback failed: {exc}')
         return failures
 
     def run(self):

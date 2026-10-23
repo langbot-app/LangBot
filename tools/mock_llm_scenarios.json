@@ -76,5 +76,94 @@
         "content": "LANGBOT_EXPORT_OK"
       }
     ]
+  },
+  "mock-smoke-unicode": {
+    "steps": [
+      {
+        "expect_prompt": "请原样处理：你好，世界 🌍",
+        "content": "你好，世界 🌍 LANGBOT_UNICODE_OK"
+      }
+    ]
+  },
+  "mock-smoke-exec-error": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf EXPECTED_STDOUT; printf EXPECTED_STDERR >&2; exit 7"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "EXPECTED_STDERR",
+        "content": "LANGBOT_EXEC_ERROR_HANDLED"
+      }
+    ]
+  },
+  "mock-smoke-parallel-tools": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf PARALLEL_OK_A"
+            }
+          },
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf PARALLEL_OK_B"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "PARALLEL_OK_B",
+        "content": "LANGBOT_PARALLEL_TOOLS_OK"
+      }
+    ]
+  },
+  "mock-smoke-export-unicode": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf '你好，文件 🌍' > /tmp/输出.txt; cat /tmp/输出.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "你好，文件 🌍",
+        "tool_calls": [
+          {
+            "name": "export_box_files",
+            "arguments": {
+              "paths": [
+                "/tmp/输出.txt"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "accepted",
+        "content": "LANGBOT_UNICODE_EXPORT_OK"
+      }
+    ]
+  },
+  "mock-smoke-rag-other": {
+    "steps": [
+      {
+        "expect_prompt": "cedar-isolation-4826",
+        "content": "LANGBOT_OTHER_RAG_OK"
+      }
+    ]
   }
 }
