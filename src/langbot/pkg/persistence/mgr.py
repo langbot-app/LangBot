@@ -1715,9 +1715,23 @@ class PersistenceManager:
                         target_revision=_RESOURCE_SCOPE_ALEMBIC_REVISION,
                     )
 
-            # PostgreSQL has transactional DDL. SQLite has already crossed the
-            # two destructive tenancy boundaries under verified backups; this
-            # final call is a no-op today and applies future migrations.
+            if engine.dialect.name == 'sqlite':
+                current_rev = await alembic_runner.get_alembic_current(engine)
+                conversion = '0042_sqlite_incremental_vacuum'
+                if conversion in alembic_runner.pending_revisions(current_rev, target_revision):
+                    await alembic_runner.run_alembic_upgrade(engine, '0041_resource_urls')
+                    async with engine.connect() as connection:
+                        vacuum_mode = (await connection.exec_driver_sql('PRAGMA auto_vacuum')).scalar_one()
+                    if vacuum_mode == 0:
+                        await self._run_verified_sqlite_migration(
+                            engine,
+                            source_revision='0041_resource_urls',
+                            target_revision=conversion,
+                        )
+                    else:
+                        await alembic_runner.run_alembic_upgrade(engine, conversion)
+
+            # Apply any remaining release migrations after verified boundaries.
             await alembic_runner.run_alembic_upgrade(engine, target_revision)
             self.ap.logger.info(f'Alembic migrations completed at {target_revision}.')
         except Exception as e:

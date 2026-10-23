@@ -69,6 +69,7 @@ class _PersistenceManager:
 async def service(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "monitoring.db"}')
     async with engine.begin() as connection:
+        await connection.exec_driver_sql('PRAGMA auto_vacuum=INCREMENTAL')
         await connection.run_sync(Base.metadata.create_all)
         await connection.execute(
             sqlalchemy.insert(Workspace),
@@ -349,7 +350,7 @@ async def test_token_statistics_aggregate_and_limit_groups_in_database(service):
     ]
 
 
-async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
+async def test_cleanup_deletes_bounded_batches_without_exclusive_sqlite_maintenance(tmp_path):
     engine = create_async_engine(
         f'sqlite+aiosqlite:///{tmp_path / "monitoring-cleanup.db"}',
         connect_args={'timeout': 0.1},
@@ -362,6 +363,7 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
     application.persistence_mgr = manager
     try:
         async with engine.begin() as connection:
+            await connection.exec_driver_sql('PRAGMA auto_vacuum=INCREMENTAL')
             await connection.run_sync(Base.metadata.create_all)
             await connection.execute(
                 sqlalchemy.insert(Workspace).values(
@@ -393,6 +395,12 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
                 ],
             )
 
+        statements = []
+
+        @sqlalchemy.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+        def capture_statement(connection, cursor, statement, parameters, context, executemany):
+            statements.append(statement.strip().upper())
+
         deleted = await MonitoringService(application).cleanup_expired_records(
             _context(WORKSPACE_A),
             retention_days=1,
@@ -406,6 +414,7 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
                 sqlalchemy.select(sqlalchemy.func.count()).select_from(MonitoringMessage)
             )
         assert remaining == 3
+        assert not any(statement.startswith(('VACUUM', 'PRAGMA WAL_CHECKPOINT')) for statement in statements)
     finally:
         await engine.dispose()
 

@@ -1814,7 +1814,7 @@ async def test_historical_ingress_replay_after_initialization_does_not_increment
 
 
 @pytest.mark.contract('summary_retention')
-async def test_active_session_receipts_expire_in_bounded_tenant_scoped_batches(service, monkeypatch):
+async def test_active_session_receipts_expire_in_bounded_tenant_scoped_batches(service):
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     for index in range(5):
         await service.record_message(
@@ -1838,10 +1838,6 @@ async def test_active_session_receipts_expire_in_bounded_tenant_scoped_batches(s
             )
         )
 
-    async def forbid_vacuum():
-        pytest.fail('Receipt expiry must not trigger database-wide VACUUM')
-
-    monkeypatch.setattr(service, '_release_sqlite_space', forbid_vacuum)
     deleted = await service.cleanup_expired_records(context(), retention_days=1, batch_size=2, max_batches_per_table=1)
     assert deleted['monitoring_session_receipts'] == 2 and sum(deleted.values()) == 2
     for expected in [2, 1, 0]:

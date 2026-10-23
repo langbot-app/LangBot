@@ -394,10 +394,9 @@ class MonitoringService(ExecutionDetailsMixin):
         else:
             deleted_counts = await delete_records()
 
-        # Receipt expiry alone must not trigger database-wide VACUUM work.
-        if any(count for table, count in deleted_counts.items() if table != 'monitoring_session_receipts'):
-            await self._release_sqlite_space()
+        from ....persistence.sqlite_reclamation import reclaim_free_pages
 
+        await reclaim_free_pages(self.ap.persistence_mgr.get_db_engine())
         return deleted_counts
 
     async def _delete_expired_in_batches(
@@ -502,16 +501,6 @@ class MonitoringService(ExecutionDetailsMixin):
             if len(rows) < batch_size:
                 break
         return deleted
-
-    async def _release_sqlite_space(self) -> None:
-        database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
-        if database_type != 'sqlite':
-            return
-
-        async with self.ap.persistence_mgr.get_db_engine().connect() as conn:
-            autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
-            await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
-            await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
 
     def _serialize_tool_payload(self, payload: object, max_length: int = 20000) -> str | None:
         """Serialize tool arguments/results for monitoring storage."""
