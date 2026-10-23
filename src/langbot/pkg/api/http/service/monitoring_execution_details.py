@@ -831,6 +831,30 @@ class ExecutionDetailsMixin:
                     {'id': run.event_id or run.run_id, 'content': content, 'timestamp_ms': epoch(run.created_at)}
                 ]
 
+        from ....platform.image_urls import refresh_history_items
+
+        image_items = []
+        response_items = []
+        for name in ('inputs', 'outputs', 'deliveries', 'conversation'):
+            for item in pages.get(name, {}).get('items', []):
+                response_items.append(item)
+                image_items.append(
+                    {
+                        'workspace_id': workspace,
+                        'bot_id': bot,
+                        'event_id': item.get('event_id') or (item['id'] if name == 'inputs' else None),
+                        'content_json': {'content': item.get('content'), 'metadata': item.get('metadata')},
+                        'attachment_refs': item.get('attachments', []),
+                    }
+                )
+        await refresh_history_items(self.ap, workspace, bot, image_items)
+        for item, refreshed in zip(response_items, image_items):
+            item['content'] = refreshed['content_json']['content']
+            if 'metadata' in item:
+                item['metadata'] = refreshed['content_json']['metadata']
+            if 'attachments' in item:
+                item['attachments'] = refreshed['attachment_refs']
+
         if 'related' in requested:
             # Union of ledger executions and legacy pipeline roots. SQL paging
             # avoids silently dropping siblings on highly fanned-out events.
