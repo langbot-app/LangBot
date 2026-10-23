@@ -11,7 +11,7 @@ class ResourceURL(Base):
     id = sa.Column(sa.String(36), primary_key=True)
     url = sa.Column(sa.Text, nullable=True)
     url_hash = sa.Column(sa.String(64), nullable=True, unique=True)
-    canonical_id = sa.Column(sa.String(36), sa.ForeignKey('resource_urls.id'), nullable=True, index=True)
+    canonical_id = sa.Column(sa.String(36), sa.ForeignKey('resource_urls.id'), nullable=True)
     created_at = sa.Column(sa.DateTime, nullable=False)
     last_checked_at = sa.Column(sa.DateTime, nullable=True)
     updated_at = sa.Column(sa.DateTime, nullable=False)
@@ -22,5 +22,4 @@ class ResourceURL(Base):
             'OR (canonical_id IS NOT NULL AND url IS NULL AND url_hash IS NULL)',
             name='ck_resource_url_canonical',
         ),
-        sa.Index('ix_resource_urls_last_checked', 'last_checked_at'),
     )

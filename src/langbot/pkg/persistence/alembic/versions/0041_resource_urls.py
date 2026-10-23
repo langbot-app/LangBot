@@ -20,6 +20,8 @@ def upgrade():
 
     connection = op.get_bind()
     ResourceURL.__table__.create(connection, checkfirst=True)
+    op.drop_index('ix_resource_urls_canonical_id', table_name='resource_urls', if_exists=True)
+    op.drop_index('ix_resource_urls_last_checked', table_name='resource_urls', if_exists=True)
     install(connection.engine)
     if connection.dialect.name == 'postgresql':
         create_postgres_expansion(connection)

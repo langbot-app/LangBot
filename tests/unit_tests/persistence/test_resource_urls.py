@@ -322,6 +322,39 @@ async def test_napcat_uses_key_ttl_instead_of_the_standard_interval(database):
 
 
 @pytest.mark.asyncio
+async def test_index_migration_preserves_primary_key_unique_hash_and_payload(database):
+    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0041_resource_urls')
+    removed = {'ix_resource_urls_canonical_id', 'ix_resource_urls_last_checked'}
+
+    def indexes(sync):
+        return {index['name'] for index in sa.inspect(sync).get_indexes('resource_urls')}
+
+    def upgrade(sync):
+        with Operations.context(MigrationContext.configure(sync)):
+            migration.upgrade()
+
+    def create_legacy_indexes(sync):
+        operations = Operations(MigrationContext.configure(sync))
+        operations.create_index('ix_resource_urls_canonical_id', 'resource_urls', ['canonical_id'])
+        operations.create_index('ix_resource_urls_last_checked', 'resource_urls', ['last_checked_at'])
+
+    async with database.begin() as db:
+        await append(db, 'a')
+        assert removed.isdisjoint(await db.run_sync(indexes))
+        # Recreate the schema deployed before the indexes were removed.
+        await db.run_sync(create_legacy_indexes)
+        assert removed <= await db.run_sync(indexes)
+        await db.run_sync(upgrade)
+        await db.run_sync(upgrade)
+        assert removed.isdisjoint(await db.run_sync(indexes))
+        primary_key = await db.run_sync(lambda sync: sa.inspect(sync).get_pk_constraint('resource_urls'))
+        assert primary_key['constrained_columns'] == ['id']
+        constraints = await db.run_sync(lambda sync: sa.inspect(sync).get_unique_constraints('resource_urls'))
+        assert any(constraint['column_names'] == ['url_hash'] for constraint in constraints)
+        assert OLD in await db.scalar(sa.select(EventLog.input_json))
+
+
+@pytest.mark.asyncio
 async def test_migration_preserves_source_creation_and_downgrade(database):
     migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0041_resource_urls')
     async with database.begin() as db:
