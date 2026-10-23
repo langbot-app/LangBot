@@ -80,12 +80,13 @@ async def test_tenancy_migrations_retain_verified_boundary_backups(tmp_path):
 
         assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
         payloads = _manifest_payloads(tmp_path / 'migration-backups')
-        assert len(payloads) == 2
+        assert len(payloads) == 3
         assert {
             (payload['source_revision'], payload['target_revision'], payload['status']) for payload in payloads
         } == {
             ('0008_mcp_resource_prefs', '0009_workspace_tenancy', 'migration_succeeded'),
             ('0009_workspace_tenancy', '0010_scope_resources', 'migration_succeeded'),
+            ('0041_resource_urls', '0042_sqlite_incremental_vacuum', 'migration_succeeded'),
         }
         for payload in payloads:
             _assert_verified_backup(payload)
@@ -198,6 +199,6 @@ async def test_backup_retries_transient_reopen_failure_after_replace(tmp_path, m
 
         assert transient_failures == 1
         assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
-        assert len(_manifest_payloads(tmp_path / 'migration-backups')) == 2
+        assert len(_manifest_payloads(tmp_path / 'migration-backups')) == 3
     finally:
         await engine.dispose()

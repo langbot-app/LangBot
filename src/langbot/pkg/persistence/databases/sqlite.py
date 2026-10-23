@@ -17,5 +17,7 @@ class SQLiteDatabaseManager(database.BaseDatabaseManager):
         # Reader transactions must not block independent plugin callback commits.
         # Configure the persistent journal before serving requests, not per write.
         async with self.engine.connect() as connection:
+            # Fresh files can adopt the format without rebuilding existing data.
+            await connection.execute(sqlalchemy.text('PRAGMA auto_vacuum=INCREMENTAL'))
             await connection.execute(sqlalchemy.text('PRAGMA journal_mode=WAL'))
             await connection.commit()
