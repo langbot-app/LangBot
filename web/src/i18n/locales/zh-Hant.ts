@@ -3551,7 +3551,7 @@ const zhHant = {
     message:
       '目前為 LangBot Cloud 雲端服務環境。如需專屬資源與更高配額，可選擇',
     dedicated_link: '獨立環境版 LangBot Cloud',
-    cta_dedicated: '查看獨立環境套餐',
+    cta_dedicated: '查看獨立環境計劃',
     or: '或',
     self_hosted_link: '自行部署的開源版本',
     period: '。',
