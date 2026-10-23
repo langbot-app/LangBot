@@ -3550,6 +3550,7 @@ const zhHans = {
   cloud_banner: {
     message: '当前为 LangBot Cloud 云服务环境。如需独享资源与更高配额，可选择',
     dedicated_link: '独立环境版 LangBot Cloud',
+    cta_dedicated: '查看独立环境套餐',
     or: '或',
     self_hosted_link: '自部署开源版本',
     period: '。',

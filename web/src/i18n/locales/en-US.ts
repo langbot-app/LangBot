@@ -3768,6 +3768,7 @@ const enUS = {
     message:
       'You are using LangBot Cloud, the managed service. For dedicated capacity and higher quotas, consider',
     dedicated_link: 'LangBot Cloud (dedicated environment)',
+    cta_dedicated: 'see dedicated plans',
     or: 'or',
     self_hosted_link: 'the self-hosted open-source version',
     period: '.',
