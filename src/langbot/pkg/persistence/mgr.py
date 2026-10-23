@@ -183,16 +183,25 @@ class PersistenceManager:
 
         if self.mode == PersistenceMode.CLOUD_RUNTIME:
             await self._validate_cloud_runtime()
+            from .resource_urls import install
+
+            install(engine.sync_engine)
             return
 
         if self.mode == PersistenceMode.RELEASE_MIGRATION:
             async with self._release_migration_lock():
                 await self._initialize_managed_schema()
                 await self._validate_release_schema()
+            from .resource_urls import install
+
+            install(engine.sync_engine)
             return
 
         await self._initialize_managed_schema()
         await self._enable_sqlite_foreign_keys_after_migration()
+        from .resource_urls import install
+
+        install(engine.sync_engine)
 
         if self.mode == PersistenceMode.OSS_COMPAT:
             await self.write_space_model_providers()

@@ -81,6 +81,105 @@ async def test_event_properties_survive_detail_snapshot_fallback(engine, service
         assert items[1]['content'] == {'text': 'later'}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('napcat', [True, False])
+@pytest.mark.parametrize('source', ['agent', 'pipeline'])
+async def test_execution_details_refresh_existing_images_through_shared_catalog(engine, service, napcat, source):
+    import json
+    from unittest.mock import AsyncMock
+    import sqlalchemy as sa
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from langbot.pkg.entity.persistence.transcript import Transcript
+    from langbot.pkg.entity.persistence.resource_url import ResourceURL
+    from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+    old = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=existing&rkey=expired'
+    new = old.replace('expired', 'renewed')
+    chain = [{'type': 'Source', 'id': 42}, {'type': 'Image', 'image_id': 'pic.jpg', 'url': old}]
+    content = {'content': [{'type': 'image_url', 'image_url': {'url': old}}]}
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_agent_run.AgentRun)
+            .where(persistence_agent_run.AgentRun.run_id == 'run-done')
+            .values(conversation_id='session-1')
+        )
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-user')
+            .values(message_content=json.dumps(chain))
+        )
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-assistant')
+            .values(message_content=json.dumps(chain), parent_message_id='msg-user')
+        )
+        session.add(
+            EventLog(
+                event_id='evt-1',
+                event_type='message.received',
+                source='platform',
+                workspace_id=WORKSPACE,
+                bot_id='bot-1',
+                input_json=json.dumps(content),
+                metadata_json=json.dumps({'input_event': {'message_chain': chain}}),
+            )
+        )
+        session.add(
+            Transcript(
+                transcript_id='image-output',
+                event_id='evt-1',
+                workspace_id=WORKSPACE,
+                bot_id='bot-1',
+                conversation_id='session-1',
+                role='assistant',
+                run_id='run-done',
+                seq=1,
+                content_json=json.dumps(content),
+                attachment_refs_json=json.dumps([chain[1]]),
+            )
+        )
+        await session.commit()
+
+    async with engine.begin() as db:
+        await db.execute(sa.update(ResourceURL).values(created_at=_dt(10)))
+
+    async def action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'NapCat.Onebot' if napcat else 'standard-peer'}
+        if napcat:
+            assert name == 'nc_get_rkey'
+            return [{'type': 20, 'time': 1, 'ttl': 10**12, 'rkey': 'renewed'}]
+        assert name == 'get_msg' and params == {'message_id': 42}
+        return {'message': [{'type': 'image', 'data': {'file': 'pic.jpg', 'url': new}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    bot = SimpleNamespace(
+        workspace_uuid=WORKSPACE,
+        enable=True,
+        bot_entity=SimpleNamespace(adapter='onebot-v11'),
+        adapter=SimpleNamespace(bot=SimpleNamespace(connection=peer)),
+    )
+    service.ap.platform_mgr = SimpleNamespace(resolve_public_bot=AsyncMock(return_value=bot))
+    identity = 'run-done' if source == 'agent' else 'msg-user'
+    detail = await service.get_execution_detail(WORKSPACE, source, identity)
+    for section in ('inputs', 'conversation'):
+        assert new in json.dumps(detail['pages'][section]['items'])
+        assert old not in json.dumps(detail['pages'][section]['items'])
+    if source == 'agent':
+        assert new in json.dumps(detail['pages']['outputs']['items'])
+    else:
+        assert new in json.dumps(detail['pages']['deliveries']['items'])
+    await service.get_execution_detail(WORKSPACE, source, identity, section='conversation')
+    assert peer.call_action.await_count == 2
+    async with engine.connect() as db:
+        assert new in (await db.execute(sa.select(EventLog.input_json))).scalar_one()
+        assert new in (await db.execute(sa.select(Transcript.content_json))).scalar_one()
+        raw = (await db.execute(sa.text('SELECT input_json FROM event_log'))).scalar_one()
+        assert 'langbot-resource://' in raw and old not in raw and new not in raw
+
+
 def test_event_content_preserves_conflicting_custom_input_fields():
     from langbot.pkg.api.http.service.monitoring_execution_details import event_content
 

@@ -980,6 +980,27 @@ async def test_scoped_sql_structure_allows_only_the_production_vocabulary(statem
     _validate_scoped_statement_call((statement,), {})
 
 
+async def test_resource_expansion_allows_only_the_fixed_function_and_media_column() -> None:
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from langbot.pkg.persistence.resource_urls import ExpandedResourceURLs
+
+    statement = sa.update(EventLog).where(EventLog.input_json == '{}').values(input_json='[]')
+    _validate_scoped_statement_call((statement,), {})
+
+    class SpoofedExpansion(ExpandedResourceURLs):
+        inherit_cache = True
+
+    for expression in (
+        ExpandedResourceURLs(),
+        ExpandedResourceURLs(sa.literal('{}')),
+        ExpandedResourceURLs(User.uuid),
+        ExpandedResourceURLs(EventLog.input_json, sa.literal('{}')),
+        SpoofedExpansion(EventLog.input_json),
+    ):
+        with pytest.raises(ScopedSessionTransactionError, match='custom SQL AST'):
+            _validate_scoped_statement_call((sa.select(expression),), {})
+
+
 async def test_monitoring_json_casts_are_limited_to_journal_metadata() -> None:
     from langbot.pkg.entity.persistence.agent_run import AgentRun
     from langbot.pkg.entity.persistence.event_log import EventLog

@@ -220,6 +220,15 @@ logs and action results. These times are not internal plugin profiling data.
 
 ## Unified execution monitoring
 
+Message record reads can renew temporary OneBot image URLs through the connected
+bot without downloading images. Persisted payloads reference a shared URL catalog;
+renewal overwrites its current URL so existing references read the new address. Explicitly identified
+NapCat connections reuse rkeys until their returned TTL expires (appid 1406 uses
+type 10; appid 1407 uses type 20). Other OneBot implementations use standard
+`get_msg` at most once per URL per 30 minutes when original message and image identities
+are available. Disconnected peers, missing origins, or unsupported APIs leave the
+stored URL unchanged; returned URLs are not permanent archival links.
+
 Use `get_inflight_executions` for a bounded current-workspace snapshot of active
 and recently started executions, including `progress_event`. Progress is a
 reported stage, not an estimated completion percentage. The UI uses the shared
