@@ -48,7 +48,7 @@ def requester(monkeypatch, handler):
     monkeypatch.setattr(
         httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs)
     )
-    obj = object.__new__(CodexRequester)
+    obj = CodexRequester(SimpleNamespace(), {})
     obj.workspace, obj.provider = 'w', 'p'
     obj._replay = OrderedDict()
     obj.auth = SimpleNamespace(access=AsyncMock(return_value=TOKENS))
