@@ -2113,6 +2113,9 @@ class MonitoringService(ExecutionDetailsMixin):
             serialized_msg = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, msg)
             serialized.append(serialized_msg)
 
+        from ....platform.image_urls import refresh_message_rows
+
+        await refresh_message_rows(self.ap, workspace_uuid, serialized)
         return (serialized, total)
 
     async def get_llm_calls(
@@ -2797,10 +2800,14 @@ class MonitoringService(ExecutionDetailsMixin):
         ]
         total_llm_calls = int(llm_stats.total_calls or 0)
 
+        from ....platform.image_urls import refresh_message_rows
+
+        serialized_message = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message)
+        await refresh_message_rows(self.ap, workspace_uuid, [serialized_message])
         return {
             'message_id': message_id,
             'found': True,
-            'message': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message),
+            'message': serialized_message,
             'llm_calls': llm_calls,
             'llm_stats': {
                 'total_calls': total_llm_calls,

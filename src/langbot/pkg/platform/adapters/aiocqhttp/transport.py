@@ -9,6 +9,8 @@ import uuid
 
 from aiocqhttp.exceptions import ActionFailed, ApiNotAvailable
 
+from .image_urls import OneBotImageURLs
+
 
 class OneBotConnection:
     def __init__(self, send, receive, close, on_event, validate, *, self_id='', timeout=30):
@@ -23,6 +25,7 @@ class OneBotConnection:
         self.events = asyncio.Queue(maxsize=256)
         self.closed = False
         self.send_lock = asyncio.Lock()
+        self.image_urls = OneBotImageURLs(self)
 
     async def call_action(self, action, **params):
         await self.validate()
@@ -96,6 +99,9 @@ class OneBotConnection:
         if self.closed:
             return
         self.closed = True
+        self.image_urls.keys.clear()
+        self.image_urls.references.clear()
+        self.image_urls.messages.clear()
         for future in self.pending.values():
             if not future.done():
                 future.set_exception(ApiNotAvailable('OneBot connection closed'))

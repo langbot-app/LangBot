@@ -1371,8 +1371,9 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
 
+            session = None
             if run_id:
-                _, error = await _validate_run_authorization(
+                session, error = await _validate_run_authorization(
                     run_id,
                     'model',
                     llm_model_uuid,
@@ -1417,6 +1418,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(message='LLM provider does not support token counting')
 
             try:
+                from ..platform.image_urls import refresh_model_images
+
+                query = _resolve_action_query(data, session, self.ap, action_context)
+                messages_obj = await refresh_model_images(
+                    self.ap, self._execution_context(action_context), query, messages_obj
+                )
                 tokens = await count_tokens_method(
                     model=llm_model,
                     messages=messages_obj,

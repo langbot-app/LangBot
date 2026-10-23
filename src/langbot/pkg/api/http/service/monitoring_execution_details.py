@@ -229,6 +229,9 @@ class ExecutionDetailsMixin:
                         for key, value in row.items()
                     }
                 )
+        from ....platform.image_urls import refresh_message_rows
+
+        await refresh_message_rows(self.ap, workspace, messages)
         return messages, count
 
     def _execution_json_text(self, column, key):

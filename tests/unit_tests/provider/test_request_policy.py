@@ -20,6 +20,70 @@ from tests.unit_tests.provider.conftest import TEST_EXECUTION_CONTEXT
 from tests.unit_tests.provider.test_litellmchat import MockRuntimeModel
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('streaming', [False, True])
+async def test_image_credentials_are_checked_again_before_retry(
+    runtime_provider, runtime_llm_model, monkeypatch, streaming
+):
+    from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+    from langbot_plugin.api.entities.builtin.pipeline.query import Query
+
+    now = [1000]
+    monkeypatch.setattr('langbot.pkg.platform.adapters.aiocqhttp.image_urls.time.time', lambda: now[0])
+
+    async def action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'NapCat.Onebot'}
+        assert name == 'nc_get_rkey'
+        return [{'type': 20, 'time': now[0], 'ttl': 10, 'rkey': f'key-{now[0]}'}]
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    bot = SimpleNamespace(
+        workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+        enable=True,
+        bot_entity=SimpleNamespace(adapter='onebot-v11'),
+        adapter=SimpleNamespace(bot=SimpleNamespace(connection=peer)),
+    )
+    runtime_provider.requester.ap.platform_mgr = SimpleNamespace(resolve_public_bot=AsyncMock(return_value=bot))
+    query = Query.model_construct(query_id=1, variables={}, bot_uuid='bot', pipeline_uuid='p', session=None)
+    object.__setattr__(query, '_execution_context', TEST_EXECUTION_CONTEXT)
+    original_url = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file&rkey=old'
+    messages = [Message(role='user', content=[{'type': 'image_url', 'image_url': {'url': original_url}}])]
+    seen = []
+
+    async def attempt(**kwargs):
+        seen.append(kwargs['messages'][0].content[0].image_url.url)
+        if len(seen) == 1:
+            now[0] = 1010
+            raise RequesterError('transient', retryable=True)
+        return Message(role='assistant', content='ok')
+
+    async def stream(**kwargs):
+        await attempt(**kwargs)
+        yield MessageChunk(role='assistant', content='ok')
+
+    runtime_provider.requester.invoke_llm = attempt
+    runtime_provider.requester.invoke_llm_stream = stream
+    extra = {'request_policy': {'retries': 1, 'backoff_base': 0.001}}
+    if streaming:
+        chunks = [
+            chunk
+            async for chunk in runtime_provider.invoke_llm_stream(
+                query,
+                runtime_llm_model,
+                messages,
+                extra_args=extra,
+            )
+        ]
+        assert chunks[0].content == 'ok'
+    else:
+        assert (await runtime_provider.invoke_llm(query, runtime_llm_model, messages, extra_args=extra)).content == 'ok'
+    assert 'rkey=key-1000' in seen[0] and 'rkey=key-1010' in seen[1]
+    assert messages[0].content[0].image_url.url == original_url
+    assert peer.call_action.await_count == 3
+
+
 def test_policy_precedence_zero_and_no_mutation():
     model = {'num_retries': 3, 'request_policy': {'read_timeout': 42}}
     policy = RequestPolicy.resolve({'request_policy': {'retries': 2}}, model, {'num_retries': 0})

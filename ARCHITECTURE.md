@@ -122,6 +122,7 @@ Platform code lives under `pkg/platform/`.
 - Bots store exclusive Agent/Pipeline routes in `event_bindings` and independent plugin subscriptions in `plugin_processors` (`processor_uuid`, `enabled`). Subscriptions resolve event patterns from the installed Runner and fan out alongside the primary route. Configuration, state, debug and run logs belong to the reusable processor instance.
 - `sources/` contains adapter implementations. Each adapter subclasses `langbot_plugin.api.definition.abstract.platform.adapter.AbstractMessagePlatformAdapter` from the SDK.
 - Platform entities such as `MessageChain`, `Image`, `At`, `Voice`, and events come from `langbot-plugin-sdk`, not from this repo.
+- `pkg/platform/image_urls.py` renews image references in authorized monitoring/history responses and before Host model attempts without downloading or rewriting history. OneBot connection-local state in `adapters/aiocqhttp/image_urls.py` identifies the implementation lazily, reuses NapCat credentials until their returned TTL expires, and caches standard `get_msg` lookups for other implementations. Credentials and source mappings never cross connections or Workspace boundaries.
 
 The platform layer should translate between external platform APIs and LangBot's shared message/event model. It should not contain LLM-provider logic or pipeline business logic.
 
