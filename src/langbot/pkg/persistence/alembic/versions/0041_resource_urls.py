@@ -35,7 +35,8 @@ def upgrade():
         if not retained:
             continue
         # Reflection intentionally reads literal stored values without expansion.
-        source = sa.Table(table.name, sa.MetaData(), autoload_with=connection)
+        # Only local columns are needed; historical schemas may omit FK targets.
+        source = sa.Table(table.name, sa.MetaData(), autoload_with=connection, resolve_fks=False)
         retained = [name for name in retained if name in source.c]
         keys = list(source.primary_key.columns)
         if len(keys) != 1:

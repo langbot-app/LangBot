@@ -412,8 +412,16 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             'TenantUnitOfWork public SQL must use a structured SQLAlchemy query, values, or DML statement'
         )
 
+    from .resource_urls import ExpandedResourceURLs
+
     for element in _iter_scoped_statement_elements(statement):
-        if not type(element).__module__.startswith('sqlalchemy.'):
+        resource_expansion_allowed = (
+            type(element) is ExpandedResourceURLs
+            and len(list(element.clauses)) == 1
+            and isinstance(list(element.clauses)[0], sqlalchemy.Column)
+            and type(list(element.clauses)[0].type) is MediaReferenceText
+        )
+        if not type(element).__module__.startswith('sqlalchemy.') and not resource_expansion_allowed:
             raise ScopedSessionTransactionError(
                 'TenantUnitOfWork does not allow custom SQL AST nodes in public statements'
             )
@@ -503,14 +511,6 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
-            from .resource_urls import ExpandedResourceURLs
-
-            resource_expansion_allowed = (
-                type(element) is ExpandedResourceURLs
-                and len(list(element.clauses)) == 1
-                and isinstance(list(element.clauses)[0], sqlalchemy.Column)
-                and type(list(element.clauses)[0].type) is MediaReferenceText
-            )
             function_name = str(getattr(element, 'name', '')).casefold()
             package_names = tuple(getattr(element, 'packagenames', ()))
             generic_function_allowed = (
