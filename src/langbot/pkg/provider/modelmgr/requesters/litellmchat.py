@@ -213,6 +213,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         'bailian-chat-completions': 'qwen',
         'doubao-chat-completions': 'doubao',
         'mimo-chat-completions': 'mimo',
+        'minimax-chat-completions': 'minimax',
     }
 
     default_config: dict[str, typing.Any] = {
@@ -569,6 +570,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]
 
+        if family == 'minimax':
+            if normalized_name == 'minimax-m3.1-flash':
+                return ['provider_default', 'enabled', 'low', 'medium', 'high', 'xhigh', 'max']
+            if normalized_name == 'minimax-m3':
+                return ['provider_default', 'disabled', 'enabled']
+
         if family == 'deepseek' and normalized_name.startswith('deepseek-'):
             if normalized_name.startswith('deepseek-v4-'):
                 return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
@@ -729,6 +736,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         family = self._reasoning_family(model.model_entity.name, model)
         budget = config.get('budget_tokens')
+        if family == 'minimax':
+            if level in {'enabled', 'disabled'}:
+                return {'extra_body': {'thinking': {'type': 'adaptive' if level == 'enabled' else 'disabled'}}}
+            return {'reasoning_effort': level}
         if budget is not None:
             if self._uses_openrouter_protocol():
                 return {'extra_body': {'reasoning': {'max_tokens': budget}}}
@@ -851,6 +862,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     cleaned_provider_fields = dict(provider_fields)
                     reasoning_content = cleaned_provider_fields.pop('reasoning_content', None)
                     thinking_blocks = cleaned_provider_fields.pop('thinking_blocks', None)
+                    minimax_content = cleaned_provider_fields.pop('minimax_content', None)
 
                     # ``content`` is also used for the user-facing rendering.
                     # Do not replay that rendered <think> wrapper alongside the
@@ -860,7 +872,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         if isinstance(content, str):
                             msg_dict['content'] = self._strip_think(content)
 
-                    if include_reasoning_context:
+                    if reasoning_family == 'minimax' and minimax_content is not None:
+                        msg_dict['content'] = minimax_content
+
+                    if include_reasoning_context or reasoning_family == 'minimax':
                         if reasoning_family == 'anthropic' and thinking_blocks:
                             msg_dict['thinking_blocks'] = thinking_blocks
                         elif reasoning_family in {
@@ -870,6 +885,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                             'doubao',
                             'mimo',
                             'volcengine',
+                            'minimax',
                         } and isinstance(reasoning_content, str):
                             msg_dict['reasoning_content'] = reasoning_content
 
@@ -1476,8 +1492,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 content = message_data.get('content', '')
                 reasoning_content = message_data.get('reasoning_content', None)
                 thinking_blocks = message_data.get('thinking_blocks')
-                if reasoning_content or thinking_blocks:
+                minimax = self._reasoning_family(model.model_entity.name, model) == 'minimax'
+                if reasoning_content or thinking_blocks or (minimax and content):
                     provider_fields = dict(message_data.get('provider_specific_fields') or {})
+                    if minimax and content:
+                        provider_fields['minimax_content'] = content
                     if reasoning_content:
                         provider_fields['reasoning_content'] = reasoning_content
                     if thinking_blocks:
@@ -1562,6 +1581,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     delta_content = delta.get('content') or ''
                     reasoning_content = delta.get('reasoning_content') or ''
                     provider_fields = dict(delta.get('provider_specific_fields') or {})
+                    if self._reasoning_family(model.model_entity.name, model) == 'minimax' and delta_content:
+                        provider_fields['minimax_content'] = delta_content
                     if finish_reason:
                         # Preserve an explicit provider stop even when the final delta is empty.
                         provider_fields['finish_reason'] = finish_reason
@@ -1882,8 +1903,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     # rather than /models. Providers whose configured base_url
                     # already ends in /v1 keep their original (working) URL.
                     response = await client.get(f'{base_url}/v1/models', headers=headers)
-                response.raise_for_status()
-                payload = await httpclient.parse_json_response(response)
+                if response.status_code == 404 and self._requester_name() == 'minimax-chat-completions':
+                    # The direct Chat Completions API need not expose model discovery.
+                    payload = {'data': []}
+                else:
+                    response.raise_for_status()
+                    payload = await httpclient.parse_json_response(response)
 
             models = []
             for item in payload.get('data', []):
@@ -1894,6 +1919,38 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 models.append(self._enrich_scanned_model(model_id, item))
 
             models.sort(key=lambda x: (x['type'] != 'llm', x['name'].lower()))
+            if self._requester_name() == 'minimax-chat-completions':
+                # Only the ordinary discovery list changes; saved/manual IDs still pass through unchanged.
+                current_ids = ('MiniMax-M3.1-Flash', 'MiniMax-M3')
+                current_models = [
+                    {
+                        'id': name,
+                        'name': name,
+                        'type': 'llm',
+                        'abilities': ['func_call', 'vision', 'reasoning'],
+                        'context_length': 1000000,
+                    }
+                    for name in current_ids
+                ]
+                models = current_models + [
+                    model
+                    for model in models
+                    if not (
+                        model['type'] == 'llm' and model['id'].lower().startswith(('minimax-m', 'minimax-01', 'abab'))
+                    )
+                ]
+            elif self._uses_openrouter_protocol():
+                # Keep gateway-provided metadata and only recommend routes it actually advertises.
+                current_ids = ('minimax/minimax-m3.1-flash:free', 'minimax/minimax-m3')
+                current_models = [model for name in current_ids for model in models if model['id'] == name]
+                models = current_models + [
+                    model
+                    for model in models
+                    if not (
+                        model['type'] == 'llm'
+                        and model['id'].lower().startswith(('minimax/minimax-m', 'minimax/minimax-01', 'minimax/abab'))
+                    )
+                ]
 
             return {'models': models}
 
