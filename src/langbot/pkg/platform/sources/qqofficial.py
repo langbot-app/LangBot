@@ -146,11 +146,12 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
                 remark='',
             )
             return platform_events.FriendMessage(sender=friend, message_chain=yiri_chain, source_platform_object=event)
-        if event.t == 'GROUP_AT_MESSAGE_CREATE':
-            yiri_chain.insert(0, platform_message.At(target='justbot'))
+        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'}:
+            if event.is_at_bot:
+                yiri_chain.insert(0, platform_message.At(target='justbot'))
 
             sender = platform_entities.GroupMember(
-                id=event.group_openid,
+                id=event.member_openid,
                 member_name=event.t,
                 permission='MEMBER',
                 group=platform_entities.Group(
@@ -300,7 +301,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         if qq_official_event.t == 'C2C_MESSAGE_CREATE':
             target_type = 'c2c'
             target_id = qq_official_event.user_openid
-        elif qq_official_event.t == 'GROUP_AT_MESSAGE_CREATE':
+        elif qq_official_event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'}:
             target_type = 'group'
             target_id = qq_official_event.group_openid
         elif qq_official_event.t == 'AT_MESSAGE_CREATE':
@@ -430,6 +431,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             self.bot.on_message('C2C_MESSAGE_CREATE')(on_message)
         elif event_type == platform_events.GroupMessage:
             self.bot.on_message('GROUP_AT_MESSAGE_CREATE')(on_message)
+            self.bot.on_message('GROUP_MESSAGE_CREATE')(on_message)
             self.bot.on_message('AT_MESSAGE_CREATE')(on_message)
 
     def set_bot_uuid(self, bot_uuid: str):
@@ -476,6 +478,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
                 'C2C_MESSAGE_CREATE',
                 'DIRECT_MESSAGE_CREATE',
                 'GROUP_AT_MESSAGE_CREATE',
+                'GROUP_MESSAGE_CREATE',
                 'AT_MESSAGE_CREATE',
             }
             if event_type not in message_event_types:
@@ -823,7 +826,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             return None
         if source.t == 'C2C_MESSAGE_CREATE':
             return 'c2c', source.user_openid
-        if source.t == 'GROUP_AT_MESSAGE_CREATE':
+        if source.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'}:
             return 'group', source.group_openid
         if source.t == 'AT_MESSAGE_CREATE':
             return 'channel', source.channel_id

@@ -16,6 +16,7 @@ MESSAGE_EVENT_TYPES = {
     'C2C_MESSAGE_CREATE',
     'DIRECT_MESSAGE_CREATE',
     'GROUP_AT_MESSAGE_CREATE',
+    'GROUP_MESSAGE_CREATE',
     'AT_MESSAGE_CREATE',
 }
 REACTION_ADD_EVENT_TYPES = {'MESSAGE_REACTION_ADD'}
@@ -89,7 +90,7 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
         chat_type = platform_entities.ChatType.PRIVATE
         chat_id = self._private_chat_id(event)
         group = None
-        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
+        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
             chat_type = platform_entities.ChatType.GROUP
             chat_id = event.channel_id if event.t == 'AT_MESSAGE_CREATE' else event.group_openid
             chat_id = chat_id or event.group_openid or event.channel_id or ''
@@ -205,7 +206,7 @@ class QQOfficialEventConverter(abstract_platform_adapter.AbstractEventConverter)
     @staticmethod
     def _sender_id(event: QQOfficialEvent) -> str:
         member_openid = event.member_openid or event.get('member_openid', '')
-        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
+        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
             return member_openid or event.user_openid or event.d_author_id or ''
         return event.user_openid or member_openid or event.d_author_id or event.guild_id or event.group_openid or ''
 

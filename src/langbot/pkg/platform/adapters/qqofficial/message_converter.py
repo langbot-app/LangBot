@@ -70,8 +70,8 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
             platform_message.Source(id=event.d_id or event.id or '', time=_parse_timestamp(event.timestamp)),
         ]
 
-        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'}:
-            components.append(platform_message.At(target='justbot'))
+        if event.is_at_bot:
+            components.append(platform_message.At(target=event.get('bot_account_id') or 'justbot'))
 
         if event.attachments:
             try:

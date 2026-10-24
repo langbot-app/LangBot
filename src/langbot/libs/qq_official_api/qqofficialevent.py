@@ -18,6 +18,13 @@ class QQOfficialEvent(dict):
         return self.get('t', '')
 
     @property
+    def is_at_bot(self) -> bool:
+        """Whether QQ identified a native mention of the current bot."""
+        return self.t in {'GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'} or (
+            self.t == 'GROUP_MESSAGE_CREATE' and self.get('is_at_bot') is True
+        )
+
+    @property
     def user_openid(self) -> str:
         """
         用户openid
@@ -85,7 +92,7 @@ class QQOfficialEvent(dict):
         """
         成员openid
         """
-        return self.get('openid', {})
+        return self.get('member_openid') or self.get('openid') or ''
 
     @property
     def attachments(self) -> str:

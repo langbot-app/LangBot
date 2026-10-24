@@ -439,7 +439,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     def _reply_target(event: QQOfficialEvent) -> tuple[str, str]:
         if event.t == 'C2C_MESSAGE_CREATE':
             return 'person', event.user_openid
-        if event.t == 'GROUP_AT_MESSAGE_CREATE':
+        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'}:
             return 'group', event.group_openid
         if event.t == 'AT_MESSAGE_CREATE':
             return 'channel', event.channel_id
