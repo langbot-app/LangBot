@@ -136,3 +136,21 @@ async def test_user_id_wildcard(mock_app, sample_query):
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
     assert result.result_type == entities.ResultType.CONTINUE
+
+
+@pytest.mark.asyncio
+async def test_user_id_wildcard_integer(mock_app, sample_query):
+    """Test user ID wildcard matching when the sender id is an integer"""
+    bansess, entities = get_modules()
+
+    sample_query.launcher_type = provider_session.LauncherTypes.PERSON
+    sample_query.launcher_id = 12345
+    sample_query.sender_id = 67890
+    sample_query.pipeline_config = {'trigger': {'access-control': {'mode': 'whitelist', 'whitelist': ['*_67890']}}}
+
+    stage = bansess.BanSessionCheckStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+
+    result = await stage.process(sample_query, 'BanSessionCheckStage')
+
+    assert result.result_type == entities.ResultType.CONTINUE
