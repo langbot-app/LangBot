@@ -186,7 +186,8 @@ async def test_event_scan_budget_advances_past_foreign_events_without_reading_pa
 
     def capture_statement(connection, cursor, statement, parameters, context, executemany):
         if statement.startswith('SELECT ') and 'FROM agent_run_event' in statement:
-            statements.append((statement, parameters))
+            columns = tuple(context.compiled.statement.selected_columns.keys())
+            statements.append((statement, parameters, columns))
 
     sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture_statement)
     try:
@@ -209,15 +210,17 @@ async def test_event_scan_budget_advances_past_foreign_events_without_reading_pa
     assert not MediaCache.has_inline_images(json.loads(await read_record(application, AgentRunEvent, 5, 'data_json')))
     for number in (1, 2, 3, 4, 6):
         assert await read_record(application, AgentRunEvent, number, 'data_json') == PAYLOAD
+    assert {columns for _, _, columns in statements} == {('id', 'created_at'), ('data_json', 'metadata_json')}
     async with engine.connect() as connection:
-        for statement, parameters in statements:
+        for statement, parameters, columns in statements:
             plan = ' '.join(
                 row[3] for row in await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + statement, parameters)
             )
-            if 'CORRELATED' in plan:
-                assert 'SEARCH agent_run_event USING INTEGER PRIMARY KEY' in plan, plan
-            else:
+            # Classify by projection; SQLite versions describe EXISTS plans differently.
+            if columns == ('id', 'created_at'):
                 assert 'COVERING INDEX ix_agent_run_event_media_ttl' in plan, plan
+            else:
+                assert 'SEARCH agent_run_event USING INTEGER PRIMARY KEY' in plan, plan
             assert 'TEMP B-TREE' not in plan, plan
 
 
