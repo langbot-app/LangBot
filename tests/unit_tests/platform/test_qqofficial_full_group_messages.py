@@ -37,7 +37,7 @@ def group_payload(content='hello'):
     }
 
 
-async def receive_message(monkeypatch, adapter_class, transport, event_type, payload):
+async def receive_message(monkeypatch, adapter_class, transport, event_type, payload, *, form_data=None):
     received, outbound = [], []
     adapter = adapter_class(
         {'appid': 'fixture-app', 'secret': 'fixture-secret', 'token': '', 'enable-webhook': transport == 'webhook'},
@@ -63,7 +63,11 @@ async def receive_message(monkeypatch, adapter_class, transport, event_type, pay
 
     async def listener(event, active_adapter):
         received.append(event)
-        await active_adapter.reply_message(event, message.MessageChain([message.Plain(text='fixture reply')]))
+        reply = message.MessageChain([message.Plain(text='fixture reply')])
+        if form_data is None:
+            await active_adapter.reply_message(event, reply)
+        else:
+            await active_adapter.reply_message_chunk(event, SimpleNamespace(_form_data=form_data), reply, is_final=True)
 
     listener_type = events.MessageReceivedEvent
     if adapter_class is LegacyQQOfficialAdapter:
