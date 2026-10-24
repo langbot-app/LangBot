@@ -1,0 +1,62 @@
+# manifest.yaml — EBA LINE Adapter manifest
+# 框架端 manifest 結構（apiVersion/kind/metadata/spec/execution）已定，
+# 據 LangBot discover.engine.py（Metadata/Execution 模型）＋ blueprint §4.4 定稿。
+# 舊有 schema（name/execution.type/supported_events 平層）已轉為框架端結構。
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: line-omni
+  label:
+    en_US: LINE
+    zh_Hant: LINE
+  icon: line.svg
+  description:
+    en_US: LINE Bot EBA adapter
+    zh_Hant: LINE Bot 事件驅動配接器
+spec:
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/line
+    en: https://langbot.app/docs/en/usage/platforms/line
+    ja: https://langbot.app/docs/ja/usage/platforms/line
+  config:
+    - name: webhook_url
+      type: string
+      required: false
+    - name: channel_access_token
+      type: string
+      required: true
+      sensitive: true
+    - name: channel_secret
+      type: string
+      required: true
+      sensitive: true
+  supported_events:
+    - message.received
+    - message.edited
+    - message.deleted
+    - feedback.received
+    - group.member_joined
+    - group.member_left
+    - platform.specific
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_user_info
+      - get_group_info
+      - get_group_member_list
+      - call_platform_api
+  platform_specific_apis:
+    - action: call_platform_api
+      description:
+        en_US: Platform passthrough (rich/template透傳)
+        zh_Hant: 平台透傳（富訊息/模板）
+  execution:
+    python:
+      path: ./adapter.py
+      attr: LineAdapter
+execution:
+  python:
+    path: ./adapter.py
+    attr: LineAdapter
