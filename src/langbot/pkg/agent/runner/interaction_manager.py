@@ -207,6 +207,122 @@ class InteractionManager:
             raise
         return True
 
+    async def present_tool_request(
+        self,
+        *,
+        request_payload: dict[str, typing.Any],
+        session: typing.Mapping[str, typing.Any],
+        adapter: typing.Any,
+    ) -> dict[str, typing.Any]:
+        """Persist and deliver an Agent-authored semantic card using Host-owned authority."""
+        authorization = session.get('authorization') if isinstance(session, typing.Mapping) else None
+        if not isinstance(authorization, dict):
+            raise ValueError('Interactive card run authorization is unavailable')
+        if authorization.get('processor_type') != 'agent':
+            raise ValueError('Interactive card tools are currently available only to independent Agents')
+        if authorization.get('interactions_enabled') is not True:
+            raise ValueError('Interactive cards are disabled for this Agent binding')
+
+        run_id = str(session.get('run_id') or '').strip()
+        runner_id = str(session.get('runner_id') or '').strip()
+        binding_id = str(authorization.get('binding_id') or '').strip()
+        processor_id = str(authorization.get('processor_id') or '').strip()
+        if not all((run_id, runner_id, binding_id, processor_id)):
+            raise ValueError('Interactive card run identity is incomplete')
+        try:
+            request = HostInteractionRequest.model_validate(request_payload)
+        except pydantic.ValidationError as exc:
+            raise ValueError(f'Invalid interactive card: {exc}') from exc
+        self._validate_request_identity(request, runner_id)
+
+        request_data = request.model_dump(mode='json')
+        now = int(time.time())
+        expires_at = request.expires_at or now + DEFAULT_INTERACTION_TTL_SECONDS
+        if expires_at <= now or expires_at > now + MAX_INTERACTION_TTL_SECONDS:
+            raise ValueError('Interactive card expiry must be in the future and within 24 hours')
+        request_data['expires_at'] = expires_at
+        if len(json.dumps(request_data, ensure_ascii=False).encode('utf-8')) > INTERACTION_PAYLOAD_MAX_BYTES:
+            raise ValueError('Interactive card exceeds 256 KiB')
+
+        platform_context = authorization.get('platform_context')
+        if not isinstance(platform_context, dict):
+            raise ValueError('Interactive card platform context is unavailable')
+        delivery = platform_context.get('delivery') if isinstance(platform_context.get('delivery'), dict) else {}
+        self._validate_tool_delivery_capabilities(request, delivery)
+        reply_target = delivery.get('reply_target') if isinstance(delivery.get('reply_target'), dict) else {}
+        target_type = reply_target.get('target_type')
+        target_id = reply_target.get('target_id')
+        if not target_type or not target_id:
+            raise ValueError('Interactive card has no authorized reply target')
+        callback_conversation_id = f'{target_type}_{target_id}'
+        actor = platform_context.get('actor') if isinstance(platform_context.get('actor'), dict) else {}
+
+        _, callback_token = await self.store.create_request(
+            interaction_id=request.interaction_id,
+            run_id=run_id,
+            binding_id=binding_id,
+            runner_id=runner_id,
+            processor_type='agent',
+            processor_id=processor_id,
+            request=request_data,
+            delivery_target=reply_target,
+            bot_id=authorization.get('bot_id'),
+            workspace_id=authorization.get('workspace_id'),
+            conversation_id=callback_conversation_id,
+            thread_id=authorization.get('thread_id'),
+            actor_id=actor.get('actor_id'),
+            expires_at=expires_at,
+        )
+        try:
+            if not self._supports_interaction_delivery(adapter):
+                raise ValueError('The current platform does not support interactive cards')
+            delivery_result = await adapter.call_platform_api(
+                INTERACTION_DELIVERY_API,
+                {
+                    'request': request_data,
+                    'callback_token': callback_token,
+                    'reply_target': reply_target,
+                },
+            )
+            if isinstance(delivery_result, dict):
+                await self.store.record_delivery_success(run_id, request.interaction_id, delivery_result)
+        except Exception as exc:
+            await self.store.mark_delivery_failed(run_id, request.interaction_id, str(exc))
+            raise
+        return {
+            'ok': True,
+            'status': 'pending',
+            'interaction_id': request.interaction_id,
+            'expires_at': expires_at,
+        }
+
+    @staticmethod
+    def _validate_tool_delivery_capabilities(
+        request: HostInteractionRequest,
+        delivery: dict[str, typing.Any],
+    ) -> None:
+        capabilities = delivery.get('interactions')
+        if not isinstance(capabilities, dict):
+            raise ValueError('The current platform did not declare interactive card capabilities')
+        if request.fields and request.actions:
+            raise ValueError('An interactive card step cannot combine fields and actions')
+        field_types = set(capabilities.get('field_types') or [])
+        unsupported_types = {field.type for field in request.fields} - field_types
+        if unsupported_types:
+            raise ValueError(
+                'The current platform does not support interaction fields: ' + ', '.join(sorted(unsupported_types))
+            )
+        max_fields = capabilities.get('max_fields')
+        if isinstance(max_fields, int) and len(request.fields) > max_fields:
+            raise ValueError(f'The current platform supports at most {max_fields} interaction fields')
+        action_styles = set(capabilities.get('action_styles') or [])
+        unsupported_styles = {action.style for action in request.actions} - action_styles
+        if unsupported_styles:
+            raise ValueError(
+                'The current platform does not support interaction action styles: '
+                + ', '.join(sorted(unsupported_styles))
+            )
+
     @staticmethod
     def _pipeline_admission(binding, descriptor, adapter_context):
         if binding.processor_type != 'pipeline':

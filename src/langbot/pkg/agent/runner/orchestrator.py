@@ -297,6 +297,10 @@ class AgentRunOrchestrator:
                 execution_query=execution_query,
                 platform_context=freeze_platform_context(event),
                 reply_streams=reply_streams,
+                binding_id=binding.binding_id,
+                processor_type=binding.processor_type,
+                processor_id=binding.processor_id or binding.agent_id,
+                interactions_enabled=binding.delivery_policy.enable_interactions,
             )
 
             event_log_id = await self.journal.write_event_log(

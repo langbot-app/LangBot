@@ -50,6 +50,10 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     platform_context: dict[str, typing.Any]
     authorized_ids: dict[str, set[str]]
     authorized_operations: dict[str, dict[str, set[str]]]
+    binding_id: str | None
+    processor_type: str | None
+    processor_id: str | None
+    interactions_enabled: bool
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -117,6 +121,10 @@ class AgentRunSessionRegistry:
         execution_query: pipeline_query.Query | None = None,
         platform_context: dict[str, typing.Any] | None = None,
         reply_streams: typing.Any = None,
+        binding_id: str | None = None,
+        processor_type: str | None = None,
+        processor_id: str | None = None,
+        interactions_enabled: bool = False,
     ) -> None:
         """Register a new agent run session.
 
@@ -162,6 +170,10 @@ class AgentRunSessionRegistry:
             'platform_context': copy.deepcopy(platform_context or {}),
             'authorized_ids': self._build_authorized_ids(resources_snapshot),
             'authorized_operations': self._build_authorized_operations(resources_snapshot),
+            'binding_id': binding_id,
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'interactions_enabled': interactions_enabled,
         }
 
         session: AgentRunSession = {

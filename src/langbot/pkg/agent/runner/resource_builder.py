@@ -20,7 +20,7 @@ from .host_models import AgentEventEnvelope, AgentBinding
 from .resource_policy import ResourcePolicyProjector
 from ...provider.tools.loaders.mcp import MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE
 from ...provider.tools.toolmgr import ToolSourceRef
-from .platform_tools import build_platform_tool_resources
+from .platform_tools import PRESENT_INTERACTIVE_CARD_TOOL, build_platform_tool_resources
 
 
 class AgentResourceBuilder:
@@ -88,9 +88,14 @@ class AgentResourceBuilder:
             runner_config,
         )
         runner_uses_host_tools = config_schema.uses_host_tools(descriptor)
+        selected_platform_tools = list(resource_policy.allowed_platform_tool_names or [])
+        if binding.processor_type != 'agent' or not binding.delivery_policy.enable_interactions:
+            selected_platform_tools = [
+                name for name in selected_platform_tools if name != PRESENT_INTERACTIVE_CARD_TOOL
+            ]
         platform_tools, platform_capabilities = build_platform_tool_resources(
             event,
-            resource_policy.allowed_platform_tool_names,
+            selected_platform_tools,
             (
                 [operation for operation in ('detail', 'call') if operation in set(manifest_perms.tools)]
                 if runner_uses_host_tools

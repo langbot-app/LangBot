@@ -191,6 +191,66 @@ async def test_structured_delivery_uses_frozen_target_and_persists_request(store
 
 
 @pytest.mark.asyncio
+async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store, event):
+    adapter = FakeAdapter(supports_interactions=True)
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    event.delivery.interactions = InteractionDeliveryCapabilities(
+        field_types=['text', 'textarea', 'select', 'number'],
+        action_styles=['default', 'primary', 'danger'],
+        supports_updates=True,
+        max_fields=1,
+    )
+    session = {
+        'run_id': 'agent-run-1',
+        'runner_id': 'plugin:test/CardAgent/default',
+        'authorization': {
+            'binding_id': 'agent-binding-1',
+            'processor_type': 'agent',
+            'processor_id': 'agent-1',
+            'interactions_enabled': True,
+            'bot_id': 'bot-1',
+            'workspace_id': 'workspace-1',
+            'thread_id': None,
+            'platform_context': {
+                'actor': {'actor_type': 'user', 'actor_id': 'user-1'},
+                'delivery': event.delivery.model_dump(mode='json'),
+            },
+        },
+    }
+    request = {
+        'interaction_id': 'card-host-generated',
+        'kind': 'choice',
+        'title': 'Choose priority',
+        'fields': [
+            {
+                'id': 'priority',
+                'label': 'Priority',
+                'type': 'select',
+                'options': [{'value': 'high', 'label': 'High'}],
+            }
+        ],
+        'actions': [],
+        'expires_at': int(time.time()) + 600,
+        'fallback_text': 'Choose priority',
+    }
+
+    result = await manager.present_tool_request(request_payload=request, session=session, adapter=adapter)
+
+    assert result['status'] == 'pending'
+    assert 'callback_token' not in result
+    params = adapter.actions[0][1]
+    assert params['callback_token']
+    assert params['reply_target'] == {'target_type': 'group', 'target_id': 'chat-1'}
+    record = await store.get_request('agent-run-1', 'card-host-generated')
+    assert record is not None
+    assert record['processor_type'] == 'agent'
+    assert record['processor_id'] == 'agent-1'
+    assert record['binding_id'] == 'agent-binding-1'
+    assert record['conversation_id'] == 'group_chat-1'
+    assert record['actor_id'] == 'user-1'
+
+
+@pytest.mark.asyncio
 async def test_continuous_interaction_reuses_submitted_platform_presentation(store, event, binding):
     adapter = FakeAdapter(supports_interactions=True)
     manager = InteractionManager(SimpleNamespace(), store=store)
