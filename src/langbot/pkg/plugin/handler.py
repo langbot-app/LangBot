@@ -971,6 +971,28 @@ class RuntimeConnectionHandler(handler.Handler):
             )
             if isinstance(action_context, InstallationBinding):
                 self._require_setting_binding(setting, action_context)
+            elif setting is None:
+                installation_uuid = str(uuid.uuid4())
+                artifact_digest = hashlib.sha256(f'local:{plugin_author}/{plugin_name}'.encode()).hexdigest()
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_plugin.PluginSetting).values(
+                        workspace_uuid=action_context.workspace_uuid,
+                        plugin_author=plugin_author,
+                        plugin_name=plugin_name,
+                        installation_uuid=installation_uuid,
+                        artifact_digest=artifact_digest,
+                        install_source='local',
+                        install_info={},
+                        enabled=True,
+                        priority=0,
+                        config={},
+                    )
+                )
+                setting = await self._get_plugin_setting_by_name(
+                    action_context,
+                    plugin_author,
+                    plugin_name,
+                )
 
             data = {
                 'enabled': True,
