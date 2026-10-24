@@ -9,7 +9,7 @@
 ## 文档维护原则（单一事实源）
 
 - **协议数据结构（schema）唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)。** 其他文档不得重抄 schema，只能引用，例如"见 PROTOCOL_V1 §4.2"。
-- 当前实现状态、spec 差距与 runner 验收状态归 [STATUS.md](./STATUS.md)；测试执行入口归 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)，安全发布门槛归 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 当前实现状态、spec 差距与 runner 验收状态归 [STATUS.md](./STATUS.md)；测试执行入口归 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛归 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)，不属于 SDK 协议。
 - 其余专题文档只讲"为什么/边界/怎么用"，避免重复叙述。
 
@@ -54,7 +54,7 @@
 
 EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完整 Stage 链；当 Pipeline 的 AI Stage 调用 runner 时，`run_from_query()` 经 `QueryEntryAdapter` 把 `Query` 转换为 `AgentEventEnvelope` + `AgentBinding`，再委托到统一的 `run(event, binding, ...)`。Agent 目标则直接从自己的持久配置构造 binding。两条路径可以复用同一套 Runner Host capabilities，但 Pipeline 本身不会被投影或持久化为 Agent。
 
-下一轮测试路径、状态定义和 smoke 记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)。
+下一轮测试路径、状态定义和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
 ## 术语表
 
@@ -87,7 +87,7 @@ EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完
 | [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的设计与落地状态记录；schema 仍以 PROTOCOL_V1 为准。 |
 | [STATUS.md](./STATUS.md) | 当前实现状态、spec 与实现已知差距、runner 验收状态和历史高价值记录。 |
 | [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md) | 当前事件工具、平台动作和普通工具的配置、投射及执行授权。 |
-| [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md) | Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
+| [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) | Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
 | [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |
 
 ## 工作拆分

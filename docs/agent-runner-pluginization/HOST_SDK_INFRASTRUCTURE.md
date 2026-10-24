@@ -3,7 +3,7 @@
 本文档描述 LangBot 作为 agent host 的内部能力与分层架构，以及 Host 内部模型。
 
 - SDK ↔ Host 的协议数据结构（`RunnerContext`、`RunnerManifest`、`RunnerResult`、`RunnerAPIProxy` 等）的**唯一定义在** [PROTOCOL_V1.md](./PROTOCOL_V1.md)；本文只引用，不重抄。
-- 测试执行入口和 smoke 记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)；安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 测试执行入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 本文定义的 Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、`RunnerDescriptor`）不属于 SDK 协议字段。
 
 ## 1. 目标
