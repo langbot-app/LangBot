@@ -69,8 +69,11 @@ def _epoch_to_datetime(value: int | float | None) -> datetime.datetime | None:
     if value is None:
         return None
     try:
-        return datetime.datetime.fromtimestamp(float(value), UTC)
-    except (TypeError, ValueError, OSError) as exc:
+        ts = float(value)
+        if ts > 1e11:
+            ts /= 1000.0
+        return datetime.datetime.fromtimestamp(ts, UTC)
+    except (TypeError, ValueError, OSError, OverflowError) as exc:
         raise ValueError('expires_at must be a valid epoch timestamp') from exc
 
 
