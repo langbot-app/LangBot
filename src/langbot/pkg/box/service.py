@@ -1843,9 +1843,16 @@ class BoxService:
         can read settings such as a service base URL. A per-call ``env`` supplied
         by the agent or caller overrides the matching defaults. Non-dict configs
         and non-string keys or values are ignored.
+
+        The setting is instance-wide, so it is disabled in multi-workspace
+        deployments to keep operator values from reaching every tenant's sandbox.
         """
         raw_env = self._local_config().get('env')
         if not isinstance(raw_env, dict):
+            return {}
+        if self._cloud_managed:
+            if raw_env:
+                self.ap.logger.warning('box.local.env is ignored in multi-workspace deployments.')
             return {}
 
         env: dict[str, str] = {}

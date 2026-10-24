@@ -466,6 +466,26 @@ def test_box_build_spec_ignores_invalid_local_env_entries():
     assert spec.env == {}
 
 
+def test_box_build_spec_ignores_local_env_in_multi_workspace_deployment():
+    logger = Mock()
+    app = make_app(logger)
+    app.deployment = SimpleNamespace(multi_workspace_enabled=True)
+    app.instance_config.data['box'].update(
+        {
+            'backend': 'nsjail',
+            'admission': {'required': True, 'workspace_quota_mb': 32},
+        }
+    )
+    app.instance_config.data['box']['local']['env'] = {'JENKINS_BASE_URL': 'https://jenkins.example.com'}
+    service = BoxService(app, client=Mock())
+
+    spec = service.build_spec({'cmd': 'echo hi', 'session_id': 'cloud-env', 'env': {'PER_CALL': '1'}})
+
+    assert service.default_env == {}
+    assert spec.env == {'PER_CALL': '1'}
+    logger.warning.assert_any_call('box.local.env is ignored in multi-workspace deployments.')
+
+
 @pytest.mark.asyncio
 async def test_box_service_get_sessions_delegates_to_client():
     client = Mock()
