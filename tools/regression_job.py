@@ -308,16 +308,27 @@ class Job:
             if 'mock_records' in profile['smoke']:
                 profile['smoke']['mock_records'] = str(self.output / 'mock' / 'requests.jsonl')
             profile['smoke']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
+        if 'verification' in profile:
+            profile['verification']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
         profile['cli'] = {'executable': self.cli[0], 'config': str(self.cli_config)}
         profile['observe'] = {'health': health, 'pids': {}, 'containers': list(containers.values())}
         for service, container in containers.items():
             pid = int(self.checked(['docker', 'inspect', '--format', '{{.State.Pid}}', container]).strip())
-            profile['observe']['pids'][service] = pid
+            name = (
+                {'langbot': 'core', 'langbot_plugin_runtime': 'runtime', 'langbot_box': 'box'}.get(service, service)
+                if profile.get('verification')
+                else service
+            )
+            profile['observe']['pids'][name] = pid
         destination = self.output / 'suite'
         destination.mkdir(mode=0o700)
         suite = Suite(profile, self.suite_path, destination, env=self.env)
         self.redactions.extend(suite.secrets)
         suite.write('profile.json', profile)
+        if 'smoke' not in profile:
+            from regression_analysis import workload_contract
+
+            suite.write('workload.json', workload_contract(profile, self.suite_path))
         suite.prepare()
         if 'smoke' in profile:
             return suite

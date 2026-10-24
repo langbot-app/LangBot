@@ -78,6 +78,8 @@ def validate(profile):
         'cleanup',
         'thresholds',
         'smoke',
+        'verification',
+        'resource_limits',
     }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
@@ -138,6 +140,18 @@ def validate(profile):
             if item['kind'] != 'knowledge-base' or not document.get('file') or not document.get('parser_plugin_id'):
                 raise ValueError(f'{name}: documents need file and parser_plugin_id on a knowledge-base')
             resolve(document, variables)
+    verification = profile.get('verification')
+    if verification is not None:
+        if (
+            'smoke' in profile
+            or not isinstance(verification, dict)
+            or verification.keys() - {'ledger_db', 'timeout_seconds'}
+        ):
+            raise ValueError('verification is a load-only ledger configuration')
+        if not isinstance(verification.get('ledger_db'), str) or not verification['ledger_db']:
+            raise ValueError('verification.ledger_db is required')
+        resolve(verification, variables)
+        number(verification.get('timeout_seconds', 5), 'verification timeout', minimum=0.001)
     cases = profile.get('cases')
     if not isinstance(cases, list) or not cases:
         raise ValueError('cases must be a non-empty array')
@@ -164,7 +178,7 @@ def validate(profile):
         names.add(case['name'])
         if 'stage' in case and (not isinstance(case['stage'], str) or not case['stage']):
             raise ValueError('case stage must be a non-empty string')
-        if any(key in case for key in ('mock_requests', 'fields', 'forbid', 'reject_group')) and 'smoke' not in profile:
+        if any(key in case for key in ('mock_requests', 'reject_group')) and 'smoke' not in profile:
             raise ValueError('extended case checks require smoke mode')
         if 'fields' in case and (not isinstance(case['fields'], dict) or not case['fields']):
             raise ValueError('fields must be a non-empty mapping of dotted paths to exact values')
@@ -237,14 +251,14 @@ def validate(profile):
             number(check['count'], 'box_exec.count', minimum=1, integer=True)
             if any(not isinstance(check[k], str) or not check[k] for k in ('backend', 'stdout')):
                 raise ValueError('box_exec backend/stdout must be non-empty strings')
-            if 'smoke' not in profile:
-                raise ValueError('box_exec checks require smoke mode')
+            if 'smoke' not in profile and verification is None:
+                raise ValueError('box_exec requires smoke or load verification')
             if 'http_group' not in case and case.get('args', [])[:2] != ['pipeline', 'run']:
                 raise ValueError('box_exec requires a Pipeline or group case')
         if 'attachment' in case:
             check = case['attachment']
             if (
-                'smoke' not in profile
+                ('smoke' not in profile and verification is None)
                 or case.get('args', [])[:2] != ['pipeline', 'run']
                 or not isinstance(check, dict)
                 or set(check) != {'name', 'text'}
@@ -329,6 +343,12 @@ def validate(profile):
         if name not in {case['name'] for case in cases}:
             raise ValueError(f'unknown case in max_p95_seconds: {name}')
         number(value, 'max_p95_seconds', minimum=0.001)
+    if 'resource_limits' in profile:
+        if 'smoke' in profile:
+            raise ValueError('resource_limits requires measured load and cooldown phases')
+        from regression_analysis import validate_resource_limits
+
+        validate_resource_limits(profile['resource_limits'])
     observed = resolve(profile.get('observe', {}), variables)
     if not isinstance(observed, dict) or observed.keys() - {
         'health',
@@ -352,6 +372,21 @@ def validate(profile):
             raise ValueError(f'observe.{field} must be an object')
     for pid in observed.get('pids', {}).values():
         number(pid, 'PID', minimum=1, integer=True)
+    if profile.get('resource_limits'):
+        if profile['resource_limits'].get('containers') and not (
+            observed.get('containers') or observed.get('box_data_root')
+        ):
+            raise ValueError('Container budgets require container names or a Box data root')
+        configured = set(observed.get('pids', {})) | set(observed.get('pid_files', {}))
+        if set(profile['resource_limits']['targets']) - configured:
+            raise ValueError('Resource limit targets must have configured PIDs or PID files')
+        for phase in phases:
+            limits = profile['resource_limits']
+            if (
+                phase['duration_seconds'] < limits['warmup_seconds'] + limits['window_seconds']
+                or phase.get('cooldown_seconds', 0) < limits['window_seconds']
+            ):
+                raise ValueError('Phase must cover the configured warmup, resource window and cooldown')
     if not isinstance(observed.get('containers', []), list) or any(
         not isinstance(item, str) or not item for item in observed.get('containers', [])
     ):
@@ -456,14 +491,15 @@ class Suite:
         self.write('owned.json', {'workspace_uuid': self.variables['workspace_uuid'], 'resources': self.owned})
 
     def prepare(self):
-        if 'smoke' in self.profile and not Path(self.path(self.profile['smoke']['ledger_db'])).is_file():
-            raise ValueError('smoke.ledger_db must be an existing target Core SQLite database')
+        verification = self.profile.get('smoke') or self.profile.get('verification')
+        if verification and not Path(self.path(verification['ledger_db'])).is_file():
+            raise ValueError('ledger_db must be an existing target Core SQLite database')
         identity = self.call(['whoami'])
         self.variables['workspace_uuid'] = identity['workspace_uuid']
         self.journal()
         for plugin in self.profile.get('plugins', []):
             self.call(['plugin', 'install', plugin['source'], '--file', self.path(plugin['file']), '--wait'])
-        if 'smoke' in self.profile:
+        if 'smoke' in self.profile or 'verification' in self.profile:
             capabilities = self.call(['capabilities'])
             plugins = self.call(['plugin', 'list'])
             ready = {
@@ -471,7 +507,7 @@ class Suite:
                 for item in plugins['plugins']
                 if item.get('enabled') and item.get('status') == 'initialized'
             }
-            missing = set(self.profile['smoke'].get('required_plugins', [])) - ready
+            missing = set(self.profile.get('smoke', {}).get('required_plugins', [])) - ready
             self.write('environment.json', {'identity': identity, 'capabilities': capabilities, 'plugins': plugins})
             if missing:
                 raise RuntimeError(f'Required plugins are not initialized: {sorted(missing)}')
@@ -557,7 +593,7 @@ class Suite:
             else:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
-        if 'smoke' in self.profile:
+        if 'smoke' in self.profile or 'verification' in self.profile:
             from regression_smoke import verify_cleanup
 
             try:
@@ -577,7 +613,22 @@ class Suite:
             if 'body' in case:
                 case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
             cases.extend(
-                [{key: case[key] for key in ('name', 'args', 'expect', 'http_group') if key in case}]
+                [
+                    {
+                        key: case[key]
+                        for key in (
+                            'name',
+                            'args',
+                            'expect',
+                            'http_group',
+                            'box_exec',
+                            'attachment',
+                            'fields',
+                            'forbid',
+                        )
+                        if key in case
+                    }
+                ]
                 * case.get('weight', 1)
             )
         cases_path = self.write('cases.json', cases)
@@ -593,6 +644,15 @@ class Suite:
             observe_args += ['--container', container]
         if observed.get('box_data_root'):
             observe_args += ['--box-data-root', self.path(observed['box_data_root'])]
+        if verification := self.profile.get('verification'):
+            observe_args += [
+                '--ledger-db',
+                self.path(verification['ledger_db']),
+                '--workspace',
+                self.variables['workspace_uuid'],
+                '--verification-timeout',
+                str(verification.get('timeout_seconds', 5)),
+            ]
         results = []
         errors = []
         for phase in self.profile['phases']:
@@ -629,8 +689,18 @@ class Suite:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
             summary = json.loads((destination / 'summary.json').read_text())
             summary['name'] = phase['name']
-            summary['achieved_rps'] = summary['requests'] / summary['load_elapsed_seconds']
+            summary['achieved_rps'] = (
+                summary.get(
+                    'successful_requests', sum(row.get('status', {}).get('ok', 0) for row in summary['cases'].values())
+                )
+                / summary['load_elapsed_seconds']
+            )
             results.append(summary)
+            if self.profile.get('resource_limits'):
+                from regression_analysis import resource_verdict
+
+                summary['resources'] = resource_verdict(destination, self.profile['resource_limits'])
+                errors.extend(f'{phase["name"]}: {error}' for error in summary['resources']['errors'])
             if result.returncode:
                 errors.append(f'{phase["name"]}: business or health/resource checks failed')
             thresholds = self.profile.get('thresholds', {})
@@ -684,6 +754,10 @@ def main():
             return
         args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
         suite.write('profile.json', profile)
+        if 'smoke' not in profile:
+            from regression_analysis import workload_contract
+
+            suite.write('workload.json', workload_contract(profile, args.profile))
         result = {'phases': [], 'errors': []}
         completed = False
         try:
