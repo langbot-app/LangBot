@@ -364,45 +364,33 @@ export default function PluginMarketCardComponent({
                 <ArrowUp className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                 <span>{t('market.updateAvailable')}</span>
               </Badge>
+            ) : showInstalledMark ? (
+              <Badge
+                variant="outline"
+                className="h-5 px-1.5 sm:px-2 text-[0.65rem] sm:text-[0.7rem] flex items-center gap-1 font-medium flex-shrink-0 whitespace-nowrap text-green-600 dark:text-green-400 border-green-500/40 bg-green-500/10"
+              >
+                <Check
+                  className="w-3 h-3 text-green-500 dark:text-green-400"
+                  strokeWidth={2.5}
+                />
+                <span>{t('market.installed')}</span>
+              </Badge>
             ) : (
               <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
-                {showInstalledMark ? (
-                  // Hollow green ring enclosing a green check: the download
-                  // affordance becomes an "installed" mark in place.
-                  <span
-                    title={t('market.installed')}
-                    aria-label={t('market.installed')}
-                    className="flex h-4 w-4 sm:h-[1.2rem] sm:w-[1.2rem] flex-shrink-0 items-center justify-center rounded-full border-2 border-green-500 dark:border-green-400"
-                  >
-                    <Check
-                      className="h-2 w-2 text-green-500 dark:text-green-400 sm:h-2.5 sm:w-2.5"
-                      strokeWidth={3.5}
-                    />
-                  </span>
-                ) : (
-                  <svg
-                    className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] flex-shrink-0 text-[#2563eb] dark:text-[#5b8def]"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7,10 12,15 17,10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                )}
-                <div
-                  className={`text-xs sm:text-sm font-medium whitespace-nowrap ${
-                    showInstalledMark
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-[#2563eb] dark:text-[#5b8def]'
-                  }`}
+                <svg
+                  className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] flex-shrink-0 text-[#2563eb] dark:text-[#5b8def]"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
-                  {showInstalledMark
-                    ? t('market.installed')
-                    : (cardVO.installCount?.toLocaleString() ?? '0')}
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7,10 12,15 17,10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <div className="text-xs sm:text-sm font-medium whitespace-nowrap text-[#2563eb] dark:text-[#5b8def]">
+                  {cardVO.installCount?.toLocaleString() ?? '0'}
                 </div>
               </div>
             )}
