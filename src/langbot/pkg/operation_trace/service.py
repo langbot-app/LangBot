@@ -377,6 +377,14 @@ ACTION_RULE_TABLE: typing.Final[tuple[ActionRule, ...]] = (
         bucket='write',
         resource_type='plugin',
     ),
+    # Building a debug plugin package and/or syncing it to GitHub and publishing
+    # it to LangBot Space.
+    ActionRule(
+        action='plugin_publish',
+        category='extension',
+        bucket='write',
+        resource_type='plugin',
+    ),
     ActionRule(
         action='page_view',
         category='extension',
@@ -609,6 +617,15 @@ _ROUTE_RULES: typing.Final[tuple[tuple[tuple[str, ...], str, str | None, str | N
     # opaque resource delete. Must precede the ``/config`` rule below, whose
     # fragment also matches ``config-files``.
     (('/plugins/', '/config-files'), 'plugin_view', 'plugin_config', 'plugin_config', 'plugin_view'),
+    # The debug-plugin "upload to LangBot Space" surface: building/syncing is a
+    # plugin change, never an opaque view. Must precede the bare plugin rules.
+    (
+        ('/plugins/', '/space-upload'),
+        'plugin_view',
+        'plugin_publish',
+        None,
+        'plugin_view',
+    ),
     (('/plugins/', '/config'), 'plugin_view', 'plugin_config', None, 'plugin_view'),
     (('/plugins/', '/page-api'), 'page_view', 'page_view', None, 'page_view'),
     (('/plugins/', '/upgrade'), 'plugin_view', 'plugin_upgrade', None, 'plugin_view'),
