@@ -21,13 +21,40 @@ Status: partial migration. The EBA adapter structure, manifest, converters, cach
 
 | Event | Evidence | Notes |
 | --- | --- | --- |
-| `message.received` | adapter-live, unit | `C2C_MESSAGE_CREATE`, `DIRECT_MESSAGE_CREATE`, `GROUP_AT_MESSAGE_CREATE`, and `AT_MESSAGE_CREATE` map to common `MessageReceivedEvent`. A real WebSocket-mode QQ Official bot reached the LangBot pipeline on `dev.rockchin.top`; plugin JSONL evidence remains pending. |
+| `message.received` | adapter-live, unit | `C2C_MESSAGE_CREATE`, `DIRECT_MESSAGE_CREATE`, `GROUP_AT_MESSAGE_CREATE`, `GROUP_MESSAGE_CREATE`, and `AT_MESSAGE_CREATE` map to common `MessageReceivedEvent`. Full-group mode has protocol regression coverage; the earlier live probe below covered the original message path. |
 | `message.reaction` | unit | `MESSAGE_REACTION_ADD` and `MESSAGE_REACTION_REMOVE` map to common `MessageReactionEvent`. Live gateway evidence is pending. |
 | `group.member_joined` | unit | `GUILD_MEMBER_ADD` and `GROUP_MEMBER_ADD` map to common `MemberJoinedEvent` when the gateway payload carries a group/guild/channel ID and member openid. |
 | `group.member_left` | unit | `GUILD_MEMBER_REMOVE` and `GROUP_MEMBER_REMOVE` map to common `MemberLeftEvent`. Live gateway evidence is pending. |
 | `bot.invited_to_group` | unit | `GUILD_CREATE` and `GROUP_ADD_ROBOT` map to common `BotInvitedToGroupEvent`. |
 | `bot.removed_from_group` | unit | `GUILD_DELETE` and `GROUP_DEL_ROBOT` map to common `BotRemovedFromGroupEvent`. |
 | `platform.specific` | unit | Unmapped gateway events are emitted as structured `PlatformSpecificEvent`; live evidence is pending. |
+
+## Full-group messages
+
+After a group owner enables QQ's "receive all messages" permission, QQ delivers
+`GROUP_MESSAGE_CREATE`, including messages that mention the bot. Both the EBA
+and legacy adapters accept this event over WebSocket and unified Webhook, retain
+the sender's `member_openid` (with the older `openid` alias as fallback), and use
+the original message ID for passive group replies.
+
+Ordinary messages and images do not receive a bot `At` component. A full-group
+message receives that component only when QQ supplies a boolean `mentions[].is_you`
+equal to `true` and a matching native `<@ID>` or `<@!ID>` token in its text. Only
+the bot's own token is removed; mentions of other members remain text. Nicknames,
+`bot: true` alone, and a text that looks like a mention do not authorize a reply.
+The EBA component targets the adapter's configured bot account so existing
+`is_at_bot` route filters continue to match.
+
+Default EBA group routes requiring `is_at_bot` still exclude unmentioned group
+messages. Custom event routes or plugin subscriptions may opt into ordinary
+messages. This change does not alter QQ permissions, existing bot configuration,
+event bindings, or plugin subscriptions.
+
+`tests/unit_tests/platform/test_qqofficial_full_group_messages.py` exercises the
+real adapters and shared QQ parser with external gateway/download/send transports
+substituted. It covers text, images, self/other/unverified mentions, sender aliases,
+legacy @-only mode, private messages, and passive reply targets. This is protocol
+regression coverage, not a claim of a fresh live QQ probe of the whole upstream build.
 
 ## Common APIs
 
