@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@1114622b8f2ba57bfed0eae09ec64332d19faaf3",
+    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@11146221397008de1a30c344d2744564ba800378",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",

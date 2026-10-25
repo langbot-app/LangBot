@@ -168,10 +168,7 @@ class SkillToolLoader(loader.ToolLoader):
         catalog = await self.ap.skill_repository.list_skills(self._execution_context(query))
         if bound_names is not None:
             allowed = set(bound_names)
-            catalog = [
-                item for item in catalog
-                if isinstance(item, dict) and item.get('name') in allowed
-            ]
+            catalog = [item for item in catalog if isinstance(item, dict) and item.get('name') in allowed]
         return {
             'skills': [
                 {field: item[field] for field in _SKILL_CATALOG_FIELDS if field in item}
