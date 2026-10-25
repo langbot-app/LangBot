@@ -236,7 +236,10 @@ class TestSkillToolLoader:
         skill = _make_skill_data(name='demo', instructions='Read this first')
         ap = _make_ap()
         ap.skill_mgr = _make_skill_manager({'demo': skill})
-        ap.skill_repository = SimpleNamespace(get_skill=AsyncMock(return_value=skill))
+        ap.skill_repository = SimpleNamespace(
+            get_skill=AsyncMock(return_value=skill),
+            list_skill_resources=AsyncMock(return_value={'entries': [], 'truncated': False}),
+        )
         ap.box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
         manager = ToolManager(ap)
         manager.skill_tool_loader = SkillToolLoader(ap)
@@ -267,7 +270,15 @@ class TestSkillToolLoader:
         skill['revision'] = 'sha256:demo'
         ap = _make_ap()
         ap.skill_mgr = _make_skill_manager({'demo': skill})
-        ap.skill_repository = SimpleNamespace(get_skill=AsyncMock(return_value=skill))
+        ap.skill_repository = SimpleNamespace(
+            get_skill=AsyncMock(return_value=skill),
+            list_skill_resources=AsyncMock(
+                return_value={
+                    'entries': [{'path': 'references/guide.md', 'is_dir': False}],
+                    'truncated': False,
+                }
+            ),
+        )
         ap.box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
 
         loader = SkillToolLoader(ap)
@@ -279,6 +290,7 @@ class TestSkillToolLoader:
         assert result['skill_name'] == 'demo'
         assert result['mount_path'] is None
         assert result['revision'] == 'sha256:demo'
+        assert result['resources']['entries'][0]['path'] == 'references/guide.md'
         assert result['capabilities']['resources_readable'] is True
         assert result['capabilities']['execution_available'] is False
         assert result['activated_skill_names'] == ['demo']
@@ -304,6 +316,7 @@ class TestSkillToolLoader:
         ap.skill_mgr = _make_skill_manager({'demo': v1})
         ap.skill_repository = SimpleNamespace(
             get_skill=AsyncMock(side_effect=[v1, v2]),
+            list_skill_resources=AsyncMock(return_value={'entries': [], 'truncated': False}),
         )
         ap.box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
         loader = SkillToolLoader(ap)
@@ -335,6 +348,39 @@ class TestSkillToolLoader:
                 {'skill_name': 'ghost'},
                 _make_query(),
             )
+
+    @pytest.mark.asyncio
+    async def test_list_skills_returns_catalog_metadata_without_package_contents(self):
+        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+
+        visible = _make_skill_data(
+            name='visible',
+            metadata={'license': 'Apache-2.0'},
+            package_root='/host/skills/visible',
+            instructions='private instructions',
+        )
+        hidden = _make_skill_data(name='hidden', package_root='/host/skills/hidden')
+        ap = _make_ap()
+        ap.skill_mgr = _make_skill_manager({'visible': visible, 'hidden': hidden})
+        ap.skill_repository = SimpleNamespace(list_skills=AsyncMock(return_value=[visible, hidden]))
+        loader = SkillToolLoader(ap)
+        query = _make_query(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
+
+        result = await loader.invoke_tool('list_skills', {}, query)
+
+        assert result['skills'] == [
+            {
+                'name': 'visible',
+                'display_name': 'visible',
+                'description': 'Description of visible',
+                'metadata': {'license': 'Apache-2.0'},
+            }
+        ]
+        assert 'package_root' not in result['skills'][0]
+        assert 'instructions' not in result['skills'][0]
+        assert 'revision' not in result['skills'][0]
+        ap.skill_repository.list_skills.assert_awaited_once_with(_CONTEXT)
 
     @pytest.mark.asyncio
     async def test_register_skill_scans_directory_and_creates_skill(self):
@@ -499,6 +545,7 @@ class TestSkillToolLoader:
         assert sorted(tool.name for tool in await loader.get_tools(sandbox_available=False)) == [
             'activate',
             'list_skill_resources',
+            'list_skills',
             'read_skill_resource',
         ]
         assert await loader.has_tool('activate') is True
@@ -520,6 +567,7 @@ class TestSkillToolLoader:
         assert sorted(tool.name for tool in tools) == [
             'activate',
             'list_skill_resources',
+            'list_skills',
             'read_skill_resource',
             'register_skill',
         ]
@@ -885,6 +933,7 @@ async def test_register_skill_hidden_when_cloud_scanning_is_disabled():
 
     assert {tool.name for tool in await loader.get_tools(sandbox_available=True)} == {
         'activate',
+        'list_skills',
         'list_skill_resources',
         'read_skill_resource',
     }

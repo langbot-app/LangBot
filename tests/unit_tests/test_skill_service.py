@@ -29,7 +29,15 @@ class TestSkillRepositoryBoundary:
     @staticmethod
     def _ap_with_repository():
         repository = SimpleNamespace(
-            list_skills=AsyncMock(return_value=[{'name': 'x', 'instructions': 'Do work'}]),
+            list_skills=AsyncMock(
+                return_value=[
+                    {
+                        'name': 'x',
+                        'instructions': 'Do work',
+                        'metadata': {'license': 'Apache-2.0'},
+                    }
+                ]
+            ),
             get_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Do work', 'revision': 'sha256:x'}),
             create_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Do work', 'revision': 'sha256:v1'}),
             update_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Updated', 'revision': 'sha256:v2'}),
@@ -49,7 +57,13 @@ class TestSkillRepositoryBoundary:
         ap = self._ap_with_repository()
         service = SkillService(ap)
 
-        assert await service.list_skills(_CONTEXT) == [{'name': 'x', 'instructions': 'Do work'}]
+        assert await service.list_skills(_CONTEXT) == [
+            {
+                'name': 'x',
+                'metadata': {'license': 'Apache-2.0'},
+                'instructions': 'Do work',
+            }
+        ]
         assert await service.read_skill_file(_CONTEXT, 'x', 'a.txt') == {
             'path': 'a.txt',
             'content': 'hello',

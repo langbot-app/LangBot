@@ -13,16 +13,19 @@ from ....api.http.context import ExecutionContext
 # - register_skill: Register a skill from sandbox directory to data/skills/
 # - This protects KV Cache and follows industry standard
 
+LIST_SKILLS_TOOL_NAME = 'list_skills'
 ACTIVATE_SKILL_TOOL_NAME = 'activate'
 LIST_SKILL_RESOURCES_TOOL_NAME = 'list_skill_resources'
 READ_SKILL_RESOURCE_TOOL_NAME = 'read_skill_resource'
 REGISTER_SKILL_TOOL_NAME = 'register_skill'
 
 READ_ONLY_SKILL_TOOL_NAMES = {
+    LIST_SKILLS_TOOL_NAME,
     ACTIVATE_SKILL_TOOL_NAME,
     LIST_SKILL_RESOURCES_TOOL_NAME,
     READ_SKILL_RESOURCE_TOOL_NAME,
 }
+_SKILL_CATALOG_FIELDS = ('name', 'display_name', 'description', 'metadata')
 SANDBOX_SKILL_TOOL_NAMES = {
     REGISTER_SKILL_TOOL_NAME,
 }
@@ -44,6 +47,7 @@ class SkillToolLoader(loader.ToolLoader):
     async def initialize(self):
         if self._is_available():
             self._read_only_tools = [
+                self._build_list_skills_tool(),
                 self._build_activate_skill_tool(),
                 self._build_list_skill_resources_tool(),
                 self._build_read_skill_resource_tool(),
@@ -94,6 +98,8 @@ class SkillToolLoader(loader.ToolLoader):
         return self._has_skill_manager() and getattr(self.ap, 'skill_repository', None) is not None
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
+        if name == LIST_SKILLS_TOOL_NAME:
+            return await self._invoke_list_skills(parameters, query)
         if name == ACTIVATE_SKILL_TOOL_NAME:
             return await self._invoke_activate_skill(parameters, query)
         if name == LIST_SKILL_RESOURCES_TOOL_NAME:
@@ -154,6 +160,26 @@ class SkillToolLoader(loader.ToolLoader):
         except Exception:
             return False
 
+    async def _invoke_list_skills(self, parameters: dict, query) -> dict:
+        """List the authorized Host catalog without copying packages into the harness."""
+        from . import skill as skill_loader
+
+        bound_names = skill_loader.get_bound_skill_names(query)
+        catalog = await self.ap.skill_repository.list_skills(self._execution_context(query))
+        if bound_names is not None:
+            allowed = set(bound_names)
+            catalog = [
+                item for item in catalog
+                if isinstance(item, dict) and item.get('name') in allowed
+            ]
+        return {
+            'skills': [
+                {field: item[field] for field in _SKILL_CATALOG_FIELDS if field in item}
+                for item in catalog
+                if isinstance(item, dict)
+            ]
+        }
+
     async def _invoke_activate_skill(self, parameters: dict, query) -> typing.Any:
         """Activate a skill and return SKILL.md content via Tool Result."""
         skill_name = str(parameters.get('skill_name', '') or '').strip()
@@ -188,6 +214,16 @@ class SkillToolLoader(loader.ToolLoader):
 
         instructions = skill_data.get('instructions', '')
         revision = str(skill_data.get('revision', '') or '')
+        resource_listing = await self.ap.skill_repository.list_skill_resources(
+            self._execution_context(query),
+            skill_name,
+            '.',
+            expected_revision=revision,
+        )
+        resources = {
+            'entries': resource_listing.get('entries', []),
+            'truncated': bool(resource_listing.get('truncated', False)),
+        }
         execution_available = await self._execution_available(query)
         mount_path = skill_loader.get_virtual_skill_mount_path(skill_name, revision) if execution_available else None
 
@@ -213,6 +249,7 @@ class SkillToolLoader(loader.ToolLoader):
             'skill_name': skill_name,
             'mount_path': mount_path,
             'revision': revision,
+            'resources': resources,
             'capabilities': {
                 'instructions_readable': True,
                 'resources_readable': True,
@@ -355,6 +392,15 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError(f'Directory does not exist: {sandbox_path}')
 
         return host_path
+
+    def _build_list_skills_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=LIST_SKILLS_TOOL_NAME,
+            human_desc='List available skills',
+            description='List the authorized Host skill catalog without loading package files into the agent harness.',
+            parameters={'type': 'object', 'properties': {}, 'additionalProperties': False},
+            func=lambda parameters: parameters,
+        )
 
     def _build_activate_skill_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
