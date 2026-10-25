@@ -2,6 +2,7 @@ import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/Plu
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import {
   BugIcon,
   ExternalLink,
@@ -39,10 +40,36 @@ export default function PluginCardComponent({
   return (
     <>
       <div
-        className="w-[100%] h-[10rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] p-[1.2rem] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:border-[#a1a1aa] dark:hover:border-[#3f3f46]"
+        className={cn(
+          'w-[100%] h-[10rem] bg-white rounded-[10px] border border-[#e4e4e7] dark:border-[#27272a] cursor-pointer dark:bg-[#1f1f22] relative transition-all duration-200 hover:border-[#a1a1aa] dark:hover:border-[#3f3f46] overflow-hidden flex flex-col p-0',
+          cardVO.debug
+            ? 'border-amber-500/40 dark:border-amber-500/35 hover:border-amber-500/70 dark:hover:border-amber-500/60'
+            : '',
+        )}
         onClick={() => onCardClick()}
       >
-        <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
+        {cardVO.debug && (
+          <div className="w-full h-7 px-4 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-amber-500/15 dark:to-transparent border-b border-amber-500/20 dark:border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-medium flex items-center justify-between flex-shrink-0 select-none">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <BugIcon className="size-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span className="font-medium text-[0.72rem] tracking-wide truncate">
+                {t('plugins.debugging')}
+              </span>
+              <span className="relative flex size-1.5 flex-shrink-0 ml-0.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
+              </span>
+            </div>
+          </div>
+        )}
+        <div
+          className={cn(
+            'w-full flex flex-row items-start justify-start gap-[1.2rem]',
+            cardVO.debug
+              ? 'flex-1 min-h-0 px-5 pt-2.5 pb-3.5'
+              : 'h-full p-[1.2rem]',
+          )}
+        >
           {/* Icon - fixed width */}
           {iconURL ? (
             <img
@@ -90,15 +117,6 @@ export default function PluginCardComponent({
                         : cardVO.type === 'skill'
                           ? t('common.skill')
                           : t('market.typePlugin')}
-                    </Badge>
-                  )}
-                  {cardVO.debug && (
-                    <Badge
-                      variant="outline"
-                      className="text-[0.7rem] border-orange-400 text-orange-400 flex-shrink-0"
-                    >
-                      <BugIcon className="w-4 h-4" />
-                      {t('plugins.debugging')}
                     </Badge>
                   )}
                   {!cardVO.debug && (

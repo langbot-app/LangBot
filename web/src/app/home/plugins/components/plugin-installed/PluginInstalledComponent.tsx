@@ -62,6 +62,19 @@ export const FilterOptions = [
   },
 ];
 
+function sortExtensionsWithDebugFirst(
+  items: ExtensionCardVO[],
+): ExtensionCardVO[] {
+  return [...items].sort((a, b) => {
+    const aDebug = Boolean(a.debug);
+    const bDebug = Boolean(b.debug);
+    if (aDebug !== bDebug) return aDebug ? -1 : 1;
+    return (a.label || a.name).localeCompare(b.label || b.name, undefined, {
+      sensitivity: 'base',
+    });
+  });
+}
+
 interface PluginInstalledComponentProps {
   filterType: FilterType;
   groupByType: boolean;
@@ -207,7 +220,7 @@ const PluginInstalledComponent = forwardRef<
         }
       }
 
-      setExtensionList(extensions);
+      setExtensionList(sortExtensionsWithDebugFirst(extensions));
     } catch (error) {
       console.error('Failed to fetch extension list:', error);
       if (!silent) setExtensionList([]);
@@ -329,13 +342,15 @@ const PluginInstalledComponent = forwardRef<
   // Match the query against the fields a user can actually see on the card
   // (label / name / author) plus the description, case-insensitively.
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredExtensions = extensionList.filter((ext) => {
-    if (filterType !== 'all' && ext.type !== filterType) return false;
-    if (!normalizedQuery) return true;
-    return [ext.label, ext.name, ext.author, ext.description].some((field) =>
-      (field || '').toLowerCase().includes(normalizedQuery),
-    );
-  });
+  const filteredExtensions = sortExtensionsWithDebugFirst(
+    extensionList.filter((ext) => {
+      if (filterType !== 'all' && ext.type !== filterType) return false;
+      if (!normalizedQuery) return true;
+      return [ext.label, ext.name, ext.author, ext.description].some((field) =>
+        (field || '').toLowerCase().includes(normalizedQuery),
+      );
+    }),
+  );
 
   const clearSearch = () => {
     onClearSearch?.();
@@ -347,7 +362,9 @@ const PluginInstalledComponent = forwardRef<
     .map((type) => ({
       type,
       labelKey: FilterOptions.find((o) => o.value === type)!.labelKey,
-      items: filteredExtensions.filter((ext) => ext.type === type),
+      items: sortExtensionsWithDebugFirst(
+        filteredExtensions.filter((ext) => ext.type === type),
+      ),
     }))
     .filter((g) => g.items.length > 0);
 

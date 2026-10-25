@@ -2,6 +2,7 @@ import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import {
   BugIcon,
   ExternalLink,
@@ -108,15 +109,6 @@ export default function ExtensionCardComponent({
           v{cardVO.version}
         </Badge>
         {renderTypeBadge(cardVO.type)}
-        {cardVO.debug && (
-          <Badge
-            variant="outline"
-            className="text-[0.7rem] border-orange-400 text-orange-400 flex-shrink-0"
-          >
-            <BugIcon className="w-4 h-4" />
-            {t('plugins.debugging')}
-          </Badge>
-        )}
         {!cardVO.debug && (
           <>
             {cardVO.install_source === 'github' && (
@@ -228,10 +220,51 @@ export default function ExtensionCardComponent({
   return (
     <>
       <Card
-        className="w-full h-[10rem] py-5 px-5 cursor-pointer relative gap-0 shadow-xs transition-shadow duration-200 hover:shadow-md"
+        className={cn(
+          'w-full h-[10rem] cursor-pointer relative p-0 gap-0 shadow-xs transition-all duration-200 hover:shadow-md overflow-hidden flex flex-col',
+          cardVO.debug
+            ? 'border-amber-500/40 dark:border-amber-500/35 hover:border-amber-500/70 dark:hover:border-amber-500/60'
+            : '',
+        )}
         onClick={() => onCardClick()}
       >
-        <div className="w-full h-full flex flex-row items-start justify-start gap-[1.2rem]">
+        {cardVO.debug && (
+          <div className="w-full h-7 px-4 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-amber-500/15 dark:to-transparent border-b border-amber-500/20 dark:border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-medium flex items-center justify-between flex-shrink-0 select-none">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <BugIcon className="size-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span className="font-medium text-[0.72rem] tracking-wide truncate">
+                {t('plugins.debugging')}
+              </span>
+              <span className="relative flex size-1.5 flex-shrink-0 ml-0.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
+              </span>
+            </div>
+
+            {cardVO.type === 'plugin' && onUploadToSpace && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-amber-700 hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100 transition-colors cursor-pointer group -mr-1 px-1.5 py-0.5 rounded hover:bg-amber-500/15 dark:hover:bg-amber-500/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUploadToSpace(cardVO);
+                }}
+              >
+                <Upload className="size-3 transition-transform group-hover:-translate-y-0.5" />
+                <span>{t('plugins.spaceUpload.menuAction')}</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        <div
+          className={cn(
+            'w-full flex flex-row items-start justify-start gap-[1.2rem]',
+            cardVO.debug
+              ? 'flex-1 min-h-0 px-5 pt-2.5 pb-3.5'
+              : 'h-full py-5 px-5',
+          )}
+        >
           {showFallback ? (
             <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">
               <FallbackIcon className="w-12 h-12 text-blue-500" />
