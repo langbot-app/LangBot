@@ -2241,7 +2241,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", specifier = "==0.7.17" },
+    { name = "langbot-plugin", specifier = "==0.7.18rc1" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2311,7 +2311,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.17"
+version = "0.7.18rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2332,9 +2332,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/b0/ecb55fd7bdcbe6aa5b8e226a7f1653044925687362b3fa00224ba06d7409/langbot_plugin-0.7.17.tar.gz", hash = "sha256:8dbfddf13e27048e9b527558b8398fc16a20fe19bb0040b84f785da5450d31bd", size = 725019, upload-time = "2026-10-26T02:37:30.118Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/ad/e00d053a5fa522dd18fb9643a1d31f7399a8d0ada613216a0c42be0652cf/langbot_plugin-0.7.18rc1.tar.gz", hash = "sha256:d0b80053bece4f8f8fd9b7dcd89a4a5f0c3854a43a60ba9e3050e02710f8c209", size = 725671, upload-time = "2026-10-26T03:30:45.798Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/28/b70fcacd05a62476df4645b66c607891643a8ded0784451e7be547a57d17/langbot_plugin-0.7.17-py3-none-any.whl", hash = "sha256:bd5bcee669a3943ce1abd4801b5a70870c7cc2dfa8b80a1c36a55786c8f3aa7d", size = 460540, upload-time = "2026-10-26T02:37:28.829Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/77/791c7198eea24258fddbf196912c0467886faa97fab203be306d8fa1db0f/langbot_plugin-0.7.18rc1-py3-none-any.whl", hash = "sha256:4660b85a6da6907710c13d7524e2f15d212d12a72f7d86dda58456a84ece9d54", size = 460645, upload-time = "2026-10-26T03:30:44.261Z" },
 ]
 
 [[package]]
