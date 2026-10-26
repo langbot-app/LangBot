@@ -235,6 +235,23 @@ _ALLOWED_SCOPED_POST_VALUES_TYPES = (
 )
 
 
+_SQLALCHEMY_COLUMN_GETATTR = sqlalchemy.sql.elements.ColumnElement.__getattr__
+
+
+def _scoped_sql_attribute(value: typing.Any, name: str, default: typing.Any = None) -> typing.Any:
+    """Read live SQL attributes without formatting SQLAlchemy's missing-attribute errors."""
+
+    if getattr(type(value), '__getattr__', None) is not _SQLALCHEMY_COLUMN_GETATTR:
+        return getattr(value, name, default)
+    try:
+        return type(value).__getattribute__(value, name)
+    except AttributeError:
+        try:
+            return getattr(value.comparator, name, default)
+        except AttributeError:
+            return default
+
+
 def _collect_embedded_clause_elements(value: typing.Any) -> list[sqlalchemy.sql.elements.ClauseElement]:
     """Find executable expressions in SQLAlchemy containers omitted by visitors."""
 
@@ -360,7 +377,7 @@ def _iter_scoped_statement_elements(
         children = [
             child for child in element.get_children() if isinstance(child, sqlalchemy.sql.elements.ClauseElement)
         ]
-        post_values_clause = getattr(element, '_post_values_clause', None)
+        post_values_clause = _scoped_sql_attribute(element, '_post_values_clause', None)
         if post_values_clause is not None:
             if not isinstance(post_values_clause, _ALLOWED_SCOPED_POST_VALUES_TYPES):
                 raise ScopedSessionTransactionError(
@@ -368,7 +385,7 @@ def _iter_scoped_statement_elements(
                 )
             children.append(post_values_clause)
 
-        children.extend(_collect_multi_value_elements(getattr(element, '_multi_values', ())))
+        children.extend(_collect_multi_value_elements(_scoped_sql_attribute(element, '_multi_values', ())))
 
         if isinstance(element, _ALLOWED_SCOPED_POST_VALUES_TYPES):
             if getattr(element, 'constraint_target', None) is not None:
@@ -439,12 +456,12 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             )
 
         for identifier_attribute in ('name', 'schema', 'collation'):
-            identifier = getattr(element, identifier_attribute, None)
+            identifier = _scoped_sql_attribute(element, identifier_attribute, None)
             if isinstance(identifier, sqlalchemy.sql.elements.quoted_name) and identifier.quote is False:
                 raise ScopedSessionTransactionError('TenantUnitOfWork does not allow forced-unquoted SQL identifiers')
 
         if any(
-            getattr(element, attribute_name, None)
+            _scoped_sql_attribute(element, attribute_name, None)
             for attribute_name in (
                 '_prefixes',
                 '_suffixes',
@@ -526,7 +543,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 )
 
         for operator_attribute in ('operator', 'modifier'):
-            operator = getattr(element, operator_attribute, None)
+            operator = _scoped_sql_attribute(element, operator_attribute, None)
             if not isinstance(operator, sqlalchemy.sql.operators.custom_op):
                 continue
             operator_name = str(operator.opstring)
