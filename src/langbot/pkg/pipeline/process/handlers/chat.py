@@ -15,6 +15,11 @@ from ... import plugin_diagnostics
 import langbot_plugin.api.entities.events as events
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
+from ....agent.runner.errors import (
+    RunnerExecutionError,
+    RunnerNotFoundError,
+    RunnerNotAuthorizedError,
+)
 from ....utils import runner as runner_utils
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -119,9 +124,26 @@ class ChatMessageHandler(handler.MessageHandler):
                     'try_claim_steering_from_query',
                     None,
                 )
-                if try_claim_steering and await try_claim_steering(query):
-                    yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
-                    return
+                if try_claim_steering:
+                    try:
+                        claimed = await try_claim_steering(query)
+                    except Exception as steering_error:
+                        # Steering is an optimization for an already-running
+                        # agent. A runtime reconnect can temporarily remove the
+                        # selected Runner from the registry; that must not
+                        # prevent the message from starting a normal run.
+                        if not isinstance(steering_error, RunnerNotFoundError):
+                            raise
+                        self.ap.logger.warning(
+                            'Skipping steering for query %s because Runner %s is not registered',
+                            query.query_id,
+                            steering_error.runner_id,
+                        )
+                        claimed = False
+
+                    if claimed:
+                        yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
+                        return
 
                 try:
                     is_stream = await query.adapter.is_stream_output_supported()
@@ -228,13 +250,6 @@ class ChatMessageHandler(handler.MessageHandler):
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             except Exception as e:
-                # Import orchestrator errors for specific handling
-                from ....agent.runner.errors import (
-                    RunnerNotFoundError,
-                    RunnerNotAuthorizedError,
-                    RunnerExecutionError,
-                )
-
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
 
