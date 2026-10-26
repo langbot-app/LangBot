@@ -22,6 +22,7 @@ from langbot.pkg.utils import httpclient
 
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 _MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+_token_retry_response = contextvars.ContextVar('wecomcs_token_retry_response', default=None)
 
 
 async def _read_httpx_media_limited(response: httpx.Response) -> bytes:
@@ -70,11 +71,15 @@ def _bounded_token_retry(method):
     async def wrapped(*args, **kwargs):
         current_depth = depth.get()
         if current_depth >= 2:
-            raise RuntimeError(f'{method.__name__} exceeded the token refresh retry limit')
+            raise RuntimeError(
+                f'{method.__name__} exceeded the token refresh retry limit: {_token_retry_response.get()}'
+            )
         token = depth.set(current_depth + 1)
+        response_token = _token_retry_response.set(None)
         try:
             return await method(*args, **kwargs)
         finally:
+            _token_retry_response.reset(response_token)
             depth.reset(token)
 
     return wrapped
@@ -154,7 +159,7 @@ class WecomCSClient:
                 if content_type.startswith('application/json'):
                     data = json.loads(image_bytes)
                     if data.get('errcode') in [40014, 42001]:
-                        self.access_token = await self.get_access_token(self.secret)
+                        await self._refresh_access_token(data)
                         return await self.get_pic_url(media_id)
                     raise Exception('Failed to get image: ' + str(data))
 
@@ -168,6 +173,11 @@ class WecomCSClient:
 
     async def check_access_token_for_contacts(self):
         return bool(self.access_token_for_contacts and self.access_token_for_contacts.strip())
+
+    async def _refresh_access_token(self, data: dict) -> None:
+        """Retain the provider diagnostic if the bounded retry is exhausted."""
+        _token_retry_response.set(data)
+        self.access_token = await self.get_access_token(self.secret)
 
     async def get_access_token(self, secret):
         url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
@@ -208,12 +218,15 @@ class WecomCSClient:
                     refreshed = True
                     continue
                 if data.get('errcode') != 0:
-                    raise RuntimeError(f'WeCom sync_msg failed (errcode={data.get("errcode")})')
+                    raise RuntimeError(f'WeCom sync_msg failed: {data}')
                 messages.extend(data.get('msg_list') or [])
                 next_cursor = data.get('next_cursor')
                 if data.get('has_more'):
                     if not next_cursor or next_cursor == cursor:
-                        raise RuntimeError('WeCom sync_msg returned a non-advancing cursor')
+                        raise RuntimeError(
+                            'WeCom sync_msg returned a non-advancing cursor: '
+                            f'cursor={cursor!r}, next_cursor={next_cursor!r}, has_more={data.get("has_more")!r}'
+                        )
                     cursor = next_cursor
                     continue
                 if next_cursor:
@@ -235,7 +248,7 @@ class WecomCSClient:
             response = await client.post(url, json=params)
             data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self._refresh_access_token(data)
                 return await self.change_service_status(userid, openkfid, servicer)
             if data['errcode'] != 0:
                 raise Exception('Failed to change service status: ' + str(data))
@@ -264,11 +277,11 @@ class WecomCSClient:
                 response = await client.post(url, json=params)
                 data = await httpclient.parse_json_response(response)
             except Exception as e:
-                raise Exception('Failed to send image: ' + str(e))
+                raise Exception(f'Failed to send image: {type(e).__name__}: {e}') from e
 
             # 企业微信错误码40014和42001，代表accesstoken问题
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self._refresh_access_token(data)
                 return await self.send_image(user_id, agent_id, media_id)
 
             if data['errcode'] != 0:
@@ -296,15 +309,16 @@ class WecomCSClient:
 
             data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self._refresh_access_token(data)
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
-                await self.logger.error(f'发送消息失败：{data}')
+                if self.logger:
+                    await self.logger.error(f'发送消息失败：{data}')
                 if data['errcode'] == 95002:
                     raise ValueError(
                         'WeCom CS rejected the reply (95002): the customer must send a message first, '
                         'and ordinary replies must be sent within 48 hours. Entering a session alone '
-                        'does not open this window; welcome replies require the event reply API.'
+                        f'does not open this window; welcome replies require the event reply API. Response: {data}'
                     )
                 raise Exception(f'Failed to send message: {data}')
             return data
@@ -320,13 +334,14 @@ class WecomCSClient:
             response = await client.post(url, json=payload)
             data = await httpclient.parse_json_response(response)
         if data.get('errcode') in (40014, 42001):
-            self.access_token = await self.get_access_token(self.secret)
+            await self._refresh_access_token(data)
             return await self.send_event_text(code, msgid, content)
         if data.get('errcode') != 0:
             raise ValueError(
                 f'WeCom CS event reply failed (errcode={data.get("errcode")}): {data.get("errmsg")}. '
                 'The event code is single-use and must match the current session state; '
-                'welcome and session-end codes expire after 20 seconds. Do not retry an expired or used code.'
+                'welcome and session-end codes expire after 20 seconds. Do not retry an expired or used code. '
+                f'Response: {data}'
             )
         return data
 
@@ -351,11 +366,12 @@ class WecomCSClient:
 
             data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
+                await self._refresh_access_token(data)
                 return await self.send_image_msg(open_kfid, external_userid, msgid, media_id)
             if data['errcode'] != 0:
-                await self.logger.error(f'发送图片失败：{data}')
-                raise Exception('Failed to send image message')
+                if self.logger:
+                    await self.logger.error(f'发送图片失败：{data}')
+                raise Exception(f'Failed to send image message: {data}')
             return data
 
     async def handle_callback_request(self):
@@ -387,7 +403,7 @@ class WecomCSClient:
             try:
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.corpid)
             except Exception as e:
-                raise Exception(f'初始化失败，错误码: {e}')
+                raise Exception(f'初始化失败: {type(e).__name__}: {e}') from e
 
             if req.method == 'GET':
                 echostr = req.args.get('echostr')
@@ -541,9 +557,9 @@ class WecomCSClient:
                 padded_base64 = base64_data + '=' * padding
                 file_bytes = await _decode_media_base64_limited(padded_base64)
             except binascii.Error as e:
-                raise ValueError(f'Invalid base64 string: {str(e)}')
+                raise ValueError(f'Invalid base64 string: {str(e)}') from e
         else:
-            raise ValueError('image对象出错')
+            raise ValueError('Invalid image: one of path, url, or base64 must be provided')
 
         # 设置 multipart/form-data 格式的文件
         if len(file_bytes) > _MAX_MEDIA_BYTES:
@@ -564,13 +580,15 @@ class WecomCSClient:
         async with self._http_client_context() as client:
             response = await client.post(url, headers=headers, content=body)
             data = await httpclient.parse_json_response(response)
-            if data['errcode'] == 40014 or data['errcode'] == 42001:
-                self.access_token = await self.get_access_token(self.secret)
-                media_id = await self.upload_to_work(image)
+            if data.get('errcode') in (40014, 42001):
+                await self._refresh_access_token(data)
+                return await self.upload_to_work(image)
             if data.get('errcode', 0) != 0:
                 raise Exception(f'failed to upload image: {data}')
 
             media_id = data.get('media_id')
+            if not media_id:
+                raise ValueError(f'Failed to upload image: response is missing media_id: {data}')
             return media_id
 
     async def download_image_to_bytes(self, url: str) -> bytes:
@@ -624,7 +642,7 @@ class WecomCSClient:
             data = await httpclient.parse_json_response(response)
 
             if data.get('errcode') in [40014, 42001]:
-                self.access_token = await self.get_access_token(self.secret)
+                await self._refresh_access_token(data)
                 return await self.get_customer_info(external_userid)
 
             if data.get('errcode', 0) != 0:
