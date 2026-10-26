@@ -2272,7 +2272,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=6.0.0" },
     { name = "pyseekdb", marker = "extra == 'seekdb'", specifier = "==1.4.0.post1" },
     { name = "python-docx", specifier = ">=1.1.0" },
-    { name = "python-multipart", specifier = ">=0.0.27" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "python-socks", specifier = ">=2.7.1" },
     { name = "python-telegram-bot", specifier = ">=22.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
