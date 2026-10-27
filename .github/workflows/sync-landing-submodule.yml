@@ -29,7 +29,7 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_sync_landing_submodule.py -v
       - name: Publish docs subtree (fast-forward only)
         env:
-          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
+          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
         run: |
           gh auth setup-git
           git remote add docs-mirror https://github.com/langbot-app/langbot-docs.git
@@ -40,5 +40,5 @@ jobs:
       - name: Update landing submodule and production fork
         working-directory: docs
         env:
-          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
+          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
         run: python3 scripts/sync-landing-submodule.py

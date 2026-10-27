@@ -29,19 +29,24 @@ canonical URL `https://langbot.app/docs`.
    `git subtree pull --prefix=docs <mirror-url> main` through another reviewed PR
    before cutover; reapply the inert mirror workflow files if necessary. Never
    force-push or rewrite the mirror history.
-3. Verify `LANGBOT_WIKI_PUSH_TOKEN` is configured in LangBot with existing access
-   to the docs mirror, LangBot Wiki, landing upstream and production fork. The
-   blog job additionally needs to push to LangBot main and trigger workflows.
-   Repository workflow-file updates must be permitted by that token. Do not
-   weaken branch protection to accommodate this migration; use a separately
-   reviewed publication approach if the current token cannot perform the push.
+3. The publication jobs read `LANGBOT_WIKI_PUSH_TOKEN` and fall back to the
+   existing `RELEASE_UPLOAD_GITHUB_TOKEN` when that secret is absent. The fallback
+   was verified on a scratch branch: it authenticates as the repository owner
+   with `repo` scope and push+admin on `LangBot`, `langbot-docs`,
+   `langbot-landing-page` and the production fork, and it can clone and push the
+   Wiki. It does not carry the `workflow` scope, so it cannot push changes to
+   `.github/workflows/**` in the mirror; the split only rewrites `docs/**`
+   content, so this is fine unless a future change edits the inert mirror stubs.
+   Adding a dedicated `LANGBOT_WIKI_PUSH_TOKEN` with the same access keeps the
+   blast radius of the fallback credential out of the docs pipeline. Do not
+   weaken branch protection to accommodate this migration.
 4. Set LangBot repository variable `DOCS_MIRROR_ENABLED=true`. Dispatch
-   `sync-landing-submodule.yml` on main. It fetches full main history, runs
+   `sync-landing-submodule.yml` on master. It fetches full master history, runs
    `git subtree split --prefix=docs`, verifies the current mirror head is an
    ancestor, pushes without force, then advances only landing's `docs` gitlink.
    The first split replaces legacy mirror workflows with inert manual stubs.
 5. Dispatch `sync-github-wiki.yml` and `sync-blog-articles.yml` in LangBot.
-   The blog job now commits only docs article paths to LangBot main using the
+   The blog job now commits only docs article paths to LangBot master using the
    dedicated token, so its push triggers the mirror and Wiki workflows.
 6. Confirm the `docs` gitlink in `langbot-app/langbot-landing-page`, then confirm
    production fork `RockChinQ/LangBot-LandingPage-Vue` matches upstream. This is

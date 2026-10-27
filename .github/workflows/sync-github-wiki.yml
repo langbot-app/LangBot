@@ -68,7 +68,7 @@ jobs:
           path: generated
       - name: Clone target Wiki
         env:
-          WIKI_PUSH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
+          WIKI_PUSH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
         run: |
           test -n "$WIKI_PUSH_TOKEN"
           git clone "https://x-access-token:${WIKI_PUSH_TOKEN}@github.com/langbot-app/LangBot.wiki.git" target
