@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import math
 import typing
 
 from ...core import app
@@ -40,20 +42,16 @@ class AgentRunJournal:
         return {}
 
     @staticmethod
-    def _event_time_to_utc(value: typing.Any) -> typing.Any:
+    def _event_time_to_utc(value: typing.Any) -> datetime.datetime | None:
         """Normalize legacy second/millisecond/microsecond Unix timestamps to UTC datetime."""
-        import datetime
-
-        import math
-
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return None
-        timestamp = float(value)
-        if timestamp == 0 or not math.isfinite(timestamp):
-            return None
-        while abs(timestamp) > 10_000_000_000:
-            timestamp /= 1000
         try:
+            timestamp = float(value)
+            if timestamp == 0 or not math.isfinite(timestamp):
+                return None
+            while abs(timestamp) > 10_000_000_000:
+                timestamp /= 1000
             return datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
         except (TypeError, ValueError, OSError, OverflowError):
             return None
@@ -366,7 +364,6 @@ class AgentRunJournal:
         if not items:
             return
 
-        import datetime
         import uuid
 
         from .event_log_store import EventLogStore
@@ -379,16 +376,7 @@ class AgentRunJournal:
             actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
             subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}
 
-            event_time = None
-            raw_event_time = event.get('event_time')
-            if raw_event_time:
-                try:
-                    event_time = datetime.datetime.fromtimestamp(
-                        raw_event_time,
-                        datetime.timezone.utc,
-                    )
-                except (TypeError, ValueError, OSError):
-                    event_time = None
+            event_time = self._event_time_to_utc(event.get('event_time'))
 
             await store.append_event(
                 event_id=str(uuid.uuid4()),

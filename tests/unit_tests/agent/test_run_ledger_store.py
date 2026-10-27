@@ -11,12 +11,24 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore, _epoch_to_datetime
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence.base import Base
 
 
 UTC = datetime.timezone.utc
+
+
+@pytest.mark.parametrize('scale', [1, 1000])
+def test_epoch_to_datetime_accepts_seconds_and_milliseconds(scale):
+    assert _epoch_to_datetime(1_790_000_000.125 * scale) == datetime.datetime.fromtimestamp(
+        1_790_000_000.125, UTC
+    ).replace(tzinfo=None)
+
+
+@pytest.mark.parametrize('value', [None, float('nan'), float('inf'), -float('inf'), 10**400, 'invalid', []])
+def test_epoch_to_datetime_ignores_invalid_timestamp(value):
+    assert _epoch_to_datetime(value) is None
 
 
 @pytest.fixture
@@ -35,6 +47,19 @@ async def db_engine(tmp_path):
 @pytest.fixture
 def store(db_engine):
     return RunLedgerStore(db_engine)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('scale', [1, 1000])
+async def test_create_run_persists_normalized_deadline(store, scale):
+    record = await store.create_run(
+        run_id='run-timestamp',
+        event_id='event',
+        binding_id='binding',
+        runner_id='runner',
+        deadline_at=1_790_000_000 * scale,
+    )
+    assert record['deadline_at'] == 1_790_000_000
 
 
 @pytest.fixture
