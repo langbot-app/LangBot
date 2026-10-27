@@ -150,7 +150,7 @@ def _build_interaction_messages(
         )
         children.append(button_id)
 
-    children.append('langbot-brand')
+    children.insert(0, 'langbot-brand')
     components.extend(brand_components())
     components.insert(0, {'id': 'root', 'component': 'Column', 'children': children, 'gap': 12})
     return {'form': form}, components, field_types

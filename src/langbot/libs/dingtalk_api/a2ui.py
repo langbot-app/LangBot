@@ -122,7 +122,7 @@ def text_card_components() -> list[dict[str, typing.Any]]:
         {
             'id': 'root',
             'component': 'Column',
-            'children': ['content', 'langbot-brand'],
+            'children': ['langbot-brand', 'content'],
             'gap': 8,
         },
         {

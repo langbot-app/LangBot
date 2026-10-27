@@ -35,7 +35,7 @@ def test_text_card_keeps_brand_when_content_updates():
     components = create_text_card_messages('surface-id', 'hello')[2]['updateComponents']['components']
     by_id = {component['id']: component for component in components}
 
-    assert by_id['root']['children'] == ['content', 'langbot-brand']
+    assert by_id['root']['children'] == ['langbot-brand', 'content']
     assert by_id['langbot-brand']['children'] == ['langbot-brand-icon', 'langbot-brand-link']
     assert by_id['langbot-brand-icon']['url'] == 'https://langbot.app/logo-blue.png'
     assert by_id['langbot-brand-icon']['previewEnabled'] is False

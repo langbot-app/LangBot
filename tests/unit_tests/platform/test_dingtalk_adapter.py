@@ -53,7 +53,7 @@ def test_dingtalk_dify_input_card_uses_a2ui_binding_and_required_check():
     assert field['value'] == {'path': '/form/value'}
     assert button['action']['event']['context']['input'] == {'path': '/form/value'}
     assert button['checks'][0]['condition']['call'] == 'required'
-    assert components[0]['children'][-1] == 'langbot-brand'
+    assert components[0]['children'][0] == 'langbot-brand'
     assert any(component['id'] == 'langbot-brand-link' for component in components)
 
 
