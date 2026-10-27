@@ -58,6 +58,7 @@ test("generated articles use only non-empty Wiki-local images", () => {
     const file = path.join(root, `${article.page}.mdx`);
     assert.ok(existsSync(file), `missing ${article.page}.mdx`);
     const content = readFileSync(file, "utf8");
+    assert.doesNotMatch(content, /\]\(\/(?:en|zh|ja)\/blog\//, `${article.page} has a Blog link relative to the docs mount`);
     const imageUrls = [...content.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1]);
     for (const imageUrl of imageUrls) {
       assert.match(imageUrl, /^\/images\/articles\//, `${article.page} hotlinks ${imageUrl}`);

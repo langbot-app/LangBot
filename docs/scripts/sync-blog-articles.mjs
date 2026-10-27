@@ -231,6 +231,8 @@ async function renderArticle(sourceRoot, post, locale, fallback, assetRoot, imag
   const config = LANGUAGE_CONFIG[locale];
   const title = locale === "ja" && fallback ? (JAPANESE_TITLES[post.slug] || post.data.title) : post.data.title;
   let body = post.body;
+  // Root-relative Blog links belong to the landing site, not the embedded docs.
+  body = body.replace(/(\]\()\/(en|zh|ja)\/blog\//g, "$1https://langbot.app/$2/blog/");
   const refs = imageReferences(body);
   for (const ref of refs) if (!imageCache.has(ref.url)) imageCache.set(ref.url, await materializeImage(sourceRoot, ref.url, assetRoot));
   if (post.data.cover?.image && !imageCache.has(post.data.cover.image)) imageCache.set(post.data.cover.image, await materializeImage(sourceRoot, post.data.cover.image, assetRoot));

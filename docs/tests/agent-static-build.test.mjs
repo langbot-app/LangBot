@@ -23,7 +23,8 @@ function links(node, result = []) {
 }
 
 test("every sitemap page has meaningful canonical Markdown and HTML discovery", async () => {
-  assert.equal(urls.length, 509 + zhOnlyArticleRoutes.length);
+  const manifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
+  assert.equal(urls.length, 473 + zhOnlyArticleRoutes.length + manifest.articles.length);
   for (const url of urls) {
     const route = relative(url);
     const text = await read(`${route}.md`);

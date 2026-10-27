@@ -446,6 +446,11 @@
       "bytes": 161907
     },
     {
+      "path": "/images/articles/langbot-wechat-official-account-qr.png",
+      "sha256": "233aede79ed71fd721f1f77c839d726b9dd8ed667f5e951d994c19f962c6bff5",
+      "bytes": 14931
+    },
+    {
       "path": "/images/articles/source/images/article-mcp/01-init-page.png",
       "sha256": "b392e42d582c8c1723a2eb63596801b9d459df0465377246d9a4015edcae1ca0",
       "bytes": 45011
@@ -589,6 +594,31 @@
       "path": "/images/articles/source/images/sandbox-skills/skills.png",
       "sha256": "6ad86d972c7438fbef898d9d339f3f17a30277bf1626e8a9dd11b0b46583c817",
       "bytes": 362173
+    },
+    {
+      "path": "/images/articles/telegram-sandbox-qr.png",
+      "sha256": "8b4ead3dacb357fd28b650d2a6761b265effdeecc8e6a3f1f9feed10122da04b",
+      "bytes": 5583
+    },
+    {
+      "path": "/images/articles/telegram-sandbox.jpg",
+      "sha256": "0dab8f9c9c6846f8ac3b8848d118bca3528868254a7249d0d26772175eabae84",
+      "bytes": 349163
+    },
+    {
+      "path": "/images/articles/wecom-customer-service-qr.png",
+      "sha256": "3d2c2be11af63528a1b09871157ba58b4f3b64d7ddcbdf4420b99ecd41984c3b",
+      "bytes": 202053
+    },
+    {
+      "path": "/images/articles/wecom-customer-service.jpg",
+      "sha256": "2b94049e6265ffb1ac67cde661c596780d7fcfaeae46517ebd82f4dbfe3a1e19",
+      "bytes": 310163
+    },
+    {
+      "path": "/images/articles/wecom-knowledge-base-config.png",
+      "sha256": "0e4b12cec9bccf7c8a4958e9a53d312707ad818ac4376b707a20e8793af8f8be",
+      "bytes": 112097
     }
   ]
 }
