@@ -50,8 +50,11 @@ def _epoch_to_datetime(value: typing.Any) -> datetime.datetime | None:
     if value is None:
         return None
     try:
-        return as_naive_utc(datetime.datetime.fromtimestamp(float(value), UTC))
-    except (TypeError, ValueError, OSError):
+        ts = float(value)
+        if ts > 1e11:
+            ts /= 1000.0
+        return as_naive_utc(datetime.datetime.fromtimestamp(ts, UTC))
+    except (TypeError, ValueError, OSError, OverflowError):
         return None
 
 

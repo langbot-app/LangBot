@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import math
 import typing
 
 from ...core import app
@@ -38,6 +40,21 @@ class AgentRunJournal:
         if isinstance(value, dict):
             return dict(value)
         return {}
+
+    @staticmethod
+    def _event_time_to_utc(value: typing.Any) -> datetime.datetime | None:
+        """Normalize legacy second/millisecond/microsecond Unix timestamps to UTC datetime."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        try:
+            timestamp = float(value)
+            if timestamp == 0 or not math.isfinite(timestamp):
+                return None
+            while abs(timestamp) > 10_000_000_000:
+                timestamp /= 1000
+            return datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
+        except (TypeError, ValueError, OSError, OverflowError):
+            return None
 
     @classmethod
     def _sanitize_content_item(cls, value: typing.Any) -> typing.Any:
@@ -258,8 +275,6 @@ class AgentRunJournal:
         metadata: dict[str, typing.Any] | None = None,
     ) -> str:
         """Write incoming event to EventLog."""
-        import datetime
-
         from .event_log_store import EventLogStore
 
         store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
@@ -292,9 +307,7 @@ class AgentRunJournal:
             input_json=input_json,
             run_id=run_id,
             runner_id=runner_id,
-            event_time=(
-                datetime.datetime.fromtimestamp(event.event_time, datetime.timezone.utc) if event.event_time else None
-            ),
+            event_time=self._event_time_to_utc(event.event_time),
             metadata={**(metadata or {}), 'input_event': self._sanitize_event_data(event.data)},
         )
 
@@ -351,7 +364,6 @@ class AgentRunJournal:
         if not items:
             return
 
-        import datetime
         import uuid
 
         from .event_log_store import EventLogStore
@@ -364,16 +376,7 @@ class AgentRunJournal:
             actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
             subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}
 
-            event_time = None
-            raw_event_time = event.get('event_time')
-            if raw_event_time:
-                try:
-                    event_time = datetime.datetime.fromtimestamp(
-                        raw_event_time,
-                        datetime.timezone.utc,
-                    )
-                except (TypeError, ValueError, OSError):
-                    event_time = None
+            event_time = self._event_time_to_utc(event.get('event_time'))
 
             await store.append_event(
                 event_id=str(uuid.uuid4()),
