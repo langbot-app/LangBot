@@ -401,3 +401,76 @@ as required status checks in the repository ruleset. A green workflow alone does
 not enforce merge protection. Longer load and soak tests use the existing Suite
 and Job entry points with separately calibrated latency, throughput and resource
 budgets; the one-minute smoke does not replace them.
+
+## Sustained regression and baseline comparison
+
+[`regression_profiles/endurance.json`](regression_profiles/endurance.json) runs
+nine minutes of mixed chat/Box/RAG traffic at 1 request/second across four stable
+groups, followed by one minute without traffic to check recovery. Configure its
+CLI context, plugin inputs, model endpoints, Core SQLite path and Core/Runtime/Box
+PID files as for smoke. Set `plugins: []` to reuse initialized plugins. Configure
+`observe.box_data_root` to the target deployment's Box mount root; the caller must
+have Docker inspection access. Do not start another Box runtime on a shared daemon.
+
+```sh
+uv run --no-sync python tools/regression_suite.py validate \
+  --profile /path/to/endurance.json
+uv run --no-sync python tools/regression_suite.py run \
+  --profile /path/to/endurance.json --output .qa/endurance-baseline
+# For an hour including the one-minute cooldown, use --duration 3540.
+```
+
+This profile checks more than reply text:
+
+- Each Runner request is reconciled to one completed AgentRun with a persisted
+  completion event; Box additionally verifies two real Docker exec results.
+  After drain and cooldown, the complete set of runs for the phase's conversations
+  must match the verified set. Delayed extra, missing and nonterminal runs fail.
+- At least 90% of target successful throughput must be delivered, with per-case
+  P95 limits. Reports retain planned/actual counts, scheduling delay and request
+  drain time. The load is bounded by workers and serial group sessions; it is
+  not an open arrival-rate capacity benchmark.
+- Process RSS, FD, thread and process-count medians from the final 30 seconds of cooldown are compared
+  with a stable window after the first minute. Docker memory, PIDs and container
+  counts are checked separately because sandbox processes are not children of
+  the Box service. If a discovered container disappears before stats collection,
+  the sampler refreshes the set and retries once, retaining the first error and
+  membership change. Unchanged-set errors, failed recovery, missing samples and
+  budget excesses fail.
+
+The supplied limits are initial QA budgets, not product SLOs or proof of a leak.
+Fixed groups prevent deliberate session growth from being mistaken for leakage;
+Core and plugin caches can still retain memory legitimately. Inspect failures
+before changing a budget. Process-tree CPU remains a raw diagnostic: child exits
+can reduce the cumulative sum, so it is not used as a CPU regression verdict.
+
+`requests.jsonl` separates dispatch/response latency from ledger setup and result
+verification. Resource samples go to `resources.jsonl`; `summary.json` contains
+throughput, latency, recovery and ledger closeout results. Failed runs retain
+resources and evidence. The normal Suite cleanup command removes only owned API
+resources after inspection.
+
+To compare two successful runs from the same reserved test host:
+
+```sh
+uv run --no-sync python tools/regression_analysis.py \
+  --baseline .qa/endurance-baseline --candidate .qa/endurance-candidate \
+  --output .qa/comparison.json
+```
+
+The comparison rejects failed runs, missing dependency evidence, different enabled
+plugin versions, fixtures, expanded case/resource inputs, phase geometry, budgets,
+or observer-host identity. Both runs must use identical load/analysis/smoke oracle
+files and mock scenarios; their hashes are recorded in the contract. Target URL
+hosts, ports and credentials may differ; URL schemes and
+paths, model names and actual stimulus variables remain part of the contract.
+Both runs must use the same hardware allocation, model backend and background
+load; the contract does not establish those external conditions automatically.
+The default comparison allows at most 20% P95 growth and 10% successful-throughput
+loss, requires 30 requests per case in both runs, and rejects invalid metrics or
+incomplete ledger closeout. Set tolerances from repeated controls on your host.
+
+Keep this longer test outside the one-minute merge gate while its budgets and
+repeatability are being evaluated. The same profile can be selected by the
+release-deployment Job, which supplies its ledger path and process IDs; that
+fresh-deployment path still needs separate end-to-end validation.
