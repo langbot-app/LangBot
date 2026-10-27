@@ -606,6 +606,19 @@ class TestInteractionResumeRouting:
         assert submission['interaction_id'] is None
 
     @pytest.mark.asyncio
+    async def test_replayed_callback_is_an_idempotent_noop(self):
+        from langbot.pkg.agent.runner.interaction_store import InteractionAlreadySubmittedError
+
+        bot = self._make_bot(self._record('pipeline'))
+        manager = bot.ap.agent_run_orchestrator.interaction_manager
+        manager.consume_callback.side_effect = InteractionAlreadySubmittedError('Interaction was already submitted')
+
+        await bot._handle_interaction_submission(self._event(), SimpleNamespace())
+
+        manager.acknowledge_submission.assert_not_awaited()
+        bot.ap.msg_aggregator.add_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_pipeline_callback_rejects_changed_runner(self):
         bot = self._make_bot(self._record('pipeline'))
         bot.ap.pipeline_service.get_pipeline.return_value['config']['ai']['runner']['id'] = 'plugin:test/Other/default'

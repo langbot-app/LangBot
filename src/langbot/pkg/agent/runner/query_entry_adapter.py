@@ -31,6 +31,7 @@ from .host_models import (
 )
 from .config_resolver import RunnerConfigResolver
 from .resource_policy import ResourcePolicyProjector
+from .platform_tools import PRESENT_INTERACTIVE_CARD_TOOL, resolve_agent_platform_tool_names
 from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
@@ -131,6 +132,15 @@ class QueryEntryAdapter:
         pipeline_config = query.pipeline_config or {}
         runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
+        variables = getattr(query, 'variables', None) or {}
+        event_type = (
+            runner_events.INTERACTION_SUBMITTED
+            if isinstance(variables.get('_interaction_submission'), dict)
+            else runner_events.MESSAGE_RECEIVED
+        )
+        platform_tool_names = [
+            name for name in resolve_agent_platform_tool_names({}, event_type) if name == PRESENT_INTERACTIVE_CARD_TOOL
+        ]
 
         resource_policy = ResourcePolicyProjector.from_runner_config(
             runner_config,
@@ -139,6 +149,7 @@ class QueryEntryAdapter:
             resolved_tool_sources=cls._extract_allowed_tool_sources(query),
             resolved_kb_uuids=cls._extract_allowed_kbs(query),
             resolved_skill_names=cls._extract_allowed_skills(query),
+            allowed_platform_tool_names=platform_tool_names,
         )
 
         # Build state policy
@@ -153,13 +164,6 @@ class QueryEntryAdapter:
             enable_reply=True,
             enable_interactions=True,
         )
-        variables = getattr(query, 'variables', None) or {}
-        event_type = (
-            runner_events.INTERACTION_SUBMITTED
-            if isinstance(variables.get('_interaction_submission'), dict)
-            else runner_events.MESSAGE_RECEIVED
-        )
-
         return AgentConfig(
             agent_id=agent_id,
             processor_type='pipeline',

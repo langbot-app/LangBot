@@ -100,7 +100,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
                 'Present a native interactive card in the current conversation. Define semantic buttons, selects, '
                 'and input fields; LangBot owns the target, callback token, validation, and platform rendering. '
                 'Each card is one step: provide either actions or fields, never both. '
-                'The user submission will start a new interaction.submitted turn for this Agent.'
+                'The user submission will start a new interaction.submitted turn for this processor.'
             ),
         },
         _object_schema(

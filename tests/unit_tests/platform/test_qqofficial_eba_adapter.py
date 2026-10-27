@@ -191,26 +191,27 @@ def test_qqofficial_interaction_keyboard_contains_only_host_token_and_index():
 @pytest.mark.asyncio
 async def test_qqofficial_interaction_delivery_and_callback_event():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'callback_token': 'callback-token',
-            'reply_target': {
-                'target_type': 'group',
-                'target_id': 'group-openid',
-                'message_id': 'msg-1',
-            },
-            'request': {
-                'interaction_id': 'form-1',
-                'title': 'Approve?',
-                'actions': [{'id': 'approve', 'label': 'Approve'}],
-                'fallback_text': 'Reply approve.',
-            },
+    params = {
+        'callback_token': 'callback-token',
+        'reply_target': {
+            'target_type': 'group',
+            'target_id': 'group-openid',
+            'message_id': 'msg-1',
         },
-    )
+        'request': {
+            'interaction_id': 'form-1',
+            'title': 'Approve?',
+            'actions': [{'id': 'approve', 'label': 'Approve'}],
+            'fallback_text': 'Reply approve.',
+        },
+    }
+    result = await adapter.call_platform_api('interaction.request', params)
+    await adapter.call_platform_api('interaction.request', params)
 
     assert result == {'ok': True, 'message_id': 'keyboard-message', 'rich': True}
-    assert adapter.bot.send_markdown_keyboard.await_args.kwargs['msg_id'] == 'msg-1'
+    calls = adapter.bot.send_markdown_keyboard.await_args_list
+    assert [call.kwargs['msg_id'] for call in calls] == ['msg-1', 'msg-1']
+    assert [call.kwargs['msg_seq'] for call in calls] == [1, 2]
 
     event = interaction_event_from_payload(
         {
@@ -224,6 +225,34 @@ async def test_qqofficial_interaction_delivery_and_callback_event():
     assert event.action == 'interaction.submitted'
     assert event.data['action_ref'] == 0
     assert event.data['actor_id'] == 'user-openid'
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_interaction_omits_synthetic_negative_message_id():
+    adapter = make_adapter()
+
+    await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {
+                'target_type': 'person',
+                'target_id': 'user-openid',
+                'message_id': -1,
+            },
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Approve?',
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    call = adapter.bot.send_markdown_keyboard.await_args
+    assert call.kwargs['msg_id'] is None
+    assert call.kwargs['event_id'] is None
+    assert call.kwargs['msg_seq'] == 1
 
 
 @pytest.mark.asyncio

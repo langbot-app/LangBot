@@ -56,9 +56,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     _stream_ctx_ts: dict[str, float] = {}
     _fallback_text: dict[str, str] = {}
     _fallback_text_ts: dict[str, float] = {}
+    _anchor_msg_seq: dict[str, int] = {}
     _ws_task: asyncio.Task | None = None
 
     _STREAM_CTX_TTL = 300
+    _MAX_REPLIES_PER_ANCHOR = 5
 
     class Config:
         arbitrary_types_allowed = True
@@ -93,6 +95,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             _stream_ctx_ts={},
             _fallback_text={},
             _fallback_text_ts={},
+            _anchor_msg_seq={},
             _ws_task=None,
         )
         self._register_native_handlers()
@@ -127,6 +130,18 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    def next_interaction_msg_seq(self, anchor: str) -> int | None:
+        """Allocate QQ's per-anchor passive reply sequence for interaction cards."""
+        if not anchor:
+            return 1
+        used = self._anchor_msg_seq.get(anchor, 0)
+        if used >= self._MAX_REPLIES_PER_ANCHOR:
+            return None
+        self._anchor_msg_seq[anchor] = used + 1
+        while len(self._anchor_msg_seq) > 4096:
+            self._anchor_msg_seq.pop(next(iter(self._anchor_msg_seq)), None)
+        return used + 1
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -242,6 +257,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 pass
             self._ws_task = None
         await self.bot.close()
+        self._anchor_msg_seq.clear()
         self._stream_ctx.clear()
         self._stream_ctx_ts.clear()
         self._fallback_text.clear()

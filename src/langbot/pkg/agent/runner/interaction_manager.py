@@ -218,10 +218,11 @@ class InteractionManager:
         authorization = session.get('authorization') if isinstance(session, typing.Mapping) else None
         if not isinstance(authorization, dict):
             raise ValueError('Interactive card run authorization is unavailable')
-        if authorization.get('processor_type') != 'agent':
-            raise ValueError('Interactive card tools are currently available only to independent Agents')
+        processor_type = authorization.get('processor_type')
+        if processor_type not in {'agent', 'pipeline'}:
+            raise ValueError('Interactive card tools are unavailable for this processor type')
         if authorization.get('interactions_enabled') is not True:
-            raise ValueError('Interactive cards are disabled for this Agent binding')
+            raise ValueError('Interactive cards are disabled for this processor binding')
 
         run_id = str(session.get('run_id') or '').strip()
         runner_id = str(session.get('runner_id') or '').strip()
@@ -256,13 +257,18 @@ class InteractionManager:
             raise ValueError('Interactive card has no authorized reply target')
         callback_conversation_id = f'{target_type}_{target_id}'
         actor = platform_context.get('actor') if isinstance(platform_context.get('actor'), dict) else {}
+        pipeline_admission = self._pipeline_tool_admission(
+            session=session,
+            authorization=authorization,
+            runner_id=runner_id,
+        )
 
         _, callback_token = await self.store.create_request(
             interaction_id=request.interaction_id,
             run_id=run_id,
             binding_id=binding_id,
             runner_id=runner_id,
-            processor_type='agent',
+            processor_type=processor_type,
             processor_id=processor_id,
             request=request_data,
             delivery_target=reply_target,
@@ -272,6 +278,7 @@ class InteractionManager:
             thread_id=authorization.get('thread_id'),
             actor_id=actor.get('actor_id'),
             expires_at=expires_at,
+            **pipeline_admission,
         )
         try:
             if not self._supports_interaction_delivery(adapter):
@@ -344,6 +351,34 @@ class InteractionManager:
                 and getattr(query, 'pipeline_uuid', None) == binding.processor_id
                 and RunnerConfigResolver.resolve_runner_id(expected) == descriptor.id == binding.runner_id
                 and RunnerConfigResolver.resolve_runner_config(expected, descriptor.id) == binding.runner_config
+            )
+
+        return {'expected_config': expected, 'authority_check': authority}
+
+    @staticmethod
+    def _pipeline_tool_admission(session, authorization, runner_id):
+        if authorization.get('processor_type') != 'pipeline':
+            return {}
+
+        query = session.get('execution_query')
+        expected = copy.deepcopy(getattr(query, 'pipeline_config', None))
+        query_session = getattr(query, 'session', None)
+        conversation = getattr(query_session, 'using_conversation', None)
+        processor_id = str(authorization.get('processor_id') or '').strip()
+
+        def authority():
+            from .config_resolver import RunnerConfigResolver
+
+            current_config = getattr(query, 'pipeline_config', None)
+            return (
+                query is not None
+                and query_session is not None
+                and conversation is not None
+                and isinstance(expected, dict)
+                and query_session.using_conversation is conversation
+                and getattr(query, 'pipeline_uuid', None) == processor_id
+                and current_config == expected
+                and RunnerConfigResolver.resolve_runner_id(expected) == runner_id
             )
 
         return {'expected_config': expected, 'authority_check': authority}

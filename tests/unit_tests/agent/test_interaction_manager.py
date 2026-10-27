@@ -251,6 +251,61 @@ async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store,
 
 
 @pytest.mark.asyncio
+async def test_pipeline_tool_card_preserves_pipeline_authority(store, event):
+    adapter = FakeAdapter(supports_interactions=True)
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    event.delivery.interactions = InteractionDeliveryCapabilities(
+        field_types=['select'],
+        action_styles=['default', 'primary', 'danger'],
+        supports_updates=True,
+        max_fields=1,
+    )
+    conversation = SimpleNamespace(pipeline_uuid='pipeline-1')
+    execution_query = SimpleNamespace(
+        pipeline_uuid='pipeline-1',
+        pipeline_config=CONFIG,
+        session=SimpleNamespace(using_conversation=conversation),
+    )
+    session = {
+        'run_id': 'pipeline-tool-run-1',
+        'runner_id': 'plugin:test/ApprovalRunner/default',
+        'execution_query': execution_query,
+        'authorization': {
+            'binding_id': 'pipeline-binding-1',
+            'processor_type': 'pipeline',
+            'processor_id': 'pipeline-1',
+            'interactions_enabled': True,
+            'bot_id': 'bot-1',
+            'workspace_id': 'workspace-1',
+            'thread_id': None,
+            'platform_context': {
+                'actor': {'actor_type': 'user', 'actor_id': 'user-1'},
+                'delivery': event.delivery.model_dump(mode='json'),
+            },
+        },
+    }
+    request = {
+        'interaction_id': 'pipeline-card-host-generated',
+        'kind': 'choice',
+        'title': 'Continue?',
+        'actions': [
+            {'id': 'confirm', 'label': 'Confirm', 'style': 'primary'},
+            {'id': 'cancel', 'label': 'Cancel', 'style': 'default'},
+        ],
+        'fallback_text': 'Reply confirm or cancel.',
+    }
+
+    result = await manager.present_tool_request(request_payload=request, session=session, adapter=adapter)
+
+    assert result['status'] == 'pending'
+    record = await store.get_request('pipeline-tool-run-1', 'pipeline-card-host-generated')
+    assert record is not None
+    assert record['processor_type'] == 'pipeline'
+    assert record['processor_id'] == 'pipeline-1'
+    assert record['binding_id'] == 'pipeline-binding-1'
+
+
+@pytest.mark.asyncio
 async def test_continuous_interaction_reuses_submitted_platform_presentation(store, event, binding):
     adapter = FakeAdapter(supports_interactions=True)
     manager = InteractionManager(SimpleNamespace(), store=store)

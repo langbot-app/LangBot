@@ -105,12 +105,24 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
             adapter._plain_message(_text(request, False)),
         )
         return {'ok': True, 'message_id': result.message_id, 'rich': False}
+    msg_id = reply_target.get('message_id')
+    if msg_id in (None, '', -1, '-1'):
+        msg_id = None
+    event_id = reply_target.get('event_id')
+    if event_id in (None, '', -1, '-1'):
+        event_id = None
+    anchor = str(msg_id or event_id or '')
+    msg_seq = adapter.next_interaction_msg_seq(anchor)
+    if msg_seq is None:
+        raise ValueError('QQ interaction reply limit reached for this message')
     raw = await adapter.bot.send_markdown_keyboard(
         target_type='c2c' if target_type == 'person' else 'group',
         target_id=target_id,
         markdown_content=_text(request, True),
         keyboard=keyboard,
-        msg_id=reply_target.get('message_id'),
+        msg_id=msg_id,
+        event_id=event_id,
+        msg_seq=msg_seq,
     )
     return {'ok': True, 'message_id': raw.get('id') if isinstance(raw, dict) else None, 'rich': True}
 
