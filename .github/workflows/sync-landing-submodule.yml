@@ -2,7 +2,7 @@ name: Sync docs mirror and landing submodule
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths: ['docs/**', '.github/workflows/sync-landing-submodule.yml']
   workflow_dispatch:
 
@@ -15,13 +15,13 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/main' && vars.DOCS_MIRROR_ENABLED == 'true'
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_MIRROR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: master
           fetch-depth: 0
           persist-credentials: false
       - name: Test synchronization contracts

@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/main' && vars.DOCS_MIRROR_ENABLED == 'true'
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_MIRROR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -22,9 +22,9 @@ jobs:
         working-directory: docs
     steps:
       - name: Check out main
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
-          ref: main
+          ref: master
           fetch-depth: 0
           # A PAT push triggers the mirror and Wiki workflows; GITHUB_TOKEN does not.
           token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
           cache-dependency-path: docs/package-lock.json
       - run: npm ci
       - name: Check out LangBot landing page
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: langbot-app/langbot-landing-page
           token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
@@ -59,4 +59,4 @@ jobs:
           git config user.name 'langbot-docs-bot'
           git config user.email 'actions@users.noreply.github.com'
           git commit -m 'docs(articles): sync LangBot Blog'
-          git push origin HEAD:main
+          git push origin HEAD:master
