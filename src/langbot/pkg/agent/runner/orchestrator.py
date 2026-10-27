@@ -257,11 +257,17 @@ class AgentRunOrchestrator:
         auto_reply_enabled = (
             binding.processor_type == 'agent'
             and binding.delivery_policy.enable_reply
-            and event.event_type == 'message.received'
+            and event.event_type in {'message.received', 'interaction.submitted'}
             and reply_streams.adapter is not None
         )
         auto_reply_stream_id = uuid4()
-        explicit_delivery_completed = False
+        auto_reply_stream_text = ''
+        auto_reply_stream_open = False
+        auto_reply_cumulative_text = ''
+        auto_reply_prefix = ''
+        auto_reply_deferred = False
+        explicit_reply_text: str | None = None
+        pending_explicit_replies: dict[str, str] = {}
         # A run reached without a platform ingress (WebUI debug, service API)
         # owns its own chain; a run inside an ingress reuses that chain.
         trace_binding: trace_mod.TraceBinding | None = None
@@ -370,14 +376,38 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
-                        if result_type == 'tool.call.completed':
+                        if result_type == 'tool.call.started':
                             result_data = result_dict.get('data') or {}
                             tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
-                            if tool_definition is not None and tool_definition.api in {
-                                'send_message',
-                                'interaction.request',
-                            }:
-                                explicit_delivery_completed = True
+                            parameters = result_data.get('parameters') or {}
+                            if tool_definition is not None and tool_definition.api == 'send_message':
+                                text = parameters.get('text') if isinstance(parameters, dict) else None
+                                if isinstance(text, str):
+                                    pending_explicit_replies[str(result_data.get('tool_call_id') or '')] = text
+
+                        if result_type == 'tool.call.completed' and auto_reply_enabled:
+                            if auto_reply_stream_open:
+                                await reply_streams.apply(
+                                    ReplyStreamRequest(
+                                        stream_id=auto_reply_stream_id,
+                                        operation='finish',
+                                        text=auto_reply_stream_text,
+                                    )
+                                )
+                            auto_reply_prefix = auto_reply_cumulative_text
+                            auto_reply_stream_id = uuid4()
+                            auto_reply_stream_text = ''
+                            auto_reply_stream_open = False
+                            result_data = result_dict.get('data') or {}
+                            tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
+                            auto_reply_deferred = (
+                                tool_definition is not None
+                                and tool_definition.api == 'send_message'
+                                and not result_data.get('error')
+                            )
+                            explicit_reply_text = pending_explicit_replies.pop(
+                                str(result_data.get('tool_call_id') or ''), None
+                            )
 
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
@@ -465,23 +495,49 @@ class AgentRunOrchestrator:
                             async with binding_for(execution_query).lock:
                                 result.attachments = exported_message(execution_query, file_ids, consume=True)
 
-                        if auto_reply_enabled and not explicit_delivery_completed and result is not None:
-                            reply_text = None
-                            operation = None
+                        if auto_reply_enabled and result is not None:
                             if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
-                                reply_text = result.all_content or result.content
-                                operation = 'update'
+                                cumulative_text = result.all_content or result.content
+                                if isinstance(cumulative_text, str):
+                                    if auto_reply_prefix and cumulative_text.startswith(auto_reply_prefix):
+                                        reply_text = cumulative_text[len(auto_reply_prefix) :]
+                                    else:
+                                        auto_reply_prefix = ''
+                                        reply_text = cumulative_text
+                                    auto_reply_cumulative_text = cumulative_text
+                                    auto_reply_stream_text = reply_text
+                                    if reply_text.strip() and not auto_reply_deferred:
+                                        await reply_streams.apply(
+                                            ReplyStreamRequest(
+                                                stream_id=auto_reply_stream_id,
+                                                operation='update',
+                                                text=reply_text,
+                                            )
+                                        )
+                                        auto_reply_stream_open = True
                             elif has_completed_message:
                                 reply_text = result.content
-                                operation = 'finish'
-                            if isinstance(reply_text, str) and reply_text.strip() and operation is not None:
-                                await reply_streams.apply(
-                                    ReplyStreamRequest(
-                                        stream_id=auto_reply_stream_id,
-                                        operation=operation,
-                                        text=reply_text,
-                                    )
-                                )
+                                if isinstance(reply_text, str):
+                                    if auto_reply_prefix and reply_text.startswith(auto_reply_prefix):
+                                        reply_text = reply_text[len(auto_reply_prefix) :]
+                                    if reply_text.strip() and (
+                                        not auto_reply_deferred
+                                        or explicit_reply_text is None
+                                        or reply_text.strip() != explicit_reply_text.strip()
+                                    ):
+                                        await reply_streams.apply(
+                                            ReplyStreamRequest(
+                                                stream_id=auto_reply_stream_id,
+                                                operation='finish',
+                                                text=reply_text,
+                                            )
+                                        )
+                                auto_reply_stream_id = uuid4()
+                                auto_reply_stream_text = ''
+                                auto_reply_stream_open = False
+                                auto_reply_prefix = auto_reply_cumulative_text
+                                auto_reply_deferred = False
+                                explicit_reply_text = None
 
                         if result is not None:
                             yield result

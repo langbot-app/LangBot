@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import traceback
 import typing
@@ -34,27 +35,59 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
         self.adapter = adapter
 
     async def process(self, message: dingtalk_stream.CallbackMessage):
-        callback = dingtalk_stream.CardCallbackMessage.from_dict(message.data or {})
-        content = dict(callback.content) if isinstance(callback.content, dict) else {}
-        if isinstance(message.data, dict):
-            content['_raw_callback'] = message.data
+        raw = message.data if isinstance(message.data, dict) else {}
+        content = raw.get('content')
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except json.JSONDecodeError:
+                content = {}
+        content = dict(content) if isinstance(content, dict) else {}
+        content['_raw_callback'] = raw
+        extension = raw.get('extension')
+        if isinstance(extension, str):
+            try:
+                extension = json.loads(extension)
+            except json.JSONDecodeError:
+                extension = {}
+        track_id = str(raw.get('outTrackId') or '')
+        matched = track_id in self.adapter.interaction_callback_contexts
+        self.logger.info(
+            'DingTalk card callback: topic=%s track=%s keys=%s content_keys=%s context_matched=%s',
+            getattr(message.headers, 'topic', None),
+            track_id,
+            sorted(raw),
+            sorted(content),
+            matched,
+        )
         event = DingTalkEvent.from_payload(
             {
                 'conversation_type': 'CardCallback',
                 'Type': 'card_callback',
                 'timestamp': float(message.headers.time or 0) / 1000,
                 'CardCallback': {
-                    'extension': callback.extension,
-                    'corp_id': callback.corp_id,
-                    'user_id': callback.user_id,
+                    'extension': extension if isinstance(extension, dict) else {},
+                    'corp_id': raw.get('corpId'),
+                    'user_id': raw.get('userId'),
                     'content': content,
-                    'space_id': callback.space_id,
-                    'card_instance_id': callback.card_instance_id,
+                    'space_id': raw.get('openSpaceId') or raw.get('spaceId'),
+                    'card_instance_id': track_id,
                 },
             }
         )
         if event is not None:
-            await self.adapter._handle_native_event(event)
+            interaction = interaction_event_from_native(event, self.adapter.interaction_callback_contexts)
+            if interaction is not None:
+                try:
+                    await self.adapter._dispatch_eba_event(interaction)
+                except Exception:
+                    self.logger.exception('DingTalk card callback dispatch failed: track=%s', track_id)
+                    return 500, 'Card callback dispatch failed'
+            elif matched:
+                self.logger.warning('DingTalk card callback could not be parsed: track=%s', track_id)
+                return 500, 'Card callback could not be parsed'
+            else:
+                self.logger.info('DingTalk card callback has no active interaction: track=%s', track_id)
         return dingtalk_stream.AckMessage.STATUS_OK, 'OK'
 
 

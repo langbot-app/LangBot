@@ -216,6 +216,8 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     adapter.interaction_callback_contexts[out_track_id] = {
         'callback_token': callback_token,
         'field_types': field_types,
+        'target_type': target_type,
+        'target_id': target_id,
         'expires_at': time.monotonic() + 30 * 60,
     }
     return {
@@ -340,6 +342,12 @@ def interaction_event_from_native(
     if callback_data:
         parsed = parse_callback_data(callback_data)
         raw_values = _mapping(_find_named_value(callback, {'values'}))
+        if 'field_ref' in parsed and 'option_ref' not in parsed:
+            # The A2UI form submit button uses f:0, but its values already
+            # contain the selected option; option refs belong to native pickers.
+            if not raw_values:
+                return None
+            parsed.pop('field_ref')
         context: dict[str, typing.Any] = {}
         if callback_contexts is not None:
             track_id = _callback_track_id(callback)
@@ -348,7 +356,6 @@ def interaction_event_from_native(
                 return None
             if parsed.get('callback_token') != context.get('callback_token'):
                 return None
-            callback_contexts.pop(track_id, None)
         if raw_values:
             field_types = context.get('field_types') if isinstance(context.get('field_types'), dict) else {}
             values = {}
@@ -370,10 +377,12 @@ def interaction_event_from_native(
             'callback_token': str(context.get('callback_token') or ''),
             'values': {str(context.get('field_id') or ''): value},
         }
-        contexts.pop(track_id, None)
     space_id = str(callback.get('space_id') or '')
     normalized_space_id = space_id.lower()
-    if 'im_group.' in normalized_space_id:
+    if context.get('target_type') in {'group', 'person'} and context.get('target_id'):
+        target_type = str(context['target_type'])
+        target_id = str(context['target_id'])
+    elif 'im_group.' in normalized_space_id:
         target_type = 'group'
         target_id = space_id[normalized_space_id.index('im_group.') + len('im_group.') :]
     elif 'im_robot.' in normalized_space_id:

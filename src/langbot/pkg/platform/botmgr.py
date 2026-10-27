@@ -899,7 +899,8 @@ class RuntimeBot:
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(
                 enable_streaming=agent.get('kind') == 'agent' and event_type == 'message.received',
-                enable_reply=agent.get('kind') == 'agent' and event_type == 'message.received',
+                enable_reply=agent.get('kind') == 'agent'
+                and event_type in {'message.received', 'interaction.submitted'},
                 enable_interactions=agent.get('kind') != 'event_processor',
             ),
             agent_id=agent.get('uuid'),
@@ -1700,7 +1701,7 @@ class RuntimeBot:
                 '_execution_context': self.execution_context,
             },
         ):
-            # Resuming an interaction follows the same explicit-action delivery policy.
+            # The orchestrator delivers Direct Agent output unless a platform action already did.
             pass
 
     async def _dispatch_eba_message_to_pipeline(

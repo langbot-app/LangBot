@@ -673,7 +673,7 @@ class TestInteractionResumeRouting:
             '_execution_context': TEST_CONTEXT,
         }
         assert envelope.delivery.supports_streaming is False
-        assert binding.delivery_policy.enable_reply is False
+        assert binding.delivery_policy.enable_reply is True
         adapter.send_message.assert_not_awaited()
 
     def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):

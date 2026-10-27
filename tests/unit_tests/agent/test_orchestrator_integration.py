@@ -1270,7 +1270,8 @@ class TestQueryEntrySessionQueryId:
 
 
 @pytest.mark.asyncio
-async def test_direct_agent_streams_output_to_the_originating_platform(clean_agent_state):
+@pytest.mark.parametrize('event_type', ['message.received', 'interaction.submitted'])
+async def test_direct_agent_streams_output_to_the_originating_platform(clean_agent_state, event_type):
     from langbot.pkg.agent.runner.host_models import (
         AgentBinding,
         AgentEventEnvelope,
@@ -1320,6 +1321,115 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
     )
     event = AgentEventEnvelope(
         event_id='event-1',
+        event_type=event_type,
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=event_type == 'message.received',
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=[event_type],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=event_type == 'message.received', enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    results = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming if event_type == 'message.received' else None,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    assert [item.content for item in results] == ['hello', 'hello world']
+    if event_type == 'message.received':
+        adapter.create_message_card.assert_awaited_once()
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == ['hello', 'hello world']
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True]
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[2][0].text == 'hello world'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('tool_name', ['present_interactive_card', 'event_reply'])
+async def test_direct_agent_delivers_text_after_card_without_repeating_explicit_reply(clean_agent_state, tool_name):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    results = []
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'Before'}}})
+    results.extend(
+        [
+            {
+                'type': 'tool.call.started',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'parameters': {'text': 'After'}},
+            },
+            {
+                'type': 'tool.call.completed',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'result': {'ok': True}, 'error': None},
+            },
+        ]
+    )
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'BeforeAfter'}}})
+    results.extend(
+        [
+            {'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'After'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    connector = FakePluginConnector(results=results)
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
         event_type='message.received',
         source='platform',
         bot_id='bot_001',
@@ -1344,7 +1454,7 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
         processor_id='agent-1',
     )
 
-    results = [
+    _ = [
         item
         async for item in orchestrator.run(
             event,
@@ -1357,13 +1467,20 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
         )
     ]
 
-    assert [item.content for item in results] == ['hello', 'hello world']
-    adapter.create_message_card.assert_awaited_once()
-    chunks = adapter.reply_message_chunk.await_args_list
-    assert [call.kwargs['bot_message'].all_content for call in chunks] == ['hello', 'hello world']
-    assert [call.kwargs['is_final'] for call in chunks] == [False, True]
-    adapter.reply_message.assert_not_awaited()
-    adapter.send_message.assert_not_awaited()
+    if tool_name == 'present_interactive_card':
+        assert adapter.create_message_card.await_count == 2
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == [
+            'Before',
+            'Before',
+            'After',
+            'After',
+        ]
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True, False, True]
+        assert chunks[0].kwargs['bot_message'].resp_message_id != chunks[2].kwargs['bot_message'].resp_message_id
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
 
 
 class TestQueryEntryAdapterParams:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import pathlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -9,7 +10,8 @@ import yaml
 
 from langbot.libs.dingtalk_api.api import DingTalkClient
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
-from langbot.pkg.platform.adapters.dingtalk.adapter import DingTalkAdapter
+from langbot.pkg.agent.runner.interaction_manager import InteractionManager
+from langbot.pkg.platform.adapters.dingtalk.adapter import DingTalkAdapter, DingTalkCardCallbackHandler
 from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEventConverter
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
@@ -411,7 +413,7 @@ async def test_dingtalk_native_input_uses_template_variables_and_submits_value()
 
     assert event.data['callback_token'] == 'callback-token'
     assert event.data['values'] == {'comment': 'Looks good'}
-    assert result['message_id'] not in adapter.interaction_callback_contexts
+    assert result['message_id'] in adapter.interaction_callback_contexts
 
 
 @pytest.mark.asyncio
@@ -467,6 +469,116 @@ async def test_dingtalk_native_select_uses_select_block_and_normalizes_callback(
     assert event.data['target_type'] == 'person'
     assert event.data['target_id'] == 'user-1'
     assert event.data['values'] == {'priority': 'urgent'}
+    assert 'field_ref' not in event.data
+    resolved = InteractionManager._resolve_submission_refs(
+        {
+            'interaction_id': 'form-1',
+            'request': {
+                'fields': [
+                    {'id': 'priority', 'type': 'select', 'options': [{'value': 'urgent'}]},
+                ]
+            },
+        },
+        {'values': event.data['values']},
+    )
+    assert resolved['values'] == {'priority': 'urgent'}
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_stream_callback_submits_dropdown_without_space_id():
+    adapter = make_adapter()
+    received = []
+
+    async def listener(event, _adapter):
+        received.append(event)
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': {
+                'title': 'Priority',
+                'fields': [
+                    {
+                        'id': 'priority',
+                        'type': 'select',
+                        'options': [{'value': 'urgent', 'label': 'Urgent'}],
+                    }
+                ],
+            },
+        },
+    )
+    raw_callback = {
+        'outTrackId': result['message_id'],
+        'userId': 'user-1',
+        'corpId': 'corp-1',
+        'extension': '{}',
+        'content': json.dumps(
+            {
+                'actionData': {
+                    'a2uiAction': {
+                        'context': {
+                            'actionId': 'lbi:callback-token:f:0',
+                            'values': {'priority': ['urgent']},
+                        }
+                    }
+                }
+            }
+        ),
+    }
+
+    await DingTalkCardCallbackHandler(adapter).process(
+        SimpleNamespace(data=raw_callback, headers=SimpleNamespace(time=1_714_000_000_000))
+    )
+
+    assert len(received) == 1
+    assert received[0].action == 'interaction.submitted'
+    assert received[0].data['target_type'] == 'person'
+    assert received[0].data['target_id'] == 'user-1'
+    assert received[0].data['values'] == {'priority': 'urgent'}
+    assert result['message_id'] in adapter.interaction_callback_contexts
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_stream_callback_accepts_object_content_and_retries_unparsed_action():
+    adapter = make_adapter()
+    received = []
+
+    async def listener(event, _adapter):
+        received.append(event)
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': {'fields': [{'id': 'priority', 'type': 'select', 'options': [{'value': 'urgent'}]}]},
+        },
+    )
+    raw = {
+        'outTrackId': result['message_id'],
+        'userId': 'user-1',
+        'content': {
+            'actionData': {
+                'a2uiAction': {
+                    'context': {
+                        'actionId': 'lbi:callback-token:f:0',
+                        'values': {'priority': ['urgent']},
+                    }
+                }
+            }
+        },
+    }
+    handler = DingTalkCardCallbackHandler(adapter)
+    message = SimpleNamespace(data=raw, headers=SimpleNamespace(time=1_714_000_000_000))
+
+    assert (await handler.process(message))[0] == 200
+    assert received[0].data['values'] == {'priority': 'urgent'}
+    raw['content'] = {'actionData': {'unexpected': True}}
+    assert (await handler.process(message))[0] == 500
 
 
 @pytest.mark.asyncio
@@ -571,7 +683,7 @@ async def test_dingtalk_adapter_dispatches_native_input_submission():
     assert calls[0].action == 'interaction.submitted'
     assert calls[0].data['callback_token'] == 'callback-token'
     assert calls[0].data['values'] == {'score': 42.5}
-    assert result['message_id'] not in adapter.interaction_callback_contexts
+    assert result['message_id'] in adapter.interaction_callback_contexts
 
 
 def test_dingtalk_subscription_member_and_group_mapping():
