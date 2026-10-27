@@ -1,0 +1,39 @@
+---
+title: "使用包管理器部署"
+description: "使用包管理器（uv/uvx）部署 LangBot，快速安装开源大模型聊天机器人平台。"
+---
+
+<Info>
+支持 Windows、Linux、Mac OS 等系统，推荐在测试环境、个人用途场景使用；生产级环境请使用[Docker部署](/zh/deploy/langbot/docker.html)。
+</Info>
+
+LangBot 已打包发布至 PyPI。请安装[uv](https://docs.astral.sh/uv/getting-started/installation/)，然后在空目录下运行以下命令：
+
+```bash
+uvx langbot@latest
+```
+
+这将把该目录作为工作目录，访问 `http://localhost:5300` 即可开始使用。
+
+## Beta 版本（可选）
+
+如需试用 Beta 3，改用以下命令。`--prerelease=allow` 同时允许依赖包的预发布版本，`--refresh` 刷新缓存的包数据。
+
+```bash
+uvx --prerelease=allow --refresh langbot==4.11.0b3
+```
+
+## 可选的 SeekDB 支持
+
+默认安装使用 Chroma，不包含 SeekDB 的 Python SDK 和原生组件。只有在需要将
+SeekDB 用作向量数据库或使用其内置嵌入模型时，才用 `seekdb` extra 启动：
+
+```bash
+uvx --from 'langbot[seekdb]@latest' langbot
+```
+
+SeekDB 嵌入式模式还要求当前平台存在兼容的 `pylibseekdb` wheel。Apple Silicon
+目前要求 macOS 15 或更高版本；macOS 14 ARM64 的支持计划见
+[oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324)。受当前
+`pyseekdb` 包元数据影响，macOS 14 ARM64 即使只连接远程 SeekDB，也无法解析该
+extra。不使用 SeekDB 时，这些平台限制不影响 LangBot。

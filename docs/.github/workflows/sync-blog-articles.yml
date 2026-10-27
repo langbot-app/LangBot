@@ -1,0 +1,53 @@
+name: Sync LangBot Blog articles
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-langbot-blog-articles
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Wiki
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check out LangBot landing page
+        uses: actions/checkout@v5
+        with:
+          repository: langbot-app/langbot-landing-page
+          token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN }}
+          path: .article-source
+          persist-credentials: false
+
+      - name: Synchronize articles and images
+        run: node scripts/sync-blog-articles.mjs --source .article-source
+
+      - name: Validate generated articles
+        run: |
+          node scripts/sync-blog-articles.mjs --check --source .article-source
+          node scripts/sync-blog-articles.mjs --check
+          npm test
+          npx --yes mintlify@4.2.375 validate
+
+      - name: Commit synchronized content
+        run: |
+          rm -rf .article-source
+          if git diff --quiet && test -z "$(git status --short)"; then
+            echo "LangBot Blog articles are already synchronized."
+            exit 0
+          fi
+          git config user.name "langbot-docs-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs.json en/articles zh/articles ja/articles images/articles scripts/blog-articles-manifest.json
+          git commit -m "docs(articles): sync LangBot Blog"
+          git push

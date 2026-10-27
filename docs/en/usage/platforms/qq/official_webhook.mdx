@@ -1,0 +1,87 @@
+---
+title: "QQ Official Bot API (Webhook)"
+description: "Connect the QQ Official Bot API (Webhook) to LangBot to run a compliant AI bot on QQ."
+---
+
+This article only provides the deployment of test bots. For the official launch of bots, please follow the [release process](https://q.qq.com/qqbot/#/home).
+
+<Warning>
+QQ Official has issued an announcement prohibiting unauthorized access to AIGC features. Please use with caution.
+</Warning>
+
+
+
+## Register QQ Bot (Test Bot)
+
+### Configure Basic Bot Information
+
+Go to the [QQ Open Platform](https://q.qq.com/#/), find `Application Management` at the bottom, click Create Bot, fill in the basic information, and then enter the bot page, as shown:
+
+![Bot Main Page](/images/zh/deploy/bots/qq/official/qqofficial1.png)
+
+The `Release Process` in the `Home` option is the step to launch the bot. Since you are deploying a test version bot, you only need to complete the `Information` and `Sandbox Configuration` sections.<br />
+
+First fill in the information, then click on Sandbox Configuration.
+
+#### Configure Sandbox Settings
+
+Click on `Sandbox Configuration`.
+If you want to deploy in a QQ group, follow the requirements under `QQ Group ID` to select a group chat, and add users with private chat permissions in the message list configuration.<br />
+If you want to deploy in a QQ channel, follow the requirements under `Channel ID` to select a channel ID, with bot type 0.
+
+#### Configure Development Management
+
+Click on `Development Management`.
+
+![Development Management Page](/images/zh/deploy/bots/qq/official/qqofficial2.png)
+
+Record the `AppID`, `Token`, and `AppSecret`, and add the IP address of the server where LangBot is located to the IP whitelist.
+
+## Connect to LangBot
+
+Next, open the LangBot configuration page
+
+Click on Bots, then click Add
+
+Select `QQ Official API` for `Platform/Adapter Selection`
+
+![QQ Official Bot Integration with LangBot](/images/zh/deploy/bots/qq/official/qqofficial3.png)
+
+
+## Configure Callback Address
+
+LangBot must be deployed on a server with a public IP address, and HTTPS must be successfully enabled. Please follow the documentation [Configure HTTP Reverse Proxy and SSL](/en/workshop/production/proxy-and-ssl) for configuration.
+
+<Tip>
+**Don't want to deal with public IPs and HTTPS?** [LangBot Cloud](https://space.langbot.app/cloud) includes built-in domain resolution — sign up and use QQ Official Bot right away.
+</Tip>
+
+
+#### Subsequent Configuration
+
+If Caddy fails to start, please read the [Caddy documentation](https://caddy2.dengxiaolong.com/docs/quick-starts/caddyfile) or join the LangBot community group for help.<br />
+
+Here are some possible issues:
+
+- Port 443 is not open
+- The domain is not resolved to your machine
+- Caddyfile was not saved successfully
+
+### Set Management Portal Callback Address
+
+
+First **start LangBot**.
+
+Click on `Callback Configuration` in the bot management portal, check all events under `Add Event`.
+
+Go to the LangBot configuration page, enable and select the corresponding QQ bot, copy the Webhook callback address from the corresponding bot configuration page, replace the IP address and port with the domain name configured in Caddy, and enter it in the request address.
+
+As shown in the image:
+![Caddy Documentation](/images/zh/deploy/bots/qq/official/qqofficial4.png)
+
+
+For example, if the domain is `testlb.com`, then enter `testlb.com/bots/xxxxxx-xxxxxx` in the request address, and click to confirm the configuration. If the callback address is saved successfully, it means the deployment is successful. If you see `Verification Failed`, please carefully check if the above configuration items are filled in correctly.
+
+## Publication Method
+
+Enter the release process in `Home` and follow the process to publish and launch the bot.

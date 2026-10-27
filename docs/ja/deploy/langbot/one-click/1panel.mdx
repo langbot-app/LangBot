@@ -1,0 +1,46 @@
+---
+title: "1Panelデプロイ"
+description: "1Panel で LangBot をワンクリックデプロイ。コマンドライン不要でオープンソース AI チャットボットを導入。"
+---
+
+[1Panel](https://www.bt.cn/new/download.html?r=dk_LangBot)を使用してLangBotをワンクリックでデプロイします。
+
+## 1Panelのインストール
+
+> 推奨サーバーシステム(1Panelより): Debian 12、Ubuntu 22など
+
+この記事では、サーバーにデフォルトでパブリックIPv4アドレスがあることを前提としています。パブリックIPのないホームマシンを使用している場合は、以下で説明する内部ネットワーク経由で関連ページにアクセスできます。
+
+[1Panel](https://www.bt.cn/new/download.html?r=dk_LangBot)にアクセスし、1Panelが公式に提供するLinuxパネルインストールスクリプトを使用します。お使いのオペレーティングシステムに応じて対応するスクリプトを選択してください。
+
+![1Panelのインストール](/images/zh/deploy/langbot/one-click/1p_install_01.png)
+
+対応するスクリプトをコピーし、サーバーに貼り付けて実行します。
+
+しばらく待つと、1Panelのインストールが完了します。
+
+次に`外部アドレス`をコピーしてブラウザで開きます。
+
+## LangBotのインストール
+
+`アプリストア`を開き、`AI`カテゴリを選択し、LangBotをクリックしてインストールします。
+
+![LangBotのインストール](/images/zh/deploy/langbot/one-click/1p_langbot_01.png)
+
+`外部ポートアクセス`のチェックボックスをオンにして、確認をクリックします。
+
+![LangBotのインストール](/images/zh/deploy/langbot/one-click/1p_langbot_02.png)
+
+しばらく待つと、インストールが完了します。
+
+左側の`コンテナ`をクリックし、`コンテナ`カテゴリを選択すると、LangBotコンテナバーが表示されます。
+
+![LangBotコンテナ情報の表示](/images/zh/deploy/langbot/one-click/1p_langbot_03.png)
+
+サーバーのパブリックIPアドレスをコピーします。例: `http://xxx.xxx.xxx.xxx:5300`(xxx.xxx.xxx.xxxは1Panelが配置されているサーバーのIPアドレス、5300はポート番号)。
+
+アドレスを開き、管理者のメールアドレスとパスワードを入力して、初期化をクリックします。
+
+その後、ビジュアルインターフェースでLangBotを設定できます。
+
+次に、[メッセージプラットフォームの設定](/ja/usage/platforms/readme)ページを引き続きお読みください。

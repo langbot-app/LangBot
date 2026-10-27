@@ -1,0 +1,149 @@
+---
+title: "プラグインランタイム、CLI、SDKのデバッグ"
+---
+
+<Info>
+  プラグインランタイム、CLI、SDKはこちらでオープンソース化されています: https://github.com/langbot-app/langbot-plugin-sdk
+</Info>
+
+LangBotはlangbot-plugin-sdkで定義されたエンティティに依存するため、新しいディレクトリでVS Codeを開き、LangBotとlangbot-plugin-sdk（git clone https://github.com/langbot-app/langbot-plugin-sdk）をサブディレクトリとして配置することをお勧めします。ディレクトリ構造は以下の通りです：
+
+```bash
+langbot-projects
+├── LangBot
+├── langbot-plugin-sdk
+```
+
+LangBotディレクトリに移動し、依存関係をインストールします：
+
+```bash
+cd LangBot
+uv sync --dev
+```
+
+この時点で、uvは自動的に仮想環境(.venv)を作成します。エディターがこの仮想環境を使用するかどうかを尋ねる場合は、`Yes`を選択してください。
+
+<img
+  width="600"
+  src="/images/zh/develop/confirm_venv.png"
+/>
+
+プロンプトが表示されない場合は、右下隅からPythonインタープリターのパスをvenv内のインタープリターに手動で設定してください。
+
+次に、VS Code下部のターミナルを開きます。これにより自動的にvenvがアクティブ化されます。
+
+または、この仮想環境を手動でアクティブ化できます：
+
+```bash
+# .venvのパスに応じてコマンドを変更してください
+source .venv/bin/activate
+```
+
+## プラグインランタイムの起動
+
+```bash
+python -m langbot_plugin.cli.__init__ rt
+```
+
+プラグインランタイムは以下のパラメーターを受け入れます:
+
+- `--debug-only`: `data/plugins`ディレクトリのプラグインを起動せず、デバッグ接続を通じたプラグインの読み込みのみを許可します。
+- `--ws-debug-port`: リッスンするデバッグポート、デフォルトは`5401`です。
+- `--ws-control-port`: リッスンする制御ポート(LangBotメインプログラム接続用)、デフォルトは`5400`です。
+- `-s`: `stdio`を使用して制御接続を受け入れます。**本番環境でのみ使用してください**。
+- `--skip-deps-check`: すべてのプラグイン依存関係がインストールされていることを確認するため、ランタイムは起動時に毎回すべてのインストール済みプラグインの依存関係をチェックしてインストールします。このパラメーターを使用してこのチェックを無効にします。
+
+### LangBotでローカル修正したlangbot-plugin-sdkを使用する
+
+メッセージエンティティやプラグインデータ定義などを変更した場合、実行時のデータ形式の互換性を確保するために、LangBot環境に更新する必要があります。
+
+**LangBotディレクトリの仮想環境（.venv）がアクティブ化されたターミナル**で、langbot-plugin-sdkディレクトリに移動し、以下を実行します：
+
+```bash
+uv pip install .
+```
+
+これにより、修正したlangbot-plugin-sdkがLangBotの環境にインストールされます。
+
+### LangBotをこのランタイムに接続する
+
+LangBotの`data/config.yaml`で`plugin.runtime_ws_url`を`ws://localhost:5400/control/ws`に設定します。
+
+```yaml
+plugin:
+  runtime_ws_url: ws://localhost:5400/control/ws
+```
+
+LangBot の仮想環境を有効にしたターミナルで、Python を直接使用してメインプログラムを起動し、`--standalone-runtime` を追加します（例：`python main.py --standalone-runtime`）。現在の仮想環境の Python を直接呼び出す場合、依存関係は再同期されないため、インストールしたローカルの langbot-plugin-sdk がリモート版で上書きされることはありません。\
+LangBotを再起動すると、WebSocketを使用してこのランタイムに接続されます。
+
+`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` は既定では省略可能です。LangBot と Runtime の両方で未設定の場合、ローカル OSS の制御接続はトークンなしで確立されます。公開された 5400 ポートを保護する場合は、両側に同じ 32 文字以上の高エントロピー値を設定してください。Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Runtime 側の認証は有効になりません。
+
+### `lbp run` でプラグインをデバッグする
+
+Multi-Workspace 版では、デバッグプラグインは `5401` ポートへ到達できるだけでは Runtime に接続できません。Workspace ごとに、有効期限付きの個別デバッグキーが必要です：
+
+1. 上記の手順で LangBot と Plugin Runtime が起動し、接続済みであることを確認します。
+2. LangBot WebUI の「プラグイン」ページで「デバッグ情報」を開き、デバッグ URL とデバッグキーをコピーします。この操作には現在の Workspace のリソース管理権限が必要です。
+3. プラグインプロジェクトの `.env` に設定します：
+
+```bash
+DEBUG_RUNTIME_WS_URL=ws://localhost:5401/plugin/debug/ws
+PLUGIN_DEBUG_KEY=<WebUI からコピーしたデバッグキー>
+```
+
+4. プラグインプロジェクトのディレクトリで起動します：
+
+```bash
+python -m langbot_plugin.cli.__init__ run
+```
+
+`.env` に保存せず、`python -m langbot_plugin.cli.__init__ run --plugin-debug-key '<デバッグキー>'` を使用することもできます。キーは Workspace ごとに分離され、有効期限は 2 時間です。期限切れ、Runtime の再起動、または Workspace の切り替え後は WebUI から再取得してください。`DEBUG_RUNTIME_WS_URL` だけを設定したクライアントは拒否されます。
+
+## Box Runtime を standalone モードで起動する
+
+Box Runtime の制御接続ルールは Plugin Runtime と同じです。OSS standalone 開発では token は省略可能で、両側で `LANGBOT_BOX_CONTROL_TOKEN` が未設定の場合も接続できます：
+
+```bash
+# ターミナル 1：langbot-plugin-sdk ディレクトリ
+python -m langbot_plugin.cli.__init__ box
+```
+
+LangBot の `data/config.yaml` でローカル Box Runtime を指定します：
+
+```yaml
+box:
+  enabled: true
+  backend: local
+  runtime:
+    endpoint: ws://127.0.0.1:5410
+```
+
+```bash
+# ターミナル 2：LangBot ディレクトリ
+python main.py --standalone-runtime --standalone-box
+```
+
+公開された 5410 ポートを保護する場合は、両方のプロセスを起動する前に、同じ 32 文字以上で空白を含まない高エントロピー値を設定してください：
+
+```bash
+export LANGBOT_BOX_CONTROL_TOKEN='<両側で完全に同じ高エントロピーシークレット>'
+```
+
+Box Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Box Runtime 側の認証は有効になりません。明示的に設定した値が 32 文字未満の場合は、引き続き両側で拒否されます。実際の値を設定ファイルや Git にコミットしないでください。
+
+## langbot-plugin-sdkアーキテクチャ
+
+このコードベースには以下が含まれています:
+
+- `langbot_plugin.api`: プラグイン関連のエンティティとAPI定義。
+- `langbot_plugin.assets`: プラグインテンプレート。
+- `langbot_plugin.cli`: プラグイン開発CLIツール。
+- `langbot_plugin.entities`: APIで定義されていないプラグインシステム関連のエンティティ。
+- `langbot_plugin.runtime`: プラグインランタイムと基礎通信(stdioおよびwebsocket)の実装。
+
+## `lbp` CLIツール
+
+CLIツールは、ランタイムの起動、プラグインの初期化、プラグインコンポーネント管理、Marketplaceとのインタラクションなどの機能を提供します。
+
+詳細なプログラムエントリポイントについては、[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/cli/__init__.py)を参照してください。

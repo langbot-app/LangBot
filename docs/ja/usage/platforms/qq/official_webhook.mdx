@@ -1,0 +1,87 @@
+---
+title: "QQ 公式ボット API（Webhook）"
+description: "QQ 公式ボット API（Webhook）を LangBot に接続し、QQ で準拠した AI ボットを運用。"
+---
+
+この記事では、テストボットのデプロイのみを提供します。ボットの正式な起動については、[リリースプロセス](https://q.qq.com/qqbot/#/home)に従ってください。
+
+<Warning>
+QQ 公式は、AIGC 機能への不正アクセスを禁止する発表を行いました。注意して使用してください。
+</Warning>
+
+
+
+## QQ ボットの登録（テストボット）
+
+### 基本ボット情報の設定
+
+[QQ Open Platform](https://q.qq.com/#/)にアクセスし、下部の「アプリケーション管理」を見つけ、ボットを作成をクリックし、基本情報を入力して、ボットページに入ります。以下のように：
+
+![Bot Main Page](/images/zh/deploy/bots/qq/official/qqofficial1.png)
+
+「ホーム」オプションの「リリースプロセス」は、ボットを起動する手順です。テストバージョンのボットをデプロイしているため、「情報」と「サンドボックス設定」セクションを完了するだけで済みます。<br />
+
+まず情報を入力し、次にサンドボックス設定をクリックします。
+
+#### サンドボックス設定の構成
+
+「サンドボックス設定」をクリックします。
+QQ グループにデプロイする場合は、「QQ グループ ID」の下の要件に従ってグループチャットを選択し、メッセージリスト設定でプライベートチャット権限を持つユーザーを追加します。<br />
+QQ チャンネルにデプロイする場合は、「チャンネル ID」の下の要件に従ってチャンネル ID を選択します。ボットタイプは 0 です。
+
+#### 開発管理の構成
+
+「開発管理」をクリックします。
+
+![Development Management Page](/images/zh/deploy/bots/qq/official/qqofficial2.png)
+
+「AppID」、「Token」、「AppSecret」を記録し、LangBot が配置されているサーバーの IP アドレスを IP ホワイトリストに追加します。
+
+## LangBot に接続
+
+次に、LangBot 設定ページを開きます
+
+Bots をクリックし、次に Add をクリックします
+
+`Platform/Adapter Selection` で `QQ Official API` を選択します
+
+![QQ Official Bot Integration with LangBot](/images/zh/deploy/bots/qq/official/qqofficial3.png)
+
+
+## コールバックアドレスの設定
+
+LangBot は、パブリック IP アドレスを持つサーバーにデプロイする必要があり、HTTPS が正常に有効になっている必要があります。ドキュメント [HTTP リバースプロキシと SSL の設定](/en/workshop/production/proxy-and-ssl)に従って設定してください。
+
+<Tip>
+**パブリック IP と HTTPS の設定が面倒ですか？** [LangBot Cloud](https://space.langbot.app/cloud) にはドメイン解決が組み込まれており、登録するだけで QQ 公式ボットをすぐに使用できます。
+</Tip>
+
+
+#### 後続の設定
+
+Caddy の起動に失敗した場合は、[Caddy ドキュメント](https://caddy2.dengxiaolong.com/docs/quick-starts/caddyfile)を読むか、LangBot コミュニティグループに参加してヘルプを求めてください。<br />
+
+以下は、考えられる問題の一部です：
+
+- ポート 443 が開いていない
+- ドメインがマシンに解決されていない
+- Caddyfile が正常に保存されなかった
+
+### 管理ポータルのコールバックアドレスの設定
+
+
+まず **LangBot を起動します**。
+
+ボット管理ポータルの「コールバック設定」をクリックし、「イベントを追加」の下のすべてのイベントをチェックします。
+
+LangBot 設定ページに移動し、対応する QQ ボットを有効にして選択し、対応するボット設定ページから Webhook コールバックアドレスをコピーし、IP アドレスとポートを Caddy で設定したドメイン名に置き換えて、リクエストアドレスに入力します。
+
+画像に示されているように：
+![Caddy Documentation](/images/zh/deploy/bots/qq/official/qqofficial4.png)
+
+
+たとえば、ドメインが `testlb.com` の場合、リクエストアドレスに `testlb.com/bots/xxxxxx-xxxxxx` を入力し、設定の確認をクリックします。コールバックアドレスが正常に保存された場合、デプロイは成功です。「検証失敗」が表示された場合は、上記の設定項目が正しく入力されているかどうかを注意深く確認してください。
+
+## 公開方法
+
+「ホーム」のリリースプロセスに入り、プロセスに従ってボットを公開して起動します。

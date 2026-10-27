@@ -1,0 +1,38 @@
+---
+title: "LangBotの更新"
+description: "LangBot を最新版へ更新。セルフホスト型 AI チャットボットを安全にアップグレードする手順。"
+---
+
+## パッケージマネージャーを使用
+
+LangBotをデプロイしたディレクトリで再度実行してください:
+
+```bash
+uvx langbot@latest
+```
+
+このコマンドは最新バージョンのLangBotをダウンロードして起動します。
+
+## Dockerを使用(またはDockerベースのワンクリックデプロイ)
+
+LangBotをクローンしたディレクトリで実行してください:
+
+```bash
+git pull
+```
+
+`docker/`ディレクトリで実行してください:
+
+```bash
+docker compose up --force-recreate --pull always -d
+```
+
+このコマンドは最新のLangBotイメージをプルしてコンテナを再構築します。
+
+<Info>
+4.3.0バージョンでは`docker-compose.yaml`ファイルの内容と場所が変更されました。以前のバージョンから更新した場合は、[ドキュメントに従って再デプロイ](/en/deploy/langbot/docker)してください。
+</Info>
+
+## 手動デプロイ
+
+[リリース](https://github.com/langbot-app/LangBot/releases)ページのAssetsセクションから最新リリースの`langbot-<version>-all.zip`をダウンロードし、元のデプロイディレクトリに展開して再起動してください。

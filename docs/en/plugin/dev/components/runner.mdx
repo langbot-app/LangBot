@@ -1,0 +1,211 @@
+---
+title: "Component: Runner"
+---
+
+Runner implements Agent execution or typed event handlers for a **Plugin processor**. Both styles receive `RunnerContext`. After installation, users select and configure the component in LangBot.
+
+For environment setup, see the [plugin development tutorial](/en/plugin/dev/tutor).
+
+See [Context APIs](/en/plugin/dev/apis/agent-run#runner) for the complete `RunnerContext` fields and methods.
+
+## Adding a Runner Component
+
+A plugin can contain several event processors. Run `lbp comp Runner` in the plugin directory. Enter `welcome` as the name and `Welcome new members` as the description.
+
+```bash
+lbp comp Runner
+```
+
+The generated `components/runner/welcome.yaml` defines the component, and `welcome.py` contains its implementation.
+
+## Custom execution
+
+To integrate a model or implement an execution loop, declare `spec.usages: [agent]` and yield results from `run(ctx)`:
+
+```python
+from langbot_plugin.api.definition.components.runner import Runner, RunnerContext, RunnerResult
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+
+class Echo(Runner):
+    async def run(self, ctx: RunnerContext):
+        yield RunnerResult.run_completed(
+            ctx.run_id,
+            message=Message(role="assistant", content=ctx.input.to_text()),
+        )
+```
+
+## Manifest File: Runner
+
+Replace `welcome.yaml` with:
+
+```yaml
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: welcome
+  label:
+    en_US: Welcome members
+    zh_Hans: 欢迎新成员
+    ja_JP: 新しいメンバーを歓迎
+  description:
+    en_US: Welcome new members and respond to /hello.
+    zh_Hans: 欢迎新成员，并响应 /hello 消息。
+    ja_JP: 新しいメンバーを歓迎し、/hello に返信します。
+spec:
+  usages: [event]
+  events:
+    - group.member_joined
+    - message.received
+  capabilities:
+    tool_calling: true
+  permissions:
+    tools: [detail, call]
+  config:
+    - name: greeting
+      type: string
+      label:
+        en_US: Greeting
+        zh_Hans: 欢迎语
+        ja_JP: 歓迎メッセージ
+      required: true
+      default: Welcome aboard!
+    - name: reply_enabled
+      type: boolean
+      label:
+        en_US: Send replies
+        zh_Hans: 发送回复
+        ja_JP: 返信する
+      default: true
+execution:
+  python:
+    path: ./welcome.py
+    attr: Welcome
+```
+
+`spec.events` lists supported events, and `spec.config` defines settings users can edit on the processor detail page. This example handles new members and incoming messages, with a greeting and a reply switch. Sending replies requires the `tool_calling` and `permissions.tools` settings shown above.
+
+
+`spec.usages` is required and has no default. `spec.usages` controls where the component can be selected: `agent` for Agents and Pipelines, `event` for Plugin processors. Both can be declared as `[agent, event]`. Event usage requires `spec.events`. The example uses typed handlers; a custom `run(ctx)` can also call `await super().run(ctx)` to dispatch them.
+
+## Plugin Implementation
+
+Register handlers in the `Welcome` class's `initialize` method. Replace `welcome.py` with:
+
+```python
+from langbot_plugin.api.definition.components.runner import (
+    Runner,
+    RunnerContext,
+)
+from langbot_plugin.api.entities.builtin.platform.events import (
+    MemberJoinedEvent,
+    MessageReceivedEvent,
+)
+from langbot_plugin.api.entities.builtin.platform.message import Plain
+
+
+class Welcome(Runner):
+    async def initialize(self):
+        await super().initialize()
+
+        @self.handler(MemberJoinedEvent)
+        async def on_join(ctx: RunnerContext):
+            name = ctx.platform_event.member.nickname or str(ctx.platform_event.member.id)
+            await ctx.log(f"Member joined: {name}")
+            if not ctx.config.get("reply_enabled", True):
+                await ctx.log("Replies are disabled for this processor")
+                return
+            greeting = ctx.config.get("greeting", "Welcome aboard!")
+            await ctx.reply(f"{name}, {greeting}")
+            await ctx.log("Welcome action completed")
+
+        @self.handler(MessageReceivedEvent)
+        async def on_message(ctx: RunnerContext):
+            text = "".join(
+                item.text for item in ctx.platform_event.message_chain if isinstance(item, Plain)
+            ).strip()
+            if text != "/hello":
+                await ctx.log("Message ignored: expected /hello")
+                return
+            if ctx.config.get("reply_enabled", True):
+                await ctx.reply(ctx.config.get("greeting", "Welcome aboard!"))
+            else:
+                await ctx.log("Replies are disabled for this processor")
+```
+
+`on_join` welcomes new members, and `on_message` replies to `/hello`. With **Send replies** turned off, they only write logs.
+
+`ctx.platform_event` contains the event data, and `ctx.config` contains this processor's settings. Use `ctx.reply()` to reply and `ctx.log()` to write logs. Processing finishes when the handlers return.
+
+## Streaming Replies
+
+Use `ctx.reply_stream()` to update one reply. `update(text)` takes the complete text so far:
+
+```python
+async with ctx.reply_stream() as reply:
+    await reply.update("Working…")
+    await reply.update("Done.")
+```
+
+The reply finishes when the `async with` block exits normally. If streaming is unsupported, disabled, or the event is not a message, the Host sends one complete message at the end. Exceptions discard buffered partial text. Debug runs simulate delivery.
+
+
+## Registering Events
+
+Register a handler with `@self.handler(EventClass)` and add the event identifier to `spec.events`. For example, `MemberJoinedEvent` corresponds to `group.member_joined`.
+
+| Event | Manifest identifier | SDK event class |
+| --- | --- | --- |
+| Message received | `message.received` | `MessageReceivedEvent` |
+| Message edited | `message.edited` | `MessageEditedEvent` |
+| Message deleted | `message.deleted` | `MessageDeletedEvent` |
+| Message reaction | `message.reaction` | `MessageReactionEvent` |
+| Feedback received | `feedback.received` | `FeedbackReceivedEvent` |
+| Member joined | `group.member_joined` | `MemberJoinedEvent` |
+| Member left | `group.member_left` | `MemberLeftEvent` |
+| Member muted | `group.member_banned` | `MemberBannedEvent` |
+| Group information updated | `group.info_updated` | `GroupInfoUpdatedEvent` |
+| Friend request received | `friend.request_received` | `FriendRequestReceivedEvent` |
+| Friend added | `friend.added` | `FriendAddedEvent` |
+| Friend removed | `friend.removed` | `FriendRemovedEvent` |
+| Bot invited to group | `bot.invited_to_group` | `BotInvitedToGroupEvent` |
+| Bot removed from group | `bot.removed_from_group` | `BotRemovedFromGroupEvent` |
+| Bot muted | `bot.muted` | `BotMutedEvent` |
+| Bot unmuted | `bot.unmuted` | `BotUnmutedEvent` |
+| Platform-specific event | `platform.specific` | `PlatformSpecificEvent` |
+
+See the SDK's [events.py](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/api/entities/builtin/platform/events.py) for available events and fields. Event support varies by platform.
+
+## Testing the Event Processor
+
+Configure the debug connection following the [plugin development tutorial](/en/plugin/dev/tutor), then run `lbp run` in the plugin directory. In LangBot:
+
+1. Create a **Plugin processor**, select **Welcome members** on its detail page, configure it, and save.
+2. Select **Member joined** on the left, enter the member nickname, member ID, and group ID, then click **Run test**.
+3. Inspect the reply and logs. You can also select **Message received** and enter `/hello` to test replies.
+
+Platform replies use Mock during debugging and send no real messages. Restart `lbp run` after editing component YAML.
+
+After installing the plugin, add this configuration under **Plugin processor** on the bot detail page and save. You can also select a component, fill in its configuration, and create and bind a new configuration directly there. Declared events are delivered automatically; no per-event routes are needed.
+
+Plugin subscriptions run independently of Agent/Pipeline routes. An event can trigger multiple processors, and one failure does not prevent the others from running. Bots using the same configuration share settings and runtime state; create separate configurations for different settings. Expose optional behavior, such as replies, through component configuration to avoid duplicate responses.
+
+## One installation, many usages
+
+A Workspace installs each plugin once, but that installation is reused by **several processors** (Agents and Pipelines). A Runner must keep their data apart on its own:
+
+- `ctx.state.*` is already per-processor: scopes carry `binding_identity` (derived from the Agent UUID), so different processors of the same installation never overwrite each other.
+- The platform storage key is `(instance, Workspace, owner type, plugin, key)` and carries **no processor dimension**; any key you write into Host storage or caches yourself must therefore also include the processor or conversation identity.
+- `RunnerContext` (`ctx`) is valid only for a single run. Never keep it or its fields on the instance for reuse across calls; persist session state that must survive calls via `ctx.state_get()` / `ctx.state_set()`.
+- Several processors share the same Runner instance, so never accumulate the current run's data on instance fields. If your runner must hold cross-call state in-process (for example a long-lived external session process), do not declare shared runtime — stay dedicated.
+- If you keep per-installation process-local caches, release them in `on_installation_revoked(binding)`.
+
+See [Certified plugins and shared runtime](/en/plugin/certified-plugins) for the full specification.
+
+## Next Steps
+
+- See the [`RunnerContext` API reference](/en/plugin/dev/apis/agent-run#runner).
+- See [LangBot API](/en/plugin/dev/apis/common) for models, tools, knowledge bases, and storage.
+- See [Platform API](/en/plugin/dev/apis/platform) for messaging and other platform operations.
+- Explore more examples in [RunnerDemo](https://github.com/langbot-app/langbot-plugin-demo/tree/main/Runner/RunnerDemo).
+- To extend Pipeline steps such as preprocessing or completion of a model call, use [Event Listener](/en/plugin/dev/components/event-listener).

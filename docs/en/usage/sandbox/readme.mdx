@@ -1,0 +1,81 @@
+---
+title: "Sandbox"
+description: "LangBot Box Runtime gives the built-in Agent command and file tools with a choice of sandboxed or trusted-host backends."
+---
+
+Box Runtime gives the built-in Agent one execution interface for running commands, reading and writing files, and hosting long-lived processes. Everyday Agent use cases (data processing, file operations, running user code, hosting stdio MCP) all rely on it. Docker, nsjail, and E2B provide sandbox isolation; the explicitly selected Host backend is for trusted local development and provides no isolation.
+
+Once Box is enabled, the built-in Agent automatically gains six tools — no need to wire each one into the pipeline.
+
+## Built-in Tools
+
+| Tool | Purpose |
+|------|---------|
+| `exec` | Run shell commands inside the sandbox |
+| `read` | Read workspace files |
+| `write` | Create or overwrite files |
+| `edit` | Modify files via string replacement |
+| `glob` | Find files by glob pattern |
+| `grep` | Search file contents by regex |
+
+`exec` runs in the selected Box backend; the other five operate directly on the workspace directory mapped to `/workspace`. With Host selected, commands also run directly on the Box Runtime host.
+
+<Note>
+These tools target the built-in Agent. When using external runners such as Dify, n8n, Langflow, or Coze, use that platform's own tool mechanism.
+</Note>
+
+## Sandbox Scope
+
+The pipeline's AI configuration lets you choose how the sandbox is shared across messages. The default "per chat" works for most cases.
+
+| Scope | Template | Shared across |
+|-------|----------|---------------|
+| Global | `{global}` | All users share one sandbox |
+| Per chat (default) | `{launcher_type}_{launcher_id}` | Same group or DM shares one |
+| Per user | `{launcher_type}_{launcher_id}_{sender_id}` | Each member in a group is isolated |
+| Per conversation | `{launcher_type}_{launcher_id}_{conversation_id}` | Isolated by conversation |
+| Per message | `{query_id}` | Fully stateless |
+
+<Warning>
+Commands within the same scope share filesystem state. Choose "per message" for a separate workspace. Scope controls session reuse; it is not a security boundary. Host has no host-level isolation even when different scopes are used.
+</Warning>
+
+## Lifecycle
+
+| Condition | Behavior |
+|-----------|----------|
+| Idle for more than 5 minutes | Cleaned up automatically |
+| Box-managed processes running (e.g. stdio MCP) | Kept alive until those processes exit |
+| `persistent: true` configured | Never cleaned up automatically |
+
+These lifecycle rules also apply to Host. Cleanup terminates the session's managed process trees and removes its temporary session directory. A durable workspace mapped under `box.local.host_root` is not deleted as temporary state. Runtime shutdown and explicit session deletion also perform cleanup.
+
+## Quick Start
+
+Trusted local development on Linux / macOS can select Host without installing Docker:
+
+1. **Edit `config.yaml`**:
+   ```yaml
+   box:
+     enabled: true
+     backend: 'host'
+     local:
+       host_root: './data/box'
+   ```
+2. **Start LangBot**: Box Runtime is enabled automatically
+3. **In the pipeline**, select the built-in Agent plus a model that supports function calling
+
+The Agent will then automatically receive the six tools. See [Sandbox Configuration](./config) for details.
+
+<Warning>
+Host executes commands directly with the LangBot / Box Runtime user's permissions and must only process trusted input. To execute untrusted code, set `backend` to `local` (auto-pick Docker / Nsjail), `docker`, `nsjail`, or `e2b`.
+</Warning>
+
+## Disabling Box
+
+Set `box.enabled: false`. Everything that depends on the sandbox (built-in tools, Skill create/edit/activate, stdio MCP) is disabled together; MCP servers in http/sse mode are unaffected.
+
+## Next Steps
+
+- [Sandbox Configuration](./config) — backends, security profiles, mounts, environment variables
+- [Runtimes & Extensions Compared](./runtime-relationships) — how the sandbox, Skills, MCP, and plugins divide responsibilities

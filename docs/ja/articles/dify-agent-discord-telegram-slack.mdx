@@ -1,0 +1,117 @@
+---
+title: "Dify Agent を Discord・Telegram・Slack で動かす"
+description: "Finally Got My Dify Agent Working in Discord, Telegram and Slack"
+---
+
+この記事は LangBot Blog から同期されています。 [Blog の原文を読む](https://langbot.app/en/blog/dify-agent-discord-telegram-slack).
+
+公開日：2025-12-11 · 著者：LangBot Team
+
+> この記事の日本語版はまだ公開されていないため、英語版を掲載しています。
+
+![Finally Got My Dify Agent Working in Discord, Telegram and Slack](/images/articles/source/images/covers/dify-agent.png)
+
+Want your Dify Agent to break free from the browser and chat directly in WeChat, QQ, or Telegram? Combine LangBot with Dify and you can set it up in under 10 minutes.
+
+## Why This Combo?
+
+[**LangBot**](https://github.com/langbot-app/LangBot) is the most powerful open-source multi-platform chatbot framework available. It supports major Chinese IMs (QQ, WeChat, Feishu, DingTalk) and international platforms (Telegram, Discord, Slack, LINE). Its core strength is connecting AI backends to messaging apps.
+
+**Dify** is one of the hottest AI app development platforms, offering visual Agent orchestration, 50+ built-in tools, and RAG knowledge bases. Together, they let you build a multi-platform AI assistant fast.
+
+## Deploy LangBot
+
+Three commands with uvx:
+
+```bash
+mkdir langbot-instance
+cd langbot-instance
+uvx langbot@latest
+```
+
+Visit `http://127.0.0.1:5300` and register an admin account:
+
+![LangBot Dashboard](/images/articles/external/c6d52212ba91-02-langbot-dashboard.png)
+
+## Create a Dify Agent
+
+Log in to [cloud.dify.ai](https://cloud.dify.ai) and create a new app. Choose **Agent** type - unlike basic chat apps, Agents can reason autonomously and call tools for complex tasks.
+
+![Select Agent Type](/images/articles/external/3e5b1d8ec6ec-07-dify-create-app-types.png)
+
+### Configure the Agent
+
+In the orchestration interface, set up:
+
+**System Instructions** - Define the Agent's role:
+
+```
+You are an intelligent assistant that helps users complete various tasks. You have the following capabilities:
+1. Answer various user questions
+2. Query weather information
+3. Retrieve webpage content
+
+Please always maintain a friendly and professional attitude. If you need to use tools to get information, proactively call the relevant tools.
+```
+
+**Add Tools** - Pick from Dify's 50+ built-in tools, like Weather and Web Scraper:
+
+![Add Tools](/images/articles/external/9066d99b172c-11-dify-tools-panel.png)
+
+**Select Model** - Supports GPT, Claude, Gemini, DeepSeek, and other major LLMs.
+
+Final configuration:
+
+![Configuration Complete](/images/articles/external/be278ca435e8-12-dify-agent-configured.png)
+
+### Get the API Key
+
+Click "Publish", then go to "Access API" to create a key:
+
+![Create API Key](/images/articles/external/471b316018e5-13-dify-api-key-created.png)
+
+Save the API key and server address `https://api.dify.ai/v1`.
+
+## Connect Dify to LangBot
+
+Back in LangBot, go to Pipelines > ChatPipeline > AI Capability:
+
+![AI Capability Config](/images/articles/external/8f4b3820ed5b-14-langbot-pipeline-ai-capability.png)
+
+Select **Dify Service API** as the Runner:
+
+![Select Dify Runner](/images/articles/external/efa6fcae9c58-15-langbot-runner-dropdown.png)
+
+Enter the configuration:
+- **Base URL**: `https://api.dify.ai/v1`
+- **API Key**: The key you just created
+- **App Type**: Chat (including Chatflow)
+
+![Enter Configuration](/images/articles/external/74f71a8bf1dc-17-langbot-dify-api-key-entered.png)
+
+Save and click "Debug Conversation" to test:
+
+![Test Conversation](/images/articles/external/9999c12907eb-20-langbot-chat-test.png)
+
+If the Agent responds correctly and calls tools, the integration is working.
+
+## Why This Architecture Rocks
+
+- **Decoupled Design**: Agent capabilities live in Dify, LangBot handles message routing - each does what it's best at
+- **One Config, Multi-Platform**: Same Agent serves QQ, WeChat, Telegram, and more simultaneously
+- **Easy to Extend**: Add RAG knowledge bases, Workflow orchestration, or more tools in Dify later
+
+## Next Steps
+
+- Configure messaging platforms in LangBot (QQ bot, WeChat personal account, etc.)
+- Add more tools in Dify (database queries, API calls)
+- Try Dify Chatflow for complex conversation flows
+
+If you're using n8n, FastGPT, Coze, or Langflow, LangBot supports those too.
+
+---
+
+**Resources**
+
+- [LangBot Docs](https://langbot.app/docs) | [GitHub](https://github.com/langbot-app/LangBot)
+- [Dify Docs](https://docs.dify.ai) | [Cloud Platform](https://cloud.dify.ai)

@@ -1,0 +1,67 @@
+---
+title: "ウェブページボット"
+description: "Web ページに LangBot AI チャットボットを埋め込み。任意のサイトに LLM チャットウィジェットを追加。"
+icon: "/images/platforms/webpage.svg"
+---
+
+一行のスクリプトタグで LangBot チャットウィジェットを任意のウェブサイトに埋め込みます。
+
+## ボットの作成
+
+LangBot WebUI を開き、**ボット > ボットを作成** に移動し、ボット名を入力し、プラットフォーム/アダプターで `ページボット` を選択します。
+
+![ページボットの作成](/images/zh/deploy/bots/web_page/webpage_01.png)
+
+## 設定項目
+
+| 項目 | 説明 |
+|------|------|
+| コンポーネントタイトル | チャットウィジェットの上部に表示されるタイトル。デフォルトは LangBot |
+| バブルアイコン | フローティングチャットバブルに表示されるアイコン |
+| コンポーネント言語 | チャットウィジェットの表示言語（簡体字中国語、英語など） |
+| Turnstile サイトキー | Cloudflare Turnstile のサイトキー。bot 対策用。空なら無効 |
+| Turnstile シークレットキー | Cloudflare Turnstile のシークレットキー。サイトキーと一緒に Cloudflare コンソールで取得。サイトキー設定時に必須 |
+
+## 埋め込みコードの取得
+
+作成・保存後、ボット設定ページの **埋め込みコード** エリアに自動生成された `<script>` タグが表示されます。
+
+![埋め込みコード](/images/zh/deploy/bots/web_page/webpage_02.png)
+
+このコードをコピーしてウェブサイトの HTML に貼り付けます（通常は `</body>` の前）。ページの右下にチャットバブルが表示され、ビジターがボットとチャットできるようになります。
+
+```html
+<script data-title="LangBot" src="http://localhost:5300/api/v1/embed/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></script>
+```
+
+<Warning>
+埋め込みコードの URL はデフォルトで `localhost` です。LangBot をサーバーにデプロイしている場合は、`localhost:5300` を実際のアドレスに置き換えてください。
+</Warning>
+
+## bot 対策（オプション）
+
+Cloudflare Turnstile を有効にして bot 対策を行えます：
+
+1. [Cloudflare Turnstile](https://dash.cloudflare.com/) > サイトを追加 に移動
+2. **サイトキー** と **シークレットキー** を取得
+3. LangBot ページボットの対応するフィールドに入力
+4. 保存して反映
+
+## ローカルプレビュー / デモ
+
+自分のサイトに組み込む前に埋め込みウィジェットを試したい場合、LangBot 本体リポジトリの
+[`examples/web-page-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/web-page-bot)
+に自己完結型の単一ファイルデモページ `index.html` が用意されています。ブラウザで開いて
+LangBot のアドレスとページボットの UUID を入力すると、実際の埋め込みウィジェットが読み込まれ、
+サイト訪問者と同じようにボットとチャットでき、さらに自分のサイトに貼り付ける `<script>`
+スニペットもリアルタイムで生成されます。
+
+```bash
+# リポジトリのルートを静的配信し、ブラウザで開く
+python3 -m http.server 8930
+# http://localhost:8930/examples/web-page-bot/ にアクセス
+```
+
+## 使い方
+
+埋め込みコードをウェブサイトに追加後、ページ右下のチャットバブルをクリックするとボットとチャットできます。

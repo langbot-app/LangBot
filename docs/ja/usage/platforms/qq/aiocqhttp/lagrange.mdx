@@ -1,0 +1,70 @@
+---
+title: "Lagrange"
+description: "Lagrange（aiocqhttp）経由で QQ を LangBot に接続。QQ のグループ・個人チャットで AI ボットを運用。"
+---
+
+## Lagrange の紹介
+
+Lagrange は、軽量で比較的安定した QQNT プロトコルリバースエンジニアリングフレームワークです。OneBot 11 プロトコルを通じて接続します。アダプターとして `OneBot v11` を選択する必要があります。
+
+<Warning>
+ボットとやり取りするには NT QQ を使用する必要があります。古いバージョンの QQ は正常に動作しません
+</Warning>
+
+## デプロイ手順
+
+以下は Windows の一般的な手順のみを提供します。詳細な手順または他のプラットフォームについては、[Lagrange 公式ドキュメント](https://lagrangedev.github.io/Lagrange.Doc/v1/Lagrange.OneBot/)を参照してください
+
+### 環境設定
+
+.NET 8 ランタイムをインストールします。[ここをクリックして Microsoft の公式ウェブサイトから直接ダウンロード](https://dotnet.microsoft.com/zh-cn/download/dotnet/thank-you/runtime-desktop-8.0.4-windows-x64-installer)
+
+### Github Actions から最新のビルドをダウンロード
+
+Github にログインしてダウンロードする必要があります。特定の機能が必要ない場合は、Release からダウンロードできます。画像 3 を参照してください
+
+[Github Actions](https://github.com/KonataDev/Lagrange.Core/actions)
+
+画像に従ってダウンロードします：
+
+![Image 1](/images/zh/deploy/bots/qq/onebot/lagrange/dl_lgr_1.png)
+
+![Image 2](/images/zh/deploy/bots/qq/onebot/lagrange/dl_lgr_2.png)
+
+![Image 3](/images/zh/deploy/bots/qq/onebot/lagrange/dl_lgr_3.png)
+
+### 最終ステップ
+
+ダウンロードした zip を解凍し、Lagrange.OneBot.exe を含むディレクトリに移動し、このディレクトリで cmd コマンドプロンプトを開き、次のように入力します
+
+```bash
+.\Lagrange.OneBot
+```
+
+一度実行します。QR コードが出力された場合、ボットアカウントで直接スキャンしてログインできます（QR コードが不鮮明な場合は、lagrange data ディレクトリで画像ファイルを探すことができます）。
+
+ログインできない場合は、lagrange 設定ファイル appsettings.json で署名アドレス SignServerUrl を正しく入力したかどうかを確認してください。署名アドレスは lagrange ドキュメントで確認してください。
+
+## 設定の変更
+
+Lagrange を LangBot に接続するように設定する必要があります。Lagrange の設定ファイル appsettings.json を編集し、Implementations の接続設定が以下の画像の内容と一致することを確認してください：
+
+![Configure Connection](/images/zh/deploy/bots/qq/onebot/lagrange/config_lgr.png)
+
+Type は `ReverseWebSocket` である必要があります；
+Host は LangBot を実行しているホストの IP です。同じホストにある場合は、`127.0.0.1` と記述できます；
+Suffix は `/ws` である必要があります；
+
+## Lagrange 統合
+
+次に、LangBot 設定ページを開きます
+
+Bots をクリックし、次に Add をクリックします
+
+`Platform/Adapter Selection` で `OneBot v11` を選択します
+
+![napcat_webui_03](/images/zh/deploy/bots/qq/onebot/napcat/napcat_webui_03.png)
+
+<Info>
+注意：複数の docker コンテナに関連するネットワーク接続の問題がある場合は、[ネットワーク設定の詳細](/en/workshop/network-details)を参照してください
+</Info>

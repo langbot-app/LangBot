@@ -1,0 +1,164 @@
+---
+title: "Slack"
+description: "LangBot で Slack AI ボットを構築。GPT・Claude・Dify 等を Slack ワークスペースに接続。"
+icon: "/images/platforms/slack.svg"
+---
+
+## クイック設定（推奨）
+
+**Slack クイック設定**を使うと、LangBot がアプリの権限、メッセージイベント、メッセージタブ、OAuth 戻り先 URL を自動設定します。設定トークンを入力して Slack でインストールを承認し、Socket Mode の場合は App-Level Token を追加してください。
+
+### 1. ボットを作成して接続方式を選ぶ
+
+LangBot の **ボット → ボットを作成**で名前を入力し、**Slack** を選んで送信します。設定ページで接続方式を選び、**Slack クイック設定 → 開始**をクリックします。
+
+![ボットを作成して Slack アダプターを選択する](/images/zh/deploy/bots/slack/setup-create-bot.jpg)
+
+- **Socket Mode（推奨）**：LangBot から Slack に接続するため、公開イベント Webhook は不要です。ローカル環境やプライベートネットワークに適しています。
+- **Webhook**：Slack がイベントを送信するため、公開 HTTPS エンドポイントが必要です。
+
+![Socket Mode を選びクイック設定を開く](/images/zh/deploy/bots/slack/setup-connection-mode.jpg)
+
+### 2. App Configuration Tokens を取得する
+
+[Slack アプリページ](https://api.slack.com/apps)を開き、**Your App Configuration Tokens → Generate Token** で対象のワークスペースを選択します。**Access Token** と **Refresh Token** をそれぞれコピーしてください。既存のトークンがある場合は、そのコピー用ボタンを使用できます。
+
+![設定トークンの場所とコピーボタン](/images/zh/deploy/bots/slack/setup-configuration-tokens.jpg)
+
+これらはアプリの作成・設定用であり、**実行時に使う Bot Token や App-Level Token とは異なります**。アシスタントの対応する欄に入力し、アプリ名を確認します。
+
+### 3. URL を確認してアプリを自動作成する
+
+Socket Mode では **OAuth 戻り先 URL** を確認します。承認後にブラウザーを LangBot に戻す URL で、HTTPS または `http://localhost` を使用でき、末尾は `/api/v1/platform/adapters/slack/setup/callback` です。ブラウザーからアクセスできればよく、イベント Webhook ではありません。リモート環境では、ブラウザーから到達できないサーバー内部のアドレスを指定しないでください。
+
+![Socket Mode のクイック設定フォーム](/images/zh/deploy/bots/slack/setup-socket-mode.jpg)
+
+Webhook の場合は **Webhook URL** が表示されます。公開ドメイン、HTTPS、リバースプロキシを確認し、末尾の `/bots/<ボット UUID>` を維持してください。この URL から OAuth 戻り先 URL が生成され、Slack のイベント URL 検証も自動で行われます。
+
+**作成して自動設定**をクリックし、**Slack で承認**が表示されるまで待ちます。
+
+### 4. Slack でインストールを承認する
+
+**Slack で承認**を開き、アプリ名、ワークスペース、権限を確認して **Allow** をクリックします。ワークスペースのポリシーによっては管理者の承認が必要です。完了後、元の LangBot アシスタントに戻ります。
+
+![Slack のインストール承認画面](/images/zh/deploy/bots/slack/setup-slack-permissions.jpg)
+
+### 5. Socket Mode：App-Level Token を追加する
+
+Webhook の場合はこの手順をスキップします。Socket Mode ではアシスタントの**アプリ設定を開く**から **Basic Information → App-Level Tokens → Generate Token and Scopes** に進みます。
+
+1. Token Name に `langbot-socket` などの名前を入力します。
+2. **Add Scope** で **connections:write** を選択します。
+3. **Generate** をクリックし、生成された `xapp-` トークンをコピーして、アシスタントの **App-Level Token** に入力します。
+
+![App-Level Token に connections:write を追加する](/images/zh/deploy/bots/slack/setup-app-token-scope.jpg)
+
+**Token rotation** は無効のままにしてください。作成した同じ Slack アプリのトークンを使用します。手順 2 の Access Token や Refresh Token をここに入力しないでください。
+
+### 6. 設定を反映し、ルーティングを設定して有効化する
+
+承認完了が表示されたら、**アダプター設定に入力**をクリックします。Socket Mode では App-Level Token を入力すると、このボタンが有効になります。Bot Token などの認証情報は自動で反映されます。
+
+![承認完了とアダプター設定への反映](/images/zh/deploy/bots/slack/setup-authorized.jpg)
+
+**イベントルーティング → アクションを追加 → 受信メッセージに返信**で、`message.received` に設定済みのパイプラインまたは Agent を指定し、ルートを有効にします。最後に右上の**保存して有効化**をクリックします。
+
+![メッセージのルートを設定して保存する](/images/zh/deploy/bots/slack/setup-routing.jpg)
+
+### 7. 会話を確認する
+
+Slack でアプリの **Messages** タブを開き、DM を送信します。ボットをチャンネルに招待してメンションすることもできます。返信が届けば接続成功です。
+
+![Slack ボットとの会話成功例](/images/zh/deploy/bots/slack/setup-conversation.png)
+
+<Info>
+設定トークンは一時的な設定セッションでのみ使用し、実行用の認証情報として保存しません。セッションは 15 分間有効です。キャンセルしても作成済みの Slack アプリは削除されず、再実行すると別のアプリが作成される場合があります。戻り先ページでエラーが出ても、最初に元のアシスタントで承認完了になっていないか確認してください。
+</Info>
+
+返信がない場合は、ボットとメッセージルートが有効か、処理先が正常に動作するか、ボットのログにエラーがないかを確認します。Socket Mode では同じアプリの App-Level Token と `connections:write` 権限を、Webhook では公開 URL と Slack の **Verified** 表示を確認してください。
+
+## イベント、インタラクション、既存アプリの更新
+
+クイック設定は以下の購読とインタラクションの受信設定を行います。インストール時にメッセージ、チャンネル、ユーザー、ファイル、リアクションの権限を要求し、リアクションには `reactions:read` を使用します。チャンネルの通常返信には引き続き @メンションが必要です。編集・削除やチャンネル変更のためのメッセージ購読によって、すべての会話に返信することはありません。
+
+| Slack イベント | LangBot イベント |
+| --- | --- |
+| DM、`app_mention` | `message.received` |
+| `message_changed` / `message_deleted` サブタイプ | `message.edited` / `message.deleted` |
+| `reaction_added` / `reaction_removed` | `message.reaction`、`is_add` で区別 |
+| `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
+| ボット自身の参加・退出 | 招待者がある場合は `bot.invited_to_group`、退出は `bot.removed_from_group` |
+| チャンネル名、アーカイブ状態、トピック・用途の変更 | `group.info_updated` |
+| `block_actions`、`view_submission`、`view_closed`、`shortcut`、`message_action` | `platform.specific`、`action` は `slack.` とコールバック名 |
+| `app_home_opened`、`app_uninstalled`、`tokens_revoked` | `platform.specific`、`action` は `slack.` とイベント名 |
+
+ボットのイベントルーティングでハンドラーを設定し、プラットフォームイベントは `action` で区別します。アンインストールとトークン失効は警告ログにも記録され、自動でチャット返信しません。リアクションをモデルへの評価とは自動判定しません。メッセージ ID は Slack の `ts` をチャンネルと組み合わせて識別し、スレッド返信は `thread_ts` を維持します。
+
+インタラクションは受信確認後に非同期処理します。モーダル送信の確認応答での同期的な項目エラー返却と外部選択肢の読み込みには対応していません。`view_closed` を受信するにはモーダル作成時に `notify_on_close: true` が必要です。ボタン、ショートカット、モーダル自体は自動作成しません。Socket Mode と Webhook の両方で受信できますが、配信は Slack の権限、チャンネルへの参加、接続状態に依存します。
+
+**LangBot の更新だけでは既存 Slack アプリの権限は更新されません。** アプリを作り直さず、次の設定を追加してください。
+
+1. **OAuth & Permissions → Bot Token Scopes** で既存権限を維持し、`reactions:read` を追加します。`app_mentions:read`、`chat:write`、`channels:history`、`channels:read`、`groups:history`、`groups:read`、`im:history`、`im:read`、`im:write`、`mpim:history`、`mpim:read`、`users:read`、`files:read`、`files:write` を確認し、**Reinstall to Workspace** で再承認します。
+2. **Event Subscriptions → Subscribe to bot events** に `app_mention`、`message.im`、`message.channels`、`message.groups`、`message.mpim`、`reaction_added`、`reaction_removed`、`member_joined_channel`、`member_left_channel`、`channel_rename`、`group_rename`、`channel_archive`、`channel_unarchive`、`group_archive`、`group_unarchive`、`app_home_opened`、`app_uninstalled`、`tokens_revoked` を設定します。編集・削除とトピック・用途変更はメッセージのサブタイプであり、個別の購読は不要です。
+3. **Interactivity & Shortcuts** を有効にします。Webhook の **Request URL** はイベント購読と同じ LangBot `/bots/<ボット UUID>` を指定します。Socket Mode では公開インタラクション URL は不要です。
+4. Slack の設定を保存し、LangBot のイベントルートを設定します。再インストールで Bot Token が変わった場合は更新してボットを保存してください。
+
+各フィールドは [Slack App Manifest リファレンス](https://docs.slack.dev/reference/app-manifest/)を参照してください。
+
+## 手動設定（Webhook）
+
+以下の画像は基本的な会話設定です。権限、イベント購読、インタラクションの完全な設定は、上の「イベント、インタラクション、既存アプリの更新」の最新リストを使用してください。
+
+以下は手動 Webhook 設定です。手動で Socket Mode を使う場合は Slack 側で有効にし、Bot Token と App-Level Token を入力して `app_mention` と `message.im` を購読します。イベント Request URL は不要です。
+
+### ボットの作成
+
+[Slack App Platform](https://api.slack.com/apps)にアクセスします。
+
+![Slack Platform](/images/zh/deploy/bots/slack/slack_01.jpg)
+
+右上の「Create New App」をクリックし、「from a manifest」を選択し、ボットをデプロイするワークスペースを選択し、next を選択して、ボットを作成します。
+
+左側の「Basic Information」オプションに入り、`signing_secret` を記録します。
+
+左側の「OAuth & Permissions」に入り、「Scopes」までスクロールダウンし、次のボット権限を追加します：
+
+![Bot Permissions 1](/images/zh/deploy/bots/slack/slack_02.jpg)
+
+
+![Bot Permissions 2](/images/zh/deploy/bots/slack/slack_03.jpg)
+
+上記の権限を追加した後、「Install to your workspace」をクリックし、`xoxb-xxxxx` で始まるトークンを記録します。<br />
+
+**注意：**
+**すべての権限を一度に追加しなかった場合は、後で App を再インストールする必要があります。**<br />
+
+左側の「App Home」タブに入り、一番下までスクロールして「Message Tab」を見つけ、オンにして
+「Allow users to send Slash commands and messages from the messages tab」をチェックします。
+
+### LangBot に接続
+
+左側の「Event Subscriptions」に入り、スイッチをオンにし、「Subscribe to bot events」をクリックし、
+次の権限を追加します：
+![Event Permissions](/images/zh/deploy/bots/slack/slack_04.jpg)
+
+上記のすべての操作を完了した後、LangBot Webui 設定ページを開き、新しいボットを追加します
+
+![Event Permissions](/images/zh/deploy/bots/slack/connect_to_langbot.png)
+
+### ボットの起動
+
+<Info>
+Webhook には公開 HTTPS URL が必要なため、まずドキュメント [HTTP リバースプロキシと SSL の設定](/en/workshop/production/proxy-and-ssl)に従ってリバースプロキシを設定してください。
+</Info>
+
+Slack 設定項目を入力した後、**LangBot を起動します**。
+LangBot ホームページで Slack ボットを有効にして開き、ボット設定ページから WebHook URL をコピーし、先ほど設定した Event Subscriptions の「Request URL」に WebHook URL を入力します。
+
+
+上記のすべての設定項目を入力した後、リンクを保存をクリックします。緑色の **Verified** が表示されれば、デプロイは成功です。
+それ以外の場合は、上記の設定項目が正しく入力されているかどうかを確認してください。
+
+### 効果のデモンストレーション
+
+![Effect Demonstration](/images/zh/deploy/bots/slack/slack_05.jpg)

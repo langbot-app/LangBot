@@ -1,0 +1,211 @@
+---
+title: "组件：运行器"
+---
+
+运行器组件通过 SDK 的 `Runner` 类型实现 Agent 的运行逻辑，也可以按事件注册处理函数，供「插件处理器」使用。两种写法共用 `RunnerContext`，插件安装后由用户选择组件并配置。
+
+环境准备见[插件开发教程](/zh/plugin/dev/tutor)。
+
+`RunnerContext` 的完整字段和方法见[上下文 API](/zh/plugin/dev/apis/agent-run#runner)。
+
+## 添加运行器组件
+
+单个插件中可以添加多个事件处理器。请在插件目录执行命令 `lbp comp Runner`，名称填写 `welcome`，描述填写 `Welcome new members`。
+
+```bash
+lbp comp Runner
+```
+
+生成的 `components/runner/welcome.yaml` 定义组件信息，`welcome.py` 是处理程序。
+
+## 自定义运行逻辑
+
+需要接入模型或实现自己的执行循环时，声明 `spec.usages: [agent]`，在 `run(ctx)` 中返回结果：
+
+```python
+from langbot_plugin.api.definition.components.runner import Runner, RunnerContext, RunnerResult
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+
+class Echo(Runner):
+    async def run(self, ctx: RunnerContext):
+        yield RunnerResult.run_completed(
+            ctx.run_id,
+            message=Message(role="assistant", content=ctx.input.to_text()),
+        )
+```
+
+## 清单文件：运行器
+
+将 `welcome.yaml` 修改为：
+
+```yaml
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: welcome
+  label:
+    en_US: Welcome members
+    zh_Hans: 欢迎新成员
+    ja_JP: 新しいメンバーを歓迎
+  description:
+    en_US: Welcome new members and respond to /hello.
+    zh_Hans: 欢迎新成员，并响应 /hello 消息。
+    ja_JP: 新しいメンバーを歓迎し、/hello に返信します。
+spec:
+  usages: [event]
+  events:
+    - group.member_joined
+    - message.received
+  capabilities:
+    tool_calling: true
+  permissions:
+    tools: [detail, call]
+  config:
+    - name: greeting
+      type: string
+      label:
+        en_US: Greeting
+        zh_Hans: 欢迎语
+        ja_JP: 歓迎メッセージ
+      required: true
+      default: Welcome aboard!
+    - name: reply_enabled
+      type: boolean
+      label:
+        en_US: Send replies
+        zh_Hans: 发送回复
+        ja_JP: 返信する
+      default: true
+execution:
+  python:
+    path: ./welcome.py
+    attr: Welcome
+```
+
+`spec.events` 指定支持的事件，`spec.config` 定义用户可在处理器详情页修改的配置。本例支持成员入群和收到消息，并提供欢迎语、回复开关两个配置项。回复消息需要上面的 `tool_calling` 和 `permissions.tools` 配置。
+
+
+`spec.usages` 必填、无默认值，决定组件可在哪类处理器中选择：`agent` 用于 Agent 和流水线，`event` 用于插件处理器。可同时声明 `[agent, event]`；包含 `event` 时必须填写 `spec.events`。本例使用事件处理函数，也可以在 `run(ctx)` 中按需调用 `await super().run(ctx)`。
+
+## 插件处理
+
+在 `Welcome` 类的 `initialize` 方法中注册事件处理函数。将 `welcome.py` 修改为：
+
+```python
+from langbot_plugin.api.definition.components.runner import (
+    Runner,
+    RunnerContext,
+)
+from langbot_plugin.api.entities.builtin.platform.events import (
+    MemberJoinedEvent,
+    MessageReceivedEvent,
+)
+from langbot_plugin.api.entities.builtin.platform.message import Plain
+
+
+class Welcome(Runner):
+    async def initialize(self):
+        await super().initialize()
+
+        @self.handler(MemberJoinedEvent)
+        async def on_join(ctx: RunnerContext):
+            name = ctx.platform_event.member.nickname or str(ctx.platform_event.member.id)
+            await ctx.log(f"Member joined: {name}")
+            if not ctx.config.get("reply_enabled", True):
+                await ctx.log("Replies are disabled for this processor")
+                return
+            greeting = ctx.config.get("greeting", "Welcome aboard!")
+            await ctx.reply(f"{name}, {greeting}")
+            await ctx.log("Welcome action completed")
+
+        @self.handler(MessageReceivedEvent)
+        async def on_message(ctx: RunnerContext):
+            text = "".join(
+                item.text for item in ctx.platform_event.message_chain if isinstance(item, Plain)
+            ).strip()
+            if text != "/hello":
+                await ctx.log("Message ignored: expected /hello")
+                return
+            if ctx.config.get("reply_enabled", True):
+                await ctx.reply(ctx.config.get("greeting", "Welcome aboard!"))
+            else:
+                await ctx.log("Replies are disabled for this processor")
+```
+
+`on_join` 在成员入群时发送欢迎语，`on_message` 回复 `/hello`。关闭「发送回复」后，只记录日志。
+
+处理函数中，`ctx.platform_event` 保存当前事件的数据，`ctx.config` 是当前处理器的配置。调用 `ctx.reply()` 回复消息，`ctx.log()` 记录日志。函数执行完毕，本次处理即结束。
+
+## 流式回复
+
+使用 `ctx.reply_stream()` 更新同一条回复，`update(text)` 接收当前的完整文本：
+
+```python
+async with ctx.reply_stream() as reply:
+    await reply.update("正在处理…")
+    await reply.update("处理完成。")
+```
+
+正常退出 `async with` 时完成回复。平台不支持流式、未开启流式回复或当前不是消息事件时，会在结束后发送一条完整消息；发生异常时不发送缓存中的未完成文本。调试模式仅模拟发送。
+
+
+## 事件注册
+
+通过 `@self.handler(事件类)` 注册处理函数，并将对应事件标识加入清单的 `spec.events`。例如，`MemberJoinedEvent` 对应 `group.member_joined`。
+
+| 事件 | 清单中的标识 | SDK 事件类 |
+| --- | --- | --- |
+| 收到消息 | `message.received` | `MessageReceivedEvent` |
+| 消息被编辑 | `message.edited` | `MessageEditedEvent` |
+| 消息被删除 | `message.deleted` | `MessageDeletedEvent` |
+| 消息表情回应 | `message.reaction` | `MessageReactionEvent` |
+| 收到反馈 | `feedback.received` | `FeedbackReceivedEvent` |
+| 成员加入群组 | `group.member_joined` | `MemberJoinedEvent` |
+| 成员离开群组 | `group.member_left` | `MemberLeftEvent` |
+| 成员被禁言 | `group.member_banned` | `MemberBannedEvent` |
+| 群组信息更新 | `group.info_updated` | `GroupInfoUpdatedEvent` |
+| 收到好友申请 | `friend.request_received` | `FriendRequestReceivedEvent` |
+| 添加好友 | `friend.added` | `FriendAddedEvent` |
+| 删除好友 | `friend.removed` | `FriendRemovedEvent` |
+| 机器人被邀请入群 | `bot.invited_to_group` | `BotInvitedToGroupEvent` |
+| 机器人被移出群组 | `bot.removed_from_group` | `BotRemovedFromGroupEvent` |
+| 机器人被禁言 | `bot.muted` | `BotMutedEvent` |
+| 机器人被解除禁言 | `bot.unmuted` | `BotUnmutedEvent` |
+| 平台自定义事件 | `platform.specific` | `PlatformSpecificEvent` |
+
+可用事件及字段见 SDK 的 [events.py](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/api/entities/builtin/platform/events.py)。各平台支持的事件有所不同。
+
+## 测试事件处理器
+
+按[插件开发教程](/zh/plugin/dev/tutor)配置调试连接，在插件目录执行 `lbp run`。然后在 LangBot 中：
+
+1. 创建「插件处理器」，在详情页选择「欢迎新成员」组件，填写配置并保存。
+2. 在左侧选择「成员加入群组」，填写成员昵称、ID 和群组 ID，点击「运行测试」。
+3. 查看回复和日志。也可以选择「收到消息」，输入 `/hello` 测试回复。
+
+调试中的平台回复使用 Mock，不发送真实消息。修改组件 YAML 后，请重启 `lbp run`。
+
+安装插件后，在机器人详情页的「插件处理器」中添加该配置并保存。也可以直接在这里选择组件、填写配置，创建并绑定新配置。机器人会自动投递组件声明的事件，无需逐条配置事件路由。
+
+插件处理器与 Agent／流水线路由独立执行，同一事件可以触发多个插件处理器，某个处理器失败不会阻止其他处理。使用同一配置的机器人会共享设置和运行状态；需要分别设置时，创建不同的配置。可选功能应通过组件配置提供，例如是否回复消息，避免与其他处理器重复回复。
+
+## 一个安装，多份用法
+
+一个工作区内每个插件只安装一次，但这份安装会被**多个处理器**（Agent / 流水线）复用。Runner 需要自己保证处理器之间不串数据：
+
+- `ctx.state.*` 已经按处理器隔离：其作用域包含 `binding_identity`（由 Agent UUID 派生），同一安装下的不同处理器不会互相覆盖。
+- 平台的插件存储键是 `(实例, 工作区, 组件类型, 插件名, key)`，**不含处理器维度**；所以你自己写进 Host 存储或缓存的键，必须额外包含处理器或会话身份。
+- `RunnerContext`（`ctx`）只在单次运行内有效，不要把它或它的字段保存到实例上跨调用复用；需要跨调用保留的会话状态用 `ctx.state_get()` / `ctx.state_set()`。
+- 多个处理器会共享同一个 Runner 实例，不要在实例字段上累积当前运行的数据；如果运行器必须依赖进程内持有的跨调用状态（例如长期驻留的外部会话进程），就不要声明共享运行，保持专属。
+- 如果按安装维护了进程内缓存，请在 `on_installation_revoked(binding)` 中释放。
+
+以上约束的完整说明见[认证插件与共享运行](/zh/plugin/certified-plugins)。
+
+## 接下来做什么
+
+- 查看 [`RunnerContext` 上下文 API](/zh/plugin/dev/apis/agent-run#runner)。
+- 查看模型、工具、知识库和存储相关的 [LangBot API](/zh/plugin/dev/apis/common)。
+- 查看消息发送等[平台 API](/zh/plugin/dev/apis/platform)。
+- 查看 [RunnerDemo](https://github.com/langbot-app/langbot-plugin-demo/tree/main/Runner/RunnerDemo) 中的更多示例。
+- 如果要扩展流水线的预处理、模型调用完成等步骤，请使用[事件监听器](/zh/plugin/dev/components/event-listener)。

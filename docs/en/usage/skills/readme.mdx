@@ -1,0 +1,101 @@
+---
+title: "Skills"
+description: "Use Skills in LangBot to load specialized know-how on demand, extending your AI Agent without bloating its context."
+---
+
+A Skill is an **on-demand instruction bundle**: when the user's request matches, the Agent calls the `activate` tool to pull the skill's instructions into context, then follows them. Skills that aren't activated don't consume context.
+
+Use Skills to give the Agent a **specialized workflow, template, or script** — "analyze a Python project", "fill a PDF form", "code review" — instead of stuffing every prompt into the System Prompt.
+
+## How Skills Compare to Plugins and MCP
+
+| What you want to do | Use this |
+|---------------------|----------|
+| A workflow triggered on demand (optional scripts and templates) | Skill |
+| Connect an existing MCP tool service | MCP Server |
+| Long-lived capability with config page, events, knowledge base | Plugin |
+
+See [Runtimes and Extensions](../sandbox/runtime-relationships) for the full picture.
+
+## Installing Skills
+
+<Note>
+Skills require the sandbox. `box.enabled` must be `true` and at least one backend (Docker / Nsjail / E2B) must be available — otherwise you can't install, activate, or edit skills. See [Sandbox Configuration](../sandbox/config).
+</Note>
+
+### From LangBot Space (Preferred)
+
+[LangBot Space](https://space.langbot.app) is the official LangBot marketplace, with a curated list of ready-to-use skills. In the WebUI Skills page, browse and install them with one click — no need to write a `SKILL.md` or prepare any resource files.
+
+This covers most cases. For custom workflows, use the option below.
+
+### Create Your Own
+
+**WebUI** — create, upload a zip, or import from GitHub on the Skills page.
+
+**Sandbox + `register_skill`**:
+1. Prepare the directory and `SKILL.md` under the sandbox `/workspace`
+2. Have the Agent call `register_skill(path="/workspace/my-skill")`
+
+Both options write to the skill store managed by Box Runtime.
+
+## Enabling in a Pipeline
+
+Once a skill is installed, the pipeline extension config decides which skills the Agent can see:
+
+- Enable "all skills", or
+- Bind only specific skills
+
+Binding only affects the `<available_skills>` list (what the Agent can choose from). The full instructions are always injected only after `activate` is called.
+
+## Writing a SKILL.md
+
+A skill is a directory plus a `SKILL.md`. The frontmatter holds metadata; the body is what the Agent receives after activation:
+
+```markdown
+---
+name: code-reviewer
+display_name: Code Review Assistant
+description: Reviews code and gives improvement suggestions; triggered when the user mentions review, code review, or code improvement
+---
+
+## Steps
+
+1. Use `read` to browse the relevant files
+2. Check readability, potential bugs, and security issues
+3. Provide improvement suggestions, sorted by priority
+```
+
+LangBot currently reads these three fields:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | When creating/registering | Unique ID, 1–64 chars |
+| `description` | Strongly recommended | The Agent uses this to decide when to activate — the more specific, the better |
+| `display_name` | No | Shown in the UI |
+
+`description` is the Agent's only signal for picking a skill. Make it concrete about **what it does, when it applies, and what trigger words to watch for**.
+
+For the full spec see [agentskills.io](https://agentskills.io/home). Other fields (`license`, `metadata`, ...) can stay in the file for future compatibility but are not currently read.
+
+**Skills with resources** place `scripts/`, `templates/`, etc. next to `SKILL.md`. After activation the Agent accesses them at `/workspace/.skills/{skill-name}/`.
+
+### Tools the Agent Sees
+
+| Tool | Purpose |
+|------|---------|
+| `activate` | Called automatically by the Agent when it sees a match — pulls SKILL.md into context |
+| `register_skill` | Registers a directory prepared in the sandbox as a new skill |
+
+## Common Issues
+
+| Symptom | What to check |
+|---------|---------------|
+| Skill list is empty | `box.enabled`, Box Runtime status, `box.local.skills_root` |
+| Agent doesn't activate a skill | Whether `description` is specific, whether the pipeline has the skill bound, whether the model supports function calling |
+| Files missing after activation | Files must live inside the Skill package; the path is `/workspace/.skills/{skill-name}/` |
+| `register_skill` errors | The path must be under `/workspace`, and the directory or subdirectories within two levels must contain `SKILL.md` |
+
+<Note>
+Skills currently target the built-in Agent and depend on function calling plus a sandbox backend. External runners (Dify, n8n, Langflow, Coze, etc.) should use their platform's equivalent mechanism.
+</Note>

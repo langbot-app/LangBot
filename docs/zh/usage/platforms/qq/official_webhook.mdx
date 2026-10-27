@@ -1,0 +1,87 @@
+---
+title: "QQ 官方机器人 API（Webhook）"
+description: "通过 QQ 官方机器人 API（Webhook）接入 LangBot，在 QQ 上运行合规的 AI 机器人。"
+---
+
+本文章只提供测试版机器人的发布，具体机器人上线请按照 [发布流程](https://q.qq.com/qqbot/#/home) 进行部署。
+
+<Warning>
+目前 QQ 官方发布公告，禁止违规接入 AIGC 功能，请慎重使用。
+</Warning>
+
+
+
+## 注册 QQ 机器人（测试机器人）
+
+### 配置机器人基本信息
+
+前往 [QQ开放平台](https://q.qq.com/#/) ，找到下方的 `应用管理` ，点击创建机器人，填写基本信息之后，进入机器人页面，如图：
+
+![机器人主页面](/images/zh/deploy/bots/qq/official/qqofficial1.png)
+
+`首页` 选项中的 `发布流程` 即为上线机器人的步骤。由于部署的是测试版机器人，所以只需要进行其中的 `资料` 和 `沙箱配置` 。<br />
+
+先进行资料填写，然后点击沙箱配置。
+
+#### 配置沙箱配置项
+
+点击 `沙箱配置` 。
+如果要部署在QQ群中，那么按照 `QQ群ID` 下方的要求进行选择群聊，在消息列表配置中添加有私聊权限的用户。<br />
+如果要部署在QQ频道中，那么按照 `频道ID` 下方的要求选择频道ID，机器人类型为0。
+
+#### 配置开发管理项
+
+点击 `开发管理` 。
+
+![开发管理页面](/images/zh/deploy/bots/qq/official/qqofficial2.png)
+
+记录其中的 `AppID` , `Token` , `AppSecret` ,并将 LangBot 所在服务器的IP地址填写到IP白名单中。
+
+## 对接 LangBot
+
+接下来打开 LangBot 配置页面
+
+点击机器人，点击添加
+
+`平台/适配器选择`为`QQ官方API`
+
+![QQ 官方 Bot 对接 LangBot](/images/zh/deploy/bots/qq/official/qqofficial3.png)
+
+
+## 配置回调地址
+
+要求 LangBot 部署在具有公网 IP 的服务器上，并已成功启用 HTTPS。请根据文档[配置 HTTP 反向代理和 SSL](/zh/workshop/production/proxy-and-ssl) 操作。
+
+<Tip>
+**不想折腾公网 IP 和 HTTPS？** [LangBot Cloud](https://space.langbot.app/cloud) 自带域名解析，注册即可直接使用 QQ 官方机器人。
+</Tip>
+
+
+#### 后续配置
+
+若 Caddy 启动不成功，请自行阅读 [Caddy文档](https://caddy2.dengxiaolong.com/docs/quick-starts/caddyfile)，或者加入 LangBot 社区群请求帮助。<br />
+
+以下是一些可能出现的问题：
+
+- 没有开启443端口
+- 没有将域名解析到本机
+- 没有成功保存 Caddyfile
+
+### 设置管理端回调地址
+
+
+首先 **启动 LangBot** 。
+
+点击 机器人管理端网页中的 `回调配置`，勾选下面 `添加事件` 中的所有事件。 
+
+进入 LangBot 配置页面，启用并且选择对应的QQ机器人，粘贴对应机器人配置页面中的 Webhook 回调地址，将其中的 IP 地址和端口改成之前 Caddy 配置的域名，在请求地址中填入。
+
+如图：
+![Caddy文档](/images/zh/deploy/bots/qq/official/qqofficial4.png)
+
+
+比如域名为 `testlb.com`，那么请求地址中填写 `testlb.com/bots/xxxxxx-xxxxxx` ，点击确定配置。如果回调地址保存成功，那么意味着部署成功。若出现 `校验失败` 字样，请认真检查上述配置项是否填写正确。
+
+## 发布方式
+
+进入 `首页` 的发布流程 ，按照流程进行机器人发布，上线。

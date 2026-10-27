@@ -1,0 +1,263 @@
+---
+title: "Context APIs"
+---
+
+A context contains data for one component invocation. Each component receives a different context, so start with the entry point for your component.
+
+| Component | Handler entry point | Context type |
+| --- | --- | --- |
+| EventListener | `handler(event_context)` | `EventContext` |
+| Command | `subcommand(context)` | `ExecuteContext` |
+| Tool | `call(params, session, query_id)` | No separate context object |
+| Runner | `run(ctx)` or `handler(ctx)` | `RunnerContext` |
+| KnowledgeEngine | `ingest(context)`, `retrieve(context)` | `IngestionContext`, `RetrievalContext` |
+| KnowledgeRetriever | `retrieve(context)` | `RetrievalContext` |
+| Parser | `parse(context)` | `ParseContext` |
+| Page | `handle_api(request)` | `PageRequest` |
+
+This page covers the data and methods available through these contexts. Use `self.plugin` for models, knowledge bases, storage, and other LangBot capabilities; see [LangBot API](/en/plugin/dev/apis/common). For platform operations, see [Platform API](/en/plugin/dev/apis/platform).
+
+`EventContext`, `ExecuteContext`, and `Session` also carry `instance_uuid`, `workspace_uuid`, and `placement_generation`. These fields identify the current instance and workspace for execution; plugins must not treat them as authorization data.
+
+See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, timeouts, numeric reasoning budgets, prompt caching, headers and stream cancellation.
+
+## EventListener
+
+EventListener handles Pipeline events. Its event handler receives an `EventContext`:
+
+```python
+event = event_context.event
+sender_id = event.sender_id
+```
+
+### Context data
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `event` | `BaseEventModel` | Current event object; its actual type matches the registered event type |
+| `event_name` | `str` | Current event class name |
+| `query_id` | `int` | Current Pipeline request ID |
+| `query_uuid` | `str \| None` | Stable identifier for the current Pipeline request |
+| `eid` | `int` | Temporary event number inside Plugin Runtime; do not persist it |
+| `is_prevent_default` | `bool` | Whether default handling has been stopped; change it with `prevent_default()` |
+| `is_prevent_postorder` | `bool` | Whether later plugins have been stopped; change it with `prevent_postorder()` |
+
+See [Pipeline Events](/en/plugin/dev/apis/pipeline-events) for event fields and all supported event types.
+
+### Context methods
+
+| Method | Return value | Description |
+| --- | --- | --- |
+| `await event_context.reply(message_chain, quote_origin=False)` | - | Reply in the conversation for the current request |
+| `await event_context.get_bot_uuid()` | `str` | Get the source bot UUID |
+| `await event_context.set_query_var(key, value)` | - | Set a variable on the current request |
+| `await event_context.get_query_var(key)` | `Any` | Get one request variable |
+| `await event_context.get_query_vars()` | `dict[str, Any]` | Get all request variables |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | Clear the current Pipeline conversation so a later request starts a new one |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Pipeline Local Agent |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Pipeline |
+| `event_context.prevent_default()` | - | Stop the default handling of the current event |
+| `event_context.prevent_postorder()` | - | Stop later plugins from handling the current event |
+
+`reply()` accepts a [MessageChain](/en/plugin/dev/apis/messages). Request variables, replies, and Pipeline knowledge-base methods require an associated Pipeline request. The `kb_id` passed to `retrieve_knowledge()` must come from `list_pipeline_knowledge_bases()`.
+
+`prevent_default()` only affects Pipeline events whose default flow can be stopped. See [Pipeline Events](/en/plugin/dev/apis/pipeline-events#prevent-default-behavior).
+
+## Command
+
+A Command subcommand handler receives an `ExecuteContext`:
+
+```python
+query = " ".join(context.crt_params)
+session = context.session
+```
+
+### Context data
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `session` | `Session` | Session that contains the current message |
+| `command_text` | `str` | Complete command text without the command prefix |
+| `full_command_text` | `str` | Complete command text including the prefix |
+| `command` | `str` | Root command name |
+| `crt_command` | `str` | Subcommand currently being executed |
+| `params` | `list[str]` | All arguments after the root command |
+| `crt_params` | `list[str]` | Arguments not yet consumed by the current subcommand |
+| `privilege` | `int` | Command privilege level of the current user |
+| `query_id` | `int` | Current Pipeline request ID |
+| `query_uuid` | `str \| None` | Stable identifier for the current Pipeline request |
+
+The SDK calls `context.shift()` before entering the current subcommand. Components do not need to call it directly.
+
+### Context methods
+
+| Method | Return value | Description |
+| --- | --- | --- |
+| `await context.reply(message_chain, quote_origin=False)` | - | Reply in the conversation for the current request |
+| `await context.get_bot_uuid()` | `str` | Get the source bot UUID |
+| `await context.set_query_var(key, value)` | - | Set a variable on the current request |
+| `await context.get_query_var(key)` | `Any` | Get one request variable |
+| `await context.get_query_vars()` | `dict[str, Any]` | Get all request variables |
+| `await context.create_new_conversation()` | `dict[str, Any]` | Clear the current Pipeline conversation so a later request starts a new one |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Pipeline Local Agent |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Pipeline |
+
+These request methods behave the same as their EventListener equivalents. See [Command](/en/plugin/dev/components/command) for registration and return values.
+
+## Tool
+
+Tool has no separate context object. Its `call()` parameters carry the invocation data:
+
+```python
+conversation_type = session.launcher_type.value
+conversation_id = session.launcher_id
+sender_id = session.sender_id
+```
+
+| Parameter | Description |
+| --- | --- |
+| `params` | Arguments generated by the model or caller from the tool JSON Schema |
+| `session` | Current session data |
+| `query_id` | Current Pipeline request ID; pass it unchanged to LangBot APIs that require request context |
+
+Common `Session` properties are:
+
+| Property | Description |
+| --- | --- |
+| `launcher_type` | Conversation type: `person` or `group` |
+| `launcher_id` | Private-chat user or group ID |
+| `sender_id` | Current message sender ID |
+| `bot_uuid` | Current bot UUID |
+| `using_conversation` | Current Pipeline conversation |
+| `conversations` | Pipeline conversations stored in this Session |
+| `use_prompt_name` | Active prompt name |
+| `create_time`, `update_time` | Session creation and update times |
+
+`session` is a data object and has no context methods such as `reply()`. A tool return value goes back to its caller; it is not sent to the chat platform automatically. Use `self.plugin` for LangBot and platform capabilities. If an API requires `session` and `query_id`, pass the values received by the current call.
+
+## Runner
+
+Both custom `run(ctx)` implementations and Runner event handlers receive a `RunnerContext`. It remains valid only while the current invocation is running.
+
+```python
+text = ctx.input.to_text()
+event_type = ctx.event.event_type
+```
+
+### Context data
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `run_id` | `str` | Current run ID |
+| `trigger` | `AgentTrigger` | Trigger type, source, and time |
+| `event` | `AgentEventContext` | Standard event envelope with the event ID, type, source, time, and raw data |
+| `platform_event` | Platform event type | Platform event parsed into its specific event type |
+| `conversation` | `ConversationContext \| None` | Current conversation, thread, bot, and workspace identifiers |
+| `actor` | `ActorContext \| None` | Actor that caused the event |
+| `subject` | `SubjectContext \| None` | Message, group, or other object affected by the event |
+| `input` | `AgentInput` | Current text, structured content, and attachments |
+| `delivery` | `DeliveryContext` | Output target and streaming, editing, and reaction capabilities |
+| `resources` | `AgentResources` | Models, tools, knowledge bases, skills, and storage authorized for this run |
+| `context` | `ContextAccess` | Conversation cursors, inline policy, and available context APIs |
+| `state` | `AgentRunState` | Scope-specific state snapshot loaded at the start of the run |
+| `runtime` | `AgentRuntimeContext` | LangBot version, trace ID, and deadline |
+| `config` | `dict[str, Any]` | Current Agent or plugin-processor configuration |
+| `adapter` | `AdapterContext \| None` | Additional entry-adapter data |
+| `variables` | `dict[str, Any]` | Public request variables for Runner templates |
+| `metadata` | `dict[str, Any]` | Other metadata supplied by the Host |
+
+Prefer the stable properties in this table. `event.data` and `adapter.extra` carry additional data that has not been promoted to stable fields.
+
+### Replies and logs
+
+| Method | Return value | Description |
+| --- | --- | --- |
+| `await ctx.get_bot_uuid()` | `str` | Get the source bot UUID; raises an error when no bot is associated |
+| `await ctx.reply(message_chain, quote_origin=False)` | `Any` | Reply to the current event with a string or `MessageChain` |
+| `ctx.reply_stream()` | Async context manager | Stream full-text updates to one reply |
+| `await ctx.log(text, level="info")` | - | Write to this run's log; levels are `debug`, `info`, `warning`, and `error` |
+
+Each `reply_stream().update(text)` call supplies the complete current text. If the platform does not support streaming, LangBot sends one complete message when the stream finishes. Debug mode only simulates delivery.
+
+### Available tools
+
+| Method | Return value | Description |
+| --- | --- | --- |
+| `await ctx.get_available_tools()` | `list[dict[str, Any]]` | Get context actions, platform APIs, plugin tools, and MCP tools callable in this invocation |
+| `await ctx.call_tool(tool_name, parameters=None)` | `dict[str, Any]` | Call a tool from that list |
+
+Each item returned by `get_available_tools()` contains `name`, `description`, `parameters`, `type`, and `operations`. The result is already filtered by the current Agent or plugin-processor configuration and the event's capabilities. `ctx.call_tool()` cannot call a tool absent from this list.
+
+### Box and attachments
+
+The Runner owns enablement, acquisition, and reuse policy. Use the [LangBot Box APIs](/en/plugin/dev/apis/common#box-sandbox) for resources and these context methods for the current run.
+
+| Method | Returns | Behavior |
+| --- | --- | --- |
+| `await ctx.bind_box(box_id)` | `BoxBinding` | Bind a Workspace Box; returns `box_id`, `outbox`. A run cannot switch Boxes |
+| `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | Import selected input `ref` values, or all inputs; returns sandbox paths |
+| `await ctx.export_box_files()` | `list[BoxFile]` | Export this run's outbox as file handles; sends no message |
+| `await ctx.reply_files(file_ids)` | `Any` | Reply with exported IDs, subject to event reply authorization |
+
+`BoxFile` contains `id`, `name`, `type`, `size`, and optional `path`. Original attachment URLs and content remain available. Files are staged only on explicit import. Output handles belong to this run and cannot be sent twice.
+
+Bind before native sandbox tools or file operations. Runs sharing a Box still have separate attachment directories. `ctx.variables` contains public request variables for computing reuse keys.
+
+`ctx.delivery.automatic_reply` is `True` for Pipeline execution: return files using `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])`. Agents and plugin processors explicitly call `ctx.reply_files()`.
+
+External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, and `langbot_export_box_files`. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization.
+
+### Prompt, history, and events
+
+| Method | Return value | Availability field |
+| --- | --- | --- |
+| `await ctx.get_prompt()` | `list[dict[str, Any]]` | `prompt_get` |
+| `await ctx.history_page(conversation_id=None, before_cursor=None, after_cursor=None, limit=50, direction="backward", include_attachments=False)` | `HistoryPage` | `history_page` |
+| `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
+| `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
+| `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
+| `await ctx.steering_pull(mode="all", limit=None)` | `SteeringPullResult` | `steering_pull` |
+
+### State
+
+| Method | Return value | Description |
+| --- | --- | --- |
+| `await ctx.state_get(scope, key)` | `dict[str, Any]` | Read a state value |
+| `await ctx.state_set(scope, key, value)` | `dict[str, Any]` | Store a JSON-serializable state value |
+| `await ctx.state_delete(scope, key)` | `dict[str, Any]` | Delete a state value |
+| `await ctx.state_list(scope, prefix=None, limit=100)` | `dict[str, Any]` | List state keys in a scope |
+
+`scope` can be `conversation`, `actor`, `subject`, or `runner`. These methods require `ctx.context.available_apis.state` to be `true`.
+
+### Run records
+
+| Method | Return value | Availability field |
+| --- | --- | --- |
+| `await ctx.run_get(run_id=None)` | `AgentRun` | `run_get` |
+| `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
+| `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
+| `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
+| `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+`run_id=None` refers to the current run. The SDK completes a normal event handler automatically. When a custom `run(ctx)` yields `RunnerResult`, do not register the same result again with `run_append_result()`.
+
+### Availability and authorization
+
+Use `ctx.context.available_apis` to check whether prompt, history, event, state, and run-record methods are available. Authorized models, tools, and knowledge bases are in `ctx.resources.models`, `ctx.resources.tools`, and `ctx.resources.knowledge_bases`.
+
+During Runner execution, model, tool, knowledge-base, storage, and platform calls through `self.plugin` are automatically associated with the current run and validated against `ctx.resources`. Do not pass `run_id`. After the handler returns, do not use this context or its run-bound calls from background tasks.
+
+`ctx.api` is the lower-level run-scoped proxy. Normal component code should prefer the `ctx` methods listed on this page and use `self.plugin` for LangBot APIs.
+
+## Data-only contexts
+
+The following components receive task input rather than an EventListener or Runner execution context. Their fields, return values, and complete examples live in the corresponding component guides.
+
+| Component entry point | Main data | Component guide |
+| --- | --- | --- |
+| `KnowledgeEngine.ingest(context: IngestionContext)` | File, target knowledge base, creation settings, and parse result | [KnowledgeEngine](/en/plugin/dev/components/knowledge-engine#document-ingestion) |
+| `KnowledgeEngine.retrieve(context: RetrievalContext)` | Query, target knowledge base, retrieval settings, and filters | [KnowledgeEngine](/en/plugin/dev/components/knowledge-engine#knowledge-retrieval) |
+| `KnowledgeRetriever.retrieve(context: RetrievalContext)` | Query and external knowledge-base settings | [KnowledgeRetriever](/en/plugin/dev/components/knowledge-retriever#retrieval-context) |
+| `Parser.parse(context: ParseContext)` | File content, filename, MIME type, and metadata | [Parser](/en/plugin/dev/components/parser#parse-method) |
+| `Page.handle_api(request: PageRequest)` | Endpoint, HTTP method, body, and headers | [Page](/en/plugin/dev/components/page#pagerequest-fields) |

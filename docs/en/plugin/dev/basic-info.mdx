@@ -1,0 +1,313 @@
+---
+title: "Completing Plugin Configuration Information"
+---
+
+## Modifying the Manifest File
+
+The `manifest.yaml` file in the plugin directory declares the basic information about the plugin, which will be displayed in the LangBot UI or plugin marketplace interfaces.
+
+```yaml
+apiVersion: v1  # Do not modify
+kind: Plugin  # Do not modify
+metadata:
+  author: RockChinQ  # Author, must match regex ^[a-zA-Z0-9_-]+$
+  name: HelloPlugin  # Plugin name, used to distinguish plugins, must match regex ^[a-zA-Z0-9-]+$
+  repository: 'https://github.com/langbot-app/HelloPlugin'  # Plugin repository URL
+  version: 0.1.0  # Plugin version
+  description:
+    en_US: 'Hello LangBot Plugin'  # Plugin description, multilingual
+    zh_Hans: 'Hello LangBot Plugin'
+  label:
+    en_US: HelloPlugin  # Plugin label, displayed in the interface, multilingual
+    zh_Hans: HelloPlugin
+  icon: assets/icon.svg  # Plugin icon, defaults to assets/icon.svg, can be replaced with various image formats
+spec:
+  config: []  # Plugin configuration item format
+  components: {}  # Plugin component list, no need to modify manually
+execution:
+  python:
+    path: main.py  # Do not modify
+    attr: HelloPlugin  # Do not modify
+```
+
+To certify your plugin and let several installations share one runtime, also declare `sharedRuntime` and `componentModel` under `execution`; see [Certified plugins and shared runtime](/en/plugin/certified-plugins).
+
+Plugin multilingual support follows the [RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646) standard. Currently supported languages include:
+
+- `en_US` English (required)
+- `zh_Hans` Simplified Chinese
+- `zh_Hant` Traditional Chinese
+- `ja_JP` Japanese
+- `vi_VN` Vietnamese
+- `th_TH` Thai
+- `es_ES` Spanish
+
+## Plugin Configuration Item Format
+
+In the `manifest.yaml` file, fields declared in `spec.config` will be rendered by LangBot as configuration item forms for users to fill out. Plugins can retrieve user-filled configuration items through APIs provided by the SDK (see later sections).
+
+For example:
+
+```yaml
+spec:
+  config:
+    - name: github_token  # Required; configuration item name, used for retrieval in the plugin
+      type: string  # Required; configuration item type, supports string, integer, float, boolean, select, prompt-editor, llm-model-selector, bot-selector, tools-selector, etc.
+      label:  # Required; configuration item display name, supports multilingual. Language codes follow RFC 4646 standard.
+        en_US: Github Token
+        zh_Hans: Github Token
+      description:  # Configuration item description, supports multilingual. Optional.
+        en_US: Image downloading requires a Github token
+        zh_Hans: 如果不填的话，图片可能会下载失败
+      default: ''  # Configuration item default value, optional.
+      required: false  # Whether the configuration item is required, optional.
+      show_if:  # Conditional rendering (shows when conditions are met), optional.
+        field: mode
+        operator: eq
+        value: mode1
+    - name: mode
+      type: select
+      ...
+```
+
+The supported types and fields for configuration items are as follows:
+
+### Conditional Rendering (`show_if`)
+
+All types of configuration items support conditional rendering using the `show_if` field. You can decide whether the current field is rendered based on the value of another field in the same (or an associated) form.
+
+```yaml
+- name: advanced_setting
+  type: string
+  show_if:
+    field: mode          # The name of the dependent field
+    operator: eq         # The operator, supports 'eq' (equals), 'neq' (not equals), 'in' (in a list)
+    value: advanced      # The value to check against
+```
+
+> **Note:** Cross-form cascading relationships (e.g. `creation_schema` values reading from `retrieval_schema` values and vice versa in a Knowledge Engine) are supported in the latest LangBot frontend.
+
+### type: string
+
+String type. Optionally supports `options` for preset values — when provided, a dropdown button appears next to the input allowing users to quickly fill in a preset value. Users can still type freely.
+
+```yaml
+- name: api_key
+  type: string
+  ...
+```
+
+With preset options:
+
+```yaml
+- name: api_url
+  type: string
+  options:  # Optional preset values, displayed as a dropdown button next to the input.
+    - name: "https://api.openai.com/v1"  # The value to fill in when selected.
+      label:  # Display name, supports multilingual.
+        en_US: OpenAI Official
+        zh_Hans: OpenAI 官方
+    - name: "https://api.deepseek.com/v1"
+      label:
+        en_US: DeepSeek
+        zh_Hans: DeepSeek
+  ...
+```
+
+### type: array[string]
+
+String array.
+
+```yaml
+- name: tags
+  type: array[string]
+  ...
+```
+
+### type: integer
+
+Integer type.
+
+```yaml
+- name: progress
+  type: integer
+  ...
+```
+
+### type: float
+
+Float type.
+
+```yaml
+- name: temperature
+  type: float
+  ...
+```
+
+### type: boolean
+
+Boolean type.
+
+```yaml
+- name: is_enabled
+  type: boolean
+  ...
+```
+
+### type: select
+
+Dropdown menu. Requires configuring `options`, which represents the dropdown menu options. Each option displays its `label` as the primary text, with the `name` (value) shown in smaller text below.
+
+```yaml
+- name: mode
+  type: select
+  allow_custom: true
+  options:  # Dropdown options, supports multilingual.
+    - name: mode1  # Value, displayed as secondary text in the dropdown.
+      label:  # Display name, supports multilingual.
+        en_US: Mode 1
+        zh_Hans: 模式 1
+    - name: mode2
+      label:  # Display name, supports multilingual.
+        en_US: Mode 2
+        zh_Hans: 模式 2
+  ...
+```
+
+Set `allow_custom: true` to add a Custom option alongside the presets. A text input appears only when Custom is selected. The saved value is the selected `name` or the custom string, never a Custom marker. This also applies to a runner’s `spec.config`.
+
+### type: prompt-editor
+
+Prompt editor. Displays a prompt editor from the pipeline configuration page, with the final result represented in OpenAI's `messages` format.
+
+```yaml
+- name: prompt
+  type: prompt-editor
+  ...
+```
+
+### type: text
+
+Large text input. Rendered as a textarea in the frontend for user input, and passed to the plugin as a string.
+
+```yaml
+- name: prompt
+  type: text
+  ...
+```
+
+### type: file
+
+File upload. Supports file uploads up to 10MB, passed to the plugin in the format `{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}`. The plugin can use the `get_config_file` API to retrieve the file content.
+
+```yaml
+- name: config_file
+  type: file
+  accept: 'application/json'  # Optional, specify accepted file MIME types
+  ...
+```
+
+Retrieving the file in the plugin:
+
+```python
+# Get file information from config
+file_config = self.get_config()['config_file']
+file_key = file_config['file_key']
+mimetype = file_config['mimetype']
+
+# Example output: {'file_input': {'file_key': 'plugin_config_d2234fd802054faf80babe0679a97fa9.json', 'mimetype': 'application/json'}}
+print(file_config)
+
+# Get file content
+file_bytes = await self.get_config_file(file_key)
+```
+
+<Info>
+  Common MIME type and file extension reference: [MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types)
+</Info>
+
+### type: array[file]
+
+Multiple file upload. Similar to the file type, but supports uploading multiple files, passed to the plugin in the format `[{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}]`.
+
+```yaml
+- name: resource_files
+  type: array[file]
+  accept: 'image/*'  # Optional, specify accepted file MIME types
+  ...
+```
+
+Retrieving files in the plugin:
+
+```python
+# Get file list from config
+files_config = self.get_config()['resource_files']
+
+for file_config in files_config:
+    file_key = file_config['file_key']
+    mimetype = file_config['mimetype']
+
+    # Get file content
+    file_bytes = await self.get_config_file(file_key)
+```
+
+### type: llm-model-selector
+
+LLM model selector. Displays an LLM model selector where you can choose configured LLM models, with the final result represented as the LLM model UUID.
+
+```yaml
+- name: model
+  type: llm-model-selector
+  ...
+```
+
+### type: bot-selector
+
+Bot selector. Displays a Bot selector where you can choose configured Bots, with the final result represented as the Bot UUID.
+
+```yaml
+- name: bot
+  type: bot-selector
+  ...
+```
+
+Using the Bot UUID in the plugin:
+
+```python
+# Get Bot UUID from config
+bot_uuid = self.get_config()['bot']
+print(bot_uuid)  # Output: '550e8400-e29b-41d4-a716-446655440000'
+```
+
+### type: tools-selector
+
+Tool selector. Displays a multi-select tool selector where you can choose registered tools (plugin tools and MCP tools), with the final result represented as an array of tool names.
+
+```yaml
+- name: selected_tools
+  type: tools-selector
+  ...
+```
+
+Using the selected tool names in the plugin:
+
+```python
+# Get selected tool names from config
+selected_tools = self.get_config()['selected_tools']
+print(selected_tools)  # Output: ['get_weather_alerts', 'web_search']
+
+# Call selected tools
+for tool_name in selected_tools:
+    result = await self.plugin.call_tool(
+        tool_name=tool_name,
+        parameters={"query": "hello"},
+        session={},
+        query_id=0,
+    )
+```
+
+## What's Next
+
+This tutorial will guide you through step-by-step completion of plugin functionality.
+
+- Adding Components: Plugin components are the core functional units of plugins. You can [add components](/en/plugin/dev/components/add) based on your needs.

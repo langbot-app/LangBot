@@ -1,0 +1,148 @@
+---
+title: "DingTalk"
+description: "LangBot で DingTalk AI ボットを構築。GPT・Claude・Dify 等を DingTalk のグループや会話に接続。"
+icon: "/images/platforms/dingtalk.svg"
+---
+
+DingTalk に LangBot をデプロイします。
+
+## ワンクリック設定（おすすめ）
+
+LangBot は DingTalk アプリのワンクリック作成とクレデンシャルの自動入力に対応しています。手動でのコピペは不要です。
+
+1. LangBot WebUI を開き、**ボット > ボットを作成** に移動
+2. ボット名を入力し、プラットフォーム/アダプターで `钉钉` を選択
+3. 表示される **一键创建应用** エリアで **開始** ボタンをクリック
+
+![一键创建應用](/images/zh/deploy/bots/dingtalk/dingtalk_oneclick_qrcode.png)
+
+4. DingTalk で QR コードをスキャンし、スマートフォンで組織を選択
+
+![組織を選択](/images/zh/deploy/bots/dingtalk/dingtalk_select_org.png)
+
+5. **新しいボットを作成** または **既存のボットを選択** できます
+
+![作成または選択](/images/zh/deploy/bots/dingtalk/dingtalk_create_or_select.png)
+
+6. 認証成功後、スマートフォンに「設定成功」と表示され、Client ID と Client Secret が LangBot WebUI に**自動入力**されます
+
+![設定成功](/images/zh/deploy/bots/dingtalk/dingtalk_config_success.png)
+
+7. **送信** をクリックして完了します。LangBot がボットの識別情報を自動的に取得します。
+
+<Warning>
+ワンクリック設定ではアプリの認証情報が入力されますが、カードテンプレートは作成されません。ストリーミング返信には LangBot の返信テンプレートをインポートし、Use Card Replies を有効にして Card Template ID を設定すると自動的に有効になります。スイッチを無効にすると、テンプレート ID を削除せずにプレーンテキストで返信できます。人工入力には別のテンプレートをインポートし、Human Input Card Template ID を設定してください。DingTalk アプリのカード権限も必要です。
+</Warning>
+
+## カードテンプレートの設定（LangBot 提供のテンプレートを推奨）
+
+カード返信には、LangBot が提供するテンプレートをインポートしてください。コンポーネントや変数を手動で設定する必要はありません。DingTalk アプリで必要なカード権限を有効にしてから、用途に応じたテンプレートを選びます。
+
+| 用途 | ダウンロードするファイル | LangBot の設定項目 |
+| --- | --- | --- |
+| 思考と回答を分けて表示するストリーミング返信 | `dingtalk_stream_card.json` | Card Template ID |
+| ユーザーの入力・選択・確認を待って処理を続行 | `dingtalk_human_input_card.json` | Human Input Card Template ID |
+
+### ストリーミング返信テンプレートの作成とインポート
+
+1. DingTalk アダプター設定の **Card Template ID** の下にある **Download Streaming Reply Card Template** をクリックします。
+2. [DingTalk カードプラットフォーム](https://open-dev.dingtalk.com/fe/card)でボットアプリと同じ組織を選び、**新規テンプレート**を作成します。
+3. 名前を入力し、カード種類を **メッセージカード（消息卡片）**、シナリオを **AI カード（AI 卡片）** に設定します。現在のボットアプリを関連付け、作成方法で **空白から作成（空白搭建）** を選び、**空白テンプレートを作成（创建空白模板）** をクリックします。
+
+![メッセージカード、AI カード、関連アプリ、空白から作成を選択する画面](/images/zh/deploy/bots/dingtalk/create_ai_card_template.png)
+
+4. エディター上部の **その他 → カードテンプレートをインポート（更多 → 导入卡片模板）** から `dingtalk_stream_card.json` を選択します。
+
+![エディターのその他メニューにあるインポート項目](/images/zh/deploy/bots/dingtalk/import_card_template.png)
+
+<Note>
+インポート項目はテンプレート一覧ではなく、エディター内にあります。インポートすると現在の内容が置き換わるため、新しい空白テンプレートを使用してください。インポートしたコンポーネント、変数、イベントの設定は維持します。
+</Note>
+
+5. プレビューを確認して**保存・公開**し、テンプレート ID をコピーします。下書きの保存だけでは送信できません。`param.templateUnpublished` はテンプレートが未公開であることを示します。
+6. LangBot の **Use Card Replies** を有効にし、**Card Template ID** に ID を入力して保存すると、ストリーミング返信が有効になります。スイッチを無効にするとプレーンテキストで返信し、テンプレート設定は非表示になりますが保持されます。再度有効にすると設定を再利用できます。
+
+テンプレートには LangBot の表示があり、思考と回答を別々に表示します。生成中は思考欄が開き、完了後は折りたたまれます。クリックで再び展開できます。下部には回答のコピー、高評価・低評価、AI 生成コンテンツの表示があります。思考を削除するかどうかはパイプライン設定に従い、削除する場合は思考欄を表示しません。通常メッセージで思考を保持する場合は、`<think>` と `</think>` を文字として表示し、空行で回答と区切ります。
+
+カードの自動ワイドレイアウトはデフォルトで有効です。提供する返信テンプレートには必要な変数が含まれています。既存のボットで無効にして保存している場合は、有効にして設定を保存してください。幅の狭い表示を希望する場合は無効のままでも使用できます。
+
+更新時は最新版をダウンロードして再インポートし、保存・公開してください。別のテンプレートを作成した場合は LangBot 側の ID も変更します。`content` のみを使用する既存テンプレートも利用できますが、新しい思考欄の分離表示には対応しません。
+
+## 人工入力カードテンプレートのインポート
+
+人工入力は、ワークフローやプラグインがユーザーの情報入力・選択・確認を待ってから処理を続ける場面で使用します。Dify の Human Input ノードなどが該当します。通常のチャットやストリーミング返信だけなら、このテンプレートは不要です。
+
+1. **Human Input Card Template ID** の横にある **Download Human Input Card Template** から `dingtalk_human_input_card.json` を保存します。
+2. 上記と同じ手順で、別の **メッセージカード → AI カード → 空白から作成** テンプレートを作り、ボットアプリを関連付けます。
+3. エディターの **その他 → カードテンプレートをインポート** から人工入力用 JSON を読み込みます。入力欄、ボタン、変数、イベントの設定は維持します。
+4. **保存・公開**し、その ID を LangBot の **Human Input Card Template ID** に入力して設定を保存します。
+
+2 種類のテンプレートは別々にインポートし、対応する設定項目に ID を入力してください。人工入力テンプレートはストリーミング返信テンプレートの代わりにはならず、ストリーミング返信を自動で有効にすることもありません。
+
+
+---
+
+## 手動設定
+
+### ボットの作成
+
+[DingTalk 開発者バックエンド](https://open-dev.dingtalk.com/?spm=ding_open_doc.document.0.0.74f445e5MkawbT#/)にアクセスし、ログインして組織に入ります。ログインに成功したら、オープンプラットフォームに入ります。以下のように表示されます：
+![DingTalk Open Platform](/images/zh/deploy/bots/dingtalk/dingtalk1.png)
+
+上部の「アプリケーション開発」をクリックし、右側の青いボタン「アプリケーションを作成」をクリックして、ボットの基本情報を入力し、保存をクリックします。
+
+ボットのバックエンドに入ります。例えば、langbot2 という名前のボットがある場合、管理ページは以下のように表示されます：
+![Bot Page](/images/zh/deploy/bots/dingtalk/dingtalk2.png)
+
+### ボットの設定
+
+「アプリケーション機能を追加」、「その他のアプリケーション機能」、「ロボット」の「設定」をクリックし、設定をクリックして情報を入力します。以下のように：
+![Bot Configuration](/images/zh/deploy/bots/dingtalk/dingtalk3.png)
+
+ページ下部の「公開」をクリックし、公開が成功したら、ボットページの左下にある「バージョン管理と公開」をクリックします。以下のように：
+![Version Management and Publishing](/images/zh/deploy/bots/dingtalk/dingtalk4.png)
+
+初めてボットを作成する場合、右側は空なので、「新しいバージョンを作成」をクリックし、その中で情報を設定し、「アプリケーションの表示範囲」を設定して、保存をクリックします。
+
+「イベントサブスクリプション」をクリックし、プッシュ方式を「ストリームモードプッシュ」に変更します。
+
+カードストリーミングが必要な場合は、権限管理でカード権限を申請する必要があります。以下のように：
+![Before applying for card permissions](/images/zh/deploy/bots/dingtalk/dingtalk6.png)
+
+![After applying for card permissions](/images/zh/deploy/bots/dingtalk/dingtalk7.png)
+
+カードテンプレートは、上記の手順で LangBot 提供のテンプレートをインポートして公開してください。
+
+### 設定情報の入力
+
+「認証情報と基本情報」をクリックし、「Client ID」と「Client Secret」を記録します。
+この認証情報を LangBot のアダプター設定に入力します。
+`markdown_card`（Use Card Replies）は Markdown とストリーミングカード返信の共通スイッチです。有効でテンプレートが設定されていればストリーミング、未設定なら通常の Markdown で返信します。無効にすると設定を保持したままプレーンテキストで返信します。ワークフローの人工入力カードは別途設定します。
+上記の設定項目を記録し、LangBot ボット設定フォームに入力します
+
+[カードプラットフォーム](https://open-dev.dingtalk.com/fe/card?spm=ding_open_doc.document.0.0.33cf2281L0fXsV)をクリックし、テンプレートリストから対応するバインドされたテンプレート ID をコピーし、カードテンプレート ID フィールドに入力します。
+
+
+**LangBot を起動します**。
+
+### ボットの追加
+
+この記事では DingTalk Windows デスクトップ版を例として使用します。上部の「検索」、「機能」をクリックし、先ほど作成したボットの名前を入力します。以下のように：
+![robot_png](/images/zh/deploy/bots/dingtalk/dingtalk5.png)
+
+ボットをクリックしてチャットします。
+
+グループに追加したい場合は、DingTalk グループの「グループ管理」、「ロボット」、「ロボットを追加」をクリックし、ボット名を検索してグループで使用します。
+
+## イベント購読
+
+DingTalk アプリ管理画面のイベント購読で Stream モードを選択し、必要なイベントを有効にしてください。ロボットのメッセージ受信設定とは別の設定です。
+
+- `chat_add_member` → `group.member_joined`（メンバーごとに通知）。
+- `chat_remove_member` / `chat_quit` → `group.member_left`（削除と自主退出を区別）。
+- `chat_update_title` / `chat_update_owner` → `group.info_updated`。
+- 通常のカード操作 → `dingtalk.card_action`。識別可能な評価は `feedback.received`、管理対象フォームは既存の対話処理に渡し、重複実行を防ぎます。
+- グループ解散などその他の購読イベントは `platform.specific` に渡し、`action` にイベント名、`data` に元のヘッダーとデータを保持します。
+
+グループイベントにはアプリ権限とグループ種別の制限があります。unionId のみを含むメンバー通知はプラットフォーム固有イベントとして保持します。メッセージ編集・撤回・リアクション、友達申請、ボットのミュートなど、対応するプッシュが未確認のイベントは対応済みと表示しません。
+
