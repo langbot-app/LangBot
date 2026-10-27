@@ -22,7 +22,7 @@ Design notes:
   (``pkg/api/http/controller/groups/webhooks.py``) calls
   ``handle_unified_webhook`` on this adapter.
 
-See docs/platforms/http-bot.md for the full integration guide.
+See dev-docs/platforms/http-bot.md for the full integration guide.
 """
 
 from __future__ import annotations

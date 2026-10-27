@@ -248,7 +248,7 @@ Watch Terminal 1 print each reply part (`[part ]` / `[FINAL]`) with its
 sequence number — that's 1→M working, signatures verified.
 
 A machine-readable contract is in
-[`docs/http-bot-openapi.json`](../http-bot-openapi.json).
+[`dev-docs/http-bot-openapi.json`](../http-bot-openapi.json).
 
 ---
 

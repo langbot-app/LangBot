@@ -15,8 +15,8 @@
 > - `src/langbot/pkg/platform/sources/http_bot.py` — `HttpBotAdapter`
 > - `src/langbot/pkg/platform/sources/http_bot_signing.py` — HMAC helpers
 > - `src/langbot/pkg/platform/sources/http_bot.svg` — icon
-> - `docs/platforms/http-bot.md` — integration guide
-> - `docs/http-bot-openapi.json` — machine-readable contract
+> - `dev-docs/platforms/http-bot.md` — integration guide
+> - `dev-docs/http-bot-openapi.json` — machine-readable contract
 > - `examples/http-bot/` — Python + TypeScript reference clients
 >
 > **Final decisions (resolving the original open questions):**
@@ -489,13 +489,13 @@ time so replies always have a destination even if config later changes).
 The whole point of a standalone adapter is that **integrating is pleasant**. v1
 ships:
 
-1. **`docs/platforms/http-bot.md`** — task-oriented integration guide:
+1. **`dev-docs/platforms/http-bot.md`** — task-oriented integration guide:
    create the bot → copy inbound URL → set secret → stand up a callback
    endpoint → send first message → handle 1→M.
 2. **Copy-paste curl** for the first message (with a working signing one-liner).
 3. **Reference clients** (≤50 LOC each) in `examples/http-bot/`:
    `client.py` (push + a Flask/Quart callback receiver) and `client.ts`.
-4. **OpenAPI fragment** `docs/http-bot-openapi.json` describing inbound +
+4. **OpenAPI fragment** `dev-docs/http-bot-openapi.json` describing inbound +
    callback shapes, so integrators can codegen.
 5. **Local echo recipe**: a one-command callback server that prints every
    reply, so a developer sees N→1 and 1→M working in under five minutes.
@@ -542,7 +542,7 @@ curl -sS -X POST "$BOT" \
 | 2 | `HttpBotAdapter` (inbound verify, event build, outbound queue) | `platform/sources/http_bot.py` |
 | 3 | Signing helper module (shared) | `platform/sources/` or `utils/` |
 | 4 | i18n strings (en/zh/ja) | adapter yaml + web locale |
-| 5 | Integration docs `docs/platforms/http-bot.md` | `docs/` |
+| 5 | Integration docs `dev-docs/platforms/http-bot.md` | `docs/` |
 | 6 | OpenAPI fragment + reference clients | `docs/`, `examples/http-bot/` |
 | 7 | Tests: signature verify, N→1 aggregation, 1→M ordering, retry | `tests/` |
 | 8 | (opt) SSRF guard for callback_url | adapter |
