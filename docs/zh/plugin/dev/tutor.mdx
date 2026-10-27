@@ -111,7 +111,7 @@ cd HelloPlugin
 
 <Info title="Runtime 有两种启动方式：">
 
-- `Stdio` 模式：当您使用源代码启动 LangBot 并未携带启动参数`--standalone-runtime`时，LangBot 会自动以子进程的形式启动 Plugin Runtime，并通过 `stdio`（标准输入输出流）模式与 Plugin Runtime 通信。此时 Runtime 会加载 LangBot 根目录的`data/plugins`目录下的插件。并监听 LangBot 运行主机的`5401`端口作为调试端口。
+- `Stdio` 模式：当您使用源代码启动 LangBot 并未携带启动参数`--standalone-runtime`时，LangBot 会自动以子进程的形式启动 Plugin Runtime，并通过 `stdio`（标准输入输出流）模式与 Plugin Runtime 通信。此时 Runtime 会加载 LangBot 根目录的`data/plugins`目录下的插件。并监听 LangBot 运行主机上的调试端口（默认`5401`，可由配置项`plugin.display_plugin_debug_url`中的端口覆盖）。
 
 - `WebSocket` 模式：
     - 生产环境：当您使用官方提供的`docker-compose.yaml`启动 LangBot 时，会在独立的容器运行 Plugin Runtime，LangBot 也会因为携带启动参数`--standalone-runtime`而以 WebSocket 模式与 Plugin Runtime 通信。默认情况下，Runtime 容器的 5401 端口会被映射到宿主机的 5401 端口。

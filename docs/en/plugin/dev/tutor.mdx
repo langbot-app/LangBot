@@ -111,7 +111,7 @@ You need to first deploy and start LangBot, ensuring that Plugin Runtime is runn
 
 <Info title="Runtime has two startup modes:">
 
-- `Stdio` mode: When you start LangBot using source code without the startup parameter `--standalone-runtime`, LangBot will automatically start Plugin Runtime as a subprocess and communicate with Plugin Runtime through `stdio` (standard input/output streams). In this case, Runtime will load plugins from the `data/plugins` directory in the LangBot root directory and listen on port `5401` of the LangBot host as a debug port.
+- `Stdio` mode: When you start LangBot using source code without the startup parameter `--standalone-runtime`, LangBot will automatically start Plugin Runtime as a subprocess and communicate with Plugin Runtime through `stdio` (standard input/output streams). In this case, Runtime will load plugins from the `data/plugins` directory in the LangBot root directory and listen on the LangBot host debug port (default `5401`, overridable via the port in `plugin.display_plugin_debug_url`).
 
 - `WebSocket` mode:
     - Production environment: When you start LangBot using the official `docker-compose.yaml`, Plugin Runtime will run in a separate container, and LangBot will communicate with Plugin Runtime in WebSocket mode due to the startup parameter `--standalone-runtime`. The 5401 port of the Runtime container will be mapped to the 5401 port of the host as default.

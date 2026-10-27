@@ -1121,13 +1121,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 # a managed runtime and authenticate its WebSocket controller.
                 self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
                 control_headers = self._control_headers(allow_generate=True)
+                control_port, debug_port = self._managed_runtime_ports()
                 await self._start_runtime_subprocess(
                     '-m',
                     'langbot_plugin.cli.__init__',
                     'rt',
+                    '--ws-control-port',
+                    str(control_port),
+                    '--ws-debug-port',
+                    str(debug_port),
                     env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
                 )
-                ws_url = 'ws://localhost:5400/control/ws'
+                ws_url = f'ws://localhost:{control_port}/control/ws'
 
                 async def connection_failed(
                     ctrl: ws_client_controller.WebSocketClientController,
@@ -1145,9 +1150,17 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 task_coro = self.ctrl.run(new_connection_callback)
             else:
                 self.ap.logger.info('use stdio to connect to plugin runtime')
+                _, debug_port = self._managed_runtime_ports()
                 self.ctrl = stdio_client_controller.StdioClientController(
                     command=sys.executable,
-                    args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                    args=[
+                        '-m',
+                        'langbot_plugin.cli.__init__',
+                        'rt',
+                        '-s',
+                        '--ws-debug-port',
+                        str(debug_port),
+                    ],
                     env=os.environ.copy(),
                     capture_stderr=False,
                 )
@@ -1236,13 +1249,42 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         await self._close_managed_subprocess()
 
     @staticmethod
+    def _runtime_port_from_url(url: str, *, default: int) -> int:
+        """Extract a TCP port from a WebSocket/HTTP URL, falling back to *default*."""
+        try:
+            parsed = urlparse(url if '://' in url else f'//{url}')
+            return parsed.port or default
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
     def _runtime_debug_port_from_url(debug_url: str) -> int:
         """Extract the local plugin runtime debug port from its display URL."""
-        try:
-            parsed = urlparse(debug_url if '://' in debug_url else f'//{debug_url}')
-            return parsed.port or 5401
-        except (TypeError, ValueError):
-            return 5401
+        return PluginRuntimeConnector._runtime_port_from_url(debug_url, default=5401)
+
+    @staticmethod
+    def _runtime_control_port_from_url(control_url: str) -> int:
+        """Extract the local plugin runtime control port from its WebSocket URL."""
+        return PluginRuntimeConnector._runtime_port_from_url(control_url, default=5400)
+
+    def _managed_runtime_ports(self) -> tuple[int, int]:
+        """Resolve control/debug ports for a Core-managed Runtime subprocess.
+
+        Docker/standalone deployments keep listening on their own configured
+        ports; this helper only affects the stdio and Windows launch paths,
+        where LangBot starts Runtime itself. The debug port follows
+        ``plugin.display_plugin_debug_url`` so a second Core instance can avoid
+        ``Address already in use`` on the default 5401 without editing CLI
+        flags by hand. The control port follows ``plugin.runtime_ws_url`` for
+        the Windows WebSocket path.
+        """
+        plugin_config = self.ap.instance_config.data.get('plugin') or {}
+        control_url = plugin_config.get('runtime_ws_url') or 'ws://localhost:5400/control/ws'
+        debug_url = plugin_config.get('display_plugin_debug_url') or 'ws://localhost:5401/plugin/debug/ws'
+        return (
+            self._runtime_control_port_from_url(str(control_url)),
+            self._runtime_debug_port_from_url(str(debug_url)),
+        )
 
     async def initialize_plugins(self):
         pass
