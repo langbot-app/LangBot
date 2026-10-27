@@ -53,7 +53,7 @@ def validate_resource_limits(limits):
 
 def container_metrics(row):
     entries = row.get('containers')
-    if not isinstance(entries, list) or not entries or row.get('container_error'):
+    if not isinstance(entries, list) or row.get('container_error'):
         return {}
     memory = pids = 0
     units = {'B': 1, 'kB': 1000, 'KiB': 1024, 'MB': 1000**2, 'MiB': 1024**2, 'GB': 1000**3, 'GiB': 1024**3}
@@ -102,10 +102,7 @@ def resource_verdict(directory, limits):
             before = [value(row) for row in baseline]
             after = [value(row) for row in tail]
             if any(
-                not isinstance(v, (int, float))
-                or not math.isfinite(v)
-                or v < 0
-                or (metric in {'rss_bytes', 'memory_bytes'} and v == 0)
+                not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or (metric == 'rss_bytes' and v == 0)
                 for v in before + after
             ):
                 result['errors'].append(f'{name}/{metric}: missing or invalid samples')

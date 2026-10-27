@@ -59,6 +59,27 @@ class AnalysisTests(unittest.TestCase):
         verdict = resource_verdict(self.root, {**self.limits, 'containers': {'memory_bytes': 1024**2}})
         self.assertIn('docker_containers/memory_bytes', verdict['errors'][0])
 
+    def test_empty_observed_container_set_is_successful_recovery(self):
+        self.resources()
+        rows = [json.loads(line) for line in (self.root / 'resources.jsonl').read_text().splitlines()]
+        for row in rows:
+            row['containers'] = [{'MemUsage': '10MiB / 1GiB', 'PIDs': '2'}] if row['phase'] == 'load' else []
+        limits = {**self.limits, 'containers': {'memory_bytes': 0, 'pids': 0, 'count': 0}}
+
+        def verdict():
+            (self.root / 'resources.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            return resource_verdict(self.root, limits)
+
+        result = verdict()
+        self.assertEqual(result['errors'], [])
+        for metric in limits['containers']:
+            self.assertEqual(result['targets']['docker_containers'][metric]['cooldown_median'], 0)
+        rows[-1]['container_error'] = 'collection failed'
+        self.assertTrue(verdict()['errors'])
+        del rows[-1]['container_error']
+        del rows[-1]['containers']
+        self.assertTrue(verdict()['errors'])
+
     def test_stimulus_variables_are_compared_but_target_origin_is_not(self):
         profile = {
             'vars': {'prompt': 'first', 'endpoint': 'http://127.0.0.1:1'},
