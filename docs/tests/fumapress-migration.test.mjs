@@ -14,6 +14,10 @@ import {
 } from "../scripts/prepare-fumapress.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
+const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
+// The fixed documentation baseline excludes synchronized Blog pages.
+const expectedDocuments = 299 + articleManifest.articles.length;
+
 
 test("Mintlify locales are mapped to public URL locales", () => {
   assert.equal(mapMintlifyLocale("en"), "en");
@@ -170,8 +174,8 @@ test("MDX compatibility normalization removes internal .html route suffixes", ()
 test("canonical MDX and nested OpenAPI sources are discovered", async () => {
   const docs = JSON.parse(await readFile(path.join(root, "docs.json"), "utf8"));
   const pages = await collectMdxDocuments(root);
-  assert.equal(pages.length, 335);
-  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), { en: 106, zh: 123, ja: 106 });
+  assert.equal(pages.length, expectedDocuments);
+  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), Object.fromEntries(Object.entries({ en: 94, zh: 111, ja: 94 }).map(([locale, count]) => [locale, count + articleManifest.articles.filter((article) => article.locale === locale).length])));
   assert.deepEqual(collectOpenApiSources(docs), [
     { locale: "en", source: "openapi/service-api-en.json", directory: "en/api-reference" },
     { locale: "zh", source: "openapi/service-api-zh.json", directory: "zh/api-reference" },
@@ -216,7 +220,7 @@ test("prebuild is deterministic and preserves local assets and SEO files", async
     const first = await prepareFumapress({ root, outRoot: temp });
     const second = await prepareFumapress({ root, outRoot: temp });
     assert.deepEqual(first, second);
-    assert.equal(first.documents, 335);
+    assert.equal(first.documents, expectedDocuments);
     assert.equal(first.fallbackDefaults, 0);
     assert.equal(first.localeOnlyDocuments, 17);
     assert.equal(first.redirects, 103);

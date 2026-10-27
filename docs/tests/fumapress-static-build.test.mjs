@@ -6,6 +6,10 @@ import { collectMdxDocuments } from "../scripts/prepare-fumapress.mjs";
 import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
+const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
+// The fixed documentation baseline excludes synchronized Blog pages.
+const expectedDocuments = 299 + articleManifest.articles.length;
+
 const publicRoot = path.join(root, "dist/public");
 
 test("the documentation keeps a neutral base with custom section and TOC treatments", async () => {
@@ -46,7 +50,7 @@ function staticHtmlForUrlPath(urlPath) {
 
 test("all canonical localized documents have static HTML", async () => {
   const documents = await collectMdxDocuments(root);
-  assert.equal(documents.length, 335);
+  assert.equal(documents.length, expectedDocuments);
   const missing = [];
   for (const document of documents) {
     try {

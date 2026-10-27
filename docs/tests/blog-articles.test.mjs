@@ -72,3 +72,18 @@ test("generated articles use only non-empty Wiki-local images", () => {
     }
   }
 });
+
+test("documentation-only articles and their images survive Blog synchronization", () => {
+  for (const pages of Object.values(extraArticlePages)) {
+    for (const page of pages) {
+      const content = readFileSync(path.join(root, `${page}.mdx`), "utf8");
+      assert.ok(content.length > 100, `${page} is empty`);
+      for (const [, url] of content.matchAll(/!\[[^\]]*\]\((\/images\/articles\/[^)]+)\)/g)) {
+        const bytes = readFileSync(path.join(root, url.slice(1)));
+        const image = manifest.images.find((item) => item.path === url);
+        assert.ok(image, `${page}: ${url} missing from image manifest`);
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), image.sha256);
+      }
+    }
+  }
+});
