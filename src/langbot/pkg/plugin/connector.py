@@ -2368,7 +2368,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             _execution_context, settings = await self._prepare_workspace_context(get_query_execution_context(query))
         event_ctx = context.EventContext.from_event(event)
 
-        if not self.is_enable_plugin or not self._runtime_available():
+        if (bound_plugins == [] and query is not None) or not self.is_enable_plugin or not self._runtime_available():
             event_ctx._emitted_plugins = []
             event_ctx._response_sources = []
             return event_ctx
@@ -2377,16 +2377,22 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         emitted_plugins: list[Any] = []
         response_sources: list[dict[str, Any]] = []
         # Reuse the settings read under the reconciliation lock for this dispatch.
-        for binding in await self._operation_bindings(include_plugins=bound_plugins, settings=settings):
+        bindings = await self._operation_bindings(include_plugins=bound_plugins, settings=settings)
+        batch = (
+            bindings if len(bindings) > 1 and getattr(runtime_handler, 'supports_event_batch', False) is True else None
+        )
+        batch_args = {'installation_bindings': batch} if batch is not None else {}
+        for binding in bindings:
             with runtime_handler.installation_scope(binding):
                 result = await runtime_handler.emit_event(
                     event_ctx.model_dump(serialize_as_any=False),
                     include_plugins=bound_plugins,
+                    **batch_args,
                 )
             event_ctx = context.EventContext.model_validate(result['event_context'])
             emitted_plugins.extend(result.get('emitted_plugins', []))
             response_sources.extend(result.get('response_sources', []))
-            if event_ctx.is_prevented_postorder():
+            if batch is not None or event_ctx.is_prevented_postorder():
                 break
         if query is not None:
             event_ctx.event.query = query

@@ -894,6 +894,7 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
+        self.supports_event_batch = False
         self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None | object] = (
             contextvars.ContextVar(
                 f'{self.__class__.__name__}_{id(self)}_outbound_installation',
@@ -2801,12 +2802,15 @@ class RuntimeConnectionHandler(handler.Handler):
             runtime_profile=runtime_profile,
             cloud_service_url=cloud_service_url,
         )
+        self.supports_event_batch = False
         with self.installation_scope(None):
-            return await self.call_action(
+            result = await self.call_action(
                 LangBotToRuntimeAction.SET_RUNTIME_CONFIG,
                 runtime_config.model_dump(exclude_none=True),
                 timeout=10,
             )
+        self.supports_event_batch = result.get('event_batch') is True
+        return result
 
     async def get_storage_analysis(self) -> dict[str, Any]:
         """Return instance-scoped filesystem usage measured by Plugin Runtime."""
@@ -2960,18 +2964,19 @@ class RuntimeConnectionHandler(handler.Handler):
         self,
         event_context: dict[str, Any],
         include_plugins: list[str] | None = None,
+        *,
+        installation_bindings: list[InstallationBinding] | None = None,
     ) -> dict[str, Any]:
-        """Emit event"""
-        result = await self.call_action(
+        """Emit one event, optionally across an ordered negotiated installation batch."""
+        data = {'event_context': event_context, 'include_plugins': include_plugins}
+        if installation_bindings is not None:
+            data['installation_bindings'] = [binding.model_dump() for binding in installation_bindings]
+        return await self.call_action(
             LangBotToRuntimeAction.EMIT_EVENT,
-            {
-                'event_context': event_context,
-                'include_plugins': include_plugins,
-            },
-            timeout=180,
+            data,
+            timeout=180 * (len(installation_bindings) if installation_bindings else 1),
+            cancel_peer_on_cancel=installation_bindings is not None,
         )
-
-        return result
 
     async def notify_plugin_diagnostic(self, diagnostic: dict[str, Any]) -> dict[str, Any]:
         """Notify the plugin runtime about a best-effort plugin diagnostic.
