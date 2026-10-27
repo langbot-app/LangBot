@@ -1,5 +1,128 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 const ruRU = {
+  planRevision: {
+    subscribedOn: 'Дата подписки: {{date}}',
+    latestQuota: 'Актуальные квоты этого плана',
+    showLatest: 'Показать актуальные квоты этого тарифа',
+    showCurrent: 'Показать текущую подписку',
+    latestTab: 'Новые',
+    currentTab: 'Текущая',
+    cancelToSubscribe:
+      'Отмените подписку, чтобы получить доступ к новым квотам со следующего периода',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Продлить текущую подписку',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Подписка недоступна',
+    subscriptionUnavailableHint:
+      'Этот план не принимает новые подписки. Выберите другой план. Текущие подписки и автоматические продления не затронуты.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Управление подпиской',
+    downgradeUnavailable: 'Переход на бесплатный план недоступен',
+    features: {
+      multiUserWorkspace: 'Многопользовательское рабочее пространство',
+      remoteE2BSandbox: 'Настройка удалённой песочницы E2B',
+      communitySupport: 'Поддержка сообщества',
+      everythingInFree: 'Все возможности бесплатного плана',
+      alwaysOnSandbox: 'Одна постоянно работающая глобальная песочница',
+      higherWorkspaceLimits: 'Повышенные лимиты рабочего пространства',
+    },
+    title: 'Сравнить планы',
+    description: 'Выберите план для {{workspace}}',
+    billing: 'Период оплаты',
+    monthly: 'За месяц',
+    annual: 'За год',
+    currency: 'Валюта',
+    loading: 'Загрузка планов…',
+    error: 'Не удалось загрузить планы',
+    retry: 'Повторить',
+    empty: 'Нет доступных планов',
+    current: 'Текущий план',
+    recommended: 'Рекомендуем',
+    free: 'Бесплатно',
+    annualNote: 'Эквивалент {{price}} / месяц',
+    ownerOnly: 'Только владелец или администратор',
+    choose: 'Перейти к оплате',
+    handoff: 'Войдите в Space и оплатите. Ваш выбор будет сохранён.',
+    quotas: 'Лимиты рабочего пространства',
+    unlimited: 'Без ограничений',
+    retention: 'История сообщений · {{count}} дней',
+    retentionLabel: 'Срок хранения сообщений',
+    retentionHelp:
+      'По истечении этого срока сообщения автоматически удаляются.',
+    credits: '{{count}} кредитов модели в месяц',
+    creditsLabel: 'Ежемесячные кредиты',
+    creditsHelp:
+      'Кредиты начисляются каждый месяц подписки, в том числе при годовой оплате.',
+    platforms: 'Поддержка популярных платформ',
+    excludedPlatforms: 'Недоступны: {{platforms}}',
+    allPlatforms: 'Все доступные платформы',
+    limits: {
+      bots: 'Боты',
+      pipelines: 'Обработчики',
+      knowledge_bases: 'Базы знаний',
+      plugins: 'Расширения',
+      members: 'Участники',
+      managed_sandbox_sessions: 'Управляемые сеансы песочницы',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Язык рабочего пространства',
+    description:
+      'Язык сообщений сервера и стандартных ответов бота. Язык интерфейса не меняется.',
+    saved: 'Язык сохранён',
+    saveFailed: 'Не удалось сохранить язык',
+  },
   inflight: {
     autoCollapse: 'Автосворачивание',
     empty: 'Нет событий в обработке',
@@ -837,6 +960,8 @@ const ruRU = {
     saveSuccess: 'Успешно сохранено',
     saveError: 'Ошибка сохранения: ',
     createSuccess: 'Успешно создано. Настройте маршрутизацию событий',
+    autoCreatedPipeline:
+      'Пайплайн автоматически создан и привязан к событиям сообщений',
     createError: 'Ошибка создания: ',
     deleteSuccess: 'Успешно удалено',
     deleteError: 'Ошибка удаления: ',
@@ -906,7 +1031,7 @@ const ruRU = {
     dragEventRoute: 'Перетащить маршрут {{index}}',
     behaviorReplyMessages: 'Отвечать на сообщения',
     behaviorReplyMessagesDescription:
-      'Передавайте входящие сообщения обработчику.',
+      'Обрабатывать личные сообщения и сообщения группы с упоминанием этого бота.',
     behaviorWelcomeMembers: 'Приветствовать новых участников',
     behaviorWelcomeMembersDescription:
       'Запускайте обработчик при вступлении участника в группу.',
@@ -1136,6 +1261,9 @@ const ruRU = {
       'Для срабатывания должны выполняться все условия. Пустой список означает срабатывание всегда.',
     conditionsEmpty: 'Нет условий — срабатывает всегда.',
     addFilter: 'Добавить условие',
+    filterIsAtBot: 'Упоминает этого бота',
+    mentionYes: 'Да',
+    mentionNo: 'Нет',
     filterChatType: 'Тип сеанса',
     filterChatId: 'ID сеанса',
     filterMessageText: 'Текст сообщения',
@@ -1509,6 +1637,17 @@ const ruRU = {
     restoringRunnerInstall:
       'Восстановление установки плагина и ожидание исполнителя…',
     noInstalledRunners: 'Расширения исполнителей ещё не установлены.',
+    runnerDiagnosis: {
+      missing:
+        'Выбранный Runner или его плагин не найден. Установите или восстановите плагин.',
+      disabled:
+        'Плагин выбранного Runner отключён. Включите его на странице плагинов.',
+      runtime:
+        'Среда выполнения плагинов недоступна или отключена. Восстановите соединение перед запуском.',
+      repair: 'Управление плагинами и средой выполнения',
+      draft:
+        'Исправление откроется в новой вкладке. Выбор Runner и несохранённый черновик останутся здесь.',
+    },
     installingRunner: 'Установка {{runner}}...',
     runnerInstallSuccess: '{{runner}} установлен и доступен для выбора',
     selectedRunnerUnavailable: 'Выбранный исполнитель недоступен',
@@ -2120,6 +2259,10 @@ const ruRU = {
       addPlugin: 'Добавить плагин',
       selectPlugins: 'Выберите плагины',
       pluginsTitle: 'Плагины',
+      pluginScopeHint:
+        'Управляет только обработчиками событий, инструментами и командами этого конвейера, но не Runner, выбранным в настройках ИИ.',
+      runnerScopeHint:
+        'Runner выбирается независимо от переключателей плагинов расширений. Его плагин должен быть установлен и доступен.',
       mcpServersTitle: 'MCP-серверы',
       mcpResourcesTitle: 'MCP-ресурсы',
       noMCPServersSelected: 'MCP-серверы не выбраны',
@@ -2164,7 +2307,7 @@ const ruRU = {
       mcpToolsScopeTooltip:
         'Здесь показаны только инструменты MCP-серверов, разрешённых сейчас в Расширениях.',
       skillToolsScopeTooltip:
-        'Инструменты навыков доступны, когда сервис навыков LangBot и backend песочницы Box готовы. Они позволяют агенту активировать или регистрировать навыки.',
+        'Активация навыков и ресурсы только для чтения работают без Box. Регистрация из рабочей области Agent по-прежнему требует песочницу Box.',
       selectTools: 'Выбрать инструменты',
       resourcesTitle: 'Ресурсы',
       resourcesDescription:
@@ -2582,8 +2725,7 @@ const ruRU = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -3029,9 +3171,9 @@ const ruRU = {
     statusDetail: 'Статус',
     pluginDisabled: 'Система плагинов отключена',
     boxDisabled:
-      'Песочница Box отключена в конфигурации — инструменты песочницы, добавление/редактирование навыков и stdio MCP недоступны',
+      'Песочница Box отключена в конфигурации — инструменты выполнения и stdio MCP недоступны',
     boxUnavailable:
-      'Песочница Box недоступна — инструменты песочницы, добавление/редактирование навыков и stdio MCP недоступны',
+      'Песочница Box недоступна — инструменты выполнения и stdio MCP недоступны',
     boxRequiredHint:
       'Для этой функции требуется среда Box. Включите её в конфигурации (box.enabled = true) и убедитесь, что соединение работает.',
     boxBackend: 'Бэкенд',
@@ -3648,12 +3790,13 @@ const ruRU = {
     selectFromSidebar: 'Выберите страницу плагина на боковой панели',
     invalidPage: 'Недопустимая страница плагина',
   },
-  beta_banner: {
+  cloud_banner: {
     message:
-      'Эта среда находится в стадии бета-тестирования. Стабильность сервиса не гарантируется. Рекомендуем использовать',
-    cloud_link: 'LangBot Cloud (выделенная среда)',
+      'Вы используете LangBot Cloud — управляемый сервис. Для выделенных ресурсов и повышенных лимитов рекомендуем',
+    dedicated_link: 'LangBot Cloud (выделенная среда)',
+    cta_dedicated: 'посмотреть выделенные планы',
     or: 'или',
-    oss_link: 'версию с открытым исходным кодом на своём сервере',
+    self_hosted_link: 'версию с открытым исходным кодом на своём сервере',
     period: '.',
     dismiss: 'Закрыть',
   },

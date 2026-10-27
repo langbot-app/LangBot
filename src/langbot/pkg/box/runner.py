@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from langbot_plugin.api.entities.builtin.platform import message as pm
 from langbot_plugin.api.entities.builtin.runner.box import BoxAcquireRequest
 from langbot_plugin.box.errors import BoxValidationError
+from .export_errors import export_error
 
 
 @dataclass
@@ -24,6 +25,8 @@ class RunBoxBinding:
     exported: dict = field(default_factory=dict)
     submitted: set = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    read_only_mounts: list[dict] = field(default_factory=list)
+    exported_fingerprints: dict = field(default_factory=dict)
 
 
 def prepare_input_files(query, agent_input):
@@ -33,14 +36,24 @@ def prepare_input_files(query, agent_input):
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
-    from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 
     originals = input_files(query)
+    # References are scoped to this query's previous preparation, not to the
+    # platform message order or to any caller-supplied filesystem path.
+    prepared = getattr(query, '_box_inputs', None)
+    previous_refs = {f'attachment-{i}': item for i, item in enumerate(prepared or [])}
     if not agent_input.attachments:
+        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
         agent_input.attachments = [
             InputAttachment.model_validate(item)
             for item in QueryEntryAdapter._build_attachments(query, [c.model_dump() for c in agent_input.contents])
         ]
+    inline_images = {
+        content.image_base64
+        for content in (agent_input.contents or [])
+        if content.type == 'image_base64' and content.image_base64
+    }
     components = []
     for i, attachment in enumerate(agent_input.attachments):
         kind = (attachment.type or 'file').lower()
@@ -49,6 +62,11 @@ def prepare_input_files(query, agent_input):
         if cls is pm.File:
             fields.update(name=attachment.name or '', id=attachment.id or '')
         component = cls(**fields)
+        referenced = previous_refs.get(attachment.ref)
+        if type(referenced) is cls and not attachment.content and not attachment.url:
+            components.append(referenced)
+            attachment.ref, attachment.path = f'attachment-{i}', None
+            continue
         # Match by payload, never by list position (contents and message chains
         # can describe attachments in different orders).
         for original in originals:
@@ -74,6 +92,8 @@ def prepare_input_files(query, agent_input):
                 break
         components.append(component)
         attachment.ref, attachment.path = f'attachment-{i}', None
+        if kind == 'image' and attachment.content in inline_images:
+            attachment.content = None
     object.__setattr__(query, '_box_inputs', components)
 
 
@@ -152,9 +172,10 @@ class RunnerBoxService:
         if set(request.options) - {'image'}:
             raise BoxValidationError('Only the Box image can be specified; resource limits are Host-owned')
         spec = {'session_id': session_id, **request.options}
-        if query is not None:
-            spec['extra_mounts'] = self.box.build_skill_extra_mounts(query)
-        result = await self.box.create_session(context, spec)
+        from ..provider.tools.loaders.skill import build_execution_mounts
+
+        mounts = build_execution_mounts(self.box.ap, query) if query is not None else []
+        result = await self.box.create_session(context, spec, trusted_read_only_mounts=mounts)
         return self.public_session(result)
 
     async def bind(self, context, query, run_id, box_id):
@@ -174,8 +195,11 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
-        spec['extra_mounts'] = self.box.build_skill_extra_mounts(query)
-        binding = RunBoxBinding(run_id, box_id, spec, run_id)
+        from ..provider.tools.loaders.skill import build_execution_mounts
+
+        binding = RunBoxBinding(
+            run_id, box_id, spec, run_id, read_only_mounts=build_execution_mounts(self.box.ap, query)
+        )
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)
 
@@ -208,26 +232,72 @@ class RunnerBoxService:
                 binding.imported[key] = {'id': key, **items[0]}
             return {'items': [binding.imported[key] for key in ids]}
 
-    async def export_files(self, query):
+    async def export_files(self, query, paths):
         binding = binding_for(query)
+        if not isinstance(paths, list) or not paths or len(paths) > self.box._ATTACHMENT_MAX_FILES:
+            raise BoxValidationError(f'paths must contain 1 to {self.box._ATTACHMENT_MAX_FILES} file paths')
+        if any(
+            not isinstance(p, str)
+            or not p.startswith('/')
+            or '\\' in p
+            or '\x00' in p
+            or any(c in {'', '.', '..'} for c in p.split('/')[1:])
+            for p in paths
+        ):
+            raise BoxValidationError('paths must be normalized absolute sandbox file paths')
+        if len(set(paths)) != len(paths):
+            raise BoxValidationError('Duplicate export file paths')
         async with binding.lock:
-            items = await self.box.collect_outbound_attachments(query)
+            items = await self.box.collect_selected_files(query, paths)
+            unseen = {}
             for item in items:
-                if len(binding.exported) >= 100:
-                    raise BoxValidationError('At most 100 output files may be exported per run')
-                size = len(base64.b64decode(item['base64'].split(';base64,')[-1]))
-                if sum(x['size'] for x in binding.exported.values()) + size > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
-                    raise BoxValidationError('Output files exceed the per-run byte limit')
+                data = base64.b64decode(item['base64'].split(';base64,')[-1])
+                fingerprint = (item.get('_outbox_path', item['name']), item['type'], hashlib.sha256(data).hexdigest())
+                if fingerprint not in binding.exported_fingerprints:
+                    unseen[fingerprint] = (item, len(data))
+            if len(binding.exported) + len(unseen) > 100:
+                first = next(iter(unseen.values()))[0]
+                raise export_error(
+                    'run_files',
+                    limit=100,
+                    actual=len(binding.exported) + len(unseen),
+                    remaining=max(0, 100 - len(binding.exported)),
+                    path=first.get('_outbox_path', first['name']),
+                    absolute_path=True,
+                )
+            total_bytes = sum(x['size'] for x in binding.exported.values())
+            batch_bytes = sum(size for _, size in unseen.values())
+            if unseen and total_bytes + batch_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
+                first = next(iter(unseen.values()))[0]
+                raise export_error(
+                    'run_bytes',
+                    limit=self.box._ATTACHMENT_MAX_TOTAL_BYTES,
+                    actual=total_bytes + batch_bytes,
+                    remaining=max(0, self.box._ATTACHMENT_MAX_TOTAL_BYTES - total_bytes),
+                    path=first.get('_outbox_path', first['name']),
+                    absolute_path=True,
+                )
+            pending = {}
+            fingerprints = {}
+            for fingerprint, (item, size) in unseen.items():
                 key = str(uuid.uuid4())
-                binding.exported[key] = {
+                pending[key] = {
                     **item,
                     'id': key,
                     'size': size,
                 }
+                fingerprints[fingerprint] = key
+            binding.exported.update(pending)
+            binding.exported_fingerprints.update(fingerprints)
+            try:
+                warning = await self.box.clear_selected_files(query, items)
+            except Exception:
+                warning = 'Files accepted, but cleanup failed; do not repeat delivery.'
             return {
+                'warning': warning,
                 'items': [
-                    {k: v for k, v in item.items() if k != 'base64'}
+                    {k: v for k, v in item.items() if k not in {'base64', '_outbox_path'}}
                     for key, item in binding.exported.items()
                     if key not in binding.submitted
-                ]
+                ],
             }

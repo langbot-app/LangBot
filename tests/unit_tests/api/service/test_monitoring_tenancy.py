@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import contextvars
 from types import SimpleNamespace
 
 import pytest
@@ -35,6 +36,12 @@ def _context(workspace_uuid: str) -> ExecutionContext:
 class _PersistenceManager:
     def __init__(self, engine):
         self.engine = engine
+        self.active_transaction = contextvars.ContextVar('monitoring-test-transaction', default=None)
+
+    def tenant_uow(self, workspace):
+        from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+        return TenantUnitOfWork(self.engine, workspace, active_transaction=self.active_transaction)
 
     async def execute_async(self, *args, **kwargs):
         async with self.engine.connect() as connection:
@@ -62,6 +69,7 @@ class _PersistenceManager:
 async def service(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "monitoring.db"}')
     async with engine.begin() as connection:
+        await connection.exec_driver_sql('PRAGMA auto_vacuum=INCREMENTAL')
         await connection.run_sync(Base.metadata.create_all)
         await connection.execute(
             sqlalchemy.insert(Workspace),
@@ -112,22 +120,6 @@ async def test_same_session_and_resource_ids_do_not_collide(service):
     context_b = _context(WORKSPACE_B)
     message_a = await _record_message(service, context_a, 'tenant-a')
     message_b = await _record_message(service, context_b, 'tenant-b')
-    await service.record_session_start(
-        context_a,
-        session_id='same-session',
-        bot_id='same-bot',
-        bot_name='Same Bot',
-        pipeline_id='same-pipeline',
-        pipeline_name='Same Pipeline',
-    )
-    await service.record_session_start(
-        context_b,
-        session_id='same-session',
-        bot_id='same-bot',
-        bot_name='Same Bot',
-        pipeline_id='same-pipeline',
-        pipeline_name='Same Pipeline',
-    )
 
     messages_a, total_a = await service.get_messages(context_a)
     messages_b, total_b = await service.get_messages(context_b)
@@ -138,7 +130,8 @@ async def test_same_session_and_resource_ids_do_not_collide(service):
     assert (await service.get_message_details(context_a, message_b))['found'] is False
 
 
-async def test_session_search_matches_user_id_or_name_within_workspace(service):
+@pytest.mark.parametrize('bot_ids', [None, ['same-bot']])
+async def test_session_search_matches_user_id_or_name_within_workspace(service, bot_ids):
     context_a = _context(WORKSPACE_A)
     context_b = _context(WORKSPACE_B)
     fixtures = [
@@ -148,8 +141,9 @@ async def test_session_search_matches_user_id_or_name_within_workspace(service):
         (context_b, 'session-other-workspace', 'customer-42', 'Alice'),
     ]
     for context, session_id, user_id, user_name in fixtures:
-        await service.record_session_start(
+        await service.record_message(
             context,
+            message_content='hello',
             session_id=session_id,
             bot_id='same-bot',
             bot_name='Same Bot',
@@ -159,8 +153,8 @@ async def test_session_search_matches_user_id_or_name_within_workspace(service):
             user_name=user_name,
         )
 
-    by_id, id_total = await service.get_sessions(context_a, user_query='customer-42')
-    by_name, name_total = await service.get_sessions(context_a, user_query='alice')
+    by_id, id_total = await service.get_sessions(context_a, bot_ids=bot_ids, user_query='customer-42')
+    by_name, name_total = await service.get_sessions(context_a, bot_ids=bot_ids, user_query='alice')
 
     assert id_total == 1
     assert [session['session_id'] for session in by_id] == ['session-id-match']
@@ -220,14 +214,6 @@ async def test_monitoring_queries_and_detail_views_are_strictly_bounded(service)
             'max_offset': 10,
         }
     }
-    await service.record_session_start(
-        context,
-        session_id='same-session',
-        bot_id='same-bot',
-        bot_name='Same Bot',
-        pipeline_id='same-pipeline',
-        pipeline_name='Same Pipeline',
-    )
     message_ids = [await _record_message(service, context, f'message-{index}') for index in range(4)]
     for index in range(3):
         await service.record_llm_call(
@@ -364,7 +350,7 @@ async def test_token_statistics_aggregate_and_limit_groups_in_database(service):
     ]
 
 
-async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
+async def test_cleanup_deletes_bounded_batches_without_exclusive_sqlite_maintenance(tmp_path):
     engine = create_async_engine(
         f'sqlite+aiosqlite:///{tmp_path / "monitoring-cleanup.db"}',
         connect_args={'timeout': 0.1},
@@ -377,6 +363,7 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
     application.persistence_mgr = manager
     try:
         async with engine.begin() as connection:
+            await connection.exec_driver_sql('PRAGMA auto_vacuum=INCREMENTAL')
             await connection.run_sync(Base.metadata.create_all)
             await connection.execute(
                 sqlalchemy.insert(Workspace).values(
@@ -408,6 +395,12 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
                 ],
             )
 
+        statements = []
+
+        @sqlalchemy.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+        def capture_statement(connection, cursor, statement, parameters, context, executemany):
+            statements.append(statement.strip().upper())
+
         deleted = await MonitoringService(application).cleanup_expired_records(
             _context(WORKSPACE_A),
             retention_days=1,
@@ -421,5 +414,36 @@ async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
                 sqlalchemy.select(sqlalchemy.func.count()).select_from(MonitoringMessage)
             )
         assert remaining == 3
+        assert not any(statement.startswith(('VACUUM', 'PRAGMA WAL_CHECKPOINT')) for statement in statements)
     finally:
         await engine.dispose()
+
+
+async def test_cloud_cleanup_uses_plan_retention_and_isolates_workspaces(service):
+    from unittest.mock import AsyncMock
+
+    service.ap.deployment = SimpleNamespace(mode='cloud')
+    service.ap.entitlement_resolver = SimpleNamespace(
+        resolve=AsyncMock(return_value=SimpleNamespace(limits={'chat_history.retention_days': 7}))
+    )
+    old = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(days=10)
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        await service.ap.persistence_mgr.execute_async(
+            sqlalchemy.insert(MonitoringMessage).values(
+                id=f'policy-{workspace}',
+                workspace_uuid=workspace,
+                timestamp=old,
+                bot_id='bot',
+                bot_name='Bot',
+                pipeline_id='pipeline',
+                pipeline_name='Pipeline',
+                message_content='history',
+                session_id='session',
+                status='success',
+                level='info',
+            )
+        )
+    deleted = await service.cleanup_expired_records(_context(WORKSPACE_A), retention_days=90)
+    assert deleted['monitoring_messages'] == 1
+    rows = await service.ap.persistence_mgr.execute_async(sqlalchemy.select(MonitoringMessage.workspace_uuid))
+    assert rows.scalars().all() == [WORKSPACE_B]

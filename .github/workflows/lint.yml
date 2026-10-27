@@ -9,6 +9,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+concurrency:
+  group: lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ruff:
     name: Ruff Lint & Format
@@ -25,14 +29,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install dependencies
-        run: uv sync --dev
-
       - name: Run ruff check
-        run: uv run ruff check src/langbot/ tests/ --output-format=concise
+        run: uvx ruff@0.14.14 check src/langbot/ tests/ tools/ --output-format=concise
 
       - name: Run ruff format
-        run: uv run ruff format src --check
+        run: uvx ruff@0.14.14 format src tools --check
 
   frontend:
     name: Frontend Lint

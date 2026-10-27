@@ -11,6 +11,7 @@ from ...core import app
 from ...api.http.context import ExecutionContext
 from ...entity.persistence import model as persistence_model
 from ...workspace.errors import WorkspaceInvariantError
+from ...platform.image_urls import refresh_model_images
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
 from . import reasoning
@@ -164,11 +165,16 @@ class RuntimeProvider:
                 state.metrics['attempts'] += 1
                 state.attempt_start = time.perf_counter()
                 try:
+                    attempt_messages = await state.wait(
+                        lambda: refresh_model_images(self.requester.ap, context, query, messages),
+                        'response',
+                        state.policy.total_timeout,
+                    )
                     result = await state.wait(
                         lambda: self.requester.invoke_llm(
                             query=query,
                             model=model,
-                            messages=messages,
+                            messages=attempt_messages,
                             funcs=funcs,
                             extra_args=extra_args,
                             remove_think=remove_think,
@@ -215,11 +221,16 @@ class RuntimeProvider:
                 state.metrics['attempts'] += 1
                 state.attempt_start = time.perf_counter()
                 try:
+                    attempt_messages = await state.wait(
+                        lambda: refresh_model_images(self.requester.ap, context, query, messages),
+                        'first_event',
+                        state.policy.total_timeout,
+                    )
                     async with aclosing(
                         self.requester.invoke_llm_stream(
                             query=query,
                             model=model,
-                            messages=messages,
+                            messages=attempt_messages,
                             funcs=funcs,
                             extra_args=extra_args,
                             remove_think=remove_think,

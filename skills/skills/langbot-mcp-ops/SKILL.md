@@ -75,6 +75,13 @@ create another Slack application; inspect the returned `app_id` first.
 
 The tools wrap the LangBot service layer. Current tools (v1):
 
+`create_pipeline` and HTTP `POST /api/v1/pipelines` preserve a supplied `config`
+and `extensions_preferences`; omit `config` to use installed Runner defaults.
+Selecting `ai.runner.id` never grants extension access: an empty `plugins` list
+with `enable_all_plugins=false` still denies that plugin's Tool, EventListener
+and Command components, while allowing its selected Runner. Editing and copying
+a pipeline retain these independent settings.
+
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
@@ -104,6 +111,13 @@ Pass `is_default: true` to `create_pipeline` only when the Workspace does not
 already have a default pipeline.
 
 ## How to use
+
+Pipeline plugin extension switches authorize only EventListener, Tool and Command
+components. Select the Runner independently in AI settings. An empty extension
+allowlist does not prevent saving, copying or running that Runner. Never enable
+all plugins or add its plugin to the allowlist as a Runner workaround: that also
+authorizes its other components. The Runner plugin must still be installed and
+enabled in the authenticated Workspace, with an available Plugin Runtime.
 
 1. Get an API key (web UI key, or set `api.global_api_key` in config.yaml).
 2. Point your MCP client at `http://<host>:5300/mcp` with the key header.
@@ -166,6 +180,22 @@ state as well; it is not the same operation as disconnecting an account.
 - The global key is plaintext in config.yaml — only enable it on trusted/internal
   deployments and serve over HTTPS.
 
+## Default message routes
+
+`create_bot` without non-empty `event_bindings` adds two explicit message routes:
+private chat (`chat_type eq person`) and group chat (`chat_type eq group` plus
+`is_at_bot eq true`). Both use the Workspace's default Pipeline, or the first
+available Pipeline. If none exists, first-bot setup creates one with the full
+default config. Creating a Pipeline via `create_agent(kind="pipeline")` also uses
+that full default config. Configure an authorized model before testing replies.
+
+Explicit routes on create are preserved; `update_bot` never automatically
+replaces manual routes, including an intentionally empty list. The WebUI message
+template uses the same private/group conditions and preserves existing routes
+when applied repeatedly. Unmentioned group messages do not enter the Pipeline.
+An existing broad route can still match first; inspect route order and diagnostics
+before changing a member's configuration.
+
 ## Event processors
 
 Create a processor with `kind: "event_processor"` and basic information. Without
@@ -190,6 +220,15 @@ logs and action results. These times are not internal plugin profiling data.
 
 ## Unified execution monitoring
 
+Message record reads can renew temporary OneBot image URLs through the connected
+bot without downloading images. Persisted payloads reference a shared URL catalog;
+renewal overwrites its current URL so existing references read the new address. Explicitly identified
+NapCat connections reuse rkeys until their returned TTL expires (appid 1406 uses
+type 10; appid 1407 uses type 20). Other OneBot implementations use standard
+`get_msg` at most once per URL per 30 minutes when original message and image identities
+are available. Disconnected peers, missing origins, or unsupported APIs leave the
+stored URL unchanged; returned URLs are not permanent archival links.
+
 Use `get_inflight_executions` for a bounded current-workspace snapshot of active
 and recently started executions, including `progress_event`. Progress is a
 reported stage, not an estimated completion percentage. The UI uses the shared
@@ -203,14 +242,35 @@ message or event identifier outside the current list page. The detail exposes
 `inputs`, `outputs` (generated content), `deliveries` (recorded platform sends),
 `events`, `llm_calls`, `tool_calls`, `errors`, `related`, and `conversation` in
 `pages`. Follow each section's `has_more` and `next_offset` independently.
+Start with `section=overview` to load only inputs, outputs, deliveries and errors.
+Request `conversation`, `related`, calls and events separately when needed;
+omitting `section` retains the complete trace response for existing consumers.
 Conversation history supplies context; historical messages without explicit
 links must not be asserted to belong to the selected execution. Events without
 a processor run use `source=event`. All lookups remain Workspace-scoped.
 
-Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
+Monitoring record filters, except for `kind="sessions"`, accept `mode` (`all`, `real`, `debug`) and
 `execution_statuses` (normalized execution statuses). These select the owning
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
+
+Session lists support `bot_ids`, `pipeline_ids`, `start_time`, `end_time`,
+`user_query`, `is_active`, and pagination. For execution status or real/debug
+filters, use `get_monitoring_executions`; HTTP `/monitoring/sessions` rejects
+them. In HTTP `/monitoring/data`, `sessions` and `totalCount.sessions` use only
+bot/pipeline/time filters; execution filters apply to the other records.
+
+### Workspace message language
+
+`get_workspace_message_language` reads the current Workspace's backend language
+(`workspace.view`). `set_workspace_message_language(language)` requires
+`workspace.update`; supported values are `en_US`, `zh_Hans`, `zh_Hant`, `ja_JP`,
+`es_ES`, `ru_RU`, `th_TH`, `vi_VN`. HTTP equivalents are GET/PUT
+`/api/v1/workspaces/current/language` (PUT body: `{"language":"ja_JP"}`).
+The API key's Workspace remains authoritative. The setting controls new backend
+messages and default bot notices, independently of personal UI language.
+Pipeline `output.misc` hint fields override defaults; empty values inherit this
+setting. Existing custom text and historical logs are not rewritten.
 
 ### Workspace default LLM model
 
@@ -226,6 +286,10 @@ are not rewritten. Embedding and rerank models are not eligible.
 ### Reset a bot session context
 
 Use `reset_session_context(bot_id, session_id)` only when a user asks to start a session afresh. It requires `resource.manage`, preserves monitoring records, and refuses sessions with active tasks. It clears conversation runner state and excludes earlier transcript entries from subsequent model context. Files and long-term memory are not removed.
+
+## Cloud plan platform restrictions
+
+Bot creation and enabling use the same Workspace entitlement policy as HTTP. A disabled platform is rejected even through MCP or plugin calls; do not retry using an Omni or legacy alias to bypass the restriction. The Workspace-scoped HTTP adapter catalog omits disabled platforms.
 
 ## LLM request diagnostics
 

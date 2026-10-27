@@ -7,10 +7,13 @@ no existing tables are dropped. Without that URL these tests are skipped.
 
 from __future__ import annotations
 
+import datetime
 import logging
+import json
 import os
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -19,6 +22,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.monitoring import MonitoringService
+from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence import monitoring as models
 from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
@@ -158,6 +162,56 @@ async def _read(service, method, context, *args, **kwargs):
         return await getattr(service, method)(context, *args, **kwargs)
 
 
+async def test_inflight_snapshot_reads_recent_utc_rows_and_terminal_transitions(service, cloud_database):
+    _, admin = cloud_database
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    old = now - datetime.timedelta(hours=1)
+    async with admin.begin() as conn:
+        for workspace, run_id, status, created_at in [
+            (WORKSPACE_A, 'inflight-running', 'running', old),
+            (WORKSPACE_A, 'inflight-recent', 'completed', now),
+            (WORKSPACE_B, 'inflight-private', 'running', now),
+        ]:
+            await conn.execute(
+                sa.insert(AgentRun).values(
+                    run_id=run_id, workspace_id=workspace, runner_id='runner', status=status, created_at=created_at
+                )
+            )
+        for message_id, timestamp in [('inflight-message', now), ('inflight-old-message', old)]:
+            await conn.execute(
+                sa.insert(models.MonitoringMessage).values(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE_A,
+                    timestamp=timestamp,
+                    **RESOURCE,
+                    message_content='hello',
+                    session_id='session',
+                    status='success',
+                    level='info',
+                )
+            )
+
+    try:
+        # The SSE producer owns its tenant scope after the HTTP handler has returned.
+        snapshot = await service.get_inflight_snapshot(_context(WORKSPACE_A))
+        assert snapshot['active_total'] == 1
+        assert {row['id'] for row in snapshot['items']} == {'inflight-running', 'inflight-recent', 'inflight-message'}
+        async with admin.begin() as conn:
+            await conn.execute(
+                sa.update(AgentRun).where(AgentRun.run_id == 'inflight-running').values(status='completed')
+            )
+        snapshot = await service.get_inflight_snapshot(_context(WORKSPACE_A), snapshot['items'])
+        assert snapshot['active_total'] == 0
+        assert next(row for row in snapshot['items'] if row['id'] == 'inflight-running')['status_group'] == 'completed'
+    finally:
+        async with admin.begin() as conn:
+            await conn.execute(
+                sa.delete(AgentRun).where(
+                    AgentRun.run_id.in_(['inflight-running', 'inflight-recent', 'inflight-private'])
+                )
+            )
+
+
 def _query(context, sender_id):
     return SimpleNamespace(
         _execution_context=context,
@@ -172,7 +226,7 @@ def _query(context, sender_id):
 
 
 @pytest.mark.parametrize('user_id', [123456789, -100123456789, 0, None, '', '00123', '  opaque用户  '])
-@pytest.mark.parametrize('record_type', ['message', 'session', 'feedback'])
+@pytest.mark.parametrize('record_type', ['message', 'feedback'])
 async def test_optional_user_ids_round_trip_through_asyncpg(service, user_id, record_type):
     context = _context(WORKSPACE_A)
     expected = str(user_id) if isinstance(user_id, int) else user_id
@@ -186,8 +240,6 @@ async def test_optional_user_ids_round_trip_through_asyncpg(service, user_id, re
         )
         details = await _read(service, 'get_message_details', context, record_id)
         assert details['message']['user_id'] == expected
-    elif record_type == 'session':
-        await service.record_session_start(context, **RESOURCE, session_id='same-session', user_id=user_id)
         rows, total = await _read(service, 'get_sessions', context)
         assert total == 1
         assert rows[0]['user_id'] == expected
@@ -250,7 +302,7 @@ async def test_query_error_persists_error_message_and_linked_log(service, user_i
 
 
 @pytest.mark.parametrize('user_id', [True, 1.5, b'123', ['123']])
-@pytest.mark.parametrize('record_type', ['message', 'session', 'feedback'])
+@pytest.mark.parametrize('record_type', ['message', 'feedback'])
 async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id, record_type):
     context = _context(WORKSPACE_A)
     with pytest.raises(TypeError, match='user_id must be a string, integer, or None'):
@@ -262,8 +314,6 @@ async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id,
                 session_id='session',
                 user_id=user_id,
             )
-        elif record_type == 'session':
-            await service.record_session_start(context, **RESOURCE, session_id='session', user_id=user_id)
         else:
             await service.record_feedback(context, feedback_id='feedback', feedback_type=1, user_id=user_id)
     async with service.ap.persistence_mgr.tenant_scope(WORKSPACE_A):
@@ -274,7 +324,6 @@ async def test_unsupported_user_ids_fail_at_the_write_boundary(service, user_id,
 
 async def test_session_analysis_aggregates_under_cloud_sql_guard(service):
     context = _context(WORKSPACE_A)
-    await service.record_session_start(context, **RESOURCE, session_id='same-session')
     await service.record_message(context, **RESOURCE, session_id='same-session', message_content='hello')
     result = await _read(service, 'get_session_analysis', context, 'same-session')
     assert result['found'] is True
@@ -316,6 +365,43 @@ async def test_rls_is_enforced_without_application_workspace_predicates(service,
             assert rows == [(workspace,)]
     with pytest.raises(TenantScopeRequiredError):
         await service.ap.persistence_mgr.execute_async(sa.select(models.MonitoringMessage.id))
+
+
+async def test_shared_resource_urls_preserve_cloud_workspace_authorization(service, cloud_database):
+    from langbot.pkg.entity.persistence.resource_url import ResourceURL
+    from langbot.pkg.persistence.resource_urls import refresh_images
+    from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+    _, admin = cloud_database
+    old, fresh = 'https://example.test/old-image', 'https://example.test/current-image'
+    chain = [{'type': 'Source', 'id': 42}, {'type': 'Image', 'image_id': 'one.jpg', 'url': old}]
+    records = {}
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        records[workspace] = await service.record_message(
+            _context(workspace), **RESOURCE, session_id='shared-url', message_content=json.dumps(chain)
+        )
+    async with admin.begin() as db:
+        assert await db.scalar(sa.select(sa.func.count()).select_from(ResourceURL)) == 1
+        await db.execute(sa.update(ResourceURL).values(created_at=datetime.datetime(2000, 1, 1)))
+
+    async def action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'standard'}
+        assert name == 'get_msg' and params == {'message_id': 42}
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': fresh}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    # Exercise catalog writes using the actual non-superuser runtime role.
+    await refresh_images(service.ap.persistence_mgr.get_db_engine(), peer, chain)
+    for workspace in (WORKSPACE_A, WORKSPACE_B):
+        details = await _read(service, 'get_message_details', _context(workspace), records[workspace])
+        assert fresh in details['message']['message_content']
+        other = WORKSPACE_B if workspace == WORKSPACE_A else WORKSPACE_A
+        assert (await _read(service, 'get_message_details', _context(workspace), records[other]))['found'] is False
+    async with admin.connect() as db:
+        assert await db.scalar(sa.select(ResourceURL.url)) == fresh
+        assert old not in str((await db.execute(sa.text('SELECT message_content FROM monitoring_messages'))).all())
 
 
 async def test_traffic_series_aggregates_all_rows_under_cloud_rls(service):

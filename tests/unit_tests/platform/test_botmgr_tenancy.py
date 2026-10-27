@@ -38,6 +38,7 @@ def _runtime(application, workspace_uuid: str, bot_uuid: str) -> RuntimeBot:
         uuid=bot_uuid,
         workspace_uuid=workspace_uuid,
         name='Same Name',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )
@@ -327,6 +328,7 @@ def test_runtime_bot_rejects_workspace_mismatch():
         uuid=BOT_A,
         workspace_uuid=WORKSPACE_A,
         name='Bot',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )
@@ -386,6 +388,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
         uuid=BOT_A,
         workspace_uuid=WORKSPACE_A,
         name='Bot',
+        adapter='aiocqhttp',
         enable=True,
         event_bindings=[],
     )

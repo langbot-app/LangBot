@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ....i18n import t
+
 import typing
 import copy
 import time
@@ -22,7 +24,7 @@ from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
 from .. import errors, reasoning, requester
-from ....utils import httpclient
+from ....utils import httpclient, image
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -834,6 +836,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         req_messages = []
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
+            provider_fields = msg_dict.get('provider_specific_fields')
+            if isinstance(provider_fields, dict):
+                # Stream completion metadata belongs to the response, never to
+                # replayed chat messages. Keep provider signatures for LiteLLM.
+                provider_fields.pop('finish_reason', None)
+                if not provider_fields:
+                    msg_dict.pop('provider_specific_fields', None)
             content = msg_dict.get('content')
 
             if msg_dict.get('role') == 'assistant' and reasoning_family:
@@ -886,7 +895,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                             if isinstance(raw_image_url, dict):
                                 fallback_url = raw_image_url.get('url')
                         if image_b64 or fallback_url:
-                            part['image_url'] = {'url': image_b64 or fallback_url}
+                            part['image_url'] = {
+                                'url': image.normalize_image_data_url(image_b64) if image_b64 else fallback_url
+                            }
                             part['type'] = 'image_url'
                             part.pop('image_base64', None)
                         else:
@@ -905,6 +916,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             req_messages.append(msg_dict)
 
         return req_messages
+
+    @staticmethod
+    def _adapt_messages_for_provider(messages: list[dict], chat_provider: str | None) -> None:
+        """Adapt serialized request messages in place for the chat transport."""
+        if chat_provider == 'groq':
+            # Groq rejects LiteLLM's metadata envelope on messages and tool calls.
+            for message in messages:
+                message.pop('provider_specific_fields', None)
+                for tool_call in message.get('tool_calls') or []:
+                    tool_call.pop('provider_specific_fields', None)
+                    tool_call.get('function', {}).pop('provider_specific_fields', None)
 
     _THINK_PATTERNS: tuple[str, ...] = (
         r'^\s*(?:(?!<think>).)*?</think>\s*',
@@ -1196,13 +1218,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             raise e
         metadata = error_metadata(e)
         mappings = (
-            (litellm.ContextWindowExceededError, 'context_length', '上下文长度超限', False),
-            (litellm.AuthenticationError, 'authentication', 'API key 无效', False),
-            (litellm.NotFoundError, 'not_found', '模型或路径无效', False),
-            (litellm.RateLimitError, 'rate_limit', '请求过于频繁或余额不足', True),
-            (litellm.Timeout, 'timeout', '请求超时', True),
-            (litellm.APIConnectionError, 'connection', '连接错误', True),
-            (litellm.BadRequestError, 'bad_request', '请求参数错误', False),
+            (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
+            (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
+            (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
+            (litellm.Timeout, 'timeout', t('Request timed out'), True),
+            (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
+            (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
@@ -1215,7 +1237,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
         status = metadata['status_code']
         raise errors.RequesterError(
-            'API 错误' if isinstance(e, litellm.APIError) else '未知错误',
+            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
             code='upstream_error',
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
@@ -1322,6 +1344,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         # OpenRouter shares requester metadata with OpenAI-compatible non-chat
         # operations, but chat needs its own adapter to preserve cache markers.
         chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        self._adapt_messages_for_provider(req_messages, chat_provider)
         model_name = self._build_litellm_model_name(model.model_entity.name, chat_provider)
         api_key = model.provider.token_mgr.get_token()
 
@@ -1814,9 +1837,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 body = await httpclient.response_text(e.response)
             except Exception:
                 pass
-            raise errors.RequesterError(f'rerank 请求失败 (HTTP {e.response.status_code}): {body or str(e)}')
+            raise errors.RequesterError(t('API error') + f' (HTTP {e.response.status_code}): {body or str(e)}')
         except httpx.HTTPError as e:
-            raise errors.RequesterError(f'rerank 连接错误: {str(e)}')
+            raise errors.RequesterError(t('Connection failed') + f': {e}')
 
         raw_results = data.get('results', []) if isinstance(data, dict) else []
         results = []

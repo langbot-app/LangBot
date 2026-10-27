@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter as LegacyLarkAdapter,
     NonBlockingLarkWSClient,
@@ -9,6 +11,7 @@ import threading
 import asyncio
 import base64
 import hashlib
+import hmac
 import json
 import time
 import traceback
@@ -347,6 +350,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.request_tenant_access_token(tenant_key)
         return self.tenant_access_tokens.get(tenant_key, {}).get('token')
 
+    @localized_adapter
     async def send_message(
         self,
         target_type: str,
@@ -380,6 +384,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             message_id=message_ids[-1] if message_ids else '', raw={'message_ids': message_ids}
         )
 
+    @localized_adapter
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
@@ -538,6 +543,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             raise RuntimeError(f'Lark card update failed: {response.code} {response.msg}')
         self.closed_streaming_cards.add(card_id)
 
+    @localized_adapter
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,
@@ -592,6 +598,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.card_last_update_dict.pop(card_id, None)
             self.closed_streaming_cards.discard(card_id)
 
+    @localized_adapter
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request':
             return await send_interaction(self, params)
@@ -632,9 +639,56 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             return f'{event.group.id}_{thread_id}'
         return None
 
+    def _verify_webhook_signature(self, request, raw_body: bytes) -> bool:
+        """Verify the Lark/Feishu event-subscription callback signature.
+
+        Per Lark's own event-security-verification protocol, a callback is
+        authentic only if its ``X-Lark-Signature`` header equals
+        sha256(timestamp + nonce + encrypt_key + body). Without this check
+        any caller who reaches this webhook path can inject fabricated
+        events (spoofed messages, card actions) regardless of whether they
+        hold the app's Encrypt Key.
+        """
+        encrypt_key = self.config.get('encrypt-key', '') or ''
+        if not encrypt_key:
+            return False
+        timestamp = request.headers.get('X-Lark-Request-Timestamp', '')
+        nonce = request.headers.get('X-Lark-Request-Nonce', '')
+        signature = request.headers.get('X-Lark-Signature', '')
+        if not timestamp or not nonce or not signature:
+            return False
+        expected = hashlib.sha256((timestamp + nonce + encrypt_key).encode('utf-8') + raw_body).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
+    def _verify_webhook_token(self, data) -> bool:
+        """Authenticate plaintext callbacks when encryption is not configured."""
+        expected = self.config.get('verification-token', '')
+        if not isinstance(expected, str) or not expected or not isinstance(data, dict) or 'encrypt' in data:
+            return False
+        if data.get('schema') == '2.0':
+            header = data.get('header')
+            token = header.get('token') if isinstance(header, dict) else None
+        else:
+            token = data.get('token')
+        return isinstance(token, str) and hmac.compare_digest(expected.encode('utf-8'), token.encode('utf-8'))
+
+    @localized_adapter
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         try:
-            data = await request.json
+            raw_body = await request.get_data()
+            encrypted_mode = bool(self.config.get('encrypt-key'))
+            if encrypted_mode and not self._verify_webhook_signature(request, raw_body):
+                await self.logger.error('Lark webhook signature verification failed, rejecting callback')
+                return {'code': 403, 'message': 'signature verification failed'}, 403
+            try:
+                data = json.loads(raw_body)
+            except (ValueError, UnicodeDecodeError):
+                return {'code': 400, 'message': 'invalid JSON body'}, 400
+            if not isinstance(data, dict):
+                return {'code': 400, 'message': 'invalid callback body'}, 400
+            if not encrypted_mode and not self._verify_webhook_token(data):
+                await self.logger.error('Lark webhook token verification failed, rejecting callback')
+                return {'code': 403, 'message': 'token verification failed'}, 403
             if 'encrypt' in data:
                 data = json.loads(self.cipher.decrypt_string(data['encrypt']))
             event_type = self.get_event_type(data)
@@ -668,7 +722,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 feedback_event = self._feedback_event_from_webhook(data)
                 if feedback_event and platform_events.FeedbackEvent in self.listeners:
                     await self.listeners[platform_events.FeedbackEvent](feedback_event, self)
-                return {'toast': {'type': 'success', 'content': '感谢您的反馈'}}
+                return {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
             await self._dispatch_eba_event(LarkEventConverter.platform_specific(data, event_type, data))
             return {'code': 200, 'message': 'ok'}
         except Exception:
@@ -689,6 +743,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     def _webhook_header(self, data: dict):
         return type('LarkWebhookHeader', (), data.get('header', {}))()
 
+    @localized_adapter
     async def run_async(self):
         self.event_loop = asyncio.get_running_loop()
         if self.config.get('app_type', 'self') != 'isv':
@@ -892,12 +947,13 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self._submit_coro(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
         from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-        return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
+        return P2CardActionTriggerResponse(
+            {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
+        )
 
-    @staticmethod
-    def _interaction_action_response(event: platform_events.PlatformSpecificEvent) -> dict[str, typing.Any]:
+    def _interaction_action_response(self, event: platform_events.PlatformSpecificEvent) -> dict[str, typing.Any]:
         response: dict[str, typing.Any] = {
-            'toast': {'type': 'success', 'content': 'Submitted / 已提交'},
+            'toast': {'type': 'success', 'content': adapter_t(self, 'Submitted')},
         }
         if not event.data.get('cardkit'):
             response['card'] = {
@@ -907,7 +963,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                     'elements': [
                         {
                             'tag': 'div',
-                            'text': {'tag': 'lark_md', 'content': '**Submitted / 已提交**'},
+                            'text': {'tag': 'lark_md', 'content': '**' + adapter_t(self, 'Submitted') + '**'},
                         }
                     ],
                 },

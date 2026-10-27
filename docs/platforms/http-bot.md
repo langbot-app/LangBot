@@ -202,6 +202,12 @@ This is **lossy** (you lose `sequence` / streaming boundaries) and blocks up to
 `callback_timeout × 4` seconds. Prefer the callback model for anything
 real-time or multi-part. Only one in-flight `/sync` per `session_id`.
 
+Collection waits for both a final reply and the inbound listener to finish. An
+Agent's text reply does not end collection while that Agent is still exporting
+and sending output files. The same timeout bounds the entire wait; timing out
+does not cancel the running Agent. Replies sent after timeout use normal callback
+delivery.
+
 ---
 
 ## 9. Error envelope

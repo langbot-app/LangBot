@@ -894,6 +894,7 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
+        self.supports_event_batch = False
         self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None | object] = (
             contextvars.ContextVar(
                 f'{self.__class__.__name__}_{id(self)}_outbound_installation',
@@ -971,6 +972,28 @@ class RuntimeConnectionHandler(handler.Handler):
             )
             if isinstance(action_context, InstallationBinding):
                 self._require_setting_binding(setting, action_context)
+            elif setting is None:
+                installation_uuid = str(uuid.uuid4())
+                artifact_digest = hashlib.sha256(f'local:{plugin_author}/{plugin_name}'.encode()).hexdigest()
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_plugin.PluginSetting).values(
+                        workspace_uuid=action_context.workspace_uuid,
+                        plugin_author=plugin_author,
+                        plugin_name=plugin_name,
+                        installation_uuid=installation_uuid,
+                        artifact_digest=artifact_digest,
+                        install_source='local',
+                        install_info={},
+                        enabled=True,
+                        priority=0,
+                        config={},
+                    )
+                )
+                setting = await self._get_plugin_setting_by_name(
+                    action_context,
+                    plugin_author,
+                    plugin_name,
+                )
 
             data = {
                 'enabled': True,
@@ -1118,6 +1141,14 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Query with query_id {query_id} not found',
                 )
 
+            from ..agent.runner.context_reset import reset_runner_context
+            from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+
+            conversation_id = QueryEntryAdapter._build_conversation_context(query).conversation_id
+            async with self.ap.persistence_mgr.tenant_uow(action_context.workspace_uuid):
+                await reset_runner_context(
+                    self.ap.persistence_mgr, action_context.workspace_uuid, query.bot_uuid, conversation_id
+                )
             query.session.using_conversation = None
 
             return handler.ActionResponse.success(
@@ -1363,8 +1394,9 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')
             caller_plugin_identity = data.get('caller_plugin_identity')
 
+            session = None
             if run_id:
-                _, error = await _validate_run_authorization(
+                session, error = await _validate_run_authorization(
                     run_id,
                     'model',
                     llm_model_uuid,
@@ -1409,6 +1441,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(message='LLM provider does not support token counting')
 
             try:
+                from ..platform.image_urls import refresh_model_images
+
+                query = _resolve_action_query(data, session, self.ap, action_context)
+                messages_obj = await refresh_model_images(
+                    self.ap, self._execution_context(action_context), query, messages_obj
+                )
                 tokens = await count_tokens_method(
                     model=llm_model,
                     messages=messages_obj,
@@ -2764,12 +2802,15 @@ class RuntimeConnectionHandler(handler.Handler):
             runtime_profile=runtime_profile,
             cloud_service_url=cloud_service_url,
         )
+        self.supports_event_batch = False
         with self.installation_scope(None):
-            return await self.call_action(
+            result = await self.call_action(
                 LangBotToRuntimeAction.SET_RUNTIME_CONFIG,
                 runtime_config.model_dump(exclude_none=True),
                 timeout=10,
             )
+        self.supports_event_batch = result.get('event_batch') is True
+        return result
 
     async def get_storage_analysis(self) -> dict[str, Any]:
         """Return instance-scoped filesystem usage measured by Plugin Runtime."""
@@ -2923,18 +2964,19 @@ class RuntimeConnectionHandler(handler.Handler):
         self,
         event_context: dict[str, Any],
         include_plugins: list[str] | None = None,
+        *,
+        installation_bindings: list[InstallationBinding] | None = None,
     ) -> dict[str, Any]:
-        """Emit event"""
-        result = await self.call_action(
+        """Emit one event, optionally across an ordered negotiated installation batch."""
+        data = {'event_context': event_context, 'include_plugins': include_plugins}
+        if installation_bindings is not None:
+            data['installation_bindings'] = [binding.model_dump() for binding in installation_bindings]
+        return await self.call_action(
             LangBotToRuntimeAction.EMIT_EVENT,
-            {
-                'event_context': event_context,
-                'include_plugins': include_plugins,
-            },
-            timeout=180,
+            data,
+            timeout=180 * (len(installation_bindings) if installation_bindings else 1),
+            cancel_peer_on_cancel=installation_bindings is not None,
         )
-
-        return result
 
     async def notify_plugin_diagnostic(self, diagnostic: dict[str, Any]) -> dict[str, Any]:
         """Notify the plugin runtime about a best-effort plugin diagnostic.

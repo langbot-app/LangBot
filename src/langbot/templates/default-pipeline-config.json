@@ -55,7 +55,7 @@
         },
         "misc": {
             "exception-handling": "show-hint",
-            "failure-hint": "Request failed.",
+            "failure-hint": "",
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,

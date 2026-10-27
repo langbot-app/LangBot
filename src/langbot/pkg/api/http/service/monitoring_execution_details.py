@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from types import SimpleNamespace
 from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
 import sqlalchemy as sa
@@ -99,7 +100,20 @@ def transcript_item(row):
 
 
 class ExecutionDetailsMixin:
-    def _session_message_source(self, workspace, bot_ids):
+    def _conversation_message_source(self, workspace, bot_ids):
+        """Count and page identities without carrying historical payloads."""
+        fields = ('id', 'workspace_uuid', 'timestamp', 'bot_id', 'session_id')
+        return sa.union_all(
+            *[
+                query.with_only_columns(
+                    *[query.selected_columns[field] for field in fields],
+                    sa.literal(origin).label('_source'),
+                )
+                for origin, query in zip(('message', 'event'), self._conversation_message_queries(workspace, bot_ids))
+            ]
+        ).subquery()
+
+    def _conversation_message_queries(self, workspace, bot_ids):
         """Combine delivered messages with ingress missing from the legacy ledger."""
         message = models.MonitoringMessage
         conversation = sa.func.coalesce(
@@ -163,92 +177,62 @@ class ExecutionDetailsMixin:
                     message.workspace_uuid == workspace,
                     message.bot_id == EventLog.bot_id,
                     sa.func.coalesce(message.role, 'user') != 'assistant',
-                    sa.or_(message.event_id == EventLog.event_id, message.id == EventLog.event_id),
+                    message.event_id == EventLog.event_id,
+                )
+            ),
+            ~sa.exists(
+                sa.select(message.id).where(
+                    message.workspace_uuid == workspace,
+                    message.bot_id == EventLog.bot_id,
+                    sa.func.coalesce(message.role, 'user') != 'assistant',
+                    message.id == EventLog.event_id,
                 )
             ),
         )
-        return sa.union_all(stored, incoming).subquery()
+        return stored, incoming
 
-    async def _session_projection_page(self, workspace, statement, limit, offset):
+    async def _conversation_projection_page(self, workspace, statement, limit, offset):
         count = (
-            await self._execution_query(workspace, sa.select(sa.func.count()).select_from(statement.subquery()))
-        ).scalar_one()
-        rows = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
-        return [
-            {key: value.isoformat() if isinstance(value, datetime.datetime) else value for key, value in row.items()}
-            for row in rows
-        ], count
-
-    async def get_bot_conversation_sessions(
-        self, workspace, bot_ids, start_time, end_time, user_query, is_active, limit, offset
-    ):
-        """Read session summaries across processor types without mutating history."""
-        messages = self._session_message_source(workspace, bot_ids)
-        key = [messages.c.workspace_uuid, messages.c.bot_id, messages.c.session_id]
-        ranked = (
-            sa.select(
-                *messages.c,
-                sa.func.row_number()
-                .over(
-                    partition_by=key,
-                    order_by=[
-                        sa.case((messages.c.role == 'user', 0), else_=1),
-                        messages.c.timestamp.desc(),
-                        messages.c.id.desc(),
-                    ],
-                )
-                .label('position'),
-                sa.func.min(messages.c.timestamp).over(partition_by=key).label('first_seen'),
-                sa.func.max(messages.c.timestamp).over(partition_by=key).label('last_seen'),
-                sa.func.count().over(partition_by=key).label('count'),
+            await self._execution_query(
+                workspace, sa.select(sa.func.count()).select_from(statement.order_by(None).subquery())
             )
-            .where(messages.c.session_id != '')
-            .subquery()
-        )
-        session = models.MonitoringSession
-        fields = list(session.__table__.columns)
-        projected = {
-            'start_time': ranked.c.first_seen,
-            'last_activity': ranked.c.last_seen,
-            'message_count': ranked.c['count'],
-            'is_active': sa.literal(True),
-        }
-        derived = sa.select(
-            *[
-                (projected[field.name] if field.name in projected else ranked.c[field.name]).label(field.name)
-                for field in fields
-            ]
-        ).where(ranked.c.position == 1)
-        existing = sa.select(*fields).where(session.workspace_uuid == workspace, session.bot_id.in_(bot_ids))
-        combined = sa.union_all(existing, derived).subquery()
-        group = [combined.c.workspace_uuid, combined.c.bot_id, combined.c.session_id]
-        merged = sa.select(
-            *[
-                combined.c[field.name]
-                for field in fields
-                if field.name not in {'message_count', 'start_time', 'last_activity'}
-            ],
-            sa.func.max(combined.c.message_count).over(partition_by=group).label('message_count'),
-            sa.func.min(combined.c.start_time).over(partition_by=group).label('start_time'),
-            sa.func.max(combined.c.last_activity).over(partition_by=group).label('last_activity'),
-            sa.func.row_number().over(partition_by=group, order_by=combined.c.last_activity.desc()).label('position'),
-        ).subquery()
-        query = sa.select(*[merged.c[field.name] for field in fields]).where(merged.c.position == 1)
-        if start_time:
-            query = query.where(merged.c.last_activity >= start_time)
-        if end_time:
-            query = query.where(merged.c.last_activity <= end_time)
-        if user_query and user_query.strip():
-            pattern = f'%{user_query.strip()}%'
-            query = query.where(sa.or_(merged.c.user_id.ilike(pattern), merged.c.user_name.ilike(pattern)))
-        if is_active is not None:
-            query = query.where(merged.c.is_active == is_active)
-        return await self._session_projection_page(
-            workspace,
-            query.order_by(merged.c.last_activity.desc(), merged.c.session_id),
-            limit,
-            offset,
-        )
+        ).scalar_one()
+        page = (await self._execution_query(workspace, statement.limit(limit).offset(offset))).mappings().all()
+        if not page:
+            return [], count
+
+        # Fetch payloads only for identities selected by the bounded page.
+        queries = self._conversation_message_queries(workspace, list({row['bot_id'] for row in page}))
+        rows = {}
+        for origin, query in zip(('message', 'event'), queries):
+            keys = [(row['bot_id'], row['id']) for row in page if row['_source'] == origin]
+            if not keys:
+                continue
+            selected = query.selected_columns
+            result = await self._execution_query(
+                workspace,
+                sa.select(*selected).where(
+                    selected.workspace_uuid == workspace,
+                    sa.tuple_(selected.bot_id, selected.id).in_(keys),
+                ),
+            )
+            for row in result.mappings():
+                rows[(origin, row['bot_id'], row['id'])] = row
+
+        messages = []
+        for identity in page:
+            row = rows.get((identity['_source'], identity['bot_id'], identity['id']))
+            if row is not None:
+                messages.append(
+                    {
+                        key: value.isoformat() if isinstance(value, datetime.datetime) else value
+                        for key, value in row.items()
+                    }
+                )
+        from ....platform.image_urls import refresh_message_rows
+
+        await refresh_message_rows(self.ap, workspace, messages)
+        return messages, count
 
     def _execution_json_text(self, column, key):
         # SQLite JSON functions accept TEXT directly; PostgreSQL operators
@@ -269,12 +253,21 @@ class ExecutionDetailsMixin:
             )
             .values(run_id=run_id, event_id=sa.func.coalesce(models.MonitoringMessage.event_id, event_id))
         )
-        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
-        if callable(tenant_uow):
-            async with tenant_uow(workspace) as uow:
-                await uow.session.execute(statement)
-        else:
-            await self.ap.persistence_mgr.execute_async(statement)
+        async with self._summary_write_session(workspace) as session:
+            message = (
+                await session.execute(
+                    sa.select(
+                        models.MonitoringMessage.bot_id,
+                        models.MonitoringMessage.event_id,
+                        models.MonitoringMessage.role,
+                    ).where(
+                        models.MonitoringMessage.workspace_uuid == workspace, models.MonitoringMessage.id == message_id
+                    )
+                )
+            ).first()
+            await session.execute(statement)
+            if message is not None and not message.event_id and message.role != 'assistant':
+                await self._summary_writer().link_event(session, workspace, message.bot_id, message_id, event_id)
 
     async def record_ingress_event(
         self,
@@ -301,41 +294,44 @@ class ExecutionDetailsMixin:
         # of storing an unbounded adapter object in the event journal.
         content = parsed(self._sanitize_message_content(json.dumps(payload, ensure_ascii=False, default=str)), {})
         summary = event_preview(content, event_type=event_type)
-        await store.append_event(
-            event_id=event_id,
-            event_type=event_type,
-            source='platform',
-            workspace_id=workspace,
-            bot_id=bot_id,
-            actor_id=actor_id,
-            actor_name=actor_name,
-            conversation_id=conversation_id,
-            actor_type='user' if actor_id else 'system',
-            input_summary=summary,
-            input_json=content,
-            metadata={'status': status, 'bot_name': bot_name, 'platform': platform},
-        )
+        safe_routes = []
+        for route in routes or ():
+            if isinstance(route, BaseException):
+                safe_routes.append({'status': 'failed', 'reason': str(route) or type(route).__name__})
+            elif isinstance(route, dict):
+                safe_routes.append(
+                    {
+                        key: route.get(key)
+                        for key in (
+                            'status',
+                            'reason',
+                            'target_type',
+                            'target_uuid',
+                            'run_id',
+                            'failure_code',
+                        )
+                    }
+                )
+        metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
-            safe_routes = []
-            for route in routes:
-                if isinstance(route, BaseException):
-                    safe_routes.append({'status': 'failed', 'reason': str(route) or type(route).__name__})
-                elif isinstance(route, dict):
-                    safe_routes.append(
-                        {
-                            key: route.get(key)
-                            for key in (
-                                'status',
-                                'reason',
-                                'target_type',
-                                'target_uuid',
-                                'run_id',
-                                'failure_code',
-                            )
-                        }
-                    )
-            metadata = {'status': status, 'bot_name': bot_name, 'platform': platform, 'routes': safe_routes}
-            async with AsyncSession(self.ap.persistence_mgr.get_db_engine()) as session:
+            metadata['routes'] = safe_routes
+        async with self._summary_write_session(workspace) as session:
+            await store.append_event(
+                event_id=event_id,
+                event_type=event_type,
+                source='platform',
+                workspace_id=workspace,
+                bot_id=bot_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                conversation_id=conversation_id,
+                actor_type='user' if actor_id else 'system',
+                input_summary=summary,
+                input_json=content,
+                metadata=metadata,
+                session=session,
+            )
+            if routes is not None:
                 await session.execute(
                     sa.update(EventLog)
                     .where(
@@ -344,7 +340,31 @@ class ExecutionDetailsMixin:
                     )
                     .values(metadata_json=json.dumps(metadata, ensure_ascii=False))
                 )
-                await session.commit()
+            if event_type == 'message.received':
+                from ....persistence.session_summary_writer import ingress_summary_change
+
+                event = (
+                    (
+                        await session.execute(
+                            sa.select(
+                                EventLog.bot_id,
+                                EventLog.event_id,
+                                EventLog.conversation_id,
+                                EventLog.created_at,
+                                EventLog.event_time,
+                                EventLog.actor_id,
+                                EventLog.actor_name,
+                                EventLog.metadata_json,
+                            ).where(EventLog.workspace_id == workspace, EventLog.event_id == event_id)
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                await self._summary_writer().apply_once(
+                    session,
+                    ingress_summary_change(workspace, event),
+                )
 
     async def _execution_query(self, workspace, statement):
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
@@ -354,8 +374,44 @@ class ExecutionDetailsMixin:
         async with AsyncSession(self.ap.persistence_mgr.get_db_engine()) as session:
             return await session.execute(statement)
 
-    async def _execution_rows(self, workspace, statement):
-        return list((await self._execution_query(workspace, statement)).scalars().all())
+    async def _execution_rows(self, workspace, statement, *, summary_only=False):
+        result = await self._execution_query(workspace, statement)
+        if not summary_only:
+            return list(result.scalars().all())
+        records = []
+        for row in result.mappings():
+            fields = dict(row)
+            metadata = {
+                key.removeprefix('display_metadata_'): fields.pop(key)
+                for key in row
+                if key.startswith('display_metadata_')
+            }
+            if metadata:
+                fields['metadata_json'] = json.dumps(metadata, ensure_ascii=False)
+            records.append(SimpleNamespace(**fields))
+        return records
+
+    def _execution_statement(self, model, *, summary_only=False):
+        """Keep periodic snapshots independent of message and attachment sizes."""
+        if not summary_only:
+            return sa.select(model)
+        columns = [
+            column
+            for column in model.__table__.columns
+            if column.name not in {'message_content', 'variables', 'input_json', 'authorization_json', 'metadata_json'}
+        ]
+        if model is models.MonitoringMessage:
+            return sa.select(*columns)
+        keys = (
+            ('processor_id', 'processor_type', 'event_type', 'agent_name', 'target_name', 'bot_name')
+            if model is AgentRun
+            else ('platform', 'bot_name')
+        )
+        # Metadata also contains complete inputs. Project only the small display
+        # fields in SQL, rather than deserializing an attachment-bearing object.
+        for key in keys:
+            columns.append(self._execution_json_text(model.metadata_json, key).label(f'display_metadata_{key}'))
+        return sa.select(*columns)
 
     async def _execution_page(self, workspace, statement, convert, offset, limit):
         rows = await self._execution_rows(workspace, statement.offset(offset).limit(limit + 1))
@@ -363,6 +419,35 @@ class ExecutionDetailsMixin:
             'items': [convert(row) for row in rows[:limit]],
             'has_more': len(rows) > limit,
             'next_offset': offset + min(len(rows), limit),
+        }
+
+    async def _conversation_message_page(self, workspace, statement, offset, limit):
+        """Select a page from the covering index before loading its payloads."""
+        message = models.MonitoringMessage
+        identities = list(
+            (
+                await self._execution_query(
+                    workspace, statement.with_only_columns(message.id).offset(offset).limit(limit + 1)
+                )
+            ).scalars()
+        )
+        selected = identities[:limit]
+        records = {}
+        if selected:
+            # Equality joins keep SQLite on the primary key even for multiple IDs.
+            page = sa.union_all(*[sa.select(sa.literal(identity).label('id')) for identity in selected]).subquery()
+            rows = await self._execution_rows(
+                workspace,
+                sa.select(message)
+                .select_from(page)
+                .join(message, message.id == page.c.id)
+                .where(message.workspace_uuid == workspace),
+            )
+            records = {row.id: row for row in rows}
+        return {
+            'items': [message_item(records[identity]) for identity in selected if identity in records],
+            'has_more': len(identities) > limit,
+            'next_offset': offset + len(selected),
         }
 
     def _unhandled_event_conditions(self, workspace, bot_ids=None, start_time=None, end_time=None):
@@ -445,14 +530,21 @@ class ExecutionDetailsMixin:
             or None,
         }
 
-    async def enrich_execution_rows(self, workspace, items):
+    async def enrich_execution_rows(self, workspace, items, *, summary_only=False):
         pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
         if pipeline_items:
             # Pipeline rows own the UI identity; their linked Runner ledger owns
             # timing and usage. Read them in one batch for both list and detail.
             linked = await self._execution_query(
                 workspace,
-                sa.select(models.MonitoringMessage.id, AgentRun)
+                sa.select(
+                    models.MonitoringMessage.id,
+                    AgentRun.started_at,
+                    AgentRun.finished_at,
+                    AgentRun.usage_json,
+                    AgentRun.cost_json,
+                )
+                .select_from(models.MonitoringMessage)
                 .join(
                     AgentRun,
                     sa.and_(
@@ -465,10 +557,15 @@ class ExecutionDetailsMixin:
                     models.MonitoringMessage.id.in_(pipeline_items),
                 ),
             )
-            for message_id, run in linked.all():
-                metrics = self._serialize_agent_execution(run)
-                pipeline_items[message_id].update(
-                    {key: metrics[key] for key in ('started_at_ms', 'finished_at_ms', 'duration_ms', 'usage', 'cost')}
+            for run in linked.all():
+                pipeline_items[run.id].update(
+                    started_at_ms=epoch(run.started_at),
+                    finished_at_ms=epoch(run.finished_at),
+                    duration_ms=int(round((run.finished_at - run.started_at).total_seconds() * 1000))
+                    if run.started_at and run.finished_at
+                    else None,
+                    usage=self._deserialize_json(run.usage_json) or None,
+                    cost=self._deserialize_json(run.cost_json) or None,
                 )
 
             calls = models.MonitoringLLMCall
@@ -498,10 +595,11 @@ class ExecutionDetailsMixin:
             return
         events = await self._execution_rows(
             workspace,
-            sa.select(EventLog).where(
+            self._execution_statement(EventLog, summary_only=summary_only).where(
                 EventLog.workspace_id == workspace,
                 EventLog.event_id.in_(ids),
             ),
+            summary_only=summary_only,
         )
         by_id = {row.event_id: row for row in events}
         for item in items:
@@ -510,7 +608,9 @@ class ExecutionDetailsMixin:
                 meta = parsed(event.metadata_json, {})
                 item.update(
                     event_type=event.event_type,
-                    input_preview=event_preview(parsed(event.input_json), event.input_summary, event.event_type),
+                    input_preview=event_preview(
+                        None if summary_only else parsed(event.input_json), event.input_summary, event.event_type
+                    ),
                     user_id=event.actor_id,
                     user_name=event.actor_name,
                     platform=meta.get('platform') or event.source,
@@ -532,8 +632,13 @@ class ExecutionDetailsMixin:
             'tool_calls',
             'errors',
         }
-        if section is not None and section not in sections:
+        if section is not None and section not in sections | {'overview'}:
             raise ValueError('Unknown execution section')
+        requested = (
+            sections
+            if section is None
+            else ({'inputs', 'outputs', 'deliveries', 'errors'} if section == 'overview' else {section})
+        )
 
         run = message = event = None
         if source in {'agent', 'auto'}:
@@ -700,8 +805,12 @@ class ExecutionDetailsMixin:
 
         pages = {}
         for name, (query, convert) in statements.items():
-            if section is None or section == name:
-                pages[name] = await self._execution_page(workspace, query, convert, offset, limit)
+            if name in requested:
+                pages[name] = (
+                    await self._conversation_message_page(workspace, query, offset, limit)
+                    if name == 'conversation' and message
+                    else await self._execution_page(workspace, query, convert, offset, limit)
+                )
         if run:
             meta = parsed(run.metadata_json, {})
             for item in pages.get('inputs', {}).get('items', []):
@@ -709,17 +818,12 @@ class ExecutionDetailsMixin:
                 # Do not apply the root snapshot to later steering events.
                 if item['id'] == run.event_id and not item.get('metadata', {}).get('input_event'):
                     item['content'] = event_content(item['content'], meta.get('input_event'))
-        if message and (section is None or section == 'inputs'):
+        if message and 'inputs' in requested:
             # The original rich message is authoritative even when the event
             # log is absent or only retained a compact event summary.
             if offset == 0:
                 pages['inputs']['items'].insert(0, message_item(message))
-        if (
-            run
-            and not pages.get('inputs', {}).get('items')
-            and offset == 0
-            and (section is None or section == 'inputs')
-        ):
+        if run and not pages.get('inputs', {}).get('items') and offset == 0 and 'inputs' in requested:
             meta = parsed(run.metadata_json, {})
             content = event_content(meta.get('input'), meta.get('input_event'))
             if content:
@@ -727,7 +831,31 @@ class ExecutionDetailsMixin:
                     {'id': run.event_id or run.run_id, 'content': content, 'timestamp_ms': epoch(run.created_at)}
                 ]
 
-        if section is None or section == 'related':
+        from ....platform.image_urls import refresh_history_items
+
+        image_items = []
+        response_items = []
+        for name in ('inputs', 'outputs', 'deliveries', 'conversation'):
+            for item in pages.get(name, {}).get('items', []):
+                response_items.append(item)
+                image_items.append(
+                    {
+                        'workspace_id': workspace,
+                        'bot_id': bot,
+                        'event_id': item.get('event_id') or (item['id'] if name == 'inputs' else None),
+                        'content_json': {'content': item.get('content'), 'metadata': item.get('metadata')},
+                        'attachment_refs': item.get('attachments', []),
+                    }
+                )
+        await refresh_history_items(self.ap, workspace, bot, image_items)
+        for item, refreshed in zip(response_items, image_items):
+            item['content'] = refreshed['content_json']['content']
+            if 'metadata' in item:
+                item['metadata'] = refreshed['content_json']['metadata']
+            if 'attachments' in item:
+                item['attachments'] = refreshed['attachment_refs']
+
+        if 'related' in requested:
             # Union of ledger executions and legacy pipeline roots. SQL paging
             # avoids silently dropping siblings on highly fanned-out events.
             related_runs = sa.select(

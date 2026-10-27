@@ -144,6 +144,7 @@ class FakeApplication:
             get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase('kb_001'))
         )
         self.skill_mgr = types.SimpleNamespace(
+            reload_skills=AsyncMock(),
             get_skills=lambda context: {
                 'demo': {
                     'name': 'demo',
@@ -155,7 +156,7 @@ class FakeApplication:
                     'display_name': 'Hidden Skill',
                     'description': 'Not bound to this pipeline.',
                 },
-            }
+            },
         )
 
 
@@ -592,14 +593,98 @@ async def test_orchestrator_stops_after_cancel_request(clean_agent_state):
 
     orchestrator.journal.append_run_result = append_and_cancel_once
 
-    messages = [message async for message in orchestrator.run_from_query(make_query())]
+    messages = []
+    with pytest.raises(RunnerExecutionError) as caught:
+        async for message in orchestrator.run_from_query(make_query()):
+            messages.append(message)
 
+    assert caught.value.error_code == 'cancelled'
     assert [message.content for message in messages] == ['first']
     run_id = plugin_connector.contexts[0]['run_id']
     run = await RunLedgerStore(db_engine).get_run(run_id)
     assert run is not None
     assert run['status'] == 'cancelled'
     assert run['status_reason'] == 'user stopped'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result_type', ['tool.call.started', 'run.failed', 'run.completed'])
+@pytest.mark.parametrize('locale', ['en_US', 'zh_Hans'])
+@pytest.mark.parametrize('admin_audit', [False, True])
+async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, result_type, locale, admin_audit):
+    """Cancellation must reach both observers and the journal regardless of event timing."""
+    from collections import OrderedDict
+
+    from langbot.pkg.i18n import t, language_scope
+
+    store = RunLedgerStore(clean_agent_state)
+    resumed = []
+
+    class CancellingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            context = kwargs['context']
+            self.contexts.append(context)
+            await store.request_cancel(run_id=context['run_id'], status_reason='cancel during export recovery')
+            data = {
+                'tool.call.started': {'tool_name': 'export_box_files', 'tool_call_id': 'export-2', 'parameters': {}},
+                'run.failed': {'code': 'cancelled', 'error': 'Runner cancellation diagnostic', 'retryable': False},
+                'run.completed': {'finish_reason': 'stop'},
+            }[result_type]
+            yield {'type': result_type, 'sequence': 7, 'data': data}
+            resumed.append(True)
+
+    connector = CancellingConnector()
+    ap = FakeApplication(connector, clean_agent_state)
+    ap._message_language_cache = OrderedDict({TEST_CONTEXT.workspace_uuid: (locale, float('inf'))})
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    observed = []
+
+    async def observe(result):
+        observed.append(result)
+        if admin_audit and result['type'] == 'tool.call.started':
+            await store.append_audit_event(run_id=connector.contexts[0]['run_id'], event_type='admin.run_cancel')
+
+    failure = None
+    # The trusted Workspace language must take precedence over the caller's language.
+    with language_scope('ja_JP'):
+        try:
+            async for _ in orchestrator.run(
+                plan.event,
+                plan.binding,
+                adapter_context={'_execution_context': TEST_CONTEXT, '_result_observer': observe},
+            ):
+                pass
+        except RunnerExecutionError as exc:
+            failure = exc
+
+    run_id = connector.contexts[0]['run_id']
+    run = await store.get_run(run_id)
+    events, *_ = await store.page_run_events(run_id=run_id, limit=10)
+    terminals = [event for event in observed if event['type'] in {'run.completed', 'run.failed'}]
+    assert len(terminals) == 1
+    assert [event['type'] for event in events if event['type'] != 'admin.run_cancel'] == [
+        event['type'] for event in observed
+    ]
+    if result_type == 'run.completed':
+        assert failure is None
+        assert run['status'] == 'completed'
+    else:
+        assert failure is not None and failure.error_code == 'cancelled'
+        assert run['status'] == 'cancelled'
+        assert terminals[0]['data']['code'] == 'cancelled'
+    if result_type == 'tool.call.started':
+        assert not resumed
+        assert run['status_reason'] == 'cancel during export recovery'
+        assert [event['sequence'] for event in events] == ([7, 8, 9] if admin_audit else [7, 8])
+        assert terminals[0]['sequence'] == events[-1]['sequence']
+        assert events[-1]['source'] == 'host'
+        assert terminals[0]['data']['error'] == t('Task was cancelled', locale=locale)
+    else:
+        assert len(events) == 1
+        assert events[0]['source'] == 'runner'
+        if result_type == 'run.failed':
+            assert terminals[0]['data']['error'] == 'Runner cancellation diagnostic'
 
 
 @pytest.mark.asyncio
@@ -788,6 +873,13 @@ async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(
 
     assert [message.content for message in messages] == ['state saved']
     # State is persisted to the database via PersistentStateStore.
+    from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+
+    event = QueryEntryAdapter.query_to_event(query)
+    config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+    binding = AgentBindingResolver().resolve_one(event, [config])
+    snapshot = await get_persistent_state_store(db_engine).build_snapshot_from_event(event, binding, descriptor)
+    assert snapshot['conversation'].get('external.conversation_id') == 'external_conv_123'
 
 
 @pytest.mark.asyncio
@@ -1038,7 +1130,7 @@ class TestQueryEntrySessionQueryId:
 
     @pytest.mark.asyncio
     async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
-        """Pure event-first flow has query_id=None in session."""
+        """Pure event-first flow ignores the previous run's conversation pins."""
         from langbot.pkg.agent.runner.host_models import (
             AgentEventEnvelope,
             AgentBinding,
@@ -1049,6 +1141,8 @@ class TestQueryEntrySessionQueryId:
         )
         from langbot_plugin.api.entities.builtin.runner.input import AgentInput
         from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILL_NAMES_STATE_KEY, ACTIVATED_SKILLS_KEY
 
         db_engine = clean_agent_state
         descriptor = make_descriptor()
@@ -1061,6 +1155,10 @@ class TestQueryEntrySessionQueryId:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
 
         async def build_resource_context(execution_query):
             from langbot.pkg.provider.tools.loaders.mcp import (
@@ -1116,9 +1214,20 @@ class TestQueryEntrySessionQueryId:
                 'mcp-resource-agent-read-enabled': True,
             },
             resource_policy=ResourcePolicy(),
-            state_policy=StatePolicy(enable_state=False, state_scopes=[]),
+            state_policy=StatePolicy(enable_state=True, state_scopes=['conversation']),
             delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
         )
+
+        success, error = await get_persistent_state_store(db_engine).apply_update_from_event(
+            event.model_copy(update={'workspace_id': TEST_CONTEXT.workspace_uuid}),
+            binding,
+            descriptor,
+            'conversation',
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            [{'name': 'demo', 'revision': revision}],
+            None,
+        )
+        assert success is True and error is None
 
         messages = [
             message
@@ -1145,6 +1254,8 @@ class TestQueryEntrySessionQueryId:
         assert execution_query.message_event.type == event.event_type
         assert '_host_box_scope' not in execution_query.variables
         assert execution_query.variables['_pipeline_bound_skills'] == ['demo', 'hidden']
+        assert ACTIVATED_SKILLS_KEY not in execution_query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
         assert execution_query.variables['_pipeline_mcp_resource_attachments'][0]['server_uuid'] == 'srv-1'
         assert execution_query.variables['_pipeline_mcp_resource_agent_read_enabled'] is True
         assert 'MCP resource context selected by LangBot host:' in plugin_connector.contexts[0]['input']['text']
@@ -1375,8 +1486,9 @@ class TestQueryEntryAdapterHostCapabilities:
         assert snapshot['conversation']['external.test_key'] == 'test_value'
 
     @pytest.mark.asyncio
-    async def test_run_from_query_restores_activated_skills_from_state(self, clean_agent_state):
-        """Persisted activated skill names are restored into the next Query run."""
+    @pytest.mark.parametrize('legacy_state', [False, True])
+    async def test_new_query_does_not_restore_conversation_skill_pins(self, clean_agent_state, legacy_state):
+        """New runs ignore both revision and legacy name-only conversation pins."""
         from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
         from langbot.pkg.provider.tools.loaders.skill import (
             ACTIVATED_SKILL_NAMES_STATE_KEY,
@@ -1394,6 +1506,10 @@ class TestQueryEntryAdapterHostCapabilities:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
 
@@ -1407,7 +1523,7 @@ class TestQueryEntryAdapterHostCapabilities:
             descriptor,
             'conversation',
             ACTIVATED_SKILL_NAMES_STATE_KEY,
-            ['demo'],
+            ['demo'] if legacy_state else [{'name': 'demo', 'revision': revision}],
             None,
         )
         assert success is True
@@ -1416,7 +1532,8 @@ class TestQueryEntryAdapterHostCapabilities:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         assert len(messages) == 1
-        assert query.variables[ACTIVATED_SKILLS_KEY]['demo']['name'] == 'demo'
+        assert ACTIVATED_SKILLS_KEY not in query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_event_log_and_transcript_written(self, clean_agent_state):

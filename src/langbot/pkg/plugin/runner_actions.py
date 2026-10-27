@@ -469,12 +469,16 @@ def register(h):
             if payload_error:
                 return handler.ActionResponse.error(message=payload_error)
 
-            event = await store.append_event(
+            from ..agent.runner.run_journal import AgentRunJournal
+
+            event = await AgentRunJournal(h.ap).append_run_result(
                 run_id=str(target_run_id),
                 sequence=sequence,
-                event_type=str(event_type),
-                data=event_payload,
-                usage=usage if isinstance(usage, dict) else None,
+                result_dict={
+                    'type': str(event_type),
+                    'data': event_payload,
+                    'usage': usage if isinstance(usage, dict) else None,
+                },
                 source=str(data.get('source') or result.get('source') or 'runner'),
                 metadata=metadata,
             )

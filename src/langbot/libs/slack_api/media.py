@@ -3,14 +3,16 @@
 import asyncio
 import mimetypes
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urljoin, urlparse
 
 import aiohttp
 
 from langbot.pkg.utils import httpclient, image
+from langbot.pkg.utils.outbound_url import assert_safe_local_media_path, assert_safe_outbound_url
 from langbot_plugin.api.entities.builtin.platform import message as pm
 
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
+_MAX_REDIRECT_HOPS = 5
 MEDIA_TYPES = (pm.Image, pm.File, pm.Voice)
 
 
@@ -21,13 +23,29 @@ async def download_media(url: str, token: str = '') -> tuple[bytes, str]:
     # Never disclose a bot token to arbitrary media hosts or redirects.
     private = parsed.scheme == 'https' and parsed.hostname == 'files.slack.com'
     headers = {'Authorization': f'Bearer {token}'} if private and token else {}
-    async with httpclient.get_session().get(
-        url, headers=headers, allow_redirects=not bool(headers), timeout=aiohttp.ClientTimeout(total=30)
-    ) as response:
-        if response.status != 200:
-            raise ValueError(f'Slack media download failed (HTTP {response.status})')
-        data = await httpclient.read_limited(response, max_bytes=MAX_MEDIA_BYTES)
-        return data, response.headers.get('Content-Type', 'application/octet-stream').split(';')[0]
+    # Follow redirects manually so every hop is checked: a public URL that
+    # redirects to an internal address would otherwise bypass the guard.
+    current = assert_safe_outbound_url(url)
+    for _hop in range(_MAX_REDIRECT_HOPS):
+        async with httpclient.get_session().get(
+            current,
+            headers=headers,
+            allow_redirects=False,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as response:
+            if response.status in (301, 302, 303, 307, 308):
+                location = response.headers.get('Location')
+                if not location:
+                    raise ValueError('Slack media redirect had no Location')
+                current = assert_safe_outbound_url(urljoin(current, location))
+                # A redirect leaves the Slack domain: do not carry the token.
+                headers = {}
+                continue
+            if response.status != 200:
+                raise ValueError(f'Slack media download failed (HTTP {response.status})')
+            data = await httpclient.read_limited(response, max_bytes=MAX_MEDIA_BYTES)
+            return data, response.headers.get('Content-Type', 'application/octet-stream').split(';')[0]
+    raise ValueError('Slack media download exceeded the redirect limit')
 
 
 async def attachment_bytes(component, token: str = '') -> tuple[bytes, str]:
@@ -40,7 +58,11 @@ async def attachment_bytes(component, token: str = '') -> tuple[bytes, str]:
             mime = header[5:].split(';')[0]
         data = await image.decode_base64_limited(value, max_bytes=MAX_MEDIA_BYTES)
     elif component.path:
-        path = Path(component.path)
+        # A message component can carry an arbitrary path. Reading it blindly
+        # would let a crafted component exfiltrate any file the process can read
+        # to the chat platform, so confine it to the media roots.
+        safe_path = assert_safe_local_media_path(component.path)
+        path = Path(safe_path)
 
         def read():
             with path.open('rb') as stream:

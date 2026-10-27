@@ -1,6 +1,7 @@
 import sqlalchemy as sa
 
 from .base import Base
+from ...persistence.media import MediaReferenceJSON
 
 
 class AssistantConversation(Base):
@@ -13,7 +14,7 @@ class AssistantConversation(Base):
     account_uuid = sa.Column(sa.String(36), sa.ForeignKey('users.uuid', ondelete='CASCADE'), nullable=False)
     revision = sa.Column(sa.Integer, nullable=False, default=0)
     status = sa.Column(sa.String(20), nullable=False, default='ready')
-    messages = sa.Column(sa.JSON, nullable=False, default=list)
+    messages = sa.Column(MediaReferenceJSON, nullable=False, default=list)
     error = sa.Column(sa.Text, nullable=True)
     model_name = sa.Column(sa.String(255), nullable=True)
     model_uuid = sa.Column(sa.String(36), nullable=True)

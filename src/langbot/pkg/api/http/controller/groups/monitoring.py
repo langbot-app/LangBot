@@ -129,7 +129,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
-            """Full trace of a single execution (agent run or pipeline query)."""
+            """Read a full trace, its initial overview, or one paginated section."""
             try:
                 detail = await self.ap.monitoring_service.get_execution_detail(
                     request_context,
@@ -343,6 +343,10 @@ class MonitoringRouterGroup(group.RouterGroup):
         )
         async def get_sessions(request_context: RequestContext) -> str:
             """Get session information"""
+            if quart.request.args.getlist('status') or quart.request.args.get('mode', 'all') != 'all':
+                return self.http_status(
+                    400, 'invalid_request', 'Session lists do not support execution status or mode filters'
+                )
             # Parse query parameters
             bot_ids = quart.request.args.getlist('botId')
             pipeline_ids = quart.request.args.getlist('pipelineId')
@@ -428,7 +432,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
         @self.route('/data', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_all_data(request_context: RequestContext) -> str:
-            """Get all monitoring data in a single request"""
+            """Read monitoring data; session summaries use only bot, pipeline and time filters."""
             execution_filters = {
                 'execution_statuses': quart.request.args.getlist('status') or None,
                 'mode': quart.request.args.get('mode', 'all'),
@@ -491,10 +495,9 @@ class MonitoringRouterGroup(group.RouterGroup):
                 offset=0,
             )
 
-            # Get sessions
+            # Sessions have conversation scope, independent of execution status/mode.
             sessions, sessions_total = await self.ap.monitoring_service.get_sessions(
                 request_context,
-                **execution_filters,
                 bot_ids=bot_ids if bot_ids else None,
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,

@@ -173,7 +173,9 @@ class PipelineService:
         if 'config' in pipeline_data:
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_pipelines = limitation.get('max_pipelines', -1)
         if max_pipelines >= 0:
             existing_pipelines = await self.get_pipelines(context)
@@ -181,13 +183,17 @@ class PipelineService:
                 raise ValueError(f'Maximum number of pipelines ({max_pipelines}) reached')
 
         pipeline_data = pipeline_data.copy()
+        # The column is NOT NULL; a caller that omits the optional description
+        # must not get a 500 from the database constraint.
+        pipeline_data.setdefault('description', '')
         pipeline_data['uuid'] = str(uuid.uuid4())
         pipeline_data['workspace_uuid'] = workspace_uuid
         pipeline_data['for_version'] = self.ap.ver_mgr.get_current_version()
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
 
-        pipeline_data['config'] = await self.get_default_pipeline_config(context)
+        if 'config' not in pipeline_data or pipeline_data['config'] == {}:
+            pipeline_data['config'] = await self.get_default_pipeline_config(context)
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
@@ -290,7 +296,9 @@ class PipelineService:
         """Copy a pipeline with all its configurations"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, workspace_uuid)
         max_pipelines = limitation.get('max_pipelines', -1)
         if max_pipelines >= 0:
             existing_pipelines = await self.get_pipelines(context)

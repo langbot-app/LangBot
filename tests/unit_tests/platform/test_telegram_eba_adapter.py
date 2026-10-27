@@ -311,7 +311,13 @@ async def test_telegram_interaction_callback_answers_and_dispatches_once():
 
 @pytest.mark.asyncio
 async def test_telegram_converter_maps_message_and_edited_message_events():
-    update = make_update({'message': base_message_payload(text='hello @test_bot')})
+    update = make_update(
+        {
+            'message': base_message_payload(
+                text='hello @test_bot', entities=[{'type': 'mention', 'offset': 6, 'length': 9}]
+            )
+        }
+    )
     event = await TelegramEventConverter.target2yiri(update, make_adapter().bot, 'test_bot')
 
     assert isinstance(event, platform_events.MessageReceivedEvent)
@@ -603,6 +609,17 @@ async def test_telegram_platform_apis_call_underlying_bot_methods():
     invite = await PLATFORM_API_MAP['create_chat_invite_link'](bot, {'chat_id': 1, 'name': 'invite'})
     assert invite['invite_link'] == 'https://t.me/+abc'
     assert await PLATFORM_API_MAP['answer_callback_query'](bot, {'callback_query_id': 'cb'}) == {'ok': True}
+
+    bot.pin_chat_message.assert_awaited_once_with(chat_id=1, message_id=2, disable_notification=False)
+    bot.unpin_chat_message.assert_awaited_once_with(chat_id=1, message_id=2)
+    bot.unpin_all_chat_messages.assert_awaited_once_with(chat_id=1)
+    bot.get_chat_administrators.assert_awaited_once_with(chat_id=1)
+    bot.set_chat_title.assert_awaited_once_with(chat_id=1, title='New')
+    bot.set_chat_description.assert_awaited_once_with(chat_id=1, description='Desc')
+    bot.get_chat_member_count.assert_awaited_once_with(chat_id=1)
+    bot.send_chat_action.assert_awaited_once_with(chat_id=1, action='typing')
+    bot.create_chat_invite_link.assert_awaited_once_with(chat_id=1, name='invite', expire_date=None, member_limit=None)
+    bot.answer_callback_query.assert_awaited_once_with(callback_query_id='cb', text=None, show_alert=False, url=None)
 
 
 @pytest.mark.asyncio

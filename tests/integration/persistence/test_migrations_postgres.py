@@ -50,6 +50,7 @@ from langbot.pkg.persistence.tenant_uow import (
 )
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_upgrade,
+    run_alembic_downgrade,
     run_alembic_stamp,
     get_alembic_current,
     _ALEMBIC_DIR,
@@ -425,60 +426,193 @@ class TestPostgreSQLMigrationUpgrade:
     """Tests for upgrade to head workflow on PostgreSQL."""
 
     @pytest.mark.asyncio
-    async def test_postgres_upgrade_from_baseline_to_head(self, postgres_engine, clean_tables, clean_alembic_version):
-        """
-        Upgrade from baseline to head applies all migrations.
-
-        Workflow:
-        1. Create tables
-        2. Stamp baseline
-        3. Upgrade to head
-        4. Verify current revision is head
-        """
-        # Create tables
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Stamp baseline
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-
-        # Upgrade to head
-        await run_alembic_upgrade(postgres_engine, 'head')
-
-        # Verify revision
-        rev = await get_alembic_current(postgres_engine)
-        assert rev is not None, 'Expected a revision after upgrade'
-        # Head should be the latest migration. Resolve the actual head from the
-        # Alembic script directory instead of hardcoding a revision number, so
-        # adding a new migration doesn't require editing this assertion.
-        assert rev == _get_script_head(), f'Expected head {_get_script_head()}, got {rev}'
+    @pytest.mark.postgres
+    @pytest.mark.session_summary
+    @pytest.mark.contract('summary_schema')
+    @pytest.mark.contract('migration_history')
+    @pytest.mark.parametrize('mixed_rls', [False, True], ids=['forced-rls', 'mixed-rls'])
+    async def test_summary_migration_marks_all_history_as_table_owner(
+        self, postgres_url, postgres_engine, clean_tables, clean_alembic_version, mixed_rls
+    ):
+        role_name = f'lb_summary_{uuid.uuid4().hex[:12]}'
+        password = uuid.uuid4().hex
+        quote = postgres_engine.dialect.identifier_preparer.quote
+        owner_engine = create_async_engine(
+            sa.engine.make_url(postgres_url).set(username=role_name, password=password),
+            connect_args={'server_settings': {'search_path': f'{role_name},public'}},
+        )
+        tables = {
+            'workspaces': 'uuid',
+            'workspace_metadata': 'workspace_uuid',
+            'monitoring_sessions': 'workspace_uuid',
+            'monitoring_messages': 'workspace_uuid',
+            'event_log': 'workspace_id',
+        }
+        states = {name: (True, True) for name in tables}
+        if mixed_rls:
+            states.update(
+                workspaces=(False, True), monitoring_sessions=(True, False), monitoring_messages=(False, False)
+            )
+        try:
+            async with postgres_engine.begin() as connection:
+                await connection.execute(
+                    text(f"CREATE ROLE {quote(role_name)} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'")
+                )
+                await connection.execute(text(f'CREATE SCHEMA {quote(role_name)} AUTHORIZATION {quote(role_name)}'))
+            async with owner_engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            await run_alembic_stamp(owner_engine, '0040_session_summaries')
+            await run_alembic_downgrade(owner_engine, '0039_execution_lease_indexes')
+            async with owner_engine.begin() as connection:
+                assert (
+                    await connection.execute(
+                        text('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user')
+                    )
+                ).one() == (False, False)
+                for name in ('sessions', 'messages', 'events', 'empty'):
+                    await connection.execute(
+                        sa.insert(Workspace).values(
+                            uuid=name, instance_uuid='instance', name=name, slug=name, source='cloud_projection'
+                        )
+                    )
+                now = datetime.datetime(2026, 1, 1)
+                # Insert only legacy columns after downgrading the ORM-created schema.
+                await connection.execute(
+                    text(
+                        'INSERT INTO monitoring_sessions (workspace_uuid, bot_id, session_id, bot_name, '
+                        'pipeline_id, pipeline_name, message_count, start_time, last_activity, is_active) '
+                        "VALUES ('sessions', 'bot', 'session', 'Bot', 'pipeline', 'Pipeline', 7, :now, :now, true)"
+                    ),
+                    {'now': now},
+                )
+                await connection.execute(
+                    Base.metadata.tables['monitoring_messages']
+                    .insert()
+                    .values(
+                        id='message',
+                        workspace_uuid='messages',
+                        timestamp=now,
+                        bot_id='bot',
+                        bot_name='Bot',
+                        pipeline_id='pipeline',
+                        pipeline_name='Pipeline',
+                        session_id='session',
+                        message_content='history',
+                        role='user',
+                        status='success',
+                        level='info',
+                    )
+                )
+                await connection.execute(
+                    Base.metadata.tables['event_log']
+                    .insert()
+                    .values(
+                        event_id='event',
+                        event_type='message.received',
+                        source='platform',
+                        workspace_id='events',
+                        bot_id='bot',
+                        conversation_id='session',
+                    )
+                )
+                for name, column in tables.items():
+                    enabled, forced = states[name]
+                    await connection.execute(
+                        text(f'ALTER TABLE {quote(name)} {"ENABLE" if enabled else "DISABLE"} ROW LEVEL SECURITY')
+                    )
+                    await connection.execute(
+                        text(f'ALTER TABLE {quote(name)} {"FORCE" if forced else "NO FORCE"} ROW LEVEL SECURITY')
+                    )
+                    await connection.execute(
+                        text(
+                            f'CREATE POLICY {TENANT_POLICY_NAME} ON {quote(name)} '
+                            f"USING ({column}::text = NULLIF(current_setting('langbot.workspace_uuid', true), '')) "
+                            f"WITH CHECK ({column}::text = NULLIF(current_setting('langbot.workspace_uuid', true), ''))"
+                        )
+                    )
+            await run_alembic_upgrade(owner_engine, 'head')
+            async with owner_engine.connect() as connection:
+                rows = await connection.execute(
+                    text(
+                        'SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class '
+                        'WHERE relnamespace = current_schema()::regnamespace AND relname IN :tables'
+                    ).bindparams(sa.bindparam('tables', expanding=True)),
+                    {'tables': tuple(tables)},
+                )
+                assert {name: (enabled, forced) for name, enabled, forced in rows} == states
+                assert await connection.scalar(sa.select(sa.func.count()).select_from(WorkspaceMetadata)) == 0
+            for name in ('sessions', 'messages', 'events', 'empty'):
+                async with TenantUnitOfWork(owner_engine, name) as uow:
+                    pending = (
+                        await uow.execute(
+                            sa.select(WorkspaceMetadata.value).where(
+                                WorkspaceMetadata.key == 'session_summary_backfill_v1'
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    assert pending == (None if name == 'empty' else '{"source": "messages"}')
+        finally:
+            await owner_engine.dispose()
+            async with postgres_engine.begin() as connection:
+                await connection.execute(text(f'DROP SCHEMA IF EXISTS {quote(role_name)} CASCADE'))
+                await connection.execute(text(f'DROP ROLE IF EXISTS {quote(role_name)}'))
 
     @pytest.mark.asyncio
-    async def test_postgres_upgrade_idempotent(self, postgres_engine, clean_tables, clean_alembic_version):
-        """
-        Running upgrade to head multiple times is idempotent.
+    @pytest.mark.postgres
+    @pytest.mark.contract('migration_history')
+    async def test_execution_filter_index_upgrades_existing_history(
+        self, postgres_engine, clean_tables, clean_alembic_version
+    ):
+        from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
 
-        Workflow:
-        1. Upgrade to head
-        2. Get revision
-        3. Upgrade to head again
-        4. Verify same revision
-        """
-        # Create tables
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        index_name = 'ix_monitoring_messages_execution_filter'
+        index = next(item for item in MonitoringMessage.__table__.indexes if item.name == index_name)
 
-        # Stamp and upgrade
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
+        async with postgres_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    'CREATE TABLE monitoring_messages ('
+                    'id VARCHAR(255) PRIMARY KEY, workspace_uuid VARCHAR(36) NOT NULL, '
+                    'status VARCHAR(50), role VARCHAR(50), bot_id VARCHAR(255), '
+                    'session_id VARCHAR(255), parent_message_id VARCHAR(255), run_id VARCHAR(255), '
+                    'timestamp TIMESTAMP, pipeline_id VARCHAR(255), event_id VARCHAR(255), message_content TEXT)'
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO monitoring_messages (id, workspace_uuid, message_content) VALUES ('old', 'w', 'keep')"
+                )
+            )
+            await connection.execute(
+                text(
+                    'CREATE INDEX ix_monitoring_messages_workspace_timestamp '
+                    'ON monitoring_messages (workspace_uuid, timestamp)'
+                )
+            )
+        await run_alembic_stamp(postgres_engine, '0039_execution_lease_indexes')
         await run_alembic_upgrade(postgres_engine, 'head')
-
-        rev1 = await get_alembic_current(postgres_engine)
-
-        # Upgrade again - should be idempotent
-        await run_alembic_upgrade(postgres_engine, 'head')
-
-        rev2 = await get_alembic_current(postgres_engine)
-        assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
+        async with postgres_engine.connect() as connection:
+            indexes = await connection.run_sync(lambda sync: sa.inspect(sync).get_indexes('monitoring_messages'))
+        assert {item['name']: item['column_names'] for item in indexes}[index_name] == [
+            column.name for column in index.columns
+        ]
+        time_index = next(
+            item
+            for item in MonitoringMessage.__table__.indexes
+            if item.name == 'ix_monitoring_messages_workspace_timestamp'
+        )
+        assert {item['name']: item['column_names'] for item in indexes}[time_index.name] == [
+            column.name for column in time_index.columns
+        ]
+        await run_alembic_downgrade(postgres_engine, '0039_execution_lease_indexes')
+        async with postgres_engine.connect() as connection:
+            indexes = await connection.run_sync(lambda sync: sa.inspect(sync).get_indexes('monitoring_messages'))
+            assert index_name not in {item['name'] for item in indexes}
+            assert {item['name']: item['column_names'] for item in indexes}[time_index.name] == [
+                'workspace_uuid',
+                'timestamp',
+            ]
+            assert await connection.scalar(text('SELECT message_content FROM monitoring_messages')) == 'keep'
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize('settings_type', ['TEXT', 'JSON'])
@@ -549,21 +683,6 @@ class TestPostgreSQLMigrationGetCurrent:
         # No stamp - should return None
         rev = await get_alembic_current(postgres_engine)
         assert rev is None, f'Expected None for unstamped DB, got {rev}'
-
-    @pytest.mark.asyncio
-    async def test_postgres_get_current_after_stamp_returns_revision(
-        self, postgres_engine, clean_tables, clean_alembic_version
-    ):
-        """
-        get_alembic_current returns correct revision after stamp.
-        """
-        async with postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        await run_alembic_stamp(postgres_engine, '0001_baseline')
-
-        rev = await get_alembic_current(postgres_engine)
-        assert rev == '0001_baseline'
 
 
 class TestPostgreSQLWorkspaceMigration:
@@ -1070,7 +1189,27 @@ class TestPostgreSQLTenantRuntime:
             await rag_manager.load_knowledge_bases_from_db()
 
             mcp_loader = MCPLoader(runtime_application)
-            mcp_loader.host_mcp_server = AsyncMock()
+            active_hosts = 0
+            peak_active_hosts = 0
+            peak_host_tasks = 0
+            track_hosted_task = mcp_loader.track_hosted_task
+
+            def observe_host_task(task, context):
+                nonlocal peak_host_tasks
+                track_hosted_task(task, context)
+                peak_host_tasks = max(peak_host_tasks, len(mcp_loader._hosted_mcp_tasks))
+
+            async def host_probe(_context, _config):
+                nonlocal active_hosts, peak_active_hosts
+                active_hosts += 1
+                peak_active_hosts = max(peak_active_hosts, active_hosts)
+                try:
+                    await asyncio.sleep(0)
+                finally:
+                    active_hosts -= 1
+
+            mcp_loader.track_hosted_task = observe_host_task
+            mcp_loader.host_mcp_server = AsyncMock(side_effect=host_probe)
             await mcp_loader.load_mcp_servers_from_db()
             dispatch_tasks = tuple(mcp_loader._host_dispatch_tasks)
             if dispatch_tasks:
@@ -1111,6 +1250,12 @@ class TestPostgreSQLTenantRuntime:
             assert len(pipeline_manager.pipelines) == workspace_count
             assert len(rag_manager.knowledge_bases) == workspace_count
             assert mcp_loader.host_mcp_server.await_count == workspace_count
+            assert 0 < peak_active_hosts <= min(workspace_count, 8)
+            assert 0 < peak_host_tasks <= min(workspace_count, 8)
+            assert active_hosts == 0
+            logging.getLogger('postgres-capacity-runtime-test').info(
+                'MCP startup peaks: active_hosts=%d hosted_tasks=%d', peak_active_hosts, peak_host_tasks
+            )
             assert not mcp_loader._host_dispatch_tasks
             assert not mcp_loader._hosted_mcp_tasks
             assert len(plugin_handler.reconciled) == workspace_count

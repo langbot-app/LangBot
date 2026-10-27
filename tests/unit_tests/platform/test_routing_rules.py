@@ -38,6 +38,7 @@ class TestEventRouteTrace:
         bot = object.__new__(RuntimeBot)
         bot.bot_entity = SimpleNamespace(
             uuid='bot-1',
+            adapter='aiocqhttp',
             workspace_uuid=TEST_CONTEXT.workspace_uuid,
             event_bindings=event_bindings,
         )
@@ -644,7 +645,8 @@ class TestInteractionResumeRouting:
             send_message=AsyncMock(),
         )
 
-        await bot._handle_interaction_submission(self._event(), adapter)
+        event = self._event()
+        await bot._handle_interaction_submission(event, adapter)
 
         envelope, binding, adapter_context = captured[0]
         assert envelope.event_type == 'interaction.submitted'
@@ -652,7 +654,11 @@ class TestInteractionResumeRouting:
         assert binding.binding_id == 'binding-1'
         assert binding.processor_type == 'agent'
         assert binding.processor_id == 'agent-1'
-        assert adapter_context == {'_delivery_adapter': adapter}
+        assert adapter_context == {
+            '_delivery_adapter': adapter,
+            '_platform_event': event,
+            '_execution_context': TEST_CONTEXT,
+        }
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_reply is False
         adapter.send_message.assert_not_awaited()
@@ -703,7 +709,10 @@ async def test_installed_event_processor_never_receives_unbound_events():
     from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
     bot = TestEventRouteTrace._make_bot([])
-    bot.ap = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=AsyncMock()))
+    bot.ap = SimpleNamespace(
+        workspace_service=active_workspace_service(),
+        plugin_connector=SimpleNamespace(emit_event=AsyncMock()),
+    )
     bot._record_adapter_event = AsyncMock()
     await bot._handle_platform_event(MemberJoinedEvent(), Mock())
     bot.ap.plugin_connector.emit_event.assert_not_called()

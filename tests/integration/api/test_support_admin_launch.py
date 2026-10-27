@@ -24,6 +24,7 @@ from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 from langbot.pkg.cloud.launch import SpaceLaunchError, SpaceLaunchService
 from langbot.pkg.cloud.support_admin import SupportAdminSessionService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.support_admin import SupportAdminTemporarySession
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import (
@@ -124,6 +125,9 @@ class _TenantUow:
         self._transaction = await self.session.begin()
         return self
 
+    async def execute(self, statement):
+        return await self.session.execute(statement)
+
     async def __aexit__(self, exc_type, exc, traceback):
         try:
             if exc_type is None:
@@ -173,6 +177,7 @@ async def support_admin_api(tmp_path):
             tables=[
                 User.__table__,
                 Workspace.__table__,
+                WorkspaceMetadata.__table__,
                 WorkspaceExecutionState.__table__,
                 WorkspaceMembership.__table__,
                 SupportAdminTemporarySession.__table__,
@@ -400,7 +405,7 @@ async def test_support_admin_persisted_expiry_and_revocation_are_enforced(suppor
 
 
 async def test_support_admin_websocket_preserves_actor_and_revalidates(support_admin_api):
-    app, _client, _engine, private_key = support_admin_api
+    app, _client, engine, private_key = support_admin_api
     launch = await _issue_support_token(app, private_key)
     captured_contexts = []
 
@@ -409,7 +414,6 @@ async def test_support_admin_websocket_preserves_actor_and_revalidates(support_a
             del data
             captured_contexts.append(connection.execution_context)
             await connection.send_queue.put({'type': 'handled'})
-            connection.is_active = False
 
     app.pipeline_service = SimpleNamespace(get_pipeline=AsyncMock(return_value=SimpleNamespace(uuid='pipeline-1')))
     app.platform_mgr = SimpleNamespace(
@@ -434,8 +438,17 @@ async def test_support_admin_websocket_preserves_actor_and_revalidates(support_a
         await websocket.send(json.dumps({'type': 'message', 'message': [{'type': 'text', 'text': 'hi'}]}))
         handled = json.loads(await websocket.receive())
         assert handled['type'] == 'handled'
+        async with engine.begin() as connection:
+            await connection.execute(
+                sqlalchemy.update(SupportAdminTemporarySession)
+                .where(SupportAdminTemporarySession.grant_jti_hash == launch['grant_jti_hash'])
+                .values(revoked_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None))
+            )
+        await websocket.send(json.dumps({'type': 'message', 'message': [{'type': 'text', 'text': 'after revoke'}]}))
+        rejected = json.loads(await websocket.receive())
+        assert rejected == {'type': 'error', 'message': 'Unauthorized'}
 
-    assert captured_contexts
+    assert len(captured_contexts) == 1
     principal = captured_contexts[0].trigger_principal
     assert principal is not None
     assert principal.principal_type == PrincipalType.SUPPORT_ADMIN

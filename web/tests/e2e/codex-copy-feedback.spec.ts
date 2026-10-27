@@ -13,22 +13,7 @@ async function mount(page: Page, mode: string) {
     window.$RefreshReg$ = () => {};
     window.$RefreshSig$ = () => (type) => type;
     window.__vite_plugin_react_preamble_installed__ = true;
-    </script><script type="module">
-    import React from '/node_modules/.vite/deps/react.js';
-    import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
-    const {createRoot} = ReactDOM;
-    import i18n from '/node_modules/.vite/deps/i18next.js';
-    import {initReactI18next} from '/node_modules/.vite/deps/react-i18next.js';
-    import {Toaster} from '/src/components/ui/sonner.tsx';
-    import '/src/app/global.css';
-    import {Dialog, DialogContent, DialogTitle} from '/src/components/ui/dialog.tsx';
-    import Section from '/src/app/home/components/models-dialog/component/provider-form/CodexAccountSection.tsx';
-    await i18n.use(initReactI18next).init({lng:'en', resources:{en:{translation:{}}}, interpolation:{escapeValue:false}});
-    const root=createRoot(document.getElementById('root'));
-    window.renderCode=(code='FIXTURE-1234',attempt='attempt-1')=>root.render(React.createElement(Dialog,{open:true},
-      React.createElement(DialogContent,{},React.createElement(DialogTitle,{},'Copy fixture'),React.createElement(Section,{providerId:'fixture',login:{phase:'pending',device:{user_code:code,authorization_id:attempt,verification_uri:'https://example.invalid',expires_at:9999999999}}})),React.createElement(Toaster)));
-    window.renderCode();
-    </script>`,
+    </script><script type="module" src="/tests/e2e/fixtures/codex-copy-harness.mjs"></script>`,
     }),
   );
   await page.addInitScript((mode) => {

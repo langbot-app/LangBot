@@ -131,7 +131,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             'Call this tool to send a message; Agent output text is not sent automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
-        ('message.*', 'friend.*', 'group.*', 'feedback.*'),
+        ('message.*', 'friend.*', 'group.*', 'feedback.*', 'interaction.submitted'),
         'reply_target',
     ),
     PlatformToolDefinition(
@@ -932,7 +932,9 @@ async def execute_platform_tool(
                         bot_name=str(getattr(getattr(bot, 'bot_entity', None), 'name', bot_id)),
                         pipeline_id=str(authorization.get('processor_id') or ''),
                         pipeline_name=str(authorization.get('processor_id') or authorization.get('runner_id') or ''),
-                        message_content=json.dumps(content, ensure_ascii=False),
+                        message_content=content
+                        if isinstance(content, (list, dict))
+                        else json.dumps(content, ensure_ascii=False),
                         session_id=str(authorization.get('conversation_id') or ''),
                         role='assistant',
                         status='error' if delivery_error else 'success',

@@ -111,6 +111,17 @@ import type {
  * 负责与后端 API 的所有交互
  */
 export class BackendClient extends BaseHttpClient {
+  public getWorkspaceLanguage(): Promise<{
+    language: string;
+    supported_languages: string[];
+  }> {
+    return this.get('/api/v1/workspaces/current/language');
+  }
+
+  public setWorkspaceLanguage(language: string): Promise<{ language: string }> {
+    return this.put('/api/v1/workspaces/current/language', { language });
+  }
+
   constructor(baseURL: string) {
     super(baseURL, false);
   }
@@ -1749,11 +1760,13 @@ export class BackendClient extends BaseHttpClient {
   // ============ Passkey (WebAuthn) API ============
   public getPasskeyAuthOptions(
     email?: string,
-    origin?: string,
   ): Promise<{ options: any; challenge_token: string }> {
+    // No origin is sent: the WebAuthn RP ID and expected origin are resolved
+    // server-side from api.webui_url / api.webhook_prefix. Sending a client
+    // origin would only invite a future handler to trust it again.
     return this.post(
       '/api/v1/user/passkey/auth/options',
-      { email, origin },
+      { email },
       { skipWorkspace: true },
     );
   }
@@ -1769,12 +1782,14 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public getPasskeyRegisterOptions(
-    origin?: string,
-  ): Promise<{ options: any; challenge_token: string }> {
+  public getPasskeyRegisterOptions(): Promise<{
+    options: any;
+    challenge_token: string;
+  }> {
+    // See getPasskeyAuthOptions: the origin is server-configured, not supplied.
     return this.post(
       '/api/v1/user/passkey/register/options',
-      { origin },
+      {},
       { skipWorkspace: true },
     );
   }
@@ -2464,7 +2479,7 @@ export class BackendClient extends BaseHttpClient {
 
   public updateSkill(
     name: string,
-    skill: Partial<Skill>,
+    skill: Partial<Skill> & { base_revision: string },
   ): Promise<ApiRespSkill> {
     return this.put(`/api/v1/skills/${name}`, skill);
   }
@@ -2480,16 +2495,6 @@ export class BackendClient extends BaseHttpClient {
   public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
     const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
     return this.get('/api/v1/skills/index', params);
-  }
-
-  public scanSkillDirectory(path: string): Promise<{
-    package_root: string;
-    name: string;
-    display_name?: string;
-    description: string;
-    instructions: string;
-  }> {
-    return this.get('/api/v1/skills/scan', { path });
   }
 
   public listSkillFiles(
@@ -2528,6 +2533,7 @@ export class BackendClient extends BaseHttpClient {
     skillName: string,
     filePath: string,
     content: string,
+    baseRevision: string,
   ): Promise<{
     skill: { name: string };
     path: string;
@@ -2535,6 +2541,7 @@ export class BackendClient extends BaseHttpClient {
   }> {
     return this.put(`/api/v1/skills/${skillName}/files/${filePath}`, {
       content,
+      base_revision: baseRevision,
     });
   }
 }

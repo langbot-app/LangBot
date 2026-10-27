@@ -1,9 +1,5 @@
 export type WorkspaceRole =
-  | 'owner'
-  | 'admin'
-  | 'developer'
-  | 'operator'
-  | 'viewer';
+  'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
 
 export interface Workspace {
   uuid: string;
@@ -28,12 +24,21 @@ export interface WorkspaceMembership {
 }
 
 export interface CurrentWorkspace {
+  current_plan?: {
+    subscription_started_at?: number | null;
+    name: string;
+    revision: number;
+    limits: Record<string, number>;
+    entitlement_features: Record<string, boolean>;
+    monthly_bonus_credits: number;
+  } | null;
   workspace: Workspace;
   membership: WorkspaceMembership;
   permissions: string[];
   placement_generation: number;
   /** Signed Cloud display metadata; never used for client-side authorization. */
   plan_name?: string | null;
+  limitation?: Record<string, number> | null;
 }
 
 export interface WorkspaceSpaceBilling {

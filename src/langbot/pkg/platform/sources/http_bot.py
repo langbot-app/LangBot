@@ -89,7 +89,7 @@ class _SessionOutbound:
 
 
 class _SyncCollector:
-    """Collects reply parts for a /sync request and resolves when the turn ends."""
+    """Collects reply parts and signals receipt of a final message."""
 
     def __init__(self) -> None:
         self.parts: list = []
@@ -161,6 +161,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def is_muted(self, group_id: int) -> bool:
         return False
+
+    def get_supported_apis(self) -> list[str]:
+        return ['send_message', 'reply_message']
 
     async def is_stream_output_supported(self) -> bool:
         return True
@@ -582,6 +585,12 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'message': [c.model_dump() if hasattr(c, 'model_dump') else c.__dict__ for c in message],
             'timestamp': datetime.now().isoformat(),
         }
+        collector = self.sync_waiters.get(str(target_id))
+        if collector is not None:
+            collector.parts.extend(payload['message'])
+            collector.done.set()
+            return payload
+
         await self._enqueue_callback(str(target_id), payload)
         return payload
 
@@ -612,6 +621,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         Lossy by design (drops streaming/ordering nuance); documented as such.
         Concurrency-safe: routing is via the per-session ``_sync_waiters``
         registry that ``_emit_reply`` consults, not by patching methods.
+        A final message can precede Agent output-file delivery, so collection
+        also waits for the inbound listener to finish. Legacy queued pipelines
+        may finish their listener before sending any reply.
         """
         if session_id in self.sync_waiters:
             return self._err('duplicate', 'a sync request is already in flight for this session')
@@ -622,12 +634,19 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if listener_task is None:
             self.sync_waiters.pop(session_id, None)
             return self._err('overloaded', 'too many inbound messages are already being processed')
+
+        async def wait_for_turn():
+            await collector.done.wait()
+            await asyncio.shield(listener_task)
+
         try:
             timeout = int(self.config.get('callback_timeout', 15)) * 4
             try:
-                await asyncio.wait_for(collector.done.wait(), timeout=timeout)
+                await asyncio.wait_for(wait_for_turn(), timeout=timeout)
             except asyncio.TimeoutError:
                 await self.logger.warning(f'http_bot sync wait timed out for session {session_id}')
+            except Exception:
+                await self.logger.warning(f'http_bot sync listener failed for session {session_id}')
         finally:
             self.sync_waiters.pop(session_id, None)
             state = self.outbound_states.get(session_id)

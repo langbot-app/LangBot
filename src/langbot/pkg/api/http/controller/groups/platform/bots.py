@@ -232,3 +232,35 @@ class BotsRouterGroup(group.RouterGroup):
         async def _(bot_uuid: str, admin_id: int, request_context: RequestContext) -> str:
             await self.ap.bot_service.delete_bot_admin(request_context, bot_uuid, admin_id)
             return self.success()
+
+        @self.route(
+            '/<bot_uuid>/group-filter-migration',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            try:
+                result = await self.ap.bot_service.preview_group_filter_migration(request_context, bot_uuid)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data=result)
+
+        @self.route(
+            '/<bot_uuid>/group-filter-migration',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.get_json(silent=True) or {}
+            disable_pipeline_at_bot = bool(json_data.get('disable_pipeline_at_bot', True))
+            try:
+                result = await self.ap.bot_service.apply_group_filter_migration(
+                    request_context, bot_uuid, disable_pipeline_at_bot=disable_pipeline_at_bot
+                )
+            except BotApplyError as exc:
+                return self._apply_error_response(exc)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data=result)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import t
+
 import sqlalchemy
 import argon2
 import jwt
@@ -31,6 +33,7 @@ from ....entity.persistence.workspace import MembershipRole, MembershipStatus, W
 from ....utils import constants
 from ....entity.errors import account as account_errors
 from ....workspace.collaboration import normalize_email
+from ....workspace.errors import WorkspaceNotFoundError
 from ....utils import bounded_executor
 
 if typing.TYPE_CHECKING:
@@ -253,10 +256,23 @@ class UserService:
         access = accesses[0]
         if access.membership.role != MembershipRole.OWNER.value:
             return
-        await self.ap.provider_service.update_space_model_provider_api_keys(
-            access.workspace.uuid,
-            api_key,
-        )
+        # A missing compatibility provider row is a model-routing problem, not an
+        # authentication one. Letting provider_service raise here aborted the whole
+        # Space OAuth callback after the Account had already been created, so the
+        # user logged in "successfully" but received 404 on every retry.
+        try:
+            await self.ap.provider_service.update_space_model_provider_api_keys(
+                access.workspace.uuid,
+                api_key,
+            )
+        except WorkspaceNotFoundError:
+            logger = getattr(self.ap, 'logger', None)
+            if logger is not None:
+                logger.warning(
+                    'Space model provider row is missing for workspace %s; '
+                    'skipping credential refresh so login can proceed',
+                    access.workspace.uuid,
+                )
 
     async def is_initialized(self) -> bool:
         account = await self._identity_scalar(
@@ -423,12 +439,12 @@ class UserService:
 
         user_obj = await self.get_user_by_email(user_email)
         if user_obj is None:
-            raise ValueError('用户不存在')
+            raise ValueError(t('Resource not found'))
         self._require_active_account(user_obj)
 
         # Check if this user has a local password set
         if not user_obj.password:
-            raise ValueError('请使用 LangBot 账号登录')
+            raise ValueError(t('Please sign in with your LangBot Account'))
 
         await self._verify_password(user_obj.password, password)
 

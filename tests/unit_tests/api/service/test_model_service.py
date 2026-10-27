@@ -14,6 +14,7 @@ Source: src/langbot/pkg/api/http/service/model.py
 from __future__ import annotations
 
 import pytest
+import sqlalchemy
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
@@ -179,6 +180,42 @@ def _create_reasoning_runtime_provider(capabilities: dict) -> SimpleNamespace:
             api_keys=[],
         ),
         requester=SimpleNamespace(get_reasoning_capabilities=Mock(return_value=capabilities)),
+    )
+
+
+def _assert_created_model(ap, model_class, expected):
+    statements = [call.args[0] for call in ap.persistence_mgr.execute_async.await_args_list if call.args[0].is_insert]
+    assert len(statements) == 1
+    statement = statements[0]
+    assert statement.table.name == model_class.__tablename__
+    values = statement.compile().params
+    assert {key: values.get(key) for key in expected} == expected
+    kind = {LLMModel: 'llm', EmbeddingModel: 'embedding', RerankModel: 'rerank'}[model_class]
+    load = getattr(ap.model_mgr, f'load_{kind}_model_with_provider')
+    load.assert_awaited_once()
+    context, entity, provider = load.await_args.args
+    assert context == WORKSPACE_UUID
+    assert entity.uuid == expected['uuid']
+    assert provider is ap.model_mgr.provider_dict[expected['provider_uuid']]
+    getattr(ap.model_mgr, f'cache_{kind}_model').assert_awaited_once_with(WORKSPACE_UUID, load.return_value)
+
+
+def _assert_provider_query(ap, model_class, provider_uuid):
+    ap.persistence_mgr.execute_async.assert_awaited_once()
+    statement = ap.persistence_mgr.execute_async.await_args.args[0]
+    assert statement.is_select
+    assert statement.whereclause.compare(
+        sqlalchemy.and_(model_class.provider_uuid == provider_uuid, model_class.workspace_uuid == WORKSPACE_UUID)
+    )
+
+
+def _assert_model_delete(ap, model_class, model_uuid):
+    ap.persistence_mgr.execute_async.assert_awaited_once()
+    statement = ap.persistence_mgr.execute_async.await_args.args[0]
+    assert statement.is_delete
+    assert statement.table.name == model_class.__tablename__
+    assert statement.whereclause.compare(
+        sqlalchemy.and_(model_class.uuid == model_uuid, model_class.workspace_uuid == WORKSPACE_UUID)
     )
 
 
@@ -348,6 +385,8 @@ class TestLLMModelsServiceGetLLMModels:
         assert len(result) == 1
         assert result[0]['name'] == 'Test LLM'
         assert result[0]['context_length'] == 128000
+        assert result[0].get('provider', {}).get('uuid') == 'provider-uuid'
+        assert result[0].get('provider', {}).get('name') == 'Test Provider'
 
     async def test_get_llm_models_hide_secret_keys(self):
         """Hides secret API keys when include_secret=False."""
@@ -462,7 +501,9 @@ class TestLLMModelsServiceGetLLMModelsByProvider:
 
         mock_result = _create_mock_result([model1, model2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'model-1', 'name': 'Model 1'})
+        ap.persistence_mgr.serialize_model = Mock(
+            side_effect=lambda _model_class, entity: {'uuid': entity.uuid, 'name': entity.name}
+        )
 
         service = LLMModelsService(ap)
 
@@ -470,7 +511,8 @@ class TestLLMModelsServiceGetLLMModelsByProvider:
         result = await service.get_llm_models_by_provider(WORKSPACE_UUID, 'target-provider')
 
         # Verify
-        assert len(result) == 2
+        assert [item['uuid'] for item in result] == ['model-1', 'model-2']
+        _assert_provider_query(ap, LLMModel, 'target-provider')
 
 
 class TestLLMModelsServiceCreateLLMModel:
@@ -507,6 +549,11 @@ class TestLLMModelsServiceCreateLLMModel:
         # Verify
         assert model_uuid is not None
         assert len(model_uuid) == 36  # UUID format
+        _assert_created_model(
+            ap,
+            LLMModel,
+            {'uuid': model_uuid, 'workspace_uuid': WORKSPACE_UUID, 'name': 'New LLM', 'provider_uuid': 'provider-uuid'},
+        )
 
     async def test_create_llm_model_preserve_uuid(self):
         """Creates LLM model preserving provided UUID."""
@@ -540,6 +587,16 @@ class TestLLMModelsServiceCreateLLMModel:
 
         # Verify
         assert model_uuid == 'preserved-uuid'
+        _assert_created_model(
+            ap,
+            LLMModel,
+            {
+                'uuid': model_uuid,
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'Preserved UUID Model',
+                'provider_uuid': 'provider-uuid',
+            },
+        )
 
     async def test_create_llm_model_persists_context_length_as_column(self):
         """Creates LLM model with context_length outside extra_args."""
@@ -574,6 +631,17 @@ class TestLLMModelsServiceCreateLLMModel:
         assert runtime_entity.context_length == 128000
         assert runtime_entity.extra_args == {'temperature': 0.2}
         assert 'context_length' not in runtime_entity.extra_args
+        _assert_created_model(
+            ap,
+            LLMModel,
+            {
+                'uuid': 'model-with-context',
+                'workspace_uuid': WORKSPACE_UUID,
+                'provider_uuid': 'provider-uuid',
+                'context_length': 128000,
+                'extra_args': {'temperature': 0.2},
+            },
+        )
 
     async def test_create_llm_model_provider_not_found_raises_error(self):
         """Raises Exception when provider not found in runtime."""
@@ -639,7 +707,9 @@ class TestLLMModelsServiceCreateLLMModel:
         )
 
         # Verify - provider_service was called and UUID generated
-        ap.provider_service.find_or_create_provider.assert_called_once()
+        ap.provider_service.find_or_create_provider.assert_awaited_once_with(
+            WORKSPACE_UUID, requester='openai', base_url='https://api.openai.com', api_keys=['key']
+        )
         assert result_uuid is not None
 
     async def test_create_llm_model_validates_explicit_reasoning_level(self):
@@ -738,6 +808,11 @@ class TestLLMModelsServiceUpdateLLMModel:
 
         # Verify - remove and load called
         ap.model_mgr.remove_llm_model.assert_called_once_with(WORKSPACE_UUID, 'existing-uuid')
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.is_update
+        assert 'uuid' not in statement.compile().params
+        assert statement.compile().params.get('name') == 'Updated Name'
 
     async def test_update_llm_model_provider_not_found_raises_error(self):
         """Raises Exception when provider not found after update."""
@@ -795,6 +870,11 @@ class TestLLMModelsServiceUpdateLLMModel:
         assert runtime_entity.context_length == 64000
         assert runtime_entity.extra_args == {'temperature': 0.4}
         assert 'context_length' not in runtime_entity.extra_args
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.is_update
+        assert statement.compile().params.get('context_length') == 64000
+        assert statement.compile().params.get('extra_args') == {'temperature': 0.4}
 
 
 class TestLLMModelsServiceDeleteLLMModel:
@@ -817,7 +897,8 @@ class TestLLMModelsServiceDeleteLLMModel:
 
         # Verify
         ap.persistence_mgr.execute_async.assert_called_once()
-        ap.model_mgr.remove_llm_model.assert_called_once_with(WORKSPACE_UUID, 'delete-uuid')
+        ap.model_mgr.remove_llm_model.assert_awaited_once_with(WORKSPACE_UUID, 'delete-uuid')
+        _assert_model_delete(ap, LLMModel, 'delete-uuid')
 
 
 class TestEmbeddingModelsServiceGetEmbeddingModels:
@@ -880,7 +961,9 @@ class TestEmbeddingModelsServiceGetEmbeddingModels:
         )
 
         # Verify
-        assert len(result) == 1
+        assert [(item['uuid'], item['name']) for item in result] == [('embedding-uuid', 'Test Embedding')]
+        assert result[0].get('provider', {}).get('uuid') == 'provider-uuid'
+        assert result[0].get('provider', {}).get('name') == 'Test Provider'
 
 
 class TestEmbeddingModelsServiceGetEmbeddingModel:
@@ -907,11 +990,7 @@ class TestEmbeddingModelsServiceGetEmbeddingModel:
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
         ap.persistence_mgr.serialize_model = Mock(
-            return_value={
-                'uuid': 'found-embedding',
-                'name': 'Found Embedding',
-                'provider': {'uuid': 'provider-uuid'},
-            }
+            side_effect=lambda _model_class, entity: {'uuid': entity.uuid, 'name': entity.name}
         )
 
         service = EmbeddingModelsService(ap)
@@ -920,7 +999,11 @@ class TestEmbeddingModelsServiceGetEmbeddingModel:
         result = await service.get_embedding_model(WORKSPACE_UUID, 'found-embedding')
 
         # Verify
-        assert result is not None
+        assert result == {
+            'uuid': 'found-embedding',
+            'name': 'Test Embedding',
+            'provider': {'uuid': 'provider-uuid', 'name': 'Test Provider'},
+        }
 
     async def test_get_embedding_model_not_found(self):
         """Returns None when model not found."""
@@ -971,6 +1054,16 @@ class TestEmbeddingModelsServiceCreateEmbeddingModel:
         # Verify
         assert model_uuid is not None
         assert len(model_uuid) == 36
+        _assert_created_model(
+            ap,
+            EmbeddingModel,
+            {
+                'uuid': model_uuid,
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'New Embedding',
+                'provider_uuid': 'provider-uuid',
+            },
+        )
 
     async def test_create_embedding_model_provider_not_found_raises(self):
         """Raises Exception when provider not found."""
@@ -1016,7 +1109,8 @@ class TestEmbeddingModelsServiceDeleteEmbeddingModel:
         await service.delete_embedding_model(WORKSPACE_UUID, 'delete-embedding-uuid')
 
         # Verify
-        ap.model_mgr.remove_embedding_model.assert_called_once()
+        ap.model_mgr.remove_embedding_model.assert_awaited_once_with(WORKSPACE_UUID, 'delete-embedding-uuid')
+        _assert_model_delete(ap, EmbeddingModel, 'delete-embedding-uuid')
 
 
 class TestRerankModelsServiceGetRerankModels:
@@ -1078,7 +1172,9 @@ class TestRerankModelsServiceGetRerankModels:
         )
 
         # Verify
-        assert len(result) == 1
+        assert [(item['uuid'], item['name']) for item in result] == [('rerank-uuid', 'Test Rerank')]
+        assert result[0].get('provider', {}).get('uuid') == 'provider-uuid'
+        assert result[0].get('provider', {}).get('name') == 'Test Provider'
 
 
 class TestRerankModelsServiceGetRerankModel:
@@ -1105,11 +1201,7 @@ class TestRerankModelsServiceGetRerankModel:
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
         ap.persistence_mgr.serialize_model = Mock(
-            return_value={
-                'uuid': 'found-rerank',
-                'name': 'Found Rerank',
-                'provider': {'uuid': 'provider-uuid'},
-            }
+            side_effect=lambda _model_class, entity: {'uuid': entity.uuid, 'name': entity.name}
         )
 
         service = RerankModelsService(ap)
@@ -1118,7 +1210,11 @@ class TestRerankModelsServiceGetRerankModel:
         result = await service.get_rerank_model(WORKSPACE_UUID, 'found-rerank')
 
         # Verify
-        assert result is not None
+        assert result == {
+            'uuid': 'found-rerank',
+            'name': 'Test Rerank',
+            'provider': {'uuid': 'provider-uuid', 'name': 'Test Provider'},
+        }
 
     async def test_get_rerank_model_not_found(self):
         """Returns None when model not found."""
@@ -1168,6 +1264,16 @@ class TestRerankModelsServiceCreateRerankModel:
 
         # Verify
         assert model_uuid is not None
+        _assert_created_model(
+            ap,
+            RerankModel,
+            {
+                'uuid': model_uuid,
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'New Rerank',
+                'provider_uuid': 'provider-uuid',
+            },
+        )
 
     async def test_create_rerank_model_provider_not_found_raises(self):
         """Raises Exception when provider not found."""
@@ -1213,7 +1319,8 @@ class TestRerankModelsServiceDeleteRerankModel:
         await service.delete_rerank_model(WORKSPACE_UUID, 'delete-rerank-uuid')
 
         # Verify
-        ap.model_mgr.remove_rerank_model.assert_called_once()
+        ap.model_mgr.remove_rerank_model.assert_awaited_once_with(WORKSPACE_UUID, 'delete-rerank-uuid')
+        _assert_model_delete(ap, RerankModel, 'delete-rerank-uuid')
 
 
 class TestEmbeddingModelsServiceGetEmbeddingModelsByProvider:
@@ -1230,7 +1337,9 @@ class TestEmbeddingModelsServiceGetEmbeddingModelsByProvider:
 
         mock_result = _create_mock_result([model1, model2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'emb-1', 'name': 'Embedding 1'})
+        ap.persistence_mgr.serialize_model = Mock(
+            side_effect=lambda _model_class, entity: {'uuid': entity.uuid, 'name': entity.name}
+        )
 
         service = EmbeddingModelsService(ap)
 
@@ -1238,7 +1347,8 @@ class TestEmbeddingModelsServiceGetEmbeddingModelsByProvider:
         result = await service.get_embedding_models_by_provider(WORKSPACE_UUID, 'provider-uuid')
 
         # Verify
-        assert len(result) == 2
+        assert [item['uuid'] for item in result] == ['emb-1', 'emb-2']
+        _assert_provider_query(ap, EmbeddingModel, 'provider-uuid')
 
 
 class TestRerankModelsServiceGetRerankModelsByProvider:
@@ -1255,7 +1365,9 @@ class TestRerankModelsServiceGetRerankModelsByProvider:
 
         mock_result = _create_mock_result([model1, model2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'rerank-1', 'name': 'Rerank 1'})
+        ap.persistence_mgr.serialize_model = Mock(
+            side_effect=lambda _model_class, entity: {'uuid': entity.uuid, 'name': entity.name}
+        )
 
         service = RerankModelsService(ap)
 
@@ -1263,7 +1375,8 @@ class TestRerankModelsServiceGetRerankModelsByProvider:
         result = await service.get_rerank_models_by_provider(WORKSPACE_UUID, 'provider-uuid')
 
         # Verify
-        assert len(result) == 2
+        assert [item['uuid'] for item in result] == ['rerank-1', 'rerank-2']
+        _assert_provider_query(ap, RerankModel, 'provider-uuid')
 
 
 class TestValidateProviderSupports:

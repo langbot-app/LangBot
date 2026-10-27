@@ -50,8 +50,8 @@ class TestExecuteAsync:
         # Execute a simple select
         await mgr.execute_async(sqlalchemy.select(1))
 
-        mock_conn.execute.assert_called_once()
-        mock_conn.commit.assert_called_once()
+        mock_conn.execute.assert_awaited_once()
+        mock_conn.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_execute_async_returns_result(self):

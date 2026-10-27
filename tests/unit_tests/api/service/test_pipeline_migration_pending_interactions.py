@@ -23,12 +23,6 @@ env = existing.env
 NATIVE = 'langbot.pkg.provider.runners.difysvapi'
 
 
-@pytest.fixture(autouse=True)
-async def interaction_schema(env):
-    async with env.engine.begin() as conn:
-        await conn.run_sync(lambda c: AgentInteraction.__table__.create(c, checkfirst=True))
-
-
 async def add_request(env, status='pending', workspace=WS, pipeline='one'):
     async with env.engine.begin() as conn:
         await conn.execute(
@@ -224,11 +218,3 @@ async def test_native_form_arriving_during_cas_rolls_back(env, monkeypatch):
     configs, snapshots = await rows(env)
     assert configs['one'] == SOURCE and not snapshots
     env.ap.pipeline_mgr.publish_pipeline.assert_not_called()
-
-
-# Also exercise the unchanged regression assertions with this module's
-# interaction-schema fixture. The original tests remain in their own module.
-
-for _name, _test in vars(existing).items():
-    if _name.startswith('test_') and callable(_test):
-        globals()['test_existing_' + _name[5:]] = _test

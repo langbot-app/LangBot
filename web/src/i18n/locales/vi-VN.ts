@@ -1,5 +1,127 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 const viVN = {
+  planRevision: {
+    subscribedOn: 'Ngày đăng ký: {{date}}',
+    latestQuota: 'Hạn mức mới nhất của gói này',
+    showLatest: 'Xem hạn mức mới nhất của gói này',
+    showCurrent: 'Xem gói đăng ký hiện tại',
+    latestTab: 'Mới nhất',
+    currentTab: 'Hiện tại',
+    cancelToSubscribe:
+      'Hủy gói hiện tại để đăng ký hạn mức mới nhất vào kỳ tiếp theo',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Gia hạn gói đăng ký hiện tại',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Chưa thể đăng ký',
+    subscriptionUnavailableHint:
+      'Gói này hiện không nhận đăng ký mới. Vui lòng chọn gói khác. Đăng ký hiện có và gia hạn tự động không bị ảnh hưởng.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Official Account',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Quản lý đăng ký',
+    downgradeUnavailable: 'Không thể hạ cấp xuống gói miễn phí',
+    features: {
+      multiUserWorkspace: 'Không gian làm việc nhiều người dùng',
+      remoteE2BSandbox: 'Cấu hình sandbox E2B từ xa',
+      communitySupport: 'Hỗ trợ từ cộng đồng',
+      everythingInFree: 'Tất cả tính năng của gói miễn phí',
+      alwaysOnSandbox: 'Một sandbox toàn cục luôn hoạt động',
+      higherWorkspaceLimits: 'Hạn mức không gian làm việc cao hơn',
+    },
+    title: 'So sánh gói',
+    description: 'Chọn gói cho {{workspace}}',
+    billing: 'Chu kỳ thanh toán',
+    monthly: 'Hàng tháng',
+    annual: 'Hàng năm',
+    currency: 'Tiền tệ',
+    loading: 'Đang tải gói…',
+    error: 'Không thể tải các gói',
+    retry: 'Thử lại',
+    empty: 'Không có gói khả dụng',
+    current: 'Gói hiện tại',
+    recommended: 'Đề xuất',
+    free: 'Miễn phí',
+    annualNote: 'Tương đương {{price}} / tháng',
+    ownerOnly: 'Chỉ chủ sở hữu hoặc quản trị viên',
+    choose: 'Tiếp tục thanh toán',
+    handoff:
+      'Đăng nhập và thanh toán tại Space. Lựa chọn của bạn sẽ được giữ lại.',
+    quotas: 'Hạn mức không gian',
+    unlimited: 'Không giới hạn',
+    retention: 'Lịch sử tin nhắn · {{count}} ngày',
+    retentionLabel: 'Thời gian lưu tin nhắn',
+    retentionHelp: 'Tin nhắn được tự động xóa sau thời gian này.',
+    credits: '{{count}} tín dụng mô hình mỗi tháng',
+    creditsLabel: 'Tín dụng hàng tháng',
+    creditsHelp: 'Tín dụng được cấp mỗi tháng đăng ký, kể cả gói năm.',
+    platforms: 'Hỗ trợ nền tảng phổ biến',
+    excludedPlatforms: 'Không hỗ trợ: {{platforms}}',
+    allPlatforms: 'Tất cả nền tảng hiện có',
+    limits: {
+      bots: 'Bot',
+      pipelines: 'Bộ xử lý',
+      knowledge_bases: 'Kho kiến thức',
+      plugins: 'Tiện ích mở rộng',
+      members: 'Thành viên',
+      managed_sandbox_sessions: 'Phiên sandbox được quản lý',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Ngôn ngữ không gian làm việc',
+    description:
+      'Dùng cho thông báo máy chủ và phản hồi mặc định của bot. Không thay đổi ngôn ngữ giao diện cá nhân.',
+    saved: 'Đã lưu ngôn ngữ',
+    saveFailed: 'Không thể lưu ngôn ngữ',
+  },
   inflight: {
     autoCollapse: 'Tự thu gọn',
     empty: 'Không có sự kiện đang xử lý',
@@ -827,6 +949,8 @@ const viVN = {
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
+    autoCreatedPipeline:
+      'Đã tự động tạo pipeline và liên kết các sự kiện tin nhắn',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
@@ -895,7 +1019,8 @@ const viVN = {
     commonScenarios: 'Tình huống phổ biến',
     dragEventRoute: 'Kéo tuyến {{index}}',
     behaviorReplyMessages: 'Trả lời tin nhắn',
-    behaviorReplyMessagesDescription: 'Gửi tin nhắn đến bộ xử lý.',
+    behaviorReplyMessagesDescription:
+      'Xử lý tin nhắn riêng và tin nhắn nhóm nhắc đến bot này.',
     behaviorWelcomeMembers: 'Chào mừng thành viên mới',
     behaviorWelcomeMembersDescription:
       'Chạy bộ xử lý khi có người tham gia nhóm.',
@@ -1113,6 +1238,9 @@ const viVN = {
       'Phải khớp mọi điều kiện để kích hoạt. Để trống để luôn kích hoạt.',
     conditionsEmpty: 'Không có điều kiện — luôn kích hoạt.',
     addFilter: 'Thêm điều kiện',
+    filterIsAtBot: 'Nhắc đến bot này',
+    mentionYes: 'Có',
+    mentionNo: 'Không',
     filterChatType: 'Loại phiên',
     filterChatId: 'ID phiên',
     filterMessageText: 'Nội dung tin nhắn',
@@ -1479,6 +1607,17 @@ const viVN = {
     viewMarketplace: 'Xem chợ tiện ích',
     restoringRunnerInstall: 'Đang khôi phục cài đặt plugin và chờ trình chạy…',
     noInstalledRunners: 'Chưa cài tiện ích trình chạy nào.',
+    runnerDiagnosis: {
+      missing:
+        'Không tìm thấy Runner đã chọn hoặc tiện ích của nó. Hãy cài đặt hoặc khôi phục tiện ích.',
+      disabled:
+        'Tiện ích Runner đã chọn bị tắt. Hãy bật nó trong trang Tiện ích.',
+      runtime:
+        'Môi trường chạy tiện ích không khả dụng hoặc bị tắt. Hãy khôi phục kết nối trước khi chạy.',
+      repair: 'Quản lý tiện ích và môi trường chạy',
+      draft:
+        'Trang sửa lỗi mở trong thẻ mới. Lựa chọn Runner và bản nháp chưa lưu vẫn được giữ ở đây.',
+    },
     installingRunner: 'Đang cài {{runner}}...',
     runnerInstallSuccess: 'Đã cài {{runner}} và có thể chọn',
     selectedRunnerUnavailable: 'Trình chạy đã chọn không khả dụng',
@@ -2083,6 +2222,10 @@ const viVN = {
       addPlugin: 'Thêm Plugin',
       selectPlugins: 'Chọn Plugin',
       pluginsTitle: 'Plugin',
+      pluginScopeHint:
+        'Chỉ kiểm soát trình lắng nghe sự kiện, công cụ và lệnh của pipeline này; không ảnh hưởng đến Runner được chọn trong cài đặt AI.',
+      runnerScopeHint:
+        'Chọn Runner độc lập tại đây, không phụ thuộc vào công tắc plugin tiện ích. Plugin của Runner vẫn phải được cài đặt và khả dụng.',
       mcpServersTitle: 'Máy chủ MCP',
       mcpResourcesTitle: 'Tài nguyên MCP',
       noMCPServersSelected: 'Chưa chọn máy chủ MCP nào',
@@ -2127,7 +2270,7 @@ const viVN = {
       mcpToolsScopeTooltip:
         'Tại đây chỉ hiển thị công cụ từ máy chủ MCP hiện được cho phép trong Tiện ích mở rộng.',
       skillToolsScopeTooltip:
-        'Công cụ kỹ năng khả dụng khi dịch vụ kỹ năng LangBot và backend sandbox Box đã sẵn sàng. Chúng cho phép Agent kích hoạt hoặc đăng ký kỹ năng.',
+        'Kích hoạt kỹ năng và tài nguyên chỉ đọc hoạt động không cần Box. Đăng ký từ workspace của Agent vẫn cần sandbox Box.',
       selectTools: 'Chọn công cụ',
       resourcesTitle: 'Tài nguyên',
       resourcesDescription:
@@ -2541,8 +2684,7 @@ const viVN = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -2989,9 +3131,9 @@ const viVN = {
     statusDetail: 'Trạng thái',
     pluginDisabled: 'Hệ thống plugin đã tắt',
     boxDisabled:
-      'Sandbox Box đã tắt trong cấu hình — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+      'Sandbox Box đã tắt trong cấu hình — công cụ thực thi và stdio MCP không khả dụng',
     boxUnavailable:
-      'Sandbox Box không khả dụng — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+      'Sandbox Box không khả dụng — công cụ thực thi và stdio MCP không khả dụng',
     boxRequiredHint:
       'Tính năng này cần Box runtime. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime đang hoạt động.',
     boxBackend: 'Backend',
@@ -3603,12 +3745,13 @@ const viVN = {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
   },
-  beta_banner: {
+  cloud_banner: {
     message:
-      'Môi trường này đang trong giai đoạn thử nghiệm beta. Độ ổn định của dịch vụ không được đảm bảo. Hãy cân nhắc sử dụng',
-    cloud_link: 'LangBot Cloud (môi trường riêng)',
+      'Bạn đang sử dụng LangBot Cloud, dịch vụ được quản lý. Nếu cần tài nguyên riêng và hạn mức cao hơn, hãy cân nhắc',
+    dedicated_link: 'LangBot Cloud (môi trường riêng)',
+    cta_dedicated: 'xem các gói môi trường riêng',
     or: 'hoặc',
-    oss_link: 'phiên bản mã nguồn mở tự lưu trữ',
+    self_hosted_link: 'phiên bản mã nguồn mở tự lưu trữ',
     period: '.',
     dismiss: 'Đóng',
   },

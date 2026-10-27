@@ -81,6 +81,11 @@ import {
 import OwnModelSetup, {
   type OwnModelSelection,
 } from '@/app/wizard/components/OwnModelSetup';
+import {
+  prepareWizardBot,
+  wizardBindingsIfMissing,
+  type WizardDraft,
+} from '@/app/wizard/bot-setup';
 
 type RunnerInstallProgress = { stage: InstallStage; percent: number };
 
@@ -153,6 +158,8 @@ export default function WizardPage() {
   );
   const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
+  const botDraft = useRef<WizardDraft | null>(null);
+  const botOperationPending = useRef(false);
   const [createdPipelineUuid, setCreatedPipelineUuid] = useState<string | null>(
     null,
   );
@@ -391,8 +398,7 @@ export default function WizardPage() {
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
-              | Record<string, unknown>
-              | undefined;
+              Record<string, unknown> | undefined;
             setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
             setExtraWebhookUrl(
               (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -700,10 +706,20 @@ export default function WizardPage() {
   // Creates a disabled bot using the adapter label as name.
 
   const handleCreateBot = useCallback(async () => {
-    if (!selectedAdapter) return;
+    if (!selectedAdapter || botOperationPending.current) return;
+    botOperationPending.current = true;
     setIsCreatingBot(true);
 
     try {
+      if (createdBotUuid) {
+        const existing = (await httpClient.getBot(createdBotUuid)).bot;
+        if (existing.adapter === selectedAdapter) {
+          // Returning to the platform step must retain unsaved form values too.
+          setCurrentStep(1);
+          saveProgress({ step: 1 });
+          return;
+        }
+      }
       // Use adapter label as default bot name
       const adapter = adapters.find((a) => a.name === selectedAdapter);
       const defaultName = adapter
@@ -727,16 +743,31 @@ export default function WizardPage() {
         adapter_config: initialConfig,
         enable: false,
       };
-      const resp = await httpClient.createBot(bot);
+      if (!botDraft.current || botDraft.current.adapter !== selectedAdapter) {
+        botDraft.current = {
+          adapter: selectedAdapter,
+          botUuid: null,
+          pipelineUuid: null,
+        };
+      }
+      const resp = await prepareWizardBot(
+        httpClient,
+        botDraft.current,
+        bot,
+        `${defaultName} ${t('agents.pipelineType')}`,
+      );
+      setBotName(resp.bot.name);
+      setAdapterConfig(
+        (resp.bot.adapter_config ?? initialConfig) as Record<string, unknown>,
+      );
       setCreatedBotUuid(resp.uuid);
-      setCreatedPipelineUuid(null);
+      setCreatedPipelineUuid(botDraft.current.pipelineUuid);
 
       // Fetch runtime info to get webhook URL(s)
       try {
         const botData = await httpClient.getBot(resp.uuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -754,7 +785,7 @@ export default function WizardPage() {
         selected_scenario: null,
         selected_adapter: selectedAdapter,
         created_bot_uuid: resp.uuid,
-        created_pipeline_uuid: null,
+        created_pipeline_uuid: botDraft.current.pipelineUuid,
         bot_saved: false,
         message_received: false,
         selected_runner: null,
@@ -765,15 +796,18 @@ export default function WizardPage() {
         t('wizard.createError') + (apiErr?.msg ? `: ${apiErr.msg}` : ''),
       );
     } finally {
+      botOperationPending.current = false;
       setIsCreatingBot(false);
     }
-  }, [selectedAdapter, adapters, t, saveProgress]);
+  }, [selectedAdapter, adapters, createdBotUuid, t, saveProgress]);
 
   // ---- Save Bot Config & Enable (Step 1) ----
   // Updates the bot's adapter config and enables it.
 
   const handleSaveBot = useCallback(async () => {
-    if (!createdBotUuid || !selectedAdapter) return;
+    if (!createdBotUuid || !selectedAdapter || botOperationPending.current)
+      return;
+    botOperationPending.current = true;
     setIsSavingBot(true);
     setBotSaved(false);
     let previewPipelineUuid = createdPipelineUuid;
@@ -873,19 +907,11 @@ export default function WizardPage() {
         adapter_config: configToSave,
         enable: true,
       };
-      if (previewPipelineUuid) {
-        botUpdate.event_bindings = [
-          {
-            event_pattern: 'message.received',
-            target_type: 'pipeline',
-            target_uuid: previewPipelineUuid,
-            filters: [],
-            priority: 0,
-            enabled: true,
-            description: '',
-          },
-        ];
-      }
+      const currentBot = (await httpClient.getBot(createdBotUuid)).bot;
+      Object.assign(
+        botUpdate,
+        wizardBindingsIfMissing(currentBot, previewPipelineUuid),
+      );
 
       await httpClient.updateBot(createdBotUuid, botUpdate);
       setDefaultPreparationProgress(100);
@@ -902,8 +928,7 @@ export default function WizardPage() {
       try {
         const botData = await httpClient.getBot(createdBotUuid);
         const runtimeValues = botData.bot.adapter_runtime_values as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         setWebhookUrl((runtimeValues?.webhook_full_url as string) || '');
         setExtraWebhookUrl(
           (runtimeValues?.extra_webhook_full_url as string) || '',
@@ -932,6 +957,7 @@ export default function WizardPage() {
       }
       toast.error(`${t('wizard.createError')}: ${getErrorMessage(err)}`);
     } finally {
+      botOperationPending.current = false;
       setPreparingDefault(false);
       setIsSavingBot(false);
     }
@@ -1063,7 +1089,7 @@ export default function WizardPage() {
   if (isLoading) {
     return (
       <div
-        style={{ top: 'var(--beta-banner-height, 0px)' }}
+        style={{ top: 'var(--cloud-banner-height, 0px)' }}
         className="fixed inset-x-0 bottom-0 z-50 bg-background flex items-center justify-center"
       >
         <LoadingSpinner text={t('wizard.loading')} />
@@ -1080,7 +1106,7 @@ export default function WizardPage() {
 
   return (
     <div
-      style={{ top: 'var(--beta-banner-height, 0px)' }}
+      style={{ top: 'var(--cloud-banner-height, 0px)' }}
       className="fixed inset-x-0 bottom-0 z-50 bg-background flex flex-col"
     >
       {/* Top bar: Skip button */}

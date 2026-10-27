@@ -69,9 +69,10 @@ entire old Runtime against the current Core.
   explicit generator ownership without changing signatures, permissions, action
   payloads or error translation.
 
-**Immediate remote cancellation requires the SDK companion fix.** Core's pinned
-SDK has not been silently replaced or upgraded. The E2E suite executes the close
-checks against published SDKs and reports their known failure as XFAIL. Set
+**Immediate remote cancellation requires SDK 0.7.12 or later.** Core now pins
+published SDK 0.7.12, which contains the companion fix. Separately deployed
+Runtime and plugin development environments also need the fixed SDK. The E2E
+suite reports the known close failure as XFAIL only for SDK <=0.7.11. Set
 `LLM_E2E_REQUIRE_STREAM_CLOSE=1` to require strict passing with the patched SDK;
 newer SDK versions must pass without this override. Historical API checks are
 explicitly skipped unless their released source files are supplied.

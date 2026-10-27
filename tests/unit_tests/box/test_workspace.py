@@ -13,8 +13,8 @@ from langbot.pkg.box.workspace import (
     classify_python_workspace,
     infer_workspace_host_path,
     rewrite_mounted_path,
-    wrap_python_command_with_env,
 )
+from langbot.pkg.utils.python_workspace import wrap_python_command_with_env
 
 
 _CONTEXT = ExecutionContext(

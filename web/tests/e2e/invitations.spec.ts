@@ -214,6 +214,7 @@ test('an OAuth-only OSS instance registers the invited email with a local passwo
     email: 'invited@example.com',
     password: 'invite-password-123',
   });
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();
 });
 
 test('an authenticated OSS invitation requires logout before registration', async ({
@@ -402,8 +403,10 @@ test('Space OAuth accepts a pending invitation with the freshly authenticated ac
   });
 
   let acceptanceAuthorization = '';
+  let acceptanceBody: unknown;
   await page.route('**/api/v1/invitations/accept', async (route) => {
     acceptanceAuthorization = route.request().headers().authorization ?? '';
+    acceptanceBody = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -424,6 +427,7 @@ test('Space OAuth accepts a pending invitation with the freshly authenticated ac
     timeout: 5_000,
   });
   expect(acceptanceAuthorization).toBe('Bearer fresh-invited-account-token');
+  expect(acceptanceBody).toEqual({ token: 'matching-invitation' });
   expect(
     await page.evaluate(() => ({
       token: localStorage.getItem('token'),

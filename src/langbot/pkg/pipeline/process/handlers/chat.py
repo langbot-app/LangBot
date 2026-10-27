@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import pipeline_notice
+
 import uuid
 import typing
 import traceback
@@ -238,14 +240,20 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 # Handle specific runner errors with appropriate messages
                 if isinstance(e, RunnerNotFoundError):
-                    user_notice = f'Agent runner not found: {e.runner_id}'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-found-hint', 'Agent runner not found: {runner}', runner=e.runner_id
+                    )
                 elif isinstance(e, RunnerNotAuthorizedError):
-                    user_notice = 'Agent runner not authorized for this pipeline'
+                    user_notice = pipeline_notice(
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                    )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:
-                        user_notice = 'Agent runner temporarily unavailable. Please try again.'
+                        user_notice = pipeline_notice(
+                            query, 'runner-unavailable-hint', 'Agent runner temporarily unavailable. Please try again.'
+                        )
                     else:
-                        user_notice = 'Agent runner execution failed.'
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
                     # Use existing exception handling
                     exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
@@ -253,7 +261,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     if exception_handling == 'show-error':
                         user_notice = f'{e}'
                     elif exception_handling == 'show-hint':
-                        user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
+                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
                     else:  # hide
                         user_notice = None
 

@@ -1,3 +1,6 @@
+from ...i18n import t
+
+
 class RequesterError(Exception):
     """Base class for all Requester errors."""
 
@@ -12,7 +15,7 @@ class RequesterError(Exception):
         request_id: str | None = None,
         phase: str | None = None,
     ):
-        super().__init__('模型请求失败: ' + message)
+        super().__init__(t('Model request failed') + ': ' + message)
         self.code = code
         self.status_code = status_code
         self.retryable = retryable

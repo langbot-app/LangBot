@@ -35,6 +35,7 @@ export default function ImagePreviewDialog({
         {/* 图片 */}
         <img
           src={imageUrl}
+          referrerPolicy="no-referrer"
           alt="Preview"
           className="max-w-[50vw] max-h-[50vh] object-contain rounded-lg shadow-2xl bg-white"
           onClick={(e) => e.stopPropagation()}

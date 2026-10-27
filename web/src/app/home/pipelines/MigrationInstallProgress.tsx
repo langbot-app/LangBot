@@ -32,6 +32,24 @@ const stageKeys: Record<string, string> = {
   done: 'plugins.installProgress.completed',
 };
 
+function networkDiagnosticKey(kind: string) {
+  switch (kind) {
+    case 'connect_timeout':
+    case 'read_timeout':
+    case 'write_timeout':
+    case 'pool_timeout':
+      return 'pipelineMigration.networkDiagnostics.timeout';
+    case 'connect_error':
+      return 'pipelineMigration.networkDiagnostics.connection';
+    case 'incomplete_response':
+      return 'pipelineMigration.networkDiagnostics.incomplete';
+    case 'http_status':
+      return 'pipelineMigration.networkDiagnostics.http';
+    default:
+      return 'pipelineMigration.networkDiagnostics.network';
+  }
+}
+
 function bytes(value: number) {
   return value < 1024 * 1024
     ? `${(value / 1024).toFixed(1)} KB`
@@ -163,6 +181,15 @@ export default function MigrationInstallProgress({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 pt-1 text-xs">
+              {failed && item.diagnostic && (
+                <p className="text-muted-foreground">
+                  {t(networkDiagnosticKey(item.diagnostic.kind))}
+                  {Number.isInteger(item.diagnostic.http_status) &&
+                    item.diagnostic.http_status! >= 100 &&
+                    item.diagnostic.http_status! <= 599 &&
+                    ` (HTTP ${item.diagnostic.http_status})`}
+                </p>
+              )}
               <p className="break-all text-muted-foreground">
                 {item.author}/{item.name}
               </p>

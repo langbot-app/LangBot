@@ -77,6 +77,39 @@ cloud:
         # Signed control-plane envelope buffered by the closed adapter before
         # JSON/JWS verification (32 MiB; absolute maximum 64 MiB).
         max_response_bytes: 33554432
+    # Instance notice banner shown at the top of the Cloud WebUI. It is only
+    # rendered when this instance runs as a Cloud deployment, so self-hosted
+    # copies of this file never surface it. Every field is overridable through
+    # the environment (for example CLOUD__BANNER__ENABLED, and
+    # CLOUD__BANNER__CONTENT__ZH_HANS for one language of the copy).
+    banner:
+        # Master switch. False keeps the banner out of the UI entirely.
+        enabled: false
+        # Visual tone: info, warning, or maintenance.
+        level: info
+        # Let the reader hide the banner in the current browser session. A
+        # change of copy brings it back.
+        dismissible: true
+        # Append the "dedicated environment / self-hosting" links after the
+        # message. Turn off for a plain announcement.
+        show_links: true
+        # Inline link targets. Absolute http(s) URLs only; anything else falls
+        # back to these same defaults.
+        dedicated_url: 'https://space.langbot.app/cloud?environment=dedicated'
+        repository_url: 'https://github.com/langbot-app/LangBot'
+        # Optional per-language copy. A non-empty entry replaces the built-in
+        # message for that language; empty entries fall back to the built-in
+        # text. Keys use underscores because the environment override
+        # namespace cannot carry dashes. Plain text only, never markup.
+        content:
+            zh_Hans: ''
+            zh_Hant: ''
+            en_US: ''
+            ja_JP: ''
+            th_TH: ''
+            vi_VN: ''
+            es_ES: ''
+            ru_RU: ''
 proxy:
     http: ''
     https: ''
@@ -224,7 +257,8 @@ storage:
     max_object_read_bytes: 10485760
     # Media content cache (images & attachments externalized from monitoring and pipelines)
     media_cache:
-        # Retention period in days for cached media (defaults to 30 days)
+        # Retention for CAS files and historical inline images (defaults to 30 days).
+        # Inline images expire by record creation time; message text is retained.
         retention_days: 30
         # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
         max_size_mb: 0
@@ -357,13 +391,20 @@ monitoring:
         # Prevent one large Workspace backlog from monopolizing PostgreSQL.
         # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
         max_batches_per_table_per_run: 4
+skills:
+    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
+    # revisions remain available when Box is disabled.
+    # TODO(next-major): change the fresh-install default to './data/skills'
+    # after the online-upgrade window for the historical Box path closes.
+    root: './data/box/skills'
+
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box
-    # subprocess. Disabling Box also disables every feature that depends on it:
-    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
-    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
-    # be listed read-only and http/sse MCP servers continue to work.
+    # subprocess. Disabling Box disables execution-backed features: native
+    # sandbox tools (exec/read/write/edit/glob/grep), agent-side skill
+    # registration, and stdio-mode MCP servers. Skill management, activation,
+    # and read-only package resources remain available without Box.
     enabled: true
     # 'host' runs commands directly as the Box Runtime user without sandbox
     # isolation. It is never auto-selected and is only for trusted local
@@ -412,11 +453,15 @@ box:
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
-        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'
         workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+        # Extra environment variables injected into every Box exec payload.
+        # The agent-supplied per-call env overrides matching keys. Values must be strings.
+        # Every sandbox command, including untrusted agent commands, can read them;
+        # do not put secrets here. Loaded at startup; ignored in multi-workspace deployments.
+        env: {}
     # Default nsjail cgroup memory limit for each MCP stdio server process, in MB.
     # Node.js MCP servers (npx/bunx) need more memory than Python ones because V8
     # and WebAssembly modules (e.g. undici llhttp) reserve large virtual address

@@ -3,6 +3,7 @@ import { expect, Page, test } from '@playwright/test';
 import {
   installLangBotApiMocks,
   makeWorkspaceEntry,
+  pipelineMetadata,
 } from './fixtures/langbot-api';
 
 async function save(page: Page) {
@@ -31,11 +32,20 @@ async function createPlaywrightBot(page: Page, name: string, description = '') {
   await submit(page);
 }
 
-async function confirmDelete(page: Page) {
+async function confirmDelete(page: Page, apiPath: string) {
+  const responses: boolean[] = [];
+  page.on('response', (response) => {
+    if (
+      response.request().method() === 'DELETE' &&
+      new URL(response.url()).pathname === apiPath
+    )
+      responses.push(response.ok());
+  });
   await page
     .getByRole('dialog')
     .getByRole('button', { name: /^Confirm Delete$/ })
     .click();
+  await expect.poll(() => responses).toEqual([true]);
 }
 
 async function installDelayedFirstSave(page: Page, apiPath: string) {
@@ -198,10 +208,14 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/platform/bots/bot-1');
 
     await expect(page).toHaveURL(/\/home\/bots$/);
     await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Support Bot Updated', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('creates, edits, and deletes a pipeline', async ({ page }) => {
@@ -264,15 +278,26 @@ test.describe('frontend CRUD smoke flows', () => {
       .getByLabel('Description')
       .fill('Routes urgent customer issues to operators.');
     await pipelineInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(pipelineInfoDialog).toHaveCount(0);
+    await page.reload();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    await expect(
+      page.getByRole('dialog').getByLabel('Description'),
+    ).toHaveValue('Routes urgent customer issues to operators.');
+    await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Management' }).click();
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/pipelines/pipeline-1');
 
     await expect(page).toHaveURL(/\/home\/agents$/);
     await expect(
       page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Escalation Pipeline', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('opens pipeline AI capabilities with malformed model options', async ({
@@ -287,7 +312,7 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
     await page.getByRole('tab', { name: /^AI$/ }).click();
 
-    await expect(page.getByText('Runtime')).toBeVisible();
+    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
     await expect(
       page.locator('[data-slot="card-title"]').filter({
         hasText: 'Local Agent',
@@ -337,12 +362,16 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/knowledge/bases/knowledge-1');
 
     await expect(page).toHaveURL(/\/home\/knowledge$/);
     await expect(
       page.getByText('Select a knowledge base from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Support Knowledge Updated', { exact: true }),
+    ).toHaveCount(0);
   });
 
   test('creates, edits, and deletes an MCP server', async ({ page }) => {
@@ -366,18 +395,33 @@ test.describe('frontend CRUD smoke flows', () => {
     await page
       .locator('input[name="url"]')
       .fill('https://mcp.example.test/updated-sse');
+    const update = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().endsWith('/api/v1/mcp/servers/playwright-mcp'),
+    );
     await save(page);
+    expect((await update).request().postDataJSON()).toMatchObject({
+      name: 'playwright-mcp',
+      mode: 'remote',
+      extra_args: { url: 'https://mcp.example.test/updated-sse' },
+    });
+    await page.reload();
     await expect(page.locator('input[name="url"]')).toHaveValue(
       'https://mcp.example.test/updated-sse',
     );
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/mcp/servers/playwright-mcp');
 
     await expect(page).toHaveURL(/\/home\/mcp$/);
     await expect(
       page.getByText('Select an MCP server from the sidebar'),
     ).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('playwright-mcp', { exact: true })).toHaveCount(
+      0,
+    );
   });
 
   test('updates and deletes a manually-created skill', async ({ page }) => {
@@ -415,9 +459,13 @@ test.describe('frontend CRUD smoke flows', () => {
     );
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
-    await confirmDelete(page);
+    await confirmDelete(page, '/api/v1/skills/release_notes');
 
     await expect(page).toHaveURL(/\/home\/add-extension$/);
+    await page.goto('/home/skills');
+    await expect(page.getByText('Release Notes', { exact: true })).toHaveCount(
+      0,
+    );
   });
 });
 
@@ -679,6 +727,54 @@ test.describe('bot advanced flows', () => {
 
   test('switches between bot detail tabs', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+    await page.route('**/api/v1/platform/bots/bot-1/logs', (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            logs: [
+              {
+                seq_id: 1,
+                level: 'info',
+                text: 'Bot tab log response',
+                images: [],
+                message_session_id: '',
+                timestamp: 1792200000,
+              },
+            ],
+            total_count: 1,
+          },
+        },
+      }),
+    );
+    await page.route('**/api/v1/monitoring/sessions?**', (route) => {
+      expect(new URL(route.request().url()).searchParams.get('botId')).toBe(
+        'bot-1',
+      );
+      return route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            sessions: [
+              {
+                session_id: 'person_tab-user',
+                bot_id: 'bot-1',
+                bot_name: 'Tab Test Bot',
+                pipeline_id: 'pipeline-tab',
+                pipeline_name: 'Tab pipeline',
+                message_count: 1,
+                start_time: '2026-10-17T00:00:00Z',
+                last_activity: '2026-10-17T00:01:00Z',
+                is_active: true,
+                user_id: 'tab-user',
+                user_name: 'Tab Session User',
+              },
+            ],
+            total: 1,
+          },
+        },
+      });
+    });
 
     // Create a bot
     await page.goto('/home/bots?id=new');
@@ -699,12 +795,20 @@ test.describe('bot advanced flows', () => {
       'active',
     );
 
+    await expect(
+      page.getByText('Bot tab log response', { exact: true }),
+    ).toBeVisible();
+
     // Switch to Sessions tab
     await page.getByRole('tab', { name: /Sessions/ }).click();
     await expect(page.getByRole('tab', { name: /Sessions/ })).toHaveAttribute(
       'data-state',
       'active',
     );
+
+    await expect(
+      page.getByText('Tab Session User', { exact: true }),
+    ).toBeVisible();
 
     // Switch back to Configuration
     await page.getByRole('tab', { name: /Configuration/ }).click();
@@ -715,6 +819,14 @@ test.describe('bot advanced flows', () => {
 
   test('save button is disabled when form is clean', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.locator('#agent-create-form').getByRole('combobox').click();
+    await page.getByRole('option', { name: /Local Agent/ }).click();
+    await page.locator('input[name="name"]').fill('Dirty state target');
+    await submit(page);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     // Create a bot
     await page.goto('/home/bots?id=new');
@@ -728,7 +840,9 @@ test.describe('bot advanced flows', () => {
     ).toBeVisible();
 
     // After loading, save button should be disabled (form is clean)
-    const saveButton = page.getByRole('button', { name: /^Save$/ });
+    const saveButton = page.getByRole('button', {
+      name: /^Save(?: and enable)?$/,
+    });
     await expect(saveButton).toBeDisabled();
 
     await page.getByRole('button', { name: 'Edit basic information' }).click();
@@ -736,6 +850,18 @@ test.describe('bot advanced flows', () => {
     await infoDialog.getByLabel('Description').fill('New description');
     await infoDialog.getByRole('button', { name: 'Save' }).click();
     await expect(saveButton).toBeDisabled();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Dirty state target' }),
+    ).toHaveCount(2);
+    await expect(saveButton).toBeEnabled();
+    await save(page);
+    await expect(saveButton).toBeDisabled();
+    await page.reload();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Dirty state target' }),
+    ).toHaveCount(2);
   });
 
   test('shows validation error when bot name is empty', async ({ page }) => {
@@ -823,6 +949,17 @@ test.describe('pipeline advanced flows', () => {
 
   test('save button reflects form dirty state', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+    const metadata = pipelineMetadata();
+    metadata.configs[0].stages[1].config.push({
+      name: 'instruction',
+      label: { en_US: 'Instruction', zh_Hans: 'Instruction' },
+      type: 'text',
+      required: true,
+      default: 'Original instruction',
+    } as any);
+    await page.route('**/api/v1/pipelines/_/metadata', (route) =>
+      route.fulfill({ json: { code: 0, data: metadata } }),
+    );
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
@@ -842,6 +979,18 @@ test.describe('pipeline advanced flows', () => {
       page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
     ).toBeVisible();
     await expect(saveButton).toBeDisabled();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+    const instruction = page.locator('textarea[name="instruction"]');
+    await expect(instruction).toHaveValue('Original instruction');
+    await instruction.fill('Updated instruction');
+    await expect(saveButton).toBeEnabled();
+    await save(page);
+    await expect(saveButton).toBeDisabled();
+    await page.reload();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
+    await expect(page.locator('textarea[name="instruction"]')).toHaveValue(
+      'Updated instruction',
+    );
   });
 
   test('shows validation error when pipeline name is empty', async ({
@@ -865,253 +1014,329 @@ test.describe('pipeline advanced flows', () => {
 });
 
 test.describe('agent runner resource selectors', () => {
-  test('installs an Runner from the grouped empty selector and refreshes it', async ({
-    page,
-  }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
+  for (const kind of ['agent', 'pipeline'] as const) {
+    test(`installs an Runner from the grouped empty selector and refreshes it in ${kind}`, async ({
+      page,
+    }) => {
+      await installLangBotApiMocks(page, { authenticated: true });
 
-    const runnerId = 'plugin:qa/MarketplaceRunner/default';
-    let installed = false;
-    let installRequests = 0;
-    let taskPolls = 0;
-    let marketplaceSearchBody: Record<string, unknown> | undefined;
+      const runnerId = 'plugin:qa/MarketplaceRunner/default';
+      let installed = false;
+      let finished = false;
+      let installRequests = 0;
+      let taskPolls = 0;
+      let marketplaceSearchBody: Record<string, unknown> | undefined;
 
-    const apiResponse = (data: unknown) =>
-      JSON.stringify({
-        code: 0,
-        message: 'ok',
-        data,
-        timestamp: Date.now(),
-      });
-    const runnerConfig = () => ({
-      name: 'ai',
-      label: { en_US: 'AI Feature', zh_Hans: 'AI 能力' },
-      stages: [
-        {
-          name: 'runner',
-          label: { en_US: 'Runtime', zh_Hans: '运行方式' },
-          config: [
-            {
-              name: 'id',
-              label: { en_US: 'Runner', zh_Hans: '运行器' },
-              type: 'select',
-              required: true,
-              default: '',
-              options: installed
-                ? [
-                    {
-                      name: runnerId,
-                      label: {
-                        en_US: 'Marketplace Runner',
-                        zh_Hans: '市场运行器',
-                      },
-                    },
-                  ]
-                : [],
-            },
-          ],
-        },
-        ...(installed
-          ? [
+      const apiResponse = (data: unknown) =>
+        JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data,
+          timestamp: Date.now(),
+        });
+      const runnerConfig = () => ({
+        name: 'ai',
+        label: { en_US: 'AI Feature', zh_Hans: 'AI 能力' },
+        stages: [
+          {
+            name: 'runner',
+            label: { en_US: 'Runtime', zh_Hans: '运行方式' },
+            config: [
               {
-                name: runnerId,
-                label: {
-                  en_US: 'Marketplace Runner',
-                  zh_Hans: '市场运行器',
-                },
-                config: [],
+                name: 'id',
+                label: { en_US: 'Runner', zh_Hans: '运行器' },
+                type: 'select',
+                required: true,
+                default: '',
+                options: installed
+                  ? [
+                      {
+                        name: runnerId,
+                        label: {
+                          en_US: 'Marketplace Runner',
+                          zh_Hans: '市场运行器',
+                        },
+                      },
+                    ]
+                  : [],
               },
-            ]
-          : []),
-      ],
-    });
-
-    await page.route('**/api/v1/agents/_/metadata', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({
-          runner_config: runnerConfig(),
-          kinds: [],
-        }),
-      }),
-    );
-    await page.route('**/api/v1/agents/agent-empty', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({
-          agent: {
-            uuid: 'agent-empty',
-            name: 'Empty Runner Agent',
-            description: '',
-            emoji: 'A',
-            kind: 'agent',
-            config: {
-              runner: { id: '', 'expire-time': 0 },
-              runner_config: {},
-            },
-            supported_event_patterns: ['*'],
+            ],
           },
-        }),
-      }),
-    );
-    await page.route('**/api/v1/pipelines/_/metadata', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({ configs: [runnerConfig()] }),
-      }),
-    );
-    await page.route('**/api/v1/plugins', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({
-          plugins: installed
+          ...(installed
             ? [
                 {
-                  manifest: {
-                    manifest: {
-                      metadata: { author: 'qa', name: 'MarketplaceRunner' },
-                    },
+                  name: runnerId,
+                  label: {
+                    en_US: 'Marketplace Runner',
+                    zh_Hans: '市场运行器',
                   },
+                  config: [],
                 },
               ]
-            : [],
-        }),
-      }),
-    );
-    await page.route('**/api/v1/plugins/install/marketplace', (route) => {
-      installRequests += 1;
-      installed = true;
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({ task_id: 77 }),
+            : []),
+        ],
       });
-    });
-    await page.route('**/api/v1/system/tasks/77', (route) => {
-      taskPolls += 1;
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: apiResponse({
-          id: 77,
-          name: 'plugin-install-marketplace',
-          label: 'Marketplace Runner',
-          runtime: { done: true, exception: null },
-          task_context: { current_action: 'complete', metadata: {} },
-        }),
-      });
-    });
-    await page.route(
-      'https://space.langbot.app/api/v1/marketplace/extensions/search',
-      async (route) => {
-        marketplaceSearchBody = JSON.parse(
-          route.request().postData() || '{}',
-        ) as Record<string, unknown>;
-        await route.fulfill({
+
+      await page.route('**/api/v1/agents/_/metadata', (route) =>
+        route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: apiResponse({
-            extensions: [
-              {
-                id: 1,
-                plugin_id: 'qa/MarketplaceRunner',
-                author: 'qa',
-                name: 'MarketplaceRunner',
-                label: {
-                  en_US: 'Marketplace Runner',
-                  zh_Hans: '市场运行器',
-                },
-                description: {
-                  en_US: 'Runner used by the grouped selector test.',
-                  zh_Hans: '用于分组选择器测试的运行器。',
-                },
-                icon: '',
-                repository: 'https://example.test/runner',
-                tags: [],
-                install_count: 12,
-                latest_version: '1.0.0',
-                components: { Runner: 1 },
-                runner_usages: ['agent'],
-                status: 'live',
-                type: 'plugin',
-                created_at: '2026-01-01T00:00:00Z',
-                updated_at: '2026-01-01T00:00:00Z',
+            runner_config: runnerConfig(),
+            kinds: [],
+          }),
+        }),
+      );
+      await page.route('**/api/v1/agents/agent-empty', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({
+            agent: {
+              uuid: 'agent-empty',
+              name: 'Empty Runner Agent',
+              description: '',
+              emoji: 'A',
+              kind: 'agent',
+              config: {
+                runner: { id: '', 'expire-time': 0 },
+                runner_config: {},
               },
-            ],
-            total: 1,
+              supported_event_patterns: ['*'],
+            },
+          }),
+        }),
+      );
+      await page.route('**/api/v1/pipelines/_/metadata', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({ configs: [runnerConfig()] }),
+        }),
+      );
+      await page.route('**/api/v1/plugins', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({
+            plugins: installed
+              ? [
+                  {
+                    manifest: {
+                      manifest: {
+                        metadata: {
+                          author: 'qa',
+                          name: 'MarketplaceRunner',
+                          description: {
+                            en_US: 'Installed plugin description',
+                          },
+                        },
+                      },
+                    },
+                  },
+                ]
+              : [],
+          }),
+        }),
+      );
+      await page.route('**/api/v1/plugins/install/marketplace', (route) => {
+        installRequests += 1;
+        installed = true;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({ task_id: 77 }),
+        });
+      });
+      await page.route('**/api/v1/system/tasks/77', (route) => {
+        taskPolls += 1;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: apiResponse({
+            id: 77,
+            name: 'plugin-install-marketplace',
+            label: 'Marketplace Runner',
+            runtime: { done: finished, exception: null },
+            task_context: { current_action: 'complete', metadata: {} },
           }),
         });
-      },
-    );
-
-    await page.goto('/home/agents?id=agent-empty');
-    await page.getByRole('tab', { name: /^Runner$/ }).click();
-
-    const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
-    const triggerBox = await runnerSelect.boundingBox();
-    await runnerSelect.click();
-    await expect(page.getByText('Installed Runners')).toBeVisible();
-    await expect(
-      page.getByText('No Runner extension is installed yet.'),
-    ).toBeVisible();
-    await expect(page.getByText('Runner plugins in Marketplace')).toBeVisible();
-    const selectorPopup = page.locator('[data-slot="select-content"]');
-    await expect(
-      selectorPopup.getByText('Runner used by the grouped selector test.', {
-        exact: true,
-      }),
-    ).toBeVisible();
-    const popupBox = await selectorPopup.boundingBox();
-    expect(triggerBox?.width).toBeLessThanOrEqual(353);
-    expect(popupBox?.width ?? 0).toBeLessThanOrEqual(
-      (triggerBox?.width ?? 0) + 1,
-    );
-    expect(popupBox?.width ?? 0).toBeGreaterThan((triggerBox?.width ?? 0) - 20);
-    await expect
-      .poll(() => marketplaceSearchBody)
-      .toMatchObject({
-        component_filter: 'Runner',
-        type_filter: 'plugin',
       });
+      await page.route(
+        'https://space.langbot.app/api/v1/marketplace/extensions/search',
+        async (route) => {
+          marketplaceSearchBody = JSON.parse(
+            route.request().postData() || '{}',
+          ) as Record<string, unknown>;
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: apiResponse({
+              extensions: [
+                {
+                  id: 1,
+                  plugin_id: 'qa/MarketplaceRunner',
+                  author: 'qa',
+                  name: 'MarketplaceRunner',
+                  label: {
+                    en_US: 'Marketplace Runner',
+                    zh_Hans: '市场运行器',
+                  },
+                  description: {
+                    en_US: 'Runner used by the grouped selector test.',
+                    zh_Hans: '用于分组选择器测试的运行器。',
+                  },
+                  icon: '',
+                  repository: 'https://example.test/runner',
+                  tags: [],
+                  install_count: 12,
+                  latest_version: '1.0.0',
+                  components: { Runner: 1 },
+                  runner_usages: ['agent'],
+                  status: 'live',
+                  type: 'plugin',
+                  created_at: '2026-01-01T00:00:00Z',
+                  updated_at: '2026-01-01T00:00:00Z',
+                },
+                {
+                  author: 'qa',
+                  name: 'SecondRunner',
+                  label: { en_US: 'A much longer second Runner label' },
+                  description: { en_US: 'Second runner description' },
+                  latest_version: '1.0.0',
+                  components: { Runner: 1 },
+                  runner_usages: ['agent'],
+                  install_count: 1,
+                  type: 'plugin',
+                },
+              ].filter(
+                (plugin) => !installed || plugin.name !== 'MarketplaceRunner',
+              ),
+              total: installed ? 1 : 2,
+            }),
+          });
+        },
+      );
 
-    await page
-      .getByRole('button', { name: 'Install Marketplace Runner', exact: true })
-      .click();
+      await page.route('**/api/v1/pipelines/agent-empty', (route) =>
+        route.fulfill({
+          json: {
+            code: 0,
+            data: {
+              pipeline: {
+                uuid: 'agent-empty',
+                kind: 'pipeline',
+                name: 'Empty Runner Pipeline',
+                description: '',
+                emoji: 'P',
+                is_default: false,
+                config: {
+                  ai: {
+                    runner: { id: '', 'expire-time': 0 },
+                    runner_config: {},
+                  },
+                  trigger: {},
+                  safety: {},
+                  output: {},
+                },
+              },
+            },
+          },
+        }),
+      );
+      await page.goto(
+        kind === 'agent'
+          ? '/home/agents?id=agent-empty'
+          : '/home/pipelines?id=agent-empty',
+      );
+      await page
+        .getByRole('tab', { name: kind === 'agent' ? /^Runner$/ : /^AI$/ })
+        .click();
 
-    await expect.poll(() => installRequests).toBe(1);
-    await expect.poll(() => taskPolls).toBeGreaterThan(0);
-    await expect(
-      page.getByRole('option', {
-        name: 'Marketplace Runner Runner used by the grouped selector test.',
-        exact: true,
-      }),
-    ).toBeVisible();
-    await page
-      .getByRole('option', {
-        name: 'Marketplace Runner Runner used by the grouped selector test.',
-        exact: true,
-      })
-      .click();
-    await expect(runnerSelect).toContainText('Marketplace Runner');
+      const runnerSelect = page.getByRole('combobox', {
+        name: 'Runner',
+        includeHidden: true,
+      });
+      const triggerBox = await runnerSelect.boundingBox();
+      await runnerSelect.click();
+      await expect(page.getByText('Installed Runners')).toBeVisible();
+      await expect(
+        page.getByText('No Runner extension is installed yet.'),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Runner plugins in Marketplace'),
+      ).toBeVisible();
+      const selectorPopup = page.locator('[data-slot="select-content"]');
+      await expect(
+        selectorPopup.getByText('Runner used by the grouped selector test.', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      const popupBox = await selectorPopup.boundingBox();
+      expect(triggerBox?.width).toBeLessThanOrEqual(353);
+      expect(popupBox?.width ?? 0).toBeLessThanOrEqual(
+        (triggerBox?.width ?? 0) + 1,
+      );
+      expect(popupBox?.width ?? 0).toBeGreaterThan(
+        (triggerBox?.width ?? 0) - 20,
+      );
+      await expect
+        .poll(() => marketplaceSearchBody)
+        .toMatchObject({
+          component_filter: 'Runner',
+          type_filter: 'plugin',
+        });
 
-    await runnerSelect.click();
-    await expect(
-      page.getByRole('option', {
-        name: 'Marketplace Runner Runner used by the grouped selector test.',
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', {
+      const install = page.getByRole('button', {
         name: 'Install Marketplace Runner',
         exact: true,
-      }),
-    ).toHaveCount(0);
-  });
+      });
+      const otherInstall = page.getByRole('button', {
+        name: 'Install A much longer second Runner label',
+        exact: true,
+      });
+      const positions = await Promise.all([
+        install.boundingBox(),
+        otherInstall.boundingBox(),
+      ]);
+      expect(positions.every(Boolean)).toBe(true);
+      expect(Math.abs(positions[0]!.x - positions[1]!.x)).toBeLessThanOrEqual(
+        1,
+      );
+      expect(
+        Math.abs(positions[0]!.width - positions[1]!.width),
+      ).toBeLessThanOrEqual(1);
+      await install.click();
+      await expect(install).toContainText('%');
+      await expect(otherInstall).toBeDisabled();
+      await expect(runnerSelect).not.toContainText('Marketplace Runner');
+      finished = true;
+
+      await expect.poll(() => installRequests).toBe(1);
+      await expect.poll(() => taskPolls).toBeGreaterThan(0);
+      await expect(
+        page.getByRole('option', {
+          name: 'Marketplace Runner Installed plugin description',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(runnerSelect).not.toContainText('Marketplace Runner');
+      await expect(
+        page.getByRole('button', {
+          name: 'Install Marketplace Runner',
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await expect(otherInstall).toBeEnabled();
+      await page
+        .getByRole('option', {
+          name: 'Marketplace Runner Installed plugin description',
+          exact: true,
+        })
+        .click();
+      await expect(runnerSelect).toContainText('Marketplace Runner');
+    });
+  }
 
   test('uses the compact Runner marketplace selector in pipeline AI settings', async ({
     page,
@@ -1360,9 +1585,10 @@ test.describe('cross-resource flows', () => {
     await page.getByRole('menuitem', { name: /^Welcome new members/ }).click();
 
     const routeCards = page.locator('[data-testid^="event-route-"]');
-    await expect(routeCards).toHaveCount(2);
+    await expect(routeCards).toHaveCount(3);
     await expect(routeCards.nth(0)).toContainText('Message received');
-    await expect(routeCards.nth(1)).toContainText('Member joined group');
+    await expect(routeCards.nth(1)).toContainText('Message received');
+    await expect(routeCards.nth(2)).toContainText('Member joined group');
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page
@@ -1380,14 +1606,14 @@ test.describe('cross-resource flows', () => {
     await eventSubmenu
       .getByRole('menuitem', { name: /^Message edited/ })
       .click();
-    await expect(routeCards).toHaveCount(3);
-    await expect(routeCards.nth(2)).toContainText('Message edited');
+    await expect(routeCards).toHaveCount(4);
+    await expect(routeCards.nth(3)).toContainText('Message edited');
 
-    const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
-    const secondCard = routeCards.nth(1);
-    await firstHandle.scrollIntoViewIfNeeded();
-    const handleBox = await firstHandle.boundingBox();
-    const targetBox = await secondCard.boundingBox();
+    const memberHandle = page.getByRole('button', { name: 'Drag route 3' });
+    const firstCard = routeCards.nth(0);
+    await memberHandle.scrollIntoViewIfNeeded();
+    const handleBox = await memberHandle.boundingBox();
+    const targetBox = await firstCard.boundingBox();
     expect(handleBox).not.toBeNull();
     expect(targetBox).not.toBeNull();
 
@@ -1418,7 +1644,8 @@ test.describe('cross-resource flows', () => {
     const savedRouteCards = page.locator('[data-testid^="event-route-"]');
     await expect(savedRouteCards.nth(0)).toContainText('Member joined group');
     await expect(savedRouteCards.nth(1)).toContainText('Message received');
-    await expect(savedRouteCards.nth(2)).toContainText('Message edited');
+    await expect(savedRouteCards.nth(2)).toContainText('Message received');
+    await expect(savedRouteCards.nth(3)).toContainText('Message edited');
   });
 
   test('creates a pipeline then binds it to a bot', async ({ page }) => {
@@ -1445,13 +1672,9 @@ test.describe('cross-resource flows', () => {
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
-    await page
-      .getByRole('combobox')
-      .filter({ hasText: 'Select processor' })
-      .click();
-
-    // Select the pipeline option
-    await page.getByRole('option', { name: /Production Pipeline/ }).click();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
+    ).toHaveCount(2);
 
     // Save the bot
     await save(page);
@@ -1461,42 +1684,6 @@ test.describe('cross-resource flows', () => {
     // The pipeline name should appear in the select trigger (not in sidebar or options)
     await expect(
       page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
-    ).toBeVisible();
-  });
-});
-
-test.describe('empty states', () => {
-  test('shows empty state when no bots exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/bots');
-    await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
-  });
-
-  test('shows empty state when no processors exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/agents');
-    await expect(
-      page.getByText('Select a processor from the sidebar'),
-    ).toBeVisible();
-  });
-
-  test('shows empty state when no knowledge bases exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/knowledge');
-    await expect(
-      page.getByText('Select a knowledge base from the sidebar'),
-    ).toBeVisible();
-  });
-
-  test('shows empty state when no MCP servers exist', async ({ page }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
-
-    await page.goto('/home/mcp');
-    await expect(
-      page.getByText('Select an MCP server from the sidebar'),
-    ).toBeVisible();
+    ).toHaveCount(2);
   });
 });

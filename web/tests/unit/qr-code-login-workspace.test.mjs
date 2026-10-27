@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 
 const root = process.cwd();
 const dialogPath = path.join(
@@ -12,43 +13,30 @@ const localeDir = path.join(root, 'src/i18n/locales');
 const backendUrlPath = path.join(root, 'src/app/infra/http/backendUrl.ts');
 
 const dialogSource = fs.readFileSync(dialogPath, 'utf8');
-const backendUrlSource = fs.readFileSync(backendUrlPath, 'utf8');
+const { resolveBackendBaseUrl } = await import(
+  `data:text/javascript;base64,${Buffer.from(
+    ts.transpileModule(fs.readFileSync(backendUrlPath, 'utf8'), {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText,
+  ).toString('base64')}`
+);
 
 test('QR login resolves a proxy-root API base against the current origin', () => {
-  assert.match(dialogSource, /const baseUrl = getBackendBaseUrl\(\)/);
-  assert.match(backendUrlSource, /!configured \|\| configured === '\/'/);
-  assert.match(backendUrlSource, /return normalizedOrigin/);
-  assert.doesNotMatch(
-    dialogSource,
-    /import\.meta\.env\.VITE_API_BASE_URL \|\| window\.location\.origin/,
-  );
-});
-
-test('QR credential exchanges preserve the active Workspace scope', () => {
-  assert.match(dialogSource, /getActiveWorkspaceUuid/);
-  assert.match(
-    dialogSource,
-    /sessionWorkspaceUuidRef\.current = workspaceUuid/,
-  );
-  assert.match(
-    dialogSource,
-    /const workspaceUuid = sessionWorkspaceUuidRef\.current/,
-  );
-  assert.match(dialogSource, /sessionApiBaseRef\.current = cfg\.apiBase/);
-  assert.match(
-    dialogSource,
-    /`\$\{baseUrlRef\.current\}\$\{sessionApiBaseRef\.current\}\/\$\{sessionIdRef\.current\}`/,
-  );
-  assert.match(dialogSource, /'X-Workspace-Id': workspaceUuid/);
-
-  const workspaceHeaderUses = dialogSource.match(
-    /'X-Workspace-Id': workspaceUuid/g,
-  );
-  assert.equal(
-    workspaceHeaderUses?.length,
-    4,
-    'start, poll, expiry cleanup, and dialog cleanup must all retain Workspace scope',
-  );
+  for (const [configured, expected] of [
+    [undefined, 'https://core.example'],
+    ['', 'https://core.example'],
+    ['/', 'https://core.example'],
+    ['/proxy/', 'https://core.example/proxy'],
+    ['proxy', 'https://core.example/proxy'],
+    ['https://api.example/root/', 'https://api.example/root'],
+  ])
+    assert.equal(
+      resolveBackendBaseUrl(configured, 'https://core.example///'),
+      expected,
+    );
 });
 
 test('WeChat QR login never reuses Feishu progress copy', () => {

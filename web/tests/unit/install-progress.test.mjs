@@ -25,7 +25,6 @@ new Function('require', 'module', 'exports', compiled)(
 
 const {
   InstallStage,
-  INSTALL_PROGRESS_CAP,
   STAGE_PROGRESS_RANGE,
   computeStageProgress,
   mapActionToStage,
@@ -92,27 +91,22 @@ test('measured byte counts stay inside the download stage range', () => {
   );
 });
 
-test('fallback drift never spills into the next stage range', () => {
-  for (const stage of [
-    InstallStage.DOWNLOADING,
-    InstallStage.INSTALLING_DEPS,
-    InstallStage.INITIALIZING,
-    InstallStage.LAUNCHING,
-  ]) {
-    const [start, end] = STAGE_PROGRESS_RANGE[stage];
-    const progress = computeStageProgress({
-      stage,
-      stageElapsedSeconds: 100000,
-    });
+test('fallback drift advances within fixed stage boundaries', () => {
+  const stages = [
+    [InstallStage.DOWNLOADING, 5, 25, 44],
+    [InstallStage.INSTALLING_DEPS, 45, 65, 84],
+    [InstallStage.INITIALIZING, 85, 87, 87],
+    [InstallStage.LAUNCHING, 88, 92, 96],
+  ];
 
-    assert.ok(
-      progress >= start && progress <= end,
-      `stage ${stage} produced ${progress}, outside [${start}, ${end}]`,
-    );
-    assert.ok(
-      progress < INSTALL_PROGRESS_CAP,
-      `stage ${stage} must not reach the completion cap on drift alone`,
-    );
+  for (const [stage, start, midpoint, ceiling] of stages) {
+    const progressAt = (stageElapsedSeconds) =>
+      computeStageProgress({ stage, stageElapsedSeconds });
+    assert.equal(progressAt(0), start);
+    assert.equal(progressAt(1), start);
+    assert.equal(progressAt(4), start + 2);
+    assert.equal(progressAt((midpoint - start) * 2), midpoint);
+    assert.equal(progressAt(100000), ceiling);
   }
 });
 
@@ -173,18 +167,24 @@ test('measured bytes override Host coarse progress and fallback stays bounded', 
   }
 });
 
-test('a missing or zero download total falls back to bounded drift', () => {
-  const [start, end] = STAGE_PROGRESS_RANGE[InstallStage.DOWNLOADING];
-
-  const progress = computeStageProgress({
-    stage: InstallStage.DOWNLOADING,
-    downloadCurrent: 10,
-    downloadTotal: 0,
-    stageElapsedSeconds: 100000,
-  });
-
-  assert.ok(
-    progress >= start && progress <= end,
-    `expected progress within [${start}, ${end}], received ${progress}`,
-  );
+test('a missing or zero download total advances using fallback drift', () => {
+  for (const downloadTotal of [undefined, 0]) {
+    for (const [stageElapsedSeconds, expected] of [
+      [0, 5],
+      [4, 7],
+      [20, 15],
+      [100000, 44],
+    ]) {
+      assert.equal(
+        computeStageProgress({
+          stage: InstallStage.DOWNLOADING,
+          downloadCurrent: 10,
+          downloadTotal,
+          stageElapsedSeconds,
+        }),
+        expected,
+        `download total ${downloadTotal}, elapsed ${stageElapsedSeconds}s`,
+      );
+    }
+  }
 });

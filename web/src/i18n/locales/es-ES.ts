@@ -1,5 +1,128 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
+  planRevision: {
+    subscribedOn: 'Fecha de suscripción: {{date}}',
+    latestQuota: 'Cuotas más recientes de este plan',
+    showLatest: 'Ver las cuotas más recientes de este plan',
+    showCurrent: 'Ver tu suscripción actual',
+    latestTab: 'Más reciente',
+    currentTab: 'Actual',
+    cancelToSubscribe:
+      'Cancela tu suscripción para acceder a las últimas cuotas el próximo período',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Renovar la suscripción actual',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Suscripción no disponible',
+    subscriptionUnavailableHint:
+      'Este plan no acepta nuevas suscripciones. Elige otro plan. Las suscripciones existentes y sus renovaciones automáticas no se ven afectadas.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Cuenta Oficial',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Gestionar suscripción',
+    downgradeUnavailable: 'No se puede cambiar al plan gratuito',
+    features: {
+      multiUserWorkspace: 'Espacio de trabajo multiusuario',
+      remoteE2BSandbox: 'Configuración de sandbox E2B remoto',
+      communitySupport: 'Soporte de la comunidad',
+      everythingInFree: 'Todas las funciones del plan gratuito',
+      alwaysOnSandbox: 'Un sandbox global siempre activo',
+      higherWorkspaceLimits: 'Límites superiores del espacio de trabajo',
+    },
+    title: 'Comparar planes',
+    description: 'Elige un plan para {{workspace}}',
+    billing: 'Ciclo de facturación',
+    monthly: 'Mensual',
+    annual: 'Anual',
+    currency: 'Moneda',
+    loading: 'Cargando planes…',
+    error: 'No se pudieron cargar los planes',
+    retry: 'Reintentar',
+    empty: 'No hay planes disponibles',
+    current: 'Plan actual',
+    recommended: 'Recomendado',
+    free: 'Gratis',
+    annualNote: 'Equivale a {{price}} / mes',
+    ownerOnly: 'Solo propietario o administrador',
+    choose: 'Continuar al pago',
+    handoff: 'Inicia sesión y paga en Space. Se conservará tu selección.',
+    quotas: 'Cuotas del espacio',
+    unlimited: 'Sin límite',
+    retention: 'Historial · {{count}} días',
+    retentionLabel: 'Retención del historial',
+    retentionHelp:
+      'El historial se elimina automáticamente al superar este periodo.',
+    credits: '{{count}} créditos de modelo al mes',
+    creditsLabel: 'Créditos mensuales',
+    creditsHelp:
+      'Los créditos se conceden cada mes de suscripción, también en los planes anuales.',
+    platforms: 'Plataformas principales compatibles',
+    excludedPlatforms: 'No compatibles: {{platforms}}',
+    allPlatforms: 'Todas las plataformas disponibles',
+    limits: {
+      bots: 'Bots',
+      pipelines: 'Procesadores',
+      knowledge_bases: 'Bases de conocimiento',
+      plugins: 'Extensiones',
+      members: 'Miembros',
+      managed_sandbox_sessions: 'Sesiones de sandbox gestionado',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Idioma del espacio de trabajo',
+    description:
+      'Idioma de los mensajes del servidor y respuestas predeterminadas del bot. No cambia tu interfaz.',
+    saved: 'Idioma guardado',
+    saveFailed: 'No se pudo guardar el idioma',
+  },
   inflight: {
     autoCollapse: 'Plegar auto.',
     empty: 'No hay eventos en proceso',
@@ -842,6 +965,8 @@ const esES = {
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
     createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
+    autoCreatedPipeline:
+      'Se ha creado un pipeline automáticamente y se han vinculado los eventos de mensajes',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
@@ -911,7 +1036,7 @@ const esES = {
     dragEventRoute: 'Arrastrar ruta {{index}}',
     behaviorReplyMessages: 'Responder a mensajes',
     behaviorReplyMessagesDescription:
-      'Envía los mensajes entrantes a un procesador.',
+      'Procesa mensajes privados y mensajes de grupo que mencionen a este bot.',
     behaviorWelcomeMembers: 'Dar la bienvenida a nuevos miembros',
     behaviorWelcomeMembersDescription:
       'Ejecuta un procesador cuando alguien se une a un grupo.',
@@ -1138,6 +1263,9 @@ const esES = {
       'Deben cumplirse todas las condiciones. Déjalo vacío para activar siempre.',
     conditionsEmpty: 'Sin condiciones: siempre se activa.',
     addFilter: 'Añadir condición',
+    filterIsAtBot: 'Menciona a este bot',
+    mentionYes: 'Sí',
+    mentionNo: 'No',
     filterChatType: 'Tipo de sesión',
     filterChatId: 'ID de sesión',
     filterMessageText: 'Texto del mensaje',
@@ -1512,6 +1640,17 @@ const esES = {
     restoringRunnerInstall:
       'Restaurando la instalación del plugin y esperando al ejecutor…',
     noInstalledRunners: 'Aún no hay extensiones de ejecutor instaladas.',
+    runnerDiagnosis: {
+      missing:
+        'No se encuentra el Runner seleccionado o su complemento. Instale o restaure el complemento.',
+      disabled:
+        'El complemento del Runner seleccionado está deshabilitado. Actívelo en Complementos.',
+      runtime:
+        'El entorno de ejecución de complementos no está disponible o está deshabilitado. Restablezca la conexión antes de ejecutar.',
+      repair: 'Gestionar complementos y entorno de ejecución',
+      draft:
+        'La reparación se abre en otra pestaña. La selección del Runner y el borrador sin guardar se conservan aquí.',
+    },
     installingRunner: 'Instalando {{runner}}...',
     runnerInstallSuccess:
       '{{runner}} está instalado y listo para seleccionarse',
@@ -2130,6 +2269,10 @@ const esES = {
       addPlugin: 'Añadir plugin',
       selectPlugins: 'Seleccionar plugins',
       pluginsTitle: 'Plugins',
+      pluginScopeHint:
+        'Solo controla los escuchadores de eventos, herramientas y comandos de este pipeline; no afecta al Runner elegido en los ajustes de IA.',
+      runnerScopeHint:
+        'El Runner se elige aquí independientemente de los interruptores de plugins de extensiones. Su plugin debe estar instalado y disponible.',
       mcpServersTitle: 'Servidores MCP',
       mcpResourcesTitle: 'Recursos MCP',
       noMCPServersSelected: 'No hay servidores MCP seleccionados',
@@ -2174,7 +2317,7 @@ const esES = {
       mcpToolsScopeTooltip:
         'Aquí solo se muestran herramientas de servidores MCP permitidos actualmente en Extensiones.',
       skillToolsScopeTooltip:
-        'Las herramientas de skill aparecen cuando el servicio de skills de LangBot y el backend de sandbox Box están disponibles. Permiten al agente activar o registrar skills.',
+        'La activación y los recursos de solo lectura funcionan sin Box. Registrar un skill desde el espacio del Agent aún requiere el sandbox Box.',
       selectTools: 'Seleccionar herramientas',
       resourcesTitle: 'Recursos',
       resourcesDescription:
@@ -2610,8 +2753,7 @@ const esES = {
     upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
-    cloudManagedDescription:
-      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -3060,9 +3202,9 @@ const esES = {
     statusDetail: 'Estado',
     pluginDisabled: 'El sistema de plugins está desactivado',
     boxDisabled:
-      'El sandbox de Box está desactivado en la configuración — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+      'El sandbox de Box está desactivado en la configuración — las herramientas de ejecución y MCP stdio no están disponibles',
     boxUnavailable:
-      'El sandbox de Box no está disponible — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+      'El sandbox de Box no está disponible — las herramientas de ejecución y MCP stdio no están disponibles',
     boxRequiredHint:
       'Esta función requiere el runtime de Box. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime está conectado.',
     boxBackend: 'Backend',
@@ -3690,12 +3832,13 @@ const esES = {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',
   },
-  beta_banner: {
+  cloud_banner: {
     message:
-      'Este entorno está en fase beta. La estabilidad del servicio no está garantizada. Considera usar',
-    cloud_link: 'LangBot Cloud (entorno dedicado)',
+      'Estás usando LangBot Cloud, el servicio gestionado. Para obtener recursos dedicados y cuotas mayores, considera usar',
+    dedicated_link: 'LangBot Cloud (entorno dedicado)',
+    cta_dedicated: 'ver los planes dedicados',
     or: 'o',
-    oss_link: 'la versión de código abierto autoalojada',
+    self_hosted_link: 'la versión de código abierto autoalojada',
     period: '.',
     dismiss: 'Cerrar',
   },

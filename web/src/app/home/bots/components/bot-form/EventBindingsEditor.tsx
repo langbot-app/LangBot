@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import styles from './EventBindingsEditor.module.css';
+import { appendMessageRoutingTemplate } from './message-routing-template';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
@@ -147,22 +148,19 @@ type FilterField =
   | 'chat_type'
   | 'chat_id'
   | 'message_text'
-  | 'message_element_types';
+  | 'message_element_types'
+  | 'is_at_bot';
 type FilterOperator =
-  | 'eq'
-  | 'neq'
-  | 'contains'
-  | 'not_contains'
-  | 'starts_with'
-  | 'regex';
+  'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'regex';
 
 interface FilterRow {
   field: FilterField;
   operator: FilterOperator;
-  value: string;
+  value: string | boolean;
 }
 
 const OPERATORS_BY_FIELD: Record<FilterField, FilterOperator[]> = {
+  is_at_bot: ['eq', 'neq'],
   chat_type: ['eq', 'neq'],
   chat_id: ['eq', 'neq', 'contains', 'not_contains', 'regex'],
   message_text: [
@@ -451,7 +449,7 @@ function samplePayloadForEvent(eventType: string): Record<string, unknown> {
   if (eventType === 'message.received') {
     return {
       message_text: 'Hello',
-      chat_type: 'private',
+      chat_type: 'person',
       chat_id: 'test-user',
       user_id: 'test-user',
     };
@@ -735,7 +733,7 @@ function FilterConditionsPanel({
     next[i] = { ...next[i], ...patch };
     if ('field' in patch) {
       next[i].operator = OPERATORS_BY_FIELD[patch.field as FilterField][0];
-      next[i].value = '';
+      next[i].value = patch.field === 'is_at_bot' ? true : '';
     }
     onChange(next);
   }
@@ -763,6 +761,9 @@ function FilterConditionsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="is_at_bot">
+                {t('bots.filterIsAtBot')}
+              </SelectItem>
               <SelectItem value="chat_type">
                 {t('bots.filterChatType')}
               </SelectItem>
@@ -792,9 +793,22 @@ function FilterConditionsPanel({
             </SelectContent>
           </Select>
 
-          {f.field === 'chat_type' ? (
+          {f.field === 'is_at_bot' ? (
             <Select
-              value={f.value}
+              value={String(f.value)}
+              onValueChange={(v) => update(i, { value: v === 'true' })}
+            >
+              <SelectTrigger className="h-8 w-[90px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">{t('bots.mentionYes')}</SelectItem>
+                <SelectItem value="false">{t('bots.mentionNo')}</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : f.field === 'chat_type' ? (
+            <Select
+              value={String(f.value)}
               onValueChange={(v) => update(i, { value: v })}
             >
               <SelectTrigger className="h-8 w-[90px] text-xs">
@@ -811,7 +825,7 @@ function FilterConditionsPanel({
             </Select>
           ) : f.field === 'message_element_types' ? (
             <Select
-              value={f.value}
+              value={String(f.value)}
               onValueChange={(v) => update(i, { value: v })}
             >
               <SelectTrigger className="h-8 w-[100px] text-xs">
@@ -833,7 +847,7 @@ function FilterConditionsPanel({
                   ? t('bots.ruleValueLauncherIdPlaceholder')
                   : t('bots.ruleValueMessagePlaceholder')
               }
-              value={f.value}
+              value={String(f.value)}
               onChange={(e) => update(i, { value: e.target.value })}
             />
           )}
@@ -1608,6 +1622,18 @@ export default function EventBindingsEditor({
   }
 
   function addBinding(eventPattern = 'message.received') {
+    if (eventPattern === 'message.received') {
+      const target =
+        agentOptions.find((agent) => agent.kind === 'pipeline') ??
+        agentOptions.find((agent) => agent.kind === 'agent');
+      updateBindings(
+        appendMessageRoutingTemplate(bindings, {
+          target_type: target?.kind === 'pipeline' ? 'pipeline' : 'agent',
+          target_uuid: target?.uuid ?? '',
+        }),
+      );
+      return;
+    }
     updateBindings([
       ...bindings,
       {

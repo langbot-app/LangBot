@@ -184,7 +184,7 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         normalized = LarkMessageConverter._normalize_inbound_content(message, message_content)
         for ele in normalized:
             tag = ele.get('tag')
-            if tag in {'text', 'md'}:
+            if tag in {'text', 'md', 'code_block'}:
                 text = ele.get('text') or ''
                 if text:
                     components.append(platform_message.Plain(text=text))

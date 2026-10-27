@@ -1,6 +1,129 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 const jaJP = {
+  planRevision: {
+    subscribedOn: '契約日：{{date}}',
+    latestQuota: 'このプランの最新の利用枠',
+    showLatest: 'このプランの最新クォータを表示',
+    showCurrent: '現在のサブスクリプションを表示',
+    latestTab: '最新',
+    currentTab: '現在',
+    cancelToSubscribe:
+      '現在のサブスクリプションをキャンセルすると、次期から最新のクォータに登録できます',
+
+    current: '現在の契約：{{plan}} · revision {{revision}}',
+    owned: '購入済み revision {{revision}}',
+    latest: '最新 revision {{revision}}',
+    changed:
+      '購入済みの特典と最新バージョンに違いがあります。変更箇所を強調表示しています。',
+    same: '特典は最新 revision {{revision}} と同じです。購入済みバージョンは変更されません。',
+    unavailable:
+      '最新プランは現在利用できません。購入済みの特典は引き続き有効です。',
+    benefit: '特典',
+    change: '変更あり',
+    enabled: '有効',
+    disabled: '無効',
+    monthlyCredits: '毎月のボーナスクレジット',
+    retention: 'チャット履歴の保存日数',
+    unknown:
+      '現在の契約情報を取得できません。再読み込みするか Space で契約を管理してください。最新カタログの特典は購入済み特典ではありません。',
+    handoff:
+      'Space で契約を管理してください。新バージョンの購入前に自動更新を解除してください。前払い契約は期限前に更新しなければ自動終了します。',
+    cancelFirst:
+      'まず契約管理で自動更新を解除してください。支払済みの特典は期間終了まで保持され、返金はありません。解除の確認後、最新バージョンを購入でき、決済成功時に新しい特典が有効になります。',
+    canceled:
+      '更新は解除済みです。支払済みの特典は期間終了まで保持され、返金はありません。新しい購入の特典は決済成功時に有効になります。',
+    prepaid:
+      'この前払い契約は期間終了時に自動終了します。期限前は現在の内容で更新でき、期限後は各プランの最新の利用枠でのみ契約できます。',
+    renew: '現在の契約を更新',
+    buying: 'revision {{revision}} を購入します。',
+    fields: {
+      bots_max: 'ボット',
+      members_max: 'メンバー',
+      pipelines_max: 'プロセッサー',
+      plugins_max: '拡張機能',
+      knowledge_bases_max: 'ナレッジベース',
+      managed_sandbox_sessions_max: 'サンドボックスセッション',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: '現在お申し込みできません',
+    subscriptionUnavailableHint:
+      'このプランは新規申込を停止しています。他のプランをお選びください。既存の契約と自動更新には影響しません。',
+    platformNames: {
+      qqofficial: 'QQ公式API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComカスタマーサービス',
+      officialaccount: 'WeChat公式アカウント',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'サブスクリプションを管理',
+    downgradeUnavailable: '無料プランへの変更はできません',
+    features: {
+      multiUserWorkspace: '複数ユーザーのワークスペース',
+      remoteE2BSandbox: 'リモート E2B サンドボックスの設定',
+      communitySupport: 'コミュニティサポート',
+      everythingInFree: '無料プランのすべての機能',
+      alwaysOnSandbox: '常時稼働のグローバルサンドボックス 1 個',
+      higherWorkspaceLimits: 'ワークスペースの上限を拡大',
+    },
+    title: 'プランを比較',
+    description: '{{workspace}} のプランを選択',
+    billing: '請求周期',
+    monthly: '月払い',
+    annual: '年払い',
+    currency: '通貨',
+    loading: 'プランを読み込み中…',
+    error: 'プランを読み込めませんでした',
+    retry: '再試行',
+    empty: '利用可能なプランはありません',
+    current: '現在のプラン',
+    recommended: 'おすすめ',
+    free: '無料',
+    annualNote: '月額 {{price}} 相当',
+    ownerOnly: '所有者または管理者のみ',
+    choose: '支払いに進む',
+    handoff:
+      'LangBot アカウントでログインしてお支払いください。選択内容は保持されます。',
+    quotas: 'ワークスペースの上限',
+    unlimited: '無制限',
+    retention: 'メッセージ履歴 · {{count}} 日間',
+    retentionLabel: 'メッセージ履歴の保存期間',
+    retentionHelp: '保存期間を過ぎた履歴は自動的に削除されます。',
+    credits: '毎月 {{count}} モデルクレジット',
+    creditsLabel: 'モデルクレジット',
+    creditsHelp:
+      '年払いでも、契約の各月にクレジットが付与されます。クレジットが不足しても、独自に設定したモデルプロバイダーを引き続き利用できます。',
+    platforms: '主要プラットフォームに対応',
+    excludedPlatforms: '対象外：{{platforms}}',
+    allPlatforms: '現在利用可能なすべてのプラットフォーム',
+    limits: {
+      bots: 'ボット',
+      pipelines: 'プロセッサー',
+      knowledge_bases: 'ナレッジベース',
+      plugins: '拡張機能',
+      members: 'メンバー',
+      managed_sandbox_sessions: '管理サンドボックスセッション',
+    },
+  },
+  workspaceLanguage: {
+    label: 'ワークスペースの言語',
+    description:
+      'バックエンドの通知とボットの既定の返信に使用します。個人の表示言語には影響しません。',
+    saved: '言語設定を保存しました',
+    saveFailed: '言語設定の保存に失敗しました',
+  },
   slackSetup,
   inflight: {
     autoCollapse: '自動折りたたみ',
@@ -830,6 +953,8 @@ const jaJP = {
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     createSuccess: '作成が完了しました。イベントルーティングを設定してください',
+    autoCreatedPipeline:
+      'パイプラインを自動作成し、メッセージイベントに関連付けました',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
@@ -898,7 +1023,7 @@ const jaJP = {
     dragEventRoute: 'ルート {{index}} をドラッグ',
     behaviorReplyMessages: '受信メッセージに返信',
     behaviorReplyMessagesDescription:
-      '受信メッセージをプロセッサーに渡します。',
+      '個別メッセージと、このボットにメンションしたグループメッセージを処理します。',
     behaviorWelcomeMembers: '新しいメンバーを歓迎',
     behaviorWelcomeMembersDescription:
       'グループへの参加時にプロセッサーを実行します。',
@@ -1125,6 +1250,9 @@ const jaJP = {
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
     addFilter: '条件を追加',
+    filterIsAtBot: 'このボットへのメンション',
+    mentionYes: 'はい',
+    mentionNo: 'いいえ',
     filterChatType: 'セッションタイプ',
     filterChatId: 'セッション ID',
     filterMessageText: 'メッセージ本文',
@@ -1496,6 +1624,17 @@ const jaJP = {
     restoringRunnerInstall:
       'Runner プラグインのインストールを復元し、ランナーを待機しています…',
     noInstalledRunners: 'Runner 拡張機能はまだインストールされていません。',
+    runnerDiagnosis: {
+      missing:
+        '選択した Runner またはプラグインが見つかりません。プラグインをインストールまたは復元してください。',
+      disabled:
+        '選択した Runner プラグインは無効です。プラグイン画面で有効にしてください。',
+      runtime:
+        'プラグインランタイムが利用できないか無効です。接続を復旧してから実行してください。',
+      repair: 'プラグインとランタイムを管理',
+      draft:
+        '修復画面は新しいタブで開きます。Runner の選択と未保存の下書きは保持されます。',
+    },
     installingRunner: '{{runner}} をインストールしています...',
     runnerInstallSuccess:
       '{{runner}} をインストールしました。インストール済み一覧から選択できます',
@@ -2106,6 +2245,10 @@ const jaJP = {
       addPlugin: 'プラグインを追加',
       selectPlugins: 'プラグインを選択',
       pluginsTitle: 'プラグイン',
+      pluginScopeHint:
+        'このパイプラインのイベントリスナー、ツール、コマンドのみを制御します。AI 設定で選択した Runner には影響しません。',
+      runnerScopeHint:
+        'Runner は拡張機能のプラグインスイッチと独立して選択します。対応するプラグインはインストール済みで利用可能である必要があります。',
       mcpServersTitle: 'MCPサーバー',
       mcpResourcesTitle: 'MCPリソース',
       noMCPServersSelected: 'MCPサーバーが選択されていません',
@@ -2150,7 +2293,7 @@ const jaJP = {
       mcpToolsScopeTooltip:
         '拡張機能で現在許可されている MCP サーバーのツールだけが表示されます。',
       skillToolsScopeTooltip:
-        'スキルツールは LangBot のスキルサービスと Box サンドボックスバックエンドが利用可能なときに表示され、Agent がスキルを有効化または登録できるようにします。',
+        'スキルの有効化と読み取り専用リソースには Box は不要です。Agent ワークスペースからの登録には Box サンドボックスが必要です。',
       selectTools: 'ツールを選択',
       resourcesTitle: 'リソース',
       resourcesDescription:
@@ -2574,7 +2717,7 @@ const jaJP = {
     ossSingletonDescription:
       'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
     cloudManagedDescription:
-      'このワークスペースは LangBot Cloud でホストされています。メンバーはここで管理し、請求は Cloud で開きます。',
+      'このワークスペースは LangBot Cloud でホストされています。',
     loadFailed: 'ワークスペース情報の読み込みに失敗しました',
     members: 'メンバー',
     you: 'あなた',
@@ -3021,9 +3164,9 @@ const jaJP = {
     statusDetail: 'ステータス',
     pluginDisabled: 'プラグインシステムが無効です',
     boxDisabled:
-      'Box サンドボックスは設定で無効化されています — サンドボックスツール / スキルの追加・編集 / stdio MCP は利用できません',
+      'Box サンドボックスは設定で無効化されています — 実行ツールと stdio MCP は利用できません',
     boxUnavailable:
-      'Box サンドボックスは利用できません — サンドボックスツール / スキルの追加・編集 / stdio MCP は利用できません',
+      'Box サンドボックスは利用できません — 実行ツールと stdio MCP は利用できません',
     boxRequiredHint:
       'この機能には Box ランタイムが必要です。設定で有効化（box.enabled = true）し、ランタイムが正常に接続できることを確認してください。',
     boxBackend: 'バックエンド',
@@ -3632,11 +3775,13 @@ const jaJP = {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',
     invalidPage: '無効なプラグインページ',
   },
-  beta_banner: {
-    message: 'この環境はベータテスト中です。サービスの安定性は保証されません。',
-    cloud_link: 'LangBot Cloud（専用環境）',
+  cloud_banner: {
+    message:
+      '現在は LangBot Cloud のマネージド環境です。専用リソースと高い利用上限が必要な場合は、',
+    dedicated_link: 'LangBot Cloud（専用環境）',
+    cta_dedicated: '専用環境のプランを見る',
     or: 'または',
-    oss_link: 'セルフホスト版',
+    self_hosted_link: 'セルフホスト版',
     period: 'をご検討ください。',
     dismiss: '閉じる',
   },

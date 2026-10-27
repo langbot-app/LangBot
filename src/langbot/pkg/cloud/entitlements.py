@@ -55,6 +55,10 @@ class EntitlementSnapshot(pydantic.BaseModel):
     # must continue to use generic ``features`` and ``limits`` exclusively.
     plan_name: str | None = pydantic.Field(default=None, min_length=1, max_length=128)
 
+    subscription_started_at: int | None = pydantic.Field(default=None, ge=0)
+    plan_revision: int | None = pydantic.Field(default=None, ge=1)
+    monthly_bonus_credits: int | None = pydantic.Field(default=None, ge=0)
+
     @pydantic.field_validator('features')
     @classmethod
     def _validate_feature_names(cls, value: dict[str, bool]) -> dict[str, bool]:

@@ -55,6 +55,7 @@ class AgentResourceBuilder:
         event: AgentEventEnvelope,
         binding: AgentBinding,
         descriptor: RunnerDescriptor,
+        tool_catalog: typing.Iterable[dict[str, typing.Any]] | None = None,
     ) -> AgentResources:
         """Build AgentResources from event and binding.
 
@@ -86,6 +87,7 @@ class AgentResourceBuilder:
             resource_policy,
             descriptor,
             runner_config,
+            tool_catalog,
         )
         runner_uses_host_tools = config_schema.uses_host_tools(descriptor)
         selected_platform_tools = list(resource_policy.allowed_platform_tool_names or [])
@@ -111,6 +113,8 @@ class AgentResourceBuilder:
             descriptor,
             runner_config,
         )
+        if getattr(self.ap, 'skill_mgr', None) is not None:
+            await self.ap.skill_mgr.reload_skills(execution_context)
         skills = self._build_skills_from_binding(
             execution_context,
             resource_policy,
@@ -181,6 +185,7 @@ class AgentResourceBuilder:
         resource_policy: typing.Any,
         descriptor: RunnerDescriptor,
         runner_config: dict[str, typing.Any],
+        tool_catalog: typing.Iterable[dict[str, typing.Any]] | None = None,
     ) -> list[ToolResource]:
         """Build tools list from binding."""
         tools: list[ToolResource] = []
@@ -193,6 +198,7 @@ class AgentResourceBuilder:
 
         allowed_names = resource_policy.allowed_tool_names
         allowed_sources = resource_policy.allowed_tool_sources
+        catalog_by_name = {item['name']: item for item in (tool_catalog or ())}
         if resource_policy.allow_all_tools or allowed_sources is None:
             get_catalog = getattr(getattr(self.ap, 'tool_mgr', None), 'get_resolved_tool_catalog', None)
             if get_catalog is None:
@@ -211,6 +217,7 @@ class AgentResourceBuilder:
                 selected_names = set(allowed_names or [])
                 catalog = [item for item in catalog if item.get('name') in selected_names]
             allowed_names = ResourcePolicyProjector.extract_tool_names(catalog)
+            catalog_by_name = {item['name']: item for item in catalog}
             allowed_sources = {
                 item['name']: ref for item in catalog if (ref := self._catalog_source_ref(item)) is not None
             }
@@ -241,7 +248,15 @@ class AgentResourceBuilder:
                 if source_ref is None:
                     self.ap.logger.warning(f'Tool {tool_name} is not authorized because its Host source is unresolved')
                     continue
-                if get_tool_schema is not None:
+                catalog_item = catalog_by_name.get(tool_name)
+                if (
+                    catalog_item is not None
+                    and self._catalog_source_ref(catalog_item) == source_ref
+                    and 'parameters' in catalog_item
+                ):
+                    description = catalog_item.get('description')
+                    parameters = catalog_item['parameters'] or None
+                elif get_tool_schema is not None:
                     description, parameters = await get_tool_schema(
                         execution_context,
                         tool_name,

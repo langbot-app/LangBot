@@ -32,7 +32,8 @@ def configure_connector(connector) -> None:
 
 
 @pytest.mark.asyncio
-async def test_plugin_list_filter_by_component_kinds():
+@pytest.mark.parametrize('independent_kind', ['KnowledgeEngine', 'Runner'])
+async def test_plugin_list_filter_by_component_kinds(independent_kind):
     """Test that plugins can be filtered by component kinds."""
     from langbot.pkg.plugin.connector import PluginRuntimeConnector
 
@@ -70,7 +71,7 @@ async def test_plugin_list_filter_by_component_kinds():
                     }
                 }
             },
-            'components': [{'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever1'}}}}],
+            'components': [{'manifest': {'manifest': {'kind': independent_kind, 'metadata': {'name': 'retriever1'}}}}],
         },
         {
             'debug': False,
@@ -107,7 +108,7 @@ async def test_plugin_list_filter_by_component_kinds():
                 }
             },
             'components': [
-                {'manifest': {'manifest': {'kind': 'KnowledgeEngine', 'metadata': {'name': 'retriever2'}}}},
+                {'manifest': {'manifest': {'kind': independent_kind, 'metadata': {'name': 'retriever2'}}}},
                 {'manifest': {'manifest': {'kind': 'Tool', 'metadata': {'name': 'tool2'}}}},
             ],
         },

@@ -56,9 +56,19 @@ class StubLoader:
             for tool in self._tools
         ]
 
-    async def has_tool(self, *args) -> bool:
+    async def get_tool(self, name: str, **_kwargs):
+        return next((tool for tool in self._tools if tool.name == name), None)
+
+    async def has_tool(self, *args, **_kwargs) -> bool:
         name = args[-1]
         return any(tool.name == name for tool in self._tools)
+
+    def recognizes_tool(self, name: str) -> bool:
+        return any(tool.name == name for tool in self._tools)
+
+    @staticmethod
+    def is_sandbox_tool(name: str) -> bool:
+        return name == 'register_skill'
 
     async def invoke_tool(self, name: str, parameters: dict, query):
         return self._invoke_result(name, parameters, query) if callable(self._invoke_result) else self._invoke_result
@@ -146,7 +156,7 @@ async def test_tool_manager_routes_native_tool_calls():
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_hides_sandbox_and_skill_tools_without_workspace_entitlement():
+async def test_tool_manager_keeps_read_only_skill_tools_without_workspace_entitlement():
     box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
     manager = ToolManager(SimpleNamespace(box_service=box_service))
     manager.native_tool_loader = StubLoader([make_tool('exec')])
@@ -157,8 +167,8 @@ async def test_tool_manager_hides_sandbox_and_skill_tools_without_workspace_enti
     tools = await manager.get_all_tools(_CONTEXT, include_skill_authoring=True)
     catalog = await manager.get_tool_catalog(_CONTEXT, include_skill_authoring=True)
 
-    assert [tool.name for tool in tools] == ['plugin_tool', 'mcp_tool']
-    assert [item['name'] for item in catalog] == ['plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['activate', 'plugin_tool', 'mcp_tool']
+    assert [item['name'] for item in catalog] == ['activate', 'plugin_tool', 'mcp_tool']
     assert box_service.is_workspace_sandbox_available.await_count == 2
 
 
@@ -177,9 +187,10 @@ async def test_tool_manager_rechecks_workspace_entitlement_before_native_invocat
         query_uuid=None,
     )
 
-    with pytest.raises(Exception, match='exec'):
-        await manager.execute_func_call('exec', {'command': 'pwd'}, query=query)
+    result = await manager.execute_func_call('exec', {'command': 'pwd'}, query=query)
 
+    assert result['code'] == 'sandbox_unavailable'
+    assert result['tool'] == 'exec'
     box_service.is_workspace_sandbox_available.assert_awaited_once_with(_CONTEXT)
 
 
@@ -855,7 +866,7 @@ async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch
 
 @pytest.mark.asyncio
 async def test_workspace_file_script_resolves_the_sandbox_interpreter():
-    """Sandboxes built from a host rootfs may only ship `python3`."""
+    """Native file tools must use python3 and never fall back to python2."""
 
     captured: dict = {}
 
@@ -881,5 +892,7 @@ async def test_workspace_file_script_resolves_the_sandbox_interpreter():
 
     assert result == {'ok': True}
     command = captured['command']
-    assert command.startswith('PYTHON_BIN=$(command -v python3 || command -v python)')
+    assert 'command -v python3 || true' in command
+    assert 'python3 required for native file tools' in command
     assert command.endswith(' - <<\'PY\'\nprint("x")\nPY')
+    assert '|| command -v python)' not in command

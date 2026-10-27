@@ -69,7 +69,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def message_edit_to_eba(
-        before: discord.Message, after: discord.Message
+        before: discord.Message | None, after: discord.Message
     ) -> platform_events.MessageEditedEvent:
         return platform_events.MessageEditedEvent(
             type='message.edited',

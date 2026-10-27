@@ -26,7 +26,7 @@ Cloud v2 采用以下模型：
 6. 一个共享 Plugin Runtime 控制面管理所有 Workspace，但每个运行中的 plugin installation 独占一个 nsjail 进程；enabled-resident 是 desired semantics，只读代码和依赖可按已验证摘要共享。
 7. 一个共享 Box Runtime 管理所有 Workspace；首期符合 entitlement 的 Workspace 最多拥有一个持久 `global` 逻辑 sandbox，实际命令继续以 nsjail 子进程执行。
 8. SaaS 业务数据使用 PostgreSQL shared schema、应用层 scope 与 RLS 双重隔离；pgvector 位于同一个业务数据库并作为 SaaS 默认向量后端。
-9. stdio MCP 有独立实例开关，Cloud v2 首期强制关闭，不能由 Box availability 或套餐能力隐式开启。
+9. stdio MCP 有独立实例开关，Cloud v2 首期强制关闭，不能由 Box availability 或计划能力隐式开启。
 10. 闭源 Control Plane 可以作为模块化单体复用现有账户、支付和运营能力，但历史 Cloud 的租户专属部署模型不进入新架构。
 11. Workspace 创建、释放、export、单 Workspace restore 和在线迁移的具体流程仍待后续决策。
 
@@ -357,7 +357,7 @@ nbf, exp, grace_until
 ```
 
 Core 校验 issuer、audience、subject、instance、revision、时间和签名；旧 revision 不覆盖新快照。
-套餐名称和价格规则只存在于闭源 Control Plane，Core 与 Runtime 只理解通用 capability 和数值限额。
+计划名称和价格规则只存在于闭源 Control Plane，Core 与 Runtime 只理解通用 capability 和数值限额。
 
 Control Plane 故障时，已缓存且仍有效的快照可继续执行；过期后只能进入明确、有限的 grace 模式或失败关闭。
 
@@ -663,8 +663,8 @@ installation 总磁盘配额需要可原子拒绝写入的 quota provider，不�
 }
 ```
 
-闭源订阅模块把套餐映射为该通用 capability；Core 与 Runtime 不判断 `plan == pro`。
-预期 Pro 得到 `managed_sandbox_sessions = 1`，其他套餐为 `0`。
+闭源订阅模块把计划映射为该通用 capability；Core 与 Runtime 不判断 `plan == pro`。
+预期 Pro 得到 `managed_sandbox_sessions = 1`，其他计划为 `0`。
 
 ### 12.2 Sandbox 模型
 

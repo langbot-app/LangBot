@@ -490,6 +490,7 @@ async def test_workspace_reads_do_not_wait_for_an_installation_apply():
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
     connector._wait_for_installed_plugin_ready = AsyncMock()
+    connector._load_workspace_settings = AsyncMock(return_value=[])
     connector._load_workspace_desired_states = AsyncMock(
         return_value=[
             PluginInstallationDesiredState(
@@ -583,11 +584,15 @@ async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(('remaining_references', 'statement_count'), [(1, 1), (0, 2)])
+@pytest.mark.parametrize('remaining_references', [1, 0])
 async def test_artifact_cleanup_is_reference_counted_within_workspace(
     remaining_references: int,
-    statement_count: int,
+    plugin_db,
 ):
+    import sqlalchemy
+    from langbot.pkg.entity.persistence.plugin import PluginSetting
+    from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+
     app = SimpleNamespace(
         instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
         deployment=SimpleNamespace(mode='cloud'),
@@ -598,19 +603,38 @@ async def test_artifact_cleanup_is_reference_counted_within_workspace(
         workspace_uuid='workspace-a',
         placement_generation=1,
     )
-    statements = []
-
-    async def execute(statement):
-        statements.append(statement)
-        return SimpleNamespace(scalar_one=lambda: remaining_references)
+    digest = 'a' * 64
+    settings = [('workspace-b', digest), ('workspace-a', 'b' * 64)]
+    if remaining_references:
+        settings.append(('workspace-a', digest))
+    plugin_db.add_all(
+        PluginSetting(workspace_uuid=workspace, plugin_author='author', plugin_name=artifact, artifact_digest=artifact)
+        for workspace, artifact in settings
+    )
+    plugin_db.add_all(
+        BinaryStorage(
+            workspace_uuid=workspace, unique_key=key, key=key, owner_type=owner_type, owner=owner, value=b'pkg'
+        )
+        for workspace, key, owner_type, owner in [
+            ('workspace-a', 'target', 'plugin_artifact', digest),
+            ('workspace-b', 'other-workspace', 'plugin_artifact', digest),
+            ('workspace-a', 'other-artifact', 'plugin_artifact', 'b' * 64),
+            ('workspace-a', 'other-owner-type', 'plugin', digest),
+        ]
+    )
+    await plugin_db.flush()
 
     await connector._delete_artifact_if_unreferenced(
         execution_context,
-        'a' * 64,
-        execute=execute,
+        digest,
+        execute=plugin_db.execute,
     )
 
-    assert len(statements) == statement_count
+    remaining = (await plugin_db.execute(sqlalchemy.select(BinaryStorage.unique_key))).scalars().all()
+    expected = {'other-workspace', 'other-artifact', 'other-owner-type'}
+    if remaining_references:
+        expected.add('target')
+    assert set(remaining) == expected
 
 
 @pytest.mark.asyncio
@@ -857,3 +881,49 @@ async def test_marketplace_download_honors_migration_version_without_latest_look
                 SimpleNamespace(), 'langbot-team', 'LocalAgent', None, version=version
             )
     assert download.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_event_dispatch_reuses_reconciled_settings_and_refreshes_next_event():
+    from langbot_plugin.api.entities.events import PersonMessageReceived
+    from tests.factories import text_query
+
+    binding = execution_binding('workspace-a')
+    setting = plugin_setting('01', 'a' * 64)
+    settings = {'workspace-a': [setting]}
+    connector = shared_connector([[binding]], settings)
+    connector.handler = runtime_handler()
+    connector.handler.remove_plugin_installation = AsyncMock()
+    connector._apply_desired_state = AsyncMock()
+
+    async def emit(event_context, include_plugins=None):
+        return {'event_context': event_context, 'emitted_plugins': []}
+
+    connector.handler.emit_event = AsyncMock(side_effect=emit)
+    query = text_query('hello')
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1),
+    )
+    event = PersonMessageReceived(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        message_event=query.message_event,
+        message_chain=query.message_chain,
+    )
+
+    await connector.emit_event(event)
+    connector._load_workspace_settings.assert_awaited_once()
+    connector.handler.emit_event.assert_awaited_once()
+    first_scope = connector.handler.installation_scope.call_args.args[0]
+    assert first_scope.workspace_uuid == 'workspace-a'
+    assert first_scope.installation_uuid == setting.installation_uuid
+
+    setting.enabled = False
+    await connector.emit_event(event)
+    assert connector._load_workspace_settings.await_count == 2
+    connector.handler.emit_event.assert_awaited_once()
+    connector._apply_desired_state.assert_awaited()

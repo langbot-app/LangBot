@@ -11,12 +11,15 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from types import SimpleNamespace
+import hashlib
+import hmac
 import json
 import sqlalchemy
 import uuid
 
 from langbot.pkg.api.http.service.bot import BotService
 from langbot.pkg.entity.persistence.bot import Bot
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 pytestmark = pytest.mark.asyncio
@@ -182,6 +185,11 @@ class TestBotServiceGetBot:
         assert result is not None
         assert result['uuid'] == 'test-uuid'
         assert result['name'] == 'Found Bot'
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(Bot.uuid == 'test-uuid', Bot.workspace_uuid == WORKSPACE_UUID)
+        )
+        ap.persistence_mgr.serialize_model.assert_called_once_with(Bot, bot, ['adapter_config'])
 
     async def test_get_bot_by_uuid_not_found(self):
         """Returns None when bot not found."""
@@ -356,11 +364,14 @@ class TestBotServiceCreateBot:
             return_value={'uuid': 'uuid-1', 'name': 'Bot 1', 'adapter': 'telegram'}
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of bots'):
             await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot'})
+        assert all(not call.args[0].is_insert for call in ap.persistence_mgr.execute_async.await_args_list)
+        ap.platform_mgr.load_bot.assert_not_awaited()
 
     async def test_create_bot_no_limit(self):
         """Creates bot without limit check when max_bots=-1."""
@@ -399,6 +410,7 @@ class TestBotServiceCreateBot:
             return_value={'uuid': 'new-uuid', 'name': 'New Bot', 'adapter': 'telegram', 'enable': False}
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute
@@ -408,7 +420,24 @@ class TestBotServiceCreateBot:
 
         # Verify
         assert bot_uuid is not None
-        assert len(bot_uuid) == 36  # UUID format
+        assert uuid.UUID(bot_uuid).version == 4
+        statement = ap.persistence_mgr.execute_async.await_args_list[0].args[0]
+        assert statement.is_insert
+        assert statement.table.name == Bot.__tablename__
+        values = statement.compile().params
+        expected = {
+            'uuid': bot_uuid,
+            'workspace_uuid': WORKSPACE_UUID,
+            'name': 'New Bot',
+            'adapter': 'telegram',
+            'adapter_config': {},
+            'plugin_processors': [],
+        }
+        assert {key: values.get(key) for key in expected} == expected
+        assert len(values['event_bindings']) == 2
+        assert all(b['target_uuid'] == 'default-pipeline' for b in values['event_bindings'])
+        assert values['event_bindings'][1]['filters'][-1] == {'field': 'is_at_bot', 'operator': 'eq', 'value': True}
+        ap.platform_mgr.load_bot.assert_not_awaited()
 
     async def test_create_bot_scopes_insert_without_legacy_pipeline_fields(self):
         """Creates a Workspace-owned Bot without restoring removed pipeline columns."""
@@ -442,6 +471,7 @@ class TestBotServiceCreateBot:
             }
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute
@@ -484,6 +514,7 @@ class TestBotServiceCreateBot:
         )
         ap.persistence_mgr = PersistenceManager(ap)
         ap.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
         try:
             async with engine.begin() as connection:
@@ -647,26 +678,28 @@ class TestBotServiceDeleteBot:
         await service.delete_bot(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
-        ap.platform_mgr.remove_bot.assert_called_once_with(WORKSPACE_UUID, 'test-uuid')
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.platform_mgr.remove_bot.assert_awaited_once_with(WORKSPACE_UUID, 'test-uuid')
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        assert statement.is_delete
+        assert statement.table.name == Bot.__tablename__
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(Bot.uuid == 'test-uuid', Bot.workspace_uuid == WORKSPACE_UUID)
+        )
 
     async def test_delete_bot_nonexistent_uuid(self):
-        """Delete operation completes even for nonexistent UUID."""
+        """A missing persisted Bot is rejected before removing its runtime."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=0))
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.remove_bot = AsyncMock()
 
         service = BotService(ap)
-        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
-
-        # Execute - should not raise
-        await service.delete_bot(WORKSPACE_UUID, 'nonexistent-uuid')
-
-        # Verify - both called regardless
-        ap.platform_mgr.remove_bot.assert_called_once()
+        with pytest.raises(WorkspaceNotFoundError, match='Bot not found'):
+            await service.delete_bot(WORKSPACE_UUID, 'nonexistent-uuid')
+        ap.platform_mgr.remove_bot.assert_not_awaited()
 
 
 class TestBotServiceListEventLogs:
@@ -811,7 +844,9 @@ class TestBotServiceHttpBotInboundTest:
         assert payload['message'] == [{'type': 'Plain', 'text': 'hello'}]
         headers = request.kwargs['headers']
         assert headers['X-LB-Timestamp']
-        assert headers['X-LB-Signature'].startswith('sha256=')
+        signing_input = headers['X-LB-Timestamp'].encode() + b'.' + request.kwargs['data']
+        digest = hmac.new(b'test-secret', signing_input, hashlib.sha256).hexdigest()
+        assert headers['X-LB-Signature'] == f'sha256={digest}'
 
     async def test_rejects_non_http_bot(self):
         service = BotService(SimpleNamespace())
@@ -867,7 +902,8 @@ class TestBotServiceSendMessage:
         with pytest.raises(Exception, match='Invalid message_chain format'):
             await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', {'invalid': 'format'})
 
-    async def test_send_message_valid_call(self):
+    @pytest.mark.parametrize(('target_type', 'target_id'), [('group', 123), ('person', 'user-456')])
+    async def test_send_message_valid_call(self, target_type, target_id):
         """Sends message through adapter when all valid."""
         # Setup
         ap = SimpleNamespace()
@@ -881,14 +917,18 @@ class TestBotServiceSendMessage:
         service = BotService(ap)
         service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
-        # Execute with valid message chain format
-        message_chain_data = {'messages': [{'type': 'text', 'data': {'text': 'Hello'}}]}
+        from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
-        # Patch the import location - the module imports inside the function
-        with patch('langbot_plugin.api.entities.builtin.platform.message.MessageChain') as MockMessageChain:
-            mock_chain = Mock()
-            MockMessageChain.model_validate = Mock(return_value=mock_chain)
-            await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', message_chain_data)
+        expected_chain = MessageChain([Plain(text='Hello')])
+        message_chain_data = expected_chain.model_dump()
+        await service.send_message(WORKSPACE_UUID, 'bot-uuid', target_type, target_id, message_chain_data)
 
-        # Verify adapter.send_message was called
-        runtime_bot.adapter.send_message.assert_called_once_with('group', '123', mock_chain)
+        service.get_bot.assert_awaited_once_with(WORKSPACE_UUID, 'bot-uuid', include_secret=False)
+        ap.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(WORKSPACE_UUID, 'bot-uuid')
+        runtime_bot.adapter.send_message.assert_awaited_once()
+        sent_target_type, sent_target_id, sent_chain = runtime_bot.adapter.send_message.await_args.args
+        assert sent_target_type == target_type
+        assert sent_target_id == str(target_id)
+        assert isinstance(sent_chain, MessageChain)
+        assert sent_chain.model_dump() == expected_chain.model_dump()
+        assert str(sent_chain) == 'Hello'

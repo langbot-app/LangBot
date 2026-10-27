@@ -203,9 +203,9 @@ function SidebarProvider({
             {
               '--sidebar-width': `${sidebarWidth}px`,
               '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-              // Global notices (e.g. the beta banner) publish their height so
-              // the shell starts below them instead of underneath.
-              height: 'calc(100svh - var(--beta-banner-height, 0px))',
+              // A Cloud notice banner publishes its height so the shell starts
+              // below the announcement instead of underneath it.
+              height: 'calc(100svh - var(--cloud-banner-height, 0px))',
               ...style,
             } as React.CSSProperties
           }
@@ -302,8 +302,8 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         style={{
-          top: 'var(--beta-banner-height, 0px)',
-          height: 'calc(100svh - var(--beta-banner-height, 0px))',
+          top: 'var(--cloud-banner-height, 0px)',
+          height: 'calc(100svh - var(--cloud-banner-height, 0px))',
         }}
         className={cn(
           'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex',

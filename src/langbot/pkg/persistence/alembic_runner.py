@@ -70,6 +70,13 @@ def get_alembic_head() -> str:
     return head
 
 
+def pending_revisions(current: str, target: str) -> set[str]:
+    """Resolve migration boundaries without relying on revision name ordering."""
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    return {step.revision for step in ScriptDirectory.from_config(cfg).iterate_revisions(target, current)}
+
+
 def _do_autogenerate(connection: Connection, message: str = 'auto migration') -> None:
     """Synchronous autogenerate — runs inside run_sync."""
     cfg = _build_config(connection)

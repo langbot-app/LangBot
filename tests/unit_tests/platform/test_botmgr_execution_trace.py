@@ -39,6 +39,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot = object.__new__(RuntimeBot)
     bot.bot_entity = SimpleNamespace(
         uuid='bot-1',
+        adapter='aiocqhttp',
         workspace_uuid=TEST_CONTEXT.workspace_uuid,
         event_bindings=event_bindings,
         plugin_processors=[],
@@ -49,6 +50,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot.logger = SimpleNamespace(info=AsyncMock(), warning=AsyncMock(), error=AsyncMock(), debug=AsyncMock())
     bot.adapter = FakeAdapter()
     bot.ap = SimpleNamespace(
+        workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()),
         telemetry=SimpleNamespace(execution=counters),
         agent_service=SimpleNamespace(get_agent=AsyncMock(return_value=agent)),
         pipeline_service=SimpleNamespace(get_pipeline=AsyncMock(return_value=None)),
@@ -505,11 +507,13 @@ async def test_pending_event_cancelled_during_dispatch_never_uploads():
 
     bot._dispatch_eba_event_to_processor = waiting_dispatch
     task = asyncio.create_task(bot._handle_platform_event(message_received_event(), FakeAdapter()))
-    await started.wait()
-    await counters.flush()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await counters.flush()
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
     await assert_no_upload(counters, manager)
 
 
@@ -559,3 +563,57 @@ async def test_valid_interaction_success_keeps_acknowledgement_and_execution():
     assert chain['outcome'] == 'success'
     assert {node['family'] for node in execution_nodes(records)} == {'platform_event', 'platform_api', 'runner'}
     await counters.shutdown()
+
+
+@pytest.mark.parametrize('channel_id', ['channel-1', 'channel-2'])
+def test_discord_reply_target_uses_channel_and_preserves_guild(channel_id):
+    from langbot.pkg.platform.botmgr import RuntimeBot
+    from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+    event = events.MessageReceivedEvent(
+        message_id='message-1',
+        message_chain=message.MessageChain([message.Plain(text='hello')]),
+        sender=entities.User(id='user-1'),
+        chat_type=entities.ChatType.GROUP,
+        chat_id=channel_id,
+        group=entities.UserGroup(id='guild-1'),
+        adapter_name='discord-omni',
+    )
+    assert RuntimeBot._infer_reply_target(event) == (
+        'group',
+        channel_id,
+        {'group_id': 'guild-1', 'chat_id': channel_id},
+    )
+
+
+def test_group_event_without_chat_retains_group_reply_target():
+    from langbot.pkg.platform.botmgr import RuntimeBot
+    from langbot_plugin.api.entities.builtin.platform import entities, events
+
+    event = events.MemberJoinedEvent(group=entities.UserGroup(id='group-1'), member=entities.User(id='user-1'))
+    assert RuntimeBot._infer_reply_target(event) == ('group', 'group-1', {'group_id': 'group-1'})
+
+
+def test_agent_event_keeps_image_file_and_voice_attachments():
+    from langbot.pkg.platform.botmgr import RuntimeBot
+    from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+    event = events.MessageReceivedEvent(
+        message_id='media-1',
+        message_chain=message.MessageChain(
+            [
+                message.Image(url='https://cdn.example.test/image.png'),
+                message.File(name='input.txt', url='https://cdn.example.test/input.txt'),
+                message.Voice(base64='dGVzdA=='),
+            ]
+        ),
+        sender=entities.User(id='user-1'),
+        chat_type=entities.ChatType.PRIVATE,
+        chat_id='channel-1',
+    )
+    agent_input = RuntimeBot._build_agent_input(event)
+    assert [attachment.type for attachment in agent_input.attachments] == ['image', 'file', 'voice']
+    assert agent_input.attachments[0].url == 'https://cdn.example.test/image.png'
+    assert agent_input.attachments[1].name == 'input.txt'
+    assert agent_input.attachments[1].url == 'https://cdn.example.test/input.txt'
+    assert agent_input.attachments[2].content == 'dGVzdA=='

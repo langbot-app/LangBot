@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import json
 import typing
+import functools
 
 from mcp.server.fastmcp import FastMCP
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
+from ...i18n import language_scope
+from ...i18n.workspace import get_workspace_language, set_workspace_language
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -78,6 +81,20 @@ class LangBotMCPServer:
         ap = self.ap
         mcp = self
 
+        @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
+        async def get_workspace_message_language() -> str:
+            context = _authorized(Permission.WORKSPACE_VIEW)
+            return _dump({'language': await get_workspace_language(ap, context.workspace_uuid, refresh=True)})
+
+        @mcp.tool(
+            description='Set the Workspace message language. Requires workspace.update; does not change personal UI language.'
+        )
+        async def set_workspace_message_language(
+            language: typing.Literal['en_US', 'zh_Hans', 'zh_Hant', 'ja_JP', 'es_ES', 'ru_RU', 'th_TH', 'vi_VN'],
+        ) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
+
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
         async def get_system_info() -> str:
@@ -115,7 +132,13 @@ class LangBotMCPServer:
                 await ap.pipeline_service.get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
             )
 
-        @mcp.tool(description='Replace all Pipeline extension bindings. All binding lists and switches are required.')
+        @mcp.tool(
+            description=(
+                'Replace all Pipeline extension bindings. All binding lists and switches are required. '
+                'Plugin switches control EventListener, Tool and Command only, not the independently selected Runner. '
+                'Do not add a Runner plugin here just to run it; installation, global enablement and Workspace access still apply.'
+            )
+        )
         async def update_pipeline_extensions(
             pipeline_uuid: str,
             bound_plugins: list[dict],
@@ -165,7 +188,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. Message image URLs may be renewed through the connected OneBot peer without downloading images or rewriting stored records; URLs remain temporary. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind. Sessions read stored conversation summaries and do not support mode or execution_statuses.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -184,6 +207,7 @@ class LangBotMCPServer:
             if kind == 'embedding_calls':
                 allowed.add('knowledge_base_id')
             if kind == 'sessions':
+                allowed -= {'mode', 'execution_statuses'}
                 allowed |= {'user_query', 'is_active'}
             kwargs = dict(filters or {})
             if set(kwargs) - allowed:
@@ -296,7 +320,7 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
-            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
+            description='Read execution inputs, generated outputs, delivery records, calls, errors, related executions and conversation history. Use section=overview for inputs, outputs, deliveries and errors without loading history; request other sections on demand. Omit section for the full trace. Each section is independently paginated; follow pages[section].next_offset when has_more is true.'
         )
         async def get_monitoring_execution_detail(
             source: typing.Literal['auto', 'agent', 'pipeline', 'event'],
@@ -330,7 +354,7 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Create a bot. `bot_data` is a JSON object matching the LangBot '
+                'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
                 'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
@@ -363,6 +387,35 @@ class LangBotMCPServer:
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
             return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
 
+        @mcp.tool(
+            description=(
+                'Preview promoting the pipeline at-bot trigger rule to a routing-layer '
+                'is_at_bot filter. Reports which bindings and pipelines need migration '
+                'without persisting changes.'
+            )
+        )
+        async def preview_bot_group_filter_migration(bot_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.bot_service.preview_group_filter_migration(context, bot_uuid))
+
+        @mcp.tool(
+            description=(
+                'Apply the group filter migration previewed by '
+                'preview_bot_group_filter_migration. Adds is_at_bot=true filter to group '
+                'message bindings and, when disable_pipeline_at_bot is true (default), '
+                'turns off the pipeline trigger at-bot rule. Idempotent.'
+            )
+        )
+        async def apply_bot_group_filter_migration(bot_uuid: str, disable_pipeline_at_bot: bool = True) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await ap.bot_service.apply_group_filter_migration(
+                    context,
+                    bot_uuid,
+                    disable_pipeline_at_bot=disable_pipeline_at_bot,
+                )
+            )
+
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
@@ -377,7 +430,8 @@ class LangBotMCPServer:
         @mcp.tool(
             description=(
                 'Create a pipeline. `pipeline_data` matches the LangBot POST '
-                '/api/v1/pipelines body. Returns the new pipeline UUID.'
+                '/api/v1/pipelines body. Supplied config and extension preferences are preserved; '
+                'omitting config uses installed Runner defaults. Returns the new pipeline UUID.'
             )
         )
         async def create_pipeline(pipeline_data: dict) -> str:
@@ -577,7 +631,12 @@ class LangBotMCPServer:
         """Register a tool boundary before its authorization and service call."""
 
         def register(fn):
-            observed = fn
+            @functools.wraps(fn)
+            async def observed(*args, **kwargs):
+                context = get_request_context()
+                with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                    return await fn(*args, **kwargs)
+
             return self.mcp.tool(**options)(observed)
 
         return register

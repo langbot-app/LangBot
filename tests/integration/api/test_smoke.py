@@ -164,16 +164,6 @@ class TestHealthEndpoint:
         data = await response.get_json()
         assert data == {'code': 0, 'msg': 'ok', 'resources': {}}
 
-    @pytest.mark.asyncio
-    async def test_healthz_no_auth_required(self, quart_test_client):
-        """
-        /healthz doesn't require authentication.
-
-        Tests that AuthType.NONE endpoints work without headers.
-        """
-        response = await quart_test_client.get('/healthz')
-        assert response.status_code == 200
-
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestSystemEndpoint:
@@ -241,33 +231,42 @@ class TestInvalidPayload:
     """Tests for error handling with invalid payloads."""
 
     @pytest.mark.asyncio
-    async def test_missing_json_body(self, quart_test_client):
-        """
-        POST endpoint without JSON body handles gracefully.
-        """
-        # /api/v1/user/auth expects JSON with 'user' and 'password'
+    async def test_missing_json_body(self, quart_test_client, fake_api_app):
+        """A missing login body is rejected before authentication."""
         response = await quart_test_client.post('/api/v1/user/auth')
 
-        # Should return error (500, 400, or 401) with stable JSON structure
-        assert response.status_code in (400, 500, 401)
-        data = await response.get_json()
-
-        # Verify error response has expected structure
-        assert 'code' in data
-        assert 'msg' in data
+        assert response.status_code == 400
+        assert await response.get_json() == {'code': -1, 'msg': 'Invalid request parameters'}
+        fake_api_app.user_service.authenticate.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_invalid_json_structure(self, quart_test_client):
-        """
-        POST with wrong JSON structure returns stable error.
-        """
-        response = await quart_test_client.post('/api/v1/user/auth', json={'wrong_field': 'value'})
+    @pytest.mark.parametrize(
+        'payload',
+        [
+            {'wrong_field': 'value'},
+            [],
+            {'user': None, 'password': 'secret'},
+            {'user': 'owner@example.com', 'password': 42},
+        ],
+    )
+    async def test_invalid_json_structure(self, quart_test_client, fake_api_app, payload):
+        """Malformed credential fields never reach the authentication service."""
+        response = await quart_test_client.post('/api/v1/user/auth', json=payload)
 
-        # Should return error with stable JSON structure
-        assert response.status_code in (400, 500, 401)
-        data = await response.get_json()
-        assert 'code' in data
-        assert 'msg' in data
+        assert response.status_code == 400
+        assert await response.get_json() == {'code': -1, 'msg': 'Invalid request parameters'}
+        fake_api_app.user_service.authenticate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('password', ['', 'existing-password'])
+    async def test_string_credentials_reach_authentication(self, quart_test_client, fake_api_app, password):
+        response = await quart_test_client.post(
+            '/api/v1/user/auth', json={'user': 'owner@example.com', 'password': password}
+        )
+
+        assert response.status_code == 200
+        assert (await response.get_json())['data']['token'] == 'fake_token'
+        fake_api_app.user_service.authenticate.assert_awaited_once_with('owner@example.com', password, None)
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -336,8 +335,10 @@ class TestUserInitEndpoint:
             'invitation_registration_enabled': False,
             'password_login_enabled': False,
             'space_login_enabled': True,
-            'passkey_login_enabled': True,
-            'passkey_supported': True,
+            # Passkeys are OSS-only: a cloud deployment must advertise neither
+            # passkey login nor passkey support, and the routes refuse it.
+            'passkey_login_enabled': False,
+            'passkey_supported': False,
         }
 
     @pytest.mark.asyncio

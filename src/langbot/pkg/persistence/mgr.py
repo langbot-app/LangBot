@@ -82,6 +82,7 @@ _ALEMBIC_TENANT_TABLES = {
     'monitoring_llm_calls',
     'monitoring_tool_calls',
     'monitoring_sessions',
+    'monitoring_session_receipts',
     'monitoring_errors',
     'monitoring_embedding_calls',
     'monitoring_feedback',
@@ -182,16 +183,31 @@ class PersistenceManager:
 
         if self.mode == PersistenceMode.CLOUD_RUNTIME:
             await self._validate_cloud_runtime()
+            from .resource_urls import install
+
+            install(engine.sync_engine)
             return
 
         if self.mode == PersistenceMode.RELEASE_MIGRATION:
             async with self._release_migration_lock():
                 await self._initialize_managed_schema()
                 await self._validate_release_schema()
+            from .resource_urls import install
+
+            install(engine.sync_engine)
             return
 
         await self._initialize_managed_schema()
+        from .sqlite_startup import checkpoint_after_migration
+
+        if engine.dialect.name == 'sqlite':
+            self.ap.logger.info('Completing SQLite startup WAL checkpoint before starting producers...')
+            await checkpoint_after_migration(engine)
+            self.ap.logger.info('SQLite startup WAL checkpoint completed.')
         await self._enable_sqlite_foreign_keys_after_migration()
+        from .resource_urls import install
+
+        install(engine.sync_engine)
 
         if self.mode == PersistenceMode.OSS_COMPAT:
             await self.write_space_model_providers()
@@ -273,6 +289,16 @@ class PersistenceManager:
             if self.mode == PersistenceMode.OSS_COMPAT:
                 await self._install_oss_postgres_tenant_scope()
         else:
+            current_revision = await alembic_runner.get_alembic_current(engine)
+            if (
+                current_revision is None
+                or current_revision in _PRE_WORKSPACE_ALEMBIC_REVISIONS
+                or current_revision == _WORKSPACE_ALEMBIC_REVISION
+            ):
+                await self._run_alembic_migrations(_RESOURCE_SCOPE_ALEMBIC_REVISION)
+                # Deferred parent tables must exist before later migrations
+                # create dependent tables such as session summary receipts.
+                await self.create_tables()
             await self._run_alembic_migrations()
 
             # SQLite keeps the historical post-migration create_all pass. New
@@ -294,7 +320,10 @@ class PersistenceManager:
                 # without workspace_uuid and Workspace itself references the
                 # account UUID introduced by 0009.  Alembic must expand those
                 # tables before SQLAlchemy may create any new tenant table.
-                excluded_tables = _ALEMBIC_TENANT_TABLES if legacy_users else set()
+                excluded_tables = set(_ALEMBIC_TENANT_TABLES) if legacy_users else set()
+                # 0010 and 0023 rewrite the session primary key on an OSS bootstrap.
+                # Only 0040 may create its dependent composite receipt foreign key.
+                excluded_tables.add('monitoring_session_receipts')
                 tables_to_create = [table for table in self.meta.sorted_tables if table.name not in excluded_tables]
                 self.meta.create_all(sync_conn, tables=tables_to_create)
 
@@ -1594,7 +1623,14 @@ class PersistenceManager:
         return policies
 
     async def write_space_model_providers(self):
-        if constants.edition != 'community':
+        # Only a single-Workspace deployment may own the process-level
+        # compatibility provider. Genuine multi-tenant Cloud runs in CLOUD_RUNTIME
+        # persistence mode and never reaches this method, but a dedicated
+        # environment is `edition=cloud` on top of OSS persistence, so gating on
+        # the edition alone left it without the provider row -- and the Space OAuth
+        # callback then failed with "Provider not found" on every login.
+        deployment = getattr(self.ap, 'deployment', None)
+        if deployment is not None and getattr(deployment, 'multi_workspace_enabled', False):
             # SaaS Workspace/provider linkage is explicit control-plane state;
             # a process-level compatibility provider must never be projected
             # into an arbitrary cloud Workspace.
@@ -1685,9 +1721,23 @@ class PersistenceManager:
                         target_revision=_RESOURCE_SCOPE_ALEMBIC_REVISION,
                     )
 
-            # PostgreSQL has transactional DDL. SQLite has already crossed the
-            # two destructive tenancy boundaries under verified backups; this
-            # final call is a no-op today and applies future migrations.
+            if engine.dialect.name == 'sqlite':
+                current_rev = await alembic_runner.get_alembic_current(engine)
+                conversion = '0042_sqlite_incremental_vacuum'
+                if conversion in alembic_runner.pending_revisions(current_rev, target_revision):
+                    await alembic_runner.run_alembic_upgrade(engine, '0041_resource_urls')
+                    async with engine.connect() as connection:
+                        vacuum_mode = (await connection.exec_driver_sql('PRAGMA auto_vacuum')).scalar_one()
+                    if vacuum_mode == 0:
+                        await self._run_verified_sqlite_migration(
+                            engine,
+                            source_revision='0041_resource_urls',
+                            target_revision=conversion,
+                        )
+                    else:
+                        await alembic_runner.run_alembic_upgrade(engine, conversion)
+
+            # Apply any remaining release migrations after verified boundaries.
             await alembic_runner.run_alembic_upgrade(engine, target_revision)
             self.ap.logger.info(f'Alembic migrations completed at {target_revision}.')
         except Exception as e:

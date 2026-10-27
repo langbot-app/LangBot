@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from ..cloud.plan_policy import require_workspace_platform
+
+from ..i18n import language_scope
+from ..i18n.workspace import get_workspace_language
+
 import asyncio
 import contextlib
 import dataclasses
@@ -29,6 +34,7 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
+from ..agent.runner.query_entry_adapter import QueryEntryAdapter
 from ..entity.persistence import workspace as persistence_workspace
 
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -114,6 +120,7 @@ class RuntimeBot:
     async def assert_execution_active(self) -> None:
         """Fail closed when this long-lived adapter belongs to a stale placement."""
 
+        await require_workspace_platform(self.ap, self.workspace_uuid, self.bot_entity.adapter)
         await self.ap.workspace_service.get_execution_binding(
             self.workspace_uuid,
             expected_generation=self.placement_generation,
@@ -222,6 +229,7 @@ class RuntimeBot:
     def _augment_event_data(
         cls,
         event_data: dict[str, typing.Any],
+        bot_account_id: str | None = None,
     ) -> dict[str, typing.Any]:
         """Inject virtual computed fields to simplify common filter patterns."""
         message_chain = event_data.get('message_chain')
@@ -233,6 +241,13 @@ class RuntimeBot:
             event_data['message_element_types'] = [
                 comp.get('type', '') for comp in message_chain if isinstance(comp, dict)
             ]
+            if bot_account_id:
+                event_data['is_at_bot'] = any(
+                    isinstance(comp, dict)
+                    and comp.get('type') == 'At'
+                    and str(comp.get('target', '')) == str(bot_account_id)
+                    for comp in message_chain
+                )
         if 'group' in event_data:
             event_data['chat_type'] = 'group' if event_data.get('group') is not None else 'person'
         return event_data
@@ -242,13 +257,14 @@ class RuntimeBot:
         cls,
         event: platform_events.EBAEvent,
         filters: typing.Any,
+        bot_account_id: str | None = None,
     ) -> bool:
         if not filters:
             return True
         if not isinstance(filters, list):
             return False
 
-        event_data = cls._augment_event_data(cls._safe_model_dump(event))
+        event_data = cls._augment_event_data(cls._safe_model_dump(event), bot_account_id=bot_account_id)
         return all(
             cls._match_event_filter(event_data, event_filter)
             for event_filter in filters
@@ -276,6 +292,7 @@ class RuntimeBot:
         bindings: list[dict[str, typing.Any]],
         event: platform_events.EBAEvent,
         event_type: str,
+        bot_account_id: str | None = None,
     ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
         """Evaluate Bot event bindings with the same precedence used at runtime."""
         matched: list[tuple[int, int, dict[str, typing.Any], dict[str, typing.Any]]] = []
@@ -318,7 +335,7 @@ class RuntimeBot:
                 diagnostic_steps.append(step)
                 continue
 
-            if not cls._match_event_filters(event, binding.get('filters')):
+            if not cls._match_event_filters(event, binding.get('filters'), bot_account_id=bot_account_id):
                 step['failure_code'] = 'filters_mismatch'
                 step['reason'] = 'Event data does not satisfy binding filters'
                 diagnostic_steps.append(step)
@@ -349,7 +366,10 @@ class RuntimeBot:
         event_type: str,
     ) -> dict[str, typing.Any] | None:
         """Resolve the highest priority Bot event binding for a platform event."""
-        selected, _ = self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        bot_account_id = getattr(getattr(self, 'adapter', None), 'bot_account_id', None) or None
+        selected, _ = self._evaluate_eba_event_bindings(
+            self._get_event_bindings(), event, event_type, bot_account_id=bot_account_id
+        )
         return selected
 
     def diagnose_eba_event_binding(
@@ -358,7 +378,10 @@ class RuntimeBot:
         event_type: str,
     ) -> tuple[dict[str, typing.Any] | None, list[dict[str, typing.Any]]]:
         """Return the selected event binding plus per-binding diagnostic steps."""
-        return self._evaluate_eba_event_bindings(self._get_event_bindings(), event, event_type)
+        bot_account_id = getattr(getattr(self, 'adapter', None), 'bot_account_id', None) or None
+        return self._evaluate_eba_event_bindings(
+            self._get_event_bindings(), event, event_type, bot_account_id=bot_account_id
+        )
 
     @staticmethod
     def _route_ref(
@@ -634,7 +657,6 @@ class RuntimeBot:
         group_id = cls._get_entity_id(group)
         if group_id:
             metadata['group_id'] = group_id
-            return 'group', group_id, metadata
 
         chat_id = getattr(event, 'chat_id', None)
         chat_type = getattr(event, 'chat_type', None)
@@ -644,6 +666,11 @@ class RuntimeBot:
             if chat_type_value == 'group':
                 return 'group', str(chat_id), metadata
             return 'person', str(chat_id), metadata
+
+        # A guild can contain multiple delivery channels. Keep its id for
+        # membership APIs, but prefer the event's explicit chat for replies.
+        if group_id:
+            return 'group', group_id, metadata
 
         session_target_type, session_target_id = cls._session_to_reply_target(getattr(event, 'session_id', None))
         if session_target_type and session_target_id:
@@ -738,7 +765,7 @@ class RuntimeBot:
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=[],
+            attachments=QueryEntryAdapter._build_attachments(event, contents),
         )
 
     def _eba_event_to_agent_envelope(
@@ -916,6 +943,7 @@ class RuntimeBot:
         from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
 
+        await self.assert_execution_active()
         event.bot_uuid = self.bot_entity.uuid
         execution_id = self._platform_event_execution_id(event)
         if getattr(event, 'adapter_name', None) == 'wecomcs-omni':
@@ -1343,10 +1371,7 @@ class RuntimeBot:
         """Record a discarded message in the monitoring system."""
         try:
             if hasattr(message_chain, 'model_dump'):
-                chain_dump = message_chain.model_dump()
-                if hasattr(self.ap, 'storage_mgr') and hasattr(self.ap.storage_mgr, 'media_cache'):
-                    chain_dump = await self.ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
-                message_content = json.dumps(chain_dump, ensure_ascii=False)
+                message_content = message_chain.model_dump()
             else:
                 message_content = str(message_chain)
 
@@ -1376,26 +1401,6 @@ class RuntimeBot:
                 user_name=sender_name,
             )
 
-            # Ensure the session exists so the message appears in the session monitor.
-            # Don't overwrite pipeline info — a session may have messages from
-            # multiple pipelines; discarding shouldn't change the displayed pipeline.
-            session_updated = await self.ap.monitoring_service.update_session_activity(
-                self.execution_context,
-                session_id,
-            )
-            if not session_updated:
-                # No session yet (first message for this launcher was discarded).
-                await self.ap.monitoring_service.record_session_start(
-                    self.execution_context,
-                    session_id=session_id,
-                    bot_id=self.bot_entity.uuid,
-                    bot_name=self.bot_entity.name or self.bot_entity.uuid,
-                    pipeline_id=self.PIPELINE_DISCARD,
-                    pipeline_name=self.PIPELINE_DISCARD_DISPLAY_NAME,
-                    platform=platform,
-                    user_id=str(sender_id),
-                    user_name=sender_name,
-                )
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
@@ -1681,7 +1686,11 @@ class RuntimeBot:
         async for _ in self.ap.agent_run_orchestrator.run(
             envelope,
             binding,
-            adapter_context={'_delivery_adapter': adapter},
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': event,
+                '_execution_context': self.execution_context,
+            },
         ):
             # Resuming an interaction follows the same explicit-action delivery policy.
             pass
@@ -1713,21 +1722,22 @@ class RuntimeBot:
         def tenant_scoped_listener(listener):
             @functools.wraps(listener)
             async def wrapped(*args, **kwargs):
-                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
-                cloud_runtime = (
-                    getattr(
-                        getattr(self.ap.persistence_mgr, 'mode', None),
-                        'value',
-                        None,
+                with language_scope(await get_workspace_language(self.ap, self.workspace_uuid)):
+                    tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                    cloud_runtime = (
+                        getattr(
+                            getattr(self.ap.persistence_mgr, 'mode', None),
+                            'value',
+                            None,
+                        )
+                        == 'cloud_runtime'
                     )
-                    == 'cloud_runtime'
-                )
-                if cloud_runtime:
-                    if not callable(tenant_scope):
-                        raise RuntimeError('Cloud platform callbacks require a tenant scope')
-                    async with tenant_scope(self.workspace_uuid):
-                        return await listener(*args, **kwargs)
-                return await listener(*args, **kwargs)
+                    if cloud_runtime:
+                        if not callable(tenant_scope):
+                            raise RuntimeError('Cloud platform callbacks require a tenant scope')
+                        async with tenant_scope(self.workspace_uuid):
+                            return await listener(*args, **kwargs)
+                    return await listener(*args, **kwargs)
 
             return wrapped
 
@@ -2312,6 +2322,7 @@ class PlatformManager:
             bot_entity = persistence_bot.Bot(**bot_entity)
 
         execution_context = self._normalize_execution_context(context, bot_uuid=bot_entity.uuid)
+        await require_workspace_platform(self.ap, execution_context.workspace_uuid, bot_entity.adapter)
         if bot_entity.workspace_uuid != execution_context.workspace_uuid:
             raise WorkspaceRequiredError('Bot entity Workspace does not match its runtime context')
         if not _binding_validated:
@@ -2401,6 +2412,7 @@ class PlatformManager:
         )
         if bot is None or bot.placement_generation != execution_context.placement_generation:
             return None
+        await require_workspace_platform(self.ap, execution_context.workspace_uuid, bot.bot_entity.adapter)
         return bot
 
     async def resolve_public_bot(self, route_key: str) -> RuntimeBot | None:

@@ -1,4 +1,4 @@
-import { Building2, Check, Settings } from 'lucide-react';
+import { Building2, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import WorkspacePlanBadge from './WorkspacePlanBadge';
 
 export const OPEN_WORKSPACE_SETTINGS_EVENT = 'langbot:open-workspace-settings';
 
@@ -39,11 +40,13 @@ export default function WorkspaceSwitcher({
         <Button
           variant="outline"
           size="sm"
-          className={cn('h-9 min-w-0 justify-start px-2.5 text-sm', className)}
+          className={cn('h-9 min-w-0 gap-1.5 px-2.5 text-sm', className)}
           aria-label={t('workspace.switchWorkspace')}
         >
           <Building2 className="size-4 shrink-0" />
-          <span className="truncate">{currentWorkspace.workspace.name}</span>
+          <span className="max-w-[6rem] truncate">
+            {currentWorkspace.workspace.name}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-1.5">
@@ -56,7 +59,10 @@ export default function WorkspaceSwitcher({
           return (
             <DropdownMenuItem
               key={entry.workspace.uuid}
-              className="min-h-11 gap-2 px-2 py-1.5"
+              className={cn(
+                'min-h-11 gap-2 px-2 py-1.5',
+                selected && 'bg-muted',
+              )}
               onClick={() => {
                 if (!selected)
                   void switchWorkspaceAndReload(entry.workspace.uuid);
@@ -67,11 +73,8 @@ export default function WorkspaceSwitcher({
                 {entry.workspace.name}
               </span>
               {entry.workspace.source === 'cloud_projection' && (
-                <span className="rounded-md border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase text-muted-foreground">
-                  {entry.plan_name || t('workspace.planUnavailable')}
-                </span>
+                <WorkspacePlanBadge planName={entry.plan_name} />
               )}
-              {selected && <Check className="size-4" />}
               {selected && (
                 <Button
                   variant="ghost"

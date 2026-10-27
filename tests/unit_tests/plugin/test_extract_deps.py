@@ -113,6 +113,7 @@ numpy"""
 
         # Should find nested requirements.txt (ends with 'requirements.txt')
         assert task_context.metadata.get('deps_total') == 2
+        assert task_context.metadata['deps_list'] == ['requests', 'flask']
 
     def test_no_requirements_in_zip(self):
         """Test handling ZIP without requirements.txt."""

@@ -209,6 +209,19 @@ def test_platform_resources_require_runner_call_permission() -> None:
     assert capabilities['unavailable_tools'] == [{'name': 'event_reply', 'reason': 'runner_call_permission_missing'}]
 
 
+def test_interaction_resume_can_reply_only_to_a_frozen_delivery_target() -> None:
+    event = _event().model_copy(update={'event_type': 'interaction.submitted'})
+    names = resolve_agent_platform_tool_names({}, event.event_type)
+    assert 'event_reply' in names
+    resources, _ = build_platform_tool_resources(event, names, ['detail', 'call'])
+    assert 'event_reply' in {item['tool_name'] for item in resources}
+
+    event.delivery.reply_target = None
+    resources, capabilities = build_platform_tool_resources(event, names, ['detail', 'call'])
+    assert 'event_reply' not in {item['tool_name'] for item in resources}
+    assert {'name': 'event_reply', 'reason': 'event_target_unavailable'} in capabilities['unavailable_tools']
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('name', 'params', 'api'),

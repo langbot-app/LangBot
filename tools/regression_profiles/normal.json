@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "cli": {"executable": "lbctl", "config": "./lbctl.yaml"},
+  "vars": {
+    "plugin_dir": "/path/to/plugin-zips",
+    "mock_base_url": "http://127.0.0.1:18080/v1",
+    "embedding_base_url": "http://127.0.0.1:15410/v1",
+    "core_health": "http://127.0.0.1:5300/healthz"
+  },
+  "plugins": [
+    {"source": "local", "file": "${plugin_dir}/LocalAgent.zip"},
+    {"source": "local", "file": "${plugin_dir}/LangRAG.zip"},
+    {"source": "local", "file": "${plugin_dir}/GeneralParsers.zip"}
+  ],
+  "resources": [
+    {"id": "mock_provider", "kind": "provider", "body": {
+      "name": "regression mock", "requester": "openai-chat-completions",
+      "base_url": "${mock_base_url}", "api_keys": ["test-only"]
+    }},
+    {"id": "embedding_provider", "kind": "provider", "body": {
+      "name": "regression embedding", "requester": "openai-chat-completions",
+      "base_url": "${embedding_base_url}", "api_keys": ["test-only"]
+    }},
+    {"id": "chat_model", "kind": "model", "type": "llm", "body": {
+      "name": "mock-chat", "provider_uuid": "${mock_provider}",
+      "abilities": ["func_call"], "context_length": 8192,
+      "extra_args": {"request_policy": {"retries": 0}}
+    }},
+    {"id": "box_model", "kind": "model", "type": "llm", "body": {
+      "name": "mock-box", "provider_uuid": "${mock_provider}",
+      "abilities": ["func_call"], "context_length": 8192,
+      "extra_args": {"request_policy": {"retries": 0}}
+    }},
+    {"id": "rag_model", "kind": "model", "type": "llm", "body": {
+      "name": "mock-rag", "provider_uuid": "${mock_provider}",
+      "abilities": ["func_call"], "context_length": 8192,
+      "extra_args": {"request_policy": {"retries": 0}}
+    }},
+    {"id": "embedding_model", "kind": "model", "type": "embedding", "body": {
+      "name": "all-MiniLM-L6-v2", "provider_uuid": "${embedding_provider}"
+    }},
+    {"id": "knowledge_base", "kind": "knowledge-base", "body": {
+      "name": "regression parser golden", "knowledge_engine_plugin_id": "langbot-team/LangRAG",
+      "creation_settings": {"embedding_model_uuid": "${embedding_model}", "index_type": "chunk", "chunk_size": 512, "overlap": 50},
+      "retrieval_settings": {"search_type": "vector", "top_k": 5, "query_rewrite": "off", "rerank": "off"}
+    }, "documents": [{
+      "file": "../../skills/skills/langbot-testing/fixtures/rag/parser-golden.html",
+      "parser_plugin_id": "langbot-team/GeneralParsers"
+    }]},
+    {"id": "chat_pipeline", "kind": "pipeline", "body": {
+      "name": "regression chat", "description": "Normal deterministic chat",
+      "config": {
+        "ai": {
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner_config": {"plugin:langbot-team/LocalAgent/default": {
+            "model": {"primary": "${chat_model}", "fallbacks": []},
+            "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
+            "knowledge-bases": [], "box-enabled": false, "timeout": 30
+          }}
+        },
+        "safety": {"rate-limit": {"limitation": 10000}},
+        "output": {"force-delay": {"min": 0, "max": 0}}
+      }
+    }},
+    {"id": "box_pipeline", "kind": "pipeline", "body": {
+      "name": "regression Box", "description": "Real Box write and read",
+      "config": {
+        "ai": {
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner_config": {"plugin:langbot-team/LocalAgent/default": {
+            "model": {"primary": "${box_model}", "fallbacks": []},
+            "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
+            "knowledge-bases": [], "box-enabled": true, "box-session-id-template": "{global}",
+            "timeout": 30, "max-tool-iterations": 5
+          }}
+        },
+        "safety": {"rate-limit": {"limitation": 10000}},
+        "output": {"force-delay": {"min": 0, "max": 0}}
+      }
+    }},
+    {"id": "rag_pipeline", "kind": "pipeline", "body": {
+      "name": "regression RAG", "description": "Retrieved model input oracle",
+      "config": {
+        "ai": {
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner_config": {"plugin:langbot-team/LocalAgent/default": {
+            "model": {"primary": "${rag_model}", "fallbacks": []},
+            "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
+            "knowledge-bases": ["${knowledge_base}"], "box-enabled": false,
+            "timeout": 30, "retrieval-top-k": 5
+          }}
+        },
+        "safety": {"rate-limit": {"limitation": 10000}},
+        "output": {"force-delay": {"min": 0, "max": 0}}
+      }
+    }}
+  ],
+  "cases": [
+    {"name": "chat", "weight": 2, "args": ["pipeline", "run", "${chat_pipeline}", "--message", "Run the normal QA scenario", "--timeout", "90s"], "expect": "LANGBOT_CHAT_OK"},
+    {"name": "box", "weight": 1, "args": ["pipeline", "run", "${box_pipeline}", "--message", "Run the normal QA scenario", "--timeout", "90s"], "expect": "LANGBOT_BOX_OK"},
+    {"name": "rag_chat", "weight": 1, "args": ["pipeline", "run", "${rag_pipeline}", "--message", "What is the documented parser-rag sentinel?", "--timeout", "90s"], "expect": "LANGBOT_RAG_OK"},
+    {"name": "rag_retrieve", "weight": 1, "args": ["knowledge-base", "retrieve", "${knowledge_base}"], "body": {"query": "What is the parser-rag golden sentinel and parser-engine pair?", "retrieval_settings": {"search_type": "vector", "top_k": 5}}, "expect": "aurora-parser-rag-9137"}
+  ],
+  "phases": [{"name": "normal", "duration_seconds": 600, "rps": 2, "workers": 4, "cooldown_seconds": 30}],
+  "observe": {
+    "health": {"core": "${core_health}", "mock": "http://127.0.0.1:18080/healthz", "box": "http://127.0.0.1:5410/readyz"},
+    "pids": {}, "pid_files": {}, "containers": []
+  },
+  "cleanup": "on-success",
+  "thresholds": {"min_rps_ratio": 0.95, "max_p95_seconds": {"chat": 3, "box": 6, "rag_chat": 4, "rag_retrieve": 1}}
+}

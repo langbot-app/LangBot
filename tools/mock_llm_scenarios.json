@@ -1,0 +1,169 @@
+{
+  "mock-chat": {
+    "steps": [{"content": "LANGBOT_CHAT_OK"}]
+  },
+  "mock-rag": {
+    "steps": [{"expect_prompt": "aurora-parser-rag-9137", "content": "LANGBOT_RAG_OK"}]
+  },
+  "mock-box": {
+    "steps": [
+      {"tool_calls": [{"name": "exec", "arguments": {"command": "printf LANGBOT_BOX_SENTINEL > /workspace/mock-llm.txt; cat /workspace/mock-llm.txt"}}]},
+      {"expect_tool_output": "LANGBOT_BOX_SENTINEL", "tool_calls": [{"name": "exec", "arguments": {"command": "cat /workspace/mock-llm.txt"}}]},
+      {"expect_tool_output": "LANGBOT_BOX_SENTINEL", "content": "LANGBOT_BOX_OK"}
+    ]
+  },
+  "mock-401": {"status": 401, "steps": [{"content": "unused"}]},
+  "mock-429": {"status": 429, "steps": [{"content": "unused"}]},
+  "mock-503": {"status": 503, "steps": [{"content": "unused"}]},
+  "mock-slow": {"delay_seconds": 2, "steps": [{"content": "LANGBOT_SLOW_OK"}]},
+  "mock-slow-stream": {"chunk_delay_seconds": 0.2, "steps": [{"content": "LANGBOT_SLOW_STREAM_OK"}]},
+  "mock-smoke-box": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf LANGBOT_BOX_SENTINEL > /tmp/langbot-smoke.txt; cat /tmp/langbot-smoke.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_BOX_SENTINEL",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "cat /tmp/langbot-smoke.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_BOX_SENTINEL",
+        "content": "LANGBOT_BOX_OK"
+      }
+    ]
+  },
+  "mock-smoke-export": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf LANGBOT_EXPORT_SENTINEL > /tmp/langbot-smoke-output.txt; cat /tmp/langbot-smoke-output.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "LANGBOT_EXPORT_SENTINEL",
+        "tool_calls": [
+          {
+            "name": "export_box_files",
+            "arguments": {
+              "paths": [
+                "/tmp/langbot-smoke-output.txt"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "accepted",
+        "content": "LANGBOT_EXPORT_OK"
+      }
+    ]
+  },
+  "mock-smoke-unicode": {
+    "steps": [
+      {
+        "expect_prompt": "请原样处理：你好，世界 🌍",
+        "content": "你好，世界 🌍 LANGBOT_UNICODE_OK"
+      }
+    ]
+  },
+  "mock-smoke-exec-error": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf EXPECTED_STDOUT; printf EXPECTED_STDERR >&2; exit 7"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "EXPECTED_STDERR",
+        "content": "LANGBOT_EXEC_ERROR_HANDLED"
+      }
+    ]
+  },
+  "mock-smoke-parallel-tools": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf PARALLEL_OK_A"
+            }
+          },
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf PARALLEL_OK_B"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "PARALLEL_OK_B",
+        "content": "LANGBOT_PARALLEL_TOOLS_OK"
+      }
+    ]
+  },
+  "mock-smoke-export-unicode": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf '你好，文件 🌍' > /tmp/输出.txt; cat /tmp/输出.txt"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "你好，文件 🌍",
+        "tool_calls": [
+          {
+            "name": "export_box_files",
+            "arguments": {
+              "paths": [
+                "/tmp/输出.txt"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "accepted",
+        "content": "LANGBOT_UNICODE_EXPORT_OK"
+      }
+    ]
+  },
+  "mock-smoke-rag-other": {
+    "steps": [
+      {
+        "expect_prompt": "cedar-isolation-4826",
+        "content": "LANGBOT_OTHER_RAG_OK"
+      }
+    ]
+  }
+}

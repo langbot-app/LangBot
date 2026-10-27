@@ -65,9 +65,9 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 ### ☁️ LangBot Cloud (Recommended)
 
-[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://space.langbot.app/cloud)
 
-[cloud.langbot.app](https://cloud.langbot.app)
+[space.langbot.app/cloud](https://space.langbot.app/cloud)
 
 Zero deployment, ready to use.
 

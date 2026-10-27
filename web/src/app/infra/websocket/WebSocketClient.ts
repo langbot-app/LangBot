@@ -3,6 +3,7 @@
  * 用于管理WebSocket连接和消息处理
  */
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
+import { backendWebSocketURL } from './url';
 import type { MessageChainComponent } from '@/app/infra/entities/message';
 
 export interface WebSocketMessage {
@@ -17,12 +18,7 @@ export interface WebSocketMessage {
 
 export interface WebSocketResponse {
   type:
-    | 'connected'
-    | 'response'
-    | 'user_message'
-    | 'pong'
-    | 'broadcast'
-    | 'error';
+    'connected' | 'response' | 'user_message' | 'pong' | 'broadcast' | 'error';
   connection_id?: string;
   pipeline_uuid?: string;
   session_type?: string;
@@ -43,6 +39,25 @@ export class WebSocketClient {
   private isConnecting = false; // 防止重复连接
   private shouldReconnect = true;
   private disconnectedByUser = false;
+  private workspaceUuid = getActiveWorkspaceUuid();
+  private handshakeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private recoveryListenersAttached = false;
+  private recover = () => {
+    if (
+      document.visibilityState === 'hidden' ||
+      this.disconnectedByUser ||
+      !this.shouldReconnect ||
+      this.isConnecting ||
+      this.isConnected()
+    )
+      return;
+    if (getActiveWorkspaceUuid() !== this.workspaceUuid) return;
+    void this.connect().catch(() => {});
+  };
+  private clearHandshakeTimeout() {
+    if (this.handshakeTimeout) clearTimeout(this.handshakeTimeout);
+    this.handshakeTimeout = null;
+  }
 
   // 事件回调
   private onConnectedCallback?: (data: WebSocketResponse) => void;
@@ -89,17 +104,32 @@ export class WebSocketClient {
 
         this.isConnecting = true;
 
-        // 构建WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // extract host from import.meta.env.VITE_API_BASE_URL
-        // If env var is undefined, use current page host (for production)
-        const host =
-          import.meta.env.VITE_API_BASE_URL?.split('://')[1] ||
-          window.location.host;
-        const url = `${protocol}//${host}/api/v1/pipelines/${this.pipelineId}/ws/connect?session_type=${this.sessionType}`;
-
-        const socket = new WebSocket(url);
+        if (getActiveWorkspaceUuid() !== this.workspaceUuid) {
+          this.isConnecting = false;
+          this.shouldReconnect = false;
+          reject(new Error('Workspace changed'));
+          return;
+        }
+        const url = backendWebSocketURL(
+          import.meta.env.VITE_API_BASE_URL,
+          window.location.href,
+          `api/v1/pipelines/${encodeURIComponent(this.pipelineId)}/ws/connect`,
+        );
+        url.searchParams.set('session_type', this.sessionType);
+        const socket = new WebSocket(url.toString());
         this.ws = socket;
+        if (!this.recoveryListenersAttached) {
+          window.addEventListener('online', this.recover);
+          window.addEventListener('focus', this.recover);
+          document.addEventListener('visibilitychange', this.recover);
+          this.recoveryListenersAttached = true;
+        }
+        this.clearHandshakeTimeout();
+        this.handshakeTimeout = setTimeout(() => {
+          if (this.ws !== socket || this.connectionId) return;
+          reject(new Error('WebSocket authentication timed out'));
+          socket.close();
+        }, 15000);
 
         // 连接打开
         socket.onopen = () => {
@@ -107,9 +137,8 @@ export class WebSocketClient {
             socket.close();
             return;
           }
-          this.isConnecting = false;
           const token = this.token || localStorage.getItem('token');
-          const workspaceUuid = getActiveWorkspaceUuid();
+          const workspaceUuid = this.workspaceUuid;
           if (!token || !workspaceUuid) {
             const error = new Error('WebSocket认证信息缺失');
             this.shouldReconnect = false;
@@ -144,6 +173,8 @@ export class WebSocketClient {
               // Only a fully authenticated runtime connection should reset
               // the retry budget. Resetting on TCP open makes server-side
               // errors (for example a pipeline still loading) retry forever.
+              this.clearHandshakeTimeout();
+              this.isConnecting = false;
               this.reconnectAttempts = 0;
               this.connectionId = data.connection_id;
               this.startHeartbeat();
@@ -157,6 +188,9 @@ export class WebSocketClient {
 
         // 连接关闭
         socket.onclose = () => {
+          reject(new Error('WebSocket connection closed'));
+          if (this.ws !== socket) return;
+          this.clearHandshakeTimeout();
           if (this.ws === socket) {
             this.ws = null;
             this.connectionId = null;
@@ -169,9 +203,12 @@ export class WebSocketClient {
           // 自动重连
           if (
             this.shouldReconnect &&
-            this.reconnectAttempts < this.maxReconnectAttempts
+            getActiveWorkspaceUuid() === this.workspaceUuid
           ) {
-            this.reconnectAttempts++;
+            this.reconnectAttempts = Math.min(
+              this.reconnectAttempts + 1,
+              this.maxReconnectAttempts,
+            );
             this.reconnectTimeout = setTimeout(() => {
               this.reconnectTimeout = null;
               if (!this.shouldReconnect || this.disconnectedByUser) return;
@@ -320,6 +357,11 @@ export class WebSocketClient {
    */
   public disconnect() {
     this.disconnectedByUser = true;
+    this.clearHandshakeTimeout();
+    window.removeEventListener('online', this.recover);
+    window.removeEventListener('focus', this.recover);
+    document.removeEventListener('visibilitychange', this.recover);
+    this.recoveryListenersAttached = false;
     this.shouldReconnect = false;
     this.reconnectAttempts = this.maxReconnectAttempts;
     if (this.reconnectTimeout) {
@@ -354,7 +396,11 @@ export class WebSocketClient {
    * 获取连接状态
    */
   public isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    return (
+      this.ws !== null &&
+      this.ws.readyState === WebSocket.OPEN &&
+      this.connectionId !== null
+    );
   }
 
   // ===== 事件回调设置 =====

@@ -153,6 +153,24 @@ spec:
         field: enable-webhook
         operator: eq
         value: true
+    - name: verification-token
+      label:
+        en_US: Verification Token
+        zh_Hans: 验证令牌（Verification Token）
+        zh_Hant: 驗證權杖（Verification Token）
+        ja_JP: 検証トークン（Verification Token）
+      description:
+        en_US: Copy from Lark event subscription settings. Required when Encrypt Key is empty.
+        zh_Hans: 从飞书事件订阅配置复制；Encrypt Key 为空时必填。
+        zh_Hant: 從飛書事件訂閱設定複製；Encrypt Key 為空時必填。
+        ja_JP: Lark イベント購読設定からコピーしてください。Encrypt Key が空の場合は必須です。
+      type: string
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
     - name: encrypt-key
       label:
         en_US: Encrypt Key
@@ -165,7 +183,7 @@ spec:
         zh_Hant: 僅在啟用 Webhook 模式時有效，請填寫加密密鑰
         ja_JP: Webhook モードが有効な場合にのみ有効です。暗号化キーを入力してください
       type: string
-      required: true
+      required: false
       default: ""
       show_if:
         field: enable-webhook

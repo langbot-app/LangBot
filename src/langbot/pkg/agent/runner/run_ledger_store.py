@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
 from ...utils.execution_lease import host_execution_lease
 
@@ -304,7 +305,7 @@ class RunLedgerStore:
         self,
         *,
         run_id: str,
-        sequence: int,
+        sequence: int | None,
         event_type: str,
         data: dict[str, typing.Any] | None = None,
         usage: dict[str, typing.Any] | None = None,
@@ -317,6 +318,17 @@ class RunLedgerStore:
         returned. This supports retrying append calls idempotently.
         """
         async with self._session_factory() as session:
+            if sequence is None:
+                # Serialize Host allocation across store instances and database connections.
+                locked = await session.execute(
+                    sqlalchemy.update(AgentRun).where(AgentRun.run_id == run_id).values(updated_at=AgentRun.updated_at)
+                )
+                if not locked.rowcount:
+                    raise ValueError(f'Run {run_id} not found')
+                maximum = await session.execute(
+                    sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(AgentRunEvent.run_id == run_id)
+                )
+                sequence = int(maximum.scalar_one_or_none() or 0) + 1
             result = await session.execute(
                 sqlalchemy.select(AgentRunEvent).where(
                     AgentRunEvent.run_id == run_id,
@@ -351,31 +363,43 @@ class RunLedgerStore:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Append a Host-authored audit event after the current max sequence."""
+        if await self.get_run(run_id) is None:
+            return None
+        return await self.append_event(
+            run_id=run_id,
+            sequence=None,
+            event_type=event_type,
+            data=data,
+            source='host',
+            metadata=metadata or {},
+        )
+
+    async def pin_skill_revision(self, run_id: str, workspace_id: str, name: str, revision: str) -> str:
+        """Pin a Host-owned revision without overwriting concurrent run metadata."""
         async with self._session_factory() as session:
             run = await self._get_run_row(session, run_id)
-            if run is None:
-                return None
-
+            if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
+                raise ValueError('Skill activation requires an active run in the current Workspace')
+            original = run.metadata_json
+            metadata = MediaCache.redact_inline_images(_json_loads(original, {}))
+            bindings = metadata.setdefault('activated_skills', {})
+            if name in bindings:
+                return str(bindings[name])
+            bindings[name] = revision
             result = await session.execute(
-                sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(
-                    AgentRunEvent.run_id == run_id,
+                sqlalchemy.update(AgentRun)
+                .where(
+                    AgentRun.run_id == run_id,
+                    AgentRun.metadata_json == original,
+                    AgentRun.status.notin_(TERMINAL_STATUSES),
                 )
+                .values(metadata_json=_json_dumps(metadata))
+                .execution_options(synchronize_session=False)
             )
-            next_sequence = int(result.scalar_one_or_none() or 0) + 1
-            row = AgentRunEvent(
-                run_id=run_id,
-                sequence=next_sequence,
-                type=event_type,
-                data_json=_json_dumps(data or {}),
-                usage_json=None,
-                created_at=as_naive_utc(_utc_now()),
-                source='host',
-                metadata_json=_json_dumps(metadata or {}),
-            )
-            session.add(row)
+            if result.rowcount != 1:
+                raise ValueError('Concurrent run update; retry Skill activation')
             await session.commit()
-            inflight_hub.notify_run(run_id, event_type)
-            return self._event_to_dict(row)
+            return revision
 
     async def finalize_run(
         self,
@@ -412,7 +436,8 @@ class RunLedgerStore:
             if cost is not None:
                 run.cost_json = _json_dumps(cost)
             if metadata is not None:
-                existing_metadata = _json_loads(run.metadata_json, {})
+                # Discard legacy image bytes before merging; new metadata still uses the write contract.
+                existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
                 if isinstance(existing_metadata, dict):
                     existing_metadata.update(metadata)
                     run.metadata_json = _json_dumps(existing_metadata)

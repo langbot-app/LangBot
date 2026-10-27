@@ -45,6 +45,12 @@ export function getTourPosition(
         ? rect.bottom + VIEWPORT_GAP
         : rect.top - height - VIEWPORT_GAP;
   }
+  // The mobile sidebar can still be sliding in when its target is measured.
+  // Clamp the card independently of that temporarily off-screen target.
+  left = Math.max(
+    VIEWPORT_GAP,
+    Math.min(left, viewportWidth - width - VIEWPORT_GAP),
+  );
   top = Math.max(
     VIEWPORT_GAP,
     Math.min(top, viewportHeight - height - VIEWPORT_GAP),

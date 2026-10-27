@@ -20,6 +20,7 @@ from langbot_plugin.box.security import BOX_SHARED_WORKSPACE_PROBE_PREFIX
 from .admission import SandboxAdmissionController, require_cloud_admission_policy
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
+from .export_errors import export_error, script_export_error, transport_export_error
 from ..utils import httpclient
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
@@ -27,8 +28,10 @@ from langbot_plugin.box.errors import BoxAdmissionError, BoxError, BoxValidation
 from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
     BoxExecutionResult,
+    BoxHostMountMode,
     BoxManagedProcessInfo,
     BoxManagedProcessSpec,
+    BoxMountSpec,
     BoxProfile,
     BoxSpec,
 )
@@ -123,6 +126,7 @@ class BoxService:
         self.profile = self._load_profile()
         self.custom_image = self._load_custom_image()
         self.workspace_quota_mb = self._load_workspace_quota_mb()
+        self.default_env = self._load_default_env()
         self._admission_policy = (
             require_cloud_admission_policy(_get_box_config(ap).get('admission')) if self._cloud_managed else None
         )
@@ -168,7 +172,7 @@ class BoxService:
             self._connector_error = 'Box runtime is disabled in config (box.enabled = false)'
             self.ap.logger.info(
                 'Box runtime disabled by config; sandbox features (exec/read/write/edit, '
-                'skill add/edit, stdio MCP) will be unavailable.'
+                'stdio MCP, executable package scripts) will be unavailable.'
             )
             return
         try:
@@ -274,17 +278,6 @@ class BoxService:
                         await self._purge_attachment_dirs()
                     self._available = True
                     self._connector_error = ''
-                    skill_mgr = getattr(self.ap, 'skill_mgr', None)
-                    reload_skills = getattr(skill_mgr, 'reload_skills', None)
-                    if callable(reload_skills) and not self._cloud_managed:
-                        binding = await self.ap.workspace_service.get_execution_binding()
-                        await reload_skills(
-                            ExecutionContext(
-                                instance_uuid=binding.instance_uuid,
-                                workspace_uuid=binding.workspace_uuid,
-                                placement_generation=binding.placement_generation,
-                            )
-                        )
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
                 except Exception as exc:
@@ -364,19 +357,17 @@ class BoxService:
         """Whether LangBot and the Box runtime share a filesystem view.
 
         This is True only when Box runs as a local stdio child process of
-        LangBot (same container/host). In that case paths the Box runtime
-        reports — notably skill ``package_root`` — resolve identically on the
-        LangBot side, so LangBot may validate them against its own filesystem.
+        LangBot (same container/host). In that case host paths resolve
+        identically on both sides and Core may perform local filesystem work.
 
         It is False for every separated deployment (Docker Compose, k8s
         sidecar, ``--standalone-box``, or an explicit ``runtime.endpoint``),
-        where the Box runtime owns its own filesystem and LangBot must trust
-        the paths it reports rather than checking them locally.
+        where only explicitly shared and identically mounted roots can cross
+        the process boundary.
 
         When Box is wired up with an injected client (tests, custom embeds)
-        there is no connector to introspect; we conservatively report False so
-        LangBot never wrongly drops Box-reported skills. An explicit override
-        can be set via ``_shares_filesystem_with_box`` (used by tests and any
+        there is no connector to introspect; we conservatively report False.
+        An explicit override can be set via ``_shares_filesystem_with_box`` (used by tests and any
         embedder that knows the real topology).
         """
         if self._shares_filesystem_with_box_override is not None:
@@ -489,11 +480,18 @@ class BoxService:
         self,
         context: TenantContext,
         spec_payload: dict,
+        *,
+        trusted_read_only_mounts: list[dict] | None = None,
     ) -> dict:
         """Reject tenant-owned policy fields and apply the Cloud hard policy."""
 
         payload = dict(spec_payload)
+        trusted_mounts = self._normalize_trusted_read_only_mounts(trusted_read_only_mounts or [])
         if not self._cloud_managed:
+            if trusted_mounts:
+                if payload.get('extra_mounts'):
+                    raise BoxValidationError('extra_mounts and trusted_read_only_mounts cannot both be supplied')
+                payload['extra_mounts'] = trusted_mounts
             return payload
         policy = self._admission_policy
         if policy is None:
@@ -543,7 +541,7 @@ class BoxService:
                 'network': 'off',
                 'host_path': canonical_host_path,
                 'mount_path': '/workspace',
-                'extra_mounts': [],
+                'extra_mounts': trusted_mounts,
                 'persistent': True,
                 'timeout_sec': min(timeout, policy.max_timeout_sec),
                 'cpus': policy.cpus,
@@ -554,6 +552,22 @@ class BoxService:
             }
         )
         return payload
+
+    def _normalize_trusted_read_only_mounts(self, mounts: list[dict]) -> list[dict]:
+        """Validate Core-composed artifacts before crossing into Box."""
+
+        normalized: list[dict] = []
+        for raw_mount in mounts:
+            mount = BoxMountSpec.model_validate(raw_mount)
+            if mount.mode != BoxHostMountMode.READ_ONLY:
+                raise BoxAdmissionError('Core-composed additional mounts must be read-only')
+            host_path = os.path.realpath(mount.host_path)
+            if not os.path.isdir(host_path):
+                raise BoxAdmissionError('Core-composed read-only mount source is unavailable')
+            if not any(_is_path_under(host_path, root) for root in self.allowed_mount_roots):
+                raise BoxAdmissionError('Core-composed read-only mount source is outside allowed_mount_roots')
+            normalized.append(mount.model_copy(update={'host_path': host_path}).model_dump(mode='json'))
+        return normalized
 
     def _reject_cloud_managed_process(self) -> None:
         if self._cloud_managed:
@@ -576,9 +590,13 @@ class BoxService:
         query: pipeline_query.Query,
         *,
         skip_host_mount_validation: bool = False,
+        trusted_read_only_mounts: list[dict] | None = None,
     ) -> dict:
         result = await self._execute_spec_payload_result(
-            spec_payload, query, skip_host_mount_validation=skip_host_mount_validation
+            spec_payload,
+            query,
+            skip_host_mount_validation=skip_host_mount_validation,
+            trusted_read_only_mounts=trusted_read_only_mounts,
         )
         return self._serialize_result(result)
 
@@ -588,6 +606,7 @@ class BoxService:
         query: pipeline_query.Query,
         *,
         skip_host_mount_validation: bool = False,
+        trusted_read_only_mounts: list[dict] | None = None,
     ) -> BoxExecutionResult:
         """Execute within the bound Workspace and preserve the raw result for file transfers."""
         if not self._available:
@@ -597,11 +616,17 @@ class BoxService:
         from .runner import binding_for
 
         binding = binding_for(query)
+        if trusted_read_only_mounts is None:
+            trusted_read_only_mounts = binding.read_only_mounts
         if spec_payload.get('session_id') not in (None, '', binding.session_id):
             raise BoxValidationError('session_id must match the bound Box')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
-        spec_payload = self._managed_policy_payload(execution_context, spec_payload)
+        spec_payload = self._managed_policy_payload(
+            execution_context,
+            spec_payload,
+            trusted_read_only_mounts=trusted_read_only_mounts,
+        )
         await self._require_validated_workspace_sandbox(execution_context)
         if spec_payload.get('host_path') in (None, ''):
             tenant_workspace = self._tenant_workspace(execution_context)
@@ -656,70 +681,12 @@ class BoxService:
 
         return binding_for(query).session_id
 
-    def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
-        """Build extra_mounts entries for all pipeline-bound skills.
-
-        This ensures that when a container is first created it already has
-        all skill packages mounted, regardless of which skill is currently
-        activated.
-
-        Path validation is filesystem-topology dependent. When LangBot and the
-        Box runtime share a filesystem (local stdio mode), a skill whose
-        ``package_root`` is missing or no longer a directory is skipped with a
-        warning instead of being passed through to the backend. Without that
-        guard the three backends behave inconsistently on a stale mount: nsjail
-        refuses to start the sandbox (failing every exec in the session),
-        Docker silently auto-creates a root-owned empty directory on the host,
-        and E2B silently skips the upload — none of which surfaces an
-        actionable error.
-
-        When Box runs as a separate process (Docker Compose, k8s sidecar,
-        ``--standalone-box``, or a remote ``runtime.endpoint``), the
-        ``package_root`` reported by ``list_skills`` is the Box runtime's own
-        filesystem path and is NOT resolvable on the LangBot side. Validating
-        it locally would wrongly drop every skill, so LangBot trusts the path
-        and lets the Box runtime resolve it. The Box runtime only ever reports
-        skills it discovered on its own filesystem, so the path is valid there
-        by construction.
-        """
-        if self._cloud_managed:
-            return []
-        skill_mgr = getattr(self.ap, 'skill_mgr', None)
-        if skill_mgr is None:
-            return []
-
-        from ..provider.tools.loaders import skill as skill_loader
-
-        validate_locally = self.shares_filesystem_with_box
-
-        visible_skills = skill_loader.get_visible_skills(self.ap, query)
-        mounts: list[dict] = []
-        for skill_name, skill_data in visible_skills.items():
-            package_root = str(skill_data.get('package_root', '') or '').strip()
-            if not package_root:
-                continue
-            if validate_locally and not os.path.isdir(package_root):
-                self.ap.logger.warning(
-                    f'Skill "{skill_name}" package_root missing on filesystem '
-                    f'({package_root}); skipping mount to prevent sandbox failures. '
-                    f'The skill cache may be stale — consider reloading skills.'
-                )
-                continue
-            mounts.append(
-                {
-                    'host_path': package_root,
-                    'mount_path': f'/workspace/.skills/{skill_name}',
-                    'mode': 'rw',
-                }
-            )
-        return mounts
-
     async def execute_tool(
         self,
         parameters: dict,
         query: pipeline_query.Query,
         *,
-        skill_name: str | None = None,
+        read_only_mounts: list[dict] | None = None,
     ) -> dict:
         """Execute an agent-facing ``exec`` tool call.
 
@@ -727,8 +694,6 @@ class BoxService:
         ``BoxSpec.cmd`` field and injects the session id from the query.
         """
         spec_payload: dict = {'cmd': parameters['command']}
-        if skill_name is not None:
-            spec_payload['skill_name'] = skill_name
 
         # Pass through allowed agent-facing fields
         for key in ('workdir', 'timeout_sec', 'env'):
@@ -738,11 +703,11 @@ class BoxService:
         # Inject context the agent must not control
         spec_payload.setdefault('session_id', self.resolve_box_session_id(query))
 
-        # Mount all pipeline-bound skills so they are available in the container
-        if 'extra_mounts' not in spec_payload:
-            spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
-
-        return await self.execute_spec_payload(spec_payload, query)
+        return await self.execute_spec_payload(
+            spec_payload,
+            query,
+            trusted_read_only_mounts=read_only_mounts,
+        )
 
     async def execute_in_context(
         self,
@@ -1163,38 +1128,52 @@ class BoxService:
             )
         return result
 
-    async def collect_outbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+    async def collect_outbound_attachments(self, query: pipeline_query.Query, *, clear: bool = True) -> list[dict]:
         """Collect files the agent produced in the sandbox outbox.
 
-        Reads ``/workspace/outbox/<query_id>/`` (recursively) — directly from
-        the bind-mounted host directory when available (no size limit), else
-        via the exec channel — returns a list of ``{type, name, base64}``
-        ready to become platform message components, then clears the outbox so
-        a later turn in the same session does not re-send stale files. Returns
-        ``[]`` when nothing was produced.
+        Read regular files within the configured attachment limits from the
+        current run's outbox. Private container output uses the bound sandbox
+        channel; invalid or truncated responses retain the files. Clear a
+        successful collection and return ``{type, name, base64}`` descriptors.
+        Read and traversal limits fail without clearing output. Runner export
+        defers cleanup until its cumulative run limits have also been checked.
         """
         if not self._available:
+            if not clear:
+                raise BoxError('Box runtime is not available; output files were retained')
             return []
         if self._cloud_managed:
             await self.require_workspace_sandbox(self._query_execution_context(query))
 
         host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
-        if host_dir is not None:
-            entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
-        else:
-            entries = await self._read_outbox_via_exec(query)
+        try:
+            if host_dir is not None:
+                try:
+                    entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
+                except PermissionError:
+                    # Root-owned container output can be unreadable to Core.
+                    # Retry the complete read inside the already-bound Box.
+                    entries = await self._read_outbox_via_exec(query)
+            else:
+                entries = await self._read_outbox_via_exec(query)
+        except OSError as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
 
-        attachments = self._classify_outbound_entries(entries)
+        attachments = self._classify_outbound_entries(entries, include_source_path=not clear)
 
-        # Always clear the per-query outbox after reading — even when nothing
-        # was collected — so a later turn that reuses the same query_id (the
-        # counter resets across restarts) never inherits stale files.
-        await self._clear_outbox(query, host_dir)
+        # A successful empty read still clears stale state, but an incomplete
+        # read must never reach cleanup. Export can be retried after the failure.
+        if clear:
+            await self._clear_outbox(query, host_dir)
         if attachments:
             self.ap.logger.info(
                 f'Collected {len(attachments)} outbound attachment(s) from sandbox: query_id={query.query_id}'
             )
         return attachments
+
+    async def clear_outbound_attachments(self, query: pipeline_query.Query) -> None:
+        """Clear output after a complete read has been accepted by the Runner."""
+        await self._clear_outbox(query, self._host_query_dir(self.OUTBOX_SUBDIR, query))
 
     def _read_outbox_host(self, host_dir: str) -> list[dict]:
         """Read outbox files straight off the bind-mounted host directory."""
@@ -1214,95 +1193,128 @@ class BoxService:
             )
         except secure_fs.UnsafeWorkspacePathError as exc:
             raise BoxValidationError('Sandbox outbox contains an unsafe symbolic link') from exc
+        except secure_fs.WorkspaceReadLimitError as exc:
+            raise export_error(
+                exc.kind, limit=exc.limit, actual=exc.actual, path=exc.path, lower_bound=exc.lower_bound
+            ) from exc
         return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
-    async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
+    async def _read_outbox_via_exec(self, query: pipeline_query.Query, paths=None) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
         Use the same Workspace-scoped execution path as tools, retaining raw
         stdout because base64 payloads can exceed the display truncation limit.
         """
-        import json as _json
+        import base64
+        import binascii
+        from .sandbox_files import outbox_script
 
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
-        # Outbound bytes travel in raw stdout, not argv. Use the regular
-        # attachment limits rather than the smaller inbound command limit.
         max_file_bytes = self._ATTACHMENT_MAX_BYTES
         max_files = self._ATTACHMENT_MAX_FILES
         max_total_bytes = self._ATTACHMENT_MAX_TOTAL_BYTES
-        max_scan_entries = 1000
-        script = (
-            'import base64, json, os\n'
-            f'target = {target_dir!r}\n'
-            f'max_file_bytes = {max_file_bytes}\n'
-            f'max_files = {max_files}\n'
-            f'max_total_bytes = {max_total_bytes}\n'
-            f'max_scan_entries = {max_scan_entries}\n'
-            'out = []\n'
-            'total_bytes = 0\n'
-            'scanned_entries = 0\n'
-            'stack = [target]\n'
-            'if os.path.isdir(target):\n'
-            '    while stack and len(out) < max_files and scanned_entries < max_scan_entries:\n'
-            '        current = stack.pop()\n'
-            '        try:\n'
-            '            with os.scandir(current) as iterator:\n'
-            '                entries = sorted(iterator, key=lambda item: item.name, reverse=True)\n'
-            '        except OSError:\n'
-            '            continue\n'
-            '        for entry in entries:\n'
-            '            scanned_entries += 1\n'
-            '            if scanned_entries > max_scan_entries:\n'
-            '                break\n'
-            '            try:\n'
-            '                if entry.is_dir(follow_symlinks=False):\n'
-            '                    stack.append(entry.path)\n'
-            '                    continue\n'
-            '                if not entry.is_file(follow_symlinks=False):\n'
-            '                    continue\n'
-            '                size = entry.stat(follow_symlinks=False).st_size\n'
-            '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
-            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
-            "                with open(entry.path, 'rb') as f:\n"
-            '                    data = f.read(max_file_bytes + 1)\n'
-            '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
-            "                    raise RuntimeError('Sandbox output attachment exceeds the export size limit')\n"
-            '            except OSError:\n'
-            '                continue\n'
-            '            rel = os.path.relpath(entry.path, target)\n'
-            "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
-            '            total_bytes += len(data)\n'
-            '            if len(out) >= max_files:\n'
-            '                break\n'
-            'print(json.dumps(out))\n'
+        script = outbox_script(
+            self.OUTBOX_MOUNT_DIR,
+            self._attachment_query_key(query),
+            operation='read',
+            max_file_bytes=max_file_bytes,
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
         )
+        if paths is not None:
+            from .selected_files import selected_files_script
+
+            script = selected_files_script(paths, max_file_bytes=max_file_bytes, max_total_bytes=max_total_bytes)
         spec_payload: dict = {
             'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
             'timeout_sec': 120,
             'session_id': self.resolve_box_session_id(query),
         }
-        if 'extra_mounts' not in spec_payload:
-            spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
-        result = await self._execute_spec_payload_result(spec_payload, query)
-        if not result.ok:
-            if 'Sandbox output attachment exceeds the export size limit' in (result.stderr or ''):
-                raise BoxValidationError(
-                    f'Sandbox output attachments exceed the export limit '
-                    f'({max_file_bytes} bytes per file, {max_total_bytes} bytes total); files were retained'
-                )
-            raise BoxValidationError(f'Failed to read sandbox outbox (exit code {result.exit_code})')
         try:
-            entries = _json.loads(str(result.stdout or '').strip().splitlines()[-1])
-            if not isinstance(entries, list) or any(
-                not isinstance(entry, dict)
-                or not isinstance(entry.get('name'), str)
-                or not isinstance(entry.get('b64'), str)
-                for entry in entries
-            ):
-                raise ValueError('Invalid attachment list')
-            return entries
-        except (ValueError, IndexError) as exc:
-            raise BoxValidationError('Sandbox outbox returned invalid attachment data') from exc
+            result = await self._execute_spec_payload_result(spec_payload, query)
+        except BoxError:
+            raise
+        except Exception as exc:
+            raise BoxError('Failed to read sandbox outbox; output files were retained') from exc
+        if not result.ok:
+            failure = script_export_error(
+                result.stderr or '',
+                result.exit_code,
+                {
+                    'file_bytes': max_file_bytes,
+                    'collection_bytes': max_total_bytes,
+                    'file_count': max_files,
+                    'depth': 8,
+                    'entries': 512,
+                    'directories': 64,
+                },
+                selected_paths=paths,
+            )
+            if failure is not None:
+                raise failure
+            raise BoxValidationError(
+                f'Failed to read sandbox outbox or selected files (exit code {result.exit_code}); '
+                f'output files were retained: {(result.stderr or "")[-4000:]}'
+            )
+        truncated = transport_export_error(result.stdout)
+        if truncated is not None:
+            raise truncated
+        try:
+            entries = json.loads(result.stdout)
+            if not isinstance(entries, list) or len(entries) > max_files:
+                raise ValueError('Invalid file list')
+            total_bytes = 0
+            for entry in entries:
+                if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
+                    raise ValueError('Invalid file entry')
+                if paths is None and entry['name'].startswith('/'):
+                    raise ValueError('Expected a relative outbox path')
+                if paths is not None and entry['name'] not in paths:
+                    raise ValueError('Unexpected exported path')
+                for component in entry['name'].lstrip('/').split('/'):
+                    secure_fs._component(component)
+                encoded = entry.get('b64')
+                if not isinstance(encoded, str) or len(encoded) > 4 * ((max_file_bytes + 2) // 3):
+                    raise ValueError('Invalid file payload')
+                size = len(base64.b64decode(encoded, validate=True))
+                total_bytes += size
+                if size > max_file_bytes or total_bytes > max_total_bytes:
+                    raise ValueError('File payload exceeds export limits')
+        except (TypeError, ValueError, OSError, binascii.Error) as exc:
+            raise export_error('invalid_response') from exc
+        return entries
+
+    async def collect_selected_files(self, query, paths):
+        if not self._available:
+            raise BoxError('Box runtime is not available')
+        entries = await self._read_outbox_via_exec(query, paths)
+        if len(entries) != len(paths) or {e['name'] for e in entries} != set(paths):
+            raise BoxValidationError('Incomplete selected file export; files were retained')
+        return self._classify_outbound_entries(entries, include_source_path=True)
+
+    async def clear_selected_files(self, query, items):
+        import base64
+        import hashlib
+        from .selected_files import selected_files_script
+
+        digests = {
+            item['_outbox_path']: hashlib.sha256(base64.b64decode(item['base64'].split(';base64,')[-1])).hexdigest()
+            for item in items
+        }
+        script = selected_files_script(
+            list(digests),
+            max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+            max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            cleanup=digests,
+        )
+        result = await self._execute_spec_payload_result(
+            {
+                'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
+                'timeout_sec': 120,
+                'session_id': self.resolve_box_session_id(query),
+            },
+            query,
+        )
+        return None if result.ok else 'Files accepted, but cleanup failed; do not repeat delivery.'
 
     async def _clear_outbox(self, query: pipeline_query.Query, host_dir: str | None) -> None:
         """Empty the per-query outbox after collection.
@@ -1327,24 +1339,42 @@ class BoxService:
                 try:
                     secure_fs.reset_directory(tenant_root, subdir, query_key)
                     return False
+                except secure_fs.UnsafeWorkspacePathError:
+                    raise
                 except OSError:
                     return True
 
-            survived = await asyncio.to_thread(_clear)
+            try:
+                survived = await asyncio.to_thread(_clear)
+            except secure_fs.UnsafeWorkspacePathError as exc:
+                self.ap.logger.warning(f'Failed to clear unsafe sandbox outbox {target_dir}: {exc}')
+                return
             if not survived:
                 return
             # Root-owned container files survived the host delete — fall through.
 
         try:
-            await self.execute_tool(
-                {'command': f'rm -rf {target_dir} && mkdir -p {target_dir}', 'timeout_sec': 30},
+            from .sandbox_files import outbox_script
+
+            script = outbox_script(
+                self.OUTBOX_MOUNT_DIR,
+                self._attachment_query_key(query),
+                operation='clear',
+                max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+                max_files=self._ATTACHMENT_MAX_FILES,
+                max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            )
+            result = await self.execute_tool(
+                {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 30},
                 query,
             )
+            if not result.get('ok'):
+                raise BoxValidationError('Sandbox outbox cleanup failed')
         except Exception as exc:
             self.ap.logger.warning(f'Failed to clear sandbox outbox {target_dir}: {exc}')
 
     @staticmethod
-    def _classify_outbound_entries(entries: list[dict]) -> list[dict]:
+    def _classify_outbound_entries(entries: list[dict], *, include_source_path: bool = False) -> list[dict]:
         """Classify outbox files into Image/Voice/File component descriptors."""
         image_exts = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
         voice_exts = {'wav', 'mp3', 'silk', 'amr', 'ogg', 'm4a', 'aac'}
@@ -1360,17 +1390,20 @@ class BoxService:
         for entry in entries or []:
             name = str(entry.get('name', '') or '')
             b64 = entry.get('b64')
-            if not name or not b64:
+            if not name or not isinstance(b64, str):
                 continue
             ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
             base_name = os.path.basename(name)
             if ext in image_exts:
                 mime = mime_by_ext.get(ext, 'image/png')
-                attachments.append({'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'})
+                item = {'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'}
             elif ext in voice_exts:
-                attachments.append({'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'})
+                item = {'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'}
             else:
-                attachments.append({'type': 'File', 'name': base_name, 'base64': b64})
+                item = {'type': 'File', 'name': base_name, 'base64': b64}
+            if include_source_path:
+                item['_outbox_path'] = name
+            attachments.append(item)
         return attachments
 
     async def shutdown(self):
@@ -1420,6 +1453,10 @@ class BoxService:
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
         spec_payload.setdefault('env', {})
+        if self.default_env:
+            merged_env = dict(self.default_env)
+            merged_env.update(spec_payload.get('env') or {})
+            spec_payload['env'] = merged_env
         if spec_payload.get('host_path') in (None, '') and self.default_workspace is not None:
             spec_payload['host_path'] = self.default_workspace
         if spec_payload.get('workspace_quota_mb') in (None, '') and self.workspace_quota_mb is not None:
@@ -1447,9 +1484,12 @@ class BoxService:
         spec_payload: dict,
         *,
         skip_host_mount_validation: bool = False,
+        trusted_read_only_mounts: list[dict] | None = None,
     ) -> dict:
         execution_context = await self._validated_execution_context(context)
-        spec_payload = self._managed_policy_payload(execution_context, spec_payload)
+        spec_payload = self._managed_policy_payload(
+            execution_context, spec_payload, trusted_read_only_mounts=trusted_read_only_mounts
+        )
         await self._require_validated_workspace_sandbox(execution_context)
         if spec_payload.get('host_path') in (None, ''):
             tenant_workspace = self._tenant_workspace(execution_context)
@@ -1551,126 +1591,6 @@ class BoxService:
                 process_id,
             ),
             self._runtime_connector.get_relay_headers(action_context),
-        )
-
-    async def list_skills(self, context: TenantContext) -> list[dict]:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.list_skills(action_context=self._action_context(execution_context))
-
-    async def get_skill(self, context: TenantContext, name: str) -> dict | None:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.get_skill(name, action_context=self._action_context(execution_context))
-
-    async def create_skill(self, context: TenantContext, skill: dict) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        payload = dict(skill)
-        payload.pop('workspace_uuid', None)
-        if self._cloud_managed and str(payload.get('package_root', '') or '').strip():
-            raise BoxAdmissionError('Cloud skill package_root is runtime-owned')
-        if self._cloud_managed:
-            payload.pop('package_root', None)
-        return await self.client.create_skill(payload, action_context=self._action_context(execution_context))
-
-    async def update_skill(self, context: TenantContext, name: str, skill: dict) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        payload = dict(skill)
-        payload.pop('workspace_uuid', None)
-        if self._cloud_managed:
-            # The runtime already owns the package path for an existing skill.
-            # A serialized read response may contain it, but it is never an
-            # authority-bearing update field in shared Cloud mode.
-            payload.pop('package_root', None)
-        return await self.client.update_skill(
-            name,
-            payload,
-            action_context=self._action_context(execution_context),
-        )
-
-    async def delete_skill(self, context: TenantContext, name: str) -> None:
-        execution_context = await self._validated_skill_execution_context(context)
-        await self.client.delete_skill(name, action_context=self._action_context(execution_context))
-
-    async def scan_skill_directory(self, context: TenantContext, path: str) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        if self._cloud_managed:
-            raise BoxAdmissionError('Scanning arbitrary host skill directories is disabled in Cloud')
-        return await self.client.scan_skill_directory(path, action_context=self._action_context(execution_context))
-
-    async def _validated_skill_execution_context(self, context: TenantContext) -> ExecutionContext:
-        execution_context = await self._validated_execution_context(context)
-        await self._require_validated_workspace_sandbox(execution_context)
-        return execution_context
-
-    async def list_skill_files(
-        self,
-        context: TenantContext,
-        name: str,
-        path: str = '.',
-        include_hidden: bool = False,
-        max_entries: int = 200,
-    ) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.list_skill_files(
-            name,
-            path,
-            include_hidden,
-            max_entries,
-            action_context=self._action_context(execution_context),
-        )
-
-    async def read_skill_file(self, context: TenantContext, name: str, path: str) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.read_skill_file(
-            name,
-            path,
-            action_context=self._action_context(execution_context),
-        )
-
-    async def write_skill_file(self, context: TenantContext, name: str, path: str, content: str) -> dict:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.write_skill_file(
-            name,
-            path,
-            content,
-            action_context=self._action_context(execution_context),
-        )
-
-    async def preview_skill_zip(
-        self,
-        context: TenantContext,
-        file_bytes: bytes,
-        filename: str,
-        source_subdir: str = '',
-        target_suffix: str = 'upload',
-    ) -> list[dict]:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.preview_skill_zip(
-            file_bytes,
-            filename,
-            source_subdir,
-            target_suffix,
-            action_context=self._action_context(execution_context),
-        )
-
-    async def install_skill_zip(
-        self,
-        context: TenantContext,
-        file_bytes: bytes,
-        filename: str,
-        source_paths: list[str] | None = None,
-        source_path: str = '',
-        source_subdir: str = '',
-        target_suffix: str = 'upload',
-    ) -> list[dict]:
-        execution_context = await self._validated_skill_execution_context(context)
-        return await self.client.install_skill_zip(
-            file_bytes,
-            filename,
-            source_paths,
-            source_path,
-            source_subdir,
-            target_suffix,
-            action_context=self._action_context(execution_context),
         )
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
@@ -1809,14 +1729,6 @@ class BoxService:
             default_workspace = os.path.join(self.host_root, default_workspace)
         return os.path.realpath(os.path.abspath(default_workspace))
 
-    def get_skills_root(self) -> str | None:
-        skills_root = str(self._local_config().get('skills_root', '') or 'skills').strip()
-        if not skills_root:
-            skills_root = 'skills'
-        if not os.path.isabs(skills_root) and self.host_root is not None:
-            skills_root = os.path.join(self.host_root, skills_root)
-        return os.path.realpath(os.path.abspath(skills_root))
-
     def _load_enabled(self) -> bool:
         """Read ``box.enabled`` (top-level, not ``box.local.*``). Default True
         — disabling is opt-in. Accepts bool, ``'true'``/``'false'`` strings,
@@ -1842,6 +1754,35 @@ class BoxService:
         if value < 0:
             raise BoxValidationError('workspace_quota_mb must be greater than or equal to 0')
         return value
+
+    def _load_default_env(self) -> dict[str, str]:
+        """Return ``box.local.env`` as operator-provided sandbox defaults.
+
+        These values are merged into every Box exec payload so sandbox commands
+        can read settings such as a service base URL. A per-call ``env`` supplied
+        by the agent or caller overrides the matching defaults. Non-dict configs
+        and non-string keys or values are ignored.
+
+        The setting is instance-wide, so it is disabled in multi-workspace
+        deployments to keep operator values from reaching every tenant's sandbox.
+        """
+        raw_env = self._local_config().get('env')
+        if not isinstance(raw_env, dict):
+            return {}
+        if self._cloud_managed:
+            if raw_env:
+                self.ap.logger.warning('box.local.env is ignored in multi-workspace deployments.')
+            return {}
+
+        env: dict[str, str] = {}
+        for key, value in raw_env.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                continue
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            env[normalized_key] = value
+        return env
 
     def _ensure_default_workspace(self):
         if self.default_workspace is None:

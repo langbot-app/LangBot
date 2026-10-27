@@ -1,7 +1,7 @@
 """E2E coverage for the official Local Agent runner with fake Host resources.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
-load the consolidated ``langbot-plugin-demo/Runner/LocalAgent`` plugin, and verify Local Agent paths
+load the pinned official ``langbot-plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
 that must cross Host run-scoped APIs without calling any external provider.
 """
 
@@ -13,6 +13,7 @@ import os
 import shutil
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,9 +24,9 @@ from typing import Any
 import pytest
 
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
-from tests.e2e.utils.process_manager import find_project_root
+from tests.utils.legacy_plugin_contract import verified_plugin_root
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.local_agent]
 
 
 LOCAL_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
@@ -43,16 +44,15 @@ def _free_port() -> int:
 
 
 def _local_agent_repo() -> Path:
-    """Return the sibling local-agent repository used by this workspace E2E."""
-    project_root = find_project_root()
-    return project_root.parent / 'langbot-plugin-demo' / 'Runner' / 'LocalAgent'
+    """Use the same official source pin as the plugin identity contracts."""
+    return verified_plugin_root(files_key='local_agent_files') / 'Runner' / 'LocalAgent'
 
 
 def _package_local_agent_plugin(tmpdir: Path) -> Path:
-    """Package the sibling Local Agent plugin for the real local-install flow."""
+    """Package the verified official plugin for the real local-install flow."""
     local_agent_src = _local_agent_repo()
     if not (local_agent_src / 'manifest.yaml').exists():
-        pytest.skip(f'local-agent repository not found at {local_agent_src}')
+        pytest.fail(f'LocalAgent manifest not found at {local_agent_src}', pytrace=False)
 
     package_source = tmpdir / 'local-agent-package'
     ignore = shutil.ignore_patterns(
@@ -275,7 +275,12 @@ def local_agent_e2e_tmpdir():
     """Create temporary directory for Local Agent E2E testing."""
     tmpdir = Path(tempfile.mkdtemp(prefix='langbot_local_agent_e2e_'))
     yield tmpdir
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    # The runtime seals its artifact/dependency directories as read-only.
+    # Restore only this fixture's own directories so teardown removes them.
+    for path in tmpdir.rglob('*'):
+        if path.is_dir() and not path.is_symlink():
+            path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    shutil.rmtree(tmpdir)
 
 
 @pytest.fixture(scope='session')
@@ -549,9 +554,17 @@ def _run_local_agent_probe(tmpdir: Path, probe):
             platform_utils.standalone_runtime = previous_standalone_runtime
             os.chdir(previous_cwd)
 
-    return asyncio.run(_run())
+    # Source installs resolve data from the checkout, not the current working
+    # directory. Scope the override to this probe, without leaking to other E2Es.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('LANGBOT_DATA_ROOT', str(tmpdir / 'data'))
+        # Do not replace pytest-asyncio's policy loop when this synchronous
+        # probe follows async integration tests in the same pytest process.
+        with asyncio.Runner(loop_factory=asyncio.new_event_loop) as runner:
+            return runner.run(_run())
 
 
+@pytest.mark.contract('agent_ledger')
 def test_local_runner_uses_host_fake_provider_and_persists_ledger(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -614,6 +627,7 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         conn.close()
 
 
+@pytest.mark.contract('agent_tools')
 def test_local_runner_executes_authorized_tool_loop_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -683,6 +697,7 @@ def test_local_runner_executes_authorized_tool_loop_through_host_action(
         conn.close()
 
 
+@pytest.mark.contract('agent_rag')
 def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -757,6 +772,7 @@ def test_local_runner_retrieves_authorized_rag_context_through_host_action(
         conn.close()
 
 
+@pytest.mark.contract('agent_compaction')
 def test_local_runner_compacts_history_and_persists_checkpoint(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -850,6 +866,7 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
         conn.close()
 
 
+@pytest.mark.contract('agent_multi_turn')
 def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
@@ -1012,14 +1029,24 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
         conn.close()
 
 
+@pytest.mark.parametrize(
+    'scenario',
+    ['normal', 'repair', 'streaming', 'tool_limit', 'cleanup', 'invalid', 'timeout', 'cancelled', 'no_export'],
+)
+@pytest.mark.contract('agent_box')
 def test_local_runner_owns_box_reuse_and_explicit_files(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
+    capfd,
+    scenario,
 ):
     """Real plugin RPC and Docker sandbox, with only the model scripted."""
     del local_agent_e2e_config_path, local_agent_runtime_process
     import base64
+    from unittest.mock import AsyncMock
+
+    repair_export = scenario in {'repair', 'streaming', 'tool_limit', 'cancelled'}
     from langbot_plugin.box.backend import DockerBackend
     from langbot_plugin.box.runtime import BoxRuntime
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
@@ -1050,6 +1077,9 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             super().__init__()
             self.box = box
             self.bindings = []
+            self.outboxes = []
+            self.calls_by_run = {}
+            self.queries = []
 
         async def get_resolved_tool_catalog(self, *args, **kwargs):
             return [{'name': 'exec', 'source': 'native', 'source_id': None}]
@@ -1062,23 +1092,42 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             }
 
         async def execute_func_call(self, name, parameters, query=None, source_ref=None):
+            self.queries.append(query)
             binding = binding_for(query)
             self.bindings.append((binding.session_id, binding.run_id))
             source = next(iter(binding.imported.values()))['path']
             outbox = f'/workspace/outbox/{binding.io_scope}'
+            self.outboxes.append(outbox)
+            self.calls_by_run[binding.run_id] = self.calls_by_run.get(binding.run_id, 0) + 1
             # Shell arguments are Host-issued paths, never model input.
             import shlex
 
+            directory_mode = '-m 700 ' if len(self.calls_by_run) == 2 else ''
+            extra = f' && printf KEEP > {shlex.quote(outbox + "/keep.txt")}'
+            if repair_export and self.calls_by_run[binding.run_id] == 1:
+                extra += f' && printf 1234567890123456789012345 > {shlex.quote(outbox + "/answer.txt")}'
             result = await self.box.execute_tool(
                 {
-                    'command': f'mkdir -p {shlex.quote(outbox)} && cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")}'
+                    'command': (
+                        f'mkdir {directory_mode}-p {shlex.quote(outbox)} && '
+                        f'cp {shlex.quote(source)} {shlex.quote(outbox + "/answer.txt")} && '
+                        f"stat -c '%u %a' {shlex.quote(outbox)} {shlex.quote(outbox + '/answer.txt')}" + extra
+                    )
                 },
                 query,
             )
             assert result['ok'], result
+            ownership = result['stdout'].strip().splitlines()
+            assert ownership[-1] == '0 600', ownership
+            if len(self.calls_by_run) == 2:
+                assert ownership[0] == '0 700', ownership
+            with capfd.disabled():
+                print(f'Core uid={os.geteuid()}; LocalAgent Docker ownership: {ownership}', flush=True)
             return result
 
     async def probe(ap):
+        import shlex
+
         backend = TestDockerBackend(ap.logger)
         if not await backend.is_available():
             pytest.skip('Docker is required for the real Box probe')
@@ -1093,13 +1142,101 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
         box = BoxService(ap, client=Client(ap.logger, runtime))
         ap.box_service = box
         await box.initialize()
+        if repair_export:
+            box._ATTACHMENT_MAX_BYTES = 8
+        collect = box.collect_selected_files
+        export_calls = []
+
+        async def observed_collect(query, paths):
+            export_calls.append(query._box_binding.run_id)
+            if scenario == 'cancelled' and export_calls.count(query._box_binding.run_id) == 2:
+                from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+
+                row = await RunLedgerStore(ap.persistence_mgr.get_db_engine()).request_cancel(
+                    run_id=query._box_binding.run_id,
+                    status_reason='cancel during export recovery',
+                )
+                assert row is not None
+                await asyncio.sleep(10)
+                raise RuntimeError('Cancelled export must not resume generation')
+            if scenario == 'invalid':
+                from langbot.pkg.box.export_errors import export_error
+
+                raise export_error('invalid_response')
+            if scenario == 'timeout':
+                await asyncio.sleep(6)
+                raise TimeoutError('Injected stalled export')
+            return await collect(query, paths)
+
+        box.collect_selected_files = observed_collect
+        if scenario == 'cleanup':
+            # A failed best-effort cleanup leaves successfully accepted files.
+            box.clear_selected_files = AsyncMock(
+                return_value='Files accepted, but cleanup failed; do not repeat delivery.'
+            )
         manager = ToolManager(box)
         ap.tool_mgr = manager
         fake = await _inject_fake_llm_model(ap)
+        if scenario == 'streaming':
+            from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+            async def scripted_stream(*args, **kwargs):
+                message = await fake.invoke_llm(*args, **kwargs)
+                yield MessageChunk(
+                    role='assistant', content=message.content, tool_calls=message.tool_calls, is_final=True
+                )
+
+            fake.invoke_llm_stream = scripted_stream
         context = await ap.plugin_connector._current_execution_context()
+
+        async def assert_retained():
+            inspection = await box.execute_in_context(
+                context,
+                {
+                    'cmd': f'test -f {shlex.quote(manager.outboxes[-1] + "/answer.txt")}',
+                    'session_id': manager.bindings[-1][0],
+                },
+            )
+            assert inspection.ok, inspection
+
         try:
             for index in range(2):
-                fake.queue_llm_responses(_scripted_tool_call('exec'), 'File is ready.')
+
+                def export_call(**kwargs):
+                    from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, Message, ToolCall
+
+                    return Message(
+                        role='assistant',
+                        content='',
+                        tool_calls=[
+                            ToolCall(
+                                id=f'export-{len(export_calls)}',
+                                type='function',
+                                function=FunctionCall(
+                                    name='export_box_files',
+                                    arguments=json.dumps(
+                                        {
+                                            'paths': [manager.outboxes[-1] + '/answer.txt'],
+                                        }
+                                    ),
+                                ),
+                            )
+                        ],
+                    )
+
+                fake.queue_llm_responses(_scripted_tool_call('exec'))
+                if scenario == 'no_export':
+                    fake.queue_llm_responses('Created the file without exporting it.')
+                else:
+                    fake.queue_llm_responses(export_call)
+                    if scenario in {'repair', 'streaming', 'cancelled'}:
+                        fake.queue_llm_responses(_scripted_tool_call('exec', call_id='repair'), export_call)
+                    elif scenario in {'cleanup', 'tool_limit'}:
+                        fake.queue_llm_responses(export_call)
+                    if scenario == 'tool_limit':
+                        fake.queue_llm_responses(export_call)
+                    elif scenario not in {'invalid', 'timeout', 'cancelled'}:
+                        fake.queue_llm_responses('File accepted.')
                 event = _event(
                     event_id=f'box-event-{index}',
                     conversation_id=f'box-conversation-{index}',
@@ -1116,19 +1253,125 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
                     runner_config={'box-enabled': True, 'box-session-id-template': '{global}'},
                 )
                 binding.processor_type = 'pipeline'
-                messages = await _run_runner(ap, event, binding)
+                if scenario == 'streaming':
+                    event.delivery.supports_streaming = True
+                    binding.delivery_policy.enable_streaming = True
+                if scenario == 'timeout':
+                    binding.runner_config['timeout'] = 5
+                if scenario == 'tool_limit':
+                    binding.runner_config['max-tool-iterations'] = 3
+                events = []
+
+                async def observe(result):
+                    events.append(result)
+                    if scenario == 'cleanup' and result['type'] == 'run.completed':
+                        query = manager.queries[-1]
+                        assert len(query._box_binding.exported) == 1
+                        assert len(query._box_binding.submitted) == 1
+
+                from langbot.pkg.agent.runner.errors import RunnerExecutionError
+
+                messages = []
+                failure = None
+                try:
+                    async for message in ap.agent_run_orchestrator.run(
+                        event,
+                        binding,
+                        adapter_context={'_execution_context': context, '_result_observer': observe},
+                    ):
+                        messages.append(message)
+                except RunnerExecutionError as exc:
+                    failure = exc
+                terminals = [e for e in events if e['type'] in {'run.completed', 'run.failed'}]
+                if scenario == 'timeout':
+                    assert failure is not None and 'timed out' in str(failure)
+                    assert not any(e['type'] in {'run.completed', 'message.completed'} for e in events)
+                    assert not any(message.attachments for message in messages)
+                    await assert_retained()
+                    continue
+                assert len(terminals) == 1, events
+                if scenario in {'invalid', 'cancelled'}:
+                    assert failure is not None
+                    assert terminals[0]['type'] == 'run.failed', events
+                    assert not any(e['type'] == 'message.completed' for e in events), events
+                    assert not any(message.attachments for message in messages), messages
+                    if scenario == 'cancelled':
+                        assert terminals[0]['data']['code'] == 'cancelled'
+                    else:
+                        assert 'invalid attachment data' in terminals[0]['data']['error']
+                    await assert_retained()
+                    continue
+                assert failure is None, failure
+                assert terminals[0]['type'] == 'run.completed', events
+                assert sum(e['type'] == 'message.completed' for e in events) == 1
+                if scenario == 'streaming':
+                    deltas = [e for e in events if e['type'] == 'message.delta']
+                    assert deltas and all(not e['data'].get('file_ids') for e in deltas)
                 output = [component for message in messages for component in (message.attachments or [])]
-                assert len(output) == 1, messages
-                assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
+                if scenario in {'tool_limit', 'no_export'}:
+                    assert not output, messages
+                    await assert_retained()
+                    if scenario == 'tool_limit':
+                        assert any('limit' in _message_text(message).lower() for message in messages)
+                else:
+                    assert len(output) == 1, messages
+                    assert base64.b64decode(output[0].base64) == f'run-{index}'.encode()
+                inspection = await box.execute_in_context(
+                    context,
+                    {
+                        'cmd': f'ls -A {shlex.quote(manager.outboxes[-1])}',
+                        'session_id': manager.bindings[-1][0],
+                    },
+                )
+                assert inspection.ok, inspection
+                expected_files = {'keep.txt'}
+                if scenario in {'cleanup', 'tool_limit', 'no_export'}:
+                    expected_files.add('answer.txt')
+                assert set(inspection.stdout.split()) == expected_files
                 status = await RunnerBoxService(box).status(context)
                 assert status['used'] == 1 and status['remaining'] == 0, status
-            assert manager.bindings[0][0] == manager.bindings[1][0]
-            assert manager.bindings[0][1] != manager.bindings[1][1]
+            assert manager.bindings[0][0] == manager.bindings[-1][0]
+            assert manager.bindings[0][1] != manager.bindings[-1][1]
+            if repair_export:
+                assert list(manager.calls_by_run.values()) == ([1, 1] if scenario == 'tool_limit' else [2, 2])
+                feedback = [
+                    text for payload in _invoke_payload_texts(fake) for text in payload if 'LANGBOT_EXPORT_V1:' in text
+                ]
+                assert feedback and all(
+                    '"limit":8' in text.replace(' ', '') and '"actual":25' in text.replace(' ', '') for text in feedback
+                )
+                assert all(
+                    'file_bytes' in text and 'answer.txt' in text and 'files_retained' in text for text in feedback
+                )
+            expected_exports = {
+                'normal': 1,
+                'repair': 2,
+                'streaming': 2,
+                'tool_limit': 2,
+                'cleanup': 2,
+                'invalid': 1,
+                'timeout': 1,
+                'cancelled': 2,
+                'no_export': 0,
+            }[scenario]
+            assert len(export_calls) == 2 * expected_exports
             from langbot_plugin.box.errors import BoxCapacityExceededError
 
             with pytest.raises(BoxCapacityExceededError):
                 await RunnerBoxService(box).acquire(context, {'reuse_key': 'different'})
         finally:
-            await box.shutdown()
+            try:
+                if manager.bindings:
+                    # Only this fixture's temporary Workspace is mounted here.
+                    cleanup = await box.execute_in_context(
+                        context,
+                        {
+                            'cmd': f'chown -hR {os.getuid()}:{os.getgid()} /workspace/outbox',
+                            'session_id': manager.bindings[-1][0],
+                        },
+                    )
+                    assert cleanup.exit_code == 0, cleanup
+            finally:
+                await box.shutdown()
 
     _run_local_agent_probe(local_agent_e2e_tmpdir, probe)

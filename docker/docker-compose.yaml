@@ -22,13 +22,22 @@ services:
       - LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING=${LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING:-128}
       - LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE=${LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE:-4}
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
+    # The control WebSocket port also serves an unauthenticated GET /healthz
+    # (see langbot_plugin runtime/io/controllers/ws/server.py). curl is removed
+    # from the image, so probe with the always-present python.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5400/healthz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - langbot_network
 
   # The Box sandbox runtime is optional. It is only started when you run
   # ``docker compose --profile box up`` (or ``docker compose --profile all
-  # up``). With Box off, LangBot keeps the dashboard / skills list visible
-  # (read-only) but disables sandbox tools, skill add/edit and stdio MCP —
+  # up``). With Box off, LangBot keeps skill management, activation, and
+  # read-only resources available but disables execution tools and stdio MCP —
   # set ``box.enabled: false`` in ``data/config.yaml`` (or
   # ``BOX__ENABLED=false`` in the langbot service env below) to match.
   langbot_box:
@@ -65,6 +74,16 @@ services:
     # `-s` / `--stdio-control` only for the stdio mode LangBot uses outside
     # containers.
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
+    # Box serves GET /healthz (liveness) and GET /readyz (readiness, 503 until
+    # the configured backend and isolation guarantees are ready) on the control
+    # port (default 5410). Use /readyz so the container is only reported healthy
+    # once it can actually accept sandbox work.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5410/readyz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       - langbot_network
 
@@ -73,6 +92,10 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
+      # Core owns the SkillRepository even when the Box profile is disabled.
+      # Keep this path identical to langbot_box so optional execution can
+      # consume the same Workspace-scoped package revisions.
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
@@ -92,12 +115,23 @@ services:
       # box.* and are forwarded to the Box runtime via INIT RPC.
       - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__LOCAL__DEFAULT_WORKSPACE=default
-      - BOX__LOCAL__SKILLS_ROOT=skills
+      # TODO(next-major): default LANGBOT_SKILLS_ROOT to ${PWD}/data/skills
+      # after the historical Box storage path no longer needs zero-copy upgrades.
+      - SKILLS__ROOT=${LANGBOT_SKILLS_ROOT:-${LANGBOT_BOX_ROOT:-${PWD}/data/box}/skills}
       - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__DOCKER__CPU_LIMIT_ENABLED=${LANGBOT_BOX_DOCKER_CPU_LIMIT_ENABLED:-true}
     ports:
       - 5300:5300  # For web ui and webhook callback
       - 2280-2285:2280-2285  # For platform reverse connection
+    # The core Quart app exposes an unauthenticated GET /healthz on api.port
+    # (see langbot/pkg/api/http/controller/main.py). curl is removed from the
+    # image, so probe with the always-present python.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5300/healthz', timeout=3).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     networks:
       - langbot_network
 
