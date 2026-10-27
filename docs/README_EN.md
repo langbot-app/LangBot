@@ -1,14 +1,16 @@
+> Edit documentation in [LangBot/docs](https://github.com/langbot-app/LangBot/tree/main/docs). The [langbot-docs repository](https://github.com/langbot-app/langbot-docs) is a generated publication mirror. Run the commands below from `LangBot/docs/`.
+
 # [LangBot](https://github.com/langbot-app/LangBot) Official Documentation
 
 > This repository is the documentation repository for LangBot. Code repository:  
 > [LangBot Code Repository](https://github.com/langbot-app/LangBot)  
-> This is the documentation for LangBot 4.0. For 3.0 documentation, please see the `v3` branch
+> This is the documentation for LangBot 4.0. For 3.0 documentation, please see the [langbot-docs v3 branch](https://github.com/langbot-app/langbot-docs/tree/v3)
 
 ## Contributing to Documentation
 
 The documentation is built with [Fumapress](https://press.fumadocs.dev/) and [Fumadocs](https://fumadocs.dev/). Local development requires Node.js 24 or later.
 
-Clone this repository and execute the following command in the directory to install dependencies:
+Clone LangBot, enter its `docs/` directory, and install dependencies:
 
 ```bash
 npm ci

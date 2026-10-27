@@ -1,14 +1,14 @@
 # [LangBot](https://github.com/langbot-app/LangBot) 官方文档
 
-> 此仓库是 LangBot 的文档仓库，代码仓库：  
+> 文档源码位于 [LangBot/docs](https://github.com/langbot-app/LangBot/tree/main/docs)，[langbot-docs](https://github.com/langbot-app/langbot-docs) 仅作为发布 mirror。
 > [LangBot 代码仓库](https://github.com/langbot-app/LangBot)  
-> 这是 LangBot 4.0 的文档，3.0 文档请见 `v3` 分支
+> 这是 LangBot 4.0 的文档，3.0 文档请见 [langbot-docs 的 v3 分支](https://github.com/langbot-app/langbot-docs/tree/v3)
 
 ## 参与编写
 
 文档使用 [Fumapress](https://press.fumadocs.dev/) 和 [Fumadocs](https://fumadocs.dev/) 生成，本地开发需要 Node.js 24 或更高版本。
 
-Clone 本仓库，在目录下执行以下命令安装依赖：
+Clone LangBot 主仓后进入 `docs/` 目录，执行以下命令安装依赖：
 
 ```bash
 npm ci

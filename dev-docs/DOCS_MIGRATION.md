@@ -4,9 +4,12 @@ Public docs live in `LangBot/docs/`. The former internal `docs/` directory is
 `dev-docs/` (27 top-level entries, 87 tracked files at migration). Do not merge
 this migration using GitHub squash or rebase: use a merge commit to retain the
 subtree parent and original signed commits. Imported history is reachable through
-the subtree merge's second parent; `git log --follow docs/<file>` or
-`git log <imported-docs-sha>` exposes original authors. A plain path-limited log
-need not show pre-import paths.
+the subtree merge's second parent. Use `git log <imported-docs-sha> -- <file>`
+(with the original path relative to the docs repository) to see original authors.
+A path-limited `git log docs/` or `--follow` does not reliably traverse the
+unrelated-history import. The imported commit is
+`51dddcb3f891d60bc38645e88b2dbd515344da81` (888 commits, including 452 signed
+commit objects, all retained without rewriting).
 
 ## Local checks
 
