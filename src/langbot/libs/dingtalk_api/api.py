@@ -712,13 +712,20 @@ class DingTalkClient:
 
         Returns ``(card state, out_track_id)`` for subsequent A2UI updates.
         """
+        is_group = str(incoming_message.conversation_type) == '2'
+        return await self.create_and_card_for_target(
+            'group' if is_group else 'person',
+            incoming_message.conversation_id if is_group else incoming_message.sender_staff_id,
+        )
+
+    async def create_and_card_for_target(self, target_type: str, target_id: str):
+        """Create a streaming card when the reply has no original chat message."""
+        if target_type not in {'group', 'person'} or not target_id:
+            raise ValueError('DingTalk streaming card requires a group or person target')
         out_track_id = uuid.uuid4().hex
         surface_id = f'langbot-{out_track_id}'
-        is_group = str(incoming_message.conversation_type) == '2'
-        if is_group:
-            open_space_id = f'dtv1.card//im_group.{incoming_message.conversation_id}'
-        else:
-            open_space_id = f'dtv1.card//im_robot.{incoming_message.sender_staff_id}'
+        is_group = target_type == 'group'
+        open_space_id = f'dtv1.card//im_group.{target_id}' if is_group else f'dtv1.card//im_robot.{target_id}'
 
         await self.create_and_deliver_ai_card(
             out_track_id=out_track_id,

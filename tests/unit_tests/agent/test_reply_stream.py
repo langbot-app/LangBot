@@ -120,6 +120,28 @@ async def test_sdk_stream_reuses_adapter_or_sends_one_final_message(native, sour
     await session.close()
 
 
+async def test_target_streaming_adapter_updates_card_without_source_message():
+    session, adapter, _ = make_session(source=False)
+    adapter.create_message_card_for_target = AsyncMock(return_value=True)
+    adapter.reply_message_chunk_for_target = AsyncMock()
+    key = uuid4()
+
+    await session.apply(request(key, text='hello'))
+    result = await session.apply(request(key, 'finish', 'hello world'))
+
+    assert result['delivery'] == 'streaming'
+    adapter.create_message_card_for_target.assert_awaited_once_with(
+        adapter.reply_message_chunk_for_target.await_args.kwargs['message_id'], 'person', 'user-1'
+    )
+    assert [call.kwargs['content'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [
+        'hello',
+        'hello world',
+    ]
+    assert [call.kwargs['is_final'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [False, True]
+    adapter.send_message.assert_not_awaited()
+    await session.close()
+
+
 @pytest.mark.parametrize('native', [True, False])
 @pytest.mark.parametrize('error', [RuntimeError, asyncio.CancelledError])
 async def test_exception_finalizes_visible_card_without_sending_buffered_partial(native, error):

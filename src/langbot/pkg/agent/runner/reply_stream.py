@@ -86,9 +86,24 @@ class ReplyStreamSession:
                         raise ValueError('This run has no platform delivery adapter')
                     # Set before I/O: an uncertain create must never be retried as another send.
                     reply.started = True
-                    reply.native = self.source is not None and await self.adapter.is_stream_output_supported()
+                    target_streaming = (
+                        self.source is None
+                        and callable(getattr(self.adapter, 'create_message_card_for_target', None))
+                        and callable(getattr(self.adapter, 'reply_message_chunk_for_target', None))
+                    )
+                    reply.native = (
+                        self.source is not None or target_streaming
+                    ) and await self.adapter.is_stream_output_supported()
                     if reply.native:
-                        await self.adapter.create_message_card(reply.delivery_id, self.source)
+                        if self.source is not None:
+                            await self.adapter.create_message_card(reply.delivery_id, self.source)
+                        else:
+                            target_type, target_id = self.target.get('target_type'), self.target.get('target_id')
+                            if not target_type or not target_id:
+                                raise ValueError('This event has no reply target')
+                            await self.adapter.create_message_card_for_target(
+                                reply.delivery_id, str(target_type), str(target_id)
+                            )
                 if reply.started and reply.native:
                     await self._update_native(key, reply, final=request.operation != 'update')
                 elif request.operation == 'finish' and reply.text and not self.mock:
@@ -131,13 +146,18 @@ class ReplyStreamSession:
             msg_sequence=reply.sequence,
             is_final=final,
         )
-        await self.adapter.reply_message_chunk(
-            message_source=self.source,
-            bot_message=chunk,
-            message=self._message(reply.text),
-            quote_origin=False,
-            is_final=final,
-        )
+        if self.source is not None:
+            await self.adapter.reply_message_chunk(
+                message_source=self.source,
+                bot_message=chunk,
+                message=self._message(reply.text),
+                quote_origin=False,
+                is_final=final,
+            )
+        else:
+            await self.adapter.reply_message_chunk_for_target(
+                message_id=reply.delivery_id, content=reply.text, is_final=final
+            )
 
     async def close(self):
         """Close visible streams on cancellation; never send a buffered partial reply."""

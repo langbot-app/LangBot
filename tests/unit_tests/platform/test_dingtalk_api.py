@@ -47,6 +47,20 @@ def test_text_card_keeps_brand_when_content_updates():
 
 
 @pytest.mark.asyncio
+async def test_create_card_for_target_uses_robot_a2ui_delivery():
+    client = _client(None)
+    client.create_and_deliver_ai_card = AsyncMock(return_value={})
+
+    card, track_id = await client.create_and_card_for_target('person', 'user-1')
+
+    assert card == {'surface_id': f'langbot-{track_id}'}
+    request = client.create_and_deliver_ai_card.await_args.kwargs
+    assert request['open_space_id'] == 'dtv1.card//im_robot.user-1'
+    assert request['is_group'] is False
+    assert request['a2ui_messages'][2]['updateComponents']['components'][0]['children'][0] == 'langbot-brand'
+
+
+@pytest.mark.asyncio
 async def test_create_ai_card_uses_group_robot_delivery_model():
     post = AsyncMock(
         return_value=_response(

@@ -263,6 +263,25 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
         return True
 
+    async def create_message_card_for_target(self, message_id: str, target_type: str, target_id: str) -> bool:
+        card_instance, card_instance_id = await self.bot.create_and_card_for_target(target_type, target_id)
+        self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
+        return True
+
+    async def reply_message_chunk_for_target(self, *, message_id: str, content: str, is_final: bool) -> None:
+        now = time.monotonic()
+        last_updates = getattr(self, '_card_last_updates', None)
+        if last_updates is None:
+            self._card_last_updates = last_updates = {}
+        if not is_final and now - last_updates.get(message_id, 0) < 0.35:
+            return
+        card_instance, card_instance_id = self.card_instance_id_dict[message_id]
+        await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+        last_updates[message_id] = now
+        if is_final:
+            self.card_instance_id_dict.pop(message_id, None)
+            last_updates.pop(message_id, None)
+
     async def is_stream_output_supported(self) -> bool:
         return is_stream_card_configured(self.config)
 

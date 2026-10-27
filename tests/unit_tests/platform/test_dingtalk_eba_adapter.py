@@ -51,6 +51,7 @@ class DummyDingTalkClient(DingTalkClient):
         self.get_audio_url = AsyncMock(return_value='data:audio/ogg;base64,AAAA')
         self.download_image = AsyncMock(return_value='data:image/png;base64,BBBB')
         self.create_and_card = AsyncMock(return_value=('card', 'card-id'))
+        self.create_and_card_for_target = AsyncMock(return_value=({'surface_id': 'surface-id'}, 'card-id'))
         self.send_card_message = AsyncMock()
         self.create_and_deliver_ai_card = AsyncMock(return_value={})
         self.update_ai_card = AsyncMock(return_value={})
@@ -316,6 +317,20 @@ async def test_dingtalk_send_reply_and_platform_api_use_underlying_client():
 
     assert token_status == {'valid': True}
     assert file_url == {'url': 'https://example.test/file'}
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_target_reply_stream_updates_one_card():
+    adapter = make_adapter()
+
+    assert await adapter.create_message_card_for_target('reply-id', 'person', 'user-1') is True
+    await adapter.reply_message_chunk_for_target(message_id='reply-id', content='hello', is_final=False)
+    await adapter.reply_message_chunk_for_target(message_id='reply-id', content='hello world', is_final=True)
+
+    adapter.bot.create_and_card_for_target.assert_awaited_once_with('person', 'user-1')
+    assert [call.args[2] for call in adapter.bot.send_card_message.await_args_list] == ['hello', 'hello world']
+    assert [call.args[3] for call in adapter.bot.send_card_message.await_args_list] == [False, True]
+    assert 'reply-id' not in adapter.card_instance_id_dict
 
 
 @pytest.mark.asyncio
