@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Register public repository and check retrieval
+      - name: Check indexed documentation retrieval
         env:
           CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
         shell: python
@@ -50,29 +50,6 @@ jobs:
                   result = {}
               return status, result
 
-          status, result = request('/v2/add/repo/github', {
-              'docsRepoUrl': 'https://github.com/langbot-app/LangBot',
-              'private': False})
-          report.append('Registration HTTP status: ' + str(status))
-          for field in ('error', 'message'):
-              detail = result.get(field)
-              if isinstance(detail, str):
-                  report.append('Registration ' + field + ': ' +
-                                json.dumps(detail.replace(key, '[REDACTED]')[:500]))
-          registered = result.get('libraryName')
-          if isinstance(registered, str) and registered.lower() == library:
-              report.append('Registered library: ' + library)
-          exists = status == 400 and result.get('error') == 'library-already-exists'
-          if exists:
-              refresh_status, refreshed = request('/v1/refresh', {
-                  'libraryName': library})
-              report.append('Refresh HTTP status: ' + str(refresh_status))
-              for field in ('error', 'message'):
-                  detail = refreshed.get(field)
-                  if isinstance(detail, str):
-                      report.append('Refresh ' + field + ': ' +
-                                    json.dumps(detail.replace(key, '[REDACTED]')[:500]))
-
           query = urllib.parse.urlencode({
               'libraryId': library,
               'query': 'LangBot plugin development event handlers',
@@ -103,7 +80,5 @@ jobs:
           print(summary)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
               output.write(summary)
-          if status not in (200, 202, 409) and not exists:
-              raise SystemExit('Repository registration did not succeed; see HTTP status above.')
-          if retrieval_status != 200 or not sources:
+          if retrieval_status != 200 or not any('/blob/master/docs/en/' in url for url in sources):
               raise SystemExit('Main-repository retrieval is not yet verified.')
