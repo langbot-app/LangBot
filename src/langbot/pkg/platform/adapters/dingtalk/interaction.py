@@ -7,7 +7,7 @@ import time
 import typing
 import uuid
 
-from langbot.libs.dingtalk_api.a2ui import binding, create_surface_messages, update_surface_messages
+from langbot.libs.dingtalk_api.a2ui import brand_components, binding, create_surface_messages, update_surface_messages
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
@@ -150,6 +150,8 @@ def _build_interaction_messages(
         )
         children.append(button_id)
 
+    children.append('langbot-brand')
+    components.extend(brand_components())
     components.insert(0, {'id': 'root', 'component': 'Column', 'children': children, 'gap': 12})
     return {'form': form}, components, field_types
 

@@ -1,4 +1,5 @@
 from langbot.libs.dingtalk_api.a2ui import (
+    brand_components,
     binding,
     create_surface_messages,
     create_text_card_messages,
@@ -519,6 +520,8 @@ def _dingtalk_a2ui_form(
                 ]
             )
             children.append(button_id)
+    children.append('langbot-brand')
+    components.extend(brand_components())
     return data, components
 
 

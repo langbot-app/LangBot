@@ -31,6 +31,21 @@ def _response(result=None):
     return type('Response', (), {'status_code': 200, 'json': lambda self: payload})()
 
 
+def test_text_card_keeps_brand_when_content_updates():
+    components = create_text_card_messages('surface-id', 'hello')[2]['updateComponents']['components']
+    by_id = {component['id']: component for component in components}
+
+    assert by_id['root']['children'] == ['content', 'langbot-brand']
+    assert by_id['langbot-brand']['children'] == ['langbot-brand-icon', 'langbot-brand-link']
+    assert by_id['langbot-brand-icon']['url'] == 'https://langbot.app/logo-blue.png'
+    assert by_id['langbot-brand-icon']['previewEnabled'] is False
+    assert by_id['langbot-brand-link']['action']['functionCall'] == {
+        'call': 'openUrl',
+        'args': {'url': 'https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot'},
+    }
+    assert update_text_card_messages('surface-id', 'done')[0]['updateDataModel']['path'] == '/content'
+
+
 @pytest.mark.asyncio
 async def test_create_ai_card_uses_group_robot_delivery_model():
     post = AsyncMock(

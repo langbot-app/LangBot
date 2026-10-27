@@ -9,10 +9,38 @@ import typing
 A2UI_CATALOG_ID = 'https://dingtalk.com/card/a2ui/catalogs/public/catalog.json'
 A2UI_MESSAGE_VERSION = 'v1.0'
 A2UI_PROTOCOL_VERSION = '1.0'
+LANGBOT_LOGO_URL = 'https://langbot.app/logo-blue.png'
+LANGBOT_CARD_URL = 'https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot'
 
 
 def binding(path: str) -> dict[str, str]:
     return {'path': path}
+
+
+def brand_components() -> list[dict[str, typing.Any]]:
+    return [
+        {
+            'id': 'langbot-brand',
+            'component': 'Row',
+            'children': ['langbot-brand-icon', 'langbot-brand-link'],
+            'align': 'center',
+            'gap': 4,
+        },
+        {
+            'id': 'langbot-brand-icon',
+            'component': 'Image',
+            'url': LANGBOT_LOGO_URL,
+            'variant': 'icon',
+            'fit': 'contain',
+            'previewEnabled': False,
+        },
+        {
+            'id': 'langbot-brand-link',
+            'component': 'Link',
+            'text': 'LangBot',
+            'action': {'functionCall': {'call': 'openUrl', 'args': {'url': LANGBOT_CARD_URL}}},
+        },
+    ]
 
 
 def serialize_messages(messages: typing.Iterable[dict | str]) -> list[str]:
@@ -95,7 +123,7 @@ def text_card_components() -> list[dict[str, typing.Any]]:
         {
             'id': 'root',
             'component': 'Column',
-            'children': ['content'],
+            'children': ['content', 'langbot-brand'],
             'gap': 8,
         },
         {
@@ -103,6 +131,7 @@ def text_card_components() -> list[dict[str, typing.Any]]:
             'component': 'Markdown',
             'content': binding('/content'),
         },
+        *brand_components(),
     ]
 
 
