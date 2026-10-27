@@ -54,6 +54,11 @@ jobs:
               'docsRepoUrl': 'https://github.com/langbot-app/LangBot',
               'private': False})
           report.append('Registration HTTP status: ' + str(status))
+          for field in ('error', 'message'):
+              detail = result.get(field)
+              if isinstance(detail, str):
+                  report.append('Registration ' + field + ': ' +
+                                json.dumps(detail.replace(key, '[REDACTED]')[:500]))
           registered = result.get('libraryName')
           if isinstance(registered, str) and registered.lower() == library:
               report.append('Registered library: ' + library)
