@@ -44,7 +44,7 @@ Run tests in Linux to match CI; on Windows, use Linux containers through `wslc` 
 
 ## Where to Look
 
-- Public documentation source: `docs/`; published at https://langbot.app/docs/. `langbot-app/langbot-docs` is a generated subtree mirror; edit here.
+- Public documentation source: `docs/`; published at https://langbot.app/docs/. `langbot-app/langbot-docs` is a legacy archive; edit here.
 - Architecture map: `ARCHITECTURE.md`.
 - Dev environment guide: https://langbot.app/docs/zh/develop/dev-config.
 - Plugin runtime / CLI / SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.

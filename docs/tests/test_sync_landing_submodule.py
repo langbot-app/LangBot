@@ -1,4 +1,5 @@
 """Offline API-contract tests; the workflow run verifies real GitHub writes."""
+import base64
 import importlib.util
 from pathlib import Path
 import unittest
@@ -10,8 +11,9 @@ spec.loader.exec_module(sync)
 
 
 class FakeAPI:
-    def __init__(self, already=False, conflict=False, status="ahead"):
+    def __init__(self, already=False, conflict=False, status="ahead", migrated=True):
         self.calls = []
+        self.migrated = migrated
         self.pin = "new-docs" if already else "old-docs"
         self.landing = "landing-parent"
         self.deploy = "old-deploy"
@@ -20,7 +22,12 @@ class FakeAPI:
 
     def __call__(self, method, path, data=None):
         self.calls.append((method, path, data))
-        if path.endswith("/git/ref/heads/main"):
+        if "/contents/.gitmodules?ref=" in path:
+            repo = "LangBot" if self.migrated else "langbot-docs"
+            branch = "master" if self.migrated else "main"
+            content = f'[submodule "docs"]\npath = docs\nurl = https://github.com/langbot-app/{repo}.git\nbranch = {branch}\n'
+            return {"content": base64.b64encode(content.encode()).decode()}
+        if "/git/ref/heads/" in path:
             sha = "new-docs" if path.startswith(sync.SOURCE + "/") else self.deploy if path.startswith(sync.DEPLOY + "/") else self.landing
             return {"object": {"sha": sha}}
         if method == "GET" and "/git/commits/" in path:
@@ -83,3 +90,16 @@ class SyncTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 sync.sync(api)
             self.assertTrue(all(m == "GET" for m, p, d in api.calls))
+
+    def test_reads_master_and_does_not_contact_archived_repository(self):
+        api = FakeAPI()
+        sync.sync(api)
+        self.assertIn(("GET", "langbot-app/LangBot/git/ref/heads/master", None), api.calls)
+        self.assertFalse(any("langbot-app/langbot-docs/" in p for _, p, _ in api.calls))
+
+    def test_old_submodule_configuration_fails_before_any_write(self):
+        for already in [False, True]:
+            api = FakeAPI(already=already, migrated=False)
+            with self.assertRaisesRegex(RuntimeError, "must point to LangBot/master"):
+                sync.sync(api)
+            self.assertTrue(all(m == "GET" for m, _, _ in api.calls))

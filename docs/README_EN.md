@@ -1,4 +1,4 @@
-> Edit documentation in [LangBot/docs](https://github.com/langbot-app/LangBot/tree/main/docs). The [langbot-docs repository](https://github.com/langbot-app/langbot-docs) is a generated publication mirror. Run the commands below from `LangBot/docs/`.
+> Edit documentation in [LangBot/docs](https://github.com/langbot-app/LangBot/tree/master/docs). The [langbot-docs repository](https://github.com/langbot-app/langbot-docs) is retained as a historical archive. Run the commands below from `LangBot/docs/`.
 
 # [LangBot](https://github.com/langbot-app/LangBot) Official Documentation
 

@@ -36,7 +36,7 @@ description: "ignored"
         self.assertIn("> **提示**", output)
         self.assertIn("[模型文档](zh-usage-models-readme)", output)
         self.assertIn(
-            "https://raw.githubusercontent.com/langbot-app/langbot-docs/main/images/ui.png",
+            "https://raw.githubusercontent.com/langbot-app/LangBot/master/docs/images/ui.png",
             output,
         )
 

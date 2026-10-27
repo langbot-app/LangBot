@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Advance only the landing docs gitlink, then sync its production fork."""
 import argparse
+import base64
+import configparser
 import json
 import os
 import urllib.error
 import urllib.request
 
-SOURCE = "langbot-app/langbot-docs"
+SOURCE = "langbot-app/LangBot"
 TARGET = "langbot-app/langbot-landing-page"
 DEPLOY = "RockChinQ/LangBot-LandingPage-Vue"
 
@@ -25,14 +27,24 @@ def api(method, path, data=None):
         return json.load(response)
 
 
-def head(call, repo):
-    return call("GET", repo + "/git/ref/heads/main")["object"]["sha"]
+def head(call, repo, branch="main"):
+    return call("GET", repo + "/git/ref/heads/" + branch)["object"]["sha"]
 
 
 def sync(call=api, dry_run=False):
     for attempt in range(5):
-        source = head(call, SOURCE)  # Coalesce queued events onto current main.
+        source = head(call, SOURCE, "master")
         parent = head(call, TARGET)
+        # Check the same target revision used to build the candidate tree. Never
+        # put a LangBot SHA into a gitlink still configured for the old repository.
+        modules = call("GET", TARGET + "/contents/.gitmodules?ref=" + parent)
+        config = configparser.ConfigParser(interpolation=None)
+        config.read_string(base64.b64decode(modules["content"]).decode("utf-8"))
+        section = 'submodule "docs"'
+        if (config.get(section, "path", fallback=None) != "docs"
+                or config.get(section, "url", fallback=None) != "https://github.com/langbot-app/LangBot.git"
+                or config.get(section, "branch", fallback=None) != "master"):
+            raise RuntimeError("Landing docs must point to LangBot/master before synchronization")
         commit = call("GET", TARGET + "/git/commits/" + parent)
         tree = call("GET", TARGET + "/git/trees/" + commit["tree"]["sha"])
         entry = next(item for item in tree["tree"] if item["path"] == "docs")
@@ -52,7 +64,7 @@ def sync(call=api, dry_run=False):
             "tree": [{"path": "docs", "mode": "160000", "type": "commit", "sha": source}],
         })
         candidate = call("POST", TARGET + "/git/commits", {
-            "message": "docs: sync langbot-docs@" + source[:12],
+            "message": "docs: sync LangBot@" + source[:12],
             "tree": updated["sha"], "parents": [parent],
             "author": {"name": "github-actions[bot]", "email": "41898282+github-actions[bot]@users.noreply.github.com"},
         })

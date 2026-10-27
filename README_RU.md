@@ -187,4 +187,4 @@ LangBot **дружелюбен к агентам по своей архитек�
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
 
-[Исходники документации](https://github.com/langbot-app/LangBot/tree/main/docs) · [langbot-docs mirror](https://github.com/langbot-app/langbot-docs)
+[Исходники документации](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

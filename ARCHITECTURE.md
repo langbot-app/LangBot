@@ -348,4 +348,4 @@ When one of these changes, update the others if the behavior or contract changed
 
 ## Documentation repositories
 
-The public documentation site lives in `docs/` and is built with Node.js 24 and Fumapress. Internal design and review notes live in `dev-docs/`. The `langbot-app/langbot-docs` repository is a fast-forward subtree mirror for the landing site submodule and Context7. See `dev-docs/DOCS_MIGRATION.md` for publication and cutover details.
+The public documentation site lives in `docs/` and is built with Node.js 24 and Fumapress. Internal design and review notes live in `dev-docs/`. The landing site keeps its `docs` submodule path but tracks LangBot `master`, building from the nested `docs/` directory. The old `langbot-app/langbot-docs` repository can be archived; publication never writes to it. See `dev-docs/DOCS_MIGRATION.md` for publication and cutover details.

@@ -73,7 +73,7 @@ def rewrite_url(source: PurePosixPath, target: str, *, image: bool = False) -> s
         return target
     if image:
         path = parsed.path.lstrip("/") if parsed.path.startswith("/") else (source.parent / parsed.path).as_posix()
-        return urlunsplit(("https", "raw.githubusercontent.com", f"/langbot-app/langbot-docs/main/{path}", parsed.query, parsed.fragment))
+        return urlunsplit(("https", "raw.githubusercontent.com", f"/langbot-app/LangBot/master/docs/{path}", parsed.query, parsed.fragment))
     return resolve_doc_target(source, target) or target
 
 
@@ -235,7 +235,7 @@ def build(root: Path, output: Path) -> int:
     home = [
         "# LangBot Documentation",
         "",
-        "This GitHub Wiki is automatically synchronized from [langbot-app/langbot-docs](https://github.com/langbot-app/langbot-docs).",
+        "This GitHub Wiki is automatically synchronized from [LangBot/docs](https://github.com/langbot-app/LangBot/tree/master/docs).",
         "",
     ]
     for language, label in LANGUAGES.items():
@@ -246,7 +246,7 @@ def build(root: Path, output: Path) -> int:
     (output / "Home.md").write_text("\n".join(home).rstrip() + "\n", encoding="utf-8")
     (output / "_Sidebar.md").write_text(build_sidebar(root, titles), encoding="utf-8")
     (output / "_Footer.md").write_text(
-        "Automatically synchronized from [langbot-app/langbot-docs](https://github.com/langbot-app/langbot-docs).\n",
+        "Automatically synchronized from [LangBot/docs](https://github.com/langbot-app/LangBot/tree/master/docs).\n",
         encoding="utf-8",
     )
     return len(documents)
