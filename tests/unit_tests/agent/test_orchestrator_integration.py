@@ -1269,6 +1269,103 @@ class TestQueryEntrySessionQueryId:
         mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
 
 
+@pytest.mark.asyncio
+async def test_direct_agent_streams_output_to_the_originating_platform(clean_agent_state):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.delta',
+                'data': {
+                    'chunk': {
+                        'role': 'assistant',
+                        'content': 'hello',
+                        'all_content': 'hello',
+                    }
+                },
+            },
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'hello world'}},
+            },
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    ap = FakeApplication(connector, clean_agent_state)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=True,
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=['message.received'],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    results = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    assert [item.content for item in results] == ['hello', 'hello world']
+    adapter.create_message_card.assert_awaited_once()
+    chunks = adapter.reply_message_chunk.await_args_list
+    assert [call.kwargs['bot_message'].all_content for call in chunks] == ['hello', 'hello world']
+    assert [call.kwargs['is_final'] for call in chunks] == [False, True]
+    adapter.reply_message.assert_not_awaited()
+    adapter.send_message.assert_not_awaited()
+
+
 class TestQueryEntryAdapterParams:
     """Tests for params handling in Query entry adapter."""
 

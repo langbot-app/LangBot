@@ -365,6 +365,36 @@ async def test_event_reply_builds_message_chain_for_the_frozen_target() -> None:
 
 
 @pytest.mark.asyncio
+async def test_event_reply_uses_run_reply_stream_when_available() -> None:
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['send_message'],
+        send_message=AsyncMock(return_value=None),
+    )
+    reply_streams = SimpleNamespace(
+        adapter=adapter,
+        apply=AsyncMock(return_value={'status': 'completed', 'delivery': 'streaming'}),
+    )
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    )
+    session = {
+        'reply_streams': reply_streams,
+        'authorization': {
+            'bot_id': 'bot-1',
+            'platform_context': freeze_platform_context(_event()),
+        },
+    }
+
+    result = await execute_platform_tool(ap, object(), session, 'event_reply', {'text': 'hello'})
+
+    request = reply_streams.apply.await_args.args[0]
+    assert request.operation == 'finish'
+    assert request.text == 'hello'
+    assert result == {'status': 'completed', 'delivery': 'streaming'}
+    adapter.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_present_interactive_card_uses_host_interaction_manager() -> None:
     adapter = SimpleNamespace(get_supported_apis=lambda: ['interaction.request'])
     manager = SimpleNamespace(

@@ -898,8 +898,8 @@ class RuntimeBot:
             ),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(
-                enable_streaming=False,
-                enable_reply=False,
+                enable_streaming=agent.get('kind') == 'agent' and event_type == 'message.received',
+                enable_reply=agent.get('kind') == 'agent' and event_type == 'message.received',
                 enable_interactions=agent.get('kind') != 'event_processor',
             ),
             agent_id=agent.get('uuid'),
@@ -1291,6 +1291,8 @@ class RuntimeBot:
             )
 
         envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
+        if target_type == 'agent' and isinstance(event, platform_events.MessageReceivedEvent):
+            envelope.delivery.supports_streaming = True
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
             if isinstance(event, platform_events.MessageReceivedEvent):

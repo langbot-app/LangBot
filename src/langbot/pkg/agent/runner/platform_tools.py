@@ -899,6 +899,27 @@ async def execute_platform_tool(
                     context=context, target_type=target_type, target_id=target_id, message=message
                 )
 
+        reply_streams = session.get('reply_streams')
+        if (
+            definition.name == 'event_reply'
+            and message_chain is None
+            and reply_streams is not None
+            and getattr(reply_streams, 'adapter', None) is bot.adapter
+        ):
+            from uuid import uuid4
+
+            from .reply_stream import ReplyStreamRequest
+
+            async def api_func(target_type, target_id, message):
+                text = ''.join(part.text for part in message if isinstance(part, platform_message.Plain))
+                return await reply_streams.apply(
+                    ReplyStreamRequest(
+                        stream_id=uuid4(),
+                        operation='finish',
+                        text=text,
+                    )
+                )
+
         if not callable(api_func):
             raise ValueError(f'Platform API {definition.api} is declared but not implemented')
         if definition.api == 'send_message':

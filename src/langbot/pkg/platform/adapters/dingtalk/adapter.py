@@ -130,7 +130,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'get_file_url',
             'call_platform_api',
         ]
-        if self.config.get('human_input_card_template_id') and hasattr(self.bot, 'create_and_deliver_card'):
+        if hasattr(self.bot, 'create_and_deliver_ai_card'):
             apis.append('interaction.request')
         return apis
 
@@ -225,14 +225,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             oldest_id = next(iter(self.card_instance_id_dict))
             self.card_instance_id_dict.pop(oldest_id, None)
             getattr(self, '_card_last_updates', {}).pop(oldest_id, None)
-        card_template_id = self.config['card_template_id'].strip()
         incoming_message = event.source_platform_object.incoming_message
-        card_auto_layout = self.config.get('card_auto_layout', True)
-        card_instance, card_instance_id = await self.bot.create_and_card(
-            card_template_id,
-            incoming_message,
-            card_auto_layout=card_auto_layout,
-        )
+        card_instance, card_instance_id = await self.bot.create_and_card(incoming_message)
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
         return True
 

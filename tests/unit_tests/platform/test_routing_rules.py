@@ -787,8 +787,8 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
 @pytest.mark.parametrize('output_kind', ['message', 'chunks', 'tool_rounds'])
 @pytest.mark.parametrize('explicit_reply', [False, True])
 @pytest.mark.parametrize('runner_fails', [False, True])
-async def test_processor_outputs_require_explicit_platform_actions(kind, output_kind, explicit_reply, runner_fails):
-    """Draining runner results must not send text, duplicate replies, or stream cards."""
+async def test_processor_output_delivery_policy(kind, output_kind, explicit_reply, runner_fails):
+    """Direct Agents may auto-deliver output; event processors remain explicit-only."""
     from langbot_plugin.api.entities.builtin.platform import entities, events, message
     from langbot_plugin.api.entities.builtin.provider import message as provider_message
     from datetime import datetime
@@ -812,9 +812,9 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
             restored = message.MessageChain.model_validate(envelope.data['message_chain'])
             assert restored.source.id == 'source-1'
             assert restored.source.time == datetime(2026, 10, 8, 12)
-        assert envelope.delivery.supports_streaming is False
-        assert binding.delivery_policy.enable_streaming is False
-        assert binding.delivery_policy.enable_reply is False
+        assert envelope.delivery.supports_streaming is (kind == 'agent')
+        assert binding.delivery_policy.enable_streaming is (kind == 'agent')
+        assert binding.delivery_policy.enable_reply is (kind == 'agent')
         assert adapter_context['_delivery_adapter'] is adapter
         if explicit_reply:
             session = {'authorization': {'bot_id': 'bot-1', 'platform_context': freeze_platform_context(envelope)}}

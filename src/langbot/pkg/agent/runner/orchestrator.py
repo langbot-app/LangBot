@@ -7,13 +7,14 @@ import asyncio
 import contextlib
 import copy
 import typing
+from uuid import uuid4
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-from .reply_stream import ReplyStreamSession
+from .reply_stream import ReplyStreamRequest, ReplyStreamSession
 from ...core import app
 from ...i18n import t
 from ...i18n.workspace import get_workspace_language
@@ -36,7 +37,7 @@ from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
 from .registry import RunnerRegistry
 from .resource_builder import AgentResourceBuilder
-from .platform_tools import freeze_platform_context
+from .platform_tools import PLATFORM_TOOLS_BY_NAME, freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
@@ -253,6 +254,14 @@ class AgentRunOrchestrator:
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
+        auto_reply_enabled = (
+            binding.processor_type == 'agent'
+            and binding.delivery_policy.enable_reply
+            and event.event_type == 'message.received'
+            and reply_streams.adapter is not None
+        )
+        auto_reply_stream_id = uuid4()
+        explicit_delivery_completed = False
         # A run reached without a platform ingress (WebUI debug, service API)
         # owns its own chain; a run inside an ingress reuses that chain.
         trace_binding: trace_mod.TraceBinding | None = None
@@ -361,6 +370,15 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        if result_type == 'tool.call.completed':
+                            result_data = result_dict.get('data') or {}
+                            tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
+                            if tool_definition is not None and tool_definition.api in {
+                                'send_message',
+                                'interaction.request',
+                            }:
+                                explicit_delivery_completed = True
+
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
@@ -446,6 +464,24 @@ class AgentRunOrchestrator:
 
                             async with binding_for(execution_query).lock:
                                 result.attachments = exported_message(execution_query, file_ids, consume=True)
+
+                        if auto_reply_enabled and not explicit_delivery_completed and result is not None:
+                            reply_text = None
+                            operation = None
+                            if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
+                                reply_text = result.all_content or result.content
+                                operation = 'update'
+                            elif has_completed_message:
+                                reply_text = result.content
+                                operation = 'finish'
+                            if isinstance(reply_text, str) and reply_text.strip() and operation is not None:
+                                await reply_streams.apply(
+                                    ReplyStreamRequest(
+                                        stream_id=auto_reply_stream_id,
+                                        operation=operation,
+                                        text=reply_text,
+                                    )
+                                )
 
                         if result is not None:
                             yield result

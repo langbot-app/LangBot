@@ -8,11 +8,11 @@ import pytest
 from langbot.pkg.platform import botmgr as _botmgr  # noqa: F401
 from langbot.pkg.platform.sources.dingtalk import (
     DingTalkAdapter,
+    _dingtalk_a2ui_form,
     _dingtalk_card_markdown,
     _dingtalk_clean_form_content,
     _dingtalk_completed_input_lines,
     _dingtalk_extract_component_inputs,
-    _dingtalk_form_component_params,
     _dingtalk_missing_completed_input_lines,
     _dingtalk_pending_input_defs,
 )
@@ -29,29 +29,30 @@ def test_dingtalk_auxiliary_tasks_are_bounded():
     assert len(adapter._background_tasks) == 100
 
 
-def test_dingtalk_select_component_params_expose_options():
-    params = _dingtalk_form_component_params(
+def test_dingtalk_dify_input_card_uses_a2ui_binding_and_required_check():
+    data, components = _dingtalk_a2ui_form(
         {
-            '_current_input_field': 'choice',
+            'node_title': 'Review',
+            'form_content': 'Add a comment',
+            '_current_input_field': 'comment',
             'input_defs': [
                 {
-                    'output_variable_name': 'choice',
-                    'type': 'select',
-                    'option_source': {'type': 'constant', 'value': ['A', 'B']},
+                    'output_variable_name': 'comment',
+                    'type': 'textarea',
+                    'label': 'Comment',
                 }
             ],
             'inputs': {},
-        }
+        },
+        'track-id',
     )
 
-    assert params['select_visible'] == 'true'
-    assert params['select_placeholder'] == 'choice'
-    assert params['select_options'] == ['A', 'B']
-    assert [option['value'] for option in params['index_o']] == ['A', 'B']
-    assert [option['value'] for option in params['test_index']] == ['A', 'B']
-    assert params['index_o'][0]['text']['zh_CN'] == 'A'
-    assert params['index_o'][0]['text']['en_US'] == 'A'
-    assert params['select_index'] == -1
+    field = next(component for component in components if component['component'] == 'TextField')
+    button = next(component for component in components if component['component'] == 'Button')
+    assert data['form']['value'] == ''
+    assert field['value'] == {'path': '/form/value'}
+    assert button['action']['event']['context']['input'] == {'path': '/form/value'}
+    assert button['checks'][0]['condition']['call'] == 'required'
 
 
 def test_dingtalk_extract_select_from_builtin_result_dict():
