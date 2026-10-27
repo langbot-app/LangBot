@@ -1,69 +1,72 @@
-# Documentation subtree and publication
+# Documentation publication after the repository migration
 
-Public docs live in `LangBot/docs/`. The former internal `docs/` directory is
-`dev-docs/` (27 top-level entries, 87 tracked files at migration). Do not merge
-this migration using GitHub squash or rebase: use a merge commit to retain the
-subtree parent and original signed commits. Imported history is reachable through
-the subtree merge's second parent. Use `git log <imported-docs-sha> -- <file>`
-(with the original path relative to the docs repository) to see original authors.
-A path-limited `git log docs/` or `--follow` does not reliably traverse the
-unrelated-history import. The imported commit is
-`51dddcb3f891d60bc38645e88b2dbd515344da81` (888 commits, including 452 signed
-commit objects, all retained without rewriting).
+Public docs live in `LangBot/docs/`; internal notes live in `dev-docs/`. The
+original 27 top-level internal entries (87 files) were moved without loss.
+The unsquashed subtree import retains all 888 commits, including 452 signed
+objects, from `51dddcb3f891d60bc38645e88b2dbd515344da81`. Use
+`git log 51dddcb3f891d60bc38645e88b2dbd515344da81 -- <original-path>` to inspect
+the original authors. The import is already merged; do not rewrite that history.
 
-## Local checks
+## Publication source
 
-With Node.js 24, run `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`
-inside `docs/`. Output is `docs/dist/`. The site remains mounted at `/docs/` with
-canonical URL `https://langbot.app/docs`.
+`langbot-app/langbot-docs` is a historical archive, not a writable mirror.
+No publication step splits or pushes to that repository. The landing repository
+keeps its submodule **path** `docs`, but its **URL** is
+`https://github.com/langbot-app/LangBot.git`, tracking `master`. Consequently,
+the landing build runs the documentation package inside `docs/docs/` and copies
+`docs/docs/dist/public` to `public/docs`. The public URL stays
+`https://langbot.app/docs/`; Vite's base path and canonical site URL are unchanged.
 
-## Cutover after the PR is reviewed and merged
+The main-repository synchronization job advances only the landing gitlink to
+LangBot `master` and then synchronizes `RockChinQ/LangBot-LandingPage-Vue`.
+It checks `.gitmodules` on the exact landing revision it updates, refuses old
+repository configurations, and rejects rewinds/divergence. It never force-pushes.
 
-1. Pause the legacy `sync-blog-articles.yml` workflow in `langbot-app/langbot-docs`
-   and let any running writer finish. Freeze direct commits to that repository.
-   Pause its legacy Wiki and landing sync workflows too, avoiding duplicate
-   publishers while switching ownership. Do not push disabling commits directly
-   to the mirror.
-2. Fetch mirror `main` and confirm it is an ancestor of the new subtree split.
-   If it advanced since import, integrate it with an **unsquashed**
-   `git subtree pull --prefix=docs <mirror-url> main` through another reviewed PR
-   before cutover; reapply the inert mirror workflow files if necessary. Never
-   force-push or rewrite the mirror history.
-3. The publication jobs read `LANGBOT_WIKI_PUSH_TOKEN` and fall back to the
-   existing `RELEASE_UPLOAD_GITHUB_TOKEN` when that secret is absent. The fallback
-   was verified on a scratch branch: it authenticates as the repository owner
-   with `repo` scope and push+admin on `LangBot`, `langbot-docs`,
-   `langbot-landing-page` and the production fork, and it can clone and push the
-   Wiki. It does not carry the `workflow` scope, so it cannot push changes to
-   `.github/workflows/**` in the mirror; the split only rewrites `docs/**`
-   content, so this is fine unless a future change edits the inert mirror stubs.
-   Adding a dedicated `LANGBOT_WIKI_PUSH_TOKEN` with the same access keeps the
-   blast radius of the fallback credential out of the docs pipeline. Do not
-   weaken branch protection to accommodate this migration.
-4. Set LangBot repository variable `DOCS_MIRROR_ENABLED=true`. Dispatch
-   `sync-landing-submodule.yml` on master. It fetches full master history, runs
-   `git subtree split --prefix=docs`, verifies the current mirror head is an
-   ancestor, pushes without force, then advances only landing's `docs` gitlink.
-   The first split replaces legacy mirror workflows with inert manual stubs.
-5. Dispatch `sync-github-wiki.yml` and `sync-blog-articles.yml` in LangBot.
-   The blog job now commits only docs article paths to LangBot master using the
-   dedicated token, so its push triggers the mirror and Wiki workflows.
-6. Confirm the `docs` gitlink in `langbot-app/langbot-landing-page`, then confirm
-   production fork `RockChinQ/LangBot-LandingPage-Vue` matches upstream. This is
-   the actual fork in the existing sync script (not the similarly named fork
-   mentioned in the original migration proposal). Observe Cloudflare Pages
-   deployment and check `https://langbot.app/docs/`, localized pages, assets,
-   sitemap and canonical URLs. Verify Wiki pages after publication.
+## Cutover order
 
-The four root workflows own publication and validation. Nested workflow stubs
-are intentionally inert when split into the mirror. No direct writes should be
-made to the mirror after cutover; all edits belong in LangBot `docs/`.
+1. Merge the paired landing PR: change `.gitmodules`, the pinned `docs` gitlink,
+   and `scripts/build-embedded-docs.mjs` together. Verify its full `pnpm build`.
+2. Merge the main-repository publication changes. Keep publishers disabled until
+   both repositories are ready; the new flag is `DOCS_PUBLISH_ENABLED`, not
+   `DOCS_MIRROR_ENABLED`. The old flag does not enable these jobs.
+3. Stop the old repository's Blog, Wiki and landing workflows and let any active
+   writers finish. The owner can archive `langbot-app/langbot-docs` once the
+   new publication chain is verified. Never write disabling commits to it as
+   part of the new publication chain.
+4. Verify `LANGBOT_WIKI_PUSH_TOKEN`, or the existing `RELEASE_UPLOAD_GITHUB_TOKEN`
+   fallback, has access to LangBot, landing, production fork and Wiki. No token
+   value belongs in logs. Publication only updates gitlinks/content, never
+   workflow files in another repository, and no docs-mirror permission is needed.
+5. Set `DOCS_PUBLISH_ENABLED=true` in LangBot. Dispatch
+   `sync-landing-submodule.yml` on **master**. It also brings the production fork
+   up to date; confirm the fork matches landing main and observe Cloudflare's
+   resulting deployment before accepting the cutover.
+6. Dispatch `sync-github-wiki.yml` and `sync-blog-articles.yml` on **master**.
+   The Blog job commits only `docs/` article paths to LangBot using a token whose
+   pushes trigger subsequent landing/Wiki workflows. Wiki images and attribution
+   now point to LangBot `master/docs`, so new assets do not depend on the archive.
+7. Check `/docs/`, the en/zh/ja guide pages, assets, sitemap, Markdown exports,
+   Wiki content and Blog idempotency. A successful Wiki build is not proof of
+   publication: inspect the separate publish job.
 
-`docs/context7.json` continues to identify `langbot-app/langbot-docs` because that
-repository remains available with the same tree layout and original history.
-Verify Context7 ingestion after the first mirror update; no library re-registration
-is needed merely to relocate the authoring source.
+## Context7
 
-Disable `DOCS_MIRROR_ENABLED` to pause publishers if cutover fails. A failed
-mirror ancestry check must be investigated and reconciled, never bypassed by a
-force push. Do not restore direct mirror writers while LangBot is authoritative.
+The root `context7.json` follows the published Context7 schema and selects
+`master:docs/en`. Context7's current parser indexes English documentation.
+The old nested ownership configuration belonged to the legacy repository and
+has been removed; it does not transfer ownership of a Context7 library.
+The owner must add/refresh `https://github.com/langbot-app/LangBot` in Context7
+and verify a result from `docs/en` after merge. The existing
+`/langbot-app/langbot-docs` index is only a historical snapshot after archival.
+Do not report an index refresh as complete solely because this config exists.
+
+## Local validation and recovery
+
+Use Node.js 24. In `docs/`, run `npm ci`, `npm run typecheck`, `npm test`, and
+`npm run build`. In landing, initialize the submodule and run `pnpm install
+--frozen-lockfile`, `pnpm test`, and `pnpm build`.
+
+Disable `DOCS_PUBLISH_ENABLED` to pause publication. If landing still points at
+the legacy repository or the production fork has diverged, reconcile through
+reviewed changes; do not bypass the synchronization checks. Keep the last
+working deployment available until the replacement passes verification.

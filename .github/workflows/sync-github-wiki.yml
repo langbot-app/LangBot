@@ -57,7 +57,7 @@ jobs:
 
   sync:
     name: Publish to LangBot Wiki
-    if: github.event_name != 'pull_request' && github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_MIRROR_ENABLED == 'true'
+    if: github.event_name != 'pull_request' && github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5

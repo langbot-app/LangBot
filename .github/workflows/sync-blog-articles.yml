@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_MIRROR_ENABLED == 'true'
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -26,7 +26,7 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-          # A PAT push triggers the mirror and Wiki workflows; GITHUB_TOKEN does not.
+          # A PAT push triggers the landing and Wiki workflows; GITHUB_TOKEN does not.
           token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
       - uses: actions/setup-node@v7
         with:

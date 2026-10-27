@@ -1,4 +1,4 @@
-name: Sync docs mirror and landing submodule
+name: Sync landing docs from LangBot
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_MIRROR_ENABLED == 'true'
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -27,16 +27,6 @@ jobs:
       - name: Test synchronization contracts
         working-directory: docs
         run: python3 -m unittest discover -s tests -p test_sync_landing_submodule.py -v
-      - name: Publish docs subtree (fast-forward only)
-        env:
-          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
-        run: |
-          gh auth setup-git
-          git remote add docs-mirror https://github.com/langbot-app/langbot-docs.git
-          git fetch docs-mirror main
-          docs_sha=$(git subtree split --prefix=docs)
-          git merge-base --is-ancestor docs-mirror/main "$docs_sha"
-          git push docs-mirror "$docs_sha:refs/heads/main"
       - name: Update landing submodule and production fork
         working-directory: docs
         env:

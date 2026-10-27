@@ -213,4 +213,4 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 If you're a code agent based on LLM, you should read [AGENTS.md](AGENTS.md) to understand the project structure and development process before you start any development.
 -->
 
-[文档源码](https://github.com/langbot-app/LangBot/tree/main/docs) · [langbot-docs mirror](https://github.com/langbot-app/langbot-docs)
+[文档源码](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

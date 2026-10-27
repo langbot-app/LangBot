@@ -187,4 +187,4 @@ LangBot をより良くするために貢献してくださったすべての[�
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
 
-[ドキュメントのソース](https://github.com/langbot-app/LangBot/tree/main/docs) · [langbot-docs mirror](https://github.com/langbot-app/langbot-docs)
+[ドキュメントのソース](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

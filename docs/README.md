@@ -1,6 +1,6 @@
 # [LangBot](https://github.com/langbot-app/LangBot) 官方文档
 
-> 文档源码位于 [LangBot/docs](https://github.com/langbot-app/LangBot/tree/main/docs)，[langbot-docs](https://github.com/langbot-app/langbot-docs) 仅作为发布 mirror。
+> 文档源码位于 [LangBot/docs](https://github.com/langbot-app/LangBot/tree/master/docs)，[langbot-docs](https://github.com/langbot-app/langbot-docs) 将作为历史归档保留。
 > [LangBot 代码仓库](https://github.com/langbot-app/LangBot)  
 > 这是 LangBot 4.0 的文档，3.0 文档请见 [langbot-docs 的 v3 分支](https://github.com/langbot-app/langbot-docs/tree/v3)
 
