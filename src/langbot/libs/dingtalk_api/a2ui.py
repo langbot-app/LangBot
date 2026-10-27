@@ -36,9 +36,8 @@ def brand_components() -> list[dict[str, typing.Any]]:
         },
         {
             'id': 'langbot-brand-link',
-            'component': 'Link',
-            'text': 'LangBot',
-            'action': {'functionCall': {'call': 'openUrl', 'args': {'url': LANGBOT_CARD_URL}}},
+            'component': 'Markdown',
+            'content': f'[LangBot]({LANGBOT_CARD_URL})',
         },
     ]
 

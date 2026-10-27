@@ -39,10 +39,10 @@ def test_text_card_keeps_brand_when_content_updates():
     assert by_id['langbot-brand']['children'] == ['langbot-brand-icon', 'langbot-brand-link']
     assert by_id['langbot-brand-icon']['url'] == 'https://langbot.app/logo-blue.png'
     assert by_id['langbot-brand-icon']['previewEnabled'] is False
-    assert by_id['langbot-brand-link']['action']['functionCall'] == {
-        'call': 'openUrl',
-        'args': {'url': 'https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot'},
-    }
+    assert by_id['langbot-brand-link']['component'] == 'Markdown'
+    assert by_id['langbot-brand-link']['content'] == (
+        '[LangBot](https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot)'
+    )
     assert update_text_card_messages('surface-id', 'done')[0]['updateDataModel']['path'] == '/content'
 
 
