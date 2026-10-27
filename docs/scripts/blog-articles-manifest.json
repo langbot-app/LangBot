@@ -24,8 +24,29 @@
     },
     {
       "locale": "en",
+      "slug": "dify-langbot-github-release-briefing",
+      "page": "en/articles/dify-langbot-github-release-briefing",
+      "sourceLocale": "en",
+      "fallback": false
+    },
+    {
+      "locale": "en",
       "slug": "dify-langbot-rag-knowledge-base",
       "page": "en/articles/dify-langbot-rag-knowledge-base",
+      "sourceLocale": "en",
+      "fallback": false
+    },
+    {
+      "locale": "en",
+      "slug": "dify-langbot-support-triage",
+      "page": "en/articles/dify-langbot-support-triage",
+      "sourceLocale": "en",
+      "fallback": false
+    },
+    {
+      "locale": "en",
+      "slug": "dify-langbot-writing-assistant",
+      "page": "en/articles/dify-langbot-writing-assistant",
       "sourceLocale": "en",
       "fallback": false
     },
@@ -47,6 +68,13 @@
       "locale": "en",
       "slug": "langbot-v4100-sandbox-skills",
       "page": "en/articles/langbot-v4100-sandbox-skills",
+      "sourceLocale": "en",
+      "fallback": false
+    },
+    {
+      "locale": "en",
+      "slug": "langbot-v411-event-driven-agents",
+      "page": "en/articles/langbot-v411-event-driven-agents",
       "sourceLocale": "en",
       "fallback": false
     },
@@ -108,8 +136,29 @@
     },
     {
       "locale": "zh",
+      "slug": "dify-langbot-github-release-briefing",
+      "page": "zh/articles/dify-langbot-github-release-briefing",
+      "sourceLocale": "zh",
+      "fallback": false
+    },
+    {
+      "locale": "zh",
       "slug": "dify-langbot-rag-knowledge-base",
       "page": "zh/articles/dify-langbot-rag-knowledge-base",
+      "sourceLocale": "zh",
+      "fallback": false
+    },
+    {
+      "locale": "zh",
+      "slug": "dify-langbot-support-triage",
+      "page": "zh/articles/dify-langbot-support-triage",
+      "sourceLocale": "zh",
+      "fallback": false
+    },
+    {
+      "locale": "zh",
+      "slug": "dify-langbot-writing-assistant",
+      "page": "zh/articles/dify-langbot-writing-assistant",
       "sourceLocale": "zh",
       "fallback": false
     },
@@ -131,6 +180,13 @@
       "locale": "zh",
       "slug": "langbot-v4100-sandbox-skills",
       "page": "zh/articles/langbot-v4100-sandbox-skills",
+      "sourceLocale": "zh",
+      "fallback": false
+    },
+    {
+      "locale": "zh",
+      "slug": "langbot-v411-event-driven-agents",
+      "page": "zh/articles/langbot-v411-event-driven-agents",
       "sourceLocale": "zh",
       "fallback": false
     },
@@ -192,8 +248,29 @@
     },
     {
       "locale": "ja",
+      "slug": "dify-langbot-github-release-briefing",
+      "page": "ja/articles/dify-langbot-github-release-briefing",
+      "sourceLocale": "en",
+      "fallback": true
+    },
+    {
+      "locale": "ja",
       "slug": "dify-langbot-rag-knowledge-base",
       "page": "ja/articles/dify-langbot-rag-knowledge-base",
+      "sourceLocale": "en",
+      "fallback": true
+    },
+    {
+      "locale": "ja",
+      "slug": "dify-langbot-support-triage",
+      "page": "ja/articles/dify-langbot-support-triage",
+      "sourceLocale": "en",
+      "fallback": true
+    },
+    {
+      "locale": "ja",
+      "slug": "dify-langbot-writing-assistant",
+      "page": "ja/articles/dify-langbot-writing-assistant",
       "sourceLocale": "en",
       "fallback": true
     },
@@ -217,6 +294,13 @@
       "page": "ja/articles/langbot-v4100-sandbox-skills",
       "sourceLocale": "en",
       "fallback": true
+    },
+    {
+      "locale": "ja",
+      "slug": "langbot-v411-event-driven-agents",
+      "page": "ja/articles/langbot-v411-event-driven-agents",
+      "sourceLocale": "ja",
+      "fallback": false
     },
     {
       "locale": "ja",
@@ -559,6 +643,231 @@
       "path": "/images/articles/source/images/covers/welcome.png",
       "sha256": "5ff0078633e30e8d8d8efa5abf686fbe13993b06cee383d2e7b9afec16639712",
       "bytes": 11535
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/00-dify-install.png",
+      "sha256": "395d9d5af74ef23be4e38d78addba382db83685831d6adf8e3a739675927f739",
+      "bytes": 48447
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/00-langbot-install.png",
+      "sha256": "e5ef7e954b4f27b50a5ea82cb551d33b4e6c288bd6948d146e6046c87b7a4717",
+      "bytes": 42532
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/007-langbot-dify-runner-config.png",
+      "sha256": "969e3095144b6f1671413e10e0d75304d8f9b593bb5ee38567f094ef3253773e",
+      "bytes": 98420
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/010-dify-create-basic-app.png",
+      "sha256": "34d5ad8474a7dede1d8a57c36951a3991076a104144e884646ecdd06cec08a56",
+      "bytes": 69242
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/011-dify-writing-app-create.png",
+      "sha256": "3296b7f25e30825817ed0034d078be68c369750b0f72959a2794d1aac8b2e800",
+      "bytes": 82300
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/012-dify-writing-instructions.png",
+      "sha256": "da31119dc383c45110d2ba7b122a1a4d0c5b348f7ab5c92660bce65a7387ed88",
+      "bytes": 91695
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/014-dify-astra-model-settings.png",
+      "sha256": "5c1c99021ce25747f0baf2d70619b2a550c9e72d51c0c867317f39ce16dc4dec",
+      "bytes": 82204
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/016-writing-english-first-reply.png",
+      "sha256": "7e2cbbc517ef47d20b577a7e37a5b04094dff7b321f117daed0f4461dfd218be",
+      "bytes": 120236
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/019-writing-english-context-revision.png",
+      "sha256": "28767ff8cf9c97c1a5f2cd02401cb7d3d8112197615c883857e074f0ca3b9036",
+      "bytes": 136430
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/022-writing-chinese-first-reply.png",
+      "sha256": "088bd387dd9855f506fb61b777a3b3bc11445b266963e27d7355447f6f366385",
+      "bytes": 108973
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/023-writing-access-point-api.png",
+      "sha256": "a431e9acda90e2685feeaa3a7353cf1b80c8ceb85ce1faf9da8f004ea9d22380",
+      "bytes": 63099
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/025-langbot-writing-english-roundtrip.png",
+      "sha256": "4ccbd575d3f544c050ce26cdda2f1996c12ed5875b024b0ec68fc2d5e8f0f8a2",
+      "bytes": 65801
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/026-langbot-writing-chinese-roundtrip.png",
+      "sha256": "b6de9ea94a9a9d9b8a57760425293ee3985e97f051efa2e9ff092cb64ae30ac8",
+      "bytes": 83068
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/039-triage-three-branch-overview.png",
+      "sha256": "dbef83edb2f04159e03a5bbeb5c004e09e250b022fdc6f845b045dd694e49773",
+      "bytes": 100101
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/040-triage-classifier-settings.png",
+      "sha256": "be1b06fe3754a5c7fcfd3f7c5f3cdd7192aac469ac94e08e66286b39c01672df",
+      "bytes": 121451
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/041-triage-account-path-result.png",
+      "sha256": "db7b607df345ca0c26a44ccacc0bf51853dcf485832f4ee49e2264e700f8fa47",
+      "bytes": 100428
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/043-triage-product-path-result.png",
+      "sha256": "5a61bc6b11cd58224dd517254a94ca3f8b66ef35bc6e5595ed43e900b90b3400",
+      "bytes": 99485
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/045-release-workflow-overview.png",
+      "sha256": "dc8cdf1c8b4c17b060be6945780a72ebbf913b3e773fa3f671b34a55a90065b2",
+      "bytes": 80979
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/046-release-http-request-settings.png",
+      "sha256": "c3f7259c4630a29d5570916d63780b0bd2425d84fc8664d899680eb7e77ea4af",
+      "bytes": 114686
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/047-release-code-extraction-node.png",
+      "sha256": "705f3f60f43b92457112c3d20666daf397346d5567f5cf532392c81194fd23e6",
+      "bytes": 100014
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/049-release-workflow-input.png",
+      "sha256": "4ff4d328a044b486cdcb207dcdb4f12c99bf8bd0e1fbce8577f7edc3cbcafa52",
+      "bytes": 111912
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/050-triage-human-review-chinese.png",
+      "sha256": "87c4e990534acb3dbf19d0033d17ed4bb772da14aee0713aa38781ccfccbf171",
+      "bytes": 114977
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/053-langbot-triage-dify-settings.png",
+      "sha256": "6211531960bd863619238b41ad48842e43d21323864159674a61db089df18c4a",
+      "bytes": 101283
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/054-release-summary-output-verified.png",
+      "sha256": "1f16403a2c8ee4c8adee05e36c5f094bc7d7316f45d5aac1c1275c75bfac6e84",
+      "bytes": 87480
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/055-langbot-triage-account-english.png",
+      "sha256": "476c5f68d231fe296737422fa3049b01b9c5064f830aa9743b067b94f2d99fee",
+      "bytes": 69092
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/056-release-english-live-briefing.png",
+      "sha256": "4ad4f72bbefc03cf746b31cd9fb84935f037ac657dd111586dbc02665633a4e3",
+      "bytes": 116517
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/059-platform-discord-fields.png",
+      "sha256": "ad46d06df6370e52e1baf2e611e5427f139efb7f3186b3bce705f8c270ad11fa",
+      "bytes": 59659
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/060-platform-telegram-fields.png",
+      "sha256": "e91de974825bb4f390bf1505c06fdba4f288bd1c35d8f7dfdd95f4a8d032fb91",
+      "bytes": 69438
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/061-platform-line-fields.png",
+      "sha256": "260b460f2be769b1888f8ed0ee92fcca095a55ea896b4cf658083af6cdfeaacc",
+      "bytes": 68738
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/062-platform-lark-fields.png",
+      "sha256": "2112231900edebf0ed28c2b9678aa95be0a338b01adf723028db8b150196773d",
+      "bytes": 89713
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/063-platform-dingtalk-fields.png",
+      "sha256": "0a9dc591fd65b3e5dd14932f288b38540543f162e742b5bd19c2d2b8337b49b2",
+      "bytes": 87438
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/064-platform-wecombot-fields.png",
+      "sha256": "441821ebe51b1863180a8c787b176f47609e9f7974fdeea85481c5936aa868f6",
+      "bytes": 86405
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/066-platform-onebot-v11-fields.png",
+      "sha256": "75988e0e76dd85f0b629c3769de55a963263a8f846bfdcea9035a60c628351e1",
+      "bytes": 74079
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/075-release-chinese-live-briefing.png",
+      "sha256": "0dc0d9e9fd3196dca8e96a1d61c86535c09cbc20599f9bbadaa59a9f53b47c8d",
+      "bytes": 119317
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/076-langbot-triage-human-chinese.png",
+      "sha256": "522a80eb09c6aec93301ae22507340b992e98c3a75fbd6f8850eb1f59afc3474",
+      "bytes": 94537
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/078-langbot-release-workflow-settings.png",
+      "sha256": "fcf07ab431b203da8742f8bc646262c01e1639e44103f35f95f528b4302b4690",
+      "bytes": 102591
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/079-langbot-release-english-roundtrip.png",
+      "sha256": "2db1b8dbac02a637aa844072c81db588e8cba50062c312ec64898e5ff660d1e6",
+      "bytes": 113719
+    },
+    {
+      "path": "/images/articles/source/images/dify-langbot/082-release-chinese-reply-detail.png",
+      "sha256": "f8a96b5411c7d84c05cde603de04f73ec2989e1748c22bb470457383ee3887d9",
+      "bytes": 39159
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/account-security.png",
+      "sha256": "df3fdf37a6482236cd231fd99c8e874241fa367fb25adc77af01ddcc6f10100f",
+      "bytes": 136563
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/eba-event-routing.png",
+      "sha256": "ea34a28e6c588a2a44e22fd7fb61bcd7f7699199af516dd25a865700ff837058",
+      "bytes": 85003
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/marketplace-live.png",
+      "sha256": "c93730f8a7d5d01d7c807ce9f00e708a44bd1e0f8618d37302088ae6c9d4036c",
+      "bytes": 155568
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/onboarding.png",
+      "sha256": "bb310d862fc44f095a20744e478a1991474bb8781880256a2d611e38fc106000",
+      "bytes": 104698
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/processor-types.png",
+      "sha256": "6d388a741a1cb12fe57a962b57b9094b3efa3249fe117c8397a8a7154781311b",
+      "bytes": 111538
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/runner-plugins-marketplace.png",
+      "sha256": "61cebdd8018aaf762be24ffcc5dd0b18cb392b33674e1b9ec7f4d4ef809568db",
+      "bytes": 140348
+    },
+    {
+      "path": "/images/articles/source/images/langbot-411/workspace-assistant.png",
+      "sha256": "ffb00eeb539ef28bd3db99db394eb799b052e5ff201fb2cbff4718a3985d24b2",
+      "bytes": 138965
     },
     {
       "path": "/images/articles/source/images/plugin-system/architecture.png",

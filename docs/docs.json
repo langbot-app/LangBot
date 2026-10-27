@@ -749,6 +749,7 @@
               {
                 "group": "Product Updates",
                 "pages": [
+                  "en/articles/langbot-v411-event-driven-agents",
                   "en/articles/langbot-cloud-multi-user-workspaces"
                 ]
               },
@@ -763,6 +764,9 @@
               {
                 "group": "Tutorials & Integrations",
                 "pages": [
+                  "en/articles/dify-langbot-github-release-briefing",
+                  "en/articles/dify-langbot-support-triage",
+                  "en/articles/dify-langbot-writing-assistant",
                   "en/articles/langtars-remote-pc-control-dify-n8n",
                   "en/articles/connect-deepseek-to-wechat",
                   "en/articles/deploy-ai-bot-in-5-minutes",
@@ -1076,15 +1080,8 @@
               {
                 "group": "产品动态",
                 "pages": [
+                  "zh/articles/langbot-v411-event-driven-agents",
                   "zh/articles/langbot-cloud-multi-user-workspaces"
-                ]
-              },
-              {
-                "group": "在线体验",
-                "pages": [
-                  "zh/articles/langbot-wecom-customer-service-knowledge-base",
-                  "zh/articles/langbot-telegram-sandbox-agent",
-                  "zh/articles/langbot-wechat-official-account"
                 ]
               },
               {
@@ -1098,13 +1095,19 @@
               {
                 "group": "教程与集成",
                 "pages": [
+                  "zh/articles/dify-langbot-github-release-briefing",
+                  "zh/articles/dify-langbot-support-triage",
+                  "zh/articles/dify-langbot-writing-assistant",
                   "zh/articles/langtars-remote-pc-control-dify-n8n",
                   "zh/articles/connect-deepseek-to-wechat",
                   "zh/articles/deploy-ai-bot-in-5-minutes",
                   "zh/articles/dify-agent-discord-telegram-slack",
                   "zh/articles/langflow-drag-and-drop-ai-bot",
                   "zh/articles/n8n-multi-platform-ai-chatbot",
-                  "zh/articles/dify-langbot-rag-knowledge-base"
+                  "zh/articles/dify-langbot-rag-knowledge-base",
+                  "zh/articles/langbot-telegram-sandbox-agent",
+                  "zh/articles/langbot-wechat-official-account",
+                  "zh/articles/langbot-wecom-customer-service-knowledge-base"
                 ]
               },
               {
@@ -1386,6 +1389,7 @@
               {
                 "group": "製品アップデート",
                 "pages": [
+                  "ja/articles/langbot-v411-event-driven-agents",
                   "ja/articles/langbot-cloud-multi-user-workspaces"
                 ]
               },
@@ -1400,6 +1404,9 @@
               {
                 "group": "チュートリアルと連携",
                 "pages": [
+                  "ja/articles/dify-langbot-github-release-briefing",
+                  "ja/articles/dify-langbot-support-triage",
+                  "ja/articles/dify-langbot-writing-assistant",
                   "ja/articles/langtars-remote-pc-control-dify-n8n",
                   "ja/articles/connect-deepseek-to-wechat",
                   "ja/articles/deploy-ai-bot-in-5-minutes",
