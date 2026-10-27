@@ -65,7 +65,7 @@ jobs:
           exists = status == 400 and result.get('error') == 'library-already-exists'
           if exists:
               refresh_status, refreshed = request('/v1/refresh', {
-                  'libraryName': library, 'branch': 'master'})
+                  'libraryName': library})
               report.append('Refresh HTTP status: ' + str(refresh_status))
               for field in ('error', 'message'):
                   detail = refreshed.get(field)
