@@ -520,7 +520,7 @@ def _dingtalk_a2ui_form(
                 ]
             )
             children.append(button_id)
-    children.insert(0, 'langbot-brand')
+    children.append('langbot-brand')
     components.extend(brand_components())
     return data, components
 

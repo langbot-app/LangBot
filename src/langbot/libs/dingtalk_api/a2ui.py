@@ -22,22 +22,24 @@ def brand_components() -> list[dict[str, typing.Any]]:
         {
             'id': 'langbot-brand',
             'component': 'Row',
-            'children': ['langbot-brand-icon', 'langbot-brand-link'],
+            'children': ['langbot-generated', 'langbot-brand-link'],
             'align': 'center',
-            'gap': 4,
+            'justify': 'spaceBetween',
+            'gap': 8,
         },
         {
-            'id': 'langbot-brand-icon',
-            'component': 'Image',
-            'url': LANGBOT_LOGO_URL,
-            'variant': 'icon',
-            'fit': 'contain',
-            'previewEnabled': False,
+            'id': 'langbot-generated',
+            'component': 'Text',
+            'text': 'AI-generated',
+            'variant': 'caption',
         },
         {
             'id': 'langbot-brand-link',
-            'component': 'Markdown',
-            'content': f'[LangBot]({LANGBOT_CARD_URL})',
+            'component': 'Text',
+            'text': 'LangBot',
+            'variant': 'caption',
+            'icon': {'url': LANGBOT_LOGO_URL},
+            'onLinkClick': {'functionCall': {'call': 'openUrl', 'args': {'url': LANGBOT_CARD_URL}}},
         },
     ]
 
@@ -122,7 +124,7 @@ def text_card_components() -> list[dict[str, typing.Any]]:
         {
             'id': 'root',
             'component': 'Column',
-            'children': ['langbot-brand', 'content'],
+            'children': ['content', 'langbot-brand'],
             'gap': 8,
         },
         {

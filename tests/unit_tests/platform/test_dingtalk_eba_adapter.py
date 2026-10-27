@@ -357,7 +357,7 @@ async def test_dingtalk_interaction_delivery_and_callback_event():
     components = kwargs['a2ui_messages'][2]['updateComponents']['components']
     button = next(component for component in components if component['component'] == 'Button')
     assert button['action']['event']['context']['actionId'] == 'lbi:callback-token:a:0'
-    assert components[0]['children'][0] == 'langbot-brand'
+    assert components[0]['children'][-1] == 'langbot-brand'
     assert any(component['id'] == 'langbot-brand-link' for component in components)
 
     native = dingtalk_card_callback_event(

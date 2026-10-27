@@ -35,14 +35,18 @@ def test_text_card_keeps_brand_when_content_updates():
     components = create_text_card_messages('surface-id', 'hello')[2]['updateComponents']['components']
     by_id = {component['id']: component for component in components}
 
-    assert by_id['root']['children'] == ['langbot-brand', 'content']
-    assert by_id['langbot-brand']['children'] == ['langbot-brand-icon', 'langbot-brand-link']
-    assert by_id['langbot-brand-icon']['url'] == 'https://langbot.app/logo-blue.png'
-    assert by_id['langbot-brand-icon']['previewEnabled'] is False
-    assert by_id['langbot-brand-link']['component'] == 'Markdown'
-    assert by_id['langbot-brand-link']['content'] == (
-        '[LangBot](https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot)'
-    )
+    assert by_id['root']['children'] == ['content', 'langbot-brand']
+    assert by_id['langbot-brand']['children'] == ['langbot-generated', 'langbot-brand-link']
+    assert by_id['langbot-brand']['justify'] == 'spaceBetween'
+    assert by_id['langbot-generated']['text'] == 'AI-generated'
+    assert by_id['langbot-generated']['variant'] == 'caption'
+    assert by_id['langbot-brand-link']['text'] == 'LangBot'
+    assert by_id['langbot-brand-link']['variant'] == 'caption'
+    assert by_id['langbot-brand-link']['icon']['url'] == 'https://langbot.app/logo-blue.png'
+    assert by_id['langbot-brand-link']['onLinkClick']['functionCall'] == {
+        'call': 'openUrl',
+        'args': {'url': 'https://langbot.app?utm_source=dingtalk&utm_medium=bot_card&utm_campaign=langbot'},
+    }
     assert update_text_card_messages('surface-id', 'done')[0]['updateDataModel']['path'] == '/content'
 
 
@@ -57,7 +61,7 @@ async def test_create_card_for_target_uses_robot_a2ui_delivery():
     request = client.create_and_deliver_ai_card.await_args.kwargs
     assert request['open_space_id'] == 'dtv1.card//im_robot.user-1'
     assert request['is_group'] is False
-    assert request['a2ui_messages'][2]['updateComponents']['components'][0]['children'][0] == 'langbot-brand'
+    assert request['a2ui_messages'][2]['updateComponents']['components'][0]['children'][-1] == 'langbot-brand'
 
 
 @pytest.mark.asyncio
