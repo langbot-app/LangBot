@@ -186,3 +186,5 @@ Cảm ơn tất cả [người đóng góp](https://github.com/langbot-app/LangB
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[Mã nguồn tài liệu](https://github.com/langbot-app/LangBot/tree/main/docs) · [langbot-docs mirror](https://github.com/langbot-app/langbot-docs)

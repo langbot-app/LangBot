@@ -1,0 +1,155 @@
+---
+title: "機能"
+description: "LangBot は、オープンソースで本番運用に耐える LLM ネイティブのインスタントメッセージングボット開発プラットフォームです。LINE、Slack、Discord、Telegram、QQ、WeChat、企業微信、Lark、DingTalk などに対応し、Agent・RAG ナレッジベース・MCP・スキル（Skills）・コードサンドボックスを内蔵。Dify、Coze、n8n、Langflow などの Agent プラットフォームと深く統合します。"
+---
+
+LangBot は、**オープンソースで本番運用に耐える**、LLM ネイティブのインスタントメッセージングボット開発プラットフォームです。単一のコードベースで AI エージェントを LINE、Slack、Discord、Telegram、QQ、WeChat、企業微信、Lark、DingTalk などに導入でき、**Agent・RAG ナレッジベース・MCP・スキル（Skills）・コードサンドボックス**を内蔵。Dify・Coze・n8n・Langflow などの Agent プラットフォームと深く統合し、設定と監視はすべてブラウザの Web 管理パネルから行えます——設定ファイルを手書きする必要はありません。
+
+<Tip>
+**自分でデプロイしたくない？** [LangBot Cloud](https://space.langbot.app/cloud) をお試しください — サーバー不要、登録すればすぐに使い始められます。
+</Tip>
+
+## コア機能の概要
+
+- **AI 対話 & Agent** — マルチターン対話、ツール呼び出し（function calling）、マルチモーダル（画像/音声/ファイル）、ストリーミング出力にすぐ対応。
+- **RAG ナレッジベース** — ナレッジベースエンジン（ベクトル検索 + Rerank 再順位付け）を内蔵し、あなたのプライベートな知識に基づいて回答。さらにプラグインで拡張でき、RAGFlow、Dify、FastGPT などの外部ナレッジベースサービスとシームレスに接続できます。
+- **全プラットフォーム対応** — 単一コードベースで LINE、Slack、Discord、Telegram、KOOK、Matrix、QQ、WeChat、企業微信、Lark、DingTalk などに到達。
+- **Agent プラットフォームとの深い統合** — Dify、Coze、n8n、Langflow、Deerflow、Aliyun Bailian、Ant TBox などのオーケストレーション/ワークフロープラットフォーム向けネイティブコネクタ。
+- **スキル & コードサンドボックス** — オンデマンドで起動する命令パックと、安全に隔離されたコード実行サンドボックスを組み合わせ、エージェントが実際に「作業をこなす」。
+- **MCP プロトコル** — Model Context Protocol のツールエコシステムにクライアントとして接続し、Stdio と HTTP の両トランスポートに対応。
+- **Web 管理パネル** — ブラウザ上で視覚的にボットを設定・管理・監視。手動での設定ファイル編集は不要。
+- **本番グレードのプラグインシステム** — クロスプロセス・イベント駆動アーキテクチャ上に数百のコミュニティプラグイン。安全でホットプラグ可能。
+- **マルチパイプラインアーキテクチャ** — 1 インスタントで複数のパイプラインを実行し、異なるボットが異なるシナリオを担当。アクセス制御、レート制限、センシティブワードフィルタ、包括的な監視を備える。
+
+## インスタントメッセージングプラットフォームのサポート
+
+LangBot は統一されたアダプター層を通じて世界の主要 IM プラットフォームをカバーします。一度開発すれば、どこへでも届きます。
+
+| プラットフォーム | ステータス | 備考 |
+| --- | --- | --- |
+| QQ個人アカウント | ✅ | OneBot v11 プロトコルをサポートするサードパーティアプリにより対応、プライベート/グループチャット |
+| QQ公式ボット | ✅ | チャンネル、プライベートチャット、グループチャットに対応 |
+| WeChat | ✅ | 個人 WeChat |
+| WeChat公式アカウント | ✅ |  |
+| 企業微信 | ✅ | 内部アプリケーションメッセージ |
+| 企業微信インテリジェントボット | ✅ | ストリーミング出力をサポート |
+| 企業微信カスタマーサービス | ✅ |  |
+| Lark | ✅ | ストリーミング出力をサポート |
+| DingTalk | ✅ | ストリーミング出力をサポート |
+| Discord | ✅ |  |
+| Telegram | ✅ | ストリーミング出力をサポート |
+| Slack | ✅ |  |
+| LINE | ✅ |  |
+| KOOK | ✅ |  |
+| Satori | ✅ | [Satori](https://satori.chat/zh-CN/introduction.html) は汎用チャットプロトコルで、理論的に QQ、Zulip、米游社など 15 以上のプラットフォームをサポート |
+| Matrix | ✅ | ブリッジ経由で Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip などに到達 |
+| Email（メール） | ✅ | メールを対話チャネルとして利用 |
+| Web ページボット | ✅ | Web ページに埋め込めるチャットウィジェット |
+| WhatsApp | 🚧 | 開発中（Matrix ブリッジ経由でも利用可能） |
+
+🚧: 開発中
+
+各プラットフォーム固有の機能サポート（画像・音声・ファイル・リッチテキストの送受信、ストリーミング応答など）については、[プラットフォーム機能ドキュメント](/ja/insight/platform-features)をご覧ください。
+
+## モデルと Agent プラットフォームのサポート
+
+LangBot は **LiteLLM を統一的なモデルリクエストバックエンド**として採用しています。そのため、下表の内蔵プロバイダーに加え、任意の OpenAI / Anthropic API 形式または LiteLLM 対応モデルにも接続できます。
+
+### LLM・集約・GPU プラットフォーム
+
+| プロバイダー/サービス | ステータス | 備考 |
+| --- | --- | --- |
+| [OpenAI](https://platform.openai.com/) | ✅ | 任意の OpenAI 形式モデルに利用可能 |
+| [Anthropic](https://www.anthropic.com/) | ✅ |  |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
+| [xAI](https://x.ai/) | ✅ |  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
+| [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
+| [Mistral](https://mistral.ai/) | ✅ |  |
+| [Groq](https://groq.com/) | ✅ |  |
+| [OpenRouter](https://openrouter.ai/) | ✅ | グローバル LLM ゲートウェイ |
+| [Ollama](https://ollama.com/) | ✅ | ローカル LLM 実行プラットフォーム |
+| [LMStudio](https://lmstudio.ai/) | ✅ | ローカル LLM 実行プラットフォーム |
+| [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM ゲートウェイ(MaaS) |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM ゲートウェイ(MaaS) / Agent プラットフォーム |
+| [Volc Engine Ark](https://console.volcengine.com/ark) | ✅ | LLM ゲートウェイ(MaaS) / Agent プラットフォーム |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | LLM ゲートウェイ(MaaS) |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | LLM インターフェースゲートウェイ(MaaS) |
+| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | グローバル LLM 集約（推奨） |
+| [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | LLM および GPU リソースプラットフォーム |
+| [PPIO](https://ppio.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | LLM および GPU リソースプラットフォーム |
+| [302.AI](https://share.302ai.cn/SuTG99) | ✅ | LLM ゲートウェイ(MaaS) |
+| [Jiekou AI](https://jiekou.ai/) | ✅ | LLM ゲートウェイ(MaaS) |
+| [TokenPony](https://www.tokenpony.cn/453z1) | ✅ | LLM ゲートウェイ(MaaS) |
+| [Qiniu](https://www.qiniu.com/ai/agent) | ✅ | LLM ゲートウェイ(MaaS) |
+
+### Agent プラットフォーム
+
+既存のワークフローやエージェントをそのまま IM プラットフォームに接続でき、ビジネスロジックを書き直す必要はありません。
+
+| プラットフォーム | ステータス | 備考 |
+| --- | --- | --- |
+| [Dify](https://dify.ai) | ✅ | Agent プラットフォーム |
+| [Coze](https://coze.cn) | ✅ | エージェントオーケストレーションプラットフォーム |
+| [n8n](https://n8n.io/) | ✅ | ワークフロー自動化プラットフォーム |
+| [Langflow](https://langflow.org/) | ✅ | ビジュアルオーケストレーションプラットフォーム |
+| [Deerflow](https://deerflow.tech) | ✅ | ディープリサーチフレームワーク |
+| [Weknora](https://weknora.weixin.qq.com) | ✅ | WeChat ナレッジベース Q&A |
+| [Ant TBox](https://tbox.cn/) | ✅ | エージェントプラットフォーム |
+
+### Rerank（再順位付け）モデル
+
+| プロバイダー | ステータス | 備考 |
+| --- | --- | --- |
+| [Cohere](https://cohere.com/) | ✅ | 再順位付けモデル |
+| [Jina](https://jina.ai/) | ✅ | 再順位付けモデル |
+| [Voyage AI](https://voyageai.com/) | ✅ | 再順位付けモデル |
+
+## LLM アプリケーションパラダイムの実装
+
+LangBot は主流の LLM アプリケーションパラダイムをすぐに使える機能として実装し、「会話できる」から「作業をこなせる」までの全パスをカバーします。
+
+| パラダイム | ステータス | 説明 |
+| --- | --- | --- |
+| Agent | ✅ | ツール呼び出し、マルチターン推論、マルチモーダル、ストリーミング出力に対応した内蔵エージェント |
+| RAG（ナレッジベース） | ✅ | ナレッジベースエンジンを内蔵（デフォルトは Chroma ベクトルストア + Rerank 再順位付け）。RAGFlow、Dify、FastGPT などの外部ナレッジベースにプラグインで接続可能 |
+| MCP | ✅ | MCP クライアントとしてツールエコシステムに接続、Stdio と HTTP に対応 |
+| スキル（Skills） | ✅ | オンデマンドで起動する命令パック。マッチしたときだけコンテキストに読み込まれ、追加オーバーヘッドはゼロ |
+| コードサンドボックス | ✅ | Docker / nsjail / E2B バックエンドを備えた、安全に隔離されたコード実行環境 |
+
+- **スキル（Skills）**：専門的なワークフロー、テンプレート、スクリプトをオンデマンドの命令パックとしてパッケージ化。ユーザーのリクエストにマッチしたときだけエージェントがコンテキストに読み込むため、System Prompt を汚しません。[スキルドキュメント](/ja/usage/skills/readme)を参照。
+- **コードサンドボックス**：エージェントに安全に隔離されたコード実行能力を提供し、Docker / nsjail / E2B バックエンドの中から最適なものを自動選択。スキルとネイティブツールの実行基盤です。[サンドボックスドキュメント](/ja/usage/sandbox/readme)を参照。
+
+## システムの拡張性
+
+LangBot は二次開発とエンタープライズ統合のための完全な拡張面を提供します。
+
+- **HTTP Service API**：API キー認証付きの HTTP インターフェースを通じて LangBot の各種エンティティにアクセスでき、既存システムとの統合が容易。
+- **Outgoing Webhook**：LangBot の内部イベントを外部システムにリアルタイムでプッシュし、イベント駆動の自動化を構築。
+- **本番グレードのプラグインシステム**：クロスプロセス通信と非同期技術に基づき、さまざまなコンポーネント拡張をサポート。安全・安定・ホットプラグ可能で、数百のコミュニティプラグインを[拡張マーケットプレイス](https://space.langbot.app)からワンクリックでインストール可能。
+- **Web 管理パネル**：ボット、モデル、パイプライン、ナレッジベース、プラグインのすべての設定と監視を視覚的に実行。
+
+## デプロイ方法
+
+LangBot は 1 行のコマンドから Kubernetes クラスターまで、さまざまなデプロイ方法をサポートします。
+
+- **LangBot Cloud（推奨）**：[デプロイ不要、すぐに使えるホスト版](https://space.langbot.app/cloud)。
+- **ワンラインで起動**：`uvx langbot` を実行し、`http://localhost:5300` にアクセス。
+- **Docker Compose**、**aaPanel（宝塔パネル）**、**Kubernetes**、**Zeabur / Railway でのワンクリッククラウドデプロイ**など。
+
+詳細は[デプロイドキュメント](/ja/deploy/langbot/kubernetes)と[クイックスタート](/ja/insight/guide)をご覧ください。
+
+## ケーススクリーンショット
+
+![LangBot ボット設定ページ：Web 管理画面でウェブページボットをパイプラインに紐付け](/images/zh/insight/features/bot-page.png)
+
+![LangBot モデル設定：OpenAI / Anthropic API 形式に対応した任意の LLM を接続](/images/zh/insight/features/create-model.png)
+
+![LangBot パイプライン AI 設定：内蔵エージェントランナーとメインモデルを選択](/images/zh/insight/features/edit-pipeline.png)
+
+![LangBot 拡張機能マーケットプレイス：数百のコミュニティプラグインと MCP ツールをワンクリックでインストール](/images/zh/insight/features/plugin-market.png)
+
+![LangBot 内蔵エージェントがコードサンドボックスを呼び出し、Python をリアルタイム実行して正確に計算](/images/zh/insight/features/agent-sandbox.png)
+
+![LangBot スキル駆動エージェント：事前定義したスキルに従って構造化された結果を出力](/images/zh/insight/features/agent-skill.png)

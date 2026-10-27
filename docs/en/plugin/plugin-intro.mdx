@@ -1,0 +1,55 @@
+---
+title: "LangBot Plugins"
+---
+
+LangBot is composed of various internal components such as Large Language Model tools, commands, messaging platform adapters, LLM requesters, and more. To meet extensibility and flexibility requirements, we have implemented a production-grade plugin system.
+
+Plugins are managed uniformly by the Plugin Runtime. Most plugins use a dedicated runtime; a release with a valid artifact-bound certificate may qualify for [cross-tenant shared execution](/en/plugin/certified-plugins) in LangBot Cloud. Review alone is not certification.
+
+<img width="600" src="/images/zh/plugin/dev/plugin_system_arch.png" />
+
+## Plugin Structure
+
+Plugins can provide the following components based on their specific functionality:
+
+- Event Handlers: Listen to events during pipeline execution and modify context or pipelines.
+- Commands: Triggered by user command messages starting with `!` (or other configured prefixes).
+- Tools: Called by LLMs during execution of LangBot's built-in Local Agent.
+- Knowledge Engines: Manage document indexing and retrieval for knowledge bases.
+
+More component types will be supported for plugin implementation in the future.
+
+## Installing Plugins
+
+Currently supports uploading plugin packages and installing plugins from the plugin marketplace.
+In LangBot's plugin management page, click the top-right corner to choose the installation method.
+
+<img width="600" src="/images/zh/plugin/install_method.png" />
+
+Click `Upload Local`, select `.lbpkg` files shared by others or downloaded from the Marketplace to install plugins.
+
+Or click the Plugin Marketplace tab, select a plugin, and click install.
+
+<img width="600" src="/images/zh/plugin/install_from_marketplace.png" />
+
+After installing plugins, you need to select the plugin in your pipeline configuration page.
+
+<img width="600" src="/images/zh/plugin/pipeline_extensions.png" />
+
+## Plugin Management
+
+### Plugin Configuration
+
+Some plugins may require you to fill in specific configuration items (please refer to the plugin README instructions). Click on the plugin card to enter the plugin details page and obtain and input the required information as prompted.
+
+<img width="600" src="/images/zh/plugin/plugin_config.png" />
+
+### Updating Plugins
+
+Only plugins installed from the plugin marketplace can be updated.
+
+<img width="600" src="/images/zh/plugin/update_plugin.png" />
+
+## Plugin Marketplace
+
+The plugin marketplace can be accessed from LangBot's internal `Plugin Management` page, or you can visit the standalone site [LangBot Plugin Marketplace](https://space.langbot.app/market).

@@ -1,0 +1,165 @@
+---
+title: "Slack"
+description: "用 LangBot 搭建 Slack AI 机器人，将 GPT、Claude、Dify 等接入你的 Slack 工作区。"
+icon: "/images/platforms/slack.svg"
+---
+
+## 快速配置（推荐）
+
+推荐使用 **Slack 快速配置** 创建应用。LangBot 会自动配置机器人权限、消息事件、消息页和 OAuth 返回地址；你只需提供配置令牌、在 Slack 确认安装，并在长连接模式下补充 App-Level Token。
+
+### 1. 创建机器人并选择接入方式
+
+在 LangBot 的 **机器人 → 创建机器人** 中填写名称，选择 **Slack**，提交后进入配置页。选择接入方式，然后点击 **Slack 快速配置 → 开始**：
+
+![创建机器人并选择 Slack 适配器](/images/zh/deploy/bots/slack/setup-create-bot.jpg)
+
+- **长连接（Socket Mode，推荐）**：LangBot 主动连接 Slack，无需公网事件 Webhook，适合本地或内网部署。
+- **Webhook**：Slack 向 LangBot 推送事件，需要可从公网访问的 HTTPS 地址。
+
+![选择长连接并打开 Slack 快速配置](/images/zh/deploy/bots/slack/setup-connection-mode.jpg)
+
+### 2. 获取 App Configuration Tokens
+
+打开 [Slack 应用页面](https://api.slack.com/apps)，找到 **Your App Configuration Tokens**，点击 **Generate Token**，选择目标工作区。分别复制 **Access Token** 和 **Refresh Token**；已有令牌时，可以直接使用对应的复制按钮。
+
+![Slack 配置令牌入口与复制按钮](/images/zh/deploy/bots/slack/setup-configuration-tokens.jpg)
+
+这两个令牌用于创建和配置应用，**不是机器人运行时使用的 Bot Token 或 App-Level Token**。在助手中分别填入对应字段，并确认应用名称。
+
+### 3. 确认地址并自动创建应用
+
+长连接模式下，确认 **OAuth 授权返回地址**。它用于授权完成后让浏览器返回 LangBot，支持 HTTPS 或 `http://localhost`，末尾为 `/api/v1/platform/adapters/slack/setup/callback`。只需你的浏览器能访问这个地址；它不是接收消息的 Webhook。远程部署时，不要填写浏览器所在电脑无法访问的服务器内部地址。
+
+![长连接快速配置表单](/images/zh/deploy/bots/slack/setup-socket-mode.jpg)
+
+Webhook 模式下，助手显示的是 **Webhook 回调地址**。确认域名、HTTPS 和反向代理均可用，保留 `/bots/<机器人 UUID>` 后缀。LangBot 会从该地址生成 OAuth 返回地址，并自动完成 Slack 的事件地址验证。
+
+点击 **创建并自动配置**，等待出现 **前往 Slack 授权**。
+
+### 4. 在 Slack 安装授权
+
+点击 **前往 Slack 授权**，核对应用名称、工作区和权限，然后点击 **Allow**。工作区策略可能要求管理员批准。完成后返回原来的 LangBot 配置助手。
+
+![Slack 安装授权页面](/images/zh/deploy/bots/slack/setup-slack-permissions.jpg)
+
+### 5. 长连接模式：补充 App-Level Token
+
+Webhook 模式可跳过本步。长连接模式中，点击助手的 **打开应用设置**，进入 **Basic Information → App-Level Tokens → Generate Token and Scopes**：
+
+1. 填写 Token Name，例如 `langbot-socket`。
+2. 点击 **Add Scope**，选择 **connections:write**。
+3. 点击 **Generate**，复制生成的 `xapp-` 令牌，填回助手的 **App-Level Token**。
+
+![为 App-Level Token 添加 connections:write 权限](/images/zh/deploy/bots/slack/setup-app-token-scope.jpg)
+
+不需要开启 **Token rotation**。这里必须使用刚创建的同一个 Slack 应用的令牌，不能填入第 2 步的 Access Token 或 Refresh Token。
+
+### 6. 回填配置、设置路由并启用
+
+助手显示 **授权完成** 后，点击 **填入适配器配置**。长连接模式需先填入 App-Level Token，此按钮才可用。Bot Token 等适配器凭据会自动回填。
+
+![授权完成并回填适配器配置](/images/zh/deploy/bots/slack/setup-authorized.jpg)
+
+在 **事件路由 → 添加行为 → 回复收到的消息** 中，为 `message.received` 选择已配置好的流水线或 Agent，并保持该路由启用。最后点击页面右上角 **保存并启用**。
+
+![配置收到消息的路由并保存启用](/images/zh/deploy/bots/slack/setup-routing.jpg)
+
+### 7. 验证对话
+
+在 Slack 中打开应用的 **Messages** 页面，发送一条私聊消息。也可以将机器人加入频道后 @ 它。收到回复即表示接入成功。
+
+![Slack 机器人成功回复消息](/images/zh/deploy/bots/slack/setup-conversation.png)
+
+<Info>
+配置令牌仅在短期配置会话中使用，不作为机器人运行凭据保存。会话有效期为 15 分钟；取消助手不会删除已创建的 Slack 应用。重新开始可能创建另一个应用，请勿因为授权返回页显示异常就反复创建，先检查原助手是否已显示“授权完成”。
+</Info>
+
+如果没有回复，先确认机器人及消息路由已启用、处理器本身能够正常运行，并查看机器人日志。长连接模式检查 App-Level Token 是否属于同一应用且包含 `connections:write`；Webhook 模式检查公网地址和 Slack 的 **Verified** 状态。
+
+## 事件、交互与已有应用升级
+
+新版快速配置向导会自动配置下列事件订阅和交互入口。安装授权页会申请消息、频道、用户、文件和表情反应权限，其中 `reactions:read` 用于表情反应事件。频道中的普通回复仍只由 @ 机器人触发；为获取编辑、删除和频道信息变化而订阅的频道消息不会全部触发回复。
+
+| Slack 事件 | LangBot 事件 |
+| --- | --- |
+| 私聊消息、`app_mention` | `message.received` |
+| `message_changed` / `message_deleted` 消息子类型 | `message.edited` / `message.deleted` |
+| `reaction_added` / `reaction_removed` | `message.reaction`，通过 `is_add` 区分 |
+| `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
+| 上述成员事件中的机器人自身 | 有邀请者时为 `bot.invited_to_group`；离开时为 `bot.removed_from_group` |
+| 频道重命名、归档/取消归档、主题/用途变化 | `group.info_updated` |
+| `block_actions`、`view_submission`、`view_closed`、`shortcut`、`message_action` | `platform.specific`，`action` 为 `slack.` 加回调类型 |
+| `app_home_opened`、`app_uninstalled`、`tokens_revoked` | `platform.specific`，`action` 为 `slack.` 加事件类型 |
+
+在机器人的事件路由中为所需事件配置处理器；平台事件可按 `action` 区分。卸载和令牌撤销同时写入机器人警告日志，不自动发送聊天回复。表情反应是普通反应事件，不自动视为对模型的反馈。消息 ID 使用 Slack 消息时间戳 `ts`，需结合频道识别；线程回复保留 `thread_ts`。
+
+交互回调先确认接收，再异步交给处理器；目前不支持在表单提交确认中同步返回字段校验错误，也不提供外部下拉选项加载。接收 `view_closed` 需要创建弹窗时设置 `notify_on_close: true`。回调不会自动创建按钮、快捷方式或弹窗。Socket Mode 和 Webhook 均支持上述接收逻辑，但实际投递受 Slack 授权、频道成员关系及连接状态限制。
+
+**已有应用不会因升级 LangBot 自动获得新权限。** 无需重新创建应用，按以下步骤补齐：
+
+1. 在 **OAuth & Permissions → Bot Token Scopes** 保留原权限，增加 `reactions:read`；确认包含 `app_mentions:read`、`chat:write`、`channels:history`、`channels:read`、`groups:history`、`groups:read`、`im:history`、`im:read`、`im:write`、`mpim:history`、`mpim:read`、`users:read`、`files:read`、`files:write`，然后 **Reinstall to Workspace** 重新授权。
+2. 在 **Event Subscriptions → Subscribe to bot events** 配置：`app_mention`、`message.im`、`message.channels`、`message.groups`、`message.mpim`、`reaction_added`、`reaction_removed`、`member_joined_channel`、`member_left_channel`、`channel_rename`、`group_rename`、`channel_archive`、`channel_unarchive`、`group_archive`、`group_unarchive`、`app_home_opened`、`app_uninstalled`、`tokens_revoked`。编辑/删除、主题/用途变化属于消息子类型，无需单独订阅。
+3. 在 **Interactivity & Shortcuts** 启用交互。Webhook 模式的 **Request URL** 与事件订阅使用同一个 LangBot `/bots/<机器人 UUID>` 地址；Socket Mode 不需要公网交互地址。
+4. 保存 Slack 设置，在 LangBot 配置相应事件路由。若重新安装后 Bot Token 改变，回填新值并保存机器人。
+
+字段定义参考 [Slack App Manifest](https://docs.slack.dev/reference/app-manifest/)。
+
+## 手动配置（Webhook）
+
+下方截图展示基础对话配置；完整权限、事件订阅和交互配置请使用上方“事件、交互与已有应用升级”中的最新清单。
+
+下面保留手动 Webhook 配置步骤。若手动使用长连接，请在 Slack 开启 Socket Mode，填写 Bot Token 和 App-Level Token，并订阅 `app_mention` 和 `message.im`；无需配置事件 Request URL。
+
+### 创建机器人
+
+前往 [Slack的App平台](https://api.slack.com/apps)。
+
+![Slack平台](/images/zh/deploy/bots/slack/slack_01.jpg)
+
+点击右上角的 `Create New App` ，选择从 `from a manifest` ， 选择要部署机器人的工作区，选择下一步，
+选择创建机器人。
+
+进入左侧 `Basic Information` 选项，记录 `signing_secret`。
+
+进入左侧 `OAuth & Permissions` ，往下拉到 `Scopes`，添加如下机器人权限：
+
+![机器人权限1](/images/zh/deploy/bots/slack/slack_02.jpg)
+
+
+![机器人权限2](/images/zh/deploy/bots/slack/slack_03.jpg)
+
+添加上述权限之后，点击 `Install to your workspace`，记录下开头为 `xoxb-xxxxx`的token。<br />
+
+**注：**
+**若没有一次性添加成功权限，后续则需要重新安装App。**<br />
+
+进入左侧 `App Home` 栏，滑到最下面有 `Message Tab`，打开并且勾选
+`Allow users to send Slash commands and messages from the messages tab`。
+
+### 对接 LangBot
+
+进入左侧 `Event Subscriptions` ，打开开关，点击 `Subscribe to bot events`，
+将如下权限添加进去:
+![事件权限](/images/zh/deploy/bots/slack/slack_04.jpg)
+
+上述操作都完成之后，打开 LangBot Webui 配置页面，添加一个新的机器人
+
+![事件权限](/images/zh/deploy/bots/slack/connect_to_langbot.png)
+
+### 启动机器人
+
+<Info>
+Webhook 模式要求公网 HTTPS 地址，请根据文档[配置 HTTP 反向代理和 SSL](/zh/workshop/production/proxy-and-ssl) 先配置好反向代理。
+</Info>
+
+Slack 配置项在填写完成后，**启动 LangBot**。
+启用并打开 LangBot 主页中的 Slack 机器人配置页面，复制其中的 WebHook URL，在刚才Event Subscriptions的 `Request URL`中，填写入 WebHook URL。
+
+
+上述配置项都填写完成后，点击保存链接，若标识为绿色的**Verified**，那么就说明部署成功。
+否则查看上述配置项是否填写正确。
+
+### 效果图
+
+![效果图](/images/zh/deploy/bots/slack/slack_05.jpg)

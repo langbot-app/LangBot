@@ -5,19 +5,23 @@ repos:
     hooks:
       # Run the linter of backend.
       - id: ruff
+        exclude: ^docs/
         args: [--fix]
       # Run the formatter of backend.
       - id: ruff-format
+        exclude: ^docs/
 
   - repo: local
     hooks:
       - id: prettier
+        exclude: ^docs/
         name: prettier
         entry: npx --prefix web prettier --write --ignore-unknown
         language: system
         types_or: [javascript, jsx, ts, tsx, css, scss]
 
       - id: lint-staged
+        exclude: ^docs/
         name: lint-staged
         entry: cd web && pnpm lint-staged
         language: system

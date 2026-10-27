@@ -1,0 +1,13 @@
+# Workflows run from langbot-app/LangBot/.github/workflows after migration.
+# Keep this mirror entry inert: no job may write directly to langbot-docs.
+name: Legacy docs workflow (migrated)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  migrated:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Use the LangBot repository workflows.'

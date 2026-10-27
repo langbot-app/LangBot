@@ -1,0 +1,115 @@
+---
+title: "终于让 Dify Agent 在 Discord、Telegram 和 Slack 上跑起来了"
+description: "终于让 Dify Agent 在 Discord、Telegram 和 Slack 上跑起来了"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack).
+
+发布于 2025-12-11 · 作者：LangBot Team
+
+![终于让 Dify Agent 在 Discord、Telegram 和 Slack 上跑起来了](/images/articles/source/images/covers/dify-agent.png)
+
+想让你的 Dify Agent 突破浏览器限制，直接在 QQ、微信、Telegram 里对话？LangBot 配合 Dify，十分钟就能搞定。
+
+## 为什么要这么搭？
+
+[**LangBot**](https://github.com/langbot-app/LangBot) 是目前最强大的开源多平台聊天机器人框架，支持国内主流 IM（QQ、微信、飞书、钉钉）以及国际平台（Telegram、Discord、Slack、LINE）。它的核心能力就是把各种 AI 后端接入到聊天软件里。
+
+**Dify** 是当下最火的 AI 应用开发平台，提供可视化 Agent 编排、50 多个内置工具、RAG 知识库等功能。两者结合，可以快速打造跨平台 AI 助手。
+
+## 部署 LangBot
+
+用 uvx 三行命令搞定：
+
+```bash
+mkdir langbot-instance
+cd langbot-instance
+uvx langbot@latest
+```
+
+访问 `http://127.0.0.1:5300`，注册管理员账号：
+
+![LangBot Dashboard](/images/articles/external/c6d52212ba91-02-langbot-dashboard.png)
+
+## 创建 Dify Agent
+
+登录 [cloud.dify.ai](https://cloud.dify.ai) 创建新应用。选择 **Agent** 类型——与普通聊天应用不同，Agent 可以自主推理并调用工具完成复杂任务。
+
+![Select Agent Type](/images/articles/external/3e5b1d8ec6ec-07-dify-create-app-types.png)
+
+### 配置 Agent
+
+在编排界面配置：
+
+**System Instructions** - 定义 Agent 角色：
+
+```
+You are an intelligent assistant that helps users complete various tasks. You have the following capabilities:
+1. Answer various user questions
+2. Query weather information
+3. Retrieve webpage content
+
+Please always maintain a friendly and professional attitude. If you need to use tools to get information, proactively call the relevant tools.
+```
+
+**添加工具** - 从 Dify 的 50+ 内置工具中选择，比如天气查询和网页抓取：
+
+![Add Tools](/images/articles/external/9066d99b172c-11-dify-tools-panel.png)
+
+**选择模型** - 支持 GPT、Claude、Gemini、DeepSeek 等主流 LLM。
+
+配置完成效果：
+
+![Configuration Complete](/images/articles/external/be278ca435e8-12-dify-agent-configured.png)
+
+### 获取 API Key
+
+点击"发布"，然后进入"访问 API"创建密钥：
+
+![Create API Key](/images/articles/external/471b316018e5-13-dify-api-key-created.png)
+
+保存好 API key 和服务器地址 `https://api.dify.ai/v1`。
+
+## 连接 Dify 到 LangBot
+
+回到 LangBot，进入 Pipelines > ChatPipeline > AI 能力：
+
+![AI Capability Config](/images/articles/external/8f4b3820ed5b-14-langbot-pipeline-ai-capability.png)
+
+选择 **Dify Service API** 作为运行器：
+
+![选择 Dify 运行器](/images/articles/external/efa6fcae9c58-15-langbot-runner-dropdown.png)
+
+填写配置：
+- **Base URL**: `https://api.dify.ai/v1`
+- **API Key**: 刚才创建的密钥
+- **App Type**: Chat（包括 Chatflow）
+
+![Enter Configuration](/images/articles/external/74f71a8bf1dc-17-langbot-dify-api-key-entered.png)
+
+保存后点击"调试对话"测试：
+
+![Test Conversation](/images/articles/external/9999c12907eb-20-langbot-chat-test.png)
+
+如果 Agent 能正确回复并调用工具，说明集成成功。
+
+## 这种架构的优势
+
+- **解耦设计**：Agent 能力在 Dify 中维护，LangBot 负责消息路由，各司其职
+- **一份配置，多端生效**：同一个 Agent 可以同时服务 QQ、微信、Telegram 等多个平台
+- **易于扩展**：后续可以在 Dify 中添加 RAG 知识库、工作流编排、更多工具等
+
+## 下一步
+
+- 在 LangBot 中配置消息平台（QQ 机器人、微信个人号等）
+- 在 Dify 中添加更多工具（数据库查询、API 调用等）
+- 尝试 Dify Chatflow 实现更复杂的对话流程
+
+如果你在用 n8n、FastGPT、Coze 或 Langflow，LangBot 也都支持。
+
+---
+
+**相关资源**
+
+- [LangBot 文档](https://langbot.app/docs) | [GitHub](https://github.com/langbot-app/LangBot)
+- [Dify 文档](https://docs.dify.ai) | [云端平台](https://cloud.dify.ai)

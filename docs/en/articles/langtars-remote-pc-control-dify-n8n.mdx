@@ -1,0 +1,200 @@
+---
+title: "LangTARS: Open-Source AI Agent for Remote PC Control — Works with Dify, n8n & 10+ Messaging Platforms"
+description: "LangTARS is a LangBot native plugin that lets you remotely control Mac/Windows/Linux from Telegram, Discord & WeChat — with Dify and n8n workflow support."
+---
+
+This article is synchronized from the LangBot Blog. [Read the canonical version](https://langbot.app/en/blog/langtars-remote-pc-control-dify-n8n).
+
+Published 2026-03-23 · Author: LangBot Team
+
+![LangTARS Logo](/images/articles/external/3fe5bdc18716-icon.svg)
+
+**LangBot Native Plugin | OpenClaw-like Experience | Ready to Use with One-Click Deployment**
+
+---
+
+## ✨ What is LangTARS?
+
+**LangTARS** is a powerful **OpenClaw alternative** and native plugin for LangBot, inspired by the loyal and reliable robot TARS from the movie *Interstellar*.
+
+As a versatile **AI agent** for **remote computer control**, LangTARS allows you to remotely command your **Mac, Windows, or Linux** machine directly through your favorite messaging apps like **Telegram, Discord, DingTalk, and WeChat**! If you've been looking for an **OpenClaw-like** computer use agent that integrates seamlessly into your existing **chatbot framework**, LangTARS is the perfect solution.
+
+> 💡 **Deploy LangBot, and you can experience LangTARS instantly!** No extra standalone agent installation needed—just get it with one click from the plugin marketplace.
+
+![LangTARS Demo](/images/articles/external/70b26e660a60-tars.gif)
+
+---
+
+## 🤖 The LangBot Ecosystem
+
+LangTARS is just ONE plugin in the massive LangBot ecosystem. **LangBot** is a leading **open source chatbot** framework designed for connecting LLMs to messaging platforms.
+
+- **Multi-platform bot integration**: Native support for Telegram, Discord, WeChat, DingTalk, Lark, LINE, Slack, and more.
+- **Multi-model LLM chatbot**: Works flawlessly with OpenAI, Claude, Gemini, DeepSeek, and local models.
+- **Rich Plugin Marketplace**: Access over 30+ plugins for endless functionality.
+- **Advanced Features**: Pipeline-based message processing, RAG support, and multi-agent workflows.
+- **Self-hosted AI**: Total control over your data and deployments.
+- **AI Workflow Integrations**: Connect LangBot to platforms like **Dify**, **n8n**, **Langflow**, and **Coze**. LangBot can act as the messaging frontend for your complex AI workflows, meaning LangTARS + Dify/n8n = powerful automation!
+
+Get started with LangBot:
+- **Easiest**: [LangBot Cloud](https://cloud.langbot.app)
+- Self-host: `uvx langbot@latest`
+- Documentation: [langbot.app/docs](https://langbot.app/docs)
+- GitHub: [github.com/langbot-app/LangBot](https://github.com/langbot-app/LangBot) (15k+ stars)
+
+---
+
+## 🎯 What Can It Do?
+
+As a comprehensive **automation tool**, just send a message, and the AI will handle your **task automation** and **browser automation**:
+
+| You Say | AI Does |
+|------|-------|
+| `!tars open Reddit in Chrome, post a thread with the title "Hello from LangTARS" and say hi` | 🌐 Automatically controls Chrome to open Reddit and publish a post |
+| `!tars organize my desktop files` | 📁 Automatically categorizes and moves files |
+| `!tars open the browser and search for today's AI news` | 🌐 Opens a browser, searches the web, and summarizes the news |
+| `!tars create a meeting note for our marketing sync` | 📝 Automatically creates a markdown note file |
+| `!tars check system memory and CPU` | 💻 Uses MCP tools to get computer status |
+
+![Usage Example](/images/articles/external/6613b3025b8b-usage-example.png)
+![Plan Mode](/images/articles/external/ff42857251ab-planner-mode.png)
+
+
+---
+
+## 🔗 Supercharge with Dify & n8n
+
+LangTARS becomes even more powerful when combined with **AI workflow platforms**:
+
+- **Dify Integration**: Connect LangBot to [Dify](https://dify.ai) as a messaging frontend. Build complex AI workflows in Dify's visual editor, then trigger them from Telegram/Discord via LangTARS.
+- **n8n Integration**: Use [n8n](https://n8n.io) workflows with LangBot for advanced automation chains. Combine LangTARS's computer control with n8n's 400+ integrations for unlimited possibilities.
+- **Also supports**: Langflow, Coze, and any OpenAI-compatible API.
+
+> 💡 **Example**: "Hey TARS, run my Dify workflow to analyze today's sales data and save the report to my desktop" — LangTARS handles the entire chain.
+
+---
+
+## 🚀 Why Choose LangTARS?
+
+### 1️⃣ LangBot Native Plugin, Out of the Box
+
+Instead of deploying a complex standalone agent, you can easily **deploy AI bot** capabilities right where you already chat.
+
+```bash
+# Deploy LangBot with one command
+uvx langbot@latest
+
+# Install LangTARS from the plugin market, configure your LLM, and start using!
+```
+
+**No complex configuration, no extra deployment. LangBot users can experience OpenClaw-style computer control directly!**
+
+![Installation Flow](/images/articles/external/2a3a0d5f4ae9-install-flow.png)
+
+---
+
+### 2️⃣ Intelligent Task Planning, Autonomous Execution
+
+Powered by an AI planning engine based on the **ReAct agent** loop:
+
+```
+Your Command → Understand Needs → Make a Plan → Execute Step-by-Step → Feedback Results
+```
+
+The AI assistant thinks like a human and automatically breaks down complex tasks using integrated **MCP tools**!
+
+---
+
+### 3️⃣ Multi-Browser Support for Web Automation
+
+| Browser | macOS | Windows | Linux |
+|--------|-------|---------|-------|
+| Playwright (Headless) | ✅ | ✅ | ✅ |
+| Safari | ✅ | - | - |
+| Chrome | ✅ | ✅ | ✅ |
+| Edge | - | ✅ | - |
+| Firefox | - | - | ✅ |
+
+---
+
+### 4️⃣ Security-First Design
+
+- 🚫 **Dangerous Command Interception** — Automatically blocks commands like `rm -rf /`
+- 📂 **Workspace Isolation** — Restricts file operations to safe directories
+- 📋 **Command Whitelist** — Configurable allowed commands
+- 👤 **User Access Control** — Restricts usage to specific authorized users
+
+![Security Features](/images/articles/external/a618d3d41416-security.png)
+
+---
+
+## 📱 Quick Start
+
+### Step 1: Deploy LangBot
+
+> 🚀 **Fastest way to start:** Use [LangBot Cloud](https://cloud.langbot.app) — deploy your LangBot instance in one click, no server needed! Install LangTARS from the plugin marketplace and start controlling your computer immediately.
+
+*Alternative for power users (Self-hosted):*
+```bash
+uvx langbot@latest
+```
+
+### Step 2: Configure Chat Platform
+
+Follow the documentation to configure your **Telegram bot**, **WeChat bot**, or **Discord bot**.
+
+### Step 3: Install LangTARS
+
+Search for **LangTARS** in the **plugin marketplace** and install it.
+
+### Step 4: Start Chatting
+
+```
+!tars Hello, tell me what you can do
+```
+
+> 📱 **Recommendation**: Use it on Telegram or Discord for the best interactive experience!
+
+---
+
+## 🎮 Common Commands
+
+| Command | Function |
+|------|------|
+| `!tars <Task Description>` | Execute a task |
+| `!tars stop` | Stop the current task |
+| `!tars what` | Check execution status |
+| `!tars reset` | Reset the conversation |
+| `!tars help` | Show help |
+
+---
+
+## 🌟 Project Information
+
+| Item | Information |
+|------|------|
+| **GitHub** | [github.com/langbot-app/LangTARS](https://github.com/langbot-app/LangTARS) |
+| **Language** | Python 100% |
+| **License** | CC BY-NC-ND 4.0 |
+| **Platforms** | macOS / Windows / Linux |
+
+---
+
+## 🔗 Related Links
+
+- 📖 **LangBot Documentation**: [langbot.app/docs](https://langbot.app/docs)
+- 💬 **Issue Feedback**: [GitHub Issues](https://github.com/langbot-app/LangTARS/issues)
+- ⭐ **Support with a Star**: [GitHub](https://github.com/langbot-app/LangTARS)
+
+---
+
+## 🎉 Deploy LangBot and Experience LangTARS!
+
+**Let AI be your loyal digital assistant, just like TARS.**
+
+> 🚀 **Fastest way to start:** Use [LangBot Cloud](https://cloud.langbot.app) — deploy your LangBot instance in one click, no server needed! Install LangTARS from the plugin marketplace and start controlling your computer immediately.
+
+*Alternative for power users (Self-hosted):*
+```bash
+uvx langbot@latest
+```

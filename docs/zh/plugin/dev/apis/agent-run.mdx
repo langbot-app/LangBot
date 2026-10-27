@@ -1,0 +1,265 @@
+---
+title: "上下文 API"
+---
+
+上下文保存当前一次组件调用的数据。不同组件接收的上下文不同，请先按组件找到对应入口。
+
+| 组件 | 处理函数入口 | 上下文类型 |
+| --- | --- | --- |
+| EventListener | `handler(event_context)` | `EventContext` |
+| Command | `subcommand(context)` | `ExecuteContext` |
+| Tool | `call(params, session, query_id)` | 无独立上下文对象 |
+| 运行器 | `run(ctx)` 或 `handler(ctx)` | `RunnerContext` |
+| KnowledgeEngine | `ingest(context)`、`retrieve(context)` | `IngestionContext`、`RetrievalContext` |
+| KnowledgeRetriever | `retrieve(context)` | `RetrievalContext` |
+| Parser | `parse(context)` | `ParseContext` |
+| Page | `handle_api(request)` | `PageRequest` |
+
+本页只介绍上下文中的数据和方法。模型、知识库、存储等 LangBot 能力统一通过 `self.plugin` 调用，见 [LangBot API](/zh/plugin/dev/apis/common)；平台操作见[平台 API](/zh/plugin/dev/apis/platform)。
+
+`EventContext`、`ExecuteContext` 和 `Session` 还会携带 `instance_uuid`、`workspace_uuid` 和 `placement_generation`。这些字段用于标识当前执行所在的实例和工作区，不应作为插件自行鉴权的依据。
+
+重试、超时、数字思考预算、prompt caching、请求头和流式取消见 [LLM 请求配置](/zh/plugin/dev/apis/llm-requests)。
+
+## EventListener
+
+EventListener 处理流水线事件。事件处理函数接收 `EventContext`：
+
+```python
+event = event_context.event
+sender_id = event.sender_id
+```
+
+### 上下文数据
+
+| 属性 | 类型 | 说明 |
+| --- | --- | --- |
+| `event` | `BaseEventModel` | 当前事件对象，实际类型与注册的事件类型一致 |
+| `event_name` | `str` | 当前事件类名 |
+| `query_id` | `int` | 当前流水线请求 ID |
+| `query_uuid` | `str \| None` | 当前流水线请求的稳定标识 |
+| `eid` | `int` | Plugin Runtime 内的临时事件编号，不应持久化 |
+| `is_prevent_default` | `bool` | 是否已阻止默认处理；通过 `prevent_default()` 修改 |
+| `is_prevent_postorder` | `bool` | 是否已阻止后续插件；通过 `prevent_postorder()` 修改 |
+
+事件对象的字段和所有可监听事件见[流水线事件](/zh/plugin/dev/apis/pipeline-events)。
+
+### 上下文方法
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await event_context.reply(message_chain, quote_origin=False)` | - | 回复当前请求所在会话 |
+| `await event_context.get_bot_uuid()` | `str` | 获取当前请求来源机器人 UUID |
+| `await event_context.set_query_var(key, value)` | - | 设置当前请求变量 |
+| `await event_context.get_query_var(key)` | `Any` | 获取一个请求变量 |
+| `await event_context.get_query_vars()` | `dict[str, Any]` | 获取全部请求变量 |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | 清除流水线当前使用的对话，后续请求会创建新对话 |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前流水线 Local Agent 绑定的知识库 |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前流水线已绑定的知识库 |
+| `event_context.prevent_default()` | - | 阻止当前事件的默认处理 |
+| `event_context.prevent_postorder()` | - | 阻止后续插件继续处理当前事件 |
+
+`reply()` 使用 [MessageChain](/zh/plugin/dev/apis/messages)。请求变量、回复和流水线知识库方法依赖当前请求；没有关联请求的事件不能调用这些方法。`retrieve_knowledge()` 的 `kb_id` 必须来自 `list_pipeline_knowledge_bases()`。
+
+`prevent_default()` 只对支持中止默认流程的流水线事件生效，具体事件见[流水线事件](/zh/plugin/dev/apis/pipeline-events#阻止默认行为)。
+
+## Command
+
+Command 的子命令处理函数接收 `ExecuteContext`：
+
+```python
+query = " ".join(context.crt_params)
+session = context.session
+```
+
+### 上下文数据
+
+| 属性 | 类型 | 说明 |
+| --- | --- | --- |
+| `session` | `Session` | 当前消息所属会话 |
+| `command_text` | `str` | 去掉命令前缀后的完整文本 |
+| `full_command_text` | `str` | 包含命令前缀的完整文本 |
+| `command` | `str` | 根命令名称 |
+| `crt_command` | `str` | 当前正在执行的子命令名称 |
+| `params` | `list[str]` | 根命令后的全部参数 |
+| `crt_params` | `list[str]` | 当前子命令尚未消费的参数 |
+| `privilege` | `int` | 当前用户的命令权限级别 |
+| `query_id` | `int` | 当前流水线请求 ID |
+| `query_uuid` | `str \| None` | 当前流水线请求的稳定标识 |
+
+`context.shift()` 由 SDK 在进入当前子命令前调用，组件不需要手动调用。
+
+### 上下文方法
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await context.reply(message_chain, quote_origin=False)` | - | 回复当前请求所在会话 |
+| `await context.get_bot_uuid()` | `str` | 获取当前请求来源机器人 UUID |
+| `await context.set_query_var(key, value)` | - | 设置当前请求变量 |
+| `await context.get_query_var(key)` | `Any` | 获取一个请求变量 |
+| `await context.get_query_vars()` | `dict[str, Any]` | 获取全部请求变量 |
+| `await context.create_new_conversation()` | `dict[str, Any]` | 清除流水线当前使用的对话，后续请求会创建新对话 |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前流水线 Local Agent 绑定的知识库 |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前流水线已绑定的知识库 |
+
+这些请求方法的行为与 EventListener 相同。命令的注册和返回值见 [Command 组件](/zh/plugin/dev/components/command)。
+
+## Tool
+
+Tool 没有独立的上下文对象。调用信息直接传入 `call()`：
+
+```python
+conversation_type = session.launcher_type.value
+conversation_id = session.launcher_id
+sender_id = session.sender_id
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `params` | 模型或调用方根据工具 JSON Schema 生成的参数 |
+| `session` | 当前会话数据 |
+| `query_id` | 当前流水线请求 ID；调用需要请求上下文的 LangBot API 时原样传入 |
+
+`Session` 的常用字段如下：
+
+| 属性 | 说明 |
+| --- | --- |
+| `launcher_type` | 会话类型：`person` 或 `group` |
+| `launcher_id` | 私聊用户或群组 ID |
+| `sender_id` | 当前消息发送者 ID |
+| `bot_uuid` | 当前机器人 UUID |
+| `using_conversation` | 当前流水线会话 |
+| `conversations` | 该 Session 保存的流水线会话列表 |
+| `use_prompt_name` | 当前使用的提示词名称 |
+| `create_time`、`update_time` | Session 的创建时间和更新时间 |
+
+`session` 只保存数据，不提供 `reply()` 等上下文方法。工具的返回值交给调用方，不会自动发送到聊天平台。需要调用 LangBot 或平台能力时使用 `self.plugin`；相关接口要求 `session` 和 `query_id` 时，传入本次调用收到的值。
+
+<span id="runner"></span>
+
+## 运行器
+
+SDK `Runner` 类型的自定义 `run(ctx)` 和事件处理函数都接收 `RunnerContext`。该上下文只在本次运行期间有效。
+
+```python
+text = ctx.input.to_text()
+event_type = ctx.event.event_type
+```
+
+### 上下文数据
+
+| 属性 | 类型 | 说明 |
+| --- | --- | --- |
+| `run_id` | `str` | 本次运行 ID |
+| `trigger` | `AgentTrigger` | 触发类型、来源和时间 |
+| `event` | `AgentEventContext` | 标准事件信封，包含事件 ID、类型、来源、时间和原始数据 |
+| `platform_event` | 平台事件类型 | 按事件类型解析后的平台事件对象 |
+| `conversation` | `ConversationContext \| None` | 当前会话、线程、机器人和工作区标识 |
+| `actor` | `ActorContext \| None` | 事件发起者 |
+| `subject` | `SubjectContext \| None` | 事件所作用的消息、群组等对象 |
+| `input` | `AgentInput` | 当前输入的文本、结构化内容和附件 |
+| `delivery` | `DeliveryContext` | 当前输出目标及流式、编辑、回应等能力 |
+| `resources` | `AgentResources` | 本次运行已授权的模型、工具、知识库、技能和存储 |
+| `context` | `ContextAccess` | 会话游标、内联范围和可用上下文 API |
+| `state` | `AgentRunState` | 本次运行开始时读取到的各作用域状态快照 |
+| `runtime` | `AgentRuntimeContext` | LangBot 版本、追踪 ID 和截止时间 |
+| `config` | `dict[str, Any]` | 当前 Agent 或插件处理器配置 |
+| `adapter` | `AdapterContext \| None` | 入口适配器附加数据 |
+| `variables` | `dict[str, Any]` | 公开的请求变量，可用于运行器插值模板 |
+| `metadata` | `dict[str, Any]` | 宿主提供的其他元数据 |
+
+优先使用上表中的稳定字段。`event.data` 和 `adapter.extra` 用于承载尚未进入稳定字段的附加信息。
+
+### 回复与日志
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await ctx.get_bot_uuid()` | `str` | 获取来源机器人 UUID；无关联机器人时抛出异常 |
+| `await ctx.reply(message_chain, quote_origin=False)` | `Any` | 回复当前事件，支持字符串或 `MessageChain` |
+| `ctx.reply_stream()` | 异步上下文管理器 | 流式更新同一条回复 |
+| `await ctx.log(text, level="info")` | - | 写入本次运行日志；级别支持 `debug`、`info`、`warning`、`error` |
+
+`reply_stream()` 的 `update(text)` 接收当前完整文本。平台不支持流式时，LangBot 会在结束时发送一条完整消息；调试模式只模拟发送。
+
+### 可用工具
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await ctx.get_available_tools()` | `list[dict[str, Any]]` | 获取本次实际允许调用的上下文动作、平台 API、插件工具和 MCP 工具 |
+| `await ctx.call_tool(tool_name, parameters=None)` | `dict[str, Any]` | 调用上述列表中的工具 |
+
+`get_available_tools()` 的每一项包含 `name`、`description`、`parameters`、`type` 和 `operations`。返回结果已经按当前 Agent 或插件处理器的配置和事件能力过滤；不在列表中的工具不能通过 `ctx.call_tool()` 调用。
+
+### Box 与附件
+
+Box 是否启用、何时创建以及如何复用，由运行器决定。获取状态和申请 Box 使用 [LangBot API](/zh/plugin/dev/apis/common#box-沙箱)；当前运行的绑定和附件操作使用下列方法。
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await ctx.bind_box(box_id)` | `BoxBinding` | 绑定当前工作区中的 Box，返回 `box_id`、`outbox`；同次运行不能切换 Box |
+| `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | 导入 `ctx.input.attachments` 的 `ref`，省略参数则导入全部；返回各文件的沙箱 `path` |
+| `await ctx.export_box_files()` | `list[BoxFile]` | 导出本次运行 outbox 中的文件，返回文件句柄，不发送消息 |
+| `await ctx.reply_files(file_ids)` | `Any` | 使用导出的 `id` 回复当前事件，受回复工具权限约束 |
+
+`BoxFile` 包含 `id`、`name`、`type`、`size` 和可选的 `path`。输入的 `url`、`content` 等原始信息仍保留，只有显式导入才产生沙箱文件路径。文件句柄仅在本次运行有效，不能重复发送。
+
+先绑定 Box，再使用原生执行、文件工具和附件方法。复用同一 Box 时，各次运行的附件目录仍独立。`ctx.variables` 提供公开的请求变量，运行器可据此计算复用键。
+
+通过流水线运行时，`ctx.delivery.automatic_reply` 为 `True`，可以在 `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` 返回附件；Agent 和插件处理器使用 `ctx.reply_files()` 显式发送。
+
+外部运行器通过 `AgentRunExternalTools` 工具网关使用相同流程：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。具有当前事件回复权限时还可使用 `langbot_reply_files`；这些调用均携带当前运行的授权。
+
+### 提示词、历史与事件
+
+| 方法 | 返回值 | 可用性字段 |
+| --- | --- | --- |
+| `await ctx.get_prompt()` | `list[dict[str, Any]]` | `prompt_get` |
+| `await ctx.history_page(conversation_id=None, before_cursor=None, after_cursor=None, limit=50, direction="backward", include_attachments=False)` | `HistoryPage` | `history_page` |
+| `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
+| `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
+| `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
+| `await ctx.steering_pull(mode="all", limit=None)` | `SteeringPullResult` | `steering_pull` |
+
+### 状态
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await ctx.state_get(scope, key)` | `dict[str, Any]` | 读取状态值 |
+| `await ctx.state_set(scope, key, value)` | `dict[str, Any]` | 写入可 JSON 序列化的状态值 |
+| `await ctx.state_delete(scope, key)` | `dict[str, Any]` | 删除状态值 |
+| `await ctx.state_list(scope, prefix=None, limit=100)` | `dict[str, Any]` | 列出指定作用域的状态键 |
+
+`scope` 支持 `conversation`、`actor`、`subject` 和 `runner`。这些方法要求 `ctx.context.available_apis.state` 为 `true`。
+
+### 运行记录
+
+| 方法 | 返回值 | 可用性字段 |
+| --- | --- | --- |
+| `await ctx.run_get(run_id=None)` | `AgentRun` | `run_get` |
+| `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
+| `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
+| `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
+| `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+`run_id=None` 表示当前运行。普通事件处理函数结束后，SDK 会自动完成本次运行；自定义 `run(ctx)` 通过 `yield RunnerResult` 返回结果时，也不需要再调用 `run_append_result()` 重复登记。
+
+### 可用性与授权
+
+通过 `ctx.context.available_apis` 判断提示词、历史、事件、状态和运行记录接口是否可用。模型、工具和知识库的授权范围分别位于 `ctx.resources.models`、`ctx.resources.tools` 和 `ctx.resources.knowledge_bases`。
+
+运行器执行期间，通过 `self.plugin` 发起的模型、工具、知识库、存储和平台调用会自动关联当前运行，并按 `ctx.resources` 再次校验，无需传入 `run_id`。处理函数结束后，不要继续在后台任务中使用本次上下文或这些运行关联调用。
+
+`ctx.api` 是底层的运行级代理。普通组件代码应优先使用本页列出的 `ctx` 方法，并通过 `self.plugin` 调用 LangBot API。
+
+## 数据型上下文
+
+以下组件收到的是本次任务的输入数据，不提供 EventListener 或运行器的上下文方法。字段、返回值和完整示例放在对应组件教程中。
+
+| 组件入口 | 主要数据 | 组件教程 |
+| --- | --- | --- |
+| `KnowledgeEngine.ingest(context: IngestionContext)` | 文件、目标知识库、创建配置和解析结果 | [KnowledgeEngine](/zh/plugin/dev/components/knowledge-engine#文档摄取) |
+| `KnowledgeEngine.retrieve(context: RetrievalContext)` | 查询、目标知识库、检索配置和过滤条件 | [KnowledgeEngine](/zh/plugin/dev/components/knowledge-engine#知识检索) |
+| `KnowledgeRetriever.retrieve(context: RetrievalContext)` | 查询和外部知识库配置 | [KnowledgeRetriever](/zh/plugin/dev/components/knowledge-retriever#检索上下文) |
+| `Parser.parse(context: ParseContext)` | 文件内容、文件名、MIME 类型和元数据 | [Parser](/zh/plugin/dev/components/parser#解析方法) |
+| `Page.handle_api(request: PageRequest)` | 接口路径、HTTP 方法、请求体和请求头 | [Page](/zh/plugin/dev/components/page#pagerequest-字段) |

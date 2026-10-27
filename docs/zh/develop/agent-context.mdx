@@ -1,0 +1,178 @@
+---
+title: "AI 助手开发上下文"
+description: "可直接整页复制、粘贴给 AI 编程助手的 LangBot 项目上下文：目录结构、组件组织方式、运行期连接关系与开发环境配置。"
+---
+
+<Info title="本页面是为 AI 编程助手（Claude Code / Cursor / Copilot / Codex 等）准备的。">
+直接把本页**全部内容**复制粘贴给你的 AI 助手，它即可快速了解 LangBot 的整体架构、各组件如何组织、运行期如何连接，以及如何配置开发环境，无需你再逐条解释。
+</Info>
+
+本页内容与各仓库根目录的 `AGENTS.md`（`CLAUDE.md` 为其软链接）保持一致，是 LangBot 项目面向开发者与 AI 助手的"一页上手"说明。
+
+## 项目概览
+
+LangBot 是一个开源的、LLM 原生的即时通信机器人开发平台，提供开箱即用的 IM 机器人开发体验，内置 Agent、RAG、MCP 等 LLM 应用能力，支持全球主流 IM 平台，并提供丰富的 API 以供二次开发。
+
+LangBot 拥有完整的 Web 前端，几乎所有操作都可以通过前端完成。
+
+- **后端**：Python（`>=3.11,<4.0`），使用 `uv` 管理依赖；Web 框架为 Quart（Flask 的异步版本）。HTTP API 与预编译好的前端都由后端在 `http://127.0.0.1:5300` 上提供服务。
+- **前端**：`web/` 是 **Vite + React Router 7 + shadcn/ui + Tailwind CSS** 的 SPA，使用 `pnpm` 管理依赖（注意：**不是** Next.js，`dev` 脚本就是 `vite`）。
+- **插件系统**：插件 SDK、CLI（`lbp`）、插件运行时、Box 沙箱运行时以及 LangBot 与插件共享的实体/API 定义，全部位于独立仓库 [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk)。LangBot 通过 `pyproject.toml` 中固定版本的 `langbot-plugin` 包依赖它。
+
+## 仓库目录结构
+
+```
+LangBot/
+├── main.py                     # 入口垫片 -> langbot.__main__.main()
+├── pyproject.toml              # Python 项目与依赖（uv），固定 langbot-plugin==<x.y.z>
+├── src/langbot/
+│   ├── __main__.py             # 真正的入口，定义 CLI 参数（--standalone-runtime / --standalone-box / --debug）
+│   ├── pkg/                    # 核心后端包
+│   │   ├── api/                # HTTP API 控制器 + 服务（Quart）
+│   │   ├── core/               # 应用引导、启动阶段（stages）、任务管理器
+│   │   ├── platform/           # IM 平台适配器、机器人管理、会话管理
+│   │   ├── provider/           # LLM 提供商、请求器、工具提供者
+│   │   ├── pipeline/           # 流水线、阶段、查询池
+│   │   ├── plugin/             # 连接插件运行时的桥接层（connector.py / handler.py）
+│   │   ├── box/                # 代码沙箱子系统（Docker / nsjail / E2B 后端）
+│   │   ├── skill/              # 技能子系统
+│   │   ├── rag/ , vector/      # RAG 与向量存储
+│   │   ├── command/            # 内置命令
+│   │   ├── persistence/        # ORM 模型 + Alembic 迁移（SQLite 与 PostgreSQL）
+│   │   ├── storage/            # 对象/文件存储抽象
+│   │   ├── config/, entity/, discover/, utils/, telemetry/, survey/
+│   ├── libs/                   # 内置 SDK（qq_official_api、wecom_api 等）
+│   └── templates/              # 配置/组件模板（如 templates/config.yaml）
+├── web/                        # 前端 SPA（Vite + React Router 7 + shadcn + Tailwind）
+└── docker/                     # docker-compose 部署文件
+```
+
+## 组件如何组织
+
+LangBot 后端的核心包 `src/langbot/pkg/` 按职责拆分为若干子模块，彼此低耦合：
+
+| 模块 | 职责 |
+| --- | --- |
+| `core` | 应用生命周期：启动阶段（stages）按序加载配置、连接数据库、拉起各子系统，并管理后台任务。 |
+| `platform` | 各 IM 平台的适配器（Discord、Telegram、QQ、企业微信、飞书等），负责收发消息、管理机器人与会话。 |
+| `provider` | LLM 提供商与请求器（OpenAI 兼容、各家原生 API），以及供 Agent 调用的工具提供者。 |
+| `pipeline` | 消息处理流水线：把一条消息经过触发、AI 处理、输出、安全等阶段串联起来。 |
+| `plugin` | LangBot 主程序与插件运行时之间的桥接层，负责连接、收发动作、转发事件。 |
+| `box` | 代码沙箱子系统，为技能/工具提供隔离的代码执行环境，按可用性选择 Docker / nsjail / E2B 后端。 |
+| `skill` / `rag` / `vector` | 技能、检索增强生成与向量存储能力。 |
+| `persistence` | ORM 实体定义与 Alembic 数据库迁移，单套脚本同时兼容 SQLite 与 PostgreSQL。 |
+
+插件侧的组件（在 `langbot-plugin-sdk` 中定义，由 `lbp comp` 生成）则围绕一个 `BasePlugin` 组织，目前支持六种组件类型：
+
+- **Command（命令）**：用户主动触发的指令（如 `!weather tokyo`）。
+- **Tool（工具）**：供 LLM 在 Agent 执行过程中调用的函数（如查天气、查数据库）。
+- **EventListener（事件监听器）**：监听消息流水线中的事件（如自动回复、内容过滤）。
+- **KnowledgeEngine（知识引擎）**：自定义知识库的检索/接入实现，供 RAG 使用。
+- **Parser（解析器）**：自定义消息/内容的解析处理。
+- **Page（页面）**：插件提供的自定义 Web 页面，可嵌入 LangBot 管理面板。
+
+每个插件运行在独立进程中，由插件运行时统一管理生命周期（发现 → 安装依赖 → 加载 → 初始化 → 注册组件 → 就绪 → 终止）。
+
+## 运行期如何连接
+
+```
+┌──────────────┐  HTTP/API   ┌──────────────┐
+│   浏览器/前端  │ ──────────► │              │
+│ (Vite SPA)   │ :3000/同域   │   LangBot    │
+└──────────────┘             │   后端       │
+                             │  (Quart)     │
+   ┌─────────────────────────┤  :5300       ├─────────────────────────┐
+   │ stdio 或 WebSocket        └──────────────┘   stdio 或 WebSocket    │
+   ▼                                              ▼
+┌──────────────┐                          ┌──────────────┐
+│ 插件运行时     │  独立进程，逐个拉起插件      │ Box 运行时    │  代码沙箱
+│ :5400 / :5401│                          │ :5410        │  Docker/nsjail/E2B
+└──────────────┘                          └──────────────┘
+```
+
+- **前端 ↔ 后端**：开发时前端独立跑在 `:3000`，通过 `web/.env` 的 `VITE_API_BASE_URL` 访问后端 `:5300`；生产环境前端被预编译为静态文件由后端同域提供。
+- **后端 ↔ 插件运行时**：
+  - 用户**直接启动** LangBot（非容器）时，后端自己**拉起**运行时并通过 **stdio** 通信（轻量/个人场景）。stdio **不能自动重连**——断开后需重启 LangBot；常见故障是上一个后端遗留的**孤儿运行时进程**仍占用 `5400`/`5401`，杀掉后重启即可。
+  - LangBot 运行在**容器**中时，通过 **WebSocket** 连接到独立的运行时（生产场景）。控制端口默认 `5400`，调试端口默认 `5401`。相关配置：`data/config.yaml` 的 `plugin.runtime_ws_url`（如 `ws://langbot_plugin_runtime:5400/control/ws`）。
+- **后端 ↔ Box 运行时**：Box 子系统通过控制通道连接到 Box 运行时（默认端口 `5410`），运行时在 Docker / nsjail / E2B 中执行沙箱代码。相关配置（`data/config.yaml` 的 `box:` 段）：`box.enabled`（总开关）、`box.backend`（`'local'`/`'docker'`/`'nsjail'`/`'e2b'`）、`box.runtime.endpoint`（外部 Box 运行时地址，如 `ws://127.0.0.1:5410`，留空则本地自动托管）。与插件运行时类似，配置该地址并以 `--standalone-box` 启动即可连接外部 Box 运行时。
+- 调试运行时、CLI 与 SDK 的完整方法见[《调试插件运行时、CLI、SDK》](/zh/develop/plugin-runtime)，详细参数与架构在 `langbot-plugin-sdk` 仓库的 `AGENTS.md` 中。
+
+## 开发环境配置
+
+完整说明见[《开发配置》](/zh/develop/dev-config)。要点如下：
+
+### 后端
+
+```bash
+pip install uv
+uv sync --dev          # uv 会自动创建 .venv/；请把编辑器解释器指向它
+uv run main.py         # 在 http://127.0.0.1:5300 提供 API + 前端
+```
+
+首次启动会在 `data/config.yaml` 生成配置文件。默认使用 SQLite（零配置），同时支持 PostgreSQL；迁移在启动时自动执行。
+
+### 前端
+
+需要 Node.js 与 [pnpm](https://pnpm.io/zh/installation)。
+
+```bash
+cd web
+cp .env.example .env   # Windows: copy .env.example .env
+pnpm install
+pnpm dev               # http://127.0.0.1:3000（也可用 npm install / npm run dev）
+```
+
+`pnpm dev` 会读取 `web/.env` 中的 `VITE_API_BASE_URL`，使开发态前端能访问后端 `:5300`。
+
+### 代码格式化
+
+仓库 CI 会跑 lint + format 检查。安装 pre-commit 钩子，让同样的检查在每次提交前于本地运行：
+
+```bash
+uv run pre-commit install
+```
+
+### 数据库迁移
+
+修改 ORM 模型后生成迁移：
+
+```bash
+# 在项目根目录运行（需已有 data/config.yaml）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "描述你的变更"
+```
+
+`autogenerate` 能检测 schema 变更（增删列/表、类型变更），但**数据迁移**（如修改 JSON 字段内容）需手写进生成的脚本。`env.py` 设置了 `render_as_batch=True`，会自动处理 SQLite 的 ALTER TABLE 限制，无需按数据库类型分支。迁移在 LangBot 启动时自动执行。
+
+## 开发规范
+
+- LangBot 是全球化项目：**所有代码注释与文档字符串必须为英文**，所有面向用户的文案必须支持 **i18n**（至少 `en_US` + `zh_Hans`，仓库已有日文处则补 `ja_JP`）。
+- LangBot 同时被 toC 与 toB 场景采用，请始终考虑兼容性与安全性。
+- **提交信息格式**：`<type>(<scope>): <subject>`
+  - `type`：`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`chore` 等。
+  - `scope`：受影响的包/模块/文件/类。
+  - `subject`：简洁的变更描述。
+
+## 面向 Agent 的能力（MCP + 技能）
+
+LangBot 从设计上就**对 AI Agent 友好**，提供三类面向 Agent 的能力，并与 HTTP API 严格对齐：
+
+1. **MCP 服务**：`src/langbot/pkg/api/mcp/` 在 `/mcp` 上以 MCP 工具形式开放了 API 的精选子集（使用 API Key 鉴权，含 config.yaml 中的 `api.global_api_key`）。`server.py` 定义工具（直接调用 service 层），`mount.py` 是 ASGI 分发器。
+2. **仓库内技能**：`skills/` 目录是 LangBot 全部 Agent 技能（插件开发、核心开发、部署、e2e、MCP 操作等）的**唯一事实来源**。文档与落地页都链接到此处，而非各自复制。
+3. **API Key 鉴权**：`api.global_api_key`（config.yaml）可在无登录态下鉴权 API 与 MCP，详见 `docs/API_KEY_AUTH.md`。
+
+> **维护规则（重要）**：当你新增、删除或修改某个应对 Agent 开放的 HTTP API 端点时，必须**同时**更新 `src/langbot/pkg/api/mcp/server.py` 中对应的 MCP 工具**以及** `skills/` 下相关技能（尤其是 `skills/skills/langbot-mcp-ops`）。API、MCP 工具集与技能是同一套系统，三者漂移即为 bug。
+
+## 一些原则
+
+- Keep it simple, stupid.
+- 如无必要，勿增实体。
+- 八荣八耻：
+
+    以瞎猜接口为耻，以认真查询为荣。
+    以模糊执行为耻，以寻求确认为荣。
+    以臆想业务为耻，以人类确认为荣。
+    以创造接口为耻，以复用现有为荣。
+    以跳过验证为耻，以主动测试为荣。
+    以破坏架构为耻，以遵循规范为荣。
+    以假装理解为耻，以诚实无知为荣。
+    以盲目修改为耻，以谨慎重构为荣。

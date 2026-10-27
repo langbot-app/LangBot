@@ -1,0 +1,38 @@
+---
+title: "更新 LangBot"
+description: "将 LangBot 更新到最新版本，按步骤安全升级自托管的 AI 聊天机器人平台。"
+---
+
+## 使用包管理器部署
+
+请在之前使用包管理器部署的目录下重新执行：
+
+```bash
+uvx langbot@latest
+```
+
+这将重新下载并启动最新版本的 LangBot。
+
+## 使用 Docker（或基于 Docker 的一键部署）
+
+请在之前 Clone 的 LangBot 目录下执行：
+
+```bash
+git pull
+```
+
+并在 `docker/` 目录下执行：
+
+```bash
+docker compose up --force-recreate --pull always -d
+```
+
+此命令将拉取最新的 LangBot 镜像并重建容器。
+
+<Info>
+4.3.0 版本更改了 `docker/docker-compose.yaml` 文件的内容和位置，若您由之前版本更新而来，请[根据文档重新部署](/zh/deploy/langbot/docker)。
+</Info>
+
+## 手动部署
+
+从 [Releases](https://github.com/langbot-app/LangBot/releases) 页面下载最新发行版的 Assets 下的 `langbot-<version>-all.zip`，解压到原来部署到目录重启即可。

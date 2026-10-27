@@ -1,0 +1,101 @@
+---
+title: "スキル (Skills)"
+description: "LangBot の Skills を活用し、専門知識を必要に応じて読み込み。コンテキストを圧迫せず AI Agent を拡張。"
+---
+
+Skill は**必要時に起動する**指示パックです。ユーザーのリクエストが該当する内容になると、Agent が `activate` ツールを呼び出してその Skill の指示をコンテキストに取り込み、それに従ってタスクを完了させます。起動されていない Skill はコンテキストを消費しません。
+
+Agent に**専門的なワークフロー、テンプレート、スクリプト**を一つ追加するのに向いています。たとえば「Python プロジェクトの解析」「PDF フォーム入力」「コードレビュー」など。System Prompt に全部詰め込む必要はありません。
+
+## プラグイン・MCP との違い
+
+| やりたいこと | 使うもの |
+|------|------|
+| 必要時に起動する一連のワークフロー（スクリプトやテンプレート付き可） | Skill |
+| 既存の MCP ツールサービスに接続 | MCP サーバー |
+| 長期常駐機能、設定画面、イベント、ナレッジベース | プラグイン |
+
+詳細は[ランタイムと拡張機能の関係](../sandbox/runtime-relationships)を参照。
+
+## Skill のインストール
+
+<Note>
+Skill はサンドボックスに依存します。`box.enabled` が `true` で、Docker / Nsjail / E2B のいずれかが利用可能なときのみ、Skill のインストール、起動、編集ができます。詳細は[サンドボックス設定](../sandbox/config)を参照。
+</Note>
+
+### LangBot Space から（推奨）
+
+[LangBot Space](https://space.langbot.app) は LangBot 公式のマーケットプレイスで、すぐに使える Skill が多数掲載されています。WebUI の Skills ページから閲覧して 1 クリックでインストールでき、`SKILL.md` の作成やリソースファイルの準備は不要です。
+
+ほとんどのケースはこれで十分です。独自のワークフローが必要な場合は下記の方法を使ってください。
+
+### 自分で作る
+
+**WebUI** — Skills ページで新規作成、zip アップロード、GitHub からのインポートが可能。
+
+**サンドボックス + `register_skill`**：
+1. サンドボックスの `/workspace` 配下にディレクトリと `SKILL.md` を準備
+2. Agent に `register_skill(path="/workspace/my-skill")` を呼び出させる
+
+いずれの方法でも Box Runtime が管理する skill store に書き込まれます。
+
+## パイプラインで有効化
+
+Skill をインストールしたあと、パイプラインの拡張設定で Agent から見える Skill を決めます：
+
+- 「すべての Skill を有効化」をオンにする、または
+- 指定した Skill のみをバインドする
+
+バインドは `<available_skills>` 一覧（Agent が選択肢として認識する対象）にのみ影響します。完全な指示は常に `activate` が呼ばれた後に注入されます。
+
+## SKILL.md を書く
+
+Skill はディレクトリと `SKILL.md` 1 つで構成されます。frontmatter にメタデータを書き、本文は Agent が起動後に受け取る指示です：
+
+```markdown
+---
+name: code-reviewer
+display_name: コードレビューアシスタント
+description: コードをレビューして改善提案を行う。ユーザーが review、レビュー、コード改善に言及したときに起動
+---
+
+## 実行手順
+
+1. `read` で関連ファイルをざっと確認
+2. 可読性、潜在的なバグ、セキュリティ問題をチェック
+3. 優先度順に改善提案を提示
+```
+
+LangBot は現在、以下の 3 つのフィールドを読み取ります：
+
+| フィールド | 必須 | 説明 |
+|------|------|------|
+| `name` | 作成／登録時 | 一意の識別子、1–64 文字 |
+| `description` | 強く推奨 | Agent はこれをもとに起動可否を判断する——具体的なほど選ばれやすい |
+| `display_name` | 任意 | UI 表示名 |
+
+`description` は Agent が Skill を選ぶ唯一の手がかりです。**機能・適用シーン・想定されるトリガーワード**を具体的に書きましょう。
+
+完全な仕様は [agentskills.io](https://agentskills.io/home) を参照してください。その他のフィールド（`license`、`metadata` など）は将来の互換のために残せますが、現在は読み取られません。
+
+**リソースを伴う Skill** では `SKILL.md` と同じ階層に `scripts/`、`templates/` などを置きます。起動後、Agent は `/workspace/.skills/{skill-name}/` でこれらにアクセスできます。
+
+### Agent が使えるツール
+
+| ツール | 用途 |
+|------|------|
+| `activate` | Agent が該当を判断したときに自動で呼び出し、SKILL.md をコンテキストに取り込む |
+| `register_skill` | サンドボックスに用意したディレクトリを新しい Skill として登録 |
+
+## よくある問題
+
+| 症状 | 確認項目 |
+|------|--------|
+| Skill 一覧が空 | `box.enabled`、Box Runtime の状態、`box.local.skills_root` |
+| Agent が Skill を起動しない | `description` が具体的か、パイプラインでバインドされているか、モデルが関数呼び出しに対応しているか |
+| 起動後にファイルが見つからない | ファイルは Skill パッケージ内に置く必要があり、パスは `/workspace/.skills/{skill-name}/` |
+| `register_skill` がエラー | パスは `/workspace` 配下である必要があり、ディレクトリまたは 2 階層以内のサブディレクトリに `SKILL.md` が必要 |
+
+<Note>
+Skills は現在、組み込み Agent 向けで、関数呼び出しとサンドボックスバックエンドに依存します。外部 Runner（Dify、n8n、Langflow、Coze など）では各プラットフォームの同等機構を利用してください。
+</Note>

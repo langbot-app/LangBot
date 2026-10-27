@@ -1,0 +1,227 @@
+---
+title: "认证插件与共享运行"
+description: "认证是什么、为什么存在、什么时候需要，以及 shared-runtime-v1 / stateless-v1 的适配规范。"
+---
+
+## 认证是什么
+
+认证是 LangBot 对**一份精确、不可变的插件制品**授予的资格：该制品被批准在 LangBot Cloud 中**跨租户共享运行**。
+
+- 认证绑定到制品本身（已发布的具体版本，按 digest 区分），不是绑定到插件名或作者。同一个插件发布新版本后，上一版的认证不会自动延续。
+- 认证不是质量评分，也不是安全审计背书。
+
+## 为什么需要认证
+
+平台默认**不**让插件共享运行。这是因为共享的粒度是制品：
+
+- **专属模式**：插件不参与共享，独立运行。
+- **共享模式**：同一个 artifact digest 的所有安装共用一个 Worker。
+
+共享的好处是进程数量和启动开销不随安装数线性增长。代价是**一个进程里会同时处理多个工作区的调用**——如果插件把租户数据放在实例上，就会在租户之间串数据。
+
+所以平台需要先对这份制品做代码审查、确认它满足无状态约束，再用签名把"对这份制品的信任"固定下来，才敢让它进入共享放置。这就是认证存在的原因。
+
+## 什么情况下需要认证
+
+**大多数插件不需要认证。** 不认证不影响你把插件发布到插件市场，也不影响用户安装使用——插件会以专属模式正常运行。
+
+| 你的情况 | 是否需要认证 |
+| --- | --- |
+| 只想把插件发布到插件市场供用户使用 | 不需要 |
+| 插件需要在进程内保留跨调用状态（例如常驻的外部会话进程） | 不需要，也应该保持专属运行 |
+| 插件里有后台任务、定时器，或长期缓存租户数据 | 不需要，保持专属模式更安全 |
+| 希望获得认证插件标识 | 需要 |
+| 希望同一制品的多个安装共用一个进程，降低资源与启动开销 | 需要 |
+| 插件面向 Cloud 多租户场景，希望被平台以共享方式放置 | 需要 |
+
+判断标准只有一条：**只有当你的代码确实能做到"实例上不保存任何租户或安装相关数据"时，认证才有意义。**
+
+## 认证之后的效果
+
+通过审核后：
+
+- 制品被签入证书，安装时以**共享模式**运行；同一 digest 的多个安装共用一个 Worker。
+- 该 Worker 中只有一个 `BasePlugin` 实例，以及每个已声明组件 manifest 各一个实例（EventListener、Tool、Command、KnowledgeEngine、Parser、Page、Runner）。
+- 每个安装只额外保留一份轻量的配置、权限与生命周期上下文，调用时由当前请求决定使用哪一份。
+- 你会获得认证插件标识。
+- 自托管 OSS 默认不配置认证签发方公钥，因此即使是带认证的制品，在自托管实例上仍以专属模式运行。
+
+同时你也承担一项长期义务：**后续每个版本都必须继续满足无状态约束**。修改代码后需要提交新版本重新审核，认证不会自动延续。
+
+## 需要做的适配与规范
+
+### 声明
+
+在 `manifest.yaml` 的 `execution` 下同时声明两个字段：
+
+```yaml
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: your-name
+  name: YourPlugin
+  version: 0.1.1
+spec:
+  config: []
+  components: {}
+execution:
+  python:
+    path: main.py
+    attr: YourPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
+```
+
+| 字段 | 合法值 | 说明 |
+| --- | --- | --- |
+| `execution.sharedRuntime` | `shared-runtime-v1` | 只接受这一个值，填写其他值会导致清单校验失败 |
+| `execution.componentModel` | `stateless-v1` | 只接受这一个值 |
+
+- 两个字段**必须同时声明**。只写 `sharedRuntime` 不写 `componentModel` 的包会在认证校验阶段被拒绝。
+- 这两个字段自 **SDK 0.7.0** 起被识别；更早的 SDK 会忽略它们，因此不要用旧版本验证声明是否生效。
+
+<Warning>
+声明只是申请，不等于通过认证。它本身不会授予认证标识，也不会改变运行模式。
+</Warning>
+
+### 无状态组件规范
+
+- `BasePlugin.initialize()` 和组件 `initialize()` 是**进程级**初始化，每个 Worker 只执行一次。此时不存在"当前安装"，也不存在"当前工作区"。
+- 组件实例会被不同工作区并发调用，因此所有方法都必须可重入。
+- 读取当前安装的配置：`BasePlugin` 用 `self.get_config()`，组件用 `self.get_plugin_config()` 或 `self.plugin.get_config()`，Runner 可以直接用 `ctx.config`。
+- 不得把配置、凭据、工作区或安装标识、请求数据保存在实例字段或模块级全局变量中。
+- 不得在 `initialize()` 中读取并缓存安装配置。
+- 存储、文件、凭据、日志、模型等平台能力必须通过 SDK 的 Host API 访问；权限由当前调用自动解析，不需要也不应该自己缓存。
+- 需要跨调用保留的租户数据必须存放在 Host 服务中。Runner 使用 `ctx.state_get()` / `ctx.state_set()` 等接口（需要 `ctx.context.available_apis.state` 为 `true`）。进程内缓存只允许存放制品级公共数据；如果确实要缓存租户数据，键必须包含完整安装标识，并能在安装被移除时清理。
+- 不要发起携带租户数据的后台任务或线程：SDK **不跟踪**你自己创建的任务的所有权。如果确实要脱离处理函数运行，请以安装绑定为键维护一份登记表，并在 `on_installation_revoked()` 中停止它们。处理函数返回后，本次调用的上下文和运行关联调用即失效。
+
+### 一个安装，多份用法
+
+一个 workspace 内每个插件只安装一次，但同一份安装会被**多个产品对象**复用：
+
+| 组件类型 | 复用它的是 | 隔离靠什么 |
+| --- | --- | --- |
+| Agent / 流水线中的 Runner | 每个处理器 | `ctx.state.*` 已按处理器隔离（作用域含 `binding_identity`，由 Agent UUID 派生） |
+| 知识库用的 KnowledgeEngine / Parser | 每个知识库 | **需要插件自己按知识库 ID 隔离** |
+| Tool / Command / EventListener / Page | 多个处理器、会话或页面请求 | 依赖调用时读取，不能在实例上累积 |
+
+平台的插件存储键是 `(实例, 工作区, 组件类型, 插件名, key)`，**不包含处理器或知识库维度**。所以只要你的插件要持久化或缓存，就必须自己把产品对象的身份拼进键里：
+
+- **配置**：每次调用读取（`ctx.config`，或 task-local 的 `self.get_plugin_config()`），不要缓存到实例。
+- **持久化**：键必须包含产品对象身份（处理器身份 / 知识库 ID / 会话身份）。
+- **进程内缓存**：键必须同时包含完整安装绑定**和**产品对象身份，并在安装被撤销时释放（见下）。
+- **锁与栅栏**：必须按 `(安装, 产品对象)` 记。**一个处理器或知识库的失败，不得阻断同一安装下的其他对象。**
+- **失败分级**：只有"已经派发、结果未知"的变更才应进入需要人工对账的状态；确定性的校验错误和调用前的取消不应影响后续调用。
+- **日志与遥测**：诊断数据的失败不得影响业务，也不要把租户数据写进进程级单例。
+
+### 安装被撤销时
+
+共享模式下，一个进程内只有一个对象图，服务同一制品的所有安装。所以**某个安装被撤销时对象图不会销毁**，插件必须自己释放按安装绑定记的进程内状态：
+
+```python
+class MyPlugin(BasePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self._caches: dict[str, Cache] = {}
+
+    async def on_installation_revoked(self, binding) -> None:
+        self._caches.pop(binding.installation_uuid, None)
+```
+
+- **触发时机**：卸载、停用、移除工作区，以及**升级**（旧绑定被撤销）。只有共享模式会调用；专属模式下进程会被关停，进程内状态随进程消失。
+- **调用时没有调用上下文**，Host API（存储、配置、绑定查询）不可用——只能释放进程内状态，安装身份由参数给出。
+- 抛出异常会被记录，**不影响撤销流程**。
+- 需要带 `BasePlugin.on_installation_revoked` 的 SDK 版本；旧版本上这个钩子只是永远不会被调用。
+
+### 允许 / 禁止对照
+
+| 场景 | 允许 | 禁止 |
+| --- | --- | --- |
+| 读取配置 | 每次调用时读取（`self.get_plugin_config()`、`ctx.config`） | 在 `initialize()` 中读取后保存到 `self` |
+| 连接池 / HTTP 客户端 | 不含租户凭据的共享连接池 | 把安装的 endpoint、api key 固化到实例上 |
+| 缓存 | 制品级公共数据；或键为完整安装标识且支持清理 | 模块级 `dict` 以工作区或用户为键长期驻留 |
+| 跨调用状态 | Host 服务（Runner 用 `ctx.state_*`） | 实例字段、模块级全局变量 |
+| 后台工作 | 无 | 处理函数返回后继续持有本次上下文或其关联调用 |
+| 日志 | `ctx.log()` 或 SDK 日志 API | 模块级后台线程直接输出租户配置或凭据 |
+
+### 常见反例
+
+**1. 在初始化时读取安装配置**
+
+```python
+async def initialize(self):
+    self.endpoint = self.plugin.config["endpoint"]  # 进程级初始化，没有当前安装
+    self.api_key = self.plugin.config["api_key"]
+```
+
+共享初始化阶段没有安装配置，这段代码只会读到空值或上一次的值。
+
+**2. 把租户数据放进模块级缓存**
+
+```python
+_CACHE = {}  # 以工作区或用户为键，会跨安装、跨租户长期驻留
+
+async def call(self, params, **kwargs):
+    if params["user"] not in _CACHE:
+        _CACHE[params["user"]] = await fetch(params["user"])
+```
+
+**3. 处理函数返回后继续使用本次调用**
+
+```python
+async def call(self, params, **kwargs):
+    config = self.get_plugin_config()
+    asyncio.create_task(self._upload_later(config))  # 处理函数已返回，上下文与授权均已失效
+    return ok()
+```
+
+**4. 把实例字段当作配置容器**
+
+```python
+async def initialize(self):
+    self.default_endpoint = "https://api.example.com"  # 公共常量没有问题
+    self.last_config = {}  # 一旦写入安装配置就违规
+```
+
+正确写法：
+
+```python
+class LookupTool(Tool):
+    async def initialize(self):
+        # 只放置制品级、不含租户信息的对象
+        self.transport = StatelessHTTPTransport()
+
+    async def call(self, params, **kwargs):
+        config = self.get_plugin_config()  # 每次调用按当前安装读取
+        return await self.transport.lookup(config["endpoint"], params)
+```
+
+### Runner 组件特别注意
+
+Runner 与无状态约束的张力最大，因为运行器天然倾向于在进程内保存会话与上下文。
+
+- `RunnerContext` **只在本次运行期间有效**，不要把它或它的字段保存到实例上跨调用复用。
+- Runner 需要跨调用保留的会话状态，走 `ctx.state_get()` / `ctx.state_set()`（作用域支持 `conversation`、`actor`、`subject`、`runner`）或 Host 提供的其他存储，不要使用实例字段。
+- 处理函数返回后，不要继续在后台任务中使用 `ctx`，也不要继续使用通过 `self.plugin` 发起的运行关联调用。
+- 如果 Runner 的设计必须依赖进程内持有的跨调用状态（例如需要长期驻留的外部会话进程），**不要声明 `stateless-v1`**，继续以专属 Worker 运行即可。
+
+运行上下文的完整接口见[运行上下文（RunnerContext）](/zh/plugin/dev/apis/agent-run)。
+
+## 自检与提交
+
+提交审核前逐条核对：
+
+- [ ] `manifest.yaml` 中两个字段都已声明，取值正确。
+- [ ] 全文搜索，确认没有模块级可变全局变量。
+- [ ] 确认 `initialize()` 只做进程级初始化，不读取安装配置。
+- [ ] 确认所有安装配置都在调用时读取。
+- [ ] 确认没有在处理函数返回后继续运行的任务或线程。
+- [ ] 确认跨调用状态通过 Host API 保存（Runner 使用 `ctx.state_*`）。
+
+### 提交方式
+
+认证与发布走同一条链路，不需要额外流程：在 `manifest.yaml` 中声明上面两个字段，然后照常用 `lbp publish` 提交一个**新版本**（已发布的版本无法追加声明）。LangBot Space 会检查本次提交的精确插件包，进行辅助代码审查，并在人工批准后签发认证插件标识；认证绑定到已审核的版本与校验和。
+
+如果审核发现该版本无法满足要求，请先把它作为未签名的普通插件发布，并在后续不可变版本中修复问题。
+
+如果核对下来发现插件并不适合共享运行，直接以普通插件提交即可，不需要认证。发布流程见[发布到插件市场](/zh/plugin/dev/publish/market)。

@@ -1,0 +1,190 @@
+---
+title: "プラグインディレクトリ構造"
+---
+
+このドキュメントでは、LangBotプラグインの標準ディレクトリ構造とファイル組織仕様を紹介し、開発者が準拠したプラグインを作成できるように支援します。
+
+## 基本ディレクトリ構造
+
+標準的なLangBotプラグインは次のディレクトリ構造に従う必要があります:
+
+```
+MyPlugin/
+├── manifest.yaml          # プラグインマニフェストファイル(必須)
+├── main.py               # プラグインメインエントリファイル(必須)
+├── README.md             # 英語プラグインドキュメント(必須)
+├── readme/               # 多言語READMEディレクトリ(オプション)
+│   ├── README_zh_Hans.md # 簡体字中国語ドキュメント
+│   ├── README_ja_JP.md   # 日本語ドキュメント
+│   └── README_zh_Hant.md # 繁体字中国語ドキュメント(オプション)
+├── assets/               # リソースファイルディレクトリ
+│   ├── icon.svg         # プラグインアイコン(推奨)
+│   └── ...              # その他のリソースファイル
+├── components/           # コンポーネントディレクトリ
+│   ├── event_listener/  # イベントリスナーコンポーネント
+│   ├── commands/        # コマンドコンポーネント
+│   └── tools/           # ツールコンポーネント
+├── requirements.txt      # Python依存関係(オプション)
+└── config/              # 設定ディレクトリ(オプション)
+```
+
+## 多言語README仕様
+
+### ファイル配置仕様
+
+LangBotプラグインは、異なる言語のユーザーにローカライズされたプラグイン説明を提供するために、多言語READMEドキュメントをサポートしています。
+
+**重要な仕様:**
+
+1. **`ルートREADME.md(必須)`**
+   - **英語**で記述する必要があります
+   - プラグインのデフォルトドキュメントとして機能します
+   - 要求された言語バージョンが存在しない場合のフォールバックとして使用されます
+2. **`readme/ディレクトリ(オプション)`**
+   - **非英語**のREADMEドキュメントを保存するために使用
+   - ファイル命名形式: `README_{言語コード}.md`
+
+### サポートされる言語コード
+
+[RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646)標準に従い、LangBotは現在次の言語コードをサポートしています:
+
+| 言語     | 言語コード          | ファイル名               | 配置場所               |
+| ------ | -------------- | ------------------- | ------------------ |
+| 英語     | `en`または`en_US` | `README.md`         | **プラグインルートディレクトリ** |
+| 簡体字中国語 | `zh_Hans`      | `README_zh_Hans.md` | `readme/`ディレクトリ    |
+| 繁体字中国語 | `zh_Hant`      | `README_zh_Hant.md` | `readme/`ディレクトリ    |
+| 日本語    | `ja_JP`        | `README_ja_JP.md`   | `readme/`ディレクトリ    |
+| ベトナム語 | `vi_VN`       | `README_vi_VN.md`    | `readme/`ディレクトリ    |
+| タイ語   | `th_TH`       | `README_th_TH.md`    | `readme/`ディレクトリ    |
+| スペイン語 | `es_ES`       | `README_es_ES.md`    | `readme/`ディレクトリ    |
+
+### ディレクトリ構造の例
+
+```
+MyPlugin/
+├── README.md                    # ✅ 英語版(必須、ルートディレクトリ)
+└── readme/                      # ✅ 多言語ディレクトリ
+    ├── README_zh_Hans.md       # ✅ 簡体字中国語
+    ├── README_ja_JP.md         # ✅ 日本語
+    └── README_zh_Hant.md       # ✅ 繁体字中国語
+```
+
+### 誤った例
+
+❌ **誤り: readme/ディレクトリに英語READMEを配置**
+
+```
+MyPlugin/
+├── readme/
+│   ├── README_en.md        # ❌ 誤り: 英語はreadme/に配置すべきではない
+│   └── README_zh_Hans.md
+```
+
+❌ **誤り: ルートREADME.mdに非英語コンテンツが含まれる**
+
+```markdown
+# MyPlugin
+
+This is a plugin...
+
+これはプラグインです...    # ❌ 誤り: ルートREADME.mdは英語のみを含むべき
+```
+
+### README言語フォールバックロジック
+
+ユーザーが特定の言語でREADMEを要求した場合、LangBotは次の順序で検索します:
+
+1. `readme/README_{言語コード}.md`を読み取ろうとします
+2. 見つからない場合は、ルート`README.md`(英語版)にフォールバックします
+
+**例:**
+
+- ユーザーが簡体字中国語(`zh_Hans`)を要求
+  - → `readme/README_zh_Hans.md`を検索
+  - → 見つからない場合は、`README.md`(英語版)を返します
+- ユーザーが日本語(`ja_JP`)を要求
+  - → `readme/README_ja_JP.md`を検索
+  - → 見つからない場合は、`README.md`(英語版)を返します
+
+## リソースファイルディレクトリ
+
+### assets/ディレクトリ
+
+`assets/`ディレクトリはプラグインの静的リソースファイルを保存するために使用されます。
+
+**推奨構造:**
+
+```
+assets/
+├── icon.svg              # プラグインアイコン(SVG形式推奨)
+├── example.png           # 例画像
+├── screenshot1.png       # スクリーンショット
+└── logo.png             # ロゴ画像
+```
+
+**アイコン仕様:**
+
+- プラグインアイコンとして`icon.svg`を使用することを推奨
+- サポートされる形式: `.svg`、`.png`、`.jpg`、`.jpeg`、`.gif`
+- 推奨サイズ: 最低256x256ピクセル
+- `manifest.yaml`での参照: `icon: assets/icon.svg`
+
+### READMEでのリソース参照
+
+READMEドキュメントで相対パスを使用してassets/ディレクトリの画像を参照できます:
+
+```markdown
+# MyPlugin
+
+![例](./assets/example.png)
+
+![スクリーンショット](./assets/screenshot1.png)
+```
+
+**注意:** プラグインをLangBot Spaceにアップロードすると、リソースファイルが自動的に処理およびホストされ、ユーザーがREADMEを表示したときに画像が正しく表示されます。
+
+## コンポーネントディレクトリ
+
+プラグイン機能はコンポーネントを通じて実装され、タイプ別に`components/`ディレクトリに整理する必要があります:
+
+```
+components/
+├── event_listener/       # イベントリスナー
+│   ├── on_message.py
+│   └── on_message.yaml
+├── commands/            # コマンド
+│   ├── hello.py
+│   └── hello.yaml
+└── tools/               # ツール
+    ├── search.py
+    └── search.yaml
+```
+
+コンポーネント開発の詳細な仕様については、[コンポーネントの追加](/en/plugin/dev/components/add)を参照してください。
+
+## 設定ファイル
+
+### manifest.yaml
+
+プラグインマニフェストファイル`manifest.yaml`はコア設定ファイルであり、プラグインメタデータ、設定項目、コンポーネントリストなどの情報が含まれます。
+
+詳細な手順については、[プラグイン設定情報の完成](/en/plugin/dev/basic-info)を参照してください。
+
+### requirements.txt
+
+プラグインが追加のPython依存関係を必要とする場合は、ルートディレクトリに`requirements.txt`ファイルを作成します:
+
+```
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+pillow>=9.0.0
+```
+
+**注意:** LangBotは、プラグインのインストール時に`requirements.txt`にリストされている依存関係を自動的にインストールします。
+
+## 関連ドキュメント
+
+- [基本チュートリアル](/en/plugin/dev/tutor) - 最初のプラグインを作成する方法を学ぶ
+- [プラグイン設定情報の完成](/en/plugin/dev/basic-info) - manifest.yamlの設定
+- [コンポーネントの追加](/en/plugin/dev/components/add) - プラグインコンポーネントの開発
+- [マーケットプレイスに公開](/en/plugin/dev/publish/market) - プラグインを配布

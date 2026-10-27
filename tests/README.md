@@ -178,7 +178,7 @@ The test suite uses a centralized fixture system that provides:
 3. **Coverage**: Tests cover happy paths, edge cases, and error conditions
 4. **Extensibility**: Easy to add new tests by reusing existing fixtures
 
-See [provisioned dependency contracts](../docs/DEPENDENCY_CONTRACT_TESTS.md) for
+See [provisioned dependency contracts](../dev-docs/DEPENDENCY_CONTRACT_TESTS.md) for
 the real compiled CLI, pinned official plugin identity helpers, and embedded
 SeekDB CI jobs, including local prerequisites and verification boundaries.
 
@@ -315,7 +315,7 @@ Note: PostgreSQL tests are **not** included in fast integration gate because the
 
 A separate **PostgreSQL Contract Tests** job provisions a disposable database for
 pipeline admission, RAG recovery, migration convergence, and timestamp/lease contracts.
-See [the PostgreSQL contract guide](../docs/POSTGRES_CONTRACT_TESTS.md) for scope,
+See [the PostgreSQL contract guide](../dev-docs/POSTGRES_CONTRACT_TESTS.md) for scope,
 local commands, and remaining optional prerequisites.
 
 CI workflow `.github/workflows/test-migrations.yml` runs:

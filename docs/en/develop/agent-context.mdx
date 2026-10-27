@@ -1,0 +1,190 @@
+---
+title: "AI Assistant Context"
+description: "A single, copy-paste-the-whole-page context for AI coding assistants: LangBot's directory layout, how components are organized, how they connect at runtime, and how to set up the dev environment."
+---
+
+<Info title="This page is written for AI coding assistants (Claude Code / Cursor / Copilot / Codex, etc.).">
+Copy the **entire content** of this page and paste it to your AI assistant. It will then understand LangBot's overall architecture, how each component is organized, how they connect at runtime, and how to configure the dev environment — without you having to explain it piece by piece.
+</Info>
+
+This page mirrors the `AGENTS.md` (with `CLAUDE.md` as a symlink) at each repository root, and serves as LangBot's "one-page onboarding" for developers and AI assistants.
+
+## Project Overview
+
+LangBot is an open-source, LLM-native instant-messaging bot development platform. It provides an out-of-the-box IM bot development experience with built-in Agent, RAG, MCP and other LLM application capabilities, supports mainstream global IM platforms, and exposes rich APIs for custom development.
+
+LangBot has a comprehensive web frontend — almost every operation can be performed through it.
+
+- **Backend**: Python (`>=3.11,<4.0`), dependencies managed by `uv`; the web framework is Quart (the async flavour of Flask). Both the HTTP API and the pre-built frontend are served by the backend on `http://127.0.0.1:5300`.
+- **Frontend**: `web/` is a **Vite + React Router 7 + shadcn/ui + Tailwind CSS** SPA, managed by `pnpm` (note: this is **not** Next.js — the `dev` script is literally `vite`).
+- **Plugin system**: The Plugin SDK, CLI (`lbp`), Plugin Runtime, Box (sandbox) Runtime, and the entity/API definitions shared between LangBot and plugins all live in a separate repository: [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk). LangBot depends on it via the version-pinned `langbot-plugin` package in `pyproject.toml`.
+
+## Repository Layout
+
+```
+LangBot/
+├── main.py                     # Entrypoint shim -> langbot.__main__.main()
+├── pyproject.toml              # Python project + deps (uv), pins langbot-plugin==<x.y.z>
+├── src/langbot/
+│   ├── __main__.py             # Real entrypoint, CLI args (--standalone-runtime / --standalone-box / --debug)
+│   ├── pkg/                    # Core backend package
+│   │   ├── api/                # HTTP API controllers + services (Quart)
+│   │   ├── core/               # App bootstrap, stages, task manager
+│   │   ├── platform/           # IM platform adapters, bot managers, session managers
+│   │   ├── provider/           # LLM providers, requesters, tool providers
+│   │   ├── pipeline/           # Pipelines, stages, query pool
+│   │   ├── plugin/             # Bridge to the plugin runtime (connector.py / handler.py)
+│   │   ├── box/                # Code-sandbox subsystem (Docker / nsjail / E2B backends)
+│   │   ├── skill/              # Skill subsystem
+│   │   ├── rag/ , vector/      # RAG + vector store
+│   │   ├── command/            # Built-in commands
+│   │   ├── persistence/        # ORM models + Alembic migrations (SQLite & PostgreSQL)
+│   │   ├── storage/            # Object/file storage abstractions
+│   │   ├── config/, entity/, discover/, utils/, telemetry/, survey/
+│   ├── libs/                   # Vendored SDKs (qq_official_api, wecom_api, etc.)
+│   └── templates/              # Config/component templates (e.g. templates/config.yaml)
+├── web/                        # Frontend SPA (Vite + React Router 7 + shadcn + Tailwind)
+└── docker/                     # docker-compose deployment files
+```
+
+## How Components Are Organized
+
+The core backend package `src/langbot/pkg/` is split into loosely-coupled submodules by responsibility:
+
+| Module | Responsibility |
+| --- | --- |
+| `core` | Application lifecycle: startup stages load config, connect the DB, bring up subsystems in order, and manage background tasks. |
+| `platform` | Adapters for each IM platform (Discord, Telegram, QQ, WeCom, Lark, etc.); send/receive messages, manage bots and sessions. |
+| `provider` | LLM providers and requesters (OpenAI-compatible and native APIs), plus tool providers callable by the Agent. |
+| `pipeline` | The message-processing pipeline: routes one message through trigger, AI processing, output, and safety stages. |
+| `plugin` | Bridge between the LangBot main process and the plugin runtime — connect, exchange actions, forward events. |
+| `box` | Code-sandbox subsystem providing isolated code execution for skills/tools; selects Docker / nsjail / E2B by availability. |
+| `skill` / `rag` / `vector` | Skill, retrieval-augmented generation, and vector-store capabilities. |
+| `persistence` | ORM entity definitions and Alembic migrations; a single set of scripts works on both SQLite and PostgreSQL. |
+
+On the plugin side (defined in `langbot-plugin-sdk`, generated by `lbp comp`), components are organized around a single `BasePlugin`. Six component types are currently supported:
+
+- **Command**: user-triggered actions (e.g. `!weather tokyo`).
+- **Tool**: functions the LLM calls during Agent execution (e.g. fetch weather, query a database).
+- **EventListener**: handlers for events in the message pipeline (e.g. auto-reply, content filtering).
+- **KnowledgeEngine**: a custom knowledge-base retrieval/integration implementation used by RAG.
+- **Parser**: custom parsing of messages/content.
+- **Page**: a custom web page provided by the plugin, embeddable in the LangBot admin panel.
+
+Each plugin runs in its own process, with its lifecycle managed by the plugin runtime (discover → install deps → load → initialize → register components → ready → terminate).
+
+## How Things Connect at Runtime
+
+```
+┌──────────────┐   HTTP/API    ┌──────────────┐
+│ Browser/Web  │ ────────────► │              │
+│ (Vite SPA)   │ :3000/origin  │   LangBot    │
+└──────────────┘               │   backend    │
+                               │  (Quart)     │
+   ┌───────────────────────────┤  :5300       ├─────────────────────────┐
+   │ stdio or WebSocket          └──────────────┘   stdio or WebSocket   │
+   ▼                                                ▼
+┌──────────────┐                            ┌──────────────┐
+│ Plugin       │  separate process,         │ Box          │  code sandbox
+│ Runtime      │  launches each plugin       │ Runtime      │  Docker/nsjail/E2B
+│ :5400 / :5401│                            │ :5410        │
+└──────────────┘                            └──────────────┘
+```
+
+- **Frontend ↔ Backend**: In dev, the frontend runs standalone on `:3000` and reaches the backend `:5300` via `VITE_API_BASE_URL` in `web/.env`; in production the frontend is pre-built into static files served by the backend on the same origin.
+- **Backend ↔ Plugin Runtime**:
+  - When LangBot is **started directly** (not in a container), the backend **spawns** the runtime itself and talks over **stdio** (lightweight/personal use). stdio **cannot auto-reconnect** — after a disconnect you must restart LangBot; a common failure is an **orphan runtime process** from a previous backend still holding `5400`/`5401` — kill it and restart.
+  - When LangBot runs in a **container**, it connects to a standalone runtime over **WebSocket** (production). Control port defaults to `5400`, debug port to `5401`. Config: `plugin.runtime_ws_url` in `data/config.yaml` (e.g. `ws://langbot_plugin_runtime:5400/control/ws`).
+- **Backend ↔ Box Runtime**: The Box subsystem connects to the Box runtime over a control channel (default port `5410`), which executes sandboxed code in Docker / nsjail / E2B. Config (`box:` section of `data/config.yaml`): `box.enabled` (master switch), `box.backend` (`'local'`/`'docker'`/`'nsjail'`/`'e2b'`), `box.runtime.endpoint` (external Box runtime URL, e.g. `ws://127.0.0.1:5410`; empty = local auto-managed). As with the plugin runtime, set that endpoint and start with `--standalone-box` to connect to an external Box runtime.
+- The full guide for debugging the runtime, CLI and SDK is in [Debugging Plugin Runtime, CLI, SDK](/en/develop/plugin-runtime); detailed flags and architecture are in the `langbot-plugin-sdk` repo's `AGENTS.md`.
+
+## Development Environment Setup
+
+Full guide: [Development Configuration](/en/develop/dev-config). Summary:
+
+### Backend
+
+```bash
+pip install uv
+uv sync --dev          # uv creates a .venv/ for you; point your editor's interpreter at it
+uv run main.py         # serves API + frontend on http://127.0.0.1:5300
+```
+
+On first run the config file is generated at `data/config.yaml`. SQLite is the default (zero setup); PostgreSQL is supported. Migrations run automatically on startup.
+
+### Frontend
+
+Requires Node.js and [pnpm](https://pnpm.io/installation).
+
+```bash
+cd web
+cp .env.example .env   # Windows: copy .env.example .env
+pnpm install
+pnpm dev               # http://127.0.0.1:3000 (npm install / npm run dev also work)
+```
+
+`pnpm dev` reads `VITE_API_BASE_URL` from `web/.env` so the dev frontend can reach the backend on `:5300`.
+
+### Code Formatting
+
+CI runs lint + format checks. Install the pre-commit hooks so the same checks run locally before each commit:
+
+```bash
+uv run pre-commit install
+```
+
+### Database Migrations
+
+After changing ORM models, generate a migration:
+
+```bash
+# Run from the project root (requires data/config.yaml)
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "describe your change"
+```
+
+`autogenerate` detects schema changes (add/drop columns and tables, type changes), but **data migrations** (e.g. mutating JSON field contents) must be hand-written into the generated script. `env.py` sets `render_as_batch=True`, so SQLite's ALTER TABLE limits are handled automatically — no per-database branching needed. Migrations execute automatically on startup.
+
+## Development Standards
+
+- LangBot is a global project: **all code comments and docstrings must be in English**, and every user-facing string must support **i18n** (`en_US` + `zh_Hans` at minimum, plus `ja_JP` where the repo already has it).
+- LangBot is adopted in both toC and toB scenarios — always consider compatibility and security.
+- **Commit message format**: `<type>(<scope>): <subject>`
+  - `type`: one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, etc.
+  - `scope`: the affected package/module/file/class.
+  - `subject`: a concise description of the change.
+
+## Agent-Facing Surfaces (MCP + Skills)
+
+LangBot is built to be **agent-friendly**, with three agent-facing surfaces that
+are kept in lockstep with the HTTP API:
+
+1. **MCP server** — `src/langbot/pkg/api/mcp/` exposes a curated subset of the API
+   as MCP tools at `/mcp` (API-key authenticated, including `api.global_api_key`
+   from config.yaml). `server.py` defines the tools (calling the service layer
+   directly); `mount.py` is the ASGI dispatcher.
+2. **In-repo skills** — the `skills/` directory is the **single source of truth**
+   for all LangBot agent skills (plugin dev, core dev, deployment, e2e, MCP
+   operations). Docs and the landing page link here rather than copying content.
+3. **API-key auth** — `api.global_api_key` (config.yaml) authenticates the API and
+   MCP without a login session; see `docs/API_KEY_AUTH.md`.
+
+> **Maintenance rule (important).** When you add, remove, or change an HTTP API
+> endpoint that should be agent-accessible, you MUST update **both** the matching
+> MCP tool in `src/langbot/pkg/api/mcp/server.py` **and** the relevant skill under
+> `skills/` (especially `skills/skills/langbot-mcp-ops`). API, MCP tools, and
+> skills are one system — drift between them is a bug.
+
+## Some Principles
+
+- Keep it simple, stupid.
+- Entities should not be multiplied unnecessarily.
+- 八荣八耻 (Eight Honors and Eight Shames):
+
+    Shame in guessing interfaces; honor in carefully checking them.
+    Shame in vague execution; honor in seeking confirmation.
+    Shame in assuming business logic; honor in human confirmation.
+    Shame in inventing interfaces; honor in reusing existing ones.
+    Shame in skipping verification; honor in proactive testing.
+    Shame in breaking architecture; honor in following conventions.
+    Shame in pretending to understand; honor in honest ignorance.
+    Shame in blind changes; honor in careful refactoring.

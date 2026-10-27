@@ -1,0 +1,221 @@
+---
+title: "沙箱配置"
+description: "配置 LangBot Box Runtime，选择 Docker、nsjail、E2B，或显式启用不具备隔离能力的 Host 后端。"
+---
+
+Box 由 LangBot 主进程配置，Box Runtime 负责实际执行。常规部署只需要选择后端、设置工作目录和安全预设。Docker、nsjail 和 E2B 提供沙箱环境；Host 后端则直接在 Box Runtime 所在机器上执行命令。
+
+<Note>
+本页所有 `box.*` 配置都写在 `data/config.yaml` 中。配置文件的位置和加载机制详见[系统环境设置](../../deploy/settings)。
+</Note>
+
+## 推荐配置
+
+```yaml
+box:
+  enabled: true
+  backend: 'local'        # 自动从 Docker / Nsjail 里选可用的
+  local:
+    profile: 'default'
+    host_root: './data/box'
+    skills_root: 'skills'
+  docker:
+    cpu_limit_enabled: true
+```
+
+- `enabled`：沙箱总开关。设为 `false` 时，沙箱内置工具、Skill 添加/编辑、stdio MCP 托管等依赖 Box 的能力都不可用。
+- `backend`：见下文「后端选择」。
+- `local.profile`：安全预设，控制网络、挂载和资源限制。
+- `local.host_root`：主机上的沙箱工作目录，会映射为沙箱内的 `/workspace`。
+- `local.skills_root`：Skill 包目录；相对路径解析到 `host_root` 下，默认 `host_root/skills`。
+- `docker.cpu_limit_enabled`：是否为 Docker 沙箱容器启用 CPU 限制；设为 `false` 时不传 `docker run --cpus`，内存和 PID 限制仍然保留。
+
+<Note>
+Skills 只从 Box Runtime 管理的 skill store 加载。Box Runtime 或后端不可用时 Skill 列表为空，新增 / 编辑 / `register_skill` 都不可用；不会回退扫描 `data/skills/`。
+</Note>
+
+## 后端选择
+
+Box 可以跑在**本机容器**、**云端沙箱**，也可以直接使用 **Box Runtime 主机进程**。`box.backend` 选择走哪一种：
+
+| `backend` | 跑在哪 | 行为 |
+|-----------|--------|------|
+| `local`（默认） | 本机容器 | 自动从 Docker / Nsjail 里选可用的（Docker 优先） |
+| `docker` | 本机容器 | 强制使用 Docker，需要 Docker daemon |
+| `nsjail` | 本机容器 | 强制使用 Nsjail（仅 Linux），不支持自定义镜像 |
+| `e2b` | 云端 | 使用 [E2B](https://e2b.dev) 云沙箱，需要 API Key |
+| `host` | Box Runtime 主机 | 直接以 Box Runtime 用户权限启动本机进程；仅支持 POSIX 系统且需要 `sh` |
+
+`local` 是「自动选择」的简写，不是和 `docker`/`nsjail` 平级的第四种后端。它只会尝试 Docker 和 Nsjail，**永远不会自动选择 `host`**。本机后端使用 `box.local.*` 中的工作区配置；云端后端使用 `box.e2b.*`。
+
+<Warning>
+`host` **不是沙箱**。命令拥有 Box Runtime 用户的主机权限，没有文件系统、进程、网络、namespace、cgroup、rootfs 或镜像隔离，也不保证只读挂载和硬磁盘配额。它只适合单用户、可信输入的本地开发环境；不要用于公开服务、共享主机或执行不受信任的代码。
+</Warning>
+
+<Note>
+`backend` 是强制值。设为 `docker` 时如果 Docker 不可用，**不会**自动回退到 Nsjail 或 E2B——只有 `local` 会自动 fan-out。
+
+也可以用环境变量 `BOX__BACKEND` 覆盖配置（优先级高于 `config.yaml`）。
+</Note>
+
+## 安全预设
+
+`box.local.profile` 控制 Docker / Nsjail 本机沙箱后端的网络、挂载和资源限制：
+
+| Profile | 网络 | 挂载 | 资源 | 建议场景 |
+|---------|------|------|------|----------|
+| `default` | 开启 | 读写 | 默认限制 | 默认选择，可访问 API 或下载依赖 |
+| `offline` | 关闭 | 读写 | 默认限制 | 无需联网的任务，保留原 default 配置 |
+| `offline_readonly` | 关闭 | 只读 | 更严格 | 读取不可信文件 |
+| `network_basic` | 开启基础网络 | 读写 | 默认限制 | 需要访问 API 或下载依赖 |
+| `network_extended` | 开启完整网络 | 读写 | 更宽松 | 开发、调试、复杂任务 |
+
+`network_basic` 保留兼容，其配置与 `default` 相同。
+
+优先使用最小权限：不需要网络就用 `offline` 或 `offline_readonly`；只把必要目录加入 `allowed_mount_roots`。
+
+<Note>
+Host 后端不执行这些隔离策略。即使配置了 profile、CPU / 内存 / PID 限制、只读 rootfs 或网络关闭，主机进程也不受这些沙箱边界保护。
+</Note>
+
+## 本机工作区配置（box.local.*）
+
+Docker、Nsjail 和 Host 共用工作区路径配置；隔离与资源配置仅在对应沙箱后端能够实施时生效：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `local.profile` | `default` | Docker / Nsjail 安全预设；Host 不提供对应隔离 |
+| `local.image` | 空 | Docker 后端的自定义镜像；空 = 用 profile 默认 |
+| `local.host_root` | `./data/box` | 主机工作目录基础路径，映射为沙箱内 `/workspace` |
+| `local.default_workspace` | 空 | 默认工作空间名；空 = `<host_root>/default` |
+| `local.skills_root` | `skills` | Skill 包目录；相对路径解析到 `host_root` 下 |
+| `local.allowed_mount_roots` | `[host_root]` | Agent 可请求挂载的主机目录白名单 |
+| `local.workspace_quota_mb` | `null` | 工作区磁盘配额（MB），`null` = 用 profile 默认；Host 不提供硬配额保证 |
+| `default_memory_mb` | `1536` | MCP stdio 进程内存上限（MB）；Host 无法用 cgroup 强制执行 |
+
+## Host 后端（可信本地开发）
+
+Host 是依赖最少的本地选项，不需要安装 Docker 或 Nsjail。它必须显式选择：
+
+```yaml
+box:
+  enabled: true
+  backend: 'host'
+  local:
+    host_root: './data/box'
+    skills_root: 'skills'
+```
+
+WebUI、Agent 工具和调用方式不变：仍然使用相同的会话作用域、`exec/read/write/edit/glob/grep`、Skills 和 stdio MCP。区别只在执行层：
+
+- `/workspace`、`workdir` 和 Skill 挂载路径会转换为 Box Runtime 主机上的实际路径。
+- 子进程只继承最小的 PATH、语言和终端环境，再叠加请求中显式传入的变量；LangBot / Box 控制密钥不会自动进入子进程环境。这能减少意外泄露，但不构成文件系统隔离。
+- `exec` 和托管进程在独立进程组中启动；超时、取消、停止、删除会话和 Runtime 关闭都会终止对应进程树。
+- 空闲回收、托管进程保活和 `persistent` 规则与其他后端一致。
+- 状态接口会返回 `unsafe_direct_execution: true`，便于运维侧识别当前没有沙箱隔离。
+
+<Note>
+Host 指的是 **Box Runtime 所在的环境**。LangBot 直接启动本地 stdio Box Runtime 时，它是当前机器；如果 Box Runtime 本身运行在容器里，命令会直接运行在那个容器中，而不是自动穿透到物理宿主机。
+</Note>
+
+Host MVP 支持带 `sh` 的 POSIX 系统（Linux / macOS）。Windows 请先使用 WSL；原生 Windows 进程后端尚未支持。
+
+外部 WebSocket Box Runtime 使用 Host 时，必须在 LangBot 与 Box Runtime 两侧设置相同的强随机 `LANGBOT_BOX_CONTROL_TOKEN`。本地自动管理的 stdio Box Runtime 不需要额外配置该令牌。启用了托管沙箱 admission 的 Cloud 环境仍会按隔离能力和指定后端进行校验，Host 不会绕过这些检查。
+
+## Box 沙箱内存配置
+
+`box.default_memory_mb` 控制每个 stdio 模式 MCP 服务进程的 nsjail cgroup 内存上限。
+
+Host 后端不提供 cgroup 内存隔离，因此该值不能限制 Host 上的 MCP 进程。
+
+| 配置项 | 说明 | 默认值 |
+|---|---|---|
+| `box.default_memory_mb` | MCP 进程内存上限（MB）| 1536 |
+
+可通过 config.yaml 或环境变量 `BOX__DEFAULT_MEMORY_MB` 设置。
+
+**为什么需要调整：**
+- Node.js 类 MCP（npx/bunx 启动）：V8 引擎 + WebAssembly 模块初始化需要较多内存，建议 ≥ 1536 MB
+- Python 类 MCP（uvx 启动）：通常 512 MB 已足够，但用默认值也没问题
+- 内存不足时进程会被强制终止（return_code=137），在日志里表现为「Box managed process exited unexpectedly」
+
+**单个 MCP 服务覆盖：** 在 MCP 配置的 `box.memory_mb` 字段单独设置，优先级高于全局默认值。
+
+## Docker 后端配置（box.docker.*）
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `docker.cpu_limit_enabled` | `true` | 仅 Docker 后端生效。设为 `false` 时，Docker 沙箱容器启动时不会附带 `--cpus`；`--memory` 和 `--pids-limit` 仍会照常应用。 |
+
+## 云端后端配置（box.e2b.*）
+
+设为 `backend: 'e2b'` 后配置：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `e2b.api_key` | 空 | E2B API Key，也可用 `E2B_API_KEY` 环境变量 |
+| `e2b.api_url` | 空 | 自建 E2B 服务地址，也可用 `E2B_API_URL` |
+| `e2b.template` | 空 | 默认 E2B 模板 ID |
+
+E2B 不需要本机 Docker 或 Nsjail，每次执行都走远程沙箱。
+
+## Docker Compose 部署
+
+Docker Compose 部署时，沙箱配置写在 `langbot` 服务上。LangBot 启动后会通过 INIT RPC 把配置下发给 `langbot_box`。
+
+```yaml
+services:
+  langbot_box:
+    image: rockchin/langbot:latest
+    container_name: langbot_box
+    profiles: ["box", "all"]
+    volumes:
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "box"]
+
+  langbot:
+    image: rockchin/langbot:latest
+    volumes:
+      - ./data:/app/data
+    environment:
+      - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - BOX__LOCAL__SKILLS_ROOT=skills
+      - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
+      - BOX__DOCKER__CPU_LIMIT_ENABLED=${LANGBOT_BOX_DOCKER_CPU_LIMIT_ENABLED:-true}
+```
+
+<Warning>
+`langbot_box` 需要访问 Docker daemon。只在受信任环境中挂载 `docker.sock`；并保持 Box 根目录在主机和 `langbot_box` 容器内路径一致。
+</Warning>
+
+如需 LangBot 连接外部 Box Runtime（例如远程主机），用 `box.runtime.endpoint` 指定 URL：
+
+```yaml
+box:
+  runtime:
+    endpoint: 'ws://192.168.1.10:5410'
+```
+
+## 环境变量
+
+| 环境变量 | 写入配置 |
+|----------|----------|
+| `BOX__ENABLED` | `box.enabled` |
+| `BOX__BACKEND` | `box.backend` |
+| `BOX__LOCAL__PROFILE` | `box.local.profile` |
+| `BOX__LOCAL__IMAGE` | `box.local.image` |
+| `BOX__LOCAL__HOST_ROOT` | `box.local.host_root` |
+| `BOX__LOCAL__DEFAULT_WORKSPACE` | `box.local.default_workspace` |
+| `BOX__LOCAL__SKILLS_ROOT` | `box.local.skills_root` |
+| `BOX__LOCAL__ALLOWED_MOUNT_ROOTS` | `box.local.allowed_mount_roots`，逗号分隔 |
+| `BOX__LOCAL__WORKSPACE_QUOTA_MB` | `box.local.workspace_quota_mb` |
+| `BOX__DEFAULT_MEMORY_MB` | `box.default_memory_mb` |
+| `BOX__DOCKER__CPU_LIMIT_ENABLED` | `box.docker.cpu_limit_enabled` |
+| `BOX__E2B__API_KEY` | `box.e2b.api_key` |
+| `BOX__E2B__API_URL` | `box.e2b.api_url` |
+| `BOX__E2B__TEMPLATE` | `box.e2b.template` |
+
+<Note>
+不要在 `langbot_box` 服务上设置 `BOX__*` 或 `LANGBOT_BOX_*` 变量；这些变量不会被 Box Runtime 直接读取——它的配置由 LangBot 通过 INIT RPC 下发。
+</Note>

@@ -1,0 +1,204 @@
+---
+title: "LangBot 4.6.0 External Knowledge Base Tutorial: Integrating Dify with LangBot for RAG-powered Conversations"
+description: "LangBot 4.6.0 External Knowledge Base Tutorial: Integrating Dify with LangBot for RAG-powered Conversations"
+---
+
+This article is synchronized from the LangBot Blog. [Read the canonical version](https://langbot.app/en/blog/dify-langbot-rag-knowledge-base).
+
+Published 2025-12-02 · Author: LangBot Team
+
+![LangBot 4.6.0 External Knowledge Base Tutorial: Integrating Dify with LangBot for RAG-powered Conversations](/images/articles/source/images/covers/dify-rag.png)
+
+LangBot 4.6.0 introduces external knowledge base functionality, allowing users to integrate external knowledge retrieval services such as Dify and RAGFlow into conversation pipelines. This tutorial demonstrates how to combine Dify knowledge base with LangBot to enable intelligent conversations based on domain-specific knowledge.
+
+## Feature Overview
+
+The external knowledge base feature enables LangBot to:
+- Connect to various external knowledge retrieval services (Dify, RAGFlow, etc.)
+- Provide professional answers based on domain-specific knowledge
+- Flexibly extend knowledge retrieval capabilities through the plugin system
+- Configure conveniently through WebUI without manual configuration file editing
+
+## Prerequisites
+
+Before starting, you need:
+1. Deploy LangBot 4.6.0 or higher
+2. Have a Dify account (register at https://cloud.dify.ai)
+3. Configure a conversation model (this tutorial uses claude-opus-4-1-20250805)
+
+## Step 1: Deploy LangBot
+
+### 1.1 View LangBot Repository
+
+First, visit the [LangBot GitHub repository](https://github.com/langbot-app/LangBot) to understand the project. LangBot is a production-grade instant messaging bot development platform supporting multiple messaging platforms and LLM services.
+
+### 1.2 Learn About External Knowledge Base Feature
+
+Visit the [official LangBot documentation](https://langbot.app/docs) to view the external knowledge base usage instructions. The documentation provides detailed explanations on how to build built-in knowledge bases and connect to external knowledge bases.
+
+### 1.3 Start LangBot
+
+Use the `uvx langbot` command to quickly start LangBot, then visit http://127.0.0.1:5300 for initialization. Fill in your email and password to complete registration, then log in.
+
+### 1.4 Dashboard After Login
+
+After successfully logging in, you will see the LangBot WebUI dashboard.
+
+## Step 2: Configure Conversation Model
+
+Before using the knowledge base, you need to configure a conversation model.
+
+### 2.1 Navigate to Model Configuration Page
+
+Click "Models" in the left navigation bar to enter the model configuration page.
+
+### 2.2 Add New Model
+
+Click the "+" button to open the model configuration dialog.
+
+### 2.3 Fill in Model Information
+
+Fill in the following information:
+- **Model Name**: claude-opus-4-1-20250805
+- **Model Provider**: New API
+- **Request URL**: Your API endpoint
+- **API Key**: Your API Key
+- **Abilities**: Check Vision Ability and Function Call
+
+Click "Submit" to save the configuration.
+
+## Step 3: Create Knowledge Base in Dify
+
+### 3.1 Log in to Dify Platform
+
+Visit https://cloud.dify.ai and log in to your account.
+
+### 3.2 Navigate to Knowledge Page
+
+Click "Knowledge" in the top navigation bar to enter the knowledge base management page.
+
+### 3.3 Create New Knowledge Base
+
+Click "Create Knowledge" to start creating a knowledge base.
+
+### 3.4 Select Data Source
+
+You can choose from the following methods to import data:
+- **Import from file**: Upload document files
+- **Sync from Notion**: Sync from Notion
+- **Sync from website**: Crawl website content
+
+This tutorial selects "Import from file" and uploads prepared LangBot documentation.
+
+### 3.5 Upload Document
+
+After uploading the document, the system will display file information. Click "Next" to proceed.
+
+### 3.6 Configure Document Processing Parameters
+
+On the document processing page, you can configure chunk settings, index method, and retrieval settings:
+- **Chunk Settings**: General mode, maximum chunk length 1024 characters
+- **Index Method**: High Quality (uses embedding model)
+- **Retrieval Setting**: Vector Search
+
+Click "Save & Process" to start processing the document.
+
+### 3.7 Knowledge Base Processing
+
+The system starts processing the document and generating vector embeddings.
+
+### 3.8 Embedding Completed
+
+After processing is complete, the knowledge base is ready to use.
+
+## Step 4: Get Dify API Information
+
+### 4.1 Open Service API Panel
+
+Click the "Service API" button in the bottom right. Record the following information:
+- **Service API Endpoint**: https://api.dify.ai/v1
+- **Dataset ID**: Get from the URL
+
+### 4.2 Get API Key
+
+Click the "API Key" button to view the API key. Record your API Key for use in subsequent configuration.
+
+## Step 5: Configure External Knowledge Base in LangBot
+
+### 5.1 Navigate to Knowledge Page
+
+In the LangBot WebUI, click "Knowledge" in the left navigation bar.
+
+### 5.2 Switch to External Knowledge Base Tab
+
+Click the "External" tab.
+
+### 5.3 Add External Knowledge Base
+
+Click the "+" button to open the add external knowledge base dialog. In this dialog, you need to:
+1. **Knowledge Base Name**: Give the knowledge base a name
+2. **Knowledge Base Description**: Add a description (optional)
+3. **Retriever**: Select a knowledge retriever plugin
+
+**Note**: Using an external knowledge base requires installing the corresponding knowledge retriever plugin first. You can search for and install the Dify knowledge retriever plugin in the [plugin marketplace](https://space.langbot.app/market?category=KnowledgeRetriever).
+
+After installing the plugin, select the corresponding plugin from the Retriever dropdown, then fill in the configuration information obtained from Dify (API Endpoint, API Key, Dataset ID).
+
+## Step 6: Configure Pipeline
+
+After configuring the external knowledge base, you need to enable it in the pipeline:
+
+1. Navigate to the "Pipelines" page
+2. Edit or create a new pipeline
+3. On the "AI Capabilities" page, select "Built-in Agent" as the runner
+4. In the knowledge base selection, check the external knowledge base you just configured
+5. Save the pipeline configuration
+
+## Step 7: Test the Effect
+
+Test in the pipeline's "Conversation Testing" page, or bind the pipeline to a bot for actual conversation testing. When users ask questions, LangBot will automatically retrieve relevant content from the Dify knowledge base and generate answers combined with the retrieved knowledge.
+
+## Frequently Asked Questions
+
+### 1. How to Install Knowledge Retriever Plugins?
+
+Visit the [LangBot plugin marketplace](https://space.langbot.app/market), search for "Knowledge Retriever" or "Dify", find the corresponding plugin and click install.
+
+### 2. Which External Knowledge Retrieval Services Are Supported?
+
+LangBot currently supports multiple external knowledge retrieval services through the plugin system, including:
+- Dify
+- RAGFlow
+- Other custom knowledge retrieval services
+
+Specific supported services can be viewed in the plugin marketplace.
+
+### 3. What's the Difference Between External and Built-in Knowledge Bases?
+
+- **Built-in Knowledge Base**: Data is stored locally in LangBot, with LangBot handling vectorization and retrieval
+- **External Knowledge Base**: Data is stored in external services (like Dify), with retrieval performed through API calls
+
+The advantage of external knowledge bases is the ability to leverage the capabilities of professional LLMOps platforms, such as Dify's advanced document processing and multiple retrieval strategies.
+
+### 4. Can Multiple Knowledge Bases Be Used Simultaneously?
+
+Yes. In the pipeline configuration, you can check multiple knowledge bases (built-in or external) simultaneously, and LangBot will comprehensively utilize the content from these knowledge bases to generate answers.
+
+## Summary
+
+Through this tutorial, you learned how to:
+1. Create a knowledge base and upload documents on the Dify platform
+2. Obtain Dify API key and related configuration information
+3. Configure a conversation model in LangBot
+4. Add an external knowledge base in LangBot
+5. Configure pipelines to use external knowledge bases
+
+The external knowledge base feature provides LangBot with more powerful and flexible knowledge management capabilities. Combined with professional LLMOps platforms like Dify, you can build more intelligent and professional conversational bots.
+
+## Related Resources
+
+- [LangBot Official Website](https://langbot.app)
+- [LangBot Documentation](https://langbot.app/docs)
+- [LangBot GitHub](https://github.com/langbot-app/LangBot)
+- [Dify Official Website](https://dify.ai)
+- [LangBot Plugin Marketplace](https://space.langbot.app/market)

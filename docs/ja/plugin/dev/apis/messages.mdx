@@ -1,0 +1,65 @@
+---
+title: "メッセージプラットフォームエンティティ"
+---
+
+LangBotは複数のメッセージングプラットフォームをサポートしており、各プラットフォームには異なる`メッセージエンティティ`フォーマットがあります。これらの違いを抽象化するために、統一された標準を実装しました。プラグイン開発者は、プラグイン内でこのページに記載されているメッセージエンティティを習得して使用するだけで、LangBotの内部メッセージ処理ロジックがメッセージの解析と変換を自動的に処理します。
+
+## メッセージチェーン
+
+メッセージングプラットフォーム上の`メッセージ`は、AI対話に使用されるメッセージとは異なります。メッセージングプラットフォーム上のメッセージは、`メッセージチェーン`の形式で記述されます。QQに表示される各独立したメッセージはメッセージチェーンであり、`テキスト`、`画像`、`@メンション`などのさまざまな`メッセージチェーンコンポーネント`を含むことができます。例えば:
+
+![](/images/zh/plugin/dev/apis/plugin_dev_messages_01.png)
+
+これは、1つのPlainコンポーネント(Hello World)と1つのImageコンポーネント(Usagi)を含むメッセージチェーンです。
+
+メッセージチェーンとメッセージチェーンコンポーネントの定義は、`langbot_plugin.api.entities.builtin.platform.message`にあります。
+
+### メッセージチェーンの構築
+
+まず、`langbot_plugin.api.entities.builtin.platform.message`パッケージをインポートして、その中のメッセージコンポーネントを使用してください。
+
+```python
+from langbot_plugin.api.entities.builtin.platform.message import *
+
+# テキスト「Hello LangBot」と画像(URLから)を含むメッセージを構築
+msg_chain = MessageChain([
+    Plain(text="Hello LangBot"),
+    Image(url='https://qchatgpt.rockchin.top/langbot-logo.png')
+])
+
+# @全員とテキスト「Hello LangBot」を含むメッセージを構築
+msg_chain = MessageChain([
+    AtAll(),
+    Plain(text="Hello LangBot")
+])
+
+# @特定のメンバーとテキスト「Hello LangBot」を含むメッセージを構築
+msg_chain = MessageChain([
+    At(target=123456),
+    Plain(text="Hello LangBot")
+])
+```
+
+現在サポートされているメッセージチェーンコンポーネント:
+
+- `Source` - ソースメッセージチェーン情報。メッセージングプラットフォームから受信したメッセージには、メッセージ情報を記録するためにメッセージチェーンの先頭にこのコンポーネントが含まれます
+- `Plain` - プレーンテキストメッセージ
+- `Quote` - 引用メッセージ
+- `Image` - 画像メッセージ
+- `AtAll` - @全員メッセージ
+- `At` - @特定のメンバーメッセージ
+- `Voice` - 音声メッセージ
+  - メッセージングプラットフォームのサポートを確認する必要があります
+- `Forward` - 転送メッセージ
+  - 多くのプラットフォームでサポートされていないため、推奨されません
+- `File` - ファイルメッセージ
+
+コンポーネントを作成する際は、名前付きパラメータを使用する必要があります。具体的な使用方法については、ソースコード`langbot_plugin.api.entities.builtin.platform.message`の定義を確認してください。
+
+## その他のエンティティ
+
+上記のエンティティに加えて、`Friend`や`Group`などのエンティティもあります。これらのエンティティは`langbot_plugin.api.entities.builtin.platform.entities`で定義されています。
+
+## プラットフォーム API
+
+ユーザー取得、グループ管理、固有の操作には[プラットフォーム API](/ja/plugin/dev/apis/platform)を使用してください。Runner も同じ `self.plugin` を使用し、現在の会話には `ctx.reply()` で返信します。

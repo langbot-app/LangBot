@@ -1,0 +1,51 @@
+---
+title: "個人 WeChat（OpenClaw）"
+description: "LangBot で個人 WeChat AI ボットを構築。大規模言語モデルを WeChat アカウントに接続。"
+---
+
+## はじめに
+
+[OpenClaw](https://github.com/dingxiang-me/OpenClaw-Wechat) はオープンソースの AI Agent フレームワークです。OpenClaw WeChat アダプターを使用することで、LangBot を個人の WeChat アカウントに接続でき、単一チャット、ストリーミング出力、ホワイトリスト制御などの機能をサポートしています。
+
+## クイックスキャンログイン（おすすめ）
+
+LangBot は WeChat のワンクリックスキャンログインをサポートしており、クレデンシャルを自動入力します。手動でのトークン入力は不要です。
+
+<Warning>
+スマートフォンの WeChat バージョンが **8.0.69** 以上であることを確認してください。それ以外の場合、正常に動作しない可能性があります。
+</Warning>
+
+1. LangBot WebUI を開き、**ボット > ボットを作成** に移動
+2. ボット名を入力し、プラットフォーム/アダプターで `個人微信ボット` を選択
+3. 表示される **スキャンログイン** エリアで **開始** ボタンをクリック
+
+![スキャンログインを選択](/images/zh/deploy/bots/wexin/wexin_scan_login.png)
+
+4. WeChat で QR コードをスキャンし、手机端で「新しい OpenClaw を WeChat に接続」をタップし **続行** をクリック
+
+![スキャンして接続](/images/zh/deploy/bots/wexin/wexin_scan_connect.png)
+
+5. 認証成功後、トークンとアカウント ID がフォームに**自動入力**されます
+
+![設定自動入力](/images/zh/deploy/bots/wexin/wexin_config_auto_fill.png)
+
+6. **送信** をクリックして完了
+
+<Warning>
+接続に失敗した場合は、WeChat のバージョンが 8.0.69 以上であることを確認してください。
+</Warning>
+
+### ログイン成功の確認
+
+スキャンが成功すると、スマートフォンに ClawBot のチャット画面が表示されます。
+
+![WeChat ClawBot チャット画面](/images/zh/deploy/bots/wexin/wexin_05.jpg)
+
+同時に、LangBot のログに接続成功のメッセージが表示され、設定ページのトークンとアカウントが自動的に更新されます。これでログイン成功です。
+
+![ログ情報](/images/zh/deploy/bots/wexin/wexin_06.png)
+![設定ページ](/images/zh/deploy/bots/wexin/wexin_07.png)
+
+## 使い方
+
+ログイン成功後、スキャンしたアカウントで先ほど入った ClawBot のチャット画面に話しかけると、LangBot が自動的に返信します。

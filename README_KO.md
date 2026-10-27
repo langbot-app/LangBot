@@ -186,3 +186,5 @@ LangBot을 더 나은 프로젝트로 만들어 주신 모든 [기여자](https:
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[문서 소스](https://github.com/langbot-app/LangBot/tree/main/docs) · [langbot-docs mirror](https://github.com/langbot-app/langbot-docs)

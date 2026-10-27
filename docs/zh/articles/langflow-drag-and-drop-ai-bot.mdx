@@ -1,0 +1,207 @@
+---
+title: "用 Langflow 拖拽式工作流构建多平台 AI 机器人"
+description: "用 Langflow 拖拽式工作流构建多平台 AI 机器人"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/langflow-drag-and-drop-ai-bot).
+
+发布于 2025-12-05 · 作者：LangBot Team
+
+![用 Langflow 拖拽式工作流构建多平台 AI 机器人](/images/articles/source/images/covers/langflow.png)
+
+用可视化工作流驱动 QQ、微信、Telegram、Discord 等平台的聊天机器人，无需编写代码。
+
+---
+
+[LangBot](https://github.com/langbot-app/LangBot) 是一个开源即时通讯机器人平台，可以连接 Langflow、n8n、Dify、FastGPT、Coze 等 AI 工作流引擎，以及微信、QQ、飞书、钉钉、Telegram、Discord、Slack、LINE 等消息平台。本教程演示如何将 Langflow 的可视化工作流作为 LangBot 的对话引擎。
+
+## 为什么选择这套方案
+
+- **真正的多平台**：一个工作流同时驱动 8+ 个消息平台
+- **可视化编排**：拖拽式对话设计，支持条件分支、多轮对话、外部 API 调用
+- **灵活的 AI 模型**：支持 OpenAI、Claude、Gemini、DeepSeek 以及本地模型
+- **完全开源**：LangBot 和 Langflow 都是开源项目，可免费部署和二次开发
+
+## 准备工作
+
+- Python 3.10+
+- Docker（推荐用于快速部署）
+- OpenAI API Key 或其他 LLM 服务的 API Key
+
+## 第一步：部署 LangBot
+
+用 uvx 一行命令启动：
+
+```bash
+uvx langbot
+```
+
+首次运行会自动初始化并打开浏览器访问 http://127.0.0.1:5300。
+
+![LangBot Initial Page](/images/articles/external/0c8aa2c940ab-01-langbot-initial-page.png)
+
+注册后登录进入控制台：
+
+![LangBot Dashboard](/images/articles/external/b93d97b5b830-04-langbot-dashboard.png)
+
+## 第二步：部署 Langflow
+
+用 Docker 快速部署：
+
+```bash
+docker run -d --name langflow -p 7860:7860 langflowai/langflow:latest
+```
+
+访问 http://localhost:7860 进入 Langflow：
+
+![Langflow Welcome Page](/images/articles/external/7e7ebfc3ba58-01-langflow-welcome.png)
+
+## 第三步：创建 Langflow 工作流
+
+在 Langflow 中选择 "Basic Prompting" 模板快速开始：
+
+![Langflow Template Selection](/images/articles/external/b304cebf8ce9-02-langflow-template-selection.png)
+
+这个模板包含四个基础组件：
+- **Chat Input**：接收用户消息
+- **Prompt**：设置系统提示词
+- **Language Model**：调用 LLM 生成回复
+- **Chat Output**：返回结果
+
+![Langflow Workflow Editor](/images/articles/external/6e24402fd4a8-03-langflow-workflow-editor.png)
+
+### 配置语言模型
+
+点击 Language Model 组件进行配置：
+
+1. **Model Provider**：选择 OpenAI（或其他兼容的提供商如 SiliconFlow、New API）
+2. **Model Name**：选择 gpt-4o-mini 或 deepseek-chat
+3. **OpenAI API Key**：填入你的 API Key
+
+![Langflow OpenAI API Key Configured](/images/articles/external/bcd91ef5e4b3-14-langflow-openai-api-key-configured.png)
+
+> 提示：你可以使用 OpenAI 兼容的 API 服务，比如 SiliconFlow 或 New API，只需修改 Base URL 即可。
+
+配置完成后保存工作流。
+
+## 第四步：获取 Langflow API 信息
+
+### 生成 API Key
+
+在 Langflow 右上角：Settings → API Keys，进入 API Keys 页面：
+
+![Langflow API Keys Page](/images/articles/external/21fc47358066-05-langflow-api-keys-page.png)
+
+点击 Create New Key：
+
+![Langflow Create API Key Dialog](/images/articles/external/8f04c7b00759-06-langflow-create-api-key-dialog.png)
+
+生成并保存 API Key：
+
+![Langflow API Key Generated](/images/articles/external/e5a019491ef8-07-langflow-api-key-generated.png)
+
+格式：`sk-xxxxxxxxxxxxxxxxxxxxxxxx`
+
+### 获取 Flow ID
+
+从工作流编辑器的 URL 中提取：
+
+```
+http://localhost:7860/flow/{flow-id}
+```
+
+记录这个 `flow-id`。
+
+## 第五步：在 LangBot 中配置 Langflow
+
+回到 LangBot 控制台，进入 **Pipelines** 页面。
+
+点击 ChatPipeline 进行编辑，在 AI 标签页：
+
+![LangBot Pipeline AI Tab](/images/articles/external/3c7d6bc96738-08-langbot-pipeline-ai-tab.png)
+
+配置**运行器**，选择 **Langflow API**：
+
+![LangBot 运行器下拉菜单](/images/articles/external/ef9bbef78165-09-langbot-runner-dropdown.png)
+
+填写 Langflow 配置：
+
+![LangBot Langflow Config Form](/images/articles/external/82d5e2ffb9a0-10-langbot-langflow-config-form.png)
+
+配置项：
+- **Base URL**：`http://localhost:7860`（本地）或 `http://langflow:7860`（Docker 网络）
+- **API Key**：在 Langflow 中生成的 API Key
+- **Flow ID**：之前记录的 Flow ID
+
+![LangBot Langflow Config Filled](/images/articles/external/2fb54ce0f7a2-11-langbot-langflow-config-filled.png)
+
+> Docker 提示：如果两个服务都在容器中运行，确保它们在同一个网络，并使用容器名作为 Base URL。
+
+点击 **Save** 保存配置。
+
+## 第六步：测试对话
+
+在 Pipelines 页面点击 **Debug Chat** 打开调试对话界面：
+
+![LangBot Debug Chat Interface](/images/articles/external/b36d6dea3702-12-langbot-debug-chat-interface.png)
+
+输入测试消息如 "Hello"，查看 AI 回复：
+
+![LangBot Chat Test Success](/images/articles/external/3d7fa393f210-13-langbot-chat-with-response.png)
+
+## 工作原理
+
+1. 用户在消息平台发送消息
+2. LangBot 接收并传递给 Pipeline
+3. Pipeline 调用 Langflow API
+4. Langflow 执行工作流：接收输入 → 添加提示词 → 调用 LLM → 返回结果
+5. LangBot 将回复发送给用户
+
+## 常见问题
+
+**无法连接 Langflow？**
+
+检查 Base URL。如果是 Docker 部署，确保容器在同一个网络：
+
+```bash
+docker network create langbot_network
+docker network connect langbot_network langflow
+docker network connect langbot_network langbot
+```
+
+使用容器名：`http://langflow:7860`
+
+**API 调用失败？**
+
+- 确认 API Key 和 Flow ID 正确
+- 验证 Langflow 中的 Language Model 已配置有效的 LLM API Key
+
+## 高级应用场景
+
+Langflow 的强大之处在于可以可视化编排复杂的 AI 工作流：
+
+- **多轮记忆**：添加 Memory 组件实现上下文理解
+- **条件分支**：根据用户输入执行不同逻辑
+- **外部 API 集成**：连接数据库、搜索引擎、第三方服务
+- **多 Agent 协作**：多个 LLM 模型协同工作
+- **RAG 应用**：集成向量数据库实现知识库问答
+
+所有这些都可以通过拖拽完成，无需编写代码。
+
+## 总结
+
+通过 LangBot + Langflow，你可以快速构建强大的多平台 AI 聊天机器人。Langflow 提供可视化工作流编排，LangBot 负责消息平台接入，两者结合形成了从工作流设计到多平台部署的完整闭环。
+
+这套方案特别适合：
+- 需要在多个平台提供相同 AI 能力的场景
+- 团队希望快速迭代和测试不同对话流程
+- 开发者希望在不深入编码的情况下构建复杂 AI 应用
+
+## 相关资源
+
+- [LangBot 官网](https://langbot.app) | [文档](https://langbot.app/docs) | [GitHub](https://github.com/langbot-app/LangBot)
+- [Langflow 官网](https://www.langflow.org) | [文档](https://docs.langflow.org) | [GitHub](https://github.com/langflow-ai/langflow)
+
+---
+
+*本文基于 LangBot 最新版本编写。LangBot 还支持集成 Dify、n8n、FastGPT、Coze 等 AI 平台，可根据需求选择合适的工作流引擎。*

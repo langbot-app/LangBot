@@ -1,0 +1,43 @@
+---
+title: "Lucky Lilla Desktop"
+description: "Satori プロトコル（LLOneBot）経由で LangBot を接続し、対応クライアントで AI ボットを運用。"
+---
+
+Satoriプロトコル経由で接続するため、アダプターとして``Satori``を選択する必要があります。
+
+# LuckyLillia
+
+- [LuckyLillia](https://github.com/LLOneBot/LuckyLilliaBot) Satoriプロトコルを使用するためにクライアントをインストールしてください
+
+LuckyLilliaのインストールチュートリアル: https://luckylillia.com/guide/choice_install
+
+![画像1](/images/zh/deploy/bots/satori/llbot_local_setting.png)
+
+アドレスフィールドのIPアドレスがLangBotを実行しているホストのアドレスであることを確認してください（同じネットワーク内で実行している場合は```127.0.0.1```を使用）。デフォルトポート``5600``は必要に応じて変更できます。トークンの設定を推奨します。
+>
+> ![画像2](/images/zh/deploy/bots/satori/llbot_open_setting.png)
+>
+> この画像はパブリックネットワーク設定を示しています。IPアドレスがLangBotを実行しているホストのアドレスであることを確認してください。この場合、LangBotの該当ポートを公開する必要があります。
+
+## LangBot 連携
+
+次に、LangBotの設定ページを開きます。
+
+ボットをクリックし、追加をクリックします。
+
+`プラットフォーム/アダプター`で`Satori`を選択します。
+
+![画像3](/images/zh/deploy/bots/satori/llone_langbot_build.png)
+> デフォルト設定（ローカルネットワーク）を使用する場合、パラメータを変更する必要はありません。
+
+作成後もパラメータを調整できます。
+
+![画像4](/images/zh/deploy/bots/satori/llone_langbot_setting.png)
+
+このアダプターが有効になっていることを確認してください。
+
+![画像5](/images/zh/deploy/bots/satori/satori_platform_open.png)
+
+<Info>
+注意：複数のDockerコンテナ間のネットワーク接続に問題がある場合は、[ネットワーク設定の詳細](/ja/workshop/network-details)を参照してください。
+</Info>

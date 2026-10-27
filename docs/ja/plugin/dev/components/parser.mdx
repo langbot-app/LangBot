@@ -1,0 +1,222 @@
+---
+title: "コンポーネント: パーサー"
+---
+
+パーサー（Parser）コンポーネントにより、プラグインはLangBotにドキュメント解析機能を提供できます。ユーザーがナレッジベースにドキュメントをアップロードする際、LangBotはRAGエンジンの`ingest`ステップの前にパーサーを呼び出し、PDF、Word、Markdownなどのバイナリファイルから構造化テキストを抽出します。
+
+ParserとKnowledgeEngineの関係:
+- **Parser** はファイルをテキストに変換する役割（file → text）
+- **KnowledgeEngine** はテキストのインデックス作成と検索を行う役割（text → chunks → vectors）
+
+RAGエンジン自体がドキュメント解析機能を持っている場合（`DOC_PARSING`能力を宣言）、ユーザーはRAGエンジンの内蔵解析機能を使用するか、外部Parserプラグインを使用するかを選択できます。
+
+## パーサーコンポーネントの追加
+
+1つのプラグインには任意の数のパーサーを追加できます。プラグインディレクトリでコマンド`lbp comp Parser`を実行し、プロンプトに従ってパーサーの設定を入力します。
+
+```bash
+➜  MyParserPlugin > lbp comp Parser
+Generating component Parser...
+Parser name: pdf_parser
+Parser description: A PDF document parser
+Component Parser generated successfully.
+組件 Parser 生成成功。
+```
+
+これにより、`components/parser/`ディレクトリに`pdf_parser.yaml`と`pdf_parser.py`ファイルが生成されます。`.yaml`ファイルはパーサーの基本情報とサポートするMIMEタイプを定義し、`.py`ファイルはこのパーサーのハンドラです:
+
+```bash
+➜  MyParserPlugin > tree
+...
+├── components
+│   ├── __init__.py
+│   └── parser
+│       ├── __init__.py
+│       ├── pdf_parser.py
+│       └── pdf_parser.yaml
+...
+```
+
+## マニフェストファイル: パーサー
+
+```yaml
+apiVersion: v1  # 変更しないでください
+kind: Parser  # 変更しないでください
+metadata:
+  name: pdf_parser  # パーサー名、このパーサーを識別するために使用
+  label:
+    en_US: PDF Parser  # パーサー表示名、LangBotのUIに表示、多言語対応
+    zh_Hans: PDF 解析器
+  description:
+    en_US: 'A PDF document parser'
+    zh_Hans: 'PDF 文档解析器'
+spec:
+  supported_mime_types:  # サポートするファイルのMIMEタイプを宣言
+    - application/pdf
+execution:
+  python:
+    path: pdf_parser.py  # パーサーハンドラ、変更しないでください
+    attr: PdfParser  # パーサーハンドラのクラス名、pdf_parser.pyのクラス名と一致
+```
+
+### supported_mime_types
+
+`supported_mime_types`はこのパーサーがサポートするファイルタイプを宣言します。一般的なMIMEタイプ:
+
+| MIMEタイプ | 説明 |
+|----------|------|
+| `application/pdf` | PDFドキュメント |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Wordドキュメント（.docx） |
+| `text/markdown` | Markdownファイル |
+| `text/plain` | プレーンテキストファイル |
+| `text/html` | HTMLファイル |
+
+## プラグインハンドラ
+
+以下のコードがデフォルトで生成されます（`components/parser/<パーサー名>.py`）。`parse`メソッドを実装する必要があります。
+
+```python
+from langbot_plugin.api.definition.components.parser.parser import Parser
+from langbot_plugin.api.entities.builtin.rag.models import (
+    ParseContext,
+    ParseResult,
+    TextSection,
+)
+
+
+class PdfParser(Parser):
+    """ファイルからテキストを抽出するパーサーコンポーネント。"""
+
+    async def parse(self, context: ParseContext) -> ParseResult:
+        """ファイルを解析して構造化テキストを抽出。
+
+        Args:
+            context: file_content（bytes）、mime_type、filename、metadataを含む。
+
+        Returns:
+            抽出されたテキストとオプションの構造化セクションを含むParseResult。
+        """
+        # TODO: 解析ロジックを実装
+        text = context.file_content.decode("utf-8", errors="replace")
+
+        return ParseResult(
+            text=text,
+            sections=[
+                TextSection(
+                    content=text,
+                    heading=context.filename,
+                    level=0,
+                ),
+            ],
+            metadata={
+                "filename": context.filename,
+                "mime_type": context.mime_type,
+            },
+        )
+```
+
+### 解析メソッド
+
+`parse`メソッドは、ドキュメントがナレッジベースにアップロードされた時（RAGエンジンの取り込み前）に呼び出されます:
+
+```python
+async def parse(self, context: ParseContext) -> ParseResult:
+```
+
+**ParseContext**には以下の情報が含まれます:
+
+```python
+class ParseContext(pydantic.BaseModel):
+    file_content: bytes          # 生のファイルバイト（LangBotがストレージから読み取り）
+    mime_type: str               # 検出されたファイルのMIMEタイプ
+    filename: str                # 元のファイル名
+    metadata: dict[str, Any]     # FileObjectからの追加メタデータ
+```
+
+**ParseResult**は解析結果を返す必要があります:
+
+```python
+class ParseResult(pydantic.BaseModel):
+    text: str                            # 抽出された完全なプレーンテキスト
+    sections: list[TextSection] = []     # 構造化セクション（オプション）
+    metadata: dict[str, Any] = {}        # 解析メタデータ（例: page_count, language）
+```
+
+**TextSection**はドキュメントから抽出されたテキストのセクションを表します:
+
+```python
+class TextSection(pydantic.BaseModel):
+    content: str                   # セクションのテキスト内容
+    heading: str | None = None     # セクション見出し
+    level: int = 0                 # ネストレベル
+    page: int | None = None        # ソースページ番号（PDFなど）
+    metadata: dict[str, Any] = {}  # 追加セクションメタデータ
+```
+
+## KnowledgeEngineとの連携
+
+ユーザーがドキュメントをアップロードする際、LangBotは以下のロジックで解析フローを決定します:
+
+- ユーザーが外部Parserプラグインを選択した場合、LangBotはまずParserの`parse`メソッドを呼び出し、その結果を`IngestionContext.parsed_content`を通じてRAGエンジンの`ingest`メソッドに渡します。
+- RAGエンジンが`DOC_PARSING`能力を宣言しており、ユーザーが外部パーサーを選択していない場合、RAGエンジンが自身でドキュメント解析を処理します。
+
+KnowledgeEngineは`IngestionContext.parsed_content`をチェックして、事前解析されたコンテンツが利用可能かどうかを判断できます:
+
+```python
+async def ingest(self, context: IngestionContext) -> IngestionResult:
+    if context.parsed_content:
+        # 外部Parserの解析結果を使用
+        text = context.parsed_content.text
+        sections = context.parsed_content.sections
+    else:
+        # ドキュメントを内部で解析
+        file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.storage_path)
+        text = file_bytes.decode('utf-8')
+    ...
+```
+
+## クロスプラグインパーサー呼び出し
+
+他のプラグインが提供するパーサーを呼び出す前に、`self.plugin.list_parsers` を使ってホスト上で現在利用可能なパーサーを列挙できます:
+
+```python
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+# 各要素には plugin_id、plugin_author、plugin_name、name、description、supported_mime_types が含まれます
+```
+
+空配列が返る場合、その MIME タイプに対応する接続済みの Parser プラグインは現在存在しません。
+
+`plugin_author` と `plugin_name` を取得したら、`self.plugin.invoke_parser` で対象のパーサーを呼び出せます:
+
+```python
+parser = parsers[0]
+result = await self.plugin.invoke_parser(
+    plugin_author=parser["plugin_author"],
+    plugin_name=parser["plugin_name"],
+    storage_path=context.file_object.storage_path,
+    mime_type=context.file_object.metadata.mime_type,
+    filename=context.file_object.metadata.filename,
+    metadata={},
+)
+# resultはtext、sections、metadataを含むdict
+```
+
+## 1 つの installation、複数の用途
+
+1 つの Parser は**複数のナレッジベース**から使われます（同じ installation の別々のナレッジベースが異なる MIME タイプのファイルをアップロードします）。プラットフォームのストレージキーにはナレッジベースの次元がありません：
+
+- 解析キャッシュと一時ファイルは**ナレッジベース ID** で分離し、キーにナレッジベース ID を含めてください。インスタンスにキャッシュしないでください。
+- `ParseContext` と解析の中間結果は 1 回の解析でのみ有効です。インスタンスフィールドやモジュールレベルの変数に保存しないでください。
+- 解析の失敗が影響するのは現在のナレッジベースのそのアップロードだけです。他のナレッジベースの解析を利用不能にしてはいけません。
+- installation 単位でモデル、パーサー、一時ディレクトリをキャッシュする場合は、`on_installation_revoked(binding)` で解放し、一時ファイルを確実に削除できるようにしてください。
+
+完全な仕様は[認証プラグインと共有実行](/ja/plugin/certified-plugins)を参照してください。
+
+## パーサーのテスト
+
+作成後、プラグインディレクトリでコマンド`lbp run`を実行してデバッグを開始します。その後、LangBotで:
+
+1. 「ナレッジベース」ページに移動
+2. ナレッジベースを選択してドキュメント管理に入る
+3. ファイルのアップロード時、パーサーセレクターでプラグインが提供するパーサーを選択
+4. アップロード後、ドキュメントが正しく取り込まれたことを確認

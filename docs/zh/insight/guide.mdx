@@ -1,0 +1,39 @@
+---
+title: "欢迎访问 LangBot 文档"
+description: "LangBot 是开源的大模型机器人平台，将 Discord、Telegram、微信、Slack 等连接到 GPT、Claude、Gemini、DeepSeek 与 Dify。从这里开始。"
+---
+
+LangBot 是一个**开源、生产级**的大语言模型（LLM）原生即时通信机器人平台。它把 OpenAI、Anthropic、Gemini、DeepSeek 等大模型，以及 Dify、Coze、n8n 等 Agent 平台，一站式接入 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack 等全球主流即时通信平台。内置 Agent、RAG 知识库、MCP、技能（Skills）与代码沙箱，并提供开箱即用的 Web 管理面板——无需手写配置文件，几分钟即可让你的 AI 机器人上线。
+
+![LangBot Web 管理面板仪表盘：实时监控消息量、模型调用、成功率、活跃会话与流量趋势](/images/zh/insight/dashboard-overview.png)
+
+## 能用它做什么
+
+- **智能客服 / 企业助手**：把基于知识库的 AI Agent 部署到微信、企微、飞书、钉钉，自动回答用户与员工的问题。
+- **社群运营**：在 QQ、Discord、Telegram 群里提供 AI 驱动的问答、内容审核与互动。
+- **工作流接入**：把已有的 Dify / n8n / Coze 工作流直接接到聊天平台，无需重写业务逻辑。
+- **多平台触达**：一个机器人，覆盖所有平台，通过统一面板集中管理。
+
+## 从这里开始
+
+按下面的顺序了解 LangBot，再根据需要深入对应文档。
+
+1. **了解功能与平台**：阅读[功能概览](/zh/insight/features)与[平台支持](/zh/insight/platform-features)，确认 LangBot 是否适合你的场景。
+2. **选择部署方式**：使用 [LangBot Cloud](https://space.langbot.app/cloud) 免去自建服务，或通过 [Docker](/zh/deploy/langbot/docker)、[包管理器](/zh/deploy/langbot/package)自行部署。
+3. **连接机器人与模型**：查看[配置机器人](/zh/usage/platforms/readme)、[配置对话模型](/zh/usage/models/readme)和[流水线](/zh/usage/pipelines/readme)，了解如何把聊天平台与 AI 能力连接起来。
+4. **丰富机器人的能力**：通过[知识库](/zh/usage/knowledge/readme)、[插件](/zh/plugin/plugin-intro)、[MCP](/zh/usage/mcp/readme)与[技能](/zh/usage/skills/readme)扩展机器人。
+5. **参考实践或参与开发**：从[实践文章](/zh/articles/index)寻找思路，或阅读[插件开发](/zh/plugin/dev/tutor)与[核心开发环境](/zh/develop/dev-config)。
+
+遇到问题时，可以查阅[故障排除](/zh/insight/troubleshooting)，或到[社区](/zh/insight/community)交流。
+
+<Tip title="让 AI Agent 帮你部署和使用">
+将下面的提示词复制给你的 AI 助手。它会从官方文档开始，结合你的环境与目标协助操作。
+
+```text
+请先阅读 https://langbot.app/llms.txt ，按照其中的官方指引帮助我部署和使用 LangBot，安装 LangBot CLI，并通过 CLI 配置和管理实例。结合我的目标和环境执行，优先复用已有实例，最后验证目标聊天平台上的真实消息回复。请用中文与我沟通。
+```
+</Tip>
+
+<Info>
+这是 LangBot 4.0 的文档，3.0 文档请[访问](https://v3.langbot.app/docs)。
+</Info>

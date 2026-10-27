@@ -1,0 +1,68 @@
+---
+title: "LangBot Cloud 新版上线：多用户 Workspace 也来到开源版"
+description: "LangBot 是连接大模型与聊天平台的开源 AI 机器人平台。新版 Cloud 与开源版现已支持 Workspace 多用户、成员邀请和角色权限。"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/langbot-cloud-multi-user-workspaces).
+
+发布于 2026-08-25 · 作者：LangBot Team
+
+![LangBot 多用户 Workspace 控制台](/images/articles/source/images/cloud-multi-user/oss-dashboard.png)
+
+新版 [LangBot Cloud](https://cloud.langbot.app) 已经上线。这次先解决一个很具体的问题：多人一起用 LangBot 时，账户、资源和权限怎么分。
+
+同一套多用户能力也进入了开源版。Cloud 和自部署版的运维方式不同，但成员、邀请和权限的基本逻辑现在是一致的。
+
+## LangBot 是什么？
+
+LangBot 是一个开源的多平台 AI 机器人开发与部署平台。你可以在同一套控制台里配置机器人、消息流水线、知识库、模型和扩展，再将 AI 能力接入 QQ、微信、企业微信、飞书、钉钉、KOOK、Discord、Telegram、Slack 和 LINE。它也支持 Satori 与 Matrix；通过 Matrix 桥接，还可以覆盖 WhatsApp、Signal、Messenger、Mattermost、Google Chat、IRC、XMPP、Zulip 等网络。
+
+模型侧不绑定一家厂商。LangBot 可以连接 OpenAI、Anthropic Claude、DeepSeek、Google Gemini、xAI Grok、Moonshot Kimi、智谱 GLM，也支持通过 Ollama 和 LM Studio 运行本地模型。阿里云百炼、火山方舟、SiliconFlow、ModelScope、GiteeAI 等聚合平台同样可以接入；需要组合现有工作流时，还能连接 Dify 和 MCP。
+
+这意味着，同一个团队可以用 LangBot 管理不同聊天平台上的 AI 助手，同时按场景选择云端大模型、本地模型或已有 Agent 工作流。
+
+![新版 LangBot Cloud 登录页](/images/articles/source/images/cloud-multi-user/cloud-login.png)
+
+## Cloud：登录后进入自己的 Workspace
+
+Cloud 统一使用 LangBot Account 登录。首次使用会进入个人 Workspace，也可以接受邀请加入团队 Workspace；加入多个 Workspace 后，可以在界面中切换当前工作区。
+
+机器人、流水线、模型、知识库和扩展都归属于当前 Workspace。切换 Workspace，不会把不同团队的配置和数据混在一起。
+
+Cloud 仍然负责托管、更新和运行环境。适合不想自己维护服务器，或者希望团队直接开始配置机器人的用户。
+
+## 邀请成员，不再共用一个管理员账号
+
+Owner 或有成员管理权限的角色可以发出一次性邀请。被邀请人使用自己的账户接受邀请，随后以分配到的角色进入 Workspace。
+
+![LangBot Cloud 成员邀请页（Workspace 名称已脱敏）](/images/articles/source/images/cloud-multi-user/cloud-invitation.png)
+
+这比共享管理员密码更适合长期使用：每个人有独立身份，权限也能按工作需要分开。
+
+当前提供五个固定角色：
+
+- **Owner**：Workspace 所有者，负责最高权限和成员管理。
+- **Admin**：管理成员和大部分 Workspace 设置。
+- **Developer**：配置机器人、流水线、模型和扩展。
+- **Operator**：负责日常运行与操作。
+- **Viewer**：只读查看。
+
+## 开源版：一个实例，一个 Workspace，支持多人
+
+自部署版不会变成多 Workspace SaaS。一个 LangBot 实例仍然对应一个 Workspace，但这个 Workspace 可以有多个用户。
+
+初始化时创建的账户是 Owner。之后可以邀请其他人加入；配置了 SMTP 时可直接发送邀请邮件，没有配置邮件服务时也可以复制一次性邀请链接，通过可信渠道发给成员。
+
+成员进入后，看到的仍是熟悉的 LangBot 控制台。区别在于资源访问会结合 Workspace 和角色校验，而不是默认所有登录用户都拥有完整管理员权限。
+
+## 该选哪一个？
+
+|  | LangBot Cloud | 开源自部署版 |
+|---|---|---|
+| 部署维护 | 由 LangBot 托管 | 自己维护服务器和数据 |
+| Workspace | 可拥有或加入多个 | 每个实例固定一个 |
+| 多用户与邀请 | 支持 | 支持 |
+| 固定角色权限 | 支持 | 支持 |
+| 适合 | 快速启用、团队直接协作 | 私有部署、掌握运行环境 |
+
+想直接使用，可以访问 [cloud.langbot.app](https://cloud.langbot.app)。想把数据和运行环境留在自己的服务器上，可以从 [GitHub](https://github.com/langbot-app/LangBot) 部署开源版。

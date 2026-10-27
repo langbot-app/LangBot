@@ -1,0 +1,66 @@
+---
+title: "Service scope and response"
+description: "What Enterprise Support covers, what it doesn't, and how first response time is calculated."
+---
+
+Enterprise Support focuses on **LangBot Core itself**. It provides triage and guidance through a single ticket channel, not managed operations or custom development.
+
+## Included and not included
+
+| Included | Not included |
+| --- | --- |
+| LangBot Core defect assessment and triage | Deployment, operations, 24/7 coverage, on-site service |
+| Official documentation guidance | Troubleshooting your network, database, Kubernetes or model providers |
+| Upgrade compatibility advice | Maintenance of plugins, third-party adapters or private-protocol clients |
+| Public release information and security advisories | Custom development, historical data migration |
+| Ticket intake and triage | Recovery SLAs, fixed resolution deadlines, compliance certification |
+
+Custom work is outside the subscription and generally not accepted. Requests with broad value can be proposed on the public roadmap.
+
+## First response
+
+Both plans commit to a **first human response within 2 business days**. A first response means a person has confirmed the scope, requested more information, or given an initial classification. Automated emails don't count.
+
+<Warning>
+A first response is not a fix or recovery. Resolution depends on severity, reproducibility, and whether the issue belongs to LangBot Core.
+</Warning>
+
+- **Hours**: 09:00–18:00 Beijing time on mainland China business days, including make-up working days; public holidays are skipped.
+- **Counting**: requests submitted during hours are counted from submission; requests outside hours start at 09:00 on the next business day.
+- **Example**: submitted Friday 14:00 → response by Tuesday 14:00. Submitted Friday 20:00 → response by Wednesday 09:00.
+
+## Supported versions
+
+- Support covers the **current stable release** of LangBot Core. For older versions we first recommend upgrading, and confirming a defect may require reproducing it on the current release.
+- No backports, LTS branches or private patches.
+- Plugins and third-party components are outside Core maintenance.
+
+## Consultations and allowances
+
+| | Enterprise Support | Enterprise Assurance |
+| --- | --- | --- |
+| Annual usage review (60 min) | 1 | 1 |
+| Remote technical consultation (60 min, by appointment) | — | 4 |
+
+Unused sessions don't roll over. Enterprise Support covers ticket triage, documentation guidance and defect confirmation, not ongoing remote troubleshooting of your environment.
+
+## Instance registration (Assurance)
+
+- Assurance covers **1 registered production instance**. Registration only defines support scope; it doesn't limit deployments permitted by Apache 2.0 and requires no license key or telemetry.
+- We record version, deployment overview, purpose and contacts. Update the registration through a ticket when you replace the instance.
+
+## Security information
+
+- Quarterly digests are based on public release and security information.
+- Critical security notices are based on advisories confirmed by the maintainers; we don't determine whether your environment is affected.
+- The annual status summary (Assurance) is based on your registered version and public information. It is not a security audit, penetration test or compliance certification.
+
+## Working principles
+
+- One ticket per issue; duplicates may be merged.
+- The priority fix queue has no fixed deadline, and priority roadmap review is not a development or scheduling commitment.
+- Support runs through tickets only, not one-to-one group chats.
+
+## Service term
+
+Language, contacts, service dates and the applicable version of this document are set in the contract. After expiry no new requests are accepted; open tickets are triaged or handed over as agreed. You can keep using open-source LangBot after expiry.

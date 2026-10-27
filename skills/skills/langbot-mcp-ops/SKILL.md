@@ -139,7 +139,7 @@ tools or authorized by a LangBot API key. Once connected, models are managed
 and selected through the normal provider/model workflow. A disconnected
 provider must be reauthorized; do not silently replace it with API-key billing.
 
-See [ChatGPT / Codex subscription](../../../docs/CODEX_SUBSCRIPTION.md) for setup,
+See [ChatGPT / Codex subscription](../../../dev-docs/CODEX_SUBSCRIPTION.md) for setup,
 usage limits, and the personal-account versus shared-service boundary.
 
 ## Provider deletion
@@ -300,16 +300,16 @@ milliseconds since invocation start; `first_event_ms` includes reasoning/control
 frames, while `first_content_ms` measures the first upstream content delta.
 `first_visible_chunk_ms` may contain displayed reasoning, not just answer text.
 Old records have no details. Do not equate total duration with provider TTFT.
-See `docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
+See `dev-docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
 
 `get_llm_model` also exposes optional `reasoning_capabilities.budget_tokens`
 min/max bounds. Numeric thinking budgets use `reasoning_config.budget_tokens`
 with level `enabled`; do not combine budgets with effort levels or native thinking
 arguments. Existing Runner reasoning overrides take precedence. Prompt caching
 is opt-in through model/call `extra_args.prompt_caching`; use provider-specific
-modes documented in `docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
+modes documented in `dev-docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
 not evidence of hits; read the actual usage counters. `preparation_ms` measures
 request construction and `preparation_cache_hits` counts retry preparation reuse.
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
-initialization; it is not network TTFT. See `docs/LLM_LATENCY_BENCHMARK.md` for
+initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.

@@ -1,0 +1,78 @@
+---
+title: "Platform APIs"
+---
+
+Call platform adapter APIs using a bot UUID. Continue using `self.plugin.send_message()` for message chains; use the API below for groups, users, and other platform features.
+
+## Call a platform API
+
+```python
+async def call_platform_api(
+    self,
+    bot_uuid: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    ...
+```
+
+Call through `self.plugin` in Command, EventListener, Tool, and other regular components. Results are serialized dictionaries, lists, scalars, or `None`, depending on the action, rather than platform SDK objects.
+
+```python
+group = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="get_group_info",
+    params={"group_id": "123456"},
+)
+```
+
+`bot_uuid` comes from `await self.plugin.get_bots()` or `await event_context.get_bot_uuid()` in a Pipeline event. Use platform IDs from real events or platform configuration.
+
+### Common actions
+
+| `action` | `params` |
+| --- | --- |
+| `get_user_info` | `user_id` |
+| `get_friend_list` | `{}` |
+| `get_group_info` | `group_id` |
+| `get_group_list` | `{}` |
+| `get_group_member_list` | `group_id` |
+| `get_group_member_info` | `group_id`, `user_id` |
+| `get_message` / `delete_message` | `chat_type`, `chat_id`, `message_id` |
+| `set_group_name` | `group_id`, `name` |
+| `mute_member` | `group_id`, `user_id`, `duration` |
+| `unmute_member` / `kick_member` | `group_id`, `user_id` |
+| `leave_group` | `group_id` |
+| `approve_friend_request` | `request_id`, `approve`, `remark` |
+| `approve_group_invite` | `request_id`, `approve` |
+| `get_file_url` | `file_id` |
+
+
+Supported actions vary by platform and may require bot administrator permissions. `duration` is in seconds; the meaning of `0` is platform-specific, not a universal permanent mute. Queries may depend on platform caches. Calls raise an exception if the bot is not running, the action is unsupported, or parameters are invalid.
+
+## Platform-specific APIs
+
+Set the outer `action` to `call_platform_api` and put the platform action and parameters inside `params`. For example, read the bot account using OneBot Omni:
+
+```python
+account = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="call_platform_api",
+    params={"action": "get_login_info", "params": {}},
+)
+```
+
+Only actions declared by the adapter are allowed; this is not unrestricted pass-through to every platform endpoint. Plugins call the Host through the runtime, rather than accessing `ctx.query.adapter` or `adapter.bot`.
+
+## Runner
+
+During Runner execution, model, tool, knowledge-base, storage, and platform calls through `self.plugin` automatically use the current run and its authorization. Do not pass `run_id`. Concurrent runs remain isolated. Do not continue these run-bound calls after the handler returns.
+
+Use `await ctx.get_bot_uuid()` for the current bot. Platform calls must match the tool grants for this invocation. Event-target grants cannot access another target. Ungranted actions, including platform-specific actions, are rejected. These calls also use Mock delivery in debug mode.
+
+```python
+tools = await ctx.get_available_tools()
+if any(tool["name"] == "event_get_actor" for tool in tools):
+    actor = await ctx.call_tool("event_get_actor")
+    await ctx.log(str(actor))
+```

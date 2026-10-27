@@ -1,0 +1,35 @@
+---
+title: "LangBotドキュメントへようこそ"
+description: "LangBot は Discord・Telegram・WeChat・Slack 等を GPT・Claude・Gemini・DeepSeek・Dify に接続するオープンソース LLM ボットプラットフォーム。"
+---
+
+LangBotは、**オープンソースで本番運用に耐える**、LLM ネイティブのインスタントメッセージングボットプラットフォームです。OpenAI、Anthropic、Gemini、DeepSeek などの大規模言語モデルや、Dify、Coze、n8n などの Agent プラットフォームを、LINE、Slack、Discord、Telegram、QQ、WeChat、企業微信、Lark、DingTalk といった主要メッセージングプラットフォームに接続します。Agent、RAG ナレッジベース、MCP、スキル（Skills）、コードサンドボックスを内蔵し、すぐに使える Web 管理パネルを提供——設定ファイルを手書きする必要はなく、数分で AI ボットを公開できます。
+
+![LangBot Web 管理パネルのダッシュボード：メッセージ量、モデル呼び出し、成功率、アクティブセッション、トラフィック傾向をリアルタイム監視](/images/zh/insight/dashboard-overview.png)
+
+## 何ができるか
+
+- **AI カスタマーサービス / 企業アシスタント**：ナレッジベースに基づく AI エージェントを LINE、Slack、Lark、企業微信、DingTalk に展開し、顧客や従業員の質問に自動応答。
+- **コミュニティ運営**：Discord、Telegram、QQ グループで AI による Q&A、コンテンツモデレーション、インタラクションを提供。
+- **ワークフロー統合**：既存の Dify / n8n / Coze ワークフローをそのままチャットプラットフォームに接続。ビジネスロジックの書き直しは不要。
+- **マルチプラットフォーム到達**：1 つのボットですべてのプラットフォームをカバーし、統一パネルから集中管理。
+
+## はじめに
+
+次の順序で LangBot の全体像をつかみ、必要なガイドへ進んでください。
+
+1. **機能と対応プラットフォームを知る**：[機能概要](/ja/insight/features)と[プラットフォーム対応状況](/ja/insight/platform-features)で、用途に合うか確認できます。
+2. **導入方法を選ぶ**：サーバーを自分で管理しないなら [LangBot Cloud](https://space.langbot.app/cloud)、セルフホストするなら [Docker](/ja/deploy/langbot/docker) または[パッケージマネージャー](/ja/deploy/langbot/package)のガイドへ。
+3. **ボットとモデルを接続する**：[ボット設定](/ja/usage/platforms/readme)、[モデル設定](/ja/usage/models/readme)、[パイプライン](/ja/usage/pipelines/readme)で、チャットプラットフォームと AI 機能のつなぎ方を確認できます。
+4. **ボットの機能を拡張する**：[ナレッジベース](/ja/usage/knowledge/readme)、[プラグイン](/ja/plugin/plugin-intro)、[MCP](/ja/usage/mcp/readme)、[スキル](/ja/usage/skills/readme)を活用できます。
+5. **活用例を探す・開発に参加する**：[活用記事](/ja/articles/index)でアイデアを探すか、[プラグイン開発](/ja/plugin/dev/tutor)と[コア開発環境](/ja/develop/dev-config)をご覧ください。
+
+困ったときは[トラブルシューティング](/ja/insight/troubleshooting)を確認するか、[コミュニティ](/ja/insight/community)で相談してください。
+
+<Tip title="AI エージェントに導入・利用を手伝ってもらう">
+以下のプロンプトを AI アシスタントにコピーしてください。公式ドキュメントを読み、環境と目的に合った方法でサポートします。
+
+```text
+まず https://langbot.app/llms.txt を読み、公式の手順に従って LangBot の導入と利用、LangBot CLI のインストール、CLI によるインスタンスの設定と管理を手伝ってください。目的と環境に合わせ、既存のインスタンスがあれば再利用し、最後に対象のチャットプラットフォームで実際のメッセージと返信を確認してください。日本語で説明してください。
+```
+</Tip>
