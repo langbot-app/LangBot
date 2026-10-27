@@ -127,13 +127,11 @@ class ChatMessageHandler(handler.MessageHandler):
                 if try_claim_steering:
                     try:
                         claimed = await try_claim_steering(query)
-                    except Exception as steering_error:
+                    except RunnerNotFoundError as steering_error:
                         # Steering is an optimization for an already-running
                         # agent. A runtime reconnect can temporarily remove the
                         # selected Runner from the registry; that must not
                         # prevent the message from starting a normal run.
-                        if not isinstance(steering_error, RunnerNotFoundError):
-                            raise
                         self.ap.logger.warning(
                             'Skipping steering for query %s because Runner %s is not registered',
                             query.query_id,
