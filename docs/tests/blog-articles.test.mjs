@@ -58,6 +58,7 @@ test("generated articles use only non-empty Wiki-local images", () => {
     const file = path.join(root, `${article.page}.mdx`);
     assert.ok(existsSync(file), `missing ${article.page}.mdx`);
     const content = readFileSync(file, "utf8");
+    assert.doesNotMatch(content, /\]\(\/(?:en|zh|ja)\/blog\//, `${article.page} has a Blog link relative to the docs mount`);
     const imageUrls = [...content.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1]);
     for (const imageUrl of imageUrls) {
       assert.match(imageUrl, /^\/images\/articles\//, `${article.page} hotlinks ${imageUrl}`);
@@ -69,6 +70,21 @@ test("generated articles use only non-empty Wiki-local images", () => {
       assert.ok(expected, `${imageUrl} is missing from the synchronization manifest`);
       assert.equal(bytes.length, expected.bytes, `${imageUrl} size differs from the manifest`);
       assert.equal(createHash("sha256").update(bytes).digest("hex"), expected.sha256, `${imageUrl} digest differs from the manifest`);
+    }
+  }
+});
+
+test("documentation-only articles and their images survive Blog synchronization", () => {
+  for (const pages of Object.values(extraArticlePages)) {
+    for (const page of pages) {
+      const content = readFileSync(path.join(root, `${page}.mdx`), "utf8");
+      assert.ok(content.length > 100, `${page} is empty`);
+      for (const [, url] of content.matchAll(/!\[[^\]]*\]\((\/images\/articles\/[^)]+)\)/g)) {
+        const bytes = readFileSync(path.join(root, url.slice(1)));
+        const image = manifest.images.find((item) => item.path === url);
+        assert.ok(image, `${page}: ${url} missing from image manifest`);
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), image.sha256);
+      }
     }
   }
 });

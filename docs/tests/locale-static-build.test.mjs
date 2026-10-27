@@ -35,6 +35,7 @@ test("every localized HTML payload includes the preference client provider", asy
     }
   }
   for (const locale of ["en", "zh", "ja"]) await visit(path.join(root, locale));
-  // 509 canonical content pages plus one framework 404 page per locale.
-  assert.equal(count, 515);
+  // Every sitemap page plus one framework 404 page per locale.
+  const sitemap = await readFile(path.join(root, "sitemap.xml"), "utf8");
+  assert.equal(count, [...sitemap.matchAll(/<loc>/g)].length + 3);
 });

@@ -9,6 +9,12 @@ import process from "node:process";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const ARTICLE_LOCALES = ["en", "zh", "ja"];
+// These documentation-only articles are not owned by the Blog synchronizer.
+const LOCAL_ARTICLES = {
+  en: [],
+  zh: ["langbot-telegram-sandbox-agent", "langbot-wechat-official-account", "langbot-wecom-customer-service-knowledge-base"],
+  ja: [],
+};
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const LANGUAGE_CONFIG = {
   en: { mintlify: "en", tab: "Articles", introTitle: "LangBot Articles", introDescription: "Product updates, engineering deep dives, tutorials, integrations, and announcements from the LangBot Blog.", sourceLabel: "This article is synchronized from the LangBot Blog.", sourceAction: "Read the canonical version", fallbackLabel: "", overviewGroup: "Browse", groups: { updates: "Product Updates", engineering: "Engineering", tutorials: "Tutorials & Integrations", announcements: "Announcements" } },
@@ -225,6 +231,8 @@ async function renderArticle(sourceRoot, post, locale, fallback, assetRoot, imag
   const config = LANGUAGE_CONFIG[locale];
   const title = locale === "ja" && fallback ? (JAPANESE_TITLES[post.slug] || post.data.title) : post.data.title;
   let body = post.body;
+  // Root-relative Blog links belong to the landing site, not the embedded docs.
+  body = body.replace(/(\]\()\/(en|zh|ja)\/blog\//g, "$1https://langbot.app/$2/blog/");
   const refs = imageReferences(body);
   for (const ref of refs) if (!imageCache.has(ref.url)) imageCache.set(ref.url, await materializeImage(sourceRoot, ref.url, assetRoot));
   if (post.data.cover?.image && !imageCache.has(post.data.cover.image)) imageCache.set(post.data.cover.image, await materializeImage(sourceRoot, post.data.cover.image, assetRoot));
@@ -254,6 +262,7 @@ function navigationTab(locale, posts) {
   const groups = [{ group: config.overviewGroup, pages: [`${locale}/articles/index`] }];
   for (const key of ["updates", "engineering", "tutorials", "announcements"]) {
     const pages = posts.filter((post) => post.group === key).map((post) => articlePage(locale, post.slug));
+    if (key === "tutorials") pages.push(...LOCAL_ARTICLES[locale].map((slug) => articlePage(locale, slug)));
     if (pages.length) groups.push({ group: config.groups[key], pages });
   }
   return { tab: config.tab, groups };
@@ -281,6 +290,13 @@ async function validateGenerated(manifest) {
         }
       }
     }
+  }
+  for (const locale of ARTICLE_LOCALES) {
+    for (const slug of LOCAL_ARTICLES[locale]) {
+      const file = path.join(ROOT, locale, "articles", `${slug}.mdx`);
+      await readRegularFileWithin(path.join(ROOT, locale, "articles"), file, "local article", "utf8");
+    }
+    for (const image of await referencedImagesIn(path.join(ROOT, locale, "articles"))) referencedImages.add(image);
   }
   const mirroredMetadata = await imageMetadata(ROOT);
   const mirroredImages = new Set(mirroredMetadata.map((image) => image.path));
@@ -340,6 +356,9 @@ async function main() {
   if (!args.source) throw new Error("Pass --source /path/to/langbot-landing-page or set LANGBOT_LANDING_REPO");
   if (!existsSync(path.join(args.source, "src/content/blog"))) throw new Error(`Not a LangBot landing repository: ${args.source}`);
   const { byLocale, slugs } = await loadPosts(args.source);
+  for (const slug of Object.values(LOCAL_ARTICLES).flat()) {
+    if (slugs.includes(slug)) throw new Error(`Blog slug collides with a local article: ${slug}`);
+  }
   const outputRoot = await mkdtemp(path.join(tmpdir(), "langbot-docs-article-sync-"));
   const assetRoot = args.check ? outputRoot : ROOT;
   const imageCache = new Map();
@@ -361,6 +380,23 @@ async function main() {
     renderedPosts.sort((a, b) => b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug));
     localePosts.set(locale, renderedPosts);
     await writeFile(path.join(outputRoot, locale, "articles", "index.mdx"), renderIndex(locale, renderedPosts));
+  }
+  // Preserve local articles and their assets before replacing generated directories.
+  for (const locale of ARTICLE_LOCALES) {
+    for (const slug of LOCAL_ARTICLES[locale]) {
+      const source = path.join(ROOT, locale, "articles", `${slug}.mdx`);
+      const content = await readRegularFileWithin(path.join(ROOT, locale, "articles"), source, "local article", "utf8");
+      await writeFile(path.join(outputRoot, locale, "articles", `${slug}.mdx`), content);
+      if (args.check) {
+        for (const match of content.matchAll(/!\[[^\]]*\]\((\/images\/articles\/[^)]+)\)/g)) {
+          const image = path.join(ROOT, match[1].slice(1));
+          const bytes = await readRegularFileWithin(path.join(ROOT, "images/articles"), image, "local article image");
+          const target = path.join(outputRoot, match[1].slice(1));
+          await mkdir(path.dirname(target), { recursive: true });
+          await writeFile(target, bytes);
+        }
+      }
+    }
   }
   if (!args.check) {
     const referencedImages = await referencedImagesIn(outputRoot);
