@@ -5,6 +5,7 @@ ORM and Core callers retain their existing string/JSON contracts. The catalog
 is shared; authorization continues to belong to the enclosing business record.
 """
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -255,12 +256,23 @@ def create_postgres_expansion(connection):
 
 
 async def refresh_images(engine, peer, payload, *, is_current=None):
-    """Serialize refreshes on catalog identities and overwrite current URLs atomically."""
+    """Serialize refreshes without holding SQLite's writer during upstream calls."""
     from ..platform.adapters.aiocqhttp.image_urls import image_nodes
 
     nodes = list(image_nodes(payload))
     if not nodes:
         return
+    if engine.dialect.name == 'sqlite':
+        sync_engine = engine.sync_engine
+        if not hasattr(sync_engine, '_langbot_image_refresh_lock'):
+            sync_engine._langbot_image_refresh_lock = asyncio.Lock()
+        async with sync_engine._langbot_image_refresh_lock:
+            return await _refresh_images(engine, peer, payload, nodes, is_current=is_current)
+    return await _refresh_images(engine, peer, payload, nodes, is_current=is_current)
+
+
+async def _refresh_images(engine, peer, payload, nodes, *, is_current=None):
+    from ..platform.adapters.aiocqhttp.image_urls import nt_image_type
 
     def connected():
         return not peer.closed and (is_current is None or is_current())
@@ -273,10 +285,7 @@ async def refresh_images(engine, peer, payload, *, is_current=None):
         await db.run_sync(lambda sync: intern(sync, json.dumps(payload), identities_out=references))
     identities = set(references.values())
     async with engine.connect() as db:
-        if engine.dialect.name == 'sqlite':
-            await db.exec_driver_sql('BEGIN IMMEDIATE')
-        else:
-            await db.begin()
+        await db.begin()
         try:
             rows = (
                 (
@@ -301,6 +310,8 @@ async def refresh_images(engine, peer, payload, *, is_current=None):
             # Capture origins even when renewal is not due or identification fails.
             for node, message_id, image_id in nodes:
                 peer.image_urls.remember(by_url[node['url']]['url'], message_id, image_id)
+            if engine.dialect.name == 'sqlite':
+                await db.rollback()
             # Identification and upstream credential handling remain connection-local.
             if not connected() or not await peer.image_urls.identify():
                 return
@@ -327,11 +338,39 @@ async def refresh_images(engine, peer, payload, *, is_current=None):
                     return
                 if not connected():
                     return
+                if engine.dialect.name == 'sqlite':
+                    cached = {}
+                    for previous, entry in zip(old, batch):
+                        origin = peer.image_urls.references.get(previous)
+                        entries = [
+                            (peer.image_urls.urls, previous),
+                            (peer.image_urls.urls, entry['image']['url']),
+                            (peer.image_urls.messages, str(origin[0]) if origin else None),
+                            (peer.image_urls.keys, nt_image_type(previous)),
+                        ]
+                        cached[previous] = [(cache, key, cache[key]) for cache, key in entries if key in cache]
+                    await db.exec_driver_sql('BEGIN IMMEDIATE')
                 stamp = now()
                 updated = set()
                 for (node, _, _, row), entry, previous in zip(due, batch, old):
                     if previous not in completed:
                         continue
+                    if engine.dialect.name == 'sqlite' and row['id'] not in updated:
+                        current = (await db.execute(sa.select(table).where(table.c.id == row['id']))).mappings().one()
+                        if current != row:
+                            # Another engine may have renewed or redirected this identity.
+                            while current['canonical_id'] is not None:
+                                current = (
+                                    (await db.execute(sa.select(table).where(table.c.id == current['canonical_id'])))
+                                    .mappings()
+                                    .one()
+                                )
+                            node['url'] = current['url']
+                            # A rejected result must not return from the peer cache on the next refresh.
+                            for cache, key, value in cached[previous]:
+                                if cache.get(key) is value:
+                                    del cache[key]
+                            continue
                     fresh = entry['image']['url']
                     node['url'] = fresh
                     if napcat and fresh == previous:

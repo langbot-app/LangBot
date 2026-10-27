@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 
-from .. import database
+from .. import database, sqlite_write_gate
 
 
 WAL_RETAIN_BYTES = 64 * 1024 * 1024
@@ -27,6 +27,7 @@ class SQLiteDatabaseManager(database.BaseDatabaseManager):
         db_file_path = self.ap.instance_config.data.get('database', {}).get('sqlite', {}).get('path', 'data/langbot.db')
         engine_url = f'sqlite+aiosqlite:///{db_file_path}'
         self.engine = sqlalchemy_asyncio.create_async_engine(engine_url)
+        self.write_gate = sqlite_write_gate.install(self.engine)
         sqlalchemy.event.listen(self.engine.sync_engine, 'connect', _configure_connection)
         # Reader transactions must not block independent plugin callback commits.
         # Configure the persistent journal before serving requests, not per write.
@@ -35,3 +36,6 @@ class SQLiteDatabaseManager(database.BaseDatabaseManager):
             await connection.execute(sqlalchemy.text('PRAGMA auto_vacuum=INCREMENTAL'))
             await connection.execute(sqlalchemy.text('PRAGMA journal_mode=WAL'))
             await connection.commit()
+
+    def resource_stats(self) -> dict[str, int]:
+        return self.write_gate.resource_stats()
