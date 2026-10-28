@@ -83,6 +83,7 @@ def validate(profile):
         'coverage_suite',
         'execution',
         'performance_mode',
+        'scenario_groups',
     }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
@@ -98,6 +99,16 @@ def validate(profile):
         raise ValueError('coverage_suite must be a stable suite identifier')
     if profile.get('performance_mode', 'gate') not in {'gate', 'observe'}:
         raise ValueError('performance_mode must be gate or observe')
+    if 'scenario_groups' in profile:
+        from regression_local_cases import GROUPS
+
+        groups = profile['scenario_groups']
+        if (
+            not isinstance(groups, list)
+            or any(not isinstance(name, str) or name not in GROUPS for name in groups)
+            or len(groups) != len(set(groups))
+        ):
+            raise ValueError('scenario_groups must contain unique supported local groups')
     execution = profile.get('execution')
     if execution is not None:
         if (
@@ -192,6 +203,7 @@ def validate(profile):
             'reject_group',
             'http_probe',
             'reset_group',
+            'scenario',
         }:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
@@ -250,7 +262,21 @@ def validate(profile):
             case['reset_group'] is not True or 'http_group' not in case or 'reject_group' in case
         ):
             raise ValueError('reset_group requires an accepted group case')
-        if 'http_probe' in case:
+        if 'scenario' in case:
+            from regression_local_cases import modules
+
+            handlers = modules()
+            if (
+                'smoke' not in profile
+                or not isinstance(case['scenario'], str)
+                or not any(
+                    case['scenario'] in module.CASE_NAMES and name in profile.get('scenario_groups', [])
+                    for name, module in handlers.items()
+                )
+                or any(key in case for key in ('args', 'body', 'http_probe', 'http_group', 'box_exec', 'attachment'))
+            ):
+                raise ValueError('scenario must name a supported finite local case without another request mode')
+        elif 'http_probe' in case:
             probe = case['http_probe']
             if (
                 not isinstance(probe, dict)

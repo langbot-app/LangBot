@@ -173,7 +173,7 @@
     {"id": "auth.revocation",
      "area": "auth", "kind": "blackbox", "priority": "P0",
      "description": "Revoked credentials stop authorizing new requests",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "auth_revocation", "checks": ["credential_active", "credential_revoked", "key_status", "key_cleanup"]}]
     },
     {"id": "workspace.read_isolation",
      "area": "workspace", "kind": "blackbox", "priority": "P0",
@@ -248,7 +248,7 @@
     {"id": "agent.direct_execution",
      "area": "agent", "kind": "blackbox", "priority": "P1",
      "description": "Standalone Agent entrypoint completes through the public API",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "agent_direct_execution", "checks": ["agent_response", "agent_terminal", "agent_events", "agent_cleanup"]}]
     },
     {"id": "persistence.postgres_parity",
      "area": "persistence", "kind": "blackbox", "priority": "P1",
@@ -265,6 +265,7 @@
      "description": "A real embedding model retrieves relevant fixed documents",
      "bindings": []
     },
+    {"id": "retrieval.delete_visibility", "area": "retrieval", "kind": "blackbox", "priority": "P1", "description": "Deleting one ingested document removes its retrieval results while preserving a second document", "bindings": [{"profile": "scenarios", "case": "retrieval_delete_visibility", "checks": ["retrieval_initial", "retrieval_deleted", "retrieval_control", "document_cleanup"]}]},
     {"id": "execution.persisted_terminal",
      "area": "execution", "kind": "graybox", "priority": "P0",
      "description": "Each executed request has a unique completed persisted run and terminal event",

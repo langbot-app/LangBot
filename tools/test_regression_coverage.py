@@ -291,8 +291,13 @@ class Routes:
                     path = Path(__file__).with_name('regression_profiles') / f'{name}.json'
                     if name == 'scenarios':
                         from regression_scenarios import expanded_profile
+                        from regression_local_cases import GROUPS
 
-                        profile = expanded_profile()
+                        profile = expanded_profile(GROUPS)
+                        if 'lifecycle' in GROUPS:
+                            from regression_lifecycle_cases import restart_profile
+
+                            profile['cases'] += restart_profile(profile)['cases']
                     else:
                         profile = json.loads(path.read_text())
                     profiles[name] = {x['name']: x for x in profile['cases']}
