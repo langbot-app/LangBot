@@ -3,7 +3,7 @@
   "revision": "in-tree",
   "contract": "Current dedicated-workspace and trusted shared-installation identity; see each plugin SHARED_RUNTIME.md.",
   "files": {
-    "Runner/dify-agent/components/runner/default.py": "8ca64052fb8df872272726aa060e21ba3b4afa454346b6babcc7e9d2df600980",
+    "Runner/dify-agent/components/runner/default.py": "1a5901036d73fdeed8966660a539824a8aa37cb4843409cc5de37105ca36aa04",
     "Runner/dify-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
     "Runner/dify-agent/pkg/dify_client.py": "607ed8d610d916e5b64ed20699e3de6e2216b238a5fecc9cabcdb75533b8dc56",
     "Runner/n8n-agent/components/runner/default.py": "2719ec0a8ff779e90e61bd0209653fb9a1eab4b552877cfcbd4d3c9ce803fcf1",

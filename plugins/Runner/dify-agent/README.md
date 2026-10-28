@@ -35,6 +35,23 @@ Configuration is **static** and should not contain runtime state. Only the follo
 - `multimodal_input`: yes
 - `interactions`: yes
 
+## Dify 1.18 Agent Applications
+
+Use the Dify Agent Runner with `app-type: agent` and the published application's
+Service API URL and key. LocalAgent is a separate, model-backed Runner; a Dify
+application's Service API is not an OpenAI-compatible model endpoint.
+
+Dify's new Agent application emits process text as `agent_message` and the
+terminal answer as `message`. The Runner treats these as separate streams: once
+`message` arrives, its answer replaces the process-text preview instead of being
+appended to it. Older agents that emit only `agent_message` continue to work.
+Repeated chunks within the same stream are not removed by content equality.
+
+Legacy agents' empty `agent_thought` events do not flush the answer buffer;
+`message_end` still closes the response. For workflows, final `summary` outputs
+or explicit Answer-node outputs take precedence over buffered `text_chunk`
+events, which are used only when no explicit answer was produced.
+
 ## Workflow Human Input
 
 When Dify emits `workflow_paused` with a `human_input_required` reason, the

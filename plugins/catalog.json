@@ -92,7 +92,7 @@
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"

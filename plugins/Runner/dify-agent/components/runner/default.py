@@ -962,6 +962,7 @@ class DefaultRunner(Runner):
         pending_content = ""
         mode = "basic"  # basic or workflow mode in chat
         message_count = 0
+        received_message = False
         has_response = False
         final_conversation_id = conversation_id
         usage: dict[str, typing.Any] | None = None
@@ -1039,6 +1040,12 @@ class DefaultRunner(Runner):
                 return
 
             elif event_type == "message" or event_type == "agent_message":
+                if event_type == "message" and not received_message:
+                    pending_content = ""
+                    message_count = 0
+                    received_message = True
+                elif event_type == "agent_message" and received_message:
+                    continue
                 # Accumulate text chunks
                 answer = event.get("answer", "")
                 # Dify deployments send either deltas or cumulative snapshots.
@@ -1071,7 +1078,7 @@ class DefaultRunner(Runner):
                 observation = event.get("observation", "")
 
                 # Skip tool result observations
-                if tool and observation:
+                if not tool or observation:
                     continue
 
                 # Yield accumulated content before tool call
@@ -1310,7 +1317,7 @@ class DefaultRunner(Runner):
                     )
 
         # Handle remaining pending content
-        if pending_content:
+        if pending_content and not has_response:
             content, _ = process_thinking_content(pending_content, remove_think)
             if content:
                 has_response = True

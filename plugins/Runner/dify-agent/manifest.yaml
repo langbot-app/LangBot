@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: DifyAgent
-  version: 0.2.4
+  version: 0.2.5
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent
   label:
     en_US: Dify Agent

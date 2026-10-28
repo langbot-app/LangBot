@@ -149,6 +149,72 @@ def test_dify_native_cumulative_chat_chunks_do_not_duplicate():
         assert contents(results)[-1] == "hello world"
 
 
+@pytest.mark.parametrize("app_type", ["chat", "agent"])
+@pytest.mark.parametrize(
+    ("events", "expected"),
+    [
+        ([("agent_message", "23"), ("message", "23")], "23"),
+        ([("agent_message", "Thinking"), ("message", "Final"), ("message", " answer")], "Final answer"),
+        ([("agent_message", "2"), ("agent_message", "3"), ("message", "23")], "23"),
+        ([("agent_message", "ha"), ("agent_message", "ha")], "haha"),
+        ([("message", "ha"), ("message", "ha")], "haha"),
+        ([("message", "Final"), ("agent_message", "process")], "Final"),
+        ([("agent_message", "hel"), ("agent_message", "hello")], "hello"),
+    ],
+)
+def test_dify_agent_process_and_final_answer_are_separate(app_type, events, expected):
+    with load_runner("dify-agent") as (_, runner):
+
+        class Client:
+            async def chat_messages(self, **kwargs):
+                for event_type, answer in events:
+                    yield {"event": event_type, "answer": answer, "conversation_id": "external-conversation"}
+                yield {"event": "message_end"}
+
+        results = collect(runner._run_chat_or_agent(ctx(), Client(), {}, "hi", "user", "", [], app_type, False))
+        assert contents(results) == [expected]
+        updates = [result for result in results if kind(result) == "state.updated"]
+        assert updates[-1].data["value"] == "external-conversation"
+
+
+def test_dify_agent_final_replaces_streamed_process_snapshot():
+    with load_runner("dify-agent") as (_, runner):
+
+        class Client:
+            async def chat_messages(self, **kwargs):
+                for _ in range(8):
+                    yield {"event": "agent_message", "answer": "process "}
+                yield {"event": "message", "answer": "23"}
+                yield {"event": "message_end"}
+
+        results = collect(runner._run_chat_or_agent(ctx(), Client(), {}, "hi", "user", "", [], "agent", False))
+        messages = [result.data["chunk"] for result in results if kind(result) == "message.delta"]
+        assert messages[0]["is_final"] is False
+        assert messages[-1]["content"] == "23"
+        assert sum(bool(message["is_final"]) for message in messages) == 1
+
+
+def test_dify_118_live_event_order_does_not_repeat_terminal_answer():
+    with load_runner("dify-agent") as (_, runner):
+
+        class Client:
+            async def chat_messages(self, **kwargs):
+                yield {"event": "agent_thought", "tool": "", "thought": "", "observation": ""}
+                yield {"event": "agent_message", "answer": "2"}
+                yield {"event": "agent_thought", "tool": "", "thought": "", "observation": ""}
+                yield {"event": "agent_message", "answer": "3"}
+                yield {"event": "message", "answer": "23"}
+                yield {"event": "message_end"}
+
+        results = collect(runner._run_chat_or_agent(ctx(), Client(), {}, "hi", "user", "", [], "agent", False))
+        final = [
+            result.data["chunk"]["content"]
+            for result in results
+            if kind(result) == "message.delta" and result.data["chunk"]["is_final"]
+        ]
+        assert final == ["23"]
+
+
 def test_dify_unclosed_think_never_visible_on_pause():
     with load_runner("dify-agent") as (m, runner):
 
