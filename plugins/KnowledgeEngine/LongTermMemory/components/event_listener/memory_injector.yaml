@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: memory_injector
+  label:
+    en_US: MemoryInjector
+    zh_Hans: 记忆注入器
+spec:
+execution:
+  python:
+    path: memory_injector.py
+    attr: MemoryInjector

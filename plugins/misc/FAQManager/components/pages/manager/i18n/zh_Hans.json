@@ -1,0 +1,14 @@
+{
+  "title": "FAQ 管理",
+  "searchPlaceholder": "搜索常见问答...",
+  "addNew": "添加新条目",
+  "questionPlaceholder": "问题",
+  "answerPlaceholder": "回答",
+  "add": "添加",
+  "edit": "编辑",
+  "delete": "删除",
+  "save": "保存",
+  "cancel": "取消",
+  "entries": "条",
+  "empty": "暂无 FAQ 条目，在上方添加一条吧。"
+}

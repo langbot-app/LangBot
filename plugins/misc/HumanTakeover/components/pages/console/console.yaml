@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: console
+  label:
+    en_US: Human Takeover
+    zh_Hans: 人工接管
+    th_TH: Human Takeover
+    vi_VN: Human Takeover
+    es_ES: Human Takeover
+spec:
+  path: index.html
+execution:
+  python:
+    path: console.py
+    attr: ConsolePage

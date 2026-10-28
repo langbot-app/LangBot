@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Parser
+metadata:
+  name: general_parsers
+  label:
+    en_US: GeneralParsers
+    zh_Hans: 通用解析器
+  description:
+    en_US: 'Extract text from PDF, Word, Markdown, HTML, TXT, and image files'
+    zh_Hans: '从 PDF、Word、Markdown、HTML、TXT 和图片文件中提取文本'
+spec:
+  supported_mime_types:
+    - application/pdf
+    - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    - text/plain
+    - text/markdown
+    - text/html
+    - image/png
+    - image/jpeg
+    - image/webp
+    - image/gif
+    - image/bmp
+    - image/tiff
+execution:
+  python:
+    path: general_parsers.py
+    attr: GeneralParsers

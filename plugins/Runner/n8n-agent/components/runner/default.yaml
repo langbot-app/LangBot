@@ -1,0 +1,283 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: n8n
+    zh_Hans: n8n
+  description:
+    en_US: Run an n8n workflow webhook as a LangBot Runner.
+    zh_Hans: 将 n8n 工作流 webhook 作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: user-id-source
+      label:
+        en_US: Provider User Identity
+        zh_Hans: 供应商用户身份
+      description:
+        en_US: Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
+        zh_Hans: 默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
+      type: select
+      required: false
+      default: sender
+      options:
+        - name: sender
+          label: {en_US: Sender, zh_Hans: 发送者}
+        - name: legacy-session
+          label: {en_US: Native identity compatibility, zh_Hans: 原生身份兼容}
+    - name: webhook-url
+      label:
+        en_US: Webhook URL
+        zh_Hans: Webhook URL
+      type: string
+      required: true
+      default: ''
+    - name: auth-type
+      label:
+        en_US: Authentication Type
+        zh_Hans: 认证类型
+      type: select
+      required: true
+      default: 'none'
+      options:
+        - name: 'none'
+          label:
+            en_US: None
+            zh_Hans: 无认证
+        - name: 'basic'
+          label:
+            en_US: Basic Auth
+            zh_Hans: 基本认证
+        - name: 'jwt'
+          label:
+            en_US: JWT
+            zh_Hans: JWT认证
+        - name: 'header'
+          label:
+            en_US: Header Auth
+            zh_Hans: 请求头认证
+    - name: basic-username
+      label:
+        en_US: Username
+        zh_Hans: 用户名
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: auth-type
+        operator: eq
+        value: basic
+    - name: basic-password
+      label:
+        en_US: Password
+        zh_Hans: 密码
+      type: secret
+      required: false
+      default: ''
+      show_if:
+        field: auth-type
+        operator: eq
+        value: basic
+    - name: basic-encoding
+      label:
+        en_US: Basic Auth Encoding
+        zh_Hans: Basic 凭据编码
+        ja_JP: Basic 認証の文字コード
+      description:
+        en_US: UTF-8 preserves this plugin's default. Choose Latin-1 to preserve the native runner's non-ASCII Basic credentials.
+        zh_Hans: UTF-8 保持本插件的默认行为。迁移原生运行器的非 ASCII Basic 凭据时，请选择 Latin-1。
+        ja_JP: UTF-8 は本プラグインの既定動作を維持します。旧ネイティブ Runner の非 ASCII Basic 資格情報を引き継ぐ場合は Latin-1 を選択してください。
+      type: select
+      required: false
+      default: utf-8
+      options:
+        - name: utf-8
+          label: {en_US: UTF-8, zh_Hans: UTF-8, ja_JP: UTF-8}
+        - name: latin1
+          label: {en_US: Latin-1, zh_Hans: Latin-1, ja_JP: Latin-1}
+      show_if:
+        field: auth-type
+        operator: eq
+        value: basic
+    - name: jwt-secret
+      label:
+        en_US: Secret
+        zh_Hans: 密钥
+      type: secret
+      required: false
+      default: ''
+      show_if:
+        field: auth-type
+        operator: eq
+        value: jwt
+    - name: jwt-algorithm
+      label:
+        en_US: Algorithm
+        zh_Hans: 算法
+      type: string
+      required: false
+      default: 'HS256'
+      show_if:
+        field: auth-type
+        operator: eq
+        value: jwt
+    - name: header-name
+      label:
+        en_US: Header Name
+        zh_Hans: 请求头名称
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: auth-type
+        operator: eq
+        value: header
+    - name: header-value
+      label:
+        en_US: Header Value
+        zh_Hans: 请求头值
+      type: secret
+      required: false
+      default: ''
+      show_if:
+        field: auth-type
+        operator: eq
+        value: header
+    - name: response-handling
+      label:
+        en_US: Response Handling
+        zh_Hans: 响应处理
+        ja_JP: レスポンスの処理
+      description:
+        en_US: Reply forwards HTTP 200 output. Ignore accepts any HTTP 2xx without reading or forwarding the body; configure the webhook to Respond Immediately. Run-scoped asset access ends as soon as the request returns.
+        zh_Hans: 回复模式转发 HTTP 200 的输出。忽略模式接受任意 HTTP 2xx，不读取或转发正文；请将 Webhook 配置为立即响应。请求返回后，本次运行的资产访问权限即失效。
+        ja_JP: 返信モードは HTTP 200 の出力を転送します。無視モードは HTTP 2xx を受け入れ、本文を読み取り・転送しません。Webhook を即時応答に設定してください。リクエストが戻ると実行単位のアセットアクセスは終了します。
+      type: select
+      required: false
+      default: reply
+      options:
+        - name: reply
+          label:
+            en_US: Forward as chat reply
+            zh_Hans: 转发为聊天回复
+            ja_JP: チャットの返信として転送
+        - name: ignore
+          label:
+            en_US: Ignore response body
+            zh_Hans: 忽略响应正文
+            ja_JP: レスポンス本文を無視
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show timeout and response mapping controls.
+        zh_Hans: 显示超时和响应映射调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_Hans: 超时时间
+      type: integer
+      required: false
+      default: 120
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: output-key
+      label:
+        en_US: Output Key
+        zh_Hans: 输出键名
+      type: string
+      required: false
+      default: 'response'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: langbot-assets-enabled
+      label:
+        en_US: Enable LangBot Assets
+        zh_Hans: 启用 LangBot 资产
+      type: boolean
+      required: false
+      default: false
+    - name: langbot-assets-gateway-host
+      label:
+        en_US: LangBot Asset Gateway Host
+        zh_Hans: LangBot 资产网关监听地址
+      type: string
+      required: false
+      default: '0.0.0.0'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-port
+      label:
+        en_US: LangBot Asset Gateway Port
+        zh_Hans: LangBot 资产网关端口
+      type: integer
+      required: false
+      default: 8765
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-request-timeout
+      label:
+        en_US: LangBot Asset Gateway Request Timeout
+        zh_Hans: LangBot 资产网关请求超时
+      type: integer
+      required: false
+      default: 60
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-token-ttl
+      label:
+        en_US: LangBot Asset Token TTL
+        zh_Hans: LangBot 资产令牌有效期
+      type: integer
+      required: false
+      default: 3600
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-input-name
+      label:
+        en_US: LangBot Asset Token Input Name
+        zh_Hans: LangBot 资产令牌输入变量名
+      type: string
+      required: false
+      default: 'langbot_asset_run_token'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: true
+    knowledge_retrieval: true
+    multimodal_input: false
+    interrupt: false
+  permissions:
+    tools:
+      - detail
+      - call
+    knowledge_bases:
+      - retrieve
+    history:
+      - page
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

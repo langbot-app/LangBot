@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: version
+  label:
+    en_US: Version
+    zh_Hans: Version
+  description:
+    en_US: 'Show LangBot version'
+    zh_Hans: 'Show LangBot version'
+spec:
+execution:
+  python:
+    path: version.py
+    attr: Version

@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: recall_memory
+  label:
+    en_US: RecallMemory
+    zh_Hans: 主动回忆
+  description:
+    en_US: Search long-term episodic memories with controlled filters such as speaker and time range.
+    zh_Hans: 使用受控过滤条件（如说话人、时间范围）主动搜索长期情景记忆。
+
+spec:
+  parameters:
+    type: object
+    properties:
+      query:
+        type: string
+        description: Semantic query for the memory search.
+      top_k:
+        type: integer
+        description: Number of memories to return. Optional, default is 5.
+      speaker_id:
+        type: string
+        description: Optional speaker ID filter. Use when you need memories from a specific participant.
+      speaker_name:
+        type: string
+        description: Optional speaker name filter. Use when the participant name is known.
+      time_after:
+        type: string
+        description: Optional inclusive lower bound for timestamp filtering, preferably in ISO-8601 format.
+      time_before:
+        type: string
+        description: Optional inclusive upper bound for timestamp filtering, preferably in ISO-8601 format.
+      importance_min:
+        type: integer
+        description: Optional minimum importance from 1 to 5.
+      source:
+        type: string
+        description: Optional source filter, for example "agent" or "import".
+      status:
+        type: string
+        enum:
+          - active
+          - superseded
+          - archived
+          - deleted
+        description: Optional lifecycle status filter. Default is "active"; only use other values when explicitly inspecting old or hidden memories.
+    required:
+      - query
+
+  llm_prompt: |
+    Search long-term episodic memories when the default automatic memory recall is not sufficient.
+
+    Use this tool when you need to actively inspect memory with a specific retrieval intent, such as:
+    - recalling what a specific person said
+    - searching memories within a time range
+    - focusing on more important memories
+    - checking imported memories versus agent-written memories
+
+    Available controlled filters:
+    - speaker_id
+    - speaker_name
+    - time_after
+    - time_before
+    - importance_min
+    - source
+    - status
+
+    Important behavior:
+    - This is a read-only lookup tool. Do not call remember or update_profile just because recall returned no result.
+    - These filters narrow results rather than broaden them.
+    - By default, recall only returns active memories. Use status=superseded or status=archived only when the user asks to inspect older hidden records.
+    - When multiple filters are provided together, they are typically combined as restrictive conditions.
+    - Do not add filters unless they are clearly needed.
+    - Start with only the semantic query whenever possible, then add at most one or two filters if you need to narrow the result set.
+    - When you are investigating conflicting memories, pay attention to timestamps and explicit correction/update records. Prefer newer explicit corrections over older conflicting statements.
+
+    Do not invent raw metadata filters outside these parameters.
+
+execution:
+  python:
+    path: recall_memory.py
+    attr: RecallMemory

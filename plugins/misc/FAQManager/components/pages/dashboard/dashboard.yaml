@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: dashboard
+  label:
+    en_US: FAQ Dashboard
+    zh_Hans: FAQ 仪表盘
+    ja_JP: FAQ ダッシュボード
+    es_ES: Panel FAQ
+spec:
+  path: index.html
+execution:
+  python:
+    path: dashboard.py
+    attr: DashboardPage

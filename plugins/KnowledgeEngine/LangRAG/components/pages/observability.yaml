@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: observability
+  label:
+    en_US: Observability
+    zh_Hans: 观测面板
+spec:
+  path: observability.html
+execution:
+  python:
+    path: observability.py
+    attr: LangRAGObservabilityPage

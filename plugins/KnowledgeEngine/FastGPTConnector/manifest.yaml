@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: FastGPTConnector
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/FastGPTConnector
+  version: 0.2.7
+  description:
+    en_US: Retrieve knowledge from FastGPT knowledge bases
+    zh_Hans: 集成 FastGPT 知识库
+    ja_JP: FastGPTコネクタ。FastGPTナレッジベースをLangBot Toolとして公開し、AgentがFastGPTの知識を検索できるようにします。
+    zh_Hant: FastGPT 連接器，將 FastGPT 知識庫暴露為 LangBot Tool，讓 Agent 能夠檢索 FastGPT 中的知識。
+    vi_VN: Trình kết nối FastGPT, cung cấp cơ sở tri thức FastGPT dưới dạng LangBot
+      Tool để Agent có thể truy xuất kiến thức từ FastGPT.
+    th_TH: ตัวเชื่อมต่อ FastGPT เปิดฐานความรู้ FastGPT เป็น LangBot Tool ให้ Agent
+      ค้นหาความรู้ใน FastGPT ได้
+    es_ES: Conector FastGPT que expone la base de conocimientos de FastGPT como una
+      herramienta LangBot Tool, permitiendo al Agente buscar conocimiento en FastGPT.
+  label:
+    en_US: FastGPT Knowledge Base
+    zh_Hans: FastGPT 知识库
+    ja_JP: FastGPT ナレッジベース
+    zh_Hant: FastGPT Knowledge Base
+    vi_VN: FastGPT Knowledge Base
+    th_TH: FastGPT Knowledge Base
+    es_ES: FastGPT Knowledge Base
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    KnowledgeEngine:
+      fromFiles:
+      - components/knowledge_engine/fastgpt.yaml
+execution:
+  python:
+    path: main.py
+    attr: FastGPTConnector
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

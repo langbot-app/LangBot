@@ -1,0 +1,133 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: WeKnora
+    zh_Hans: WeKnora
+  description:
+    en_US: Run a WeKnora agent or knowledge-base chat app as a LangBot Runner.
+    zh_Hans: 将 WeKnora 智能体或知识库问答应用作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: base-url
+      label:
+        en_US: Base URL
+        zh_Hans: 基础 URL
+      description:
+        en_US: The WeKnora API base URL, including /api/v1.
+        zh_Hans: WeKnora API 基础 URL，包含 /api/v1。
+      type: string
+      required: true
+      default: 'http://localhost:8080/api/v1'
+    - name: api-key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+      description:
+        en_US: API key generated from WeKnora Settings -> API Keys.
+        zh_Hans: 从 WeKnora 设置 -> API Keys 生成的 API 密钥。
+      type: secret
+      required: true
+      default: ''
+    - name: app-type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+      type: select
+      required: true
+      default: agent
+      options:
+        - name: agent
+          label:
+            en_US: Agent (Smart Reasoning)
+            zh_Hans: Agent（智能推理）
+        - name: chat
+          label:
+            en_US: Chat (Knowledge Base RAG)
+            zh_Hans: 聊天（知识库 RAG）
+    - name: agent-id
+      label:
+        en_US: Agent ID
+        zh_Hans: 智能体 ID
+      description:
+        en_US: When omitted, chat uses builtin-quick-answer and agent uses builtin-smart-reasoning. An explicit empty value lets the server choose. Saved IDs apply in both modes.
+        zh_Hans: 未设置时，聊天使用 builtin-quick-answer，智能体使用 builtin-smart-reasoning。显式留空则由服务端选择。已保存的 ID 在两种模式下均生效。
+      type: string
+      required: false
+    - name: knowledge-base-ids
+      label:
+        en_US: Knowledge Base IDs
+        zh_Hans: 知识库 ID 列表
+      description:
+        en_US: Remote WeKnora knowledge base IDs used in both modes, not LangBot knowledge base UUIDs. Values and order are preserved.
+        zh_Hans: 两种模式均可使用的远端 WeKnora 知识库 ID，不是 LangBot 知识库 UUID。保留原值和顺序。
+      type: array[string]
+      required: false
+      default: []
+    - name: web-search-enabled
+      label:
+        en_US: Enable Web Search
+        zh_Hans: 启用网络搜索
+      description:
+        en_US: Whether to enable web search in agent mode.
+        zh_Hans: 是否在 Agent 模式下启用网络搜索。
+      type: boolean
+      required: false
+      default: false
+      show_if:
+        field: app-type
+        operator: eq
+        value: agent
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show timeout and fallback prompt controls.
+        zh_Hans: 显示超时和回退提示词调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_Hans: 超时时间
+      description:
+        en_US: Request timeout in seconds.
+        zh_Hans: 请求超时时间（秒）。
+      type: integer
+      required: false
+      default: 120
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: base-prompt
+      label:
+        en_US: Base Prompt
+        zh_Hans: 基础提示词
+      description:
+        en_US: Default prompt when the user message is empty.
+        zh_Hans: 用户消息为空时使用的默认提示词。
+      type: string
+      required: false
+      default: '请回答用户的问题。'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: false
+    interrupt: false
+  permissions:
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

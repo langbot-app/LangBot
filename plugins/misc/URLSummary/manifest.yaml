@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: URLSummary
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/URLSummary
+  version: 0.1.9
+  description:
+    en_US: Automatically summarize web page content from URLs shared in chat 
+      using LLM.
+    zh_Hans: 自动使用 LLM 总结聊天中分享的网页链接内容。
+    zh_Hant: URL 摘要插件，自動提取和摘要訊息中的 URL 內容。
+    ja_JP: URL要約プラグイン。メッセージ内のURLコンテンツを自動的に抽出して要約します。
+    vi_VN: Plugin tóm tắt URL, tự động trích xuất và tóm tắt nội dung URL trong 
+      tin nhắn.
+    th_TH: ปลั๊กอินสรุป URL ดึงและสรุปเนื้อหา URL ในข้อความโดยอัตโนมัติ
+    es_ES: Plugin de resumen de URL que extrae y resume automáticamente el 
+      contenido de las URLs en los mensajes.
+  label:
+    en_US: URL Summary
+    zh_Hans: 链接摘要
+    zh_Hant: URL Summary
+    ja_JP: URL Summary
+    vi_VN: URL Summary
+    th_TH: URL Summary
+    es_ES: URL Summary
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: max_content_length
+    type: int
+    label:
+      en_US: Max Content Length
+      zh_Hans: 最大内容长度
+    description:
+      en_US: Maximum characters to extract from web page (default 8000)
+      zh_Hans: 从网页提取的最大字符数（默认 8000）
+    required: false
+    default: 8000
+  - name: model
+    type: llm-model-selector
+    label:
+      en_US: LLM Model
+      zh_Hans: LLM 模型
+    description:
+      en_US: Select the LLM model for generating summaries. If not set, the 
+        first available model will be used.
+      zh_Hans: 选择用于生成摘要的 LLM 模型。未设置时使用第一个可用模型。
+    required: false
+  - name: language
+    type: select
+    label:
+      en_US: Summary Language
+      zh_Hans: 摘要语言
+    description:
+      en_US: Language for the summary output
+      zh_Hans: 摘要输出的语言
+    required: false
+    default: zh_Hans
+    options:
+    - label:
+        en_US: English
+        zh_Hans: 英语
+      name: en_US
+    - label:
+        en_US: Chinese (Simplified)
+        zh_Hans: 简体中文
+      name: zh_Hans
+    - label:
+        en_US: Japanese
+        zh_Hans: 日语
+      name: ja_JP
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: URLSummary
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

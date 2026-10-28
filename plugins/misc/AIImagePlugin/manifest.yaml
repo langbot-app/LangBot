@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: AIImagePlugin
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AIImagePlugin
+  version: 0.1.6
+  description:
+    en_US: Compatible with OpenAI format image generation plugin
+    zh_Hans: 兼容使用 OpenAI 格式的绘图插件
+    zh_Hant: AI 繪圖插件，支援透過 Tool 呼叫方式觸發繪圖，同時支援多種繪圖服務商。
+    ja_JP: AI画像生成プラグイン。Tool呼び出しで画像生成をトリガーし、複数の画像生成サービスに対応します。
+    vi_VN: Plugin vẽ tranh AI, hỗ trợ kích hoạt vẽ tranh qua Tool call, đồng thời
+      hỗ trợ nhiều nhà cung cấp dịch vụ vẽ tranh.
+    th_TH: ปลั๊กอินวาดภาพ AI รองรับการเรียกวาดภาพผ่าน Tool call และรองรับผู้ให้บริการวาดภาพหลายราย
+    es_ES: Plugin de generación de imágenes con IA, soporta la generación mediante
+      llamadas Tool y es compatible con múltiples proveedores de servicios.
+  label:
+    en_US: AI Image Generator
+    zh_Hans: AI 绘图生成器
+    zh_Hant: AI Image Generator
+    ja_JP: AI Image Generator
+    vi_VN: AI Image Generator
+    th_TH: AI Image Generator
+    es_ES: AI Image Generator
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: api_base_url
+    type: string
+    label:
+      en_US: API Base URL
+      zh_Hans: API 地址
+    description:
+      en_US: Base URL for OpenAI compatible API
+      zh_Hans: 兼容 OpenAI 格式的 API 地址
+    required: false
+    default: https://api.qhaigc.net/v1
+  - name: openai_api_key
+    type: string
+    label:
+      en_US: API Key
+      zh_Hans: API 密钥
+    description:
+      en_US: Get your API key from https://api.qhaigc.net/console/token
+      zh_Hans: 从 https://api.qhaigc.net/console/token 获取 API 密钥
+    required: true
+    default: ''
+  - name: model_name
+    type: select
+    label:
+      en_US: Model Name
+      zh_Hans: 模型名称
+    description:
+      en_US: Image generation model name
+      zh_Hans: 图片生成模型名称
+    options:
+    - name: nano-banana-1
+      label:
+        en_US: nano-banana-1
+        zh_Hans: nano-banana-1
+    - name: nano-banana-2
+      label:
+        en_US: nano-banana-2
+        zh_Hans: nano-banana-2
+    - name: qh-draw-3d
+      label:
+        en_US: qh-draw-3d
+        zh_Hans: qh-draw-3d
+    - name: qh-draw-4d
+      label:
+        en_US: qh-draw-4d
+        zh_Hans: qh-draw-4d
+    - name: qh-draw-x1-pro
+      label:
+        en_US: qh-draw-x1-pro
+        zh_Hans: qh-draw-x1-pro
+    - name: qh-draw-x2-preview
+      label:
+        en_US: qh-draw-x2-preview
+        zh_Hans: qh-draw-x2-preview
+    - name: qh-draw:韩漫风
+      label:
+        en_US: qh-draw:韩漫风
+        zh_Hans: qh-draw:韩漫风
+    default: qh-draw-x1-pro
+    required: false
+  - name: image_size
+    type: select
+    label:
+      en_US: Image Size
+      zh_Hans: 图片尺寸
+    description:
+      en_US: Default size for generated images
+      zh_Hans: 生成图片的默认尺寸
+    options:
+    - name: 1024x1024
+      label:
+        en_US: Square 1:1 (1024x1024)
+        zh_Hans: 正方形 1:1 (1024x1024)
+    - name: 1280x1280
+      label:
+        en_US: Square 1:1 (1280x1280)
+        zh_Hans: 正方形 1:1 (1280x1280)
+    - name: 768x1280
+      label:
+        en_US: Portrait 3:5 (768x1280)
+        zh_Hans: 竖版 3:5 (768x1280)
+    - name: 1280x768
+      label:
+        en_US: Landscape 5:3 (1280x768)
+        zh_Hans: 横版 5:3 (1280x768)
+    - name: 720x1280
+      label:
+        en_US: Portrait 9:16 (720x1280)
+        zh_Hans: 竖版 9:16 (720x1280)
+    - name: 1280x720
+      label:
+        en_US: Landscape 16:9 (1280x720)
+        zh_Hans: 横版 16:9 (1280x720)
+    - name: 1024x768
+      label:
+        en_US: Landscape 4:3 (1024x768)
+        zh_Hans: 横版 4:3 (1024x768)
+    - name: 768x1024
+      label:
+        en_US: Portrait 3:4 (768x1024)
+        zh_Hans: 竖版 3:4 (768x1024)
+    default: 1024x1024
+    required: false
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: AIImagePlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

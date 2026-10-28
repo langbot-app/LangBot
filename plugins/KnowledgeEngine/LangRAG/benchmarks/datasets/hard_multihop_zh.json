@@ -1,0 +1,289 @@
+{
+  "id": "hard_multihop_zh_v1",
+  "description": "Harder synthetic Chinese retrieval dataset inspired by HotpotQA/BEIR/MIRACL-style evaluation: multi-hop gold documents, near-duplicate distractors, table-like facts, negation, and parser/retrieval configuration tradeoffs. Content is original and stored in-repo for deterministic regression testing.",
+  "methodology_references": [
+    "https://hotpotqa.github.io/",
+    "https://arxiv.org/abs/1809.09600",
+    "https://arxiv.org/abs/2104.08663",
+    "https://github.com/project-miracl/miracl"
+  ],
+  "documents": [
+    {
+      "id": "doc_external_parser",
+      "title": "外部 Parser 的结构化输出",
+      "content": "GeneralParsers 的目标是把原始文件转换为 LangRAG 可以直接使用的 ParseResult。ParseResult 包含 text、sections 和 metadata。sections 会携带 heading、level、page 等结构信息，适合后续 section-aware chunking。metadata 可以记录 page_count、has_tables、has_images、vision_used、vision_failed_count 等解析统计。它不负责向量检索，也不负责生成最终答案。",
+      "sections": [
+        {
+          "heading": "ParseResult",
+          "level": 1,
+          "page": 1,
+          "content": "ParseResult 包含 text、sections 和 metadata。sections 会携带 heading、level、page 等结构信息。metadata 可以记录 page_count、has_tables、has_images、vision_used、vision_failed_count 等解析统计。"
+        },
+        {
+          "heading": "职责边界",
+          "level": 1,
+          "page": 2,
+          "content": "GeneralParsers 不负责向量检索，也不负责生成最终答案。"
+        }
+      ]
+    },
+    {
+      "id": "doc_internal_parser",
+      "title": "LangRAG 内置轻量 Parser",
+      "content": "LangRAG 内置 FileParser 是 fallback 方案，只在没有外部 parsed_content 时使用。它可以读取 txt、pdf、docx、markdown 和 html 的基础文本，但不会提供丰富的 page metadata、vision 统计或稳定的 section 层级。这个轻量 parser 适合兜底，不适合复杂 PDF、扫描件、嵌入图片和表格密集文档。",
+      "sections": [
+        {
+          "heading": "Fallback Parser",
+          "level": 1,
+          "page": 1,
+          "content": "LangRAG 内置 FileParser 只在没有外部 parsed_content 时使用。"
+        },
+        {
+          "heading": "能力限制",
+          "level": 1,
+          "page": 1,
+          "content": "内置 parser 不会提供丰富的 page metadata、vision 统计或稳定的 section 层级，不适合复杂 PDF、扫描件、嵌入图片和表格密集文档。"
+        }
+      ]
+    },
+    {
+      "id": "doc_section_chunking",
+      "title": "Section-aware chunking",
+      "content": "当 LangRAG 收到 parser sections 时，chunk 策略会按 section 独立切分，而不是把全文拍平成一个长字符串。chunk metadata 中会保存 heading、level、page、heading_path、has_table 和 section_index。检索结果可以把这些字段带回给模型，引用也可以包含页码和 heading_path。没有 sections 时，LangRAG 只能做普通 flat chunking。",
+      "sections": [
+        {
+          "heading": "结构化分块",
+          "level": 1,
+          "page": 3,
+          "content": "当收到 parser sections 时，chunk 策略会按 section 独立切分。metadata 保存 heading、level、page、heading_path、has_table 和 section_index。"
+        },
+        {
+          "heading": "无结构回退",
+          "level": 1,
+          "page": 3,
+          "content": "没有 sections 时，LangRAG 只能做普通 flat chunking。"
+        }
+      ]
+    },
+    {
+      "id": "doc_parent_child",
+      "title": "Parent-child 索引细节",
+      "content": "parent_child 索引使用两层文本单元。parent chunk 比较大，用来承载完整上下文；child chunk 比较小，用来嵌入和匹配查询。向量库中存储的 document 是 child_text，但 metadata.text 返回 parent text。检索后按照 document_id 和 parent_index 去重，只保留每个 parent 中距离最好的 child。因此 parent_child 更适合需要完整段落证据的问答，但会增加向量数量。",
+      "sections": [
+        {
+          "heading": "父子索引",
+          "level": 1,
+          "page": 4,
+          "content": "parent chunk 承载完整上下文；child chunk 用来嵌入和匹配查询。metadata.text 返回 parent text。"
+        },
+        {
+          "heading": "去重逻辑",
+          "level": 2,
+          "page": 4,
+          "content": "检索后按照 document_id 和 parent_index 去重，只保留每个 parent 中距离最好的 child。"
+        }
+      ]
+    },
+    {
+      "id": "doc_query_rewrite",
+      "title": "查询重写与混合检索",
+      "content": "LangRAG 支持 HyDE、Multi-Query 和 Step-Back。HyDE 先生成假设答案段落，再用它进行检索。Multi-Query 会生成多个查询变体并合并去重。Step-Back 会生成更抽象的问题来召回背景文档。对于 hybrid 和 full_text，重写后的 query_text 必须传给向量库的关键词侧，否则只会改变向量侧，关键词匹配得不到收益。",
+      "sections": [
+        {
+          "heading": "Rewrite 策略",
+          "level": 1,
+          "page": 5,
+          "content": "HyDE 生成假设答案段落，Multi-Query 生成多个查询变体，Step-Back 生成更抽象的问题。"
+        },
+        {
+          "heading": "Hybrid 注意事项",
+          "level": 2,
+          "page": 5,
+          "content": "对于 hybrid 和 full_text，重写后的 query_text 必须传给向量库的关键词侧。"
+        }
+      ]
+    },
+    {
+      "id": "doc_context_window",
+      "title": "上下文窗口",
+      "content": "context_window 会在检索命中后尝试读取同一文档中相邻的检索单元，并写入 metadata.context_before 与 metadata.context_after。这个能力依赖 vector_get_by_ids。不同索引策略的向量 ID 规则不同：chunk 使用 doc_0；parent_child 使用 doc_p0_c0；qa 使用 doc_0_qa0。如果 ID 规则不匹配，context_window 会取不到相邻内容。",
+      "sections": [
+        {
+          "heading": "Context Window",
+          "level": 1,
+          "page": 6,
+          "content": "context_window 会读取相邻检索单元，并写入 context_before 与 context_after。"
+        },
+        {
+          "heading": "ID 规则",
+          "level": 2,
+          "page": 6,
+          "content": "chunk 使用 doc_0；parent_child 使用 doc_p0_c0；qa 使用 doc_0_qa0。"
+        }
+      ]
+    },
+    {
+      "id": "doc_qa_index",
+      "title": "QA 索引",
+      "content": "QA 索引在摄入阶段对每个 chunk 调用 LLM，生成问题和答案。向量嵌入的是生成的问题，metadata 中保存 question、answer、source_chunk 和 text。这个策略可能提高自然问题匹配，但摄入成本更高，且依赖 qa_llm_model_uuid 的稳定性。没有配置 qa_llm_model_uuid 时，QA 索引应该失败而不是静默退化。",
+      "sections": [
+        {
+          "heading": "生成问题",
+          "level": 1,
+          "page": 7,
+          "content": "QA 索引对每个 chunk 调用 LLM，生成问题和答案。向量嵌入的是生成的问题。"
+        },
+        {
+          "heading": "成本与依赖",
+          "level": 1,
+          "page": 7,
+          "content": "QA 索引摄入成本更高，依赖 qa_llm_model_uuid 的稳定性。"
+        }
+      ]
+    },
+    {
+      "id": "doc_table_pdf",
+      "title": "表格和 PDF 解析",
+      "content": "复杂 PDF 中，表格、页眉页脚和扫描页会干扰普通文本抽取。GeneralParsers 的 PDF parser 会尝试保留页面边界、把表格转换成 Markdown 表格、过滤重复 header/footer，并在配置 vision 模型后处理扫描页 OCR 和嵌入图片。表格被转换后，LangRAG 的 section-aware chunking 会尽量避免把 Markdown 表格切坏。",
+      "sections": [
+        {
+          "heading": "PDF 表格",
+          "level": 1,
+          "page": 8,
+          "content": "GeneralParsers 会把表格转换成 Markdown 表格，并过滤重复 header/footer。"
+        },
+        {
+          "heading": "OCR 与图片",
+          "level": 2,
+          "page": 8,
+          "content": "配置 vision 模型后，可以处理扫描页 OCR 和嵌入图片。"
+        }
+      ]
+    },
+    {
+      "id": "doc_vector_weight",
+      "title": "Hybrid 检索权重",
+      "content": "hybrid 检索融合向量距离和关键词距离。vector_weight 越高，越偏向语义向量；vector_weight 越低，越偏向关键词匹配。包含参数名、错误码、文件名或产品型号的查询通常需要提高关键词侧权重。开放式概念问题通常更依赖向量语义。错误地把所有查询都设置成同一个权重，会掩盖召回问题。",
+      "sections": [
+        {
+          "heading": "权重含义",
+          "level": 1,
+          "page": 9,
+          "content": "vector_weight 越高越偏向语义向量，越低越偏向关键词匹配。"
+        },
+        {
+          "heading": "查询类型",
+          "level": 1,
+          "page": 9,
+          "content": "参数名、错误码、文件名或产品型号查询需要提高关键词侧权重；开放式概念问题更依赖向量语义。"
+        }
+      ]
+    },
+    {
+      "id": "doc_delete",
+      "title": "删除与数据一致性",
+      "content": "LangRAG 删除文档时调用 vector_delete，并通过 file_ids 参数传入 document_id。这个行为要求每个 chunk metadata 都包含 file_id。若 ingest 过程中一部分 chunk 已写入但后续失败，系统需要能通过同一个 file_id 清理残留向量。删除逻辑和 context_window 不共享 ID 规则，删除主要依赖 metadata.file_id。",
+      "sections": [
+        {
+          "heading": "删除向量",
+          "level": 1,
+          "page": 10,
+          "content": "删除文档时调用 vector_delete，并通过 file_ids 参数传入 document_id。"
+        },
+        {
+          "heading": "一致性",
+          "level": 1,
+          "page": 10,
+          "content": "每个 chunk metadata 都应包含 file_id，便于清理残留向量。"
+        }
+      ]
+    },
+    {
+      "id": "doc_distractor_general",
+      "title": "普通文本搜索说明",
+      "content": "一个简单搜索系统可以只做关键词匹配。它不需要 embedding_model_uuid，也不需要 parser sections。关键词搜索在短文本上速度快，但遇到同义词、抽象问题和跨段落证据时容易遗漏。这个文档包含 parser、chunk、metadata 等词，但并不描述 LangRAG 的外部 Parser 或 section-aware chunking 细节。"
+    },
+    {
+      "id": "doc_distractor_vision",
+      "title": "相机 OCR 备忘录",
+      "content": "移动端相机应用可以对图片进行 OCR，识别票据和名片。它也会保存 metadata，例如拍摄时间和设备型号。这个文档提到 vision、OCR 和 metadata，但与 GeneralParsers 的 PDF 扫描页处理、LangRAG 分块和向量检索没有直接关系。"
+    },
+    {
+      "id": "doc_distractor_weather",
+      "title": "天气和办公室通知",
+      "content": "明天下午可能下雨，办公室门禁系统维护。请不要把这个文档当作 RAG 评测相关资料。它只用于制造无关干扰。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q_multihop_parser_chunk",
+      "query": "为什么外部 Parser 的 sections 能改善 LangRAG 的 chunk metadata 和引用？",
+      "type": "bridge",
+      "relevant_document_ids": ["doc_external_parser", "doc_section_chunking"],
+      "relevant_headings": ["ParseResult", "结构化分块"]
+    },
+    {
+      "id": "q_internal_vs_external",
+      "query": "复杂 PDF、扫描件和表格密集文档为什么不应该只依赖 LangRAG 内置 parser？",
+      "type": "comparison",
+      "relevant_document_ids": ["doc_internal_parser", "doc_table_pdf"],
+      "relevant_headings": ["能力限制", "PDF 表格"]
+    },
+    {
+      "id": "q_parent_context",
+      "query": "如果希望用小 chunk 精确匹配但返回完整段落证据，应选择哪种索引，原因是什么？",
+      "type": "bridge",
+      "relevant_document_ids": ["doc_parent_child"],
+      "relevant_headings": ["父子索引"]
+    },
+    {
+      "id": "q_rewrite_hybrid",
+      "query": "Multi-Query 在 hybrid 检索中为什么必须把重写后的 query_text 传给关键词侧？",
+      "type": "causal",
+      "relevant_document_ids": ["doc_query_rewrite", "doc_vector_weight"],
+      "relevant_headings": ["Hybrid 注意事项", "权重含义"]
+    },
+    {
+      "id": "q_context_id_rules",
+      "query": "context_window 对 chunk、parent_child、qa 三种索引分别应该怎样构造相邻向量 ID？",
+      "type": "lookup",
+      "relevant_document_ids": ["doc_context_window"],
+      "relevant_headings": ["ID 规则"]
+    },
+    {
+      "id": "q_qa_cost",
+      "query": "QA 索引为什么可能提高自然问题匹配，但摄入成本和稳定性风险更高？",
+      "type": "tradeoff",
+      "relevant_document_ids": ["doc_qa_index"],
+      "relevant_headings": ["生成问题", "成本与依赖"]
+    },
+    {
+      "id": "q_delete_cleanup",
+      "query": "如果 ingest 部分成功后失败，删除文档时依靠哪个 metadata 字段清理残留向量？",
+      "type": "failure_mode",
+      "relevant_document_ids": ["doc_delete"],
+      "relevant_headings": ["一致性"]
+    },
+    {
+      "id": "q_keyword_weight",
+      "query": "包含参数名、错误码或文件名的查询，hybrid 检索应该怎样调整 vector_weight？",
+      "type": "comparison",
+      "relevant_document_ids": ["doc_vector_weight"],
+      "relevant_headings": ["查询类型"]
+    },
+    {
+      "id": "q_vision_not_camera",
+      "query": "LangBot 的解析器处理扫描 PDF 时，vision 模型承担什么角色？不要回答移动端相机 OCR。",
+      "type": "distractor_resistance",
+      "relevant_document_ids": ["doc_table_pdf"],
+      "relevant_headings": ["OCR 与图片"]
+    },
+    {
+      "id": "q_parser_boundary",
+      "query": "GeneralParsers 和 LangRAG 的职责边界是什么，哪个负责解析，哪个负责向量检索？",
+      "type": "bridge",
+      "relevant_document_ids": ["doc_external_parser", "doc_section_chunking"],
+      "relevant_headings": ["职责边界", "结构化分块"]
+    }
+  ]
+}

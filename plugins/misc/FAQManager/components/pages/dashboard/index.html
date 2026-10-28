@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--langbot-bg, #fff);
+      color: var(--langbot-text, #0a0a0a);
+      padding: 24px;
+      transition: background 0.2s, color 0.2s;
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 12px;
+      padding: 20px; background: var(--langbot-bg-card, #f8fafc);
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card-label { font-size: 12px; color: var(--langbot-text-muted, #71717a); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .card-value { font-size: 28px; font-weight: 700; color: var(--langbot-accent, #2563eb); }
+    .card-unit { font-size: 13px; color: var(--langbot-text-muted, #71717a); margin-left: 4px; }
+    .recent { margin-top: 8px; }
+    .recent h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+    .recent-item {
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 8px; background: var(--langbot-bg-card, #f8fafc);
+    }
+    .recent-q { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .recent-a { font-size: 12px; color: var(--langbot-text-muted, #71717a); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { text-align: center; padding: 30px; color: var(--langbot-text-muted, #71717a); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1 data-i18n="title">FAQ Dashboard</h1>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label" data-i18n="totalEntries">Total Entries</div>
+      <div><span class="card-value" id="totalEntries">-</span></div>
+    </div>
+    <div class="card">
+      <div class="card-label" data-i18n="avgAnswerLength">Avg. Answer Length</div>
+      <div><span class="card-value" id="avgLength">-</span><span class="card-unit" data-i18n="chars">chars</span></div>
+    </div>
+  </div>
+
+  <div class="recent">
+    <h2 data-i18n="recentEntries">Recent Entries</h2>
+    <div id="recentList"></div>
+  </div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    async function loadDashboard() {
+      var stats = await langbot.api('/stats', null, 'GET');
+      document.getElementById('totalEntries').textContent = stats.total_entries ?? 0;
+      document.getElementById('avgLength').textContent = stats.avg_answer_length ?? 0;
+
+      // Load recent entries from manager page's API — but dashboard has its own page_id,
+      // so we just show the stats. For the full list, use the Manager page.
+      // We can still show a preview by fetching from our own endpoint if we add one,
+      // but let's keep it simple and just show stats.
+
+      // Show recent entries preview if available
+      var listEl = document.getElementById('recentList');
+      if (stats.total_entries === 0) {
+        listEl.innerHTML = '<div class="empty">' + langbot.t('noEntries', 'No FAQ entries yet.') + '</div>';
+        return;
+      }
+      listEl.innerHTML = '<div class="empty">' + langbot.t('viewInManager', 'Open FAQ Manager to view and edit entries.') + '</div>';
+    }
+
+    langbot.onReady(function() {
+      loadDashboard();
+    });
+  </script>
+</body>
+</html>

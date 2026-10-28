@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: DifyAgent
+  version: 0.2.4
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent
+  label:
+    en_US: Dify Agent
+    zh_Hans: Dify Agent
+    zh_Hant: Dify Agent
+    ja_JP: Dify Agent
+    th_TH: Dify Agent
+    vi_VN: Dify Agent
+    es_ES: Agente Dify
+    ru_RU: Агент Dify
+  description:
+    en_US: Run a Dify application as a LangBot Runner.
+    zh_Hans: 将 Dify 应用作为 LangBot 运行器运行。
+    zh_Hant: 將 Dify 應用程式作為 LangBot 運行器執行。
+    ja_JP: Dify アプリを LangBot Runner として実行します。
+    th_TH: เรียกใช้แอป Dify เป็น LangBot Runner
+    vi_VN: Chạy ứng dụng Dify dưới dạng LangBot Runner.
+    es_ES: Ejecuta una aplicación de Dify como LangBot Runner.
+    ru_RU: Запускает приложение Dify как LangBot Runner.
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: DifyAgentPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

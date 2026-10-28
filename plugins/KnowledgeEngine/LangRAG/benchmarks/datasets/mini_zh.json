@@ -1,0 +1,120 @@
+{
+  "id": "mini_zh_v1",
+  "description": "Small deterministic Chinese retrieval dataset for LangRAG offline smoke benchmarks.",
+  "documents": [
+    {
+      "id": "doc_parser",
+      "title": "LangRAG 与外部解析器",
+      "content": "LangRAG 在文档摄入时优先使用 LangBot Host 提供的 parsed_content。GeneralParsers 这类外部 Parser 插件可以提取 text、sections 和 metadata。结构化 sections 能保留标题、页码和表格边界，因此比只读取纯文本更适合 PDF、Word 和包含表格的知识库。没有外部解析结果时，LangRAG 才回退到内置 FileParser。",
+      "sections": [
+        {
+          "heading": "外部 Parser",
+          "level": 1,
+          "page": 1,
+          "content": "LangRAG 优先使用 parsed_content。GeneralParsers 可以提供 text、sections 和 metadata。"
+        },
+        {
+          "heading": "结构化切分",
+          "level": 2,
+          "page": 1,
+          "content": "结构化 sections 能保留标题、页码和表格边界，适合 PDF、Word 和包含表格的知识库。"
+        }
+      ]
+    },
+    {
+      "id": "doc_parent_child",
+      "title": "Parent-Child 索引",
+      "content": "parent_child 索引会先生成较大的 parent chunk，再把 parent 切成更小的 child chunk。向量库嵌入的是 child_text，因为它更适合精确匹配用户问题；返回给模型的是 parent 的 text，因此能提供更完整的上下文。检索后会按照 parent_index 去重，只保留每个 parent 中距离最好的 child。",
+      "sections": [
+        {
+          "heading": "父子索引",
+          "level": 1,
+          "page": 2,
+          "content": "parent_child 索引会先生成 parent chunk，再切出 child chunk。child_text 用于向量检索，parent text 用于返回上下文。"
+        }
+      ]
+    },
+    {
+      "id": "doc_query_rewrite",
+      "title": "查询重写策略",
+      "content": "LangRAG 支持 HyDE、Multi-Query 和 Step-Back 查询重写。HyDE 会生成一个假设答案段落，再用这个段落进行检索。Multi-Query 会为同一个用户问题生成多个搜索查询并合并结果。Step-Back 会生成更抽象的问题，用来召回背景知识。查询重写需要配置 rewrite_llm_model_uuid。",
+      "sections": [
+        {
+          "heading": "Query Rewrite",
+          "level": 1,
+          "page": 3,
+          "content": "HyDE 生成假设答案段落。Multi-Query 生成多个搜索查询。Step-Back 生成更抽象的问题。"
+        }
+      ]
+    },
+    {
+      "id": "doc_context_window",
+      "title": "上下文窗口与删除",
+      "content": "context_window 会在检索命中后尝试读取同一文档中相邻的 chunk，把前后内容放入 metadata 的 context_before 和 context_after。这个能力依赖向量库支持 vector_get_by_ids。删除文档时，LangRAG 调用 vector_delete，并通过 file_ids 删除指定 document_id 对应的向量。",
+      "sections": [
+        {
+          "heading": "Context Window",
+          "level": 1,
+          "page": 4,
+          "content": "context_window 会读取相邻 chunk，并写入 context_before 与 context_after。"
+        },
+        {
+          "heading": "删除文档",
+          "level": 1,
+          "page": 5,
+          "content": "删除文档时调用 vector_delete，并通过 file_ids 删除 document_id 对应的向量。"
+        }
+      ]
+    },
+    {
+      "id": "doc_hybrid",
+      "title": "混合检索",
+      "content": "检索模式包括 vector、full_text 和 hybrid。vector 适合语义相似度，full_text 适合关键词精确匹配，hybrid 会融合向量距离和关键词得分。vector_weight 控制混合检索中向量搜索的权重，数值越高越偏向语义检索。",
+      "sections": [
+        {
+          "heading": "Hybrid Search",
+          "level": 1,
+          "page": 6,
+          "content": "hybrid 会融合向量距离和关键词得分。vector_weight 控制向量搜索权重。"
+        }
+      ]
+    },
+    {
+      "id": "doc_noise_weather",
+      "title": "天气备忘录",
+      "content": "本周末上海可能有小雨，室外活动需要准备雨具。这个文档用于提供与 RAG 插件无关的干扰内容。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q_parser",
+      "query": "为什么 LangRAG 建议搭配 GeneralParsers 外部解析器？",
+      "relevant_document_ids": ["doc_parser"]
+    },
+    {
+      "id": "q_parent_child",
+      "query": "parent_child 索引为什么能返回更完整的上下文？",
+      "relevant_document_ids": ["doc_parent_child"]
+    },
+    {
+      "id": "q_hyde",
+      "query": "HyDE 查询重写是怎么工作的？",
+      "relevant_document_ids": ["doc_query_rewrite"]
+    },
+    {
+      "id": "q_context_window",
+      "query": "context_window 会把相邻 chunk 放在哪里？",
+      "relevant_document_ids": ["doc_context_window"]
+    },
+    {
+      "id": "q_delete",
+      "query": "LangRAG 删除文档时通过什么参数删除向量？",
+      "relevant_document_ids": ["doc_context_window"]
+    },
+    {
+      "id": "q_hybrid",
+      "query": "hybrid 检索中的 vector_weight 有什么作用？",
+      "relevant_document_ids": ["doc_hybrid"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: monitor
+  label:
+    en_US: Keyword Monitor
+    zh_Hans: 关键词监控
+spec:
+execution:
+  python:
+    path: monitor.py
+    attr: KeywordMonitor

@@ -6,20 +6,19 @@
 
 ## 1. 仓库组织
 
-官方 runner 插件与 LangBot 主仓库、SDK 仓库以不同节奏迭代：LangBot 主仓库只维护宿主协议和调度，SDK 仓库维护 Runner 组件和 runtime 协议，官方 runner 插件承载业务 runner 的具体实现和第三方平台适配。
+官方 runner 插件源码现在位于 LangBot 主仓库的 `plugins/Runner/`，但测试、依赖、版本和上架节奏保持独立。Core 维护宿主协议和调度，SDK 仓库维护 Runner 组件和 runtime 协议，官方 runner 插件承载业务 runner 的具体实现和第三方平台适配。Core 发版不包含插件源码或插件包。
 
 当前推荐"官方插件可独立发布，必要时共享 SDK helper"。开发期采用本地多目录布局：
 
 ```text
-langbot-app/
-  langbot-local-agent/                # plugin:langbot-team/LocalAgent/default
+LangBot/plugins/Runner/
+  LocalAgent/                        # plugin:langbot-team/LocalAgent/default
     manifest.yaml
     components/runner/default.{yaml,py}
-  langbot-agent-runner/               # 外部服务 runner 仓库
-    acp-agent-runner/  claude-code-agent/  codex-agent/  dify-agent/  n8n-agent/  ...
+  acp-agent-runner/  claude-code-agent/  codex-agent/  dify-agent/  n8n-agent/  ...
 ```
 
-后续可聚合进 monorepo，也可继续独立发布——这个选择不影响协议设计。重复逻辑优先沉淀到 SDK 或明确的共享 helper 包，不要把宿主私有结构泄漏给插件。旧 `src/langbot/pkg/provider/runners/*` 只作为历史行为对齐基准；当前未发布分支不提供旧内置 runner 的运行时 fallback。
+插件已经合仓，但仍独立发布；详见 `plugins/RELEASING.md`。这个选择不影响协议设计。重复逻辑优先沉淀到 SDK 或明确的共享 helper 包，不要把宿主私有结构泄漏给插件。旧 `src/langbot/pkg/provider/runners/*` 只作为历史行为对齐基准；当前未发布分支不提供旧内置 runner 的运行时 fallback。
 
 ## 2. 插件命名和 runner id
 

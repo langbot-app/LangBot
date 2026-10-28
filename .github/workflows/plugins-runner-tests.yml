@@ -1,0 +1,85 @@
+name: Plugins / Runner tests
+
+on:
+  push:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/Runner/**"
+      - ".github/workflows/plugins-runner-tests.yml"
+  pull_request:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/Runner/**"
+      - ".github/workflows/plugins-runner-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - name: Checkout plugins
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+      - name: Keep environment outside the checkout
+        run: |
+          printf 'UV_PROJECT_ENVIRONMENT=%s/runner-venv\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'RUNNER_EVIDENCE_DIR=%s/runner-evidence\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+      - name: Verify published SDK pin
+        run: uv run --no-sync python -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"; print("langbot-plugin", version("langbot-plugin"))'
+      - name: Prepare isolated certified coding Runner SDK environment
+        run: |
+          uv venv "$RUNNER_TEMP/coding-074"
+          # PyPI's aggregate index can lag the exact 0.7.4 release endpoint.
+          uv pip install --python "$RUNNER_TEMP/coding-074/bin/python" \
+            'https://files.pythonhosted.org/packages/f2/c7/c870377771cbe27e047b19778b5f249b15efef52409358901af94d13e6c0/langbot_plugin-0.7.4-py3-none-any.whl#sha256=596ecd776c13efa6f6cfe178463dc4a967653238548c9569195cdbb5aa47506e' \
+            -r acp-agent-runner/requirements.txt -r claude-code-agent/requirements.txt -r codex-agent/requirements.txt pytest pyyaml packaging
+          "$RUNNER_TEMP/coding-074/bin/python" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"'
+          printf 'CODING_RUNNER_TEST_PYTHON=%s/coding-074/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Prepare isolated LocalAgent explicit-export SDK environment
+        run: |
+          UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/localagent-074" uv sync --project LocalAgent --locked --extra dev
+          "$RUNNER_TEMP/localagent-074/bin/python" -c 'from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
+          printf 'LOCALAGENT_TEST_PYTHON=%s/localagent-074/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      # Preserve the external Runner lint scope; LocalAgent has its own Ruff config.
+      # RunnerDemo did not have a Ruff gate before consolidation.
+      - name: Ruff check
+        run: uv run --no-sync ruff check tests http-certification-tests ./*-agent acp-agent-runner
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check tests http-certification-tests ./*-agent acp-agent-runner
+      - name: LocalAgent Ruff check
+        run: uv run --no-sync ruff check LocalAgent
+      - name: LocalAgent Ruff format check
+        run: uv run --no-sync ruff format --check LocalAgent
+      - name: All Runner tests, including isolated plugin suites (LocalAgent, RunnerDemo, shared agents)
+        run: uv run --no-sync python -m pytest --junitxml="${RUNNER_EVIDENCE_DIR}/runner.xml"
+      # Generic pkg/test module names require a fresh pytest interpreter.
+      - name: HTTP Runner certification regressions
+        run: uv run --no-sync python -m pytest http-certification-tests -q --junitxml="${RUNNER_EVIDENCE_DIR}/http-certification.xml"
+      - name: Certified RunnerDemo SDK admission and package tests
+        run: |
+          "$RUNNER_TEMP/coding-074/bin/python" certification-tests/test_runner_demo_dependency_admission.py -v
+          cd RunnerDemo
+          "$RUNNER_TEMP/coding-074/bin/python" -m unittest discover -s tests -v
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-test-evidence
+          path: ${{ runner.temp }}/runner-evidence
+          if-no-files-found: warn

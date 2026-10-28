@@ -1,0 +1,14 @@
+{
+  "title": "FAQ Manager",
+  "searchPlaceholder": "Search FAQ...",
+  "addNew": "Add New Entry",
+  "questionPlaceholder": "Question",
+  "answerPlaceholder": "Answer",
+  "add": "Add",
+  "edit": "Edit",
+  "delete": "Delete",
+  "save": "Save",
+  "cancel": "Cancel",
+  "entries": "entries",
+  "empty": "No FAQ entries yet. Add one above."
+}

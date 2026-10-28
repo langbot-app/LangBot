@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: search_faq
+  label:
+    en_US: Search FAQ
+    zh_Hans: 搜索 FAQ
+  description:
+    en_US: Search the FAQ knowledge base for relevant answers
+    zh_Hans: 搜索 FAQ 知识库获取相关回答
+
+spec:
+  parameters:
+    type: object
+    properties:
+      query:
+        type: string
+        description: The search keyword or question to look up in the FAQ database
+    required:
+      - query
+
+  llm_prompt: |
+    Search the FAQ knowledge base maintained by the site operator.
+    Use this tool when the user asks a question that might be covered
+    by the FAQ. Returns matching question-answer pairs.
+
+execution:
+  python:
+    path: search_faq.py
+    attr: SearchFAQ

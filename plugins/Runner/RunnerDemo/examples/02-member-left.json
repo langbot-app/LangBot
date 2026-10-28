@@ -1,0 +1,14 @@
+{
+  "event_type": "group.member_left",
+  "data": {
+    "member": {
+      "id": "demo-alice",
+      "nickname": "Alice"
+    },
+    "group": {
+      "id": "demo-community",
+      "name": "Runner Workshop"
+    },
+    "is_kicked": false
+  }
+}

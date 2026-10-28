@@ -12,6 +12,7 @@ on:
 
 jobs:
   build-and-publish:
+    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') && !startsWith(inputs.source_ref, 'plugins/') && !startsWith(github.ref, 'refs/tags/plugins/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -72,6 +73,7 @@ jobs:
         run: |
           python3 scripts/stamp_build_revision.py
           uv build
+          python3 scripts/check_core_artifacts.py dist/*.whl dist/*.tar.gz
 
       - name: Publish to PyPI
         run: |

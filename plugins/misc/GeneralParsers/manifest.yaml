@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: GeneralParsers
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GeneralParsers
+  version: 0.1.11
+  description:
+    en_US: General Parsers - Extract text from PDF, Word, Markdown, HTML, TXT, and
+      image files
+    zh_Hans: 通用解析器 - 从 PDF、Word、Markdown、HTML、TXT 和图片文件中提取文本
+    zh_Hant: 通用解析器插件，提供圖片 OCR、語音轉文字等多種內容解析功能。
+    ja_JP: 汎用パーサープラグイン。画像OCR、音声テキスト変換など、多様なコンテンツ解析機能を提供します。
+    vi_VN: Plugin phân tích tổng hợp, cung cấp nhiều chức năng phân tích nội dung
+      như OCR hình ảnh, chuyển giọng nói thành văn bản.
+    th_TH: ปลั๊กอินตัวแยกวิเคราะห์ทั่วไป ให้ฟังก์ชัน OCR ภาพ แปลงเสียงเป็นข้อความ
+      และอื่นๆ
+    es_ES: Plugin de analizadores generales que proporciona funciones de OCR de imágenes,
+      conversión de voz a texto y más.
+  label:
+    en_US: GeneralParsers
+    zh_Hans: 通用解析器
+    zh_Hant: GeneralParsers
+    ja_JP: GeneralParsers
+    vi_VN: GeneralParsers
+    th_TH: GeneralParsers
+    es_ES: GeneralParsers
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: enable_vision
+    label:
+      en_US: Enable Vision
+      zh_Hans: 启用视觉解析
+    type: boolean
+    default: false
+    description:
+      en_US: Enable OCR for scanned PDF pages and image content recognition
+      zh_Hans: 启用扫描页 OCR 和图片内容识别
+
+  - name: vision_llm_model_uuid
+    label:
+      en_US: Vision Model
+      zh_Hans: 视觉模型
+    type: llm-model-selector
+    required: false
+    show_if:
+      field: enable_vision
+      operator: eq
+      value: true
+    description:
+      en_US: Select a vision-capable LLM for OCR and image recognition
+      zh_Hans: 选择视觉模型，用于 OCR 和图片识别
+  components:
+    Parser:
+      fromDirs:
+      - path: components/general_parsers/
+    Page:
+      fromDirs:
+      - path: components/pages/
+execution:
+  python:
+    path: main.py
+    attr: GeneralParsersPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

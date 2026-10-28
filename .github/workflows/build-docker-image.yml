@@ -5,6 +5,7 @@ on:
     types: [published]
 jobs:
   publish-docker-image:
+    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') }}
     runs-on: ubuntu-latest
     name: Build image
     

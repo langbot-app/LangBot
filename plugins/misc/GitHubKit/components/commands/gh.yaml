@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: gh
+  label:
+    en_US: GitHub
+    zh_Hans: GitHub
+  description:
+    en_US: 'GitHub: repo/issue/pr/release/user queries, search, and event-push subscriptions.'
+    zh_Hans: 'GitHub：仓库/Issue/PR/Release/用户查询、搜索、事件推送订阅。'
+spec:
+execution:
+  python:
+    path: gh.py
+    attr: GhCommand

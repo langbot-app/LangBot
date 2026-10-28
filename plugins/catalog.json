@@ -1,0 +1,282 @@
+[
+  {
+    "id": "langbot-team/DifyDatasetsConnector",
+    "version": "0.2.2",
+    "category": "KnowledgeEngine",
+    "path": "KnowledgeEngine/DifyDatasetsConnector",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/DifyDatasetsConnector"
+  },
+  {
+    "id": "langbot-team/FastGPTConnector",
+    "version": "0.2.7",
+    "category": "KnowledgeEngine",
+    "path": "KnowledgeEngine/FastGPTConnector",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/FastGPTConnector"
+  },
+  {
+    "id": "langbot-team/LangRAG",
+    "version": "0.2.2",
+    "category": "KnowledgeEngine",
+    "path": "KnowledgeEngine/LangRAG",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LangRAG"
+  },
+  {
+    "id": "langbot-team/LongTermMemory",
+    "version": "0.2.7",
+    "category": "KnowledgeEngine",
+    "path": "KnowledgeEngine/LongTermMemory",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LongTermMemory"
+  },
+  {
+    "id": "langbot-team/RAGFlowConnector",
+    "version": "0.2.5",
+    "category": "KnowledgeEngine",
+    "path": "KnowledgeEngine/RAGFlowConnector",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/RAGFlowConnector"
+  },
+  {
+    "id": "langbot-team/LocalAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/LocalAgent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
+  },
+  {
+    "id": "langbot-team/RunnerDemo",
+    "version": "0.2.1",
+    "category": "Runner",
+    "path": "Runner/RunnerDemo",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/RunnerDemo"
+  },
+  {
+    "id": "langbot-team/ACPAgentRunner",
+    "version": "0.1.16",
+    "category": "Runner",
+    "path": "Runner/acp-agent-runner",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"
+  },
+  {
+    "id": "langbot-team/ClaudeCodeAgent",
+    "version": "0.1.14",
+    "category": "Runner",
+    "path": "Runner/claude-code-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/claude-code-agent"
+  },
+  {
+    "id": "langbot-team/CodexAgent",
+    "version": "0.1.20",
+    "category": "Runner",
+    "path": "Runner/codex-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/codex-agent"
+  },
+  {
+    "id": "langbot-team/CozeAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/coze-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent"
+  },
+  {
+    "id": "langbot-team/DashScopeAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/dashscope-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dashscope-agent"
+  },
+  {
+    "id": "langbot-team/DeerFlowAgent",
+    "version": "0.2.1",
+    "category": "Runner",
+    "path": "Runner/deerflow-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/deerflow-agent"
+  },
+  {
+    "id": "langbot-team/DifyAgent",
+    "version": "0.2.4",
+    "category": "Runner",
+    "path": "Runner/dify-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"
+  },
+  {
+    "id": "langbot-team/LangflowAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/langflow-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/langflow-agent"
+  },
+  {
+    "id": "langbot-team/N8nAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/n8n-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/n8n-agent"
+  },
+  {
+    "id": "langbot-team/TboxAgent",
+    "version": "0.2.2",
+    "category": "Runner",
+    "path": "Runner/tbox-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/tbox-agent"
+  },
+  {
+    "id": "langbot-team/WeKnoraAgent",
+    "version": "0.2.3",
+    "category": "Runner",
+    "path": "Runner/weknora-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/weknora-agent"
+  },
+  {
+    "id": "langbot-team/AIImagePlugin",
+    "version": "0.1.6",
+    "category": "misc",
+    "path": "misc/AIImagePlugin",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AIImagePlugin"
+  },
+  {
+    "id": "langbot-team/AgenticRAG",
+    "version": "0.1.6",
+    "category": "misc",
+    "path": "misc/AgenticRAG",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AgenticRAG"
+  },
+  {
+    "id": "langbot-team/AutoTranslate",
+    "version": "0.1.5",
+    "category": "misc",
+    "path": "misc/AutoTranslate",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AutoTranslate"
+  },
+  {
+    "id": "RockChinQ/DailyLimitPlugin",
+    "version": "0.3.3",
+    "category": "misc",
+    "path": "misc/DailyLimitPlugin",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/DailyLimitPlugin"
+  },
+  {
+    "id": "langbot-team/EssentialCommands",
+    "version": "0.1.10",
+    "category": "misc",
+    "path": "misc/EssentialCommands",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/EssentialCommands"
+  },
+  {
+    "id": "RockChinQ/FAQManager",
+    "version": "0.1.3",
+    "category": "misc",
+    "path": "misc/FAQManager",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/FAQManager"
+  },
+  {
+    "id": "langbot-team/GeneralParsers",
+    "version": "0.1.11",
+    "category": "misc",
+    "path": "misc/GeneralParsers",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GeneralParsers"
+  },
+  {
+    "id": "RockChinQ/GitHubKit",
+    "version": "0.2.2",
+    "category": "misc",
+    "path": "misc/GitHubKit",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GitHubKit"
+  },
+  {
+    "id": "langbot-team/GoogleSearch",
+    "version": "0.1.7",
+    "category": "misc",
+    "path": "misc/GoogleSearch",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GoogleSearch"
+  },
+  {
+    "id": "langbot-team/GroupChatSummary",
+    "version": "0.1.4",
+    "category": "misc",
+    "path": "misc/GroupChatSummary",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GroupChatSummary"
+  },
+  {
+    "id": "RockChinQ/HelloPlugin",
+    "version": "0.1.4",
+    "category": "misc",
+    "path": "misc/HelloPlugin",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HelloPlugin"
+  },
+  {
+    "id": "langbot-team/HumanTakeover",
+    "version": "0.1.6",
+    "category": "misc",
+    "path": "misc/HumanTakeover",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HumanTakeover"
+  },
+  {
+    "id": "langbot-team/KeywordAlert",
+    "version": "0.1.3",
+    "category": "misc",
+    "path": "misc/KeywordAlert",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/KeywordAlert"
+  },
+  {
+    "id": "RockChinQ/MCBotPlugin",
+    "version": "0.1.2",
+    "category": "misc",
+    "path": "misc/MCBotPlugin",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/MCBotPlugin"
+  },
+  {
+    "id": "langbot-team/PowerContext",
+    "version": "0.1.2",
+    "category": "misc",
+    "path": "misc/PowerContext",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/PowerContext"
+  },
+  {
+    "id": "langbot-team/QWeather",
+    "version": "0.1.6",
+    "category": "misc",
+    "path": "misc/QWeather",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/QWeather"
+  },
+  {
+    "id": "langbot-team/ScheNotify",
+    "version": "0.2.6",
+    "category": "misc",
+    "path": "misc/ScheNotify",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/ScheNotify"
+  },
+  {
+    "id": "langbot-team/SysStatPlugin",
+    "version": "0.2.5",
+    "category": "misc",
+    "path": "misc/SysStatPlugin",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/SysStatPlugin"
+  },
+  {
+    "id": "langbot-team/TavilySearch",
+    "version": "0.1.5",
+    "category": "misc",
+    "path": "misc/TavilySearch",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/TavilySearch"
+  },
+  {
+    "id": "langbot-team/URLSummary",
+    "version": "0.1.9",
+    "category": "misc",
+    "path": "misc/URLSummary",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/URLSummary"
+  },
+  {
+    "id": "RockChinQ/WebSearch",
+    "version": "0.1.10",
+    "category": "misc",
+    "path": "misc/WebSearch",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WebSearch"
+  },
+  {
+    "id": "RockChinQ/WordFSRS",
+    "version": "0.2.3",
+    "category": "misc",
+    "path": "misc/WordFSRS",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WordFSRS"
+  }
+]

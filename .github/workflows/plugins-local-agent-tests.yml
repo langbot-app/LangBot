@@ -1,0 +1,59 @@
+name: Plugins / LocalAgent tests
+
+on:
+  push:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/Runner/LocalAgent/**"
+      - ".github/workflows/plugins-local-agent-tests.yml"
+  pull_request:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/Runner/LocalAgent/**"
+      - ".github/workflows/plugins-local-agent-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout plugins
+        uses: actions/checkout@v4
+
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Keep environment outside the checkout
+        run: |
+          printf 'UV_PROJECT_ENVIRONMENT=%s/local-agent-venv\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+        working-directory: plugins/Runner/LocalAgent
+
+      - name: Verify explicit-export SDK contract
+        run: uv run --no-sync python -c 'from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
+        working-directory: plugins/Runner/LocalAgent
+
+      - name: Ruff check
+        run: uv run --no-sync ruff check .
+        working-directory: plugins/Runner/LocalAgent
+
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check .
+        working-directory: plugins/Runner/LocalAgent
+
+      - name: Pytest
+        run: uv run --no-sync pytest
+        working-directory: plugins/Runner/LocalAgent

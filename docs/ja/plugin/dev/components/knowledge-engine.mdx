@@ -114,7 +114,7 @@ class SimpleRag(KnowledgeEngine):
 
 ## プラグインハンドラ
 
-以下のコードがデフォルトで生成されます（`components/knowledge_engine/<エンジン名>.py`）。`ingest`、`retrieve`、`delete_document`の3つのコアメソッドを実装する必要があります。完全なコードは[langbot-plugin-demo](https://github.com/langbot-app/langbot-plugin-demo)の`SimpleKnowledgeEngine`で見つけることができます。
+以下のコードがデフォルトで生成されます（`components/knowledge_engine/<エンジン名>.py`）。`ingest`、`retrieve`、`delete_document`の3つのコアメソッドを実装する必要があります。完全な実装は公式の [LangRAG ナレッジエンジン](https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LangRAG)を参照してください。
 
 ```python
 from langbot_plugin.api.definition.components.knowledge_engine.engine import KnowledgeEngine, KnowledgeEngineCapability

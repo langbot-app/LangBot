@@ -21,3 +21,6 @@ docs/.fumapress/
 docs/.waku/
 docs/content/
 docs/public/
+
+plugins/
+**/*.lbpkg

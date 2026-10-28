@@ -1,0 +1,2 @@
+langbot-plugin==0.7.18
+pydantic>=2.0.0

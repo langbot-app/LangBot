@@ -131,6 +131,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 package-data = { "langbot" = ["templates/**", "pkg/i18n/locales/*.json", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "pkg/platform/adapters/**", "web/dist/**", "pkg/persistence/alembic/**"] }
 
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["langbot", "langbot.*"]
+
 [dependency-groups]
 dev = [
     "moto>=5.2.1",

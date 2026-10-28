@@ -1,0 +1,748 @@
+[
+  {
+    "name": "message.received-minimal",
+    "request": {
+      "event_type": "message.received",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.received-full",
+    "request": {
+      "event_type": "message.received",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "sender": {
+          "id": "sender",
+          "nickname": "Sender"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "message_chain": [
+          {
+            "type": "Plain",
+            "text": "Unicode 你好 🧩"
+          },
+          {
+            "type": "Image",
+            "url": "https://example.com/a.png"
+          }
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.edited-minimal",
+    "request": {
+      "event_type": "message.edited",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.edited-full",
+    "request": {
+      "event_type": "message.edited",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "editor": {
+          "id": "editor",
+          "nickname": "Editor"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "new_content": [
+          {
+            "type": "Plain",
+            "text": "Edited 🧩"
+          }
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.deleted-minimal",
+    "request": {
+      "event_type": "message.deleted",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.deleted-full",
+    "request": {
+      "event_type": "message.deleted",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group"
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.reaction-minimal",
+    "request": {
+      "event_type": "message.reaction",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.reaction-full",
+    "request": {
+      "event_type": "message.reaction",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "user": {
+          "id": "user-1",
+          "nickname": "User"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "reaction": "🧩",
+        "is_add": false
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "feedback.received-minimal",
+    "request": {
+      "event_type": "feedback.received",
+      "data": {
+        "feedback_id": "feedback-1",
+        "feedback_type": 1
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "feedback.received-full",
+    "request": {
+      "event_type": "feedback.received",
+      "data": {
+        "feedback_id": "feedback-1",
+        "feedback_type": 3,
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "message_id": "99",
+        "feedback_content": "Feedback",
+        "inaccurate_reasons": [
+          "other"
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_joined-minimal",
+    "request": {
+      "event_type": "group.member_joined",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_joined-full",
+    "request": {
+      "event_type": "group.member_joined",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "member": {
+          "id": 42,
+          "nickname": "成员 🧩"
+        },
+        "inviter": {
+          "id": "inviter"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "join_type": "invite"
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_left-minimal",
+    "request": {
+      "event_type": "group.member_left",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_left-full",
+    "request": {
+      "event_type": "group.member_left",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "member": {
+          "id": 42,
+          "nickname": "成员 🧩"
+        },
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "is_kicked": true
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_banned-minimal",
+    "request": {
+      "event_type": "group.member_banned",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_banned-full",
+    "request": {
+      "event_type": "group.member_banned",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "member": {
+          "id": 42,
+          "nickname": "成员 🧩"
+        },
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "duration": 0
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.info_updated-minimal",
+    "request": {
+      "event_type": "group.info_updated",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.info_updated-full",
+    "request": {
+      "event_type": "group.info_updated",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "changed_fields": [
+          "name"
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.request_received-minimal",
+    "request": {
+      "event_type": "friend.request_received",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.request_received-full",
+    "request": {
+      "event_type": "friend.request_received",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "user": {
+          "id": "user-1",
+          "nickname": "User"
+        },
+        "request_id": "request-1",
+        "message": "Hello"
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.added-minimal",
+    "request": {
+      "event_type": "friend.added",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.added-full",
+    "request": {
+      "event_type": "friend.added",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "user": {
+          "id": "user-1",
+          "nickname": "User"
+        }
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.removed-minimal",
+    "request": {
+      "event_type": "friend.removed",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "friend.removed-full",
+    "request": {
+      "event_type": "friend.removed",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "user": {
+          "id": "user-1",
+          "nickname": "User"
+        }
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.invited_to_group-minimal",
+    "request": {
+      "event_type": "bot.invited_to_group",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.invited_to_group-full",
+    "request": {
+      "event_type": "bot.invited_to_group",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "inviter": {
+          "id": "inviter"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "request_id": "request-1"
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.removed_from_group-minimal",
+    "request": {
+      "event_type": "bot.removed_from_group",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.removed_from_group-full",
+    "request": {
+      "event_type": "bot.removed_from_group",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        }
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.muted-minimal",
+    "request": {
+      "event_type": "bot.muted",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.muted-full",
+    "request": {
+      "event_type": "bot.muted",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "duration": 0
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.unmuted-minimal",
+    "request": {
+      "event_type": "bot.unmuted",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.unmuted-full",
+    "request": {
+      "event_type": "bot.unmuted",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        }
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "platform.specific-minimal",
+    "request": {
+      "event_type": "platform.specific",
+      "data": {}
+    },
+    "expected_error": false
+  },
+  {
+    "name": "platform.specific-full",
+    "request": {
+      "event_type": "platform.specific",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "action": "example.custom",
+        "data": {
+          "nested": {
+            "items": [
+              1,
+              "你好",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "feedback.received-feedback_type-34",
+    "request": {
+      "event_type": "feedback.received",
+      "data": {
+        "feedback_id": "feedback-1",
+        "feedback_type": 2,
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "message_id": "99",
+        "feedback_content": "Feedback",
+        "inaccurate_reasons": [
+          "other"
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_joined-join_type-35",
+    "request": {
+      "event_type": "group.member_joined",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "member": {
+          "id": 42,
+          "nickname": "成员 🧩"
+        },
+        "inviter": {
+          "id": "inviter"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "join_type": "request"
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "group.member_banned-duration-36",
+    "request": {
+      "event_type": "group.member_banned",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "member": {
+          "id": 42,
+          "nickname": "成员 🧩"
+        },
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "duration": 60
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "bot.muted-duration-37",
+    "request": {
+      "event_type": "bot.muted",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "operator": {
+          "id": "operator"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "duration": 60
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.received-message_chain-38",
+    "request": {
+      "event_type": "message.received",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "sender": {
+          "id": "sender",
+          "nickname": "Sender"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "message_chain": []
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.received-message_chain-39",
+    "request": {
+      "event_type": "message.received",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "sender": {
+          "id": "sender",
+          "nickname": "Sender"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "message_chain": [
+          {
+            "type": "Image",
+            "url": "https://example.com/only-image.png"
+          }
+        ]
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "message.edited-new_content-40",
+    "request": {
+      "event_type": "message.edited",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "editor": {
+          "id": "editor",
+          "nickname": "Editor"
+        },
+        "group": {
+          "id": 100,
+          "name": "Group"
+        },
+        "message_id": 99,
+        "chat_id": 100,
+        "chat_type": "group",
+        "new_content": []
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "platform.specific-data-41",
+    "request": {
+      "event_type": "platform.specific",
+      "data": {
+        "timestamp": 1788820000.25,
+        "bot_uuid": "bot-test",
+        "adapter_name": "test",
+        "action": "example.custom",
+        "data": {}
+      }
+    },
+    "expected_error": false
+  },
+  {
+    "name": "reject-unknown.event-42",
+    "request": {
+      "event_type": "unknown.event",
+      "data": {}
+    },
+    "expected_error": true
+  },
+  {
+    "name": "reject-feedback.received-43",
+    "request": {
+      "event_type": "feedback.received",
+      "data": {}
+    },
+    "expected_error": true
+  },
+  {
+    "name": "reject-feedback.received-44",
+    "request": {
+      "event_type": "feedback.received",
+      "data": {
+        "feedback_id": "test",
+        "feedback_type": "not-a-number"
+      }
+    },
+    "expected_error": true
+  },
+  {
+    "name": "reject-group.member_joined-45",
+    "request": {
+      "event_type": "group.member_joined",
+      "data": {
+        "member": []
+      }
+    },
+    "expected_error": true
+  },
+  {
+    "name": "reject-message.received-46",
+    "request": {
+      "event_type": "message.received",
+      "data": {
+        "chat_type": "invalid"
+      }
+    },
+    "expected_error": true
+  },
+  {
+    "name": "reject-message.received-47",
+    "request": {
+      "event_type": "message.received",
+      "data": {
+        "message_chain": "invalid"
+      }
+    },
+    "expected_error": true
+  }
+]

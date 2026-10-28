@@ -1,0 +1,29 @@
+{
+  "plugin": "LongTermMemory",
+  "sdk": "0.7.4",
+  "worker_pid": 764459,
+  "same_worker_two_workspace_slots": true,
+  "slot_configs_distinct": true,
+  "successful_representative_invocation": true,
+  "host_actions": [
+    [
+      "A",
+      "get"
+    ],
+    [
+      "A",
+      "keys"
+    ],
+    [
+      "B",
+      "get"
+    ],
+    [
+      "B",
+      "keys"
+    ]
+  ],
+  "scope": "real SDK child RPC, local Host fixture; no production/upstream/sandbox proof",
+  "object_identity_assertion": "asserted inside child; parent checks child stderr before success",
+  "manifest_override_for_probe": true
+}

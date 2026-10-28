@@ -1,0 +1,467 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: ACP Runner
+    zh_Hans: ACP Runner
+  description:
+    en_US: Run an Agent Client Protocol compatible agent process through stdio JSON-RPC.
+    zh_Hans: 通过 stdio JSON-RPC 运行兼容 Agent Client Protocol 的智能体进程。
+spec:
+  usages: [agent]
+  config:
+    - name: provider
+      label:
+        en_US: Agent Runtime
+        zh_Hans: Agent Runtime
+      description:
+        en_US: ACP-compatible coding agent runtime to launch.
+        zh_Hans: 要启动的 ACP 兼容编码智能体运行时。
+      type: select
+      required: true
+      default: claude-code
+      options:
+        - name: auggie
+          label:
+            en_US: Auggie CLI
+            zh_Hans: Auggie CLI
+        - name: autohand
+          label:
+            en_US: Autohand Code
+            zh_Hans: Autohand Code
+        - name: claude-code
+          label:
+            en_US: Claude Code
+            zh_Hans: Claude Code
+        - name: codebuddy-code
+          label:
+            en_US: CodeBuddy Code
+            zh_Hans: CodeBuddy Code
+        - name: codex
+          label:
+            en_US: Codex
+            zh_Hans: Codex
+        - name: deepagents
+          label:
+            en_US: DeepAgents
+            zh_Hans: DeepAgents
+        - name: dimcode
+          label:
+            en_US: DimCode
+            zh_Hans: DimCode
+        - name: dirac
+          label:
+            en_US: Dirac
+            zh_Hans: Dirac
+        - name: factory-droid
+          label:
+            en_US: Factory Droid
+            zh_Hans: Factory Droid
+        - name: gemini
+          label:
+            en_US: Gemini
+            zh_Hans: Gemini
+        - name: glm-agent
+          label:
+            en_US: GLM Agent
+            zh_Hans: GLM Agent
+        - name: kilo
+          label:
+            en_US: Kilo
+            zh_Hans: Kilo
+        - name: opencode
+          label:
+            en_US: OpenCode
+            zh_Hans: OpenCode
+        - name: pi-acp
+          label:
+            en_US: pi ACP
+            zh_Hans: pi ACP
+        - name: qwen-code
+          label:
+            en_US: Qwen Code
+            zh_Hans: Qwen Code
+        - name: custom
+          label:
+            en_US: Custom ACP
+            zh_Hans: 自定义 ACP
+    - name: location
+      label:
+        en_US: Run Location
+        zh_Hans: 运行位置
+      description:
+        en_US: Run the ACP process locally, through SSH, or through a user-side daemon that connects outward.
+        zh_Hans: 在本机、通过 SSH，或通过主动连接的用户侧 daemon 运行 ACP 进程。
+      type: select
+      required: true
+      default: local
+      options:
+        - name: local
+          label:
+            en_US: Local
+            zh_Hans: 本机
+        - name: remote-ssh
+          label:
+            en_US: Remote SSH
+            zh_Hans: 远程 SSH
+        - name: daemon
+          label:
+            en_US: Runner Daemon
+            zh_Hans: Runner Daemon
+    - name: workspace
+      label:
+        en_US: Workspace
+        zh_Hans: 工作目录
+      description:
+        en_US: Working directory for the agent. In Remote SSH mode this path is on the remote machine.
+        zh_Hans: Agent 的工作目录。远程 SSH 模式下，这个路径位于远端机器。
+      type: string
+      required: false
+      default: ''
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show bridge, timeout, session, and process tuning controls.
+        zh_Hans: 显示桥接、超时、会话和进程调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: ssh-target
+      label:
+        en_US: SSH Target
+        zh_Hans: SSH 目标
+      description:
+        en_US: SSH target for Remote SSH mode, for example yhh@101.34.71.12.
+        zh_Hans: 远程 SSH 模式的目标，例如 yhh@101.34.71.12。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: daemon-id
+      label:
+        en_US: Daemon ID
+        zh_Hans: Daemon ID
+      description:
+        en_US: Stable ID of the user-side runner daemon connected to this plugin's daemon hub.
+        zh_Hans: 已连接到此插件 Daemon Hub 的用户侧 runner daemon 稳定 ID。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: daemon
+    - name: daemon-connect-timeout
+      label:
+        en_US: Daemon Connect Timeout
+        zh_Hans: Daemon 连接等待超时
+      description:
+        en_US: Seconds to wait for the selected daemon to be online before failing this run.
+        zh_Hans: 本次运行失败前等待所选 daemon 在线的秒数。
+      type: integer
+      required: false
+      default: 30
+      show_if:
+        field: location
+        operator: eq
+        value: daemon
+    - name: ssh-port
+      label:
+        en_US: SSH Port
+        zh_Hans: SSH 端口
+      type: integer
+      required: false
+      default: 22
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: ssh-identity-file
+      label:
+        en_US: SSH Identity File
+        zh_Hans: SSH 私钥文件
+      description:
+        en_US: Optional identity file path on the LangBot host. Leave empty to use the default ssh-agent/key config.
+        zh_Hans: 可选的 LangBot 本机私钥路径。留空时使用默认 ssh-agent/key 配置。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: acp-command
+      label:
+        en_US: ACP Command Override
+        zh_Hans: ACP 命令覆盖
+      description:
+        en_US: Optional shell-style ACP command. Required only for Custom ACP or when overriding the selected runtime.
+        zh_Hans: 可选 shell 风格 ACP 命令。仅自定义 ACP 或覆盖所选运行时时需要填写。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: provider
+        operator: eq
+        value: custom
+    - name: langbot-assets-enabled
+      label:
+        en_US: Enable LangBot Tools and Knowledge
+        zh_Hans: 启用 LangBot 工具和知识库
+      description:
+        en_US: Automatically inject a run-scoped MCP bridge so the agent can call authorized LangBot tools, knowledge bases, and event APIs.
+        zh_Hans: 自动注入 run-scoped MCP bridge，让 agent 能调用本次授权的 LangBot 工具、知识库和事件 API。
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: langbot-assets-mode
+      label:
+        en_US: LangBot Asset Bridge Mode
+        zh_Hans: LangBot 资产桥接模式
+      description:
+        en_US: Use the existing per-run ephemeral bridge, or register this run in the long-lived HTTP MCP gateway.
+        zh_Hans: 使用现有单次运行临时 bridge，或把本次运行注册到长期 HTTP MCP gateway。
+      type: select
+      required: false
+      default: auto
+      options:
+        - name: auto
+          label:
+            en_US: Auto
+            zh_Hans: 自动
+        - name: ephemeral
+          label:
+            en_US: Ephemeral Bridge
+            zh_Hans: 临时 Bridge
+        - name: gateway
+          label:
+            en_US: Stable HTTP Gateway
+            zh_Hans: 稳定 HTTP Gateway
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-host
+      label:
+        en_US: Gateway Host
+        zh_Hans: Gateway 监听地址
+      description:
+        en_US: Host address for the long-lived LangBot asset gateway.
+        zh_Hans: 长期 LangBot 资产 Gateway 的监听地址。
+      type: string
+      required: false
+      default: 127.0.0.1
+      show_if:
+        field: langbot-assets-mode
+        operator: eq
+        value: gateway
+    - name: langbot-assets-gateway-port
+      label:
+        en_US: Gateway Port
+        zh_Hans: Gateway 端口
+      description:
+        en_US: Port for the long-lived LangBot asset gateway. Use 0 for an ephemeral local port, or set a fixed port for external MCP clients such as Dify.
+        zh_Hans: 长期 LangBot 资产 Gateway 端口。0 表示本机临时端口；如果要给 Dify 等外部 MCP client 使用，请设置固定端口。
+      type: integer
+      required: false
+      default: 0
+      show_if:
+        field: langbot-assets-mode
+        operator: eq
+        value: gateway
+    - name: langbot-assets-gateway-public-url
+      label:
+        en_US: Gateway Public MCP URL
+        zh_Hans: Gateway 公网 MCP URL
+      description:
+        en_US: Optional URL reachable by the ACP runtime or external MCP clients, for example https://example.com/mcp.
+        zh_Hans: 可选，ACP runtime 或外部 MCP client 可访问的 URL，例如 https://example.com/mcp。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: langbot-assets-mode
+        operator: eq
+        value: gateway
+    - name: langbot-assets-token-ttl
+      label:
+        en_US: Run Token TTL Seconds
+        zh_Hans: Run Token 有效期秒数
+      description:
+        en_US: Short-lived run token TTL for registrations inside the long-lived gateway.
+        zh_Hans: 长期 Gateway 内单次运行注册 token 的有效期。
+      type: integer
+      required: false
+      default: 3600
+      show_if:
+        field: langbot-assets-mode
+        operator: eq
+        value: gateway
+    - name: timeout
+      label:
+        en_US: Request Timeout
+        zh_Hans: 请求超时
+      type: integer
+      required: false
+      default: 300
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: reuse-session
+      label:
+        en_US: Reuse Session
+        zh_Hans: 复用会话
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: env-json
+      label:
+        en_US: Environment JSON
+        zh_Hans: 环境变量 JSON
+      description:
+        en_US: Optional JSON object merged into the ACP process environment.
+        zh_Hans: 可选 JSON 对象，会合并到 ACP 进程环境变量。
+      type: text
+      required: false
+      default: ''
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: ssh-connect-timeout
+      label:
+        en_US: SSH Connect Timeout
+        zh_Hans: SSH 连接超时
+      type: integer
+      required: false
+      default: 10
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: ssh-extra-options
+      label:
+        en_US: SSH Extra Options
+        zh_Hans: SSH 额外参数
+      description:
+        en_US: Optional shell-style ssh arguments, for example "-J bastion".
+        zh_Hans: 可选 shell 风格 ssh 参数，例如 "-J bastion"。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: startup-timeout
+      label:
+        en_US: Startup Timeout
+        zh_Hans: 启动超时
+      type: integer
+      required: false
+      default: 30
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: initialize-timeout
+      label:
+        en_US: Initialize Timeout
+        zh_Hans: 初始化超时
+      type: integer
+      required: false
+      default: 120
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: create-session-if-missing
+      label:
+        en_US: Create Session If Missing
+        zh_Hans: 缺少会话时创建
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: streaming
+      label:
+        en_US: Streaming Output
+        zh_Hans: 流式输出
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: knowledge-bases
+      label:
+        en_US: Knowledge Bases
+        zh_Hans: 知识库
+      type: knowledge-base-multi-selector
+      required: false
+      default: []
+    - name: append-run-scope-prompt
+      label:
+        en_US: Append Run Scope Prompt
+        zh_Hans: 附加运行范围提示词
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: mcp-servers-json
+      label:
+        en_US: Extra MCP Servers JSON
+        zh_Hans: 额外 MCP Servers JSON
+      description:
+        en_US: Optional ACP McpServer array appended before the LangBot bridge.
+        zh_Hans: 可选 ACP McpServer 数组，会在 LangBot bridge 前追加。
+      type: text
+      required: false
+      default: ''
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: true
+    knowledge_retrieval: true
+    multimodal_input: true
+    interrupt: false
+    steering: true
+  permissions:
+    tools:
+      - detail
+      - call
+    knowledge_bases:
+      - retrieve
+    history:
+      - page
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

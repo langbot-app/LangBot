@@ -63,6 +63,8 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 ## Quick Start
 
+Official plugin source index: [plugins/README.md](plugins/README.md) · [machine-readable catalog](plugins/catalog.json) · [independent plugin releases](plugins/RELEASING.md). Plugins are installed separately and are not bundled in Core releases.
+
 ### ☁️ LangBot Cloud (Recommended)
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://space.langbot.app/cloud)
