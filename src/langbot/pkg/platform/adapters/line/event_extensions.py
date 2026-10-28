@@ -66,7 +66,9 @@ class LineEventExtensions:
         """統一事件 → LINE 原生事件（一般不需要，延续 WO-LINE-02 yiri2target）。"""
         return getattr(event, 'source_platform_object', None)
 
-    async def target2yiri(self, normalized_event: dict) -> Optional[dict]:
+    # target2yiri 為純同步命名空間映射（body 無 await）；測試以同步方式調用，
+    # 故定為同步 def，不宣告 async（async 會返回 coroutine，result['type'] 崩）。
+    def target2yiri(self, normalized_event: dict) -> Optional[dict]:
         """归一化事件 dict → EBA 事件映射（框架版）。
 
         返回 dict：{type, action, ...}，沿用 WO-LINE-02 `_platform_specific` 框架；

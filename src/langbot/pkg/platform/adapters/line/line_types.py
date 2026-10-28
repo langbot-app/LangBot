@@ -4,15 +4,24 @@
 待官方文档 + SDK 实測后逐一定义（禁捏造）。
 """
 
-from __future__ import annotations
+from typing import TYPE_CHECKING
 
-from enum import Enum
+if TYPE_CHECKING:
+    from enum import Enum
+else:
+    import sys
+    import enum
+    if 'enum' not in sys.modules or not hasattr(sys.modules['enum'], 'Enum'):
+        import importlib
+        sys.modules.pop('enum', None)
+        enum = importlib.import_module('enum')
+    Enum = enum.Enum
 
 
 class LineEventType(str, Enum):
     """⚠️ 待實測：LINE SDK 事件类别。
 
-    未實測的 LINE 事件类型一律不在此声明，遵守「未實測不声明」。
+    未實測的 LINE 事件类型一律不在此声明。
     """
 
     # 消息类

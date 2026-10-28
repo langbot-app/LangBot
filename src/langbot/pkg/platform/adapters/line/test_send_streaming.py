@@ -135,7 +135,7 @@ class TestLineSendApi(unittest.TestCase):
 
     def test_reply_expires_to_push(self):
         async def go():
-            client = MockLineBotApi(reply_fail_times=1)  # reply 失败一次
+            client = MockLineBotApi(reply_fail_times=2)  # reply 連續失敗兩輪 → 觸發逾時回退 push
             api = LineSendApi(client, retry=RetryPolicy(retries=1, jitter=0.0))
             result = await api.reply_message(
                 'token',

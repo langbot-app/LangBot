@@ -153,7 +153,8 @@ class LineSendApi:
             if not push_target_id:
                 raise
             await self._log('warn', f'ReplyToken 已過期／失敗（timeout={timeout}s），平滑轉 Push to={push_target_id}')
-            return await self.push_message(push_target_id, content)
+            await self.push_message(push_target_id, content)
+            return 'replied'
         await self._log('info', 'reply_token 回覆完成')
         return 'replied'
 
