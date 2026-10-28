@@ -166,3 +166,49 @@ async def test_throttle_state_is_released_when_the_stream_finishes(frozen_thrott
     await client.push_stream_chunk('msg-1', 'ab', is_final=True)
 
     assert 'msg-1' not in client._stream_last_push_at
+    assert 'msg-1' not in client._stream_latest_content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('latest', ['hello world', 'rewritten answer'])
+async def test_empty_final_flushes_latest_throttled_snapshot(frozen_throttle, latest):
+    client = RecordingClient()
+    client.seed_stream()
+
+    await client.push_stream_chunk('msg-1', 'hello')
+    await client.push_stream_chunk('msg-1', latest)
+    assert len(client.stream_frames()) == 1
+    await client.push_stream_chunk('msg-1', '', is_final=True)
+
+    frames = client.stream_frames()
+    assert len(frames) == 2
+    assert frames[-1]['stream']['content'] == latest
+    assert frames[-1]['stream']['finish'] is True
+    assert 'msg-1' not in client._stream_latest_content
+
+
+@pytest.mark.asyncio
+async def test_reverted_snapshot_replaces_throttled_content(frozen_throttle):
+    client = RecordingClient()
+    client.seed_stream()
+
+    for text in ['hello', 'hello world', 'hello']:
+        await client.push_stream_chunk('msg-1', text)
+    await client.push_stream_chunk('msg-1', '', is_final=True)
+
+    assert len(client.stream_frames()) == 2
+    assert client.stream_frames()[-1]['stream']['content'] == 'hello'
+
+
+@pytest.mark.asyncio
+async def test_repeated_snapshot_is_sent_after_throttle_expires(frozen_throttle):
+    client = RecordingClient()
+    client.seed_stream()
+
+    await client.push_stream_chunk('msg-1', 'hello')
+    await client.push_stream_chunk('msg-1', 'hello world')
+    client._stream_last_push_at['msg-1'] = time.monotonic() - 7200
+    await client.push_stream_chunk('msg-1', 'hello world')
+
+    assert len(client.stream_frames()) == 2
+    assert client.stream_frames()[-1]['stream']['content'] == 'hello world'
