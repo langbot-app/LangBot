@@ -17,6 +17,7 @@ import urllib.request
 import yaml
 
 from regression_suite import Suite, number, resolve, validate
+from regression_plugins import install_published_plugins, prepare_published_plugins
 from regression_traffic import owned_box_containers
 
 
@@ -34,8 +35,30 @@ def load_profile(path):
     profile = json.loads(path.read_text())
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('job profile version must be 1')
-    if profile.keys() - {'version', 'lbctl', 'suite', 'deployment', 'vars', 'cleanup', 'purge_data', 'mock_image'}:
+    if profile.keys() - {
+        'version',
+        'lbctl',
+        'suite',
+        'deployment',
+        'vars',
+        'cleanup',
+        'purge_data',
+        'mock_image',
+        'plugin_mode',
+        'plugin_manifest',
+    }:
         raise ValueError('unknown job profile field')
+    if profile.get('plugin_mode', 'published') not in ('published', 'profile'):
+        raise ValueError('plugin_mode must be published/profile')
+    if 'plugin_manifest' in profile:
+        if profile.get('plugin_mode', 'published') != 'published':
+            raise ValueError('plugin_manifest requires published plugin_mode')
+        if not isinstance(profile['plugin_manifest'], str) or not profile['plugin_manifest']:
+            raise ValueError('plugin_manifest must name a prior published manifest')
+        manifest_path = Path(profile['plugin_manifest']).expanduser()
+        if not manifest_path.is_absolute():
+            manifest_path = path.parent / manifest_path
+        profile['plugin_manifest'] = str(manifest_path.resolve())
     deployment = profile.get('deployment', {})
     if not isinstance(deployment, dict) or deployment.keys() - {'version', 'port'}:
         raise ValueError('deployment accepts version and port')
@@ -52,6 +75,8 @@ def load_profile(path):
     suite_path = Path(profile['suite']).expanduser()
     suite_path = suite_path if suite_path.is_absolute() else path.parent / suite_path
     suite = json.loads(suite_path.read_text())
+    if profile.get('plugin_mode', 'published') == 'published':
+        suite['plugins'] = []
     suite.setdefault('vars', {}).update(profile.get('vars', {}))
     suite['vars'].update(
         mock_base_url='http://regression_mock:18080/v1', embedding_base_url='http://regression_mock:18080/v1'
@@ -198,6 +223,12 @@ class Job:
         raise RuntimeError(f'readiness deadline exceeded: {url}')
 
     def prepare(self):
+        published = None
+        if self.profile.get('plugin_mode', 'published') == 'published':
+            self.state['phase'] = 'plugins'
+            self.save()
+            published = prepare_published_plugins(self.output / 'plugins', self.profile.get('plugin_manifest'))
+            self.suite_profile['plugins'] = []
         variables = {
             **self.suite_profile.get('vars', {}),
             'profile_dir': str(self.suite_path.parent),
@@ -324,6 +355,12 @@ class Job:
         destination.mkdir(mode=0o700)
         suite = Suite(profile, self.suite_path, destination, env=self.env)
         self.redactions.extend(suite.secrets)
+        if published is not None:
+            self.state['phase'] = 'plugins'
+            self.save()
+            install_published_plugins(suite.call, self.output / 'plugins', published)
+            self.state['phase'] = 'resources'
+            self.save()
         suite.write('profile.json', profile)
         if 'smoke' not in profile:
             from regression_analysis import workload_contract
