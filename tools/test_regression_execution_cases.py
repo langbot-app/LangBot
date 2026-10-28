@@ -47,7 +47,15 @@ class ExecutionCasesTests(unittest.TestCase):
         )
 
     def run_fixture(
-        self, scenario, *, tool_ok=True, fault=True, primary_status=None, recovery_status='completed', delete_ok=True
+        self,
+        scenario,
+        *,
+        tool_ok=True,
+        fault=True,
+        primary_status=None,
+        recovery_status='completed',
+        delete_ok=True,
+        recycled=False,
     ):
         expected = {
             'execution.cancel_cleanup': 'cancelled',
@@ -92,6 +100,8 @@ class ExecutionCasesTests(unittest.TestCase):
             if method == 'GET' and path == '/api/v1/agents/agent':
                 return 404, {'code': -1}
             if path == '/api/v1/box/sessions':
+                if recycled and len(runs) == 1:
+                    return 200, {'code': 0, 'data': []}
                 return 200, {'code': 0, 'data': [{'session_id': box_session_id, 'status': 'idle'}]}
             if path.endswith('/events'):
                 run_id = path.split('/')[-2]
@@ -195,10 +205,27 @@ class ExecutionCasesTests(unittest.TestCase):
         self.assertEqual(self.row['recovery_exec_results'][0]['result']['exit_code'], 42)
         self.assertTrue(self.deleted)
 
+    def test_recycled_box_requires_the_same_persistent_file_check(self):
+        for scenario in ('execution.cancel_cleanup', 'execution.timeout_cleanup'):
+            with self.subTest(scenario=scenario):
+                with sqlite3.connect(self.ledger) as db:
+                    db.execute('DELETE FROM agent_run')
+                result = self.run_fixture(scenario, recycled=True)
+                self.assertEqual(result['result'], 'FAULT_CASE_OK')
+                self.assertIsNone(self.row['box_after_interrupt'])
+                self.assertEqual(self.row['assertions']['no_late_side_effect'], 'passed')
+                with sqlite3.connect(self.ledger) as db:
+                    db.execute('DELETE FROM agent_run')
+                with self.assertRaisesRegex(ValueError, 'INTERRUPT_LATE_SIDE_EFFECT'):
+                    self.run_fixture(scenario, recycled=True, tool_ok=False, recovery_status='failed')
+                self.assertEqual(self.row['assertions']['no_late_side_effect'], 'failed')
+
     def test_recovery_command_distinguishes_missing_setup_and_late_side_effect(self):
         scenarios = json.loads(Path(cases.__file__).with_name('mock_llm_scenarios.json').read_text())
         command = scenarios['mock-local-interrupt-check']['steps'][0]['tool_calls'][0]['arguments']['command']
-        command = command.removeprefix('sleep 9; ').replace('/tmp/langbot-{mock_scope}', str(self.root / 'fixture'))
+        command = command.removeprefix('sleep 9; ').replace(
+            '/workspace/langbot-{mock_scope}', str(self.root / 'fixture')
+        )
         ready, leaked = self.root / 'fixture-ready', self.root / 'fixture-leak'
         for setup, leak, status, output in (
             (False, False, 41, 'INTERRUPT_SETUP_MISSING'),
@@ -253,7 +280,10 @@ class ExecutionCasesTests(unittest.TestCase):
         try:
             self.assertEqual(cases._stream(self.suite, 'agent', 'scope', {})[-1]['kind'], 'completed')
             row = {}
-            with patch.object(cases, '_running_box', return_value='box'):
+            with (
+                patch.object(cases, '_running_box', return_value='box'),
+                patch.object(cases, '_sessions', return_value={'box': {'status': 'running'}}),
+            ):
                 cancelled = cases._stream(self.suite, 'agent', 'scope', row, interrupt='cancel')
             self.assertEqual(len(cancelled), 1)
             self.assertEqual(row['box_session_id'], 'box')
@@ -292,7 +322,7 @@ class ExecutionCasesTests(unittest.TestCase):
                 for scope in ('run-a', 'run-b'):
                     call = request(scope)['choices'][0]['message']['tool_calls'][0]
                     command = json.loads(call['function']['arguments'])['command']
-                    self.assertIn(f'/tmp/langbot-{scope}-ready', command)
+                    self.assertIn(f'/workspace/langbot-{scope}-ready', command)
                     self.assertNotIn('{mock_scope}', command)
                     commands.append(command)
                 self.assertNotEqual(commands[0], commands[1])
