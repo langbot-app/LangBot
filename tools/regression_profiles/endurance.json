@@ -509,5 +509,6 @@
       "pids": 8,
       "count": 0
     }
-  }
+  },
+  "coverage_suite": "endurance"
 }

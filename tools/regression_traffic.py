@@ -3,6 +3,7 @@
 
 import argparse
 from collections import Counter
+from regression_coverage import checked, check_response
 from concurrent.futures import ThreadPoolExecutor
 import json
 import hashlib
@@ -308,9 +309,11 @@ def main():
         data = row['output']['data']
         checks = {}
         if case.get('fields'):
-            checks['fields'] = check_fields(data, case['fields'])
-        if any(value in json.dumps(data, ensure_ascii=False) for value in case.get('forbid', [])):
-            raise ValueError('Response contains forbidden content')
+            checks['fields'] = checked(row, 'fields', lambda: check_fields(data, case['fields']))
+        if case.get('forbid'):
+            checked(row, 'isolation', lambda: check_response(data, case['expect'], case['forbid']))
+        if case.get('attachment'):
+            checks['attachment'] = checked(row, 'attachment', lambda: check_attachment(data, case['attachment']))
         runner = is_group or case.get('args', [])[:2] == ['pipeline', 'run']
         row['requires_runner'] = runner
         if connection and runner:
@@ -330,13 +333,16 @@ def main():
                 args.verification_timeout,
             )
             row['run'] = run
-            checks.update(check_run(connection, run, case))
-            if case.get('attachment'):
-                checks['attachment'] = check_attachment(data, case['attachment'])
-            with lock:
-                if run['run_id'] in verified_ids:
-                    raise ValueError('Two requests matched the same AgentRun')
-                verified_ids.add(run['run_id'])
+
+            def verify_ledger():
+                result = check_run(connection, run, case)
+                with lock:
+                    if run['run_id'] in verified_ids:
+                        raise ValueError('Two requests matched the same AgentRun')
+                    verified_ids.add(run['run_id'])
+                return result
+
+            checks.update(checked(row, 'ledger', verify_ledger))
         row['checks'] = checks
         row['verification_seconds'] = time.monotonic() - began
 
@@ -415,9 +421,8 @@ def main():
                 row['output'] = json.loads(redact(result.stdout))
                 if not isinstance(row['output'], dict):
                     raise ValueError('CLI response must be an object')
-                if result.returncode == 0 and case['expect'] in json.dumps(
-                    row['output'].get('data'), ensure_ascii=False
-                ):
+                if result.returncode == 0:
+                    checked(row, 'response', lambda: check_response(row['output'].get('data'), case['expect']))
                     verify(row, case, connection, after_id)
                     row['status'] = 'ok'
                 elif 'result_unknown' in result.stdout:
@@ -483,7 +488,11 @@ def main():
                     elapsed=dispatch - started,
                     schedule_lag_seconds=max(0, dispatch - group['due']),
                 )
-                row['output'] = group_request(case, group['id'], member, group['turn'], token, group['previous'])
+                row['output'] = checked(
+                    row,
+                    'response',
+                    lambda: group_request(case, group['id'], member, group['turn'], token, group['previous']),
+                )
                 row['seconds'] = time.monotonic() - dispatch
                 verify(row, case, connection, after_id, is_group=True)
                 row['status'] = 'ok'

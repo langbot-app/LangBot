@@ -12,6 +12,7 @@ import urllib.request
 from uuid import uuid4
 
 from regression_traffic import group_request, read_endpoint_snapshot
+from regression_coverage import checked, check_response
 
 
 class UnresolvedRun(RuntimeError):
@@ -241,27 +242,39 @@ def run_smoke(suite):
                     offset = mock_path.stat().st_size if case.get('mock_requests') and mock_path.exists() else 0
                     try:
                         if rejected:
-                            data = rejected_group(case, group)
+                            data = checked(row, 'response', lambda: rejected_group(case, group))
                             count = connection.execute(
                                 'SELECT COUNT(*) FROM agent_run WHERE workspace_id=? AND conversation_id=? AND id>?',
                                 (suite.variables['workspace_uuid'], 'group_' + group, after_id),
                             ).fetchone()[0]
-                            if count:
-                                raise ValueError('Rejected ingress created an AgentRun')
+                            checked(row, 'no_run', lambda: check_fields({'runs': count}, {'runs': 0}))
                         elif is_group:
-                            data = group_request(
-                                case, group, row['member_id'], turn, token, previous[group], suite.env
+                            data = checked(
+                                row,
+                                'response',
+                                lambda: group_request(
+                                    case, group, row['member_id'], turn, token, previous[group], suite.env
+                                ),
                             )['data']
                         else:
                             data = suite.call(case['args'], case.get('body'))
-                            if case['expect'] not in json.dumps(data, ensure_ascii=False):
-                                raise ValueError('Expected business response was not returned')
+                            checked(row, 'response', lambda: check_response(data, case['expect']))
                         row['output'] = data
-                        if any(value in json.dumps(data, ensure_ascii=False) for value in case.get('forbid', [])):
-                            raise ValueError('Response contains forbidden content from another knowledge base')
+                        if case.get('forbid'):
+                            checked(row, 'isolation', lambda: check_response(data, case['expect'], case['forbid']))
                         row['checks'] = {}
                         if case.get('fields'):
-                            row['checks']['fields'] = check_fields(data, case['fields'])
+                            row['checks']['fields'] = checked(row, 'fields', lambda: check_fields(data, case['fields']))
+                        if case.get('attachment'):
+                            row['checks']['attachment'] = checked(
+                                row, 'attachment', lambda: check_attachment(data, case['attachment'])
+                            )
+                        if case.get('mock_requests'):
+                            row['checks']['mock_requests'] = checked(
+                                row,
+                                'model_sequence',
+                                lambda: check_mock_requests(mock_path, offset, case['mock_requests']),
+                            )
                         if runner:
                             if not isinstance(data, dict):
                                 raise ValueError('Runner response must be an object')
@@ -276,13 +289,7 @@ def run_smoke(suite):
                                 settings.get('timeout_seconds', 30),
                             )
                             row['run'] = run
-                            row['checks'].update(check_run(connection, run, case))
-                            if case.get('attachment'):
-                                row['checks']['attachment'] = check_attachment(data, case['attachment'])
-                        if case.get('mock_requests'):
-                            row['checks']['mock_requests'] = check_mock_requests(
-                                mock_path, offset, case['mock_requests']
-                            )
+                            row['checks'].update(checked(row, 'ledger', lambda: check_run(connection, run, case)))
                         row['status'] = 'passed'
                         previous[group] = token
                     except urllib.error.HTTPError as exc:

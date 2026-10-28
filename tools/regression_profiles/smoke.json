@@ -1640,5 +1640,6 @@
       "langbot-team/GeneralParsers"
     ],
     "mock_records": "${mock_records}"
-  }
+  },
+  "coverage_suite": "smoke"
 }

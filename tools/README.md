@@ -474,3 +474,48 @@ Keep this longer test outside the one-minute merge gate while its budgets and
 repeatability are being evaluated. The same profile can be selected by the
 release-deployment Job, which supplies its ledger path and process IDs; that
 fresh-deployment path still needs separate end-to-end validation.
+
+## Business behavior coverage
+
+`regression_contracts.json` declares behavior obligations independently of how
+many requests a workload repeats. It includes explicit unimplemented risks
+(cancellation, restart recovery, credential revocation, Workspace isolation,
+PostgreSQL parity, real adapters and embeddings). This is coverage of the
+registered scope, not a percentage of all product behavior or API endpoints.
+
+Runners record named assertions as they execute. A green legacy request without
+assertion evidence is **incomplete**. An evaluated failing assertion counts as
+covered and failed; a timeout before an assertion does not count. A contract with
+multiple required assertions passes only when all are observed. Repeated
+observations cannot hide an incomplete or failed turn. History contracts require
+a subsequent turn, not merely the initial reply. Database/Box-event inspections
+are reported separately as gray-box evidence.
+
+Reports distinguish `passed`, `failed`, `incomplete`, `skipped`, `not_run` (a test
+exists but did not execute) and `missing_test`. Coverage and pass rate have separate
+denominators. The catalog fingerprint identifies the registered denominator.
+New case names with no contract appear as unclassified, and malformed evidence
+is reported as an error instead of silently accepted.
+
+The source route inventory discovers current static RouterGroup HTTP declarations
+and flags routes without a linked behavior contract. Links describe test intent;
+they are not observed HTTP hits or proof that every method behavior is tested.
+Dynamic routes, WebSockets and platform-dispatched routes are outside this static
+inventory. Full source locations and any unresolved declarations are retained
+in `coverage.json`; new declarations appear without editing the case list.
+
+```sh
+python tools/regression_coverage.py --run .qa/smoke/suite \
+  --run .qa/endurance/suite --output .qa/behavior-coverage
+```
+
+`coverage.json` and `coverage.md` are written by the Suite. CI consumers can
+publish these files as artifacts. Uncovered contracts do not add a merge gate. A missing or corrupt evidence
+file is a reporting failure; the report remains available for inspection.
+
+Pass `--http-log /path/to/core.log` to include observed methods, declared route
+templates and status counts from Hypercorn access records. Query strings and
+resource identifiers are not retained in this report. Unmatched requests are
+counted by method/status; webhook sub-paths are not separate declared routes.
+Missing logs or logs without recognizable access records are evidence errors.
+HTTP hits remain separate from assertion coverage.
