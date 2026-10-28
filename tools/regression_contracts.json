@@ -188,17 +188,17 @@
     {"id": "execution.cancel_cleanup",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Cancelling a running execution reaches cancelled state and releases its work",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.cancel_cleanup", "checks": ["run_status", "exec_active", "exec_stopped", "no_late_side_effect"]}]
     },
     {"id": "execution.timeout_cleanup",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Deadline expiry stops child work and allows a subsequent request",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.timeout_cleanup", "checks": ["run_status", "exec_active", "exec_stopped", "no_late_side_effect"]}]
     },
     {"id": "execution.retry_side_effects",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Retries do not duplicate externally visible side effects",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.retry_side_effects", "checks": ["run_status", "fault_injected", "side_effect_once"]}]
     },
     {"id": "runtime.restart_recovery",
      "area": "runtime", "kind": "blackbox", "priority": "P0",
@@ -213,17 +213,17 @@
     {"id": "model.stream_disconnect",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "A partial model stream disconnect is handled without a false successful completion",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "model.stream_disconnect", "checks": ["run_status", "fault_injected", "no_fallback_after_partial", "recovered"]}]
     },
     {"id": "model.exhausted_fallback",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Failure of every configured model reaches a visible failed outcome",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "model.exhausted_fallback", "checks": ["run_status", "fallback_exhausted", "recovered"]}]
     },
     {"id": "tools.path_escape",
      "area": "tools", "kind": "blackbox", "priority": "P0",
      "description": "Box operations reject access outside their authorized filesystem scope",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "tools.path_escape", "checks": ["run_status", "path_rejected", "no_file_content"]}]
     },
     {"id": "tools.timeout_recovery",
      "area": "tools", "kind": "blackbox", "priority": "P1",
