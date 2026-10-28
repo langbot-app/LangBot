@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import time
 import typing
 import uuid
 
+from langbot.libs.wecom_ai_bot_api.api import extract_template_card_event_payload
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
@@ -31,6 +33,7 @@ def build_interaction_card(request: dict[str, typing.Any], callback_token: str) 
     fields = request.get('fields') if isinstance(request.get('fields'), list) else []
     actions = request.get('actions') if isinstance(request.get('actions'), list) else []
     buttons: list[dict[str, typing.Any]] = []
+    select_field: dict[str, typing.Any] | None = None
     if actions and not fields:
         buttons = [
             {
@@ -46,18 +49,43 @@ def build_interaction_card(request: dict[str, typing.Any], callback_token: str) 
         if field.get('type') != 'select':
             return None
         options = field.get('options') if isinstance(field.get('options'), list) else []
-        buttons = [
-            {
-                'text': str(option.get('label') or option.get('value') or index + 1),
-                'style': 0,
-                'key': f'lbi:{callback_token}:f:0:{index}',
-            }
-            for index, option in enumerate(options[:6])
-            if isinstance(option, dict)
-        ]
-    if not buttons:
+        if len(options) > 10:
+            raise ValueError('WeCom select cards support at most 10 options')
+        if options and all(isinstance(option, dict) for option in options):
+            select_field = field
+    if not buttons and select_field is None:
         return None
     description = str(request.get('description') or '').strip()
+    if select_field is not None:
+        options = select_field['options']
+        selected_id = 'opt_1'
+        for index, option in enumerate(options):
+            if option.get('value') == select_field.get('default'):
+                selected_id = f'opt_{index + 1}'
+                break
+        return {
+            'msgtype': 'template_card',
+            'template_card': {
+                'card_type': 'multiple_interaction',
+                'main_title': {'title': str(request.get('title') or ''), 'desc': description},
+                'select_list': [
+                    {
+                        'question_key': 'f0',
+                        'title': str(select_field.get('label') or ''),
+                        'selected_id': selected_id,
+                        'option_list': [
+                            {
+                                'id': f'opt_{index + 1}',
+                                'text': str(option.get('label') or option.get('value') or '')[:10],
+                            }
+                            for index, option in enumerate(options)
+                        ],
+                    }
+                ],
+                'submit_button': {'text': 'Submit', 'key': f'lbi:{callback_token}:s'},
+                'task_id': f'lbi-{uuid.uuid4().hex}',
+            },
+        }
     if len(fields) == 1 and isinstance(fields[0], dict):
         label = str(fields[0].get('label') or '').strip()
         description = '\n\n'.join(part for part in (description, label) if part)
@@ -95,18 +123,14 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
         result = await adapter.send_message(target_type, target_id, adapter._plain_message(fallback))
         return {'ok': True, 'message_id': result.message_id, 'rich': False}
     raw = await adapter.bot.send_template_card(target_id, card)
+    if not isinstance(raw, dict) or raw.get('errcode', 0) != 0:
+        detail = raw.get('errmsg', raw.get('errcode')) if isinstance(raw, dict) else 'no acknowledgement'
+        raise RuntimeError(f'WeCom template card delivery failed: {detail}')
     return {'ok': True, 'message_id': None, 'rich': True, 'raw': raw}
 
 
 def _template_card_event(event: WecomBotEvent) -> dict[str, typing.Any]:
-    wrapper = event.get('event') or {}
-    if not isinstance(wrapper, dict):
-        return {}
-    for key in ('template_card_event', 'templateCardEvent', 'TemplateCardEvent'):
-        value = wrapper.get(key)
-        if isinstance(value, dict):
-            return value
-    return wrapper
+    return extract_template_card_event_payload(event)
 
 
 def _callback_key(payload: dict[str, typing.Any]) -> str:
@@ -125,6 +149,8 @@ def _callback_key(payload: dict[str, typing.Any]) -> str:
 
 def parse_callback_key(value: str) -> dict[str, typing.Any]:
     parts = value.split(':')
+    if len(parts) == 3 and parts[0] == 'lbi' and parts[1] and parts[2] == 's':
+        return {'callback_token': parts[1], 'select_submit': True}
     if len(parts) == 4 and parts[0] == 'lbi' and parts[1] and parts[2] == 'a' and parts[3].isdigit():
         return {'callback_token': parts[1], 'action_ref': int(parts[3])}
     if (
@@ -143,6 +169,57 @@ def parse_callback_key(value: str) -> dict[str, typing.Any]:
     raise ValueError('invalid WeCom interaction callback key')
 
 
+def _selected_option_ref(payload: dict[str, typing.Any]) -> int:
+    selected_id: typing.Any = None
+    selected_items = payload.get('selected_items', payload.get('SelectedItems'))
+    if isinstance(selected_items, dict):
+        items = selected_items.get('selected_item', selected_items.get('SelectedItem'))
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict) or item.get('question_key', item.get('QuestionKey')) != 'f0':
+                    continue
+                option_ids = item.get('option_ids', item.get('OptionIds'))
+                if isinstance(option_ids, dict):
+                    option_ids = option_ids.get('option_id', option_ids.get('OptionId'))
+                if isinstance(option_ids, list) and len(option_ids) == 1:
+                    selected_id = option_ids[0]
+                break
+    if selected_id is None and selected_items is None:
+        response: typing.Any = next(
+            (payload[key] for key in ('ResponseData', 'response_data', 'responseData') if key in payload), None
+        )
+        if isinstance(response, str):
+            try:
+                response = json.loads(response)
+            except json.JSONDecodeError as exc:
+                raise ValueError('invalid WeCom select response data') from exc
+        if isinstance(response, dict):
+            selections = next(
+                (response[key] for key in ('select_list', 'SelectList', 'selectList') if key in response), None
+            )
+            if isinstance(selections, list):
+                for item in selections:
+                    if not isinstance(item, dict) or item.get('question_key', item.get('QuestionKey')) != 'f0':
+                        continue
+                    selected_id = next(
+                        (
+                            item[key]
+                            for key in ('option_id', 'OptionId', 'optionId', 'selected_id', 'SelectedId', 'selectedId')
+                            if item.get(key)
+                        ),
+                        None,
+                    )
+                    break
+            else:
+                selected_id = response.get('f0')
+    if not isinstance(selected_id, str) or not selected_id.startswith('opt_') or not selected_id[4:].isdigit():
+        raise ValueError('WeCom select response has an invalid option')
+    option_number = int(selected_id[4:])
+    if option_number < 1:
+        raise ValueError('WeCom select response has an invalid option')
+    return option_number - 1
+
+
 def interaction_event_from_native(
     event: WecomBotEvent,
 ) -> platform_events.PlatformSpecificEvent | None:
@@ -150,6 +227,9 @@ def interaction_event_from_native(
     if not callback_key.startswith('lbi:'):
         return None
     parsed = parse_callback_key(callback_key)
+    if parsed.pop('select_submit', False):
+        parsed['field_ref'] = 0
+        parsed['option_ref'] = _selected_option_ref(_template_card_event(event))
     target_type = 'group' if event.type == 'group' or event.chatid else 'person'
     target_id = str(event.chatid or event.userid or '')
     return platform_events.PlatformSpecificEvent(

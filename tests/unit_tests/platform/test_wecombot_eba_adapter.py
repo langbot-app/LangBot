@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
+from langbot.pkg.agent.runner.interaction_manager import InteractionManager
 from langbot.pkg.platform.adapters.wecombot.adapter import WecomBotAdapter
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
@@ -162,6 +163,157 @@ def test_wecombot_interaction_card_uses_host_callback_token_and_index():
 
     button = card['template_card']['button_list'][0]
     assert button['key'] == 'lbi:callback-token:a:0'
+
+
+@pytest.mark.asyncio
+async def test_wecombot_select_card_submits_native_dropdown_value():
+    adapter = make_adapter()
+    request = {
+        'interaction_id': 'form-1',
+        'title': 'Choose priority',
+        'description': 'Select one option.',
+        'fields': [
+            {
+                'id': 'priority',
+                'label': 'Priority',
+                'type': 'select',
+                'default': 'normal',
+                'options': [
+                    {'value': 'normal', 'label': 'Normal'},
+                    {'value': 'urgent', 'label': 'Urgent'},
+                ],
+            }
+        ],
+        'fallback_text': 'Choose priority.',
+    }
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': request,
+        },
+    )
+
+    assert result['rich'] is True
+    card = adapter.bot.send_template_card.await_args.args[1]['template_card']
+    assert card['card_type'] == 'multiple_interaction'
+    assert card['select_list'] == [
+        {
+            'question_key': 'f0',
+            'title': 'Priority',
+            'selected_id': 'opt_1',
+            'option_list': [
+                {'id': 'opt_1', 'text': 'Normal'},
+                {'id': 'opt_2', 'text': 'Urgent'},
+            ],
+        }
+    ]
+    assert card['submit_button'] == {'text': 'Submit', 'key': 'lbi:callback-token:s'}
+
+    native = wecombot_event(type='group', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'card_type': 'multiple_interaction',
+            'event_key': card['submit_button']['key'],
+            'selected_items': {
+                'selected_item': [
+                    {'question_key': 'f0', 'option_ids': {'option_id': ['opt_2']}},
+                ]
+            },
+        },
+    }
+    event = interaction_event_from_native(native)
+    assert event.data['callback_token'] == 'callback-token'
+    resolved = InteractionManager._resolve_submission_refs(
+        {'interaction_id': request['interaction_id'], 'request': request}, event.data
+    )
+    assert resolved['values'] == {'priority': 'urgent'}
+
+    listener = AsyncMock()
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    await adapter._handle_interaction_event(native)
+    listener.assert_awaited_once()
+    assert listener.await_args.args[0].data['option_ref'] == 1
+
+
+def test_wecombot_select_rejects_more_than_ten_options():
+    with pytest.raises(ValueError, match='at most 10 options'):
+        build_interaction_card(
+            {
+                'title': 'Choose priority',
+                'fields': [
+                    {
+                        'id': 'priority',
+                        'type': 'select',
+                        'options': [{'value': f'option-{index}'} for index in range(11)],
+                    }
+                ],
+            },
+            'callback-token',
+        )
+
+
+@pytest.mark.parametrize(
+    'selected_items',
+    [
+        {'selected_item': []},
+        {'selected_item': [{'question_key': 'f0', 'option_ids': {'option_id': []}}]},
+        {'selected_item': [{'question_key': 'f0', 'option_ids': {'option_id': ['opt_0']}}]},
+    ],
+)
+def test_wecombot_select_rejects_invalid_native_selection(selected_items):
+    native = wecombot_event(type='single', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'event_key': 'lbi:callback-token:s',
+            'selected_items': selected_items,
+        },
+    }
+    with pytest.raises(ValueError, match='invalid option'):
+        interaction_event_from_native(native)
+
+
+def test_wecombot_select_accepts_legacy_response_data():
+    native = wecombot_event(type='single', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'EventKey': 'lbi:callback-token:s',
+            'ResponseData': '{"select_list":[{"question_key":"f0","option_id":"opt_2"}]}',
+        },
+    }
+    assert interaction_event_from_native(native).data['option_ref'] == 1
+
+
+@pytest.mark.asyncio
+async def test_wecombot_interaction_delivery_rejects_failed_ack():
+    adapter = make_adapter()
+    adapter.bot.send_template_card.return_value = {'errcode': 40001, 'errmsg': 'invalid card'}
+
+    with pytest.raises(RuntimeError, match='invalid card'):
+        await adapter.call_platform_api(
+            'interaction.request',
+            {
+                'callback_token': 'callback-token',
+                'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+                'request': {
+                    'interaction_id': 'form-1',
+                    'title': 'Choose priority',
+                    'fields': [
+                        {
+                            'id': 'priority',
+                            'label': 'Priority',
+                            'type': 'select',
+                            'options': [{'value': 'normal', 'label': 'Normal'}],
+                        }
+                    ],
+                    'fallback_text': 'Choose priority.',
+                },
+            },
+        )
 
 
 @pytest.mark.asyncio
