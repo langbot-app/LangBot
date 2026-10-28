@@ -17,6 +17,7 @@ These tests lock in the fixed behaviour:
 import pytest
 
 import langbot.pkg.core.app  # noqa: F401
+from langbot.libs.wecom_ai_bot_api import ws_client
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 
 
@@ -131,7 +132,13 @@ async def test_duplicate_final_is_acknowledged_without_sending_again():
 
 
 @pytest.mark.asyncio
-async def test_runner_cumulative_snapshots_reach_wire_once_without_concatenation():
+async def test_runner_cumulative_snapshots_reach_wire_once_without_concatenation(monkeypatch):
+    # Frame pacing has its own coverage in test_wecombot_stream_throttle.py.
+    # Disable it here so this test keeps asserting what it is named for: that
+    # each runner snapshot reaches the wire as a complete snapshot rather than
+    # being concatenated onto the previous one.
+    monkeypatch.setattr(ws_client, '_STREAM_PUSH_MIN_INTERVAL', 0.0)
+
     from langbot.pkg.pipeline.process.stream_results import coalesce_stream_results
     from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
     from tests.unit_tests.platform.test_wecombot_eba_adapter import (
