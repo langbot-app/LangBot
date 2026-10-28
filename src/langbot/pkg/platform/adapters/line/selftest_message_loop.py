@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""WO-LINE-02 自測：message.received 收發閉環純邏輯（非 SDK 依賴）。
+"""：message.received 收發閉環純邏輯（非 SDK 依賴）。
 
 仅测可离线验证的纯 Python 分支：
   - LineEventConverter._sdk_to_payload（dict 分支：LINE webhook JSON → 归一化事件）
@@ -113,7 +113,7 @@ async def main() -> None:
     token = LineAdapter._extract_reply_token({'reply_token': 'rtk-999'})
     check('_extract_reply_token 归一化 dict', token == 'rtk-999')
 
-    print(f'\n=== WO-LINE-02 selftest: {sum(results)}/{len(results)} 通过 ===')
+    print(f'\n===: {sum(results)}/{len(results)} 通过 ===')
     sys.exit(0 if all(results) else 1)
 
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-streaming.py — LINE Streaming WebSocket 流式模組（WO-LINE-03 子模块）。
+streaming.py — LINE Streaming WebSocket 流式模組。
 
 ⚠️ 未定案線程（SDK Streaming WebSocket 端未實測／未入箱）：
 blueprint §3.1／§407／§418 明示：LINE 端 streaming（WebSocket 長連、版本協議 v2、

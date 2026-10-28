@@ -1,6 +1,6 @@
-"""LINE adapter main class（WO-LINE-02 message.received 收發閉環）。
+"""LINE adapter main class。
 
-在 WO-LINE-01-SKELETON-1018 骨架基礎上填實：
+在：
   - ``_handle_native_event``：自我消息过滤（防回圈）→ EBA 事件分发
   - ``send_message`` / ``reply_message``：LINE push/reply 收發
   - 事件命名空間以 ``line-omni`` 命名
@@ -25,7 +25,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 # ---- LINE SDK（⚠️import 路徑／client 建構待實測 line-bot-sdk v3）----
 
-# ---- 本 adapter 子模組（WO-LINE-02 填實）----
+# ---- 本 adapter 子模組----
 from .api_impl import LineAPIMixin
 from .errors import NotSupportedError
 from .event_converter import LineEventConverter
@@ -33,7 +33,7 @@ from .message_converter import LineMessageConverter
 
 
 class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
-    """LINE adapter（EBA，WO-LINE-02 message.received 收發閉環）。
+    """LINE adapter（EBA，。
 
     混血繼承（照 telegram/adapter.py 實測）：
       LineAdapter(LineAPIMixin, AbstractPlatformAdapter)
@@ -114,18 +114,18 @@ class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     # ---- Capability 宣告（照 boxed manifest 與 02-platform-api 契約）----
 
     def get_supported_events(self) -> list[str]:
-        """事件清單：message.received（WO-LINE-02 必需）＋其餘依 manifest 預留。
+        """事件清單：message.received＋其餘依 manifest 預留。
 
         ⚠️待 LINE SDK 事件 JSON 實測後逐一定稿（未實測不声明）；
-        follow/unfollow/join/leave 的 EBA 映射待 WO-LINE-05。
+        follow/unfollow/join/leave 的 EBA 映射待。
         """
         return [
             'message.received',
-            'message.edited',  # ⚠️待 LINE SDK 實測（WO-LINE-05）
-            'message.deleted',  # ⚠️待 LINE SDK 實測（WO-LINE-05）
+            'message.edited',  # ⚠️待 LINE SDK 實測
+            'message.deleted',  # ⚠️待 LINE SDK 實測
             'feedback.received',  # ⚠️待 LINE 是否有 feedback 入口
-            'group.member_joined',  # ⚠️待 Line SDK 實測（WO-LINE-05）
-            'group.member_left',  # ⚠️待 Line SDK 實測（WO-LINE-05）
+            'group.member_joined',  # ⚠️待 Line SDK 實測
+            'group.member_left',  # ⚠️待 Line SDK 實測
             'platform.specific',
         ]
 
@@ -137,13 +137,13 @@ class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         return [
             'send_message',
             'reply_message',
-            'get_user_info',  # ⚠️待 Line SDK getProfile 實測（WO-LINE-04）
-            'get_group_info',  # ⚠️待 Line SDK 實測（WO-LINE-04）
-            'get_group_member_list',  # ⚠️待 Line SDK 實測（WO-LINE-04）
+            'get_user_info',  # ⚠️待 Line SDK getProfile 實測
+            'get_group_info',  # ⚠️待 Line SDK 實測
+            'get_group_member_list',  # ⚠️待 Line SDK 實測
             'call_platform_api',
         ]
 
-    # ---- 必需消息 API（WO-LINE-02 收發閉環；SDK call 為 ⚠️待實測）----
+    # ---- 必需消息 API；SDK call 為 ⚠️待實測）----
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         """LINE 主动发消息（push_message）。"""
@@ -246,10 +246,10 @@ class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         #       handler.handle(event_type)(self._handle_native_event)
 
     async def _handle_native_event(self, raw_event):
-        """LINE 原生事件 → 自我消息过滤（防回圈）→ EBA 事件分发（WO-LINE-02 收發閉環）。
+        """LINE 原生事件 → 自我消息过滤（防回圈）→ EBA 事件分发。
 
         自我消息过滤为 acceptance-checklist 红线（防回圈）；
-        兼容层（旧 FriendMessage/GroupMessage）deferred to WO-LINE-05。
+        兼容层（旧 FriendMessage/GroupMessage）deferred to。
         """
         try:
             events, _metadata = LineEventConverter._sdk_to_payload(raw_event)  # ⚠️待實測 SDK 归一化
@@ -270,7 +270,7 @@ class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     # ---- 流式输出／静音（占位，照 telegram 311-502）----
 
     async def reply_message_chunk(self, event, bot_message, message, quote_origin=False, is_final=False):
-        """⚠️待實測：LINE 流式回复（如适用 LINE streaming 模式）；待 WO-LINE-03。"""
+        """⚠️待實測：LINE 流式回复（如适用 LINE streaming 模式）；待。"""
         raise NotImplementedError('LINE reply_message_chunk 待實測定稿（禁捏造）')
 
     async def is_stream_output_supported(self) -> bool:

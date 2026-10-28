@@ -1,4 +1,4 @@
-"""LINE adapter package skeleton（WO-LINE-01-SKELETON-1018）。
+"""LINE adapter package skeleton。
 
 子模組（待 02/03 填實）：
   - adapter.py          LineAdapter（主類別，混血繼承 + Capability + namespace + config）

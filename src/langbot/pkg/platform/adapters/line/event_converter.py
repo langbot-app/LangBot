@@ -1,4 +1,4 @@
-"""LineEventConverter（WO-LINE-02 message.received 收發閉環事件分发）。
+"""LineEventConverter。
 
 對照 telegram/event_converter.py（分散式 ``target2yiri`` 依事件类型分发）
 與 slack event_converter.py（boxed 實測）。
@@ -41,7 +41,7 @@ class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         ⚠️待實測：事件类别分发依据 SDK 归一化（``_sdk_to_payload``）；
         消息类 → MessageReceivedEvent；follow/leave/postback 等走
-        PlatformSpecificEvent（action = ``line.<type>``，EBA 映射待 WO-LINE-05 定稿）。
+        PlatformSpecificEvent（action = ``line.<type>``，EBA 映射待。
         """
         if not isinstance(normalized_event, dict):
             return None
@@ -58,15 +58,15 @@ class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return LineEventConverter._platform_specific(normalized_event, 'join')
         if event_type in {'left', 'member_left'}:
             return LineEventConverter._platform_specific(normalized_event, 'left')
-        # default → PlatformSpecificEvent（action 保留原始 LINE 类型，待 WO-LINE-05 细化 EBA 映射）
+        # default → PlatformSpecificEvent（action 保留原始 LINE 类型，待
         return LineEventConverter._platform_specific(normalized_event, event_type or 'unknown')
 
     @staticmethod
     async def _convert_message(normalized_event: dict) -> platform_events.MessageReceivedEvent:
-        """LINE 消息事件 → MessageReceivedEvent（WO-LINE-02 核心）。
+        """LINE 消息事件 → MessageReceivedEvent。
 
         LINE 為 1:1 對話，`chat_type=private`、`chat_id=sender_id`；
-        群組語義待 SDK 實測（WO-LINE-05）。
+        群組語義待 SDK 實測。
         """
         line_message = normalized_event['message']
         sender = normalized_event.get('sender') or {}
@@ -96,7 +96,7 @@ class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
         """未映射到通用事件者 → PlatformSpecificEvent（action = ``line.<type>``）。
 
         原始資料留於 ``data``（含 SDK 事件體）；EBA 映射（如 friend.added/removed）
-        待 WO-LINE-05 實測後定稿。
+        待。
         """
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
@@ -111,7 +111,7 @@ class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def _sdk_to_payload(raw_event: typing.Any) -> typing.Tuple[list[dict], dict]:
         """LINE SDK 事件归一化 —— 唯一直接触碰 SDK 事件體的函式（类层静态方法）。
 
-        已据 SDK 3.26.0 合约（WO-LINE-00-SDK-326-CONTRACT §1.2）收斂：SDK 事件物件
+        已据 SDK 3.26.0 合约§1.2）收斂：SDK 事件物件
         结构经 ops 在 .84 CubeSandbox 實測（``raw_event.body.events`` /
         ``raw_event.body.destination`` / ``raw_event.body.webhookEventId`` /
         ``raw_event.body.sender``）。接收 raw_event（SDK 事件物件、已解析 dict）；

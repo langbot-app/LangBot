@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_group_user_events.py — WO-LINE-04 群組與使用者事件擴充 selftest。
+test_group_user_events.py —。
 
 覆盖：
 - target2yiri 事件映射（message/follow/unfollow/join/left/member_joined/member_left/postback/beacon/default）。

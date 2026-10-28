@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-send_api.py — LINE 訊息發送 API（WO-LINE-03 子模块）。
+send_api.py — LINE 訊息發送 API。
 
-據 SDK 3.26.0 合約實作〔WO-LINE-00-SDK-326-CONTRACT.md，ops .84 CubeSandbox 實測 2026-10-20〕：
+據 SDK 3.26.0 合約實作〔，ops .84 CubeSandbox 實測 2026-10-20〕：
 - ②b 被動回覆快速通道：ReplyToken 回覆（LineBotApi.reply_message），過期 Smoothly 轉 Push API。
 - ②c 主動推播：Push Message（LineBotApi.push_message），支援文字／圖片／自訂 Flex。
 - ②e 超時重試、網路斷線自癒與退避機制（通用，不依賴 SDK 特定 API）。

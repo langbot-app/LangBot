@@ -1,4 +1,4 @@
-"""LineMessageConverter — LINE 訊息 payload ↔ EBA MessageChain（WO-LINE-02 收發閉環）。
+"""LineMessageConverter — LINE 訊息 payload ↔ EBA MessageChain。
 
 對照 slack message_converter.py（boxed 實測）的 MessageChain 元件建構／解析模式，
 以及 qqofficial message_converter.py 的 media payload 封裝模式。
@@ -119,7 +119,7 @@ def _platform_component(component_type: str, data: dict) -> platform_message.Pla
 
 
 class LineMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
-    """LINE 訊息轉換器（WO-LINE-02）。
+    """LINE 訊息轉換器。
 
     兩向：
       - ``target2yiri``：LINE 原始訊息（dict）→ EBA MessageChain
@@ -159,7 +159,7 @@ class LineMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 if component.id is not None:
                     messages.append({'type': 'text', 'text': f'[Quote {component.id}]'})
             elif isinstance(component, platform_message.Forward):
-                # ⚠️待實測：LINE forward_message 依藍圖 WO-LINE-03 實測後再定行止
+                # ⚠️待實測：LINE forward_message 依藍圖
                 raise NotSupportedError('line:forward_message')
             elif isinstance(component, platform_message.Unknown):
                 messages.append({'type': 'text', 'text': component.text or str(component)})

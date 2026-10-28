@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_send_streaming.py — WO-LINE-03 send_api / streaming selftest。
+test_send_streaming.py —/ streaming selftest。
 
 覆盖：RetryPolicy 退避計算／重試成功／超限失敗；
 LineSendApi payload 建構（text/image/flex／无效 type／缺字段）／

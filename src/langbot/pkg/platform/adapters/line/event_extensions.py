@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-event_extensions.py — LINE 事件擴充（WO-LINE-04 子模块）。
+event_extensions.py — LINE 事件擴充。
 
 据 blueprint §3.2 事件映射表（⚠️待 LINE 事件 JSON 實測）+ EBA 框架契约（boxed）
 + ops .84 CubeSandbox SDK 实测 event_type 值，扩展事件命名空间映射。
 
-对照 WO-LINE-02 event_converter.py 的 `_platform_specific` 分发框架（延续其形态）。
+对照`_platform_specific` 分发框架（延续其形态）。
 
 含：
 - ②a LINE 关键生命周期与互动事件解析：
@@ -13,17 +13,17 @@ event_extensions.py — LINE 事件擴充（WO-LINE-04 子模块）。
   ／UnfollowEvent→user.unfollowed／PostbackEvent→platform.specific.postback。
 - ②b 群组与使用者資訊查詢介面（get_group_summary／get_group_member_profile／get_user_profile）
   的命名空間映射（据 blueprint §3.4 LINE API→EBA 映射表）＋ SDK 调用骨架。
-- ②c 事件命名空間映射（未實測事件**不声明 capability**〔architect WO-LINE-04 §c 紅線〕，
+- ②c 事件命名空間映射（未實測事件**不声明 capability**〔architect§c 紅線〕，
   仅据 EBA 框架契约映射 + 标注實測待確認）。
 
 纪律（§3.2／§3.4 标注）：
 - blueprint §3.2 明示 LINE 事件 JSON 映射 ⚠️待 LINE 事件 JSON 實測。
 - blueprint §3.4 明示 LINE API→EBA 映射（含 getProfile／getGroupMemberIds 等）⚠️待 LINE Messaging API 端點實測。
-- 据 ops .84 SDK 实测的 event_type 值判定（见 WO-LINE-02 target2yiri）；
+- 据 ops .84 SDK 实测的 event_type 值判定（见；
   PostbackEvent／BeaconEvent 等据 blueprint §3.2 mapping table 标注實測待確認。
 - 未實測事件不宣告 capability（architect §c 紅線）；未映射者默认走 platform.specific。
 
-解耦：据 WO-LINE-02 框架风格（_platform_specific + EBA 事件命名空间）；仅 stdlib + EBA 框架契约。
+解耦：据（_platform_specific + EBA 事件命名空间）；仅 stdlib + EBA 框架契约。
 """
 
 from __future__ import annotations
@@ -38,14 +38,14 @@ from typing import Any, Optional
 class LineEventExtensions:
     """LINE 事件擴充映射（②a 生命周期與互動事件；②b 資訊查詢命名空間）。
 
-    延续 WO-LINE-02 `LineEventConverter._platform_specific` 框架；据 blueprint §3.2
+    延续`LineEventConverter._platform_specific` 框架；据 blueprint §3.2
     映射表（⚠️待 LINE 事件 JSON 實測）+ EBA 框架契约（boxed）+ ops .84 SDK 实测
     event_type 值，产出映射**框架**並标注實測待確認（§9/§23 禁捏造未定案線程）。
 
     未實測事件**不宣告 capability**（architect §c 紅線）。
     """
 
-    # 据 ops .84 SDK 实测的 event_type 值（见 WO-LINE-02 target2yiri）。
+    # 据 ops .84 SDK 实测的 event_type 值（见。
     # blueprint §3.2 明示 LINE 事件 JSON 映射 ⚠️待 LINE 事件 JSON 實測。
     _EVENT_TYPE_MAP = {
         'message': 'message.received',
@@ -63,7 +63,7 @@ class LineEventExtensions:
         self.namespace = namespace
 
     async def yiri2target(self, event: Any, *args: Any, **kwargs: Any) -> Any:
-        """統一事件 → LINE 原生事件（一般不需要，延续 WO-LINE-02 yiri2target）。"""
+        """統一事件 → LINE 原生事件（一般不需要，延续。"""
         return getattr(event, 'source_platform_object', None)
 
     # target2yiri 為純同步命名空間映射（body 無 await）；測試以同步方式調用，
@@ -71,7 +71,7 @@ class LineEventExtensions:
     def target2yiri(self, normalized_event: dict) -> Optional[dict]:
         """归一化事件 dict → EBA 事件映射（框架版）。
 
-        返回 dict：{type, action, ...}，沿用 WO-LINE-02 `_platform_specific` 框架；
+        返回 dict：{type, action, ...}，沿用`_platform_specific` 框架；
         具体 EBA 事件对象构建据 ops .84 SDK 实测（event_type）—— blueprint §3.2 ⚠️待測。
 
         注：本框架**据 EBA 框架契约**映射命名空間（boxed）；**未實測事件不宣告 capability**。
@@ -112,7 +112,7 @@ class LineEventExtensions:
         """据 EBA 框架契约声明的事件命名空間。
 
         未實測事件**不宣告**（architect §c 紅線）；仅据 blueprint §3.2 映射表框架 + ops .84
-        SDK 实测 event_type 值。实测后（WO-LINE-05）据实声明。
+        SDK 实测 event_type 值。实测后据实声明。
         """
         # 据 EBA 框架契约（boxed）+ blueprint §3.2 映射表；未實測事件不在此宣告。
         return [
@@ -176,7 +176,7 @@ class LineGroupUserQuery:
 
 
 def _parse_event_timestamp(value: Any) -> float:
-    """据 ops .84 SDK 实测 timestamp 字段（epoch 毫秒或 ISO）解析（延续 WO-LINE-02）。
+    """据 ops .84 SDK 实测 timestamp 字段（epoch 毫秒或 ISO）解析（延续。
 
     blueprint §3.2 未實測 event timestamp 结构——据 ops .84 SDK 实测框架；标注實測待確認。
     """
