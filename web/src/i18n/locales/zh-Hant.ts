@@ -1747,6 +1747,22 @@ const zhHant = {
       stepInfo: '外掛程式資訊',
       stepSettings: '更新說明',
       stepConfirm: '確認上傳',
+      stepResult: '發布結果',
+      startUpload: '開始上傳',
+      uploadingTitle: '正在上傳至擴充市集...',
+      uploadingDesc:
+        '正在打包本機外掛程式資源、驗證清單並同步至 LangBot Space，請稍候...',
+      uploadSuccessTitle: '外掛程式發布成功！',
+      uploadSuccessDesc:
+        '外掛程式 {{author}}/{{name}} (v{{version}}) 已成功提交至 LangBot Space 擴充市集。',
+      reviewNoticeTitle: '審核流程提示',
+      reviewNoticeDesc:
+        '外掛程式提交後將進入 Space 擴充市集審核隊列。審核通過後，擴充市集中的所有使用者均可直接瀏覽、安裝與更新該外掛程式。',
+      viewInSpace: '前往擴充市集查看',
+      viewMyPlugins: '管理我的外掛程式',
+      finishAndClose: '完成',
+      retryUpload: '重試上傳',
+      backToEdit: '返回上一步修改',
       manifestNotice:
         '以下資訊已從外掛程式清單（manifest.yaml）讀取，僅供確認。如需修改，請直接修改外掛程式設定檔後重新偵錯。',
       manifestSource: '清單已確認',
