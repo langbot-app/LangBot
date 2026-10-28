@@ -1,0 +1,191 @@
+---
+title: "AI アシスタント開発コンテキスト"
+description: "AI コーディングアシスタントにページ全体をそのままコピー＆ペーストできる LangBot のコンテキスト：ディレクトリ構成、コンポーネントの構成方法、実行時の接続関係、開発環境のセットアップ。"
+---
+
+<Info title="このページは AI コーディングアシスタント（Claude Code / Cursor / Copilot / Codex など）向けです。">
+このページの**すべての内容**をコピーして AI アシスタントに貼り付けてください。そうすれば、LangBot の全体アーキテクチャ、各コンポーネントの構成方法、実行時の接続関係、開発環境の設定方法を、あなたが逐一説明しなくても把握できます。
+</Info>
+
+このページは各リポジトリのルートにある `AGENTS.md`（`CLAUDE.md` はそのシンボリックリンク）と内容を一致させており、LangBot プロジェクトの開発者および AI アシスタント向け「1 ページ入門」です。
+
+## プロジェクト概要
+
+LangBot はオープンソースの LLM ネイティブなインスタントメッセージングボット開発プラットフォームです。すぐに使える IM ボット開発体験を提供し、Agent、RAG、MCP などの LLM アプリケーション機能を内蔵し、世界の主要 IM プラットフォームに対応し、カスタム開発のための豊富な API を提供します。
+
+LangBot は充実した Web フロントエンドを備えており、ほぼすべての操作をフロントエンドから行えます。
+
+- **バックエンド**：Python（`>=3.11,<4.0`）、依存関係は `uv` で管理。Web フレームワークは Quart（Flask の非同期版）。HTTP API とビルド済みフロントエンドはいずれもバックエンドが `http://127.0.0.1:5300` で提供します。
+- **フロントエンド**：`web/` は **Vite + React Router 7 + shadcn/ui + Tailwind CSS** の SPA で、`pnpm` で管理します（注意：Next.js では**ありません**。`dev` スクリプトは `vite` です）。
+- **プラグインシステム**：プラグイン SDK、CLI（`lbp`）、プラグインランタイム、Box（サンドボックス）ランタイム、および LangBot とプラグインで共有されるエンティティ/API 定義は、すべて別リポジトリ [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk) にあります。LangBot は `pyproject.toml` でバージョン固定した `langbot-plugin` パッケージを通じて依存します。
+
+## リポジトリ構成
+
+```
+LangBot/
+├── main.py                     # エントリーシム -> langbot.__main__.main()
+├── pyproject.toml              # Python プロジェクト + 依存（uv）、langbot-plugin==<x.y.z> を固定
+├── src/langbot/
+│   ├── __main__.py             # 実際のエントリーポイント、CLI 引数（--standalone-runtime / --standalone-box / --debug）
+│   ├── pkg/                    # コアバックエンドパッケージ
+│   │   ├── api/                # HTTP API コントローラ + サービス（Quart）
+│   │   ├── core/               # アプリ起動、ステージ、タスクマネージャ
+│   │   ├── platform/           # IM プラットフォームアダプタ、ボット管理、セッション管理
+│   │   ├── provider/           # LLM プロバイダ、リクエスタ、ツールプロバイダ
+│   │   ├── pipeline/           # パイプライン、ステージ、クエリプール
+│   │   ├── plugin/             # プラグインランタイムへのブリッジ（connector.py / handler.py）
+│   │   ├── box/                # コードサンドボックスサブシステム（Docker / nsjail / E2B バックエンド）
+│   │   ├── skill/              # スキルサブシステム
+│   │   ├── rag/ , vector/      # RAG とベクトルストア
+│   │   ├── command/            # 組み込みコマンド
+│   │   ├── persistence/        # ORM モデル + Alembic マイグレーション（SQLite & PostgreSQL）
+│   │   ├── storage/            # オブジェクト/ファイルストレージ抽象
+│   │   ├── config/, entity/, discover/, utils/, telemetry/, survey/
+│   ├── libs/                   # 同梱 SDK（qq_official_api、wecom_api など）
+│   └── templates/              # 設定/コンポーネントテンプレート（例：templates/config.yaml）
+├── web/                        # フロントエンド SPA（Vite + React Router 7 + shadcn + Tailwind）
+└── docker/                     # docker-compose デプロイファイル
+```
+
+## コンポーネントの構成方法
+
+コアバックエンドパッケージ `src/langbot/pkg/` は責務ごとに疎結合なサブモジュールに分割されています：
+
+| モジュール | 責務 |
+| --- | --- |
+| `core` | アプリケーションのライフサイクル：起動ステージが設定読み込み・DB 接続・各サブシステムの起動を順に行い、バックグラウンドタスクを管理。 |
+| `platform` | 各 IM プラットフォーム（Discord、Telegram、QQ、WeCom、Lark など）のアダプタ。メッセージ送受信、ボットとセッションの管理。 |
+| `provider` | LLM プロバイダとリクエスタ（OpenAI 互換および各社ネイティブ API）、Agent が呼び出すツールプロバイダ。 |
+| `pipeline` | メッセージ処理パイプライン：1 つのメッセージをトリガー・AI 処理・出力・安全の各ステージに通す。 |
+| `plugin` | LangBot 本体とプラグインランタイム間のブリッジ。接続・アクション送受信・イベント転送。 |
+| `box` | コードサンドボックスサブシステム。スキル/ツールに隔離されたコード実行環境を提供し、可用性に応じて Docker / nsjail / E2B を選択。 |
+| `skill` / `rag` / `vector` | スキル、検索拡張生成、ベクトルストアの機能。 |
+| `persistence` | ORM エンティティ定義と Alembic マイグレーション。単一のスクリプトセットで SQLite と PostgreSQL の両方に対応。 |
+
+プラグイン側のコンポーネント（`langbot-plugin-sdk` で定義、`lbp comp` で生成）は 1 つの `BasePlugin` を中心に構成されます。現在 6 種類のコンポーネントに対応しています：
+
+- **Command**：ユーザーが能動的に起動するコマンド（例：`!weather tokyo`）。
+- **Tool**：LLM が Agent 実行中に呼び出す関数（例：天気取得、データベース照会）。
+- **EventListener**：メッセージパイプライン中のイベントを監視するハンドラ（例：自動返信、コンテンツフィルタ）。
+- **KnowledgeEngine**：RAG が利用する、カスタムナレッジベースの検索/接続実装。
+- **Parser**：メッセージ/コンテンツのカスタム解析処理。
+- **Page**：プラグインが提供するカスタム Web ページ。LangBot 管理パネルに組み込めます。
+
+各プラグインは独立したプロセスで実行され、プラグインランタイムがライフサイクルを統一管理します（発見 → 依存インストール → ロード → 初期化 → コンポーネント登録 → 準備完了 → 終了）。
+
+## 実行時の接続関係
+
+```
+┌──────────────┐   HTTP/API    ┌──────────────┐
+│ ブラウザ/Web   │ ────────────► │              │
+│ (Vite SPA)   │ :3000/同一    │   LangBot    │
+└──────────────┘   オリジン      │   バックエンド │
+                               │  (Quart)     │
+   ┌───────────────────────────┤  :5300       ├─────────────────────────┐
+   │ stdio または WebSocket       └──────────────┘   stdio または WebSocket │
+   ▼                                                ▼
+┌──────────────┐                            ┌──────────────┐
+│ プラグイン      │  独立プロセス、              │ Box          │  コードサンドボックス
+│ ランタイム     │  各プラグインを起動          │ ランタイム    │  Docker/nsjail/E2B
+│ :5400 / :5401│                            │ :5410        │
+└──────────────┘                            └──────────────┘
+```
+
+- **フロントエンド ↔ バックエンド**：開発時はフロントエンドが `:3000` で単独動作し、`web/.env` の `VITE_API_BASE_URL` を通じてバックエンド `:5300` にアクセス。本番ではフロントエンドが静的ファイルにビルドされ、バックエンドが同一オリジンで提供します。
+- **バックエンド ↔ プラグインランタイム**：
+  - LangBot を**直接起動**した場合（コンテナ外）、バックエンドが自らランタイムを**起動**し、**stdio** で通信します（軽量/個人向け）。stdio は**自動再接続できません**——切断後は LangBot の再起動が必要です。よくある障害は、前のバックエンドが残した**孤児ランタイムプロセス**が `5400`/`5401` を占有しているケースで、それを kill して再起動します。
+  - LangBot を**コンテナ**で実行する場合、**WebSocket** で独立したランタイムに接続します（本番向け）。制御ポートは既定 `5400`、デバッグポートは `5401`。設定：`data/config.yaml` の `plugin.runtime_ws_url`（例：`ws://langbot_plugin_runtime:5400/control/ws`）。
+- **バックエンド ↔ Box ランタイム**：Box サブシステムは制御チャネル（既定ポート `5410`）で Box ランタイムに接続し、ランタイムが Docker / nsjail / E2B でサンドボックスコードを実行します。設定（`data/config.yaml` の `box:` セクション）：`box.enabled`（マスタースイッチ）、`box.backend`（`'local'`/`'docker'`/`'nsjail'`/`'e2b'`）、`box.runtime.endpoint`（外部 Box ランタイムの URL、例：`ws://127.0.0.1:5410`、空なら ローカル自動管理）。プラグインランタイムと同様、このエンドポイントを設定し `--standalone-box` で起動すると外部 Box ランタイムに接続できます。
+- ランタイム・CLI・SDK のデバッグ方法の詳細は[「プラグインランタイム、CLI、SDK のデバッグ」](/ja/develop/plugin-runtime)を参照。詳細なフラグとアーキテクチャは `langbot-plugin-sdk` リポジトリの `AGENTS.md` にあります。
+
+## 開発環境のセットアップ
+
+詳細は[「開発設定」](/ja/develop/dev-config)を参照。要点：
+
+### バックエンド
+
+```bash
+pip install uv
+uv sync --dev          # uv が .venv/ を自動作成。エディタのインタプリタをそこに向ける
+uv run main.py         # http://127.0.0.1:5300 で API + フロントエンドを提供
+```
+
+初回起動時に設定ファイルが `data/config.yaml` に生成されます。既定は SQLite（設定不要）で、PostgreSQL にも対応。マイグレーションは起動時に自動実行されます。
+
+### フロントエンド
+
+Node.js と [pnpm](https://pnpm.io/ja/installation) が必要です。
+
+```bash
+cd web
+cp .env.example .env   # Windows: copy .env.example .env
+pnpm install
+pnpm dev               # http://127.0.0.1:3000（npm install / npm run dev も可）
+```
+
+`pnpm dev` は `web/.env` の `VITE_API_BASE_URL` を読み込み、開発時のフロントエンドがバックエンド `:5300` にアクセスできるようにします。
+
+### コードフォーマット
+
+CI で lint + format チェックが走ります。pre-commit フックをインストールして、同じチェックを各コミット前にローカルで実行してください：
+
+```bash
+uv run pre-commit install
+```
+
+### データベースマイグレーション
+
+ORM モデルを変更したらマイグレーションを生成します：
+
+```bash
+# プロジェクトルートで実行（data/config.yaml が必要）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "変更内容の説明"
+```
+
+`autogenerate` はスキーマ変更（列・テーブルの追加/削除、型変更）を検出しますが、**データマイグレーション**（JSON フィールドの内容変更など）は生成スクリプトに手書きする必要があります。`env.py` で `render_as_batch=True` が設定されており、SQLite の ALTER TABLE 制限が自動処理されるため、データベース種別ごとの分岐は不要です。マイグレーションは起動時に自動実行されます。
+
+## 開発規約
+
+- LangBot はグローバルなプロジェクトです：**すべてのコードコメントと docstring は英語**で、ユーザー向けの文字列はすべて **i18n** に対応する必要があります（最低限 `en_US` + `zh_Hans`、リポジトリに日本語がある箇所は `ja_JP` も）。
+- LangBot は toC・toB の両シナリオで採用されているため、常に互換性とセキュリティを考慮してください。
+- **コミットメッセージ形式**：`<type>(<scope>): <subject>`
+  - `type`：`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`chore` など。
+  - `scope`：影響を受けるパッケージ/モジュール/ファイル/クラス。
+  - `subject`：変更内容の簡潔な説明。
+
+## Agent 向けの機能（MCP + スキル）
+
+LangBot は設計上**AI エージェントに優しく**、HTTP API と厳密に整合した 3 つの
+Agent 向けサーフェスを提供します:
+
+1. **MCP サーバー**: `src/langbot/pkg/api/mcp/` が `/mcp` で API の厳選サブセットを
+   MCP ツールとして公開します（API キー認証、config.yaml の `api.global_api_key`
+   を含む）。`server.py` がツールを定義し（service 層を直接呼び出す）、`mount.py`
+   が ASGI ディスパッチャです。
+2. **リポジトリ内スキル**: `skills/` ディレクトリは LangBot の全 Agent スキル
+   （プラグイン開発、コア開発、デプロイ、e2e、MCP 操作など）の**唯一の信頼できる
+   情報源**です。ドキュメントとランディングページは内容を複製せず、ここへリンク
+   します。
+3. **API キー認証**: `api.global_api_key`（config.yaml）はログインセッションなしで
+   API と MCP を認証します。`docs/API_KEY_AUTH.md` を参照してください。
+
+> **メンテナンスルール（重要）**: Agent からアクセス可能であるべき HTTP API
+> エンドポイントを追加・削除・変更する際は、`src/langbot/pkg/api/mcp/server.py`
+> の対応する MCP ツール**と** `skills/` 配下の関連スキル（特に
+> `skills/skills/langbot-mcp-ops`）の**両方**を必ず更新してください。API・MCP
+> ツール群・スキルは一つのシステムであり、ずれはバグです。
+
+## いくつかの原則
+
+- Keep it simple, stupid.
+- 必要がなければエンティティを増やさない。
+- 八荣八耻（八つの栄誉と八つの恥）：
+
+    以瞎猜接口为耻，以认真查询为荣。
+    以模糊执行为耻，以寻求确认为荣。
+    以臆想业务为耻，以人类确认为荣。
+    以创造接口为耻，以复用现有为荣。
+    以跳过验证为耻，以主动测试为荣。
+    以破坏架构为耻，以遵循规范为荣。
+    以假装理解为耻，以诚实无知为荣。
+    以盲目修改为耻，以谨慎重构为荣。

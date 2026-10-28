@@ -1,0 +1,733 @@
+---
+title: "LangBot API"
+---
+
+Use `self.plugin` for models, tools, knowledge bases, and storage. For the current event, replies, and conversation state, see [Context APIs](/en/plugin/dev/apis/agent-run).
+
+See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, timeouts, numeric reasoning budgets, prompt caching, headers and stream cancellation.
+
+## LangBot API
+
+These APIs can be called in any plugin component. Access methods:
+
+- In the plugin root directory `main.py`: Internal methods of the `self` object, these APIs are all provided by the plugin class parent class `BasePlugin`.
+- In regular plugin component classes: Internal methods of the `self.plugin` object.
+
+### Get Plugin Configuration
+
+Plugin configuration format can be written in `manifest.yaml`, and users need to fill it out according to the plugin configuration format in LangBot's plugin management. Plugin code can then call this API to get plugin configuration information.
+
+```python
+def get_config(self) -> dict[str, typing.Any]:
+    """Get the config of the plugin."""
+
+# Usage example
+config = self.plugin.get_config()
+```
+
+### Get LangBot Version
+
+Get the LangBot version number, returned as a string in format `v<major>.<minor>.<patch>`.
+
+```python
+async def get_langbot_version(self) -> str:
+    """Get the langbot version"""
+
+# Usage example
+langbot_version = await self.plugin.get_langbot_version()
+```
+
+### Get Configured Bot List
+
+Returns a list of all bot UUIDs.
+
+```python
+async def get_bots(self) -> list[str]:
+    """Get all bots"""
+
+# Usage example
+bots = await self.plugin.get_bots()
+```
+
+### Get Bot Information
+
+Get bot information.
+
+```python
+async def get_bot_info(self, bot_uuid: str) -> dict[str, Any]:
+    """Get a bot info"""
+
+# Usage example
+bot_info = await self.plugin.get_bot_info("de639861-be05-4018-859b-c2e2d3e0d603")
+
+# Return example
+{
+    "uuid": "de639861-be05-4018-859b-c2e2d3e0d603",
+    "name": "aiocqhttp",
+    "description": "Migrated from LangBot v3",
+    "adapter": "aiocqhttp",
+    "enable": true,
+    "use_pipeline_name": "ChatPipeline",
+    "use_pipeline_uuid": "c30a1dca-e91c-452b-83ec-84d635a30028",
+    "created_at": "2025-05-10T13:53:08",
+    "updated_at": "2025-08-12T11:27:30",
+    "adapter_runtime_values": {  # Present if the bot is currently running
+        "bot_account_id": 960164003  # Bot account ID
+    }
+}
+```
+
+### Send Proactive Message
+
+Send proactive messages through bot UUID and target session ID.
+
+For message chain construction methods, please refer to [Message Platform Entities](/en/plugin/dev/apis/messages).
+
+```python
+async def send_message(
+    self,
+    bot_uuid: str,
+    target_type: str,
+    target_id: str,
+    message_chain: platform_message.MessageChain,
+) -> None:
+    """Send a message to a session"""
+
+# Usage example
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
+)
+```
+
+### Get Configured LLM Model List
+
+Returns a list of UUIDs for all configured LLM models.
+
+```python
+async def get_llm_models(self) -> list[str]:
+    """Get all LLM models"""
+
+# Usage example
+llm_models = await self.plugin.get_llm_models()
+```
+
+### Invoke LLM Model
+
+Invoke an LLM model, returns an LLM message. Non-streaming.
+
+```python
+async def invoke_llm(
+    self,
+    llm_model_uuid: str,
+    messages: list[provider_message.Message],
+    funcs: list[resource_tool.LLMTool] = [],
+    extra_args: dict[str, Any] = {},
+    timeout: float | None = None,
+    *,
+    reasoning_level: ReasoningLevel | None = None,
+) -> provider_message.Message:
+    """Invoke an LLM model"""
+
+# Usage example
+llm_message = await self.plugin.invoke_llm(
+    llm_model_uuid="llm_model_uuid",
+    messages=[provider_message.Message(role="user", content="Hello, world!")],
+    funcs=[],
+    extra_args={},
+)
+```
+
+
+### Reasoning level
+
+All model invocation methods above accept the optional keyword-only `reasoning_level` parameter:
+
+```python
+response = await self.plugin.invoke_llm(
+    llm_model_uuid=model_uuid,
+    messages=[provider_message.Message(role="user", content="Analyze this problem")],
+    reasoning_level="medium",
+)
+```
+
+Values are `provider_default`, `disabled`, `enabled`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Available levels depend on the model. LangBot validates support and translates the level into provider parameters; unsupported levels raise an error.
+
+- Omitted or `None`: preserves existing model configuration and `extra_args` behavior.
+- `provider_default`: adds no explicit reasoning level.
+- Other levels: apply to this call only. Do not also supply provider-specific reasoning parameters through `extra_args`.
+
+Runners read their own configuration and explicitly pass the appropriate level for each call, including fallback models and tool follow-ups. LangBot does not extract reasoning levels from Runner configuration. Existing plugins require no changes; when an explicit option is used with an unsupported Host, the SDK requests an upgrade before invoking the model.
+
+### Model streaming and usage
+
+| Method | Returns |
+| --- | --- |
+| `invoke_llm_with_usage(llm_model_uuid, messages, funcs=[], extra_args={}, timeout=None, *, reasoning_level=None)` | `LLMInvokeResult` |
+| `invoke_llm_stream(llm_model_uuid, messages, funcs=[], extra_args={}, *, reasoning_level=None)` | Async iterator of `MessageChunk` |
+| `invoke_llm_stream_events(llm_model_uuid, messages, funcs=[], extra_args={}, *, reasoning_level=None)` | Async iterator of `LLMStreamEvent` |
+
+
+Parameters match `invoke_llm`. `timeout` is in seconds; non-streaming calls default to 120 seconds. Use `invoke_llm_with_usage` when token usage is needed:
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.total_tokens)
+```
+
+`usage` may be `None`; `prompt_tokens`, `completion_tokens`, and `total_tokens` may also be absent. Missing values do not mean zero usage. Additional provider fields, such as cache usage, are preserved.
+
+```python
+async for event in self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+):
+    if event.chunk is not None:
+        print(event.chunk.content)
+    if event.usage is not None:
+        print(event.usage.model_dump())
+```
+
+`LLMStreamEvent` has optional `chunk` and `usage`; the final event may contain usage without text. `invoke_llm_stream` yields only message/tool-call chunks. `MessageChunk.content` is the current chunk; `all_content`, when supplied, is accumulated text. Replace with accumulated text and append only deltas; an `is_final` chunk may still carry text. Model streaming does not send platform messages; see [Run Context APIs](/en/plugin/dev/apis/agent-run) for explicit streaming replies.
+
+### List Available Parsers
+
+List Parser plugins currently available on the host, optionally filtered by MIME type.
+
+```python
+async def list_parsers(self, mime_type: str | None = None) -> list[dict[str, Any]]:
+    """List available Parser plugins"""
+
+# Usage example
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+# Each item includes plugin_id, plugin_author, plugin_name, name, description, supported_mime_types
+```
+
+### List All Available Tools
+
+List all available tools in the current LangBot instance (including plugin tools and MCP tools).
+
+```python
+async def list_tools(self) -> list[dict[str, Any]]:
+    """List all available tools
+
+    Returns:
+        A list of tool dicts, each containing:
+        - name: Tool name
+        - label: Display label (i18n)
+        - description: Tool description (i18n)
+        - icon: Tool icon
+        - spec: Tool specification (includes llm_prompt and parameters)
+    """
+
+# Example
+tools = await self.plugin.list_tools()
+for tool in tools:
+    print(f"Tool: {tool['name']}")
+```
+
+### Get Tool Detail
+
+Get detailed information about a specific tool.
+
+```python
+async def get_tool_detail(self, tool_name: str) -> dict[str, Any]:
+    """Get detailed information about a specific tool
+
+    Args:
+        tool_name: Tool name (metadata.name, e.g. "get_weather_alerts")
+
+    Returns:
+        Tool detail dict containing name, label, description, spec (with parameters and llm_prompt)
+    """
+
+# Example
+detail = await self.plugin.get_tool_detail("get_weather_alerts")
+print(detail['spec']['parameters'])
+```
+
+### Call Tool
+
+Call a specific tool.
+
+```python
+async def call_tool(
+    self,
+    tool_name: str,
+    parameters: dict[str, Any],
+    session: dict[str, Any],
+    query_id: int,
+) -> dict[str, Any]:
+    """Call a specific tool
+
+    Args:
+        tool_name: Tool name (metadata.name)
+        parameters: Tool parameters
+        session: Session info
+        query_id: Query ID
+
+    Returns:
+        Tool response dict
+    """
+
+# Example
+result = await self.plugin.call_tool(
+    tool_name="get_weather_alerts",
+    parameters={"state": "CA"},
+    session={},
+    query_id=0,
+)
+print(result)
+```
+
+<Tip>
+Tool names use `metadata.name` (e.g. `echo_tool`, `get_weather_alerts`), without author or plugin name prefix.
+</Tip>
+
+### Set Plugin Persistent Data
+
+Persistently store plugin data. Data stored through this interface can only be accessed by this plugin. Values need to be converted to bytes manually.
+
+```python
+async def set_plugin_storage(self, key: str, value: bytes) -> None:
+    """Set a plugin storage value"""
+
+# Usage example
+await self.plugin.set_plugin_storage("key", b"value")
+```
+
+### Get Plugin Persistent Data
+
+```python
+async def get_plugin_storage(self, key: str) -> bytes:
+    """Get a plugin storage value"""
+
+# Usage example
+plugin_storage = await self.plugin.get_plugin_storage("key")
+```
+
+### Get All Plugin Persistent Data Keys
+
+```python
+async def get_plugin_storage_keys(self) -> list[str]:
+    """Get all plugin storage keys"""
+
+# Usage example
+plugin_storage_keys = await self.plugin.get_plugin_storage_keys()
+```
+
+### Delete Plugin Persistent Data
+
+```python
+async def delete_plugin_storage(self, key: str) -> None:
+    """Delete a plugin storage value"""
+
+# Usage example
+await self.plugin.delete_plugin_storage("key")
+```
+
+### Get Workspace Persistent Data
+
+Data stored through this interface can be accessed by all plugins. Values need to be converted to bytes manually.
+
+```python
+async def set_workspace_storage(self, key: str, value: bytes) -> None:
+    """Set a workspace storage value"""
+
+# Usage example
+await self.plugin.set_workspace_storage("key", b"value")
+```
+
+### Get Workspace Persistent Data
+
+```python
+async def get_workspace_storage(self, key: str) -> bytes:
+    """Get a workspace storage value"""
+
+# Usage example
+workspace_storage = await self.plugin.get_workspace_storage("key")
+```
+
+### Get All Workspace Persistent Data Keys
+
+```python
+async def get_workspace_storage_keys(self) -> list[str]:
+    """Get all workspace storage keys"""
+
+# Usage example
+workspace_storage_keys = await self.plugin.get_workspace_storage_keys()
+```
+
+### Delete Workspace Persistent Data
+
+```python
+async def delete_workspace_storage(self, key: str) -> None:
+    """Delete a workspace storage value"""
+
+# Usage example
+await self.plugin.delete_workspace_storage("key")
+```
+
+### Get Plugin File-typed Config Field Data
+
+```python
+async def get_config_file(self, file_key: str) -> bytes:
+    """Get a config file value"""
+
+# Usage example
+file_bytes = await self.plugin.get_config_file("key")
+```
+
+Use this in conjunction with configuration fields of type [``file or array[file``](/en/plugin/dev/basic-info.html#type-file).
+
+## Knowledge Base API
+
+These APIs are accessible via `self.plugin` in regular components, allowing you to list and retrieve from all knowledge bases in the LangBot instance without pipeline restrictions.
+
+### List All Knowledge Bases
+
+List all available knowledge bases in the LangBot instance.
+
+```python
+async def list_knowledge_bases(self) -> list[dict[str, Any]]:
+    """List all knowledge bases
+
+    Returns:
+        List of knowledge base dicts, each containing:
+        - uuid: Knowledge base UUID
+        - name: Knowledge base name
+        - description: Knowledge base description
+    """
+
+# Usage example
+knowledge_bases = await self.plugin.list_knowledge_bases()
+for kb in knowledge_bases:
+    print(f"KB: {kb['name']} ({kb['uuid']})")
+```
+
+### Retrieve from Knowledge Base
+
+Retrieve relevant documents from any knowledge base.
+
+```python
+async def retrieve_knowledge(
+    self,
+    kb_id: str,
+    query_text: str,
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Retrieve from a knowledge base
+
+    Args:
+        kb_id: Knowledge base UUID (from list_knowledge_bases)
+        query_text: Search query text
+        top_k: Number of results to return (default: 5)
+        filters: Optional metadata filters for retrieval
+
+    Returns:
+        List of retrieval result entries
+    """
+
+# Usage example
+results = await self.plugin.retrieve_knowledge(
+    kb_id="kb-uuid-here",
+    query_text="How to configure the system?",
+    top_k=3,
+)
+for entry in results:
+    print(entry)
+```
+
+<Tip>
+These APIs do not require a `query_id` and can be used in regular components (including Tool components). They can access all knowledge bases without being restricted to the current pipeline's configuration.
+</Tip>
+
+## RAG API
+
+These APIs are available for `KnowledgeEngine` components to access the LangBot host's embedding models, vector database, and file storage. Access method:
+
+- In `KnowledgeEngine` component classes: Internal methods of the `self.plugin` object.
+
+### Invoke Embedding Model
+
+Generate text embeddings using the host's configured embedding model.
+
+```python
+async def invoke_embedding(
+    self,
+    embedding_model_uuid: str,
+    texts: list[str],
+) -> list[list[float]]:
+    """Generate embeddings using host's embedding model
+
+    Args:
+        embedding_model_uuid: Embedding model UUID
+        texts: List of texts to embed
+
+    Returns:
+        List of embedding vectors, one per input text
+    """
+
+# Usage example
+vectors = await self.plugin.invoke_embedding("model_uuid", ["Hello", "World"])
+```
+
+### Vector Upsert
+
+Upsert vectors to the host's vector database.
+
+```python
+async def vector_upsert(
+    self,
+    collection_id: str,
+    vectors: list[list[float]],
+    ids: list[str],
+    metadata: list[dict[str, Any]] | None = None,
+    documents: list[str] | None = None,
+) -> None:
+    """Upsert vectors
+
+    Args:
+        collection_id: Target collection ID
+        vectors: List of vectors
+        ids: List of unique IDs for vectors
+        metadata: Optional list of metadata dicts
+        documents: Optional raw text documents. Required for full-text
+            and hybrid search in backends that support them.
+    """
+
+# Usage example
+await self.plugin.vector_upsert(
+    collection_id="kb_uuid",
+    vectors=[[0.1, 0.2, ...], [0.3, 0.4, ...]],
+    ids=["chunk_0", "chunk_1"],
+    metadata=[{"document_id": "doc1"}, {"document_id": "doc1"}],
+    documents=["chunk text 0", "chunk text 1"],
+)
+```
+
+### Vector Search
+
+Search similar vectors in the host's vector database.
+
+```python
+async def vector_search(
+    self,
+    collection_id: str,
+    query_vector: list[float],
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+    search_type: str = "vector",
+    query_text: str = "",
+) -> list[dict[str, Any]]:
+    """Vector search
+
+    Args:
+        collection_id: Target collection ID
+        query_vector: Query vector for similarity search
+        top_k: Number of results to return
+        filters: Optional metadata filters
+        search_type: One of 'vector', 'full_text', 'hybrid'
+        query_text: Raw query text, used for full_text and hybrid search
+
+    Returns:
+        List of search results (dict with id, score, metadata, etc.)
+    """
+
+# Usage example
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    top_k=5,
+    search_type="hybrid",
+    query_text="search query",
+)
+# Return format: [{"id": "chunk_0", "score": 0.123, "metadata": {"document_id": "doc1", ...}}, ...]
+```
+
+<Info>
+Each result returned by `vector_search` is a dict containing `id` (vector ID), `score` (distance score), and `metadata` (metadata provided during upsert). If you need text content in retrieval results, store the text in metadata during ingestion.
+</Info>
+
+### Vector Delete
+
+Delete vectors from the host's vector database.
+
+```python
+async def vector_delete(
+    self,
+    collection_id: str,
+    file_ids: list[str] | None = None,
+    filters: dict[str, Any] | None = None,
+) -> int:
+    """Vector delete
+
+    Args:
+        collection_id: Target collection ID
+        file_ids: File IDs whose vectors should be deleted
+        filters: Optional metadata filters for deletion
+
+    Returns:
+        Number of deleted items
+    """
+
+# Usage example
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    file_ids=["doc_001"],
+)
+```
+
+<Info>
+The `filters` parameter supports Chroma-style `where` syntax for metadata filtering. Multiple top-level keys are AND-ed. Supported operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`.
+
+```python
+# Implicit $eq
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_id": "abc"},
+)
+
+# Comparison operator
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"created_at": {"$gte": 1700000000}},
+)
+
+# In-list operator
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_type": {"$in": ["pdf", "docx"]}},
+)
+
+# Delete by filter
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    filters={"file_type": {"$eq": "pdf"}},
+)
+```
+
+**Note:** Chroma, Qdrant, and SeekDB store full metadata and can filter on any field. Milvus and pgvector only store `text`, `file_id`, and `chunk_uuid` — filters on other fields will be silently ignored.
+</Info>
+
+Get uploaded file content from the host's storage.
+
+```python
+async def get_knowledge_file_stream(self, storage_path: str) -> bytes:
+    """Get file content
+
+    Args:
+        storage_path: File storage path (from FileObject.storage_path)
+
+    Returns:
+        File content as bytes
+    """
+
+# Usage example
+file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.storage_path)
+```
+
+
+## Additional resource APIs
+
+These methods are also called through `self.plugin`.
+
+### Invoke a rerank model
+
+```python
+async def invoke_rerank(
+    self, rerank_model_uuid: str, query: str, documents: list[str],
+    top_k: int | None = None, extra_args: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+) -> list[dict[str, Any]]:
+    ...
+
+scores = await self.plugin.invoke_rerank(
+    rerank_model_uuid=rerank_model_uuid,
+    query="How do I configure a bot?",
+    documents=["Bot configuration guide", "Plugin publishing guide"],
+    top_k=1,
+)
+```
+
+Results usually contain the original document `index` and `relevance_score`.
+
+### Invoke a parser
+
+```python
+async def invoke_parser(
+    self, plugin_author: str, plugin_name: str, storage_path: str,
+    mime_type: str, filename: str, metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ...
+
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+if parsers:
+    parser = parsers[0]
+    parsed = await self.plugin.invoke_parser(
+        plugin_author=parser["plugin_author"],
+        plugin_name=parser["plugin_name"],
+        storage_path=storage_path,
+        mime_type="application/pdf",
+        filename="guide.pdf",
+    )
+```
+
+`storage_path` is a Host storage path, such as `context.file_object.storage_path` during knowledge ingestion, not a plugin-local path. The result dictionary contains `text`, `sections`, and `metadata`.
+
+### List vector records
+
+```python
+async def vector_list(
+    self, collection_id: str, filters: dict[str, Any] | None = None,
+    limit: int = 20, offset: int = 0,
+) -> dict[str, Any]:
+    ...
+
+page = await self.plugin.vector_list(
+    collection_id=collection_id,
+    filters={"file_id": "doc_001"},
+    limit=20,
+    offset=0,
+)
+for item in page["items"]:
+    print(item["id"], item.get("metadata"))
+```
+
+Returns `items` and `total`. Items contain `id`, `document`, and `metadata`; `total` is a best-effort matching count from the storage backend. Filters use the vector API format above.
+
+### List plugins and commands
+
+```python
+manifests = await self.plugin.list_plugins_manifest()
+commands = await self.plugin.list_commands()
+```
+
+Both methods take no arguments and return the Host-provided plugin manifest list and command list respectively.
+
+### Box sandbox
+
+These methods use `self.plugin` and the current Workspace. Runner calls automatically retain invocation authorization.
+
+| Method | Returns | Behavior |
+| --- | --- | --- |
+| `await self.plugin.get_box_status()` | `BoxStatus` | `enabled`, `available`, capacity `limit`, `used`, `remaining`, optional managed `required_reuse_key`, and unavailable `reason` |
+| `await self.plugin.list_boxes()` | `list[BoxSession]` | Box `id` and `status` snapshot (`idle`, `running`, `closing`) |
+| `await self.plugin.acquire_box(reuse_key, options=None)` | `BoxSession` | Reuse the same key or create within capacity; `options` supports `image` |
+
+Unknown capacity fields are `None`. Zero remaining capacity still permits reuse; Runtime checks creation capacity atomically. The Runner computes reuse keys. When `required_reuse_key` is supplied, use it. Equal keys in different Workspaces never share a Box.
+
+Use the [Runner context](/en/plugin/dev/apis/agent-run#runner) to bind the Box before importing attachments or executing tools.

@@ -1,0 +1,19 @@
+---
+title: "代码规范指南"
+---
+
+## 日志记录
+
+在插件中请使用`logging`模块记录日志，不要使用`print`语句（这将导致容器环境中无法输出日志）。
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)  # 在任何 Python 文件的开头导入 logging 模块，并定义 logger 对象
+
+logger.info('This is an info message')  # 使用 logger.info 记录信息级别日志
+logger.warning('This is a warning message')
+logger.error('This is an error message')
+```
+
+认证插件中，原始进程日志无法安全归属到某个工作区，只用于运维诊断。Runner 可在调用中使用 `RunnerContext.log()` 记录安装作用域、租户可见日志。其他组件目前没有通用租户日志 API，其原始进程日志仅供运维；不要在模块全局后台线程中输出租户配置、凭据或请求数据。

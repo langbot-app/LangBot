@@ -1,0 +1,53 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumapress/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+
+:root {
+  --color-fd-primary: #4692dd;
+}
+
+body {
+  font-family: "Noto Sans SC", "Noto Sans", system-ui, sans-serif;
+}
+
+
+/* Keep the page outline visually quiet: one rail, no stepped connectors. */
+#nd-toc > div > div,
+[data-toc-popover-content] div.relative.flex.flex-col:has(> a[href^="#"]) {
+  border-inline-start: 1px solid color-mix(in oklab, var(--color-fd-foreground) 10%, transparent);
+  margin-inline-start: 0.53125rem;
+}
+
+#nd-toc > div > div > a > svg,
+#nd-toc > div > div > div.absolute,
+[data-toc-popover-content] a[href^="#"] > svg,
+[data-toc-popover-content] div.relative.flex.flex-col:has(> a[href^="#"]) > div.absolute {
+  display: none;
+}
+
+/* Keep every active segment on one x-axis, even when labels are indented. */
+#nd-toc > div > div > a[data-active="true"]::before,
+[data-toc-popover-content] a[href^="#"][data-active="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: -0.375rem;
+  inset-inline-start: 0.5rem;
+  width: 1px;
+  background: var(--color-fd-primary);
+  border-radius: 0;
+  z-index: 1;
+}
+
+/* Mintlify-style section labels: headings, not expandable folder controls. */
+#nd-sidebar p.inline-flex.items-center.gap-2 {
+  margin-block: 1.15rem 0.35rem;
+  padding-inline: 0.5rem;
+  color: var(--color-fd-muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.065em;
+  line-height: 1.25rem;
+  text-transform: uppercase;
+}

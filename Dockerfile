@@ -11,7 +11,7 @@ RUN cd web && npm install && npx vite build
 # Multi-stage keeps the compile toolchain (bison/flex/protobuf-dev/libnl-dev)
 # out of the final image; only the nsjail binary and its small runtime libs
 # (libprotobuf, libnl-route-3) are carried over.
-FROM python:3.12.7-slim AS nsjail-build
+FROM python:3.12-slim-trixie AS nsjail-build
 
 ARG NSJAIL_VERSION=3.6
 
@@ -25,7 +25,15 @@ RUN apt-get update \
     && install -m 0755 /nsjail/nsjail /usr/local/bin/nsjail \
     && rm -rf /var/lib/apt/lists/*
 
-FROM python:3.12.7-slim
+FROM python:3.12-slim-trixie
+
+# Keep testing packages isolated to the SQLite release with the WAL-reset fix.
+RUN printf 'deb http://deb.debian.org/debian forky main\n' > /etc/apt/sources.list.d/sqlite.list \
+    && printf 'Package: libsqlite3-0\nPin: release n=forky\nPin-Priority: 990\n\nPackage: *\nPin: release n=forky\nPin-Priority: -1\n' > /etc/apt/preferences.d/sqlite \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libsqlite3-0=3.53.4-2 \
+    && python -c 'import sqlite3; assert sqlite3.sqlite_version == "3.53.4"' \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -44,7 +52,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc ca-certificates curl git gnupg \
     # nsjail runtime libraries (the build toolchain stays in the nsjail-build
     # stage; only these shared libs are needed to execute the binary).
-    && apt-get install -y --no-install-recommends libprotobuf32 libnl-route-3-200 \
+    && apt-get install -y --no-install-recommends libprotobuf32t64 libnl-route-3-200 \
     # Install the Docker CLI (client only) so the optional langbot_box
     # service can drive the mounted host Docker socket and create sandbox
     # containers. The same image powers langbot / plugin_runtime / box; only

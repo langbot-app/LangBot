@@ -1219,3 +1219,32 @@ async def test_after_commit_task_is_cancelled_and_coroutine_closed_on_rollback(t
         assert coro.cr_frame is None
     finally:
         await engine.dispose()
+
+
+@pytest.mark.parametrize('source', ['instance', 'comparator'])
+async def test_scoped_statement_revalidates_mutated_optional_attributes(source) -> None:
+    expression = sa.literal(1)
+    statement = sa.select(expression)
+    _validate_scoped_statement_call((statement,), {})
+    if source == 'instance':
+        expression._suffixes = ('unsafe SQL',)
+    else:
+        expression.comparator = SimpleNamespace(_suffixes=('unsafe SQL',))
+    with pytest.raises(ScopedSessionTransactionError, match='textual statement modifiers'):
+        _validate_scoped_statement_call((statement,), {})
+
+
+async def test_scoped_statement_retains_custom_attribute_fallback(monkeypatch) -> None:
+    expression = sa.literal(1)
+    statement = sa.select(expression)
+    _validate_scoped_statement_call((statement,), {})
+    original = sa.sql.elements.ColumnElement.__getattr__
+
+    def changed_attribute(self, name):
+        if name == '_suffixes':
+            return ('unsafe SQL',)
+        return original(self, name)
+
+    monkeypatch.setattr(sa.sql.elements.ColumnElement, '__getattr__', changed_attribute)
+    with pytest.raises(ScopedSessionTransactionError, match='textual statement modifiers'):
+        _validate_scoped_statement_call((statement,), {})

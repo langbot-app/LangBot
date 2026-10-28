@@ -1,0 +1,78 @@
+---
+title: "平台 API"
+---
+
+通过机器人 UUID 调用平台适配器的 API。发送消息链可继续使用 `self.plugin.send_message()`；查询群组、用户及其他平台能力使用下面的接口。
+
+## 调用平台 API
+
+```python
+async def call_platform_api(
+    self,
+    bot_uuid: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    ...
+```
+
+在 Command、EventListener、Tool 等组件中通过 `self.plugin` 调用。返回值为可序列化的字典、列表、标量或 `None`，具体取决于动作；不是平台 SDK 对象。
+
+```python
+group = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="get_group_info",
+    params={"group_id": "123456"},
+)
+```
+
+`bot_uuid` 可从 `await self.plugin.get_bots()` 获取，流水线事件中也可使用 `await event_context.get_bot_uuid()`。平台 ID 的值应来自实际事件或平台配置。
+
+### 常用动作
+
+| `action` | `params` |
+| --- | --- |
+| `get_user_info` | `user_id` |
+| `get_friend_list` | `{}` |
+| `get_group_info` | `group_id` |
+| `get_group_list` | `{}` |
+| `get_group_member_list` | `group_id` |
+| `get_group_member_info` | `group_id`, `user_id` |
+| `get_message` / `delete_message` | `chat_type`, `chat_id`, `message_id` |
+| `set_group_name` | `group_id`, `name` |
+| `mute_member` | `group_id`, `user_id`, `duration` |
+| `unmute_member` / `kick_member` | `group_id`, `user_id` |
+| `leave_group` | `group_id` |
+| `approve_friend_request` | `request_id`, `approve`, `remark` |
+| `approve_group_invite` | `request_id`, `approve` |
+| `get_file_url` | `file_id` |
+
+
+每个平台支持的动作不同，也可能要求机器人管理员权限。`duration` 单位为秒，`0` 的含义依平台而异，不应作为通用的永久禁言值。查询结果可能依赖平台缓存。机器人未运行、动作不受支持或参数不正确时，调用会抛出异常。
+
+## 平台专有 API
+
+将外层 `action` 设为 `call_platform_api`，在 `params` 中填写平台动作及其参数。例如，使用 OneBot Omni 读取机器人账号信息：
+
+```python
+account = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="call_platform_api",
+    params={"action": "get_login_info", "params": {}},
+)
+```
+
+只能调用适配器已声明的动作，并非任意平台接口都能透传。插件通过运行时调用宿主，不直接访问 `ctx.query.adapter` 或 `adapter.bot`。
+
+## 运行器
+
+运行器执行期间，`self.plugin` 的模型、工具、知识库、存储和平台调用自动关联当前运行并执行授权检查，无需传入 `run_id`。同一插件的并发运行互相隔离。不要在处理函数返回后继续调用这些运行关联的 API。
+
+通过 `await ctx.get_bot_uuid()` 获取当前机器人。平台调用必须匹配本次工具授权：仅授权当前事件目标时，不能改传其他目标；未授权的动作（包括平台专有动作）会被拒绝。调试中的这些调用同样使用 Mock。
+
+```python
+tools = await ctx.get_available_tools()
+if any(tool["name"] == "event_get_actor" for tool in tools):
+    actor = await ctx.call_tool("event_get_actor")
+    await ctx.log(str(actor))
+```

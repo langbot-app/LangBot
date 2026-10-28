@@ -493,7 +493,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             self.ap.logger.warning(
                 'Valkey Search backend does not honor vector_weight: hybrid search uses '
                 'filter-then-KNN without weighted score fusion. The vector_weight value '
-                'is ignored. See docs/VALKEY_SEARCH_INTEGRATION.md.'
+                'is ignored. See dev-docs/VALKEY_SEARCH_INTEGRATION.md.'
             )
             self._vector_weight_warned = True
 

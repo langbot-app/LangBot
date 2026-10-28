@@ -23,6 +23,7 @@ _PUBLIC_SKILL_FIELDS = (
     'name',
     'display_name',
     'description',
+    'metadata',
     'instructions',
     'package_root',
     'revision',

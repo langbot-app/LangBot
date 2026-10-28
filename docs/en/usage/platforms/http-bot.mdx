@@ -1,0 +1,232 @@
+---
+title: "HTTP Bot"
+description: "Integrate any backend with LangBot over plain HTTP: push messages in via a signed webhook, receive replies on a callback URL. Server-to-server, no long-lived connection."
+icon: "/images/platforms/http-bot.svg"
+---
+
+The `HTTP Bot` adapter integrates **any backend system** with a LangBot pipeline over plain HTTP. Ticketing systems, CRMs, internal tools, custom web apps — all can drive a pipeline through it:
+
+- **Inbound**: your backend POSTs a signed message to a fixed LangBot URL;
+- **Outbound**: LangBot POSTs replies to a callback URL you configure.
+
+It needs **no long-lived connection** and fully preserves two native pipeline capabilities:
+
+- **Message aggregation (N→1)**: a user fires several messages in a row, merged into one turn;
+- **Multi-part replies (1→M)**: one turn may produce several replies (function calls, multi-message plugins, streamed chunks).
+
+<Note>
+If you want an **in-browser**, real-time chat widget, use the [Web Page Bot](/en/usage/platforms/webpage) instead. HTTP Bot is designed for backend-to-backend integration.
+</Note>
+
+## How it works
+
+```
+Your backend  ──(1) POST signed message──►  LangBot   /bots/<bot_uuid>
+                                            (pipeline: aggregate → think → reply)
+Your callback ◄─(2) POST signed reply(s)──  LangBot   one POST per reply part
+```
+
+- **(1) Inbound** is *fire-and-collect*: LangBot returns `202 Accepted` immediately and does **not** carry the pipeline result on that response;
+- **(2) Outbound** replies arrive later as separate signed POSTs to your `callback_url`; a single turn may produce several callbacks;
+- Everything is keyed by a **`session_id` you choose** (e.g. a ticket number); each `session_id` maps to one isolated session.
+
+## Create the bot
+
+In the LangBot WebUI, go to **Bots > Create Bot**, fill in a name, and pick `HTTP Bot` as the platform/adapter.
+
+## Configuration
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| Inbound Signing Secret | yes | Your backend signs inbound requests with this; LangBot verifies every inbound request. |
+| Outbound Callback URL | yes | Where LangBot POSTs replies. **Config-only** — cannot be overridden per message (SSRF protection). |
+| Outbound Signing Secret | no | LangBot signs callbacks with this; defaults to the inbound secret if blank. |
+| Default Session Type | no | `person` (default) or `group`. |
+| Require Inbound Signature | no | Keep enabled in production. |
+| Callback Timeout (seconds) | no | Per-callback HTTP timeout, default 15. |
+| Callback Max Retries | no | Retries on timeout or 5xx with exponential backoff, default 3. |
+
+After binding a **pipeline** and **enabling** the bot, the config page shows the **Inbound Webhook URL**, like `https://your-langbot/bots/<bot_uuid>`. Copy it.
+
+## Signature scheme
+
+Both directions use the same dependency-free HMAC-SHA256 scheme:
+
+```
+signing_string = "{timestamp}." + raw_body_bytes
+signature      = "sha256=" + hex(HMAC_SHA256(secret, signing_string))
+```
+
+Sent as headers:
+
+| Header | Meaning |
+|--------|---------|
+| `X-LB-Timestamp` | Unix seconds. Rejected if more than **±300s** from server time. |
+| `X-LB-Signature` | `sha256=<hex>` over `"{timestamp}." + body`. |
+| `X-LB-Idempotency-Key` | *(optional, inbound)* dedup key; a repeat returns `409`. |
+
+Verify outbound callbacks the same way, using the **outbound** secret (or the inbound secret if left blank).
+
+## Send your first message (curl)
+
+```bash
+BOT="https://your-langbot/bots/<bot_uuid>"
+SECRET="your-inbound-secret"
+BODY='{"session_id":"ticket-10293","message":[{"type":"Plain","text":"Export keeps failing on the dashboard."}]}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"
+
+curl -sS -X POST "$BOT" \
+  -H "Content-Type: application/json" \
+  -H "X-LB-Timestamp: $TS" \
+  -H "X-LB-Signature: $SIG" \
+  -d "$BODY"
+# -> 202 {"code":0,"msg":"accepted","data":{"session_id":"ticket-10293","accepted_message_id":"in_...","aggregating":true}}
+```
+
+Replies will be POSTed to your configured callback URL shortly after.
+
+## Inbound request format
+
+`POST /bots/{bot_uuid}`
+
+```json
+{
+  "session_id": "ticket-10293",
+  "session_type": "person",
+  "sender": { "id": "user-5567", "name": "Alice" },
+  "message": [
+    { "type": "Plain", "text": "Export keeps failing on the dashboard." },
+    { "type": "Image", "url": "https://example.com/screenshot.png" }
+  ]
+}
+```
+
+- `session_id` (**required**): your stable id, mapped 1:1 to a LangBot session;
+- `message` (**required**): a LangBot message chain. Text uses `{"type":"Plain","text":"..."}`, images use `{"type":"Image","url":"..."}` (or `base64`); other types: `Voice`, `File`, `At`, `Quote`.
+
+<Warning>
+The callback URL is **not** accepted in the body — it is taken only from bot config. This is deliberate: even if the inbound secret leaks, an attacker cannot redirect replies to an arbitrary host.
+</Warning>
+
+### Aggregation (N → 1)
+
+If the pipeline has **message aggregation** enabled, send several messages with the **same `session_id`** inside the aggregation window and they merge into **one** turn. No special flag — just reuse the `session_id`.
+
+## Outbound callback format
+
+LangBot POSTs each reply part to your callback URL:
+
+```json
+{
+  "session_id": "ticket-10293",
+  "reply_to": "in_01H...",
+  "sequence": 1,
+  "is_final": false,
+  "stream": false,
+  "message": [ { "type": "Plain", "text": "Looking into it…" } ],
+  "timestamp": "2026-06-22T09:00:01Z"
+}
+```
+
+Your endpoint should return `2xx` quickly. Non-2xx / timeout → LangBot retries with exponential backoff.
+
+### Multi-part replies (1 → M)
+
+One turn may emit multiple callbacks, delivered **in `sequence` order** for a given session:
+
+```
+seq=1 is_final=false  "Checking your export logs…"
+seq=2 is_final=false  "Found 2 failed exports."
+seq=3 is_final=true   "Fixed — please try again."
+```
+
+Stitch by `session_id` + `sequence`; the turn is complete when `is_final: true` arrives.
+
+## Reset a session
+
+Start a fresh conversation for a `session_id` (drops history):
+
+```
+POST /bots/{bot_uuid}/reset
+{ "session_id": "ticket-10293", "session_type": "person" }
+→ 200 { "code":0, "msg":"reset", "data": { "session_id":"ticket-10293", "removed": true } }
+```
+
+Signed exactly like an inbound message.
+
+## Synchronous convenience mode
+
+If you don't need streaming/multi-part and just want one reply back on the same HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all reply parts **collapsed** into one array:
+
+```
+POST /bots/{bot_uuid}/sync
+{ "session_id": "ticket-10293", "message": [ { "type":"Plain", "text":"hi" } ] }
+→ 200 { "code":0, "msg":"ok",
+        "data": { "session_id":"ticket-10293", "reply_to":"in_...", "message": [ ... ] } }
+```
+
+<Warning>
+Sync mode is **lossy** (you lose `sequence` and streaming boundaries) and blocks up to `callback_timeout × 4` seconds. Prefer the callback model for anything real-time or multi-part. Only one in-flight `/sync` per `session_id`.
+</Warning>
+
+## Error codes
+
+```json
+{ "code": 40101, "msg": "invalid signature: signature_mismatch", "data": null }
+```
+
+| HTTP | code | meaning |
+|------|------|---------|
+| 202 | 0 | accepted |
+| 400 | 40001 | malformed body / missing `session_id` or `message` |
+| 401 | 40101 | bad/expired signature |
+| 409 | 40901 | duplicate idempotency key |
+| 413 | 41301 | message too large (>1 MiB) |
+| 500 | 50001 | internal error |
+
+## Reference clients & 5-minute demo
+
+The main repo's [`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) ships an **interactive playground** plus Python and TypeScript reference clients.
+
+### Interactive playground (run this first)
+
+[`playground.py`](https://github.com/langbot-app/LangBot/blob/master/examples/http-bot/playground.py) is a single-file web app: type a message in your browser → it is signed and POSTed to a **running** `http_bot` bot → replies stream back into the page, with a debug panel showing the signature, the `202` ack, and each callback's `sequence` / verification.
+
+```bash
+# From the LangBot repo root, with the backend running:
+PUBLIC_IP=<your-host-ip> ./.venv/bin/python examples/http-bot/playground.py
+# then open  http://<your-host-ip>:8920/
+```
+
+On startup it reads the API key + the `http_bot` bot from `data/langbot.db` and points that bot's `callback_url` + secrets back at itself via the LangBot API (live reload, no restart). Requires an enabled `http_bot` bot bound to a working pipeline.
+
+### Command-line reference clients
+
+[`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) also ships Python and TypeScript reference clients (with a callback receiver):
+
+```bash
+cd examples/http-bot
+pip install flask requests
+
+# Terminal 1: callback receiver (point the bot's callback_url here; use cloudflared / ngrok locally)
+python client.py serve --port 8900 --secret SHARED_SECRET
+
+# Terminal 2: push a message
+python client.py push \
+  --url https://your-langbot/bots/<bot_uuid> \
+  --secret SHARED_SECRET \
+  --session ticket-1 \
+  --text "hello"
+```
+
+Terminal 1 prints each reply part (`[part ]` / `[FINAL]`) with its sequence number — that's 1→M multi-reply with signature verification, live.
+
+A machine-readable contract is in the main repo at [`docs/http-bot-openapi.json`](https://github.com/langbot-app/LangBot/blob/master/docs/http-bot-openapi.json).
+
+## Security checklist
+
+- Keep **Require Inbound Signature** on in production;
+- Use **HTTPS** callback URLs, set only in config (no per-message override);
+- Treat secrets like passwords; rotate via the dashboard;
+- The inbound route is unauthenticated at the framework level **by design** — security comes entirely from the HMAC signature, so never disable it on a public deployment.

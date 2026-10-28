@@ -1,0 +1,147 @@
+---
+title: "钉钉"
+description: "用 LangBot 搭建钉钉 AI 机器人，将 GPT、Claude、Dify 等接入钉钉群聊与会话。"
+icon: "/images/platforms/dingtalk.svg"
+---
+部署 LangBot 到钉钉。
+
+## 一键配置（推荐）
+
+LangBot 支持一键创建钉钉应用并自动填写凭证，无需手动复制粘贴。
+
+1. 打开 LangBot WebUI，进入**机器人 > 创建机器人**
+2. 填写机器人名称，平台/适配器选择 `钉钉`
+3. 在下方出现的**一键创建应用**区域，点击右侧的 **开始** 按钮
+
+![一键创建应用](/images/zh/deploy/bots/dingtalk/dingtalk_oneclick_qrcode.png)
+
+4. 使用钉钉扫描弹出的二维码，手机端会提示选择加入的组织
+
+![选择组织](/images/zh/deploy/bots/dingtalk/dingtalk_select_org.png)
+
+5. 选择组织后，可以**创建新的**机器人或**选择已有的**机器人
+
+![创建或选择机器人](/images/zh/deploy/bots/dingtalk/dingtalk_create_or_select.png)
+
+6. 授权成功后，手机端会显示「配置成功」，同时 LangBot WebUI 中的 Client ID 和 Client Secret 会**自动填入**
+
+![配置成功](/images/zh/deploy/bots/dingtalk/dingtalk_config_success.png)
+
+7. 点击**提交**，完成创建。当前版本会自动识别机器人身份。
+
+<Warning>
+一键配置会填写应用凭据，不会自动创建卡片模板。开启「使用卡片回复」并填写「卡片模板 ID」即自动启用流式回复；关闭开关即可使用纯文本，无需删除模板 ID；使用按钮、输入框等人工交互，需要按下方步骤导入模板并填写「人工输入卡片模板 ID」。卡片功能还需在钉钉应用的权限管理中开通相应权限。
+</Warning>
+
+## 配置卡片模板（推荐使用 LangBot 模板）
+
+使用卡片回复时，推荐直接导入 LangBot 提供的模板，无需自行搭建组件或绑定变量。先在钉钉应用的权限管理中开通卡片相关权限，再按用途选择模板：
+
+| 用途 | 下载文件 | LangBot 配置字段 |
+| --- | --- | --- |
+| 流式回复，分开展示思考与正文 | `dingtalk_stream_card.json` | 卡片模板 ID |
+| 等待用户填写、选择或确认后继续执行 | `dingtalk_human_input_card.json` | 人工输入卡片模板 ID |
+
+### 创建并导入流式回复模板
+
+1. 在 LangBot 的钉钉适配器配置中，点击「卡片模板 ID」下方的 **下载流式回复卡片模板**。
+2. 打开[钉钉卡片平台](https://open-dev.dingtalk.com/fe/card)，确认组织与机器人应用一致，点击 **新建模板**。
+3. 填写模板名称，**卡片类型**选择「消息卡片」，**卡片模板场景**选择「AI 卡片」，**关联应用**选择当前机器人应用，**创建方式**选择「空白搭建」，点击 **创建空白模板**。
+
+![新建模板：消息卡片、AI 卡片、关联机器人应用、空白搭建](/images/zh/deploy/bots/dingtalk/create_ai_card_template.png)
+
+4. 进入卡片编辑器，在顶部点击 **更多 → 导入卡片模板**，选择下载的 `dingtalk_stream_card.json`。
+
+![在卡片编辑器的更多菜单中导入卡片模板](/images/zh/deploy/bots/dingtalk/import_card_template.png)
+
+<Note>
+导入入口在卡片编辑器内，不在模板列表页。导入会替换当前模板内容，请使用新建的空白模板。保留导入后的组件、变量和事件绑定。
+</Note>
+
+5. 检查预览，**保存并发布**模板，再复制模板 ID。只保存草稿不能发送卡片；`param.templateUnpublished` 表示模板尚未发布。
+6. 返回 LangBot，开启 **使用卡片回复**，将 ID 填入 **卡片模板 ID** 并保存机器人配置，即自动启用流式回复。关闭开关后使用纯文本，模板 ID 等配置会隐藏并保留，再次开启即可恢复。
+
+模板带有 LangBot 标识，思考与正文分区展示；思考区在输出时展开，完成后默认折叠，可点击展开。底部提供复制正文、赞／踩以及「内容由 AI 生成」标记。是否删除思考仍由流水线设置控制；删除后不展示思考区。普通消息保留思考时，会显示 `<think>`、`</think>` 标记并用空行分隔正文。
+
+「卡片宽屏自动布局」默认开启，提供的流式回复模板已配置宽屏所需变量。已有机器人如果之前保存为关闭，需要手动开启并保存；如偏好窄卡片，也可关闭。
+
+更新模板时，重新下载并导入最新版，保存并发布。如果新建了另一个模板，还需替换 LangBot 中的模板 ID。现有仅绑定 `content` 的模板仍可使用，但没有新版独立思考区的展示效果。
+
+## 导入人工输入卡片模板
+
+人工输入用于工作流或插件等待用户补充信息、选择选项或确认后再继续的场景，例如 Dify 的人工输入节点。普通聊天、仅展示流式回复不需要配置此模板。
+
+1. 在「人工输入卡片模板 ID」旁点击 **下载人工输入卡片模板**，保存 `dingtalk_human_input_card.json`。
+2. 按上方相同步骤，另建一个 **消息卡片 → AI 卡片 → 空白搭建** 模板，并关联当前机器人应用。
+3. 在编辑器中选择 **更多 → 导入卡片模板**，导入人工输入 JSON。保留输入框、按钮、变量和事件绑定。
+4. **保存并发布**，将此模板的 ID 填入 LangBot 的 **人工输入卡片模板 ID**，保存机器人配置。
+
+两种模板请分别导入、填写对应字段。人工输入模板不替代流式回复模板，也不会自动开启流式回复。
+
+
+---
+
+## 手动配置
+
+### 创建机器人
+
+进入 [钉钉开发者后台](https://open-dev.dingtalk.com/?spm=ding_open_doc.document.0.0.74f445e5MkawbT#/)，登录并且进入组织。登录成功后进入开放平台，是这样的：
+![钉钉开放平台](/images/zh/deploy/bots/dingtalk/dingtalk1.png)
+
+点击上方的 `应用开发`,然后点击右面蓝色的按钮 `创建应用`，填写机器人的基本信息，点击保存。
+
+进入机器人的后台，比如我们有机器人 langbot2 ,那么它的管理页面是这样的：
+![机器人页面](/images/zh/deploy/bots/dingtalk/dingtalk2.png)
+
+### 配置机器人
+
+点击 `添加应用能力`，`其他应用能力`，`机器人`中的 `配置`，点击配置并且填写信息之后，如下图：
+![机器人配置](/images/zh/deploy/bots/dingtalk/dingtalk3.png)
+
+点击页面下方的`发布`，发布成功之后，点击机器人页面中左侧最下方的`版本管理与发布`，如图：
+![版本管理与发布](/images/zh/deploy/bots/dingtalk/dingtalk4.png)
+
+如果是第一次创建机器人，那么右边是空的，需要点击`创建新版本`，在其中设置信息，然后设置`应用可见范围`，点击保存。
+
+点击`事件订阅`，将其中的推送方式改为`Stream模式推送`。
+
+如果需要卡片流式，则需要在权限管理中申请卡片权限，如图:
+![申请卡片权限前](/images/zh/deploy/bots/dingtalk/dingtalk6.png)
+
+![申请卡片权限后](/images/zh/deploy/bots/dingtalk/dingtalk7.png)
+
+卡片模板请按上方「配置卡片模板」步骤，直接导入 LangBot 提供的模板并发布。
+
+### 填写配置信息
+
+点击`凭证与基础信息`，记录`Client ID` 和 `Client Secret`。将这两项凭据填写到 LangBot 的适配器配置中。
+`markdown_card`（使用卡片回复）统一控制 Markdown 和流式卡片回复。开启且配置模板时自动流式输出，未配置模板时使用普通 Markdown 回复；关闭后使用纯文本，保留模板设置。人工输入卡片用于工作流交互，单独配置。
+将以上配置项 记录下来，填到 LangBot 机器人配置表单中。
+
+点击[卡片平台](https://open-dev.dingtalk.com/fe/card?spm=ding_open_doc.document.0.0.33cf2281L0fXsV)模板列表复制绑定的对应的模板id填入卡片模板id
+
+
+
+**启动 LangBot** 。
+
+### 添加机器人
+
+本文使用钉钉 windows 桌面版举例，点击上方的`搜索`，`功能`，然后输入刚才机器人创建的名称，如图：
+![robot_png](/images/zh/deploy/bots/dingtalk/dingtalk5.png)
+
+点击机器人即可和机器人聊天。
+
+如果想要添加到群里，那么点击钉钉群的`群管理`，`机器人`，`添加机器人`，然后搜索机器人名称就可以在群中使用。
+
+## 事件订阅
+
+在钉钉应用后台的「事件订阅」选择 Stream 模式，并勾选需要的事件。机器人收消息与事件订阅是两个入口，只开启机器人 Stream 收消息不会收到群变动事件。
+
+- `chat_add_member` → `group.member_joined`，多人变更逐人触发。
+- `chat_remove_member` / `chat_quit` → `group.member_left`，区分移除与主动退出。
+- `chat_update_title` / `chat_update_owner` → `group.info_updated`。
+- 普通卡片点击或提交 → `dingtalk.card_action`；可识别的点赞反馈仍使用 `feedback.received`，LangBot 管理的人工输入表单继续交给原交互流程，避免重复触发。
+- 群解散及其他已订阅事件使用 `platform.specific`，`action` 保留钉钉事件名，`data` 保留原始头部与事件数据。
+
+群事件受钉钉的应用权限和群类型范围限制，并非所有机器人所在群都支持。仅有 unionId、缺少可用用户 ID 的成员通知保留为平台专属事件，不把 unionId 当作可发送消息的用户 ID。消息编辑、撤回、表情反应、好友申请及机器人禁言等尚未确认有对应通用推送，不声明为支持。
+

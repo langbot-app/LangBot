@@ -1,0 +1,61 @@
+---
+title: "Docker Deployment"
+description: "Deploy LangBot with Docker Compose on Windows, Linux, or macOS."
+---
+
+## 1. Prepare your environment
+
+- Install Git.
+- **Windows / macOS**: install and start Docker Desktop.
+- **Linux**: install Docker and Docker Compose.
+
+## 2. Download the project
+
+Choose a regular directory that you can write to. On Linux, avoid system directories such as `/root` and `/etc`; we recommend a location under `/opt` so sandbox features are not blocked by security rules.
+
+Open a terminal in the directory where you want to store the project (PowerShell works on Windows), then run each line:
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+```
+
+### Mainland China: change the image source before startup (optional)
+
+If Docker Hub downloads are slow, edit `LangBot/docker/docker-compose.yaml` first. Replace every occurrence of `rockchin/langbot:latest` with:
+
+```text
+docker.langbot.app/langbot-public/rockchin/langbot:latest
+```
+
+Save the file before starting. No other configuration changes are needed.
+
+## 3. Start LangBot
+
+<Note>
+  On a server, use a firewall to restrict dashboard and runtime ports to trusted sources only.
+</Note>
+
+In the same terminal, run:
+
+```bash
+docker compose --profile all up -d
+```
+
+The first startup downloads the container images. On Windows / macOS, keep Docker Desktop running.
+
+## 4. Open the dashboard
+
+- **Local installation**: open `http://localhost:5300`.
+- **Server installation**: open `http://YOUR_SERVER_IP:5300` and make sure the firewall allows your device to access this port.
+
+Follow the on-screen initialization steps, then add a [model](/en/usage/models/readme) and a [bot](/en/usage/platforms/readme).
+
+## Beta releases (optional)
+
+To try a beta instead of the stable setup above, download the [dev/4.11.x Compose file](https://raw.githubusercontent.com/langbot-app/LangBot/dev/4.11.x/docker/docker-compose.yaml) as `compose.yaml` in a separate writable directory. Manually change **every** `rockchin/langbot` image to `rockchin/langbot:beta`: Core (`langbot`), plugin runtime (`langbot_plugin_runtime`), and Box (`langbot_box`, when present). The `beta` tag is updated with every beta release. From that directory, start or update with:
+
+```bash
+docker compose --profile all pull
+docker compose --profile all up -d
+```

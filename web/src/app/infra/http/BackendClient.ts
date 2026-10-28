@@ -2497,16 +2497,6 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/skills/index', params);
   }
 
-  public scanSkillDirectory(path: string): Promise<{
-    package_root: string;
-    name: string;
-    display_name?: string;
-    description: string;
-    instructions: string;
-  }> {
-    return this.get('/api/v1/skills/scan', { path });
-  }
-
   public listSkillFiles(
     skillName: string,
     path: string = '.',

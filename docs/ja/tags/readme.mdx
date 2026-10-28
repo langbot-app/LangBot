@@ -1,0 +1,56 @@
+---
+title: "Service API 概要"
+---
+
+LangBotは、外部サービスと統合・自動管理するための RESTful API を提供します。これらのAPIはAPIキーで認証され、HTTP APIのサブセットです。
+
+<Warning>
+Service APIは現在ベータ版であり、一部のAPIは頻繁に変更される可能性があります。
+</Warning>
+
+## APIキーの取得
+
+WebUIのサイドバーにある `API Keys` ボタンをクリックして、APIキーを作成します。
+
+![create_api_key](/images/zh/api/create_api_key.png)
+
+作成後、APIキーをコピーして保存します。
+
+![copy_api_key](/images/zh/api/copy_api_key.png)
+
+## 認証方法
+
+すべてのService APIは、以下の2つの認証方法をサポートしています：
+
+- **APIキー**: `X-API-Key: <your-key>` または `Authorization: Bearer <your-key>` ヘッダー経由
+- **ユーザートークン**: `Authorization: Bearer <user-token>` ヘッダー経由（ログイン後に取得）
+
+## APIの使用
+
+左サイドバーには、利用可能なすべてのAPIが一覧表示されています。インスタンスアドレス（デフォルトは `http://localhost:5300`）とAPIキーを入力し、`Try it out` ボタンをクリックしてAPIを呼び出せます。
+
+## コアコンセプト
+
+### Provider + Model アーキテクチャ
+
+LangBotは **プロバイダー（Provider）+ モデル（Model）** の2層アーキテクチャでAIモデルを管理します：
+
+- **プロバイダー**: APIエンドポイント（`base_url`）、リクエスタータイプ、APIキーを定義。1つのプロバイダーに複数のモデルを関連付け可能。
+- **モデル**: プロバイダーに関連付け（`provider_uuid` 経由）、具体的なモデル名とパラメータを定義。プロバイダーのAPIエンドポイントとキーを継承。
+
+```
+Provider (OpenAI)
+├── base_url: https://api.openai.com/v1
+├── api_keys: [sk-xxx]
+├── LLM: gpt-4o
+├── LLM: gpt-4o-mini
+└── Embedding: text-embedding-3-small
+```
+
+### リクエスター
+
+リクエスターはAIサービスとの通信プロトコルを定義します。`GET /api/v1/provider/requesters` で利用可能なリクエスター一覧を取得できます。
+
+### 非同期タスク
+
+一部の操作（プラグインのインストール/削除/アップグレード）は非同期で実行され、`task_id` を返します。WebUIで進捗を確認できます。

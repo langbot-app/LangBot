@@ -1,0 +1,52 @@
+---
+title: "メッセージプラットフォームアダプターの実装"
+---
+
+この記事では、`aiocqhttp`アダプターを例として、LangBotの新しいメッセージプラットフォームアダプターを実装し、WhatsAppやDiscordなどの新しいメッセージプラットフォームプロトコルを統合する方法を説明します。
+
+## 登録
+
+```text
+新しいメッセージプラットフォームアダプターを追加します。例: WhatsApp、Discordなどを統合
+
+- 基底クラス: `pkg.platform.adapter.MessageSourceAdapter`
+- デコレーター: `pkg.platform.adapter.adapter_class(name: str)`
+- 参考実装: `pkg.platform.sources/`
+```
+
+メッセージプラットフォームアダプターを実装するには、基本的に`基底クラス`を継承するクラスを実装し、`デコレーター`を使用して登録する必要があります。最後に、実行時にユーザーが選択して使用できるようになります。
+
+### メインリポジトリへの貢献
+
+`pkg/platform/sources/`ディレクトリに新しいファイル`aiocqhttp.py`を作成します:
+
+```python
+from .. import adapter
+
+@adapter.adapter_class("aiocqhttp")
+class AiocqhttpAdapter(adapter.MessageSourceAdapter):
+    pass
+```
+
+また、`pkg/platform/manager.py`の40行目でこのモジュールをインポートします:
+
+```python
+        from .sources import nakuru, aiocqhttp, qqbotpy
+```
+
+最後に、他のアダプターのマニフェストファイルを参考にして、独自のマニフェストファイルを作成します。
+
+## イベントとメッセージコンバーター
+
+メッセージプラットフォームアダプターの主な作業は、`メッセージプラットフォームプロトコルからイベントを受信し、LangBotの形式に変換する`ことです。これをコアコンポーネントに渡し、LangBotのコアコンポーネントが処理した後、返信する必要のあるコンテンツをメッセージプラットフォームアダプターに渡します。次に、`コンテンツをプラットフォームプロトコル形式に変換してメッセージプラットフォームに送信します`。
+
+次の図は、2つのシナリオの処理パターンを示しています: SDKのないメッセージプラットフォームプロトコルと成熟したSDKを持つプロトコル。最初のケースでは、メッセージプラットフォームプロトコルのドキュメントに従って、接続管理とネットワーク形式データのLBメッセージPythonオブジェクトへの変換を実装する必要があります。2番目のケースでは、メッセージプラットフォームに成熟したSDKがあり、SDKドキュメントに従って接続を作成し、イベントリスナーを登録し、メッセージコンバーターを実装するだけです。
+
+![alt text](/images/zh/workshop/impl-platform-adapter/workshop_impl_platform_adapter_01.png)
+
+`pkg.platform.sources.aiocqhttp`ファイルでは、`AiocqhttpAdapter`だけでなく、`class AiocqhttpMessageConverter(adapter.MessageConverter):`と`class AiocqhttpEventConverter(adapter.EventConverter):`も確認できます。
+
+- `MessageConverter`は、LangBotメッセージとプラットフォームメッセージ間の変換に使用されます。
+- `EventConverter`は、LangBotイベントとプラットフォームイベント間の変換に使用されます。
+
+TBC...

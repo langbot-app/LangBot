@@ -96,7 +96,7 @@ discovered by `importutil.import_modules_in_pkg`.
    MCP surface must stay aligned (see `AGENTS.md`).
 4. If `lbctl` uses the route or capability, check the separate
    [`langbot-cli`](https://github.com/langbot-app/langbot-cli) client for compatibility.
-5. Update `docs/service-api-openapi.json` if you maintain the OpenAPI overview.
+5. Update `dev-docs/service-api-openapi.json` if you maintain the OpenAPI overview.
 
 ## Database migrations (Alembic)
 

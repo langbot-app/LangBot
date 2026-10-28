@@ -289,6 +289,9 @@ plugin:
     connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
+    # Console debug endpoint; its port is also passed to managed Runtime
+    # subprocesses (stdio / Windows) as --ws-debug-port so a second Core
+    # instance can listen elsewhere without Address already in use.
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
     certification:
         # Non-secret Ed25519 issuer key ring used to verify the SDK ZIP-comment

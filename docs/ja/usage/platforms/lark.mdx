@@ -1,0 +1,178 @@
+---
+title: "Feishu"
+description: "LangBot で Feishu/Lark AI ボットを構築。GPT・Claude・Dify 等を Feishu のグループやメッセージに接続。"
+icon: "/images/platforms/lark.svg"
+---
+
+## プラットフォームドメインの選択
+
+ボットを作成する際、**アダプター設定**で**プラットフォームドメイン**を選択する必要があります：
+
+- **飞书 (open.feishu.cn)**：国内の飛書ユーザー向け（デフォルト）
+- **Lark (open.larksuite.com)**：海外のLarkユーザー向け
+- **カスタム (custom)**：プライベートデプロイユーザー向け
+
+![プラットフォームドメインの選択](/images/zh/deploy/bots/lark/lark_platform_domain.png)
+
+<Warning>
+海外版のLarkを選択する場合、`open.larksuite.com`ドメインを使用してください。そうしないと、接続に失敗する可能性があります。プライベートデプロイユーザーは、実際のデプロイアドレスに応じてカスタムを選択し、対応するドメインを入力してください。
+</Warning>
+
+## 一键設定（おすすめ）
+
+LangBot は Feishu アプリのワンクリック作成とクレデンシャルの自動入力に対応しています。手動でのコピペは不要です。
+
+1. LangBot WebUI を開き、**ボット > ボットを作成** に移動
+2. ボット名を入力し、プラットフォーム/アダプターで `飞书` を選択
+3. 表示される **一键创建应用** エリアで **開始** ボタンをクリック
+
+![一键创建飞书应用](/images/zh/deploy/bots/lark/lark_oneclick_qrcode.png)
+
+4. 飛書で QR コードをスキャンし、手机端で飞書開放平台のボット作成ページが表示されます
+5. **既存のアプリを使用** または **新規作成** を選択できます：
+
+![手机端で選択](/images/zh/deploy/bots/lark/lark_select_or_create_bot.png)
+
+既存のアプリを選択すると、アプリ一覧が表示されます：
+
+![既存アプリを選択](/images/zh/deploy/bots/lark/lark_select_existing.png)
+
+6. 認証成功後、手机端に「設定成功」と表示され、app_id と app_secret が LangBot WebUI に**自動入力**されます
+
+![設定成功](/images/zh/deploy/bots/lark/lark_config_success.png)
+
+7. 新しいアダプターはボットを自動識別するため、グループ内のメンション認識用のボット名は不要です。旧版アダプターでこの項目が表示される場合は、飛書のボット名と一致させてください。
+
+![ボット名の入力](/images/zh/deploy/bots/lark/lark_fill_bot_name.png)
+
+8. **送信** をクリックして完了
+
+### 権限とイベント購読の追加
+
+<Note>
+QR コードで作成・認証したアプリには、必要な権限やイベント購読がすべて設定されているとは限りません。メッセージを送受信できても、メンバーの参加・退出イベントは未購読の場合があります。ボットを作り直す必要はなく、開発者コンソールで既存のアプリに設定を追加できます。
+</Note>
+
+1. [Feishu 開発者コンソール](https://open.feishu.cn/app)または [Lark 開発者コンソール](https://open.larksuite.com/app)で、作成・認証したアプリを選択します。App ID で確認できます。
+2. **権限管理**で必要な権限を追加します。権限は、ボットが利用できるデータや操作を決めます。
+3. **イベントとコールバック > イベント設定**で必要なイベントを購読します。購読は LangBot に送信される通知を決める設定です。権限を追加するだけではイベントは購読されません。
+4. 設定を保存し、プラットフォームから求められるバージョン公開や管理者承認を完了します。有効になった後で再度イベントを発生させて確認してください。購読前の操作は自動再送されません。
+
+<Warning>
+**イベントを追加した後は、アプリの新しいバージョンを公開してください。** 開発者コンソールの**バージョン管理と公開**で公開を完了し、管理者承認が必要な場合は承認を待ちます。イベントを追加・保存しただけでは、公開待ちの変更は有効になりません。LangBot が正常に接続されていても、これらのイベントが届かない場合があります。
+</Warning>
+
+購読後もメンバーの参加・退出イベントが届かない場合は、まず公開待ち・承認待ちの変更がないか確認してください。新しいバージョンが有効になった後、ボットが参加しているグループでメンバーの参加・退出を再度行い、LangBot のイベント記録を確認します。
+
+メンバーの参加・退出を受信するには、ボットが対象グループに参加し、次のイベントを購読している必要があります。
+
+| 機能 | Feishu イベント |
+| --- | --- |
+| ユーザーのグループ参加 | `im.chat.member.user.added_v1` |
+| ユーザーの退出・グループからの削除 | `im.chat.member.user.deleted_v1` |
+
+ボット自身の参加（`im.chat.member.bot.added_v1`）は別のイベントで、他のメンバーの参加・退出は含まれません。LangBot の**イベントルーティング**でも、対象イベントを Agent またはプラグイン処理器に振り分けてください。パイプラインはメッセージイベントのみを処理します。
+
+---
+
+## ボットの作成
+
+[Feishu Open Platform](https://open.feishu.cn/app)にアクセスし、ログインして、企業の自己構築アプリケーションまたはストアアプリケーションを作成します。[(違いの紹介)](https://open.feishu.cn/document/platform-overveiw/overview)
+
+![alt text](/images/zh/deploy/bots/lark/lark_01.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_02.png)
+
+アプリケーションにボット機能を追加します：
+![alt text](/images/zh/deploy/bots/lark/lark_03.png)
+
+権限管理で画像に示されている権限を追加します：
+
+![alt text](/images/zh/deploy/bots/lark/lark_04.png)
+
+カードストリーミング権限が必要な場合は、画像に示されている次のカード作成と更新権限を追加します：
+
+![img_1.png](../../../images/zh/deploy/bots/lark/lark_14.png)
+
+<Warning>
+デフォルトのカードテンプレートを変更する必要がある場合は、プラットフォームアダプターのコードでカードテンプレートを自分で修正する必要があります。
+</Warning>
+
+### LangBot に接続
+
+「認証情報と基本情報」ページで `app_id` と `app_secret` を見つけます。
+
+![alt text](/images/zh/deploy/bots/lark/lark_05.png)
+
+
+
+LangBot の Webui 設定ページを開き、新しいボットを作成します
+
+フォームに関連情報を入力します
+
+![alt text](/images/zh/deploy/bots/lark/connect_to_langbot.png)
+
+ストリーミング関連：
+![Streaming related](../../../images/zh/deploy/bots/lark/connect_to_langbot01.png)
+
+入力後、LangBot を起動します。設定が成功した場合、ログに `[01-29 23:42:56.796] manager.py (68) - [INFO] : Initializing platform adapter 1: lark` と表示されます。LangBot を実行し続けてください。
+
+<Warning title="">
+デフォルトでは、WebSocket 長時間接続モードが使用されます。これは以下の長時間接続サブスクリプションに対応しています。ただし、場合によっては（国際版の Feishu など）、長時間接続モードが利用できない場合があります。その場合は、Webhook モードを使用する必要があります。これは、「開発者サーバーにイベントを送信」モードに対応しています。次の設定を参照してください：
+
+- `enable-webhook`：`true` に設定
+- `encrypt-key`：「イベントとコールバック」ページの「暗号化戦略」の「Encrypt Key」に設定
+
+Webhook モードでは、LangBot をパブリック IP を持つサーバーにデプロイし、ファイアウォールが上記で設定したポートを開いていることを確認する必要があることに注意してください。
+
+</Warning>
+<Tip>
+**パブリックサーバーがありませんか？** [LangBot Cloud](https://space.langbot.app/cloud) にはドメインと HTTPS が含まれており、Lark ボットをすぐに使用できます。
+</Tip>
+
+### イベントサブスクリプションの設定
+
+「イベントとコールバック」ページに移動し、サブスクリプション方式を「長時間接続」として設定します：
+
+![alt text](/images/zh/deploy/bots/lark/lark_07.png)
+
+そして、イベント：「メッセージを受信」を追加します
+
+![alt text](/images/zh/deploy/bots/lark/lark_08.png)
+
+
+`コールバック設定`を設定し、長時間接続のコールバックを選択します（webhook の場合は webhook を使用）
+
+![コールバック設定](/images/zh/deploy/bots/lark/lark_16.png)
+
+コールバック`カードコールバックインタラクション`を追加します
+
+![コールバックを追加](/images/zh/deploy/bots/lark/lark_17.png)
+
+<Warning title="">
+Webhook モード設定方法：
+
+![alt text](/images/zh/deploy/bots/lark/lark_13.png)
+
+まず LangBot を起動してください。ここに LangBot から取得した Webhook アドレスを入力します。
+
+</Warning>
+
+### ボットの公開
+
+上部の「バージョンを作成」をクリックし、バージョン番号とその他の情報を入力し、下部の「保存」をクリックします。
+
+![alt text](/images/zh/deploy/bots/lark/lark_09.png)
+
+ボットを Feishu グループに追加して使用します：
+
+![alt text](/images/zh/deploy/bots/lark/lark_10.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_11.png)
+
+プライベートチャットでも直接使用できます
+
+![alt text](/images/zh/deploy/bots/lark/lark_12.png)
+
+## よくある問題
+- ストアアプリのボットは、作成/保存直後にチャットメッセージに応答できません。[app_ticket イベント](https://open.feishu.cn/document/server-docs/application-v6/event/app_ticket-events)の遅延メカニズムにより、正常に動作するまで約 2 分待つ必要があります。

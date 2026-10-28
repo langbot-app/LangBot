@@ -1,0 +1,81 @@
+---
+title: "コンポーネントの追加"
+---
+
+プラグインは、LangBotにさまざまな機能を提供する1つ以上のコンポーネントで構成されています。現在サポートされているコンポーネントタイプには次のものがあります:
+
+- プラグインプロセッサー（Runner）：インスタンスを作成してイベントに紐付け、プラグインのコードで処理します。[チュートリアル](/ja/plugin/dev/components/runner)を参照してください。
+- Agent ランナー（Runner）：Agent の設定で選択する実行コンポーネントです。独立したプラグインプロセッサーとは異なります。
+- イベントリスナー(EventListener): パイプライン実行中のイベントをリッスンし、コンテキストやパイプラインを変更します。
+- コマンド(Command): `!`(または他の設定されたプレフィックス)で始まるユーザーコマンドメッセージによってトリガーされます。
+- ツール(Tool): LangBotの組み込みLocal Agentの実行中にLLMによって呼び出されます。
+- RAGエンジン(KnowledgeEngine): LangBotにナレッジベースのインデックス作成と検索機能を提供し、ドキュメントの取り込み、検索、削除を管理します。
+- パーサー(Parser): ドキュメント取り込みの前にPDF、Wordなどのバイナリファイルを構造化テキストに解析し、RAGエンジンで使用できるようにします。
+- ページ(Page): LangBot WebUIのサイドバーにカスタムビジュアルページを登録し、管理パネルやデータ表示などのインタラクティブなインターフェースを提供します。
+
+## コンポーネントの追加
+
+プラグインディレクトリでコマンドを実行します:
+
+```bash
+lbp comp <component_type>
+```
+
+例えば、イベントリスナーを追加する場合:
+
+```bash
+lbp comp EventListener
+```
+
+プロンプトに従って、コンポーネント設定(ある場合)を入力します。
+
+```bash
+➜  HelloPlugin > lbp comp EventListener
+Generating component EventListener...
+Component EventListener generated successfully.
+組件 EventListener 生成成功。
+➜  HelloPlugin >
+```
+
+<Info title="">
+CLIはプラグインディレクトリに`components`ディレクトリを生成し、その中に対応するコンポーネントディレクトリを作成します。
+```
+.
+├── assets
+│   └── icon.svg
+├── components
+│   ├── __init__.py
+│   └── event_listener
+│       ├── __init__.py
+│       ├── default.py
+│       └── default.yaml
+├── main.py
+├── manifest.yaml
+├── README.md
+└── requirements.txt
+```
+
+同時に、プラグインの`manifest.yaml`にコンポーネント検出設定が追加されます:
+
+```yaml
+...
+components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+...
+```
+コンポーネントを削除するには、対応する情報を手動で削除できます。
+</Info>
+
+## コンポーネントタイプ
+
+各コンポーネントの詳細な使用方法については、次を参照してください:
+
+- [Runner](./runner)
+- [EventListener](./event-listener)
+- [Command](./command)
+- [Tool](./tool)
+- [KnowledgeEngine](./knowledge-engine)
+- [Parser](./parser)
+- [Page](./page)

@@ -1,0 +1,191 @@
+---
+title: "開発設定"
+---
+
+LangBotはフロントエンドとバックエンドに分かれています。フロントエンドはVite + React Router + shadcnを使用して開発され、バックエンドはQuart(Flaskの非同期版)を使用して開発されています。
+
+## バックエンド
+
+コードは`pkg`ディレクトリにあり、ルートディレクトリの`main.py`ファイルによって起動されます。
+
+依存関係をインストールします。依存関係の管理にはuvを使用します。
+
+```bash
+pip install uv
+uv sync --dev
+```
+
+バックエンドを起動します
+
+```bash
+uv run main.py
+```
+
+この時点で、設定ファイルは`data/config.yaml`ファイルに自動的に生成されます。
+
+## フロントエンド
+
+コードは`web`ディレクトリにあり、Node.jsと[pnpm](https://pnpm.io/installation)が必要です。
+
+`.env.example`を`.env`にコピーして、値を入力します。
+
+- Linuxおよびその他の環境での使用
+
+```bash
+cp .env.example .env
+```
+
+- Windows環境での使用
+
+```bash
+copy .env.example .env
+```
+
+依存関係をインストールしてフロントエンドを起動します
+
+```bash
+pnpm install
+pnpm dev
+
+# pnpmがインストールされていない場合は、npmを使用して依存関係を解決して起動することもできます
+npm install
+npm run dev
+```
+
+その後、出力情報に従って、`http://127.0.0.1:3000`にアクセスして、スタンドアロンフロントエンドページを表示します。
+
+<Info title="`pnpm dev`を使用してローカルで起動すると、環境変数`VITE_API_BASE_URL`がフロントエンドによって自動的に使用され、フロントエンドがローカルで実行中のバックエンドの`5300`ポートにアクセスできるようになります。">
+
+本番環境では、フロントエンドは静的ファイルにプリコンパイルされ、バックエンドによって提供され、フロントエンドは同じドメインのバックエンドアドレスに自動的にアクセスします。
+</Info>
+
+## コードフォーマット
+
+リポジトリにはlintとformatのチェックワークフローが含まれており、コードをプッシュすると自動的にチェックされます。pre-commitを設定して、コードをローカルで事前にチェックしてください。
+
+```bash
+uv run pre-commit install
+```
+
+## APIドキュメント
+
+各インターフェースを開発する前に、APIFoxでAPIドキュメントを作成します。[APIドキュメント(中国語)](https://ok52vhsenr.apifox.cn/)を参照してください。
+
+## データベースマイグレーション
+
+LangBotは[Alembic](https://alembic.sqlalchemy.org/)を使用してデータベースマイグレーションを管理しており、SQLiteとPostgreSQLの両方をシームレスにサポートします。データベース固有の分岐コードは不要です。
+
+### マイグレーションファイルの場所
+
+```
+src/langbot/pkg/persistence/alembic/versions/
+```
+
+### 新しいマイグレーションの作成
+
+**autogenerate** を使用してマイグレーションスクリプトを自動生成することを推奨します。ORMモデルとデータベーススキーマの差分を比較して生成します：
+
+```bash
+# プロジェクトルートで実行（data/config.yaml が必要）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "変更内容の説明"
+```
+
+生成されたファイルは `src/langbot/pkg/persistence/alembic/versions/` に作成されます。生成されたスクリプトを確認・編集し、変更が正しいことを確認してからコミットしてください。
+
+<Info>
+autogenerateは列の追加/削除、テーブルの変更、型の変更などを自動検出できます。ただし、**データマイグレーション**（JSONフィールドの内容変更など）は、生成されたスクリプトに手動でコードを追加する必要があります。
+</Info>
+
+手動でマイグレーションファイルを作成することもできます。命名規則 `NNNN_description.py` に従ってください：
+
+```python
+"""マイグレーションの説明
+
+Revision ID: 0003_add_bot_description
+Revises: 0002_sample
+Create Date: 2026-04-08
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0003_add_bot_description'
+down_revision = '0002_sample'  # 前のマイグレーションのrevisionを指定
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # スキーマ変更（SQLiteとPostgreSQLの両方で動作）
+    op.add_column('bots', sa.Column('description', sa.String(512), server_default=''))
+
+
+def downgrade() -> None:
+    op.drop_column('bots', 'description')
+```
+
+### マイグレーションパターン
+
+<AccordionGroup>
+<Accordion title="スキーマ変更（列の追加/削除、テーブル作成）">
+```python
+def upgrade() -> None:
+    # 列を追加
+    op.add_column('table_name', sa.Column('new_col', sa.String(255), server_default=''))
+    
+    # 新しいテーブルを作成
+    op.create_table(
+        'new_table',
+        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column('name', sa.String(255), nullable=False),
+    )
+```
+
+<Info>
+`env.py`で`render_as_batch=True`が設定されているため、AlembicはSQLiteのALTER TABLE制限を自動的に処理します（一時テーブルによる再構築）。データベースタイプによる分岐は不要です。
+</Info>
+</Accordion>
+
+<Accordion title="データマイグレーション（データの読み取りと変更）">
+```python
+import json
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    rows = conn.execute(sa.text("SELECT uuid, config FROM pipelines")).fetchall()
+    for row in rows:
+        config = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+        config.setdefault('ai', {})['new_key'] = 'default_value'
+        conn.execute(
+            sa.text("UPDATE pipelines SET config = :cfg WHERE uuid = :uuid"),
+            {"cfg": json.dumps(config), "uuid": row[0]}
+        )
+```
+</Accordion>
+</AccordionGroup>
+
+### 動作の仕組み
+
+マイグレーションはLangBot起動時に自動的に実行されます。手動コマンドは不要です：
+
+1. 初回起動時、ベースラインバージョンが自動的にスタンプされます（既存データベースのマーキング）
+2. 以降の起動時、未適用のすべてのマイグレーションが適用されます（`alembic upgrade head`）
+
+### CIテスト
+
+リポジトリには`test-migrations.yml`ワークフローが含まれており、`persistence/`関連ファイルが変更された際に、SQLiteとPostgreSQLの両方でマイグレーションスクリプトが自動テストされます。
+
+### CLIツール
+
+```bash
+# マイグレーションを自動生成（ORMモデルとDBの差分を比較）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "説明"
+
+# データベースをアップグレード
+uv run python -m langbot.pkg.persistence.alembic_runner upgrade
+
+# 現在のリビジョンを表示
+uv run python -m langbot.pkg.persistence.alembic_runner current
+
+# リビジョンをスタンプ（マイグレーションを実行せず）
+uv run python -m langbot.pkg.persistence.alembic_runner stamp head
+```

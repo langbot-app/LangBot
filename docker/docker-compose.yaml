@@ -9,6 +9,11 @@ services:
     container_name: langbot_plugin_runtime
     volumes:
       - ./data/plugins:/app/data/plugins
+      # Persist the v4 plugin artifact cache, dependency environments, and
+      # per-installation data. Without this, recreating the container throws
+      # away every installed plugin's environment and private data while
+      # data/plugins survives.
+      - ./data/plugin-runtime:/app/data/plugin-runtime
     ports:
       - 5401:5401
     restart: on-failure

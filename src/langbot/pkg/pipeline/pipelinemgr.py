@@ -236,7 +236,8 @@ class RuntimePipeline:
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
-        await self._assert_execution_active(query)
+        if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
+            await self._assert_execution_active(query)
         if result.user_notice:
             # 处理str类型
 
@@ -382,6 +383,8 @@ class RuntimePipeline:
                 break
 
             i += 1
+
+        await self._assert_execution_active(query)
 
     @staticmethod
     def _synthetic_origin(query: pipeline_query.Query) -> str:

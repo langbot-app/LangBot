@@ -350,10 +350,14 @@ async def test_runtime_pipeline_rejects_stale_generation_before_side_effects(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('user_notice', ['', 'must not be sent'])
+@pytest.mark.parametrize('has_next_stage', [False, True])
 async def test_runtime_pipeline_revalidates_after_awaited_stage(
     mock_app,
     sample_query,
     streaming,
+    user_notice,
+    has_next_stage,
 ):
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
@@ -368,7 +372,7 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
     result = entities.StageProcessResult(
         result_type=entities.ResultType.CONTINUE,
         new_query=sample_query,
-        user_notice='must not be sent',
+        user_notice=user_notice,
         console_notice='',
         debug_notice='',
         error_notice='',
@@ -385,10 +389,14 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
 
     mock_stage = Mock(spec=stage.PipelineStage)
     mock_stage.process = Mock(side_effect=streaming_process if streaming else stage_process)
+    next_stage = Mock(spec=stage.PipelineStage)
     runtime_pipeline = pipelinemgr.RuntimePipeline(
         mock_app,
         pipeline_entity,
-        [pipelinemgr.StageInstContainer(inst_name='TestStage', inst=mock_stage)],
+        [
+            pipelinemgr.StageInstContainer(inst_name='TestStage', inst=mock_stage),
+        ]
+        + ([pipelinemgr.StageInstContainer(inst_name='NextStage', inst=next_stage)] if has_next_stage else []),
         _context('test-pipeline-uuid'),
     )
 
@@ -397,6 +405,70 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
 
     sample_query.adapter.reply_message.assert_not_awaited()
     sample_query.adapter.reply_message_chunk.assert_not_awaited()
+    next_stage.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_empty_stage_results_check_each_stage_and_completion(mock_app, sample_query, tmp_path):
+    import sqlalchemy
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from langbot.pkg.entity.persistence.base import Base
+    from langbot.pkg.workspace import WorkspaceService
+
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "pipeline.db"}')
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        service = WorkspaceService(
+            SimpleNamespace(persistence_mgr=SimpleNamespace(get_db_engine=lambda: engine)),
+            instance_uuid='test-instance',
+        )
+        workspace = await service.ensure_singleton_workspace()
+        mock_app.workspace_service = service
+        sample_query.workspace_uuid = workspace.uuid
+        context = ExecutionContext(
+            instance_uuid='test-instance',
+            workspace_uuid=workspace.uuid,
+            placement_generation=1,
+            pipeline_uuid=sample_query.pipeline_uuid,
+        )
+        sample_query._execution_context = context
+        statements = []
+        sqlalchemy.event.listen(
+            engine.sync_engine,
+            'before_cursor_execute',
+            lambda _conn, _cursor, statement, *_args: statements.append(statement),
+        )
+        visited = []
+        entities = get_entities_module()
+
+        async def process(query, name):
+            visited.append(name)
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
+        pipelinemgr = get_pipelinemgr_module()
+        runtime = pipelinemgr.RuntimePipeline(
+            mock_app,
+            SimpleNamespace(
+                uuid=sample_query.pipeline_uuid,
+                workspace_uuid=workspace.uuid,
+                config=sample_query.pipeline_config,
+                extensions_preferences={},
+            ),
+            [
+                pipelinemgr.StageInstContainer(inst_name=name, inst=SimpleNamespace(process=process))
+                for name in ('first', 'second', 'third')
+            ],
+            context,
+        )
+        await runtime._execute_from_stage(0, sample_query)
+
+        assert visited == ['first', 'second', 'third']
+        assert len([statement for statement in statements if statement.lstrip().startswith('SELECT')]) == 4
+        sample_query.adapter.reply_message.assert_not_awaited()
+    finally:
+        await engine.dispose()
 
 
 def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):

@@ -1,0 +1,43 @@
+---
+title: "LangBotでのDifyの使用"
+description: "Dify を LangBot に接続。Dify アプリやエージェントを Discord・Telegram・WeChat・Slack 等の AI ボットとしてデプロイ。"
+---
+
+[Dify](https://dify.ai)は、オープンソースの大規模言語モデル(LLM)アプリケーション開発プラットフォームです。Backend as ServiceとLLMOpsの概念を組み合わせ、開発者が本番グレードの生成AIアプリケーションを迅速に構築できるようにします。
+Difyは、チャットアシスタント(Chatflowを含む)、エージェント、テキスト生成アプリケーション、ワークフローなどのタイプのアプリケーションを作成できます。
+
+LangBotは現在、3種類のDifyアプリケーションをサポートしています: `チャットアシスタント`(Chatflowを含む)、`エージェント`、`ワークフロー`。
+
+## Difyでのアプリケーション作成
+
+[Difyドキュメント](https://docs.dify.ai)に従ってDifyをデプロイし、アプリケーションを作成してください。
+
+アプリケーションを公開した後、アプリケーションの`Access API`ページに移動してAPIキーを生成します。
+
+![Dify Application API Key](/images/zh/deploy/pipelines/dify/dify_sv_api_01.png)
+
+LangBotのパイプライン`AI機能`を設定するために、APIサーバーとAPIキーを保存します。
+
+<Info title="上記はDifyクラウドサービスバージョンの例です。セルフホストコミュニティバージョンを使用している場合は、LangBotの`base-url`として独自のDifyサービスアドレスを使用し、パスとして`/v1`を追加してください。">
+
+- LangBotとDifyが同じホストにデプロイされており、両方ともDockerを使用してデプロイされている場合は、記事[ネットワーク設定の詳細](/zh/workshop/network-details.html#langbot-%E5%92%8C%E6%B6%88%E6%81%AF%E5%B9%B3%E5%8F%B0%E5%9D%87%E8%BF%90%E8%A1%8C%E5%9C%A8-docker-%E5%AE%B9%E5%99%A8%E4%B8%AD)を参照してください。この場合、Difyを起動するdocker-compose.yamlファイル内のすべてのコンテナの`networks`に`langbot-network`を追加し、`nginx`コンテナにコンテナ名`dify-nginx`を追加し、最後にLangBot設定で`base-url`を`http://dify-nginx/v1`に設定します。
+- その他のケースについては、会社の運用チームにお問い合わせください。
+</Info>
+
+## LangBotの設定
+
+LangBot WebUIページを開き、新しいパイプラインを追加するか、既存のパイプラインのAI機能設定ページに切り替えます。
+
+![設定開発項目](/images/zh/deploy/pipelines/dify/dify_sv_api_02.png)
+
+<Info title="### ワークフロー出力キー">
+
+Difyワークフローアプリケーションを使用している場合は、出力コンテンツを渡すキーとして`summary`を使用してください。
+
+![Difyワークフローアプリケーション出力キー](/images/zh/deploy/pipelines/dify/dify_workflow_output_key.png)
+
+## 出力処理
+
+ワークフローアプリケーションまたはエージェントアプリケーションを使用している場合、LangBotのパイプライン`出力処理`で`track-function-calls`を有効にすると、Difyが各ツール呼び出しを実行する際に`calling function xxx`というメッセージがユーザーに出力されます。
+ただし、`chat`アプリケーション(チャットアシスタント -> ワークフローオーケストレーション)の下で`ChatFlow`を使用している場合は、設定に関係なく、Answer(直接返信)ノードによって返されるテキストのみが出力されます。
+</Info>

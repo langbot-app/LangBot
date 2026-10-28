@@ -1,0 +1,204 @@
+---
+title: "LangBot 4.6.0 外部知识库教程：集成 Dify 实现 RAG 对话"
+description: "LangBot 4.6.0 外部知识库教程：集成 Dify 实现 RAG 对话"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/dify-langbot-rag-knowledge-base).
+
+发布于 2025-12-02 · 作者：LangBot Team
+
+![LangBot 4.6.0 外部知识库教程：集成 Dify 实现 RAG 对话](/images/articles/source/images/covers/dify-rag.png)
+
+LangBot 4.6.0 引入了外部知识库功能，允许用户将 Dify、RAGFlow 等外部知识检索服务集成到对话流水线中。本教程演示如何将 Dify 知识库与 LangBot 结合，实现基于领域知识的智能对话。
+
+## 功能概述
+
+外部知识库功能使 LangBot 能够：
+- 连接各种外部知识检索服务（Dify、RAGFlow 等）
+- 基于领域专业知识提供专业回答
+- 通过插件系统灵活扩展知识检索能力
+- 通过 WebUI 便捷配置，无需手动编辑配置文件
+
+## 准备工作
+
+开始之前，你需要：
+1. 部署 LangBot 4.6.0 或更高版本
+2. 拥有 Dify 账号（在 https://cloud.dify.ai 注册）
+3. 配置一个对话模型（本教程使用 claude-opus-4-1-20250805）
+
+## 第一步：部署 LangBot
+
+### 1.1 查看 LangBot 仓库
+
+首先访问 [LangBot GitHub 仓库](https://github.com/langbot-app/LangBot) 了解项目。LangBot 是一个生产级的即时通讯机器人开发平台，支持多种消息平台和 LLM 服务。
+
+### 1.2 了解外部知识库功能
+
+访问 [LangBot 官方文档](https://langbot.app/docs) 查看外部知识库使用说明。文档详细介绍了如何构建内置知识库和连接外部知识库。
+
+### 1.3 启动 LangBot
+
+使用 `uvx langbot` 命令快速启动 LangBot，然后访问 http://127.0.0.1:5300 进行初始化。填写邮箱和密码完成注册，然后登录。
+
+### 1.4 登录后的控制台
+
+成功登录后，你将看到 LangBot WebUI 控制台。
+
+## 第二步：配置对话模型
+
+使用知识库之前，需要先配置一个对话模型。
+
+### 2.1 进入模型配置页面
+
+点击左侧导航栏的 "Models" 进入模型配置页面。
+
+### 2.2 添加新模型
+
+点击 "+" 按钮打开模型配置对话框。
+
+### 2.3 填写模型信息
+
+填写以下信息：
+- **Model Name**：claude-opus-4-1-20250805
+- **Model Provider**：New API
+- **Request URL**：你的 API 端点
+- **API Key**：你的 API Key
+- **Abilities**：勾选 Vision Ability 和 Function Call
+
+点击 "Submit" 保存配置。
+
+## 第三步：在 Dify 中创建知识库
+
+### 3.1 登录 Dify 平台
+
+访问 https://cloud.dify.ai 并登录你的账号。
+
+### 3.2 进入知识库页面
+
+点击顶部导航栏的 "Knowledge" 进入知识库管理页面。
+
+### 3.3 创建新知识库
+
+点击 "Create Knowledge" 开始创建知识库。
+
+### 3.4 选择数据源
+
+你可以选择以下方式导入数据：
+- **Import from file**：上传文档文件
+- **Sync from Notion**：从 Notion 同步
+- **Sync from website**：爬取网站内容
+
+本教程选择 "Import from file" 并上传准备好的 LangBot 文档。
+
+### 3.5 上传文档
+
+上传文档后，系统会显示文件信息。点击 "Next" 继续。
+
+### 3.6 配置文档处理参数
+
+在文档处理页面，你可以配置分块设置、索引方式和检索设置：
+- **Chunk Settings**：General 模式，最大块长度 1024 字符
+- **Index Method**：High Quality（使用 embedding 模型）
+- **Retrieval Setting**：Vector Search
+
+点击 "Save & Process" 开始处理文档。
+
+### 3.7 知识库处理中
+
+系统开始处理文档并生成向量嵌入。
+
+### 3.8 嵌入完成
+
+处理完成后，知识库即可使用。
+
+## 第四步：获取 Dify API 信息
+
+### 4.1 打开 Service API 面板
+
+点击右下角的 "Service API" 按钮。记录以下信息：
+- **Service API Endpoint**：https://api.dify.ai/v1
+- **Dataset ID**：从 URL 中获取
+
+### 4.2 获取 API Key
+
+点击 "API Key" 按钮查看 API key。记录你的 API Key，用于后续配置。
+
+## 第五步：在 LangBot 中配置外部知识库
+
+### 5.1 进入知识库页面
+
+在 LangBot WebUI 中，点击左侧导航栏的 "Knowledge"。
+
+### 5.2 切换到外部知识库标签页
+
+点击 "External" 标签页。
+
+### 5.3 添加外部知识库
+
+点击 "+" 按钮打开添加外部知识库对话框。在此对话框中，你需要：
+1. **Knowledge Base Name**：给知识库起个名字
+2. **Knowledge Base Description**：添加描述（可选）
+3. **Retriever**：选择知识检索插件
+
+**注意**：使用外部知识库需要先安装对应的知识检索插件。你可以在[插件市场](https://space.langbot.app/market?category=KnowledgeRetriever)中搜索并安装 Dify 知识检索插件。
+
+安装插件后，从 Retriever 下拉菜单中选择对应插件，然后填写从 Dify 获取的配置信息（API Endpoint、API Key、Dataset ID）。
+
+## 第六步：配置 Pipeline
+
+配置好外部知识库后，需要在流水线中启用：
+
+1. 进入 "Pipelines" 页面
+2. 编辑或创建新流水线
+3. 在 "AI Capabilities" 页面，选择 "Built-in Agent" 作为 runner
+4. 在知识库选择中，勾选刚才配置的外部知识库
+5. 保存流水线配置
+
+## 第七步：测试效果
+
+在流水线的 "Conversation Testing" 页面测试，或将流水线绑定到机器人进行实际对话测试。当用户提问时，LangBot 会自动从 Dify 知识库检索相关内容，并结合检索到的知识生成回答。
+
+## 常见问题
+
+### 1. 如何安装知识检索插件？
+
+访问 [LangBot 插件市场](https://space.langbot.app/market)，搜索 "Knowledge Retriever" 或 "Dify"，找到对应插件并点击安装。
+
+### 2. 支持哪些外部知识检索服务？
+
+LangBot 目前通过插件系统支持多种外部知识检索服务，包括：
+- Dify
+- RAGFlow
+- 其他自定义知识检索服务
+
+具体支持的服务可在插件市场查看。
+
+### 3. 外部知识库和内置知识库有什么区别？
+
+- **内置知识库**：数据存储在 LangBot 本地，由 LangBot 处理向量化和检索
+- **外部知识库**：数据存储在外部服务（如 Dify），通过 API 调用进行检索
+
+外部知识库的优势是可以利用专业 LLMOps 平台的能力，如 Dify 的高级文档处理和多种检索策略。
+
+### 4. 可以同时使用多个知识库吗？
+
+可以。在流水线配置中，你可以同时勾选多个知识库（内置或外部），LangBot 会综合利用这些知识库的内容生成回答。
+
+## 总结
+
+通过本教程，你学会了如何：
+1. 在 Dify 平台上创建知识库并上传文档
+2. 获取 Dify API key 和相关配置信息
+3. 在 LangBot 中配置对话模型
+4. 在 LangBot 中添加外部知识库
+5. 配置流水线使用外部知识库
+
+外部知识库功能为 LangBot 提供了更强大、更灵活的知识管理能力。结合 Dify 等专业 LLMOps 平台，可以构建更智能、更专业的对话机器人。
+
+## 相关资源
+
+- [LangBot 官网](https://langbot.app)
+- [LangBot 文档](https://langbot.app/docs)
+- [LangBot GitHub](https://github.com/langbot-app/LangBot)
+- [Dify 官网](https://dify.ai)
+- [LangBot 插件市场](https://space.langbot.app/market)

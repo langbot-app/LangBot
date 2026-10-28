@@ -1,0 +1,17 @@
+---
+title: "系统兼容处理"
+---
+
+LangBot 插件系统运用了`Asyncio`和`Subprocess`等机制，这在unix-like系统（如Linux、MacOS）上运行良好，但在Windows上存在一些问题，导致插件无法正常运行。
+
+Windows 上的 Python 异步事件循环默认使用 `ProactorEventLoop`，但该事件循环对 Stdio 的支持性缺失，而非 Docker 环境下 LangBot 依赖 Stdio 与 Plugin Runtime 通信、Plugin Runtime 也依赖 Stdio 与插件通信。
+
+若改为使用`SelectorEventLoop`，则会导致无法正常启动 Plugin Runtime 和插件，因为`SelectorEventLoop`不支持`Subprocess`。
+
+详细问题参阅：[Python官方文档](https://docs.python.org/zh-cn/3.13/library/asyncio-platforms.html)
+
+## 解决方案
+
+与 Unix-like 系统上的子进程管理与 Stdio 通信绑定的形式不同，LangBot 和 Plugin Runtime 在 Windows 上会自动采用 子进程 + WebSocket 结合的跨进程通信技术，LangBot 通过子进程启动 Plugin Runtime 但通过 WebSocket 与其通信；Plugin Runtime 也通过子进程启动各个已安装插件但通过 WebSocket 通信。
+
+这是 LangBot 根据系统标识自动适应的，您无需手动配置。

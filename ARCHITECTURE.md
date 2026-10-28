@@ -162,7 +162,7 @@ In this repo:
 - `pkg/plugin/handler.py` exposes LangBot actions to the runtime and calls runtime actions for plugin operations.
 - `pkg/provider/tools/loaders/plugin.py` exposes plugin Tool components to LLM runners.
 - Pipeline handlers emit SDK events such as normal-message events and prompt-processing events.
-- [Certified plugin policy](docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
+- [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
 In `langbot-plugin-sdk`:
 
@@ -201,7 +201,7 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
-- [Outbox export failures](docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
+- [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
@@ -273,6 +273,8 @@ Maintenance rule: when adding, removing, or changing an HTTP endpoint that shoul
 Persistence is centered on `pkg/persistence/mgr.py`.
 
 - SQLite is the default database; PostgreSQL is supported.
+- Every SQLite connection sets a 64 MiB `journal_size_limit`, including connections recreated after migration or pool disposal. SQLite's default automatic checkpoint policy and synchronous setting remain unchanged. The limit reduces retained WAL space when the WAL resets; it does not cap active transactions or WAL pinned by readers. Online maintenance does not periodically force checkpoints or truncate WAL files. Diagnose persistent excess growth by checking checkpoint progress and actual transaction lifetimes, then shorten the responsible transaction rather than forcing readers to finish.
+- After schema initialization and migration, every SQLite startup completes `wal_checkpoint(TRUNCATE)` before runtime setup and producers start. Lock waits allow up to 60 seconds; checkpoint I/O may take longer. An incomplete checkpoint fails startup without undoing successful migrations, and the next startup retries even at schema head. The connection busy timeout is restored afterward. PostgreSQL is unaffected.
 - SQLite files use incremental auto-vacuum. Migration `0042_sqlite_incremental_vacuum` converts existing files before producers start, with a verified backup and restoration on conversion failure when a full rebuild is required. Fresh files enable the format before creating tables. Monitoring cleanup reclaims free pages in independent adaptive batches (1–512 pages, starting at 8, targeting 25 ms), pausing 250 ms between batches and starting no new batches after a two-second round budget. Busy writers take priority. No full `VACUUM` or forced WAL checkpoint runs during online cleanup.
 - Models live under `pkg/entity/persistence/`.
 - `pkg/persistence/media.py::MediaReferenceText` validates bound conversation payloads on ORM/Core writes while preserving the existing TEXT schema and string API. It rejects recognized structured inline images: retained images go through `MediaCache.externalize_chain_dump()` before serialization, while metadata-only snapshots and transcripts use `redact_inline_images()`. Reads and comparisons preserve historical values for incremental cleanup. Runtime/adapter messages, arbitrary diagnostic text, and opaque strings are outside this contract.
@@ -343,3 +345,7 @@ When one of these changes, update the others if the behavior or contract changed
 - Prefer small, explicit agent surfaces over exposing every internal API.
 - Treat cross-repo contracts with the SDK as public interfaces.
 - Test behavior at the narrowest useful layer first, then add integration/e2e coverage for runtime or platform changes.
+
+## Documentation repositories
+
+The public documentation site lives in `docs/` and is built with Node.js 24 and Fumapress. Internal design and review notes live in `dev-docs/`. The landing site keeps its `docs` submodule path but tracks LangBot `master`, building from the nested `docs/` directory. The old `langbot-app/langbot-docs` repository can be archived; publication never writes to it. See `dev-docs/DOCS_MIGRATION.md` for publication and cutover details.

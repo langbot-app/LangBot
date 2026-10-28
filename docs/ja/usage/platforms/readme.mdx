@@ -1,0 +1,30 @@
+---
+title: "ボット（Bots）"
+description: "LangBot を各メッセージングプラットフォームに接続：Discord・Telegram・Slack・WeChat・QQ・Lark・DingTalk・LINE 等。"
+---
+
+ボットは、メッセージングプラットフォームからメッセージイベントを受信し、パイプラインを呼び出してメッセージを処理するために使用されます。
+
+![arch](/images/zh/deploy/bots/arch.png)
+
+
+| プラットフォーム | ステータス | 備考 | チュートリアル |
+| ------ | ---- | ---- | ---- |
+| Discord | ✅ |  | [チュートリアル](/ja/usage/platforms/discord) |
+| Telegram | ✅ |  | [チュートリアル](/ja/usage/platforms/telegram) |
+| Slack | ✅ |  | [チュートリアル](/ja/usage/platforms/slack) |
+| Mattermost | ✅ | オープンソース版・無料版・Professional 版・Enterprise 版に対応 | [チュートリアル](/ja/usage/platforms/mattermost) |
+| LINE | ✅ |  | [チュートリアル](/ja/usage/platforms/line) |
+| KOOK | ✅ |  | [チュートリアル](/ja/usage/platforms/kook) |
+| Lark | ✅ |  | [チュートリアル](/ja/usage/platforms/lark) |
+| DingTalk | ✅ |  | [チュートリアル](/ja/usage/platforms/dingtalk) |
+| WeCom（Enterprise WeChat） | ✅ | 企業内部ボット | [チュートリアル](/ja/usage/platforms/wecom/wecom) |
+| WeCom Intelligent Bot | ✅ | wecom インテリジェントボット | [チュートリアル](/ja/usage/platforms/wecom/wecombot) |
+| WeCom Customer Service | ✅ | 企業外部ボット | [チュートリアル](/ja/usage/platforms/wecom/wecomcs) |
+| WeChat Official Account | ✅ | WeChat 公式プラットフォームボット | [チュートリアル](/ja/usage/platforms/wxoa) |
+| OneBot v11 | ✅ | 個人 QQ アカウントをボットとして使用し、独立したプロトコルクライアントが必要です。OneBot v11 をサポートします | [NapCat](/ja/usage/platforms/qq/aiocqhttp/napcat) <br /> [Lagrange](/ja/usage/platforms/qq/aiocqhttp/lagrange) <br /> [LiteLoaderQQNT](/ja/usage/platforms/qq/aiocqhttp/llonebot) |
+| QQ Official Bot | ✅ | QQ Open Platform ボット API に接続します | [チュートリアル](/ja/usage/platforms/qq/official_webhook) |
+
+<Tip>
+**パブリック IP やドメインの設定が面倒ですか？** Slack、LINE、WeCom、Lark などのプラットフォームでは Webhook コールバック URL が必要で、パブリックサーバー、ドメイン、HTTPS 証明書が必要です。[LangBot Cloud](https://space.langbot.app/cloud) にはドメイン解決と HTTPS が組み込まれており、登録するだけですぐに使用できます。
+</Tip>

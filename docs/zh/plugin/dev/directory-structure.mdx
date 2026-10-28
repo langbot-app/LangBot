@@ -1,0 +1,190 @@
+---
+title: "插件目录规范"
+---
+
+本文介绍 LangBot 插件的标准目录结构和文件组织规范，帮助开发者创建符合规范的插件。
+
+## 基本目录结构
+
+一个标准的 LangBot 插件应遵循以下目录结构：
+
+```
+MyPlugin/
+├── manifest.yaml          # 插件清单文件（必需）
+├── main.py               # 插件主入口文件（必需）
+├── README.md             # 英文版插件说明文档（必需）
+├── readme/               # 多语言 README 目录（可选）
+│   ├── README_zh_Hans.md # 简体中文版说明文档
+│   ├── README_ja_JP.md   # 日文版说明文档
+│   └── README_zh_Hant.md # 繁体中文版说明文档（可选）
+├── assets/               # 资源文件目录
+│   ├── icon.svg         # 插件图标（推荐）
+│   └── ...              # 其他资源文件
+├── components/           # 组件目录
+│   ├── event_listener/  # 事件监听器组件
+│   ├── commands/        # 命令组件
+│   └── tools/           # 工具组件
+├── requirements.txt      # Python 依赖（可选）
+└── config/              # 配置文件目录（可选）
+```
+
+## 多语言 README 规范
+
+### 文件位置规范
+
+LangBot 插件支持多语言 README 文档，以便为不同语言的用户提供本地化的插件说明。
+
+**重要规范：**
+
+1. **`根目录 README.md（必需）`**
+   - 必须使用**英文**编写
+   - 作为插件的默认说明文档
+   - 当请求的语言版本不存在时，将回退到此文档
+2. **`readme/ 目录（可选）`**
+   - 用于存放**非英文**的 README 文档
+   - 文件命名格式：`README_{语言代码}.md`
+
+### 支持的语言代码
+
+根据 [RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646) 标准，LangBot 目前支持以下语言代码：
+
+| 语言   | 语言代码           | 文件名                 | 位置           |
+| ---- | -------------- | ------------------- | ------------ |
+| 英文   | `en` 或 `en_US` | `README.md`         | **插件根目录**    |
+| 简体中文 | `zh_Hans`      | `README_zh_Hans.md` | `readme/` 目录 |
+| 繁体中文 | `zh_Hant`      | `README_zh_Hant.md` | `readme/` 目录 |
+| 日语   | `ja_JP`        | `README_ja_JP.md`   | `readme/` 目录 |
+| 越南语 | `vi_VN`       | `README_vi_VN.md`    | `readme/` 目录  |
+| 泰语 | `th_TH`       | `README_th_TH.md`    | `readme/` 目录  |
+| 西班牙语 | `es_ES`       | `README_es_ES.md`    | `readme/` 目录  |
+
+### 示例目录结构
+
+```
+MyPlugin/
+├── README.md                    # ✅ 英文版（必需，放在根目录）
+└── readme/                      # ✅ 多语言目录
+    ├── README_zh_Hans.md       # ✅ 简体中文版
+    ├── README_ja_JP.md         # ✅ 日语版
+    └── README_zh_Hant.md       # ✅ 繁体中文版
+```
+
+### 错误示例
+
+❌ **错误做法：将英文 README 放在 readme/ 目录**
+
+```
+MyPlugin/
+├── readme/
+│   ├── README_en.md        # ❌ 错误：英文不应该在 readme/ 目录
+│   └── README_zh_Hans.md
+```
+
+❌ **错误做法：根目录 README.md 包含非英文内容**
+
+```markdown
+# MyPlugin
+
+This is a plugin...
+
+这是一个插件...    # ❌ 错误：根目录 README.md 只能包含英文
+```
+
+### README 语言回退逻辑
+
+当用户请求特定语言的 README 时，LangBot 将按以下顺序查找：
+
+1. 尝试读取 `readme/README_{语言代码}.md`
+2. 如果不存在，回退到根目录的 `README.md`（英文版）
+
+**示例：**
+
+- 用户请求简体中文（`zh_Hans`）
+  - → 查找 `readme/README_zh_Hans.md`
+  - → 如果不存在，返回 `README.md`（英文版）
+- 用户请求日语（`ja_JP`）
+  - → 查找 `readme/README_ja_JP.md`
+  - → 如果不存在，返回 `README.md`（英文版）
+
+## 资源文件目录
+
+### assets/ 目录
+
+`assets/` 目录用于存放插件的静态资源文件。
+
+**推荐结构：**
+
+```
+assets/
+├── icon.svg              # 插件图标（推荐使用 SVG 格式）
+├── example.png           # 示例图片
+├── screenshot1.png       # 截图
+└── logo.png             # Logo 图片
+```
+
+**图标规范：**
+
+- 推荐使用 `icon.svg` 作为插件图标
+- 支持的格式：`.svg`、`.png`、`.jpg`、`.jpeg`、`.gif`
+- 推荐尺寸：至少 256x256 像素
+- 在 `manifest.yaml` 中引用：`icon: assets/icon.svg`
+
+### 在 README 中引用资源
+
+在 README 文档中，可以使用相对路径引用 assets/ 目录中的图片：
+
+```markdown
+# MyPlugin
+
+![Example](./assets/example.png)
+
+![Screenshot](./assets/screenshot1.png)
+```
+
+**注意：** 插件上传到 LangBot Space 后，资源文件会被自动处理并托管，用户查看 README 时会正确显示图片。
+
+## 组件目录
+
+插件的功能通过组件实现，组件文件应按类型组织在 `components/` 目录下：
+
+```
+components/
+├── event_listener/       # 事件监听器
+│   ├── on_message.py
+│   └── on_message.yaml
+├── commands/            # 命令
+│   ├── hello.py
+│   └── hello.yaml
+└── tools/               # 工具
+    ├── search.py
+    └── search.yaml
+```
+
+详细的组件开发规范请参考：[添加组件](/zh/plugin/dev/components/add)
+
+## 配置文件
+
+### manifest.yaml
+
+插件清单文件 `manifest.yaml` 是插件的核心配置文件，包含插件的元数据、配置项、组件列表等信息。
+
+详细说明请参考：[完善配置信息](/zh/plugin/dev/basic-info)
+
+### requirements.txt
+
+如果插件需要额外的 Python 依赖包，应在根目录创建 `requirements.txt` 文件：
+
+```
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+pillow>=9.0.0
+```
+
+**注意：** LangBot 在安装插件时会自动安装 `requirements.txt` 中列出的依赖。
+
+## 相关文档
+
+- [基础教程](/zh/plugin/dev/tutor) - 了解如何创建第一个插件
+- [完善配置信息](/zh/plugin/dev/basic-info) - 配置 manifest.yaml
+- [添加组件](/zh/plugin/dev/components/add) - 开发插件组件
+- [发布到插件市场](/zh/plugin/dev/publish/market) - 分发你的插件

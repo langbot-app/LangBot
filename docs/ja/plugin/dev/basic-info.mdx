@@ -1,0 +1,313 @@
+---
+title: "プラグイン設定情報の完成"
+---
+
+## マニフェストファイルの修正
+
+プラグインディレクトリ内の`manifest.yaml`ファイルは、プラグインの基本情報を宣言します。これはLangBot UIまたはプラグインマーケットプレイスのインターフェースに表示されます。
+
+```yaml
+apiVersion: v1  # 変更しないでください
+kind: Plugin  # 変更しないでください
+metadata:
+  author: RockChinQ  # 作成者、正規表現^[a-zA-Z0-9_-]+$に一致する必要があります
+  name: HelloPlugin  # プラグイン名、プラグインを区別するために使用、正規表現^[a-zA-Z0-9-]+$に一致する必要があります
+  repository: 'https://github.com/langbot-app/HelloPlugin'  # プラグインリポジトリURL
+  version: 0.1.0  # プラグインバージョン
+  description:
+    en_US: 'Hello LangBot Plugin'  # プラグイン説明、多言語対応
+    zh_Hans: 'Hello LangBot Plugin'
+  label:
+    en_US: HelloPlugin  # プラグインラベル、インターフェースに表示、多言語対応
+    zh_Hans: HelloPlugin
+  icon: assets/icon.svg  # プラグインアイコン、デフォルトはassets/icon.svg、さまざまな画像形式に置き換え可能
+spec:
+  config: []  # プラグイン設定項目フォーマット
+  components: {}  # プラグインコンポーネントリスト、手動で変更する必要はありません
+execution:
+  python:
+    path: main.py  # 変更しないでください
+    attr: HelloPlugin  # 変更しないでください
+```
+
+認証を申請し、複数のインストールで 1 つのランタイムを共有する場合は、`execution` 配下に `sharedRuntime` と `componentModel` も宣言します。詳細は[認証プラグインと共有実行](/ja/plugin/certified-plugins)を参照してください。
+
+プラグインの多言語サポートは[RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646)標準に従います。現在サポートされている言語は次のとおりです:
+
+- `en_US` 英語（必須）
+- `zh_Hans` 簡体字中国語
+- `zh_Hant` 繁体字中国語
+- `ja_JP` 日本語
+- `vi_VN` ベトナム語
+- `th_TH` タイ語
+- `es_ES` スペイン語
+
+## プラグイン設定項目フォーマット
+
+`manifest.yaml`ファイルの`spec.config`で宣言されたフィールドは、LangBotによってユーザーが入力するための設定項目フォームとしてレンダリングされます。プラグインは、SDKが提供するAPIを通じて、ユーザーが入力した設定項目を取得できます(後のセクションを参照)。
+
+例えば:
+
+```yaml
+spec:
+  config:
+    - name: github_token  # 必須; 設定項目名、プラグイン内での取得に使用
+      type: string  # 必須; 設定項目タイプ、string、integer、float、boolean、select、prompt-editor、llm-model-selector、bot-selector、tools-selectorなどをサポート
+      label:  # 必須; 設定項目表示名、多言語サポート。言語コードはRFC 4646標準に従います。
+        en_US: Github Token
+        zh_Hans: Github Token
+      description:  # 設定項目説明、多言語サポート。オプション。
+        en_US: Image downloading requires a Github token
+        zh_Hans: 如果不填的話、图片可能會下載失败
+      default: ''  # 設定項目のデフォルト値、オプション。
+      required: false  # 設定項目が必須かどうか、オプション。
+      show_if:  # 条件付きレンダリング（条件を満たす場合にのみ表示）、オプション。
+        field: mode
+        operator: eq
+        value: mode1
+    - name: mode
+      type: select
+      ...
+```
+
+設定項目でサポートされるタイプとフィールドは次のとおりです:
+
+### 条件付きレンダリング (`show_if`)
+
+すべてのタイプの設定項目は、`show_if` フィールドを使用した条件付きレンダリングをサポートしています。同じ（または関連する）フォーム内の他のフィールドの値に基づいて、現在のフィールドをレンダリングして表示するかどうかを決定できます。
+
+```yaml
+- name: advanced_setting
+  type: string
+  show_if:
+    field: mode          # 依存するフィールドの名前
+    operator: eq         # 判定演算子。'eq' (等しい)、'neq' (等しくない)、'in' (リストに含まれる) をサポートします
+    value: advanced      # 判断の基準値
+```
+
+> **注意：** クロスフォームのカスケード関係（例：RAG エンジンの `creation_schema` 設定が `retrieval_schema` の値を読み取る、またはその逆）は、LangBot の最新フロントエンドでサポートされています。
+
+### type: string
+
+文字列型。オプションで`options`を設定してプリセット値をサポートできます。設定すると、入力フィールドの横にドロップダウンボタンが表示され、ユーザーがプリセット値をすばやく入力できます。自由入力も可能です。
+
+```yaml
+- name: api_key
+  type: string
+  ...
+```
+
+プリセットオプション付き：
+
+```yaml
+- name: api_url
+  type: string
+  options:  # オプションのプリセット値、入力フィールドの横にドロップダウンボタンとして表示。
+    - name: "https://api.openai.com/v1"  # 選択時に入力される値。
+      label:  # 表示名、多言語サポート。
+        en_US: OpenAI Official
+        zh_Hans: OpenAI 官方
+    - name: "https://api.deepseek.com/v1"
+      label:
+        en_US: DeepSeek
+        zh_Hans: DeepSeek
+  ...
+```
+
+### type: array[string]
+
+文字列配列。
+
+```yaml
+- name: tags
+  type: array[string]
+  ...
+```
+
+### type: integer
+
+整数型。
+
+```yaml
+- name: progress
+  type: integer
+  ...
+```
+
+### type: float
+
+浮動小数点型。
+
+```yaml
+- name: temperature
+  type: float
+  ...
+```
+
+### type: boolean
+
+ブール型。
+
+```yaml
+- name: is_enabled
+  type: boolean
+  ...
+```
+
+### type: select
+
+ドロップダウンメニュー。`options`の設定が必要で、ドロップダウンメニューのオプションを表します。各オプションは`label`をメインテキストとして表示し、`name`（値）を小さなテキストで下に表示します。
+
+```yaml
+- name: mode
+  type: select
+  allow_custom: true
+  options:  # ドロップダウンオプション、多言語サポート。
+    - name: mode1  # 値、ドロップダウンで小さなテキストとして表示。
+      label:  # 表示名、多言語サポート。
+        en_US: Mode 1
+        zh_Hans: 模式 1
+    - name: mode2
+      label:  # 表示名、多言語サポート。
+        en_US: Mode 2
+        zh_Hans: 模式 2
+  ...
+```
+
+`allow_custom: true` を設定すると、プリセットに「カスタム」が追加され、その選択時だけ入力欄が表示されます。保存される値は選択した `name` または入力した文字列であり、「カスタム」というマーカーではありません。ランナーの `spec.config` にも使用できます。
+
+### type: prompt-editor
+
+プロンプトエディター。パイプライン設定ページからプロンプトエディターを表示し、最終結果はOpenAIの`messages`形式で表されます。
+
+```yaml
+- name: prompt
+  type: prompt-editor
+  ...
+```
+
+### type: text
+
+大きなテキスト入力。フロントエンドでtextareaとしてレンダリングされ、ユーザーが入力し、文字列としてプラグインに渡されます。
+
+```yaml
+- name: prompt
+  type: text
+  ...
+```
+
+### type: file
+
+ファイルアップロード。最大10MBのファイルアップロードをサポートし、`{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}`形式でプラグインに渡されます。プラグインは`get_config_file` APIを使用してファイルの内容を取得できます。
+
+```yaml
+- name: config_file
+  type: file
+  accept: 'application/json'  # オプション、受け入れるファイルMIMEタイプを指定
+  ...
+```
+
+プラグインでファイルを取得する:
+
+```python
+# 設定からファイル情報を取得
+file_config = self.get_config()['config_file']
+file_key = file_config['file_key']
+mimetype = file_config['mimetype']
+
+# 出力例: {'file_input': {'file_key': 'plugin_config_d2234fd802054faf80babe0679a97fa9.json', 'mimetype': 'application/json'}}
+print(file_config)
+
+# ファイルの内容を取得
+file_bytes = await self.get_config_file(file_key)
+```
+
+<Info>
+  一般的なMIMEタイプとファイル拡張子のリファレンス: [MDNドキュメント](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types)
+</Info>
+
+### type: array[file]
+
+複数ファイルアップロード。fileタイプと似ていますが、複数のファイルのアップロードをサポートし、`[{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}]`形式でプラグインに渡されます。
+
+```yaml
+- name: resource_files
+  type: array[file]
+  accept: 'image/*'  # オプション、受け入れるファイルMIMEタイプを指定
+  ...
+```
+
+プラグインでファイルを取得する:
+
+```python
+# 設定からファイルリストを取得
+files_config = self.get_config()['resource_files']
+
+for file_config in files_config:
+    file_key = file_config['file_key']
+    mimetype = file_config['mimetype']
+
+    # ファイルの内容を取得
+    file_bytes = await self.get_config_file(file_key)
+```
+
+### type: llm-model-selector
+
+LLMモデルセレクター。設定されたLLMモデルを選択できるLLMモデルセレクターを表示し、最終結果はLLMモデルUUIDとして表されます。
+
+```yaml
+- name: model
+  type: llm-model-selector
+  ...
+```
+
+### type: bot-selector
+
+Botセレクター。設定されたBotを選択できるBotセレクターを表示し、最終結果はBot UUIDとして表されます。
+
+```yaml
+- name: bot
+  type: bot-selector
+  ...
+```
+
+プラグインでBot UUIDを使用する:
+
+```python
+# 設定からBot UUIDを取得
+bot_uuid = self.get_config()['bot']
+print(bot_uuid)  # 出力: '550e8400-e29b-41d4-a716-446655440000'
+```
+
+### type: tools-selector
+
+ツールセレクター。登録済みのツール（プラグインツールおよび MCP ツール）を複数選択できるセレクターを表示します。最終結果はツール名の配列として表現されます。
+
+```yaml
+- name: selected_tools
+  type: tools-selector
+  ...
+```
+
+プラグインで選択されたツール名を使用する:
+
+```python
+# 設定から選択されたツール名リストを取得
+selected_tools = self.get_config()['selected_tools']
+print(selected_tools)  # 出力: ['get_weather_alerts', 'web_search']
+
+# 選択されたツールを呼び出す
+for tool_name in selected_tools:
+    result = await self.plugin.call_tool(
+        tool_name=tool_name,
+        parameters={"query": "hello"},
+        session={},
+        query_id=0,
+    )
+```
+
+## 次のステップ
+
+このチュートリアルでは、プラグイン機能を段階的に完成させる方法を案内します。
+
+- コンポーネントの追加: プラグインコンポーネントはプラグインのコア機能ユニットです。必要に応じて[コンポーネントを追加](/en/plugin/dev/components/add)できます。

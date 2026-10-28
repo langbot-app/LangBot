@@ -66,6 +66,7 @@ rsync -a \
     --exclude='kubernetes.yaml' \
     --exclude='.github/' \
     --exclude='docs/' \
+    --exclude='dev-docs/' \
     --exclude='examples/' \
     --exclude='res/' \
     ./ "${FPK_DIR}/app/langbot/"

@@ -1,0 +1,211 @@
+---
+title: "コンポーネント: Runner"
+---
+
+Runner は Agent の実行ロジック、または「プラグインプロセッサー」用のイベント処理関数を実装するコンポーネントです。どちらも `RunnerContext` を受け取り、インストール後にユーザーがコンポーネントを選択・設定します。
+
+環境の準備は[プラグイン開発チュートリアル](/ja/plugin/dev/tutor)を参照してください。
+
+`RunnerContext` の完全なフィールドとメソッドは[コンテキスト API](/ja/plugin/dev/apis/agent-run#runner)を参照してください。
+
+## Runner コンポーネントの追加
+
+1 つのプラグインに複数のイベントプロセッサーを追加できます。プラグインのディレクトリで `lbp comp Runner` を実行し、名前に `welcome`、説明に `Welcome new members` を入力します。
+
+```bash
+lbp comp Runner
+```
+
+生成される `components/runner/welcome.yaml` はコンポーネントを定義するファイルで、`welcome.py` に処理を記述します。
+
+## 実行ロジックの実装
+
+モデルの接続や独自の実行ループには `spec.usages: [agent]` を宣言し、`run(ctx)` から結果を返します：
+
+```python
+from langbot_plugin.api.definition.components.runner import Runner, RunnerContext, RunnerResult
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+
+class Echo(Runner):
+    async def run(self, ctx: RunnerContext):
+        yield RunnerResult.run_completed(
+            ctx.run_id,
+            message=Message(role="assistant", content=ctx.input.to_text()),
+        )
+```
+
+## マニフェストファイル: Runner
+
+`welcome.yaml` を次の内容に変更します。
+
+```yaml
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: welcome
+  label:
+    en_US: Welcome members
+    zh_Hans: 欢迎新成员
+    ja_JP: 新しいメンバーを歓迎
+  description:
+    en_US: Welcome new members and respond to /hello.
+    zh_Hans: 欢迎新成员，并响应 /hello 消息。
+    ja_JP: 新しいメンバーを歓迎し、/hello に返信します。
+spec:
+  usages: [event]
+  events:
+    - group.member_joined
+    - message.received
+  capabilities:
+    tool_calling: true
+  permissions:
+    tools: [detail, call]
+  config:
+    - name: greeting
+      type: string
+      label:
+        en_US: Greeting
+        zh_Hans: 欢迎语
+        ja_JP: 歓迎メッセージ
+      required: true
+      default: Welcome aboard!
+    - name: reply_enabled
+      type: boolean
+      label:
+        en_US: Send replies
+        zh_Hans: 发送回复
+        ja_JP: 返信する
+      default: true
+execution:
+  python:
+    path: ./welcome.py
+    attr: Welcome
+```
+
+`spec.events` は対応するイベント、`spec.config` は詳細画面でユーザーが変更できる設定です。この例ではメンバー参加とメッセージ受信に対応し、歓迎メッセージと返信の有効・無効を設定できます。返信には、上記の `tool_calling` と `permissions.tools` の指定が必要です。
+
+
+`spec.usages` は必須で、デフォルト値はありません。`spec.usages` は選択先を指定します。`agent` は Agent とパイプライン、`event` はプラグインプロセッサーです。`[agent, event]` の併記も可能です。`event` には `spec.events` が必要です。以下はイベント処理関数の例です。独自の `run(ctx)` から `await super().run(ctx)` で呼び出すこともできます。
+
+## プラグインの実装
+
+`Welcome` クラスの `initialize` メソッド内で処理関数を登録します。`welcome.py` を次の内容に変更してください。
+
+```python
+from langbot_plugin.api.definition.components.runner import (
+    Runner,
+    RunnerContext,
+)
+from langbot_plugin.api.entities.builtin.platform.events import (
+    MemberJoinedEvent,
+    MessageReceivedEvent,
+)
+from langbot_plugin.api.entities.builtin.platform.message import Plain
+
+
+class Welcome(Runner):
+    async def initialize(self):
+        await super().initialize()
+
+        @self.handler(MemberJoinedEvent)
+        async def on_join(ctx: RunnerContext):
+            name = ctx.platform_event.member.nickname or str(ctx.platform_event.member.id)
+            await ctx.log(f"Member joined: {name}")
+            if not ctx.config.get("reply_enabled", True):
+                await ctx.log("Replies are disabled for this processor")
+                return
+            greeting = ctx.config.get("greeting", "Welcome aboard!")
+            await ctx.reply(f"{name}, {greeting}")
+            await ctx.log("Welcome action completed")
+
+        @self.handler(MessageReceivedEvent)
+        async def on_message(ctx: RunnerContext):
+            text = "".join(
+                item.text for item in ctx.platform_event.message_chain if isinstance(item, Plain)
+            ).strip()
+            if text != "/hello":
+                await ctx.log("Message ignored: expected /hello")
+                return
+            if ctx.config.get("reply_enabled", True):
+                await ctx.reply(ctx.config.get("greeting", "Welcome aboard!"))
+            else:
+                await ctx.log("Replies are disabled for this processor")
+```
+
+`on_join` は参加したメンバーに挨拶し、`on_message` は `/hello` に返信します。「返信する」を無効にすると、ログだけを記録します。
+
+`ctx.platform_event` は現在のイベント、`ctx.config` はこのプロセッサーの設定です。返信には `ctx.reply()`、ログの記録には `ctx.log()` を使います。関数の実行が終わると、イベントの処理も終了します。
+
+## ストリーミング返信
+
+`ctx.reply_stream()` で同じ返信を更新します。`update(text)` には、その時点の全文を渡します。
+
+```python
+async with ctx.reply_stream() as reply:
+    await reply.update("処理中…")
+    await reply.update("完了しました。")
+```
+
+`async with` ブロックが正常終了すると返信が完了します。ストリーミングが未対応・無効の場合やメッセージ以外のイベントでは、最後に全文を一度だけ送信します。例外時には、バッファ内の未完成テキストを送信しません。デバッグでは送信をシミュレーションします。
+
+
+## イベントの登録
+
+`@self.handler(イベントクラス)` で処理関数を登録し、対応する識別子を `spec.events` に追加します。例えば `MemberJoinedEvent` は `group.member_joined` に対応します。
+
+| イベント | マニフェストの識別子 | SDK のイベントクラス |
+| --- | --- | --- |
+| メッセージ受信 | `message.received` | `MessageReceivedEvent` |
+| メッセージ編集 | `message.edited` | `MessageEditedEvent` |
+| メッセージ削除 | `message.deleted` | `MessageDeletedEvent` |
+| メッセージへのリアクション | `message.reaction` | `MessageReactionEvent` |
+| フィードバック受信 | `feedback.received` | `FeedbackReceivedEvent` |
+| メンバー参加 | `group.member_joined` | `MemberJoinedEvent` |
+| メンバー退出 | `group.member_left` | `MemberLeftEvent` |
+| メンバーのミュート | `group.member_banned` | `MemberBannedEvent` |
+| グループ情報更新 | `group.info_updated` | `GroupInfoUpdatedEvent` |
+| 友達申請受信 | `friend.request_received` | `FriendRequestReceivedEvent` |
+| 友達追加 | `friend.added` | `FriendAddedEvent` |
+| 友達削除 | `friend.removed` | `FriendRemovedEvent` |
+| Bot のグループ招待 | `bot.invited_to_group` | `BotInvitedToGroupEvent` |
+| Bot のグループからの削除 | `bot.removed_from_group` | `BotRemovedFromGroupEvent` |
+| Bot のミュート | `bot.muted` | `BotMutedEvent` |
+| Bot のミュート解除 | `bot.unmuted` | `BotUnmutedEvent` |
+| プラットフォーム固有のイベント | `platform.specific` | `PlatformSpecificEvent` |
+
+利用できるイベントとフィールドは、SDK の [events.py](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/api/entities/builtin/platform/events.py)を参照してください。対応イベントはプラットフォームによって異なります。
+
+## イベントプロセッサーのテスト
+
+[プラグイン開発チュートリアル](/ja/plugin/dev/tutor)に従ってデバッグ接続を設定し、プラグインのディレクトリで `lbp run` を実行します。LangBot で次の操作を行ってください。
+
+1. 「プラグインプロセッサー」を作成し、詳細画面で「新しいメンバーを歓迎」を選び、設定を保存します。
+2. 左側でメンバー参加を選択し、ニックネーム、メンバー ID、グループ ID を入力してテストを実行します。
+3. 返信とログを確認します。メッセージ受信を選んで `/hello` を入力すると、返信のテストもできます。
+
+デバッグ中の返信は Mock で再現され、実際のメッセージは送信されません。コンポーネントの YAML を変更したら `lbp run` を再起動してください。
+
+インストール後、ボット詳細の「プラグインプロセッサー」でこの設定を追加して保存します。この画面でコンポーネントを選択し、設定を入力して新規作成・紐付けすることもできます。宣言されたイベントは自動で配信され、イベントごとのルート設定は不要です。
+
+プラグインの購読は Agent／パイプラインのルートと独立して実行されます。同じイベントを複数のプロセッサーが処理でき、一つが失敗しても他の実行を妨げません。同じ設定を使用するボットは設定内容と実行状態を共有します。個別に設定する場合は、新しい設定を作成してください。返信などの任意の動作はコンポーネントの設定として提供し、重複返信を避けてください。
+
+## 1 つの installation、複数の用途
+
+1 つの Workspace でプラグインをインストールできるのは 1 回ですが、その installation は**複数のプロセッサ**（Agent / パイプライン）から再利用されます。Runner はプロセッサ間でデータが混ざらないよう自分で保証する必要があります：
+
+- `ctx.state.*` はすでにプロセッサ単位で分離されています。スコープに `binding_identity`（Agent UUID 由来）が含まれるため、同じ installation の別プロセッサが互いを上書きしません。
+- プラットフォームのストレージキーは `(instance, Workspace, owner type, plugin, key)` で、**プロセッサの次元を含みません**。したがって自分で Host ストレージやキャッシュに書くキーには、プロセッサまたは会話の識別子も含めてください。
+- `RunnerContext`（`ctx`）は 1 回の実行でのみ有効です。インスタンスに保存して呼び出しをまたいで再利用しないでください。呼び出しをまたいで保持する会話状態は `ctx.state_get()` / `ctx.state_set()` を使います。
+- 複数のプロセッサは同じ Runner インスタンスを共有するため、現在の実行のデータをインスタンスフィールドに蓄積しないでください。長期常駐の外部セッションプロセスのように、プロセス内に呼び出しをまたぐ状態を持つ必要がある Runner は、共有実行を宣言せず専用のままにしてください。
+- installation 単位でプロセス内キャッシュを保持する場合は、`on_installation_revoked(binding)` で解放してください。
+
+完全な仕様は[認証プラグインと共有実行](/ja/plugin/certified-plugins)を参照してください。
+
+## 次のステップ
+
+- [`RunnerContext` API リファレンス](/ja/plugin/dev/apis/agent-run#runner)を確認します。
+- モデル、ツール、ナレッジベース、ストレージについては [LangBot API](/ja/plugin/dev/apis/common)を確認します。
+- メッセージ送信などについては[プラットフォーム API](/ja/plugin/dev/apis/platform)を確認します。
+- [RunnerDemo](https://github.com/langbot-app/langbot-plugin-demo/tree/main/Runner/RunnerDemo)で他の実装例を確認できます。
+- パイプラインの前処理やモデル呼び出し完了時などに機能を追加する場合は、[イベントリスナー](/ja/plugin/dev/components/event-listener)を使用してください。

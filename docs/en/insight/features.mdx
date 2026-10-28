@@ -1,0 +1,155 @@
+---
+title: "Features"
+description: "LangBot is an open-source, production-grade, LLM-native instant messaging bot development platform. Build AI agents for Discord, Telegram, Slack, QQ, WeChat, WeCom, Lark, DingTalk and more — with built-in Agent, RAG knowledge base, MCP, Skills and a code sandbox, plus deep integration with Dify, Coze, n8n and Langflow."
+---
+
+LangBot is an **open-source, production-grade**, LLM-native instant messaging bot development platform. With a single codebase you can bring AI agents to Discord, Telegram, Slack, QQ, WeChat, WeCom, Lark, DingTalk and more — with built-in **Agent, RAG knowledge base, MCP, Skills and a code sandbox**, deep integration with Agent platforms like Dify, Coze, n8n and Langflow, and everything configured and monitored from a browser-based web panel — no hand-written config files.
+
+<Tip>
+**Don't want to self-host?** Try [LangBot Cloud](https://space.langbot.app/cloud) — no server required, sign up and start instantly.
+</Tip>
+
+## Core Capabilities at a Glance
+
+- **AI Conversation & Agent** — multi-turn dialogue, tool calling (function calling), multimodal (image/audio/file) and streaming output, ready out of the box.
+- **RAG Knowledge Base** — a built-in knowledge-base engine (vector retrieval + Rerank re-scoring) so your bot answers from your private knowledge, extensible via plugins to seamlessly connect external knowledge-base services like RAGFlow, Dify and FastGPT.
+- **All-Platform Coverage** — one codebase reaches Discord, Telegram, Slack, LINE, KOOK, Matrix, QQ, WeChat, WeCom, Lark, DingTalk and more.
+- **Deep Agent Platform Integration** — native connectors for Dify, Coze, n8n, Langflow, Deerflow, Aliyun Bailian, Ant TBox and other orchestration & workflow platforms.
+- **Skills & Code Sandbox** — on-demand instruction packs paired with a securely isolated code-execution sandbox, so the agent actually *gets things done*.
+- **MCP Protocol** — acts as a client into the Model Context Protocol tool ecosystem, supporting both Stdio and HTTP transports.
+- **Web Management Panel** — configure, manage and monitor bots visually in the browser, no manual config editing.
+- **Production-grade Plugin System** — hundreds of community plugins on a cross-process, event-driven architecture that's safe and hot-pluggable.
+- **Multi-pipeline Architecture** — run multiple pipelines per instance so different bots serve different scenarios, with access control, rate limiting, sensitive-word filtering and comprehensive monitoring.
+
+## Instant Messaging Platform Support
+
+LangBot covers mainstream global IM platforms through a unified adapter layer — develop once, reach everywhere.
+
+| Platform | Status | Remarks |
+| --- | --- | --- |
+| Personal QQ | ✅ | Supported via third-party apps implementing the OneBot v11 protocol; private and group chats |
+| QQ Official Bot | ✅ | Channels, private chats, and group chats |
+| WeChat | ✅ | Personal WeChat |
+| WeChat Official Account | ✅ |  |
+| WeCom | ✅ | Internal application messages |
+| WeCom Intelligent Bot | ✅ | Supports streaming output |
+| WeCom Customer Service | ✅ |  |
+| Lark | ✅ | Supports streaming output |
+| DingTalk | ✅ | Supports streaming output |
+| Discord | ✅ |  |
+| Telegram | ✅ | Supports streaming output |
+| Slack | ✅ |  |
+| LINE | ✅ |  |
+| KOOK | ✅ |  |
+| Satori | ✅ | [Satori](https://satori.chat/zh-CN/introduction.html) is a universal chat protocol that theoretically supports QQ, Zulip, Miyoushe and 15+ platforms |
+| Matrix | ✅ | Reaches Signal, WhatsApp, Messenger, iMessage, Mattermost, Google Chat, IRC, XMPP, Zulip and more via bridges |
+| Email | ✅ | Use email as a conversation channel |
+| Web Page Bot | ✅ | Embeddable chat widget for web pages |
+| WhatsApp | 🚧 | In development (also usable via Matrix bridge) |
+
+🚧: In development
+
+For fine-grained, per-platform feature support (sending/receiving images, audio, files, rich text, streaming responses, etc.), see the [platform features document](/en/insight/platform-features).
+
+## Model and Agent Platform Support
+
+LangBot uses **LiteLLM as a unified model request backend**, so beyond the built-in providers below you can also connect any OpenAI / Anthropic API-format or LiteLLM-supported model.
+
+### LLM, Aggregation & GPU Platforms
+
+| Provider/Service | Status | Remarks |
+| --- | --- | --- |
+| [OpenAI](https://platform.openai.com/) | ✅ | Works with any OpenAI-format model |
+| [Anthropic](https://www.anthropic.com/) | ✅ |  |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
+| [xAI](https://x.ai/) | ✅ |  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
+| [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
+| [Mistral](https://mistral.ai/) | ✅ |  |
+| [Groq](https://groq.com/) | ✅ |  |
+| [OpenRouter](https://openrouter.ai/) | ✅ | Global LLM gateway |
+| [Ollama](https://ollama.com/) | ✅ | Local LLM running platform |
+| [LMStudio](https://lmstudio.ai/) | ✅ | Local LLM running platform |
+| [SiliconFlow](https://siliconflow.cn/) | ✅ | LLM gateway (MaaS) |
+| [Aliyun Bailian](https://bailian.console.aliyun.com/) | ✅ | LLM gateway (MaaS) / Agent platform |
+| [Volc Engine Ark](https://console.volcengine.com/ark) | ✅ | LLM gateway (MaaS) / Agent platform |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | LLM gateway (MaaS) |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | LLM interface gateway (MaaS) |
+| [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | Global LLM aggregation (recommended) |
+| [CompShare](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | LLM and GPU resource platform |
+| [PPIO](https://ppio.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | LLM and GPU resource platform |
+| [302.AI](https://share.302ai.cn/SuTG99) | ✅ | LLM gateway (MaaS) |
+| [Jiekou AI](https://jiekou.ai/) | ✅ | LLM gateway (MaaS) |
+| [TokenPony](https://www.tokenpony.cn/453z1) | ✅ | LLM gateway (MaaS) |
+| [Qiniu](https://www.qiniu.com/ai/agent) | ✅ | LLM gateway (MaaS) |
+
+### Agent Platforms
+
+Plug your existing workflows or agents straight into IM platforms — no need to rewrite your business logic.
+
+| Platform | Status | Remarks |
+| --- | --- | --- |
+| [Dify](https://dify.ai) | ✅ | Agent platform |
+| [Coze](https://coze.cn) | ✅ | Agent orchestration platform |
+| [n8n](https://n8n.io/) | ✅ | Workflow automation platform |
+| [Langflow](https://langflow.org/) | ✅ | Visual orchestration platform |
+| [Deerflow](https://deerflow.tech) | ✅ | Deep research framework |
+| [Weknora](https://weknora.weixin.qq.com) | ✅ | WeChat knowledge-base Q&A |
+| [Ant TBox](https://tbox.cn/) | ✅ | Agent platform |
+
+### Rerank Models
+
+| Provider | Status | Remarks |
+| --- | --- | --- |
+| [Cohere](https://cohere.com/) | ✅ | Rerank models |
+| [Jina](https://jina.ai/) | ✅ | Rerank models |
+| [Voyage AI](https://voyageai.com/) | ✅ | Rerank models |
+
+## LLM Application Paradigm Implementation
+
+LangBot turns mainstream LLM application paradigms into out-of-the-box capabilities, covering the full path from "can chat" to "can get work done."
+
+| Paradigm | Status | Notes |
+| --- | --- | --- |
+| Agent | ✅ | Built-in agent with tool calling, multi-turn reasoning, multimodal and streaming output |
+| RAG (Knowledge Base) | ✅ | Built-in knowledge-base engine (default Chroma vector store + Rerank re-scoring), pluggable into external knowledge bases like RAGFlow, Dify and FastGPT |
+| MCP | ✅ | Acts as an MCP client into the tool ecosystem; supports Stdio and HTTP |
+| Skills | ✅ | On-demand instruction packs, pulled into context only when matched — zero extra overhead |
+| Code Sandbox | ✅ | Securely isolated code-execution environment with Docker / nsjail / E2B backends |
+
+- **Skills**: package a professional workflow, template or script into an on-demand instruction pack — the agent pulls it into context only when the user's request matches, keeping the System Prompt clean. See the [Skills doc](/en/usage/skills/readme).
+- **Code Sandbox**: gives the agent securely isolated code-execution capability, automatically picking the best of the Docker / nsjail / E2B backends — the runtime foundation for Skills and native tools. See the [Sandbox doc](/en/usage/sandbox/readme).
+
+## System Extensibility
+
+LangBot offers a complete extension surface for secondary development and enterprise integration.
+
+- **HTTP Service API**: access LangBot's entities through HTTP interfaces with API-key authentication, for easy integration with existing systems.
+- **Outgoing Webhook**: push LangBot's internal events to external systems in real time, enabling event-driven automation.
+- **Production-grade Plugin System**: built on cross-process communication and async technology, supporting various component extensions — safe, stable and hot-pluggable; hundreds of community plugins install in one click from the [extension marketplace](https://space.langbot.app).
+- **Web Management Panel**: do all your bot, model, pipeline, knowledge-base and plugin configuration and monitoring visually.
+
+## Deployment Options
+
+LangBot supports everything from a one-line command to a Kubernetes cluster:
+
+- **LangBot Cloud (recommended)**: [a hosted, deploy-free, out-of-the-box version](https://space.langbot.app/cloud).
+- **One-line start**: `uvx langbot`, then open `http://localhost:5300`.
+- **Docker Compose**, **aaPanel**, **Kubernetes**, **one-click cloud deploy on Zeabur / Railway**, and more.
+
+See the [deployment docs](/en/deploy/langbot/kubernetes) and [quick start](/en/insight/guide).
+
+## Case Screenshots
+
+![LangBot bot configuration page: bind a web page bot to a pipeline in the web dashboard](/images/zh/insight/features/bot-page.png)
+
+![LangBot model configuration: connect any OpenAI / Anthropic API-compatible LLM such as OpenAI or Anthropic](/images/zh/insight/features/create-model.png)
+
+![LangBot pipeline AI configuration: choose the built-in Agent runner and primary model](/images/zh/insight/features/edit-pipeline.png)
+
+![LangBot extension marketplace: one-click install for hundreds of community plugins and MCP tools](/images/zh/insight/features/plugin-market.png)
+
+![LangBot built-in Agent calling the code sandbox: executing Python in real time for exact computation](/images/zh/insight/features/agent-sandbox.png)
+
+![LangBot Skill-driven Agent: producing structured output following a predefined skill](/images/zh/insight/features/agent-skill.png)
