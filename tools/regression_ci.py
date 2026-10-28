@@ -15,6 +15,7 @@ import time
 import yaml
 
 from regression_gate import supervise
+from regression_plugins import install_published_plugins, prepare_published_plugins
 from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
 
@@ -68,6 +69,9 @@ def run(args):
         return process.pid
 
     try:
+        published = None
+        if args.plugins is None:
+            published = prepare_published_plugins(root / 'plugins', args.plugin_manifest)
         config_path = create_minimal_config(private, port=15301)
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
@@ -171,12 +175,15 @@ def run(args):
         cli_data = yaml.safe_load(cli_config.read_text())
         cli_data['contexts']['smoke']['expected_workspace_uuid'] = identity['workspace_uuid']
         cli_config.write_text(yaml.safe_dump(cli_data))
-        for directory in ('Runner/LocalAgent', 'KnowledgeEngine/LangRAG', 'misc/GeneralParsers'):
-            source = args.plugins / directory
-            package_source = private / source.name
-            shutil.copytree(source, package_source, ignore=shutil.ignore_patterns('.git', '.venv*', '__pycache__'))
-            archive = shutil.make_archive(str(private / source.name), 'zip', root_dir=package_source)
-            suite.call(['plugin', 'install', 'local', '--file', archive, '--wait'])
+        if published is not None:
+            install_published_plugins(suite.call, root / 'plugins', published)
+        else:
+            for directory in ('Runner/LocalAgent', 'KnowledgeEngine/LangRAG', 'misc/GeneralParsers'):
+                source = args.plugins / directory
+                package_source = private / source.name
+                shutil.copytree(source, package_source, ignore=shutil.ignore_patterns('.git', '.venv*', '__pycache__'))
+                archive = shutil.make_archive(str(private / source.name), 'zip', root_dir=package_source)
+                suite.call(['plugin', 'install', 'local', '--file', archive, '--wait'])
         generated = private / 'smoke.json'
         generated.write_text(json.dumps(profile, indent=2))
         return supervise(
@@ -214,7 +221,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--lbctl', type=Path, required=True)
-    parser.add_argument('--plugins', type=Path, required=True)
+    plugins = parser.add_mutually_exclusive_group()
+    plugins.add_argument('--plugins', type=Path, help='Explicit developer override: package a plugin source checkout')
+    plugins.add_argument('--plugin-manifest', type=Path, help='Replay published versions and hashes from a prior run')
     args = parser.parse_args()
     if args.output.exists():
         parser.error('--output must be a new directory')

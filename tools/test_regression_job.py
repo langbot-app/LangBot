@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import yaml
 
-from regression_job import Job, main
+from regression_job import Job, load_profile, main
 from test_regression_suite import FAKE_CLI, profile
 
 
@@ -89,6 +89,36 @@ class ControlledJob(Job):
 
 
 class JobTests(unittest.TestCase):
+    def test_published_resolution_failure_is_preparation_failure_without_deployment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = ControlledJob({}, profile(), root / 'profile.json', root / 'run', 'unused')
+            with patch('regression_job.prepare_published_plugins', side_effect=RuntimeError('release unavailable')):
+                result = job.run()
+            self.assertFalse(result['passed'])
+            self.assertFalse(result['completed'])
+            self.assertEqual(result['phase'], 'plugins')
+            self.assertEqual(result['errors'], ['release unavailable'])
+            self.assertEqual(job.calls, [])
+
+    def test_job_defaults_to_published_plugins_and_keeps_explicit_profile_mode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            suite = profile()
+            suite['plugins'] = [{'source': 'local', 'file': 'developer.zip'}]
+            (root / 'suite.json').write_text(json.dumps(suite))
+            path = root / 'job.json'
+            manifest = {'version': 1, 'suite': 'suite.json', 'deployment': {'version': 'v4.11.0'}}
+            path.write_text(json.dumps(manifest))
+            self.assertEqual(load_profile(path)[1]['plugins'], [])
+            manifest['plugin_mode'] = 'profile'
+            path.write_text(json.dumps(manifest))
+            self.assertEqual(load_profile(path)[1]['plugins'], suite['plugins'])
+            manifest['plugin_manifest'] = 'previous/manifest.json'
+            path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'requires published'):
+                load_profile(path)
+
     def test_lifecycle_success_and_partial_install_recovery(self):
         class Health(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -108,7 +138,11 @@ class JobTests(unittest.TestCase):
                 cli = root / 'lbctl-test'
                 cli.write_text(f'#!{sys.executable}\n' + FAKE_CLI)
                 cli.chmod(0o700)
-                manifest = {'lbctl': str(cli), 'deployment': {'version': 'v4.11.0', 'port': 15351}}
+                manifest = {
+                    'lbctl': str(cli),
+                    'deployment': {'version': 'v4.11.0', 'port': 15351},
+                    'plugin_mode': 'profile',
+                }
                 suite = profile()
                 suite['resources'] = [{'id': 'chat', 'kind': 'pipeline', 'body': {'name': 'QA', 'config': {'ai': {}}}}]
                 suite['cases'][0].update(args=['pipeline', 'run', '${chat}'], expect='TEST_OK')
