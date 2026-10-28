@@ -189,8 +189,8 @@ the run. Output export requires explicit normalized absolute sandbox file paths 
 opaque handles scoped to that run. The selected files are validated as one batch
 before registration; successful export removes only those files, and cleanup
 failure is a warning with accepted handles retained. Writing an outbox file alone
-does not deliver it. Core and LocalAgent currently pin SDK PR #180's exact commit
-until a release includes the selected-path API.
+does not deliver it. Core and Plugin Runtime must provide the selected-path API;
+LocalAgent CI verifies this contract against the latest stable published SDK.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box

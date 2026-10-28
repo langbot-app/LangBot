@@ -51,11 +51,11 @@ jobs:
             -r acp-agent-runner/requirements.txt -r claude-code-agent/requirements.txt -r codex-agent/requirements.txt pytest pyyaml packaging
           "$RUNNER_TEMP/coding-074/bin/python" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"'
           printf 'CODING_RUNNER_TEST_PYTHON=%s/coding-074/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Prepare isolated LocalAgent explicit-export SDK environment
+      - name: Prepare isolated LocalAgent environment with the latest stable SDK
         run: |
-          UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/localagent-074" uv sync --project LocalAgent --locked --extra dev
-          "$RUNNER_TEMP/localagent-074/bin/python" -c 'from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
-          printf 'LOCALAGENT_TEST_PYTHON=%s/localagent-074/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/localagent-latest" uv sync --project LocalAgent --extra dev --upgrade-package langbot-plugin
+          "$RUNNER_TEMP/localagent-latest/bin/python" -c 'from importlib.metadata import version; print("langbot-plugin", version("langbot-plugin")); from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
+          printf 'LOCALAGENT_TEST_PYTHON=%s/localagent-latest/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       # Preserve the external Runner lint scope; LocalAgent has its own Ruff config.
       # RunnerDemo did not have a Ruff gate before consolidation.
       - name: Ruff check

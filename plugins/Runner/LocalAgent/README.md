@@ -8,7 +8,7 @@ Local Agent 是 LangBot 官方的进程内运行器。它在 LangBot 插件进�
 
 ## SDK 兼容性
 
-LocalAgent 0.2.3 使用 `langbot-plugin>=0.7.18,<0.8.0`，允许同一 0.7 系列的稳定补丁更新，不再精确锁定单个 SDK 版本。测试环境的 `uv.lock` 仍固定已验证版本以保证可复现；插件包的 `requirements.txt` 与项目声明使用相同的兼容范围。跨 0.8 系列升级需要单独验证。
+LocalAgent 要求 `langbot-plugin>=0.7.18`，不设版本上限。插件包与项目声明保持一致；CI 每次安装 PyPI 最新稳定版 SDK，记录实际版本并验证契约和测试。`uv.lock` 保存最近一次解析结果，CI 会更新其中的 SDK 选择。
 
 ## 主要能力
 
@@ -87,12 +87,12 @@ Local Agent 不按固定对话轮数截断历史，而是按最终 provider 消�
 ## 开发与测试
 
 ```bash
-uv sync --dev
+uv sync --extra dev --upgrade-package langbot-plugin
 uv run --no-sync pytest -q
 uv run --no-sync ruff check .
 ```
 
-本地联调需要使用包含 Runner Protocol v1 的 LangBot Plugin SDK。若 LangBot 固定的 PyPI 版本缺少新实体，请先安装工作区中的本地 SDK，并使用 `uv run --no-sync` 启动，避免同步过程覆盖 editable 安装。
+测试使用已发布的 SDK。若导入或契约检查失败，先核对实际安装版本和 PyPI 发布内容；不要用本地 SDK 源码替代发布包掩盖兼容问题。
 
 ## 文件交付
 
@@ -100,7 +100,7 @@ uv run --no-sync ruff check .
 
 清理警告不代表导出失败，不应因此重复交付。Core 接收后的平台发送失败会终止运行，避免重新生成或重发可能已经送达的文件。流式文字已发出时不会被撤回。
 
-此分支配合 LangBot #2641 和 SDK #180，开发与 CI 用 `uv.lock` 固定 SDK 提交 `b300830b0e5339e7989be237efa811bedf761d55`。已发布的 SDK 0.7.4/0.7.13 不包含新的路径参数；Core 和 Plugin Runtime 必须使用配套版本，插件会在旧 SDK 上明确拒绝准备文件工具。待对应 SDK 发布后，由维护者统一更新发布版本依赖。
+最低 SDK 版本已包含显式路径导出 API。Core 和 Plugin Runtime 也须提供配套契约；缺少 `export_box_files(paths)` 时，插件会明确拒绝准备文件工具。
 
 ## 当前边界
 
