@@ -1906,21 +1906,21 @@ const enUS = {
       reviewAccountConnected: 'Connected to LangBot Account',
       reviewAccountNotConnected: 'Account not connected (Upload will fail)',
       spaceNotConnectedTitle: 'Extension Market Account Not Bound',
-      bindSpaceButton: 'Connect Space Account',
+      bindSpaceButton: 'Connect LangBot Account',
       bindRequiredToProceed: 'Please connect your account to proceed',
       prerequisitesTitle: 'Publishing Preparation',
       prerequisitesDescription:
-        'Connect your Space account and configure your creator identity before publishing.',
-      req1Title: 'Connect LangBot Space Account',
-      req1Desc: 'Link this local instance to your LangBot Space account.',
+        'Connect your LangBot Account and configure your creator identity before publishing.',
+      req1Title: 'Connect LangBot Account',
+      req1Desc: 'Link this local instance to your LangBot Account.',
       reqBound: 'Connected',
       reqCompleted: 'Ready',
       req2Title: 'Space Creator Profile',
       req2Desc:
         'Configure a creator profile on Space with a slug matching the plugin author name.',
-      req2WaitSpace: 'Requires Space account connection first',
+      req2WaitSpace: 'Requires LangBot Account connection first',
       req2NoCreator:
-        'No creator profile has been set up for this Space account',
+        'No creator profile has been set up for this LangBot Account',
       req2Mismatch: 'Creator slug mismatch',
       req2MismatchDetail:
         'Space creator slug is @{{creator}}, but plugin manifest author is {{author}}. Please update author in manifest.yaml or switch accounts.',
@@ -1939,7 +1939,7 @@ const enUS = {
         guideTitle: 'How to resolve:',
         disabledTooltip:
           'Please follow the banner instructions above before uploading',
-        bindButton: 'Connect Space Account',
+        bindButton: 'Connect LangBot Account',
         reauthButton: 'Re-authenticate Account',
         createCreatorButton: 'Create Creator Profile',
         manageCreatorButton: 'Manage Creator Profile',
@@ -1949,14 +1949,14 @@ const enUS = {
         readyToUpload: {
           title: 'Ready to Publish',
           description:
-            'Space account and creator profile are ready. Please review details below and click confirm to upload.',
+            'LangBot Account and creator profile are ready. Please review details below and click confirm to upload.',
         },
         notConnected: {
-          title: 'Space Account Not Connected',
+          title: 'LangBot Account Not Connected',
           description:
-            'This local instance is not yet connected to a LangBot Space account. A Space account is required to verify identity and publish plugins.',
+            'This local instance is not yet connected to a LangBot Account. A LangBot Account is required to verify identity and publish plugins.',
           guide:
-            'Please click "Connect Space Account" below to authorize sign-in. Once connected, you can publish plugins.',
+            'Please click "Connect LangBot Account" below to authorize sign-in. Once connected, you can publish plugins.',
         },
         noCreator: {
           title: 'Space Creator Profile Not Created',
@@ -1970,7 +1970,7 @@ const enUS = {
           description:
             'The author declared in your plugin manifest is "{{author}}", but your Space creator slug is "@{{creator}}". The marketplace requires them to match exactly.',
           guide:
-            'How to resolve:\n1. Update manifest.yaml in your plugin directory and set metadata.author to "{{creator}}";\n2. Or switch your connected Space account to the one matching "{{author}}". Then click "Refresh Status".',
+            'How to resolve:\n1. Update manifest.yaml in your plugin directory and set metadata.author to "{{creator}}";\n2. Or switch your connected LangBot Account to the one matching "{{author}}". Then click "Refresh Status".',
         },
         pendingReview: {
           title: 'A Submission Is Already Pending Review',
@@ -2008,9 +2008,9 @@ const enUS = {
         pendingReview:
           'You already have a plugin submission pending review. Please wait for it to complete',
         sessionExpired:
-          'Space login session has expired. Please re-authenticate',
+          'LangBot Account login session has expired. Please re-authenticate',
         notConnected:
-          'Please connect a LangBot Space account before uploading plugins',
+          'Please connect a LangBot Account before uploading plugins',
         packageFailed:
           'Failed to build the plugin package. Please check your plugin code and files',
         inspectFailed: 'Plugin manifest inspection failed: {{detail}}',

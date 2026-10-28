@@ -1859,7 +1859,7 @@ const zhHans = {
             '请点击下方「前往 Space 查看我的插件」查看当前的审核进度及审核意见。',
         },
         sessionExpired: {
-          title: 'Space 登录授权已过期',
+          title: 'LangBot 账号登录授权已过期',
           description:
             '本地保存的 Space 访问令牌已失效或已在云端被撤销，无法完成本次发布鉴权。',
           guide:
@@ -1884,7 +1884,7 @@ const zhHans = {
           '插件作者名 “{{author}}” 与 Space 创作者标识 “@{{slug}}” 不一致',
         pendingReview:
           '该插件已有正在等待审核的提交，请等待审核完成后再发布新版本',
-        sessionExpired: 'Space 登录状态已过期，请重新关联登录',
+        sessionExpired: 'LangBot 账号登录状态已过期，请重新关联登录',
         notConnected: '当前工作区尚未关联 LangBot Space 账号，请先完成关联',
         packageFailed: '插件打包失败，请检查插件代码与目录结构',
         inspectFailed: '插件清单检验失败：{{detail}}',

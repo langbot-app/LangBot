@@ -1891,9 +1891,9 @@ const viVN = {
       reqCompleted: 'Đã sẵn sàng',
       req2Title: 'Yêu cầu 2: Tạo danh tính người sáng tạo trên Space',
       req2Desc:
-        'Tài khoản Space phải có danh tính người sáng tạo và định danh phải khớp với tác giả plugin.',
+        'Tài khoản LangBot phải có danh tính người sáng tạo và định danh phải khớp với tác giả plugin.',
       req2WaitSpace: 'Vui lòng hoàn thành Yêu cầu 1 trước',
-      req2NoCreator: 'Tài khoản Space này chưa tạo danh tính người sáng tạo',
+      req2NoCreator: 'Tài khoản LangBot này chưa tạo danh tính người sáng tạo',
       req2Mismatch: 'Định danh người sáng tạo không khớp',
       req2MismatchDetail:
         'Định danh Space của bạn là @{{creator}}, nhưng tác giả plugin là {{author}}.',
@@ -1913,7 +1913,7 @@ const viVN = {
         guideTitle: 'Hướng dẫn thực hiện:',
         disabledTooltip:
           'Vui lòng làm theo hướng dẫn ở biểu ngữ phía trên trước khi tải lên',
-        bindButton: 'Kết nối tài khoản Space',
+        bindButton: 'Kết nối tài khoản LangBot',
         reauthButton: 'Xác thực lại tài khoản',
         createCreatorButton: 'Mở hồ sơ người sáng tạo',
         manageCreatorButton: 'Quản lý hồ sơ người sáng tạo',
@@ -1923,14 +1923,14 @@ const viVN = {
         readyToUpload: {
           title: 'Đã sẵn sàng xuất bản',
           description:
-            'Tài khoản Space và hồ sơ người sáng tạo đã sẵn sàng. Vui lòng kiểm tra chi tiết bên dưới và xác nhận tải lên.',
+            'Tài khoản LangBot và hồ sơ người sáng tạo đã sẵn sàng. Vui lòng kiểm tra chi tiết bên dưới và xác nhận tải lên.',
         },
         notConnected: {
           title: 'Chưa kết nối tài khoản LangBot Space',
           description:
-            'Phiên bản cục bộ này chưa được kết nối với LangBot Space. Cần có tài khoản Space để xác minh danh tính và xuất bản plugin.',
+            'Phiên bản cục bộ này chưa được kết nối với LangBot Space. Cần có tài khoản LangBot để xác minh danh tính và xuất bản plugin.',
           guide:
-            'Vui lòng nhấp vào "Kết nối tài khoản Space" bên dưới để đăng nhập. Sau khi kết nối, bạn có thể xuất bản plugin.',
+            'Vui lòng nhấp vào "Kết nối tài khoản LangBot" bên dưới để đăng nhập. Sau khi kết nối, bạn có thể xuất bản plugin.',
         },
         noCreator: {
           title: 'Chưa tạo hồ sơ người sáng tạo trên Space',
@@ -1944,7 +1944,7 @@ const viVN = {
           description:
             'Tác giả trong tệp manifest là "{{author}}", nhưng mã định danh người sáng tạo trên Space là "@{{creator}}". Cả hai phải hoàn toàn khớp nhau.',
           guide:
-            'Cách giải quyết:\n1. Cập nhật manifest.yaml và đặt metadata.author thành "{{creator}}";\n2. Hoặc chuyển sang tài khoản Space khớp với "{{author}}". Sau đó nhấp "Làm mới trạng thái".',
+            'Cách giải quyết:\n1. Cập nhật manifest.yaml và đặt metadata.author thành "{{creator}}";\n2. Hoặc chuyển sang tài khoản LangBot khớp với "{{author}}". Sau đó nhấp "Làm mới trạng thái".',
         },
         pendingReview: {
           title: 'Đã có bản đệ trình đang chờ xem xét',

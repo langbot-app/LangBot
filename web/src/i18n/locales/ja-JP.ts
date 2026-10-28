@@ -1906,17 +1906,17 @@ const jaJP = {
       prerequisitesTitle: '公開前の準備',
       prerequisitesDescription:
         'マーケットプレイスにプラグインを公開する前に、アカウントの連携とクリエイタープロフィールの設定を行ってください。',
-      req1Title: 'LangBot Space アカウントを連携',
+      req1Title: 'LangBot アカウントを連携',
       req1Desc:
         'ローカルの LangBot インスタンスが LangBot Space クラウドにログインまたは連携されている必要があります。',
       reqBound: '連携済み',
       reqCompleted: '準備完了',
       req2Title: 'Space クリエイタープロフィールを設定',
       req2Desc:
-        '連携された Space アカウントにクリエイターIDが存在し、プラグインの author と一致している必要があります。',
-      req2WaitSpace: '先に Space アカウントの連携が必要です',
+        '連携された LangBot アカウントにクリエイターIDが存在し、プラグインの author と一致している必要があります。',
+      req2WaitSpace: '先に LangBot アカウントの連携が必要です',
       req2NoCreator:
-        '現在の Space アカウントにはクリエイターIDがまだ作成されていません',
+        '現在の LangBot アカウントにはクリエイターIDがまだ作成されていません',
       req2Mismatch: 'クリエイター識別子の不一致',
       req2MismatchDetail:
         'Space のクリエイターIDは @{{creator}} ですが、プラグインの author は {{author}} です。manifest.yaml の author を変更するかアカウントを切り替えてください。',

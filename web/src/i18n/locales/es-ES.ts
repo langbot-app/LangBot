@@ -1923,18 +1923,18 @@ const esES = {
       prerequisitesTitle: 'Requisitos previos de publicación',
       prerequisitesDescription:
         'Antes de publicar este plugin en el mercado, asegúrate de cumplir con los siguientes requisitos.',
-      req1Title: 'Requisito 1: Vincular cuenta de LangBot Space',
+      req1Title: 'Requisito 1: Vincular cuenta de LangBot',
       req1Desc:
         'La instancia local de LangBot debe estar iniciada sesión o vinculada a LangBot Space.',
       reqBound: 'Vinculado',
       reqCompleted: 'Completado',
       req2Title: 'Requisito 2: Crear identidad de creador en Space',
       req2Desc:
-        'La cuenta de Space vinculada debe tener una identidad de creador y coincidir con el autor del plugin.',
+        'La cuenta de LangBot vinculada debe tener una identidad de creador y coincidir con el autor del plugin.',
       req2WaitSpace:
-        'Completa primero el Requisito 1 (Vincular cuenta de Space)',
+        'Completa primero el Requisito 1 (Vincular cuenta de LangBot)',
       req2NoCreator:
-        'Esta cuenta de Space aún no tiene una identidad de creador',
+        'Esta cuenta de LangBot aún no tiene una identidad de creador',
       req2Mismatch: 'Discrepancia en la identidad de creador',
       req2MismatchDetail:
         'Tu identificador de creador en Space es @{{creator}}, pero el autor del plugin es {{author}}.',
@@ -1954,7 +1954,7 @@ const esES = {
         guideTitle: 'Instrucciones:',
         disabledTooltip:
           'Sigue las instrucciones del banner superior antes de subir',
-        bindButton: 'Conectar cuenta de Space',
+        bindButton: 'Conectar cuenta de LangBot',
         reauthButton: 'Reautenticar cuenta',
         createCreatorButton: 'Crear perfil de creador',
         manageCreatorButton: 'Administrar perfil de creador',
@@ -1964,14 +1964,14 @@ const esES = {
         readyToUpload: {
           title: 'Listo para publicar',
           description:
-            'La cuenta de Space y el perfil de creador están listos. Revisa los detalles a continuación y confirma la subida.',
+            'La cuenta de LangBot y el perfil de creador están listos. Revisa los detalles a continuación y confirma la subida.',
         },
         notConnected: {
-          title: 'Cuenta de Space no conectada',
+          title: 'Cuenta de LangBot no conectada',
           description:
-            'Esta instancia local aún no está conectada a una cuenta de LangBot Space. Se requiere una cuenta de Space para verificar tu identidad.',
+            'Esta instancia local aún no está conectada a una cuenta de LangBot. Se requiere una cuenta de LangBot para verificar tu identidad.',
           guide:
-            'Haz clic en "Conectar cuenta de Space" para iniciar sesión. Podrás publicar el plugin una vez conectada.',
+            'Haz clic en "Conectar cuenta de LangBot" para iniciar sesión. Podrás publicar el plugin una vez conectada.',
         },
         noCreator: {
           title: 'Perfil de creador de Space no creado',
@@ -1986,7 +1986,7 @@ const esES = {
           description:
             'El autor en manifest.yaml es "{{author}}", pero tu identificador en Space es "@{{creator}}". Deben coincidir exactamente.',
           guide:
-            'Soluciones:\n1. Actualiza manifest.yaml y establece metadata.author en "{{creator}}";\n2. O cambia a la cuenta de Space que coincida con "{{author}}". Luego haz clic en "Actualizar estado".',
+            'Soluciones:\n1. Actualiza manifest.yaml y establece metadata.author en "{{creator}}";\n2. O cambia a la cuenta de LangBot que coincida con "{{author}}". Luego haz clic en "Actualizar estado".',
         },
         pendingReview: {
           title: 'Ya existe un envío pendiente de revisión',
@@ -2025,7 +2025,7 @@ const esES = {
         sessionExpired:
           'La sesión de Space ha expirado. Vuelve a iniciar sesión',
         notConnected:
-          'Conecta una cuenta de LangBot Space antes de subir plugins',
+          'Conecta una cuenta de LangBot antes de subir plugins',
         packageFailed:
           'Error al compilar el paquete del plugin. Revisa el código y los archivos',
         inspectFailed:
