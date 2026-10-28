@@ -38,12 +38,12 @@ jobs:
         run: |
           printf 'UV_PROJECT_ENVIRONMENT=%s/local-agent-venv\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
-        run: uv sync --locked --extra dev
+      - name: Install dependencies with the latest stable SDK
+        run: uv sync --extra dev --upgrade-package langbot-plugin
         working-directory: plugins/Runner/LocalAgent
 
-      - name: Verify explicit-export SDK contract
-        run: uv run --no-sync python -c 'from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
+      - name: Report SDK version and verify explicit-export contract
+        run: uv run --no-sync python -c 'from importlib.metadata import version; print("langbot-plugin", version("langbot-plugin")); from inspect import signature; from langbot_plugin.api.entities.builtin.runner.context import RunnerContext; assert "paths" in signature(RunnerContext.export_box_files).parameters'
         working-directory: plugins/Runner/LocalAgent
 
       - name: Ruff check

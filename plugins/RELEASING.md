@@ -8,9 +8,12 @@ or use a Core release event to publish plugins.
 
 Choose one plugin from [catalog.json](catalog.json). Run its tests in its own
 environment following its README. CI entrypoints are the five `plugins-*-tests`
-workflows and the catalog workflow in `../.github/workflows/`; they preserve the existing
-published SDK baselines and independent interpreters. LocalAgent and the Runner
-test harness intentionally use different SDK pins. Do not merge their lockfiles.
+workflows and the catalog workflow in `../.github/workflows/`, using independent
+interpreters. LocalAgent requires `langbot-plugin>=0.7.18`; its CI installs the
+latest stable PyPI SDK with `uv sync --extra dev --upgrade-package langbot-plugin`
+and reports the installed version before checking contracts and tests. Its lockfile
+is a resolution snapshot. The other Runner tests retain their published SDK pins;
+keep these environments and lockfiles separate.
 
 From the repository root:
 

@@ -5,7 +5,7 @@ description = "Built-in agent with model fallback, tools, and knowledge retrieva
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "pydantic>=2.0.0",
-    "langbot-plugin>=0.7.18,<0.8.0",
+    "langbot-plugin>=0.7.18",
 ]
 
 [project.optional-dependencies]
