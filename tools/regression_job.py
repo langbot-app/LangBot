@@ -440,8 +440,7 @@ class Job:
             self.state['phase'] = 'traffic'
             self.save()
             summary = suite.run()
-            summary['passed'] = not summary['errors']
-            suite.write('summary.json', summary)
+            suite.finish(summary)
             result.update(completed=True, suite=summary, errors=list(summary['errors']))
             self.state['phase'] = 'finished'
             self.save()

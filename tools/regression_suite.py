@@ -80,6 +80,7 @@ def validate(profile):
         'smoke',
         'verification',
         'resource_limits',
+        'coverage_suite',
     }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
@@ -91,6 +92,8 @@ def validate(profile):
             not isinstance(profile[field], list) or any(not isinstance(item, dict) for item in profile[field])
         ):
             raise ValueError(f'{field} must be an array of objects')
+    if 'coverage_suite' in profile and not re.fullmatch(r'[a-z][a-z0-9_-]*', str(profile['coverage_suite'])):
+        raise ValueError('coverage_suite must be a stable suite identifier')
     cli = profile.get('cli', {})
     if not isinstance(cli, dict) or cli.keys() - {'config', 'executable'}:
         raise ValueError('cli accepts config and executable')
@@ -432,6 +435,15 @@ class Suite:
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2))
         path.chmod(0o600)
         return str(path)
+
+    def finish(self, result):
+        if self.profile.get('coverage_suite'):
+            from regression_coverage import write_report
+
+            coverage = write_report([self.output], self.output)
+            result['errors'].extend(coverage['evidence_errors'])
+        result['passed'] = not result['errors']
+        self.write('summary.json', result)
 
     def call(self, args, body=None, *, defer_bot_readback=False):
         command = [*self.cli, *args]
@@ -778,8 +790,7 @@ def main():
                         result['errors'].extend(suite.cleanup())
                     except (RuntimeError, ValueError, OSError, KeyError) as exc:
                         result['errors'].append(f'cleanup failed: {exc}')
-            result['passed'] = not result['errors']
-            suite.write('summary.json', result)
+            suite.finish(result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result['passed']:
             raise SystemExit(1)
