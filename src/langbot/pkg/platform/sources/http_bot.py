@@ -99,6 +99,7 @@ class _SyncCollector:
 class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """Standalone HTTP adapter (inbound webhook + outbound callbacks)."""
 
+    ap: typing.Any = pydantic.Field(default=None, exclude=True)
     bot_uuid: str = pydantic.Field(default='', exclude=True)
 
     listeners: dict[
@@ -377,7 +378,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return quart.jsonify({'code': 0, 'msg': 'reset', 'data': {'session_id': session_id, 'removed': removed}}), 200
 
     async def _reset_session(self, launcher_type: str, launcher_id: str) -> bool:
-        """Drop the matching session so the next message starts a fresh conversation."""
+        """Reset scoped Runner state and history through the shared context service."""
         execution_context = getattr(self.logger, 'execution_context', None)
         if (
             execution_context is None
@@ -387,30 +388,13 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             or not self.bot_uuid
         ):
             raise RuntimeError('http_bot reset requires a trusted execution scope')
-        expected_prefix = (
-            execution_context.instance_uuid,
-            execution_context.workspace_uuid,
-            execution_context.placement_generation,
-            self.bot_uuid,
-            launcher_type,
-        )
-
-        sess_mgr = self.ap.sess_mgr
-        before = len(sess_mgr.session_list)
-        sess_mgr.session_list = [
-            s for s in sess_mgr.session_list if not self._matches_session_scope(s, expected_prefix, launcher_id)
-        ]
-        return len(sess_mgr.session_list) < before
-
-    @staticmethod
-    def _matches_session_scope(session, expected_prefix: tuple[str, str, int, str, str], launcher_id: str) -> bool:
-        session_key = getattr(session, '_langbot_session_key', None)
-        return (
-            isinstance(session_key, tuple)
-            and len(session_key) == 6
-            and session_key[:5] == expected_prefix
-            and str(session_key[5]) == launcher_id
-        )
+        try:
+            await self.ap.monitoring_service.reset_session_context(
+                execution_context, self.bot_uuid, f'{launcher_type}_{launcher_id}'
+            )
+        except LookupError:
+            return False
+        return True
 
     # -- outbound -------------------------------------------------------------
 

@@ -172,7 +172,9 @@ Stitch by `session_id` + `sequence`; the turn is complete when
 
 ## 7. Reset a session
 
-Start a fresh conversation for a `session_id` (drops history):
+Start a fresh conversation for a `session_id`. This resets Runner conversation
+state and hides prior history from future model calls, while retaining monitoring
+records. Other sessions are unaffected; an active task must finish before reset.
 
 ```
 POST /bots/{bot_uuid}/reset
