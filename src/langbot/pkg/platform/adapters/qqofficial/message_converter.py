@@ -22,7 +22,12 @@ def _is_base64_data(value: str) -> bool:
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
-    async def yiri2target(message_chain: platform_message.MessageChain, target_type: str | None = None) -> list[dict]:
+    async def yiri2target(
+        message_chain: platform_message.MessageChain,
+        target_type: str | None = None,
+        *,
+        use_markdown: bool = False,
+    ) -> list[dict]:
         content_list: list[dict] = []
         text_parts: list[str] = []
 
@@ -39,6 +44,8 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                 text_parts.append(component.text)
                 continue
             elif isinstance(component, platform_message.At):
+                if target_type == 'group' and not use_markdown:
+                    continue
                 if target_type in {None, 'group', 'channel'}:
                     target = html.escape(str(component.target), quote=True)
                     text_parts.append(f'<qqbot-at-user id="{target}" />')
@@ -62,12 +69,18 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                 if component.id is not None:
                     content_list.append({'type': 'text', 'content': f'[Quote {component.id}]'})
                 if component.origin:
-                    content_list.extend(await QQOfficialMessageConverter.yiri2target(component.origin, target_type))
+                    content_list.extend(
+                        await QQOfficialMessageConverter.yiri2target(
+                            component.origin, target_type, use_markdown=use_markdown
+                        )
+                    )
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     if node.message_chain:
                         content_list.extend(
-                            await QQOfficialMessageConverter.yiri2target(node.message_chain, target_type)
+                            await QQOfficialMessageConverter.yiri2target(
+                                node.message_chain, target_type, use_markdown=use_markdown
+                            )
                         )
             else:
                 text = str(component)

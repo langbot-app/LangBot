@@ -141,7 +141,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         raw = await self._send_content_list(
             str(target_type),
             str(target_id),
-            await QQOfficialMessageConverter.yiri2target(message, self._normalize_target_type(str(target_type))),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(str(target_type)),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
         )
         return platform_events.MessageResult(raw={'results': raw})
 
@@ -158,7 +162,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         raw = await self._send_content_list(
             target_type,
             target_id,
-            await QQOfficialMessageConverter.yiri2target(message, self._normalize_target_type(target_type)),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(target_type),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
             msg_id=source.d_id,
         )
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})

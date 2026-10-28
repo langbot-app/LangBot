@@ -72,6 +72,8 @@ async def test_segmented_replies_share_sequences(captured_client, adapter_class,
     texts = [body['markdown']['content'] if markdown else body['content'] for body in payloads]
     if adapter_class is QQOfficialAdapter:
         mention = '@user-one' if event_type == 'C2C_MESSAGE_CREATE' else '<qqbot-at-user id="user-one" />'
+        if event_type != 'C2C_MESSAGE_CREATE' and not markdown:
+            mention = ''
         assert texts == [f'{mention}firstsecond', 'follow-up']
     else:
         assert texts == ['first', 'second', 'follow-up']
@@ -80,7 +82,7 @@ async def test_segmented_replies_share_sequences(captured_client, adapter_class,
 @pytest.mark.asyncio
 @pytest.mark.parametrize('markdown', [False, True])
 @pytest.mark.parametrize('event_type', ['GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'])
-async def test_group_reply_mentions_original_sender_in_one_message(captured_client, markdown, event_type):
+async def test_group_reply_mentions_follow_render_mode_in_one_message(captured_client, markdown, event_type):
     client, requests = captured_client
     adapter = QQOfficialAdapter.model_construct(
         bot=client, config={'enable-markdown-rendering': markdown}, logger=AsyncMock()
@@ -114,7 +116,8 @@ async def test_group_reply_mentions_original_sender_in_one_message(captured_clie
     assert payload['msg_id'] == 'source-one'
     assert payload['msg_seq'] == 1
     content = payload['markdown']['content'] if markdown else payload['content']
-    assert content == '<qqbot-at-user id="sender-openid" /> hello!'
+    assert content == ('<qqbot-at-user id="sender-openid" /> hello!' if markdown else ' hello!')
+    assert payload['msg_type'] == (2 if markdown else 0)
 
 
 @pytest.mark.asyncio
@@ -141,14 +144,59 @@ async def test_merged_text_preserves_media_order_and_sequences(captured_client):
     payloads = [body for path, body in requests if path.endswith('/messages')]
     assert [body['msg_seq'] for body in payloads] == [1, 2, 3]
     assert [body['msg_type'] for body in payloads] == [0, 7, 0]
-    assert payloads[0]['content'] == '<qqbot-at-user id="sender" /> image:'
+    assert payloads[0]['content'] == ' image:'
     assert payloads[2]['content'] == 'after image'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('markdown', [False, True])
+async def test_group_send_mentions_follow_render_mode(captured_client, markdown):
+    client, requests = captured_client
+    adapter = QQOfficialAdapter.model_construct(
+        bot=client, config={'enable-markdown-rendering': markdown}, logger=AsyncMock()
+    )
+    await adapter.send_message(
+        'group',
+        'group-one',
+        message.MessageChain([message.At(target='sender'), message.Plain(text='hello')]),
+    )
+    assert len(requests) == 1
+    payload = requests[0][1]
+    assert payload['msg_type'] == (2 if markdown else 0)
+    content = payload['markdown']['content'] if markdown else payload['content']
+    assert content == ('<qqbot-at-user id="sender" />hello' if markdown else 'hello')
+
+
+@pytest.mark.asyncio
+async def test_plain_group_mention_only_does_not_send_empty_message(captured_client):
+    client, requests = captured_client
+    adapter = QQOfficialAdapter.model_construct(bot=client, config={}, logger=AsyncMock())
+    await adapter.send_message('group', 'group-one', message.MessageChain([message.At(target='sender')]))
+    assert requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('markdown', [False, True])
+@pytest.mark.parametrize('wrapper', ['quote', 'forward'])
+async def test_nested_mentions_preserve_render_mode(markdown, wrapper):
+    nested = message.MessageChain([message.At(target='sender'), message.Plain(text='hello')])
+    component = (
+        message.Quote(origin=nested)
+        if wrapper == 'quote'
+        else message.Forward(node_list=[message.ForwardMessageNode(message_chain=nested)])
+    )
+    payloads = await QQOfficialMessageConverter.yiri2target(
+        message.MessageChain([component]), 'group', use_markdown=markdown
+    )
+    assert payloads == [{'type': 'text', 'content': '<qqbot-at-user id="sender" />hello' if markdown else 'hello'}]
 
 
 @pytest.mark.asyncio
 async def test_mentions_escape_ids_without_using_display_names():
     payloads = await QQOfficialMessageConverter.yiri2target(
-        message.MessageChain([message.At(target='bad"/><qqbot-at-everyone', display='Alice')]), 'group'
+        message.MessageChain([message.At(target='bad"/><qqbot-at-everyone', display='Alice')]),
+        'group',
+        use_markdown=True,
     )
     assert payloads == [{'type': 'text', 'content': '<qqbot-at-user id="bad&quot;/&gt;&lt;qqbot-at-everyone" />'}]
 

@@ -82,6 +82,14 @@ description: "通过 QQ 官方机器人 API（Webhook）接入 LangBot，在 QQ 
 
 比如域名为 `testlb.com`，那么请求地址中填写 `testlb.com/bots/xxxxxx-xxxxxx` ，点击确定配置。如果回调地址保存成功，那么意味着部署成功。若出现 `校验失败` 字样，请认真检查上述配置项是否填写正确。
 
+## 群聊回复与 At 组件
+
+在 QQ Official Omni 的机器人配置中，`启用 Markdown 渲染` 默认关闭。普通文本群聊回复不会输出 At 组件的原始标签；At 与正文仍合并处理，回复保留原消息的 `msg_id`。这不保证 QQ 客户端产生 @ 提醒。
+
+需要显式 @ 群成员时，请先确认机器人已获得 QQ 的 Markdown 消息权限，再开启该选项。Markdown 回复使用发送者的原始 OpenID 生成原生 At 标签；显示名或 QQ 号码不能代替 OpenID。部分客户端对标签的解析存在差异，需要在实际 QQ 客户端验收。LangBot 不会为实现 At 自动切换到可能无权限的 Markdown 模式。
+
+QQ 的[文本交互文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/text-chain.html)声明普通文本也支持 At，但已有[适配器实测反馈](https://github.com/nonebot/adapter-qq/issues/220)及用户验收发现普通文本会原样显示标签。因此 LangBot 对普通文本群聊采用上述兼容处理。
+
 ## 发布方式
 
 进入 `首页` 的发布流程 ，按照流程进行机器人发布，上线。

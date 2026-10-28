@@ -52,9 +52,10 @@ spec:
         zh_Hant: 啟用 Markdown 渲染
       description:
         en_US: Render non-stream C2C and QQ group text replies as Markdown. Channel messages always use plain text and are not
-          affected by this setting.
-        zh_Hans: 将非流式 C2C 私聊和 QQ 群聊文本回复渲染为 Markdown。频道消息始终以纯文本发送，不受此设置影响。
-        zh_Hant: 將非串流 C2C 私聊與 QQ 群聊文字回覆渲染為 Markdown。頻道訊息一律以純文字傳送，不受此設定影響。
+          affected by this setting. Group At components require Markdown; plain group replies omit them to avoid literal tags.
+          Enable only if your QQ bot has Markdown permission.
+        zh_Hans: 将非流式 C2C 私聊和 QQ 群聊文本回复渲染为 Markdown。群聊 At 组件需使用 Markdown；纯文本群聊回复会省略 At，避免显示原始标签。请确认机器人有 Markdown 权限后开启。频道消息始终以纯文本发送，不受此设置影响。
+        zh_Hant: 將非串流 C2C 私聊與 QQ 群聊文字回覆渲染為 Markdown。群聊 At 元件需使用 Markdown；純文字群聊回覆會省略 At，避免顯示原始標籤。請確認機器人有 Markdown 權限後開啟。頻道訊息一律以純文字傳送，不受此設定影響。
       type: boolean
       required: true
       default: false
