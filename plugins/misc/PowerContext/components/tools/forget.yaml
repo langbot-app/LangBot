@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: powercontext_forget
+  label:
+    en_US: Forget PowerContext Memory
+    zh_Hans: 遗忘 PowerContext 记忆
+  description:
+    en_US: Retire one exact PowerContext memory entry using its immutable citation.
+    zh_Hans: 使用不可变引用停用一条准确的 PowerContext 记忆。
+spec:
+  parameters:
+    type: object
+    properties:
+      memory_artifact_id:
+        type: string
+        description: citation.memory_ref.artifact_id returned by recall.
+      memory_revision:
+        type: integer
+        minimum: 1
+        description: citation.memory_ref.revision returned by recall.
+      entry_id:
+        type: string
+        description: citation.entry_id returned by recall.
+      entry_version_id:
+        type: string
+        description: citation.entry_version_id returned by recall.
+      reason:
+        type: string
+        description: Optional reason for retiring this entry.
+    required:
+      - memory_artifact_id
+      - memory_revision
+      - entry_id
+      - entry_version_id
+  llm_prompt: |
+    Retire an exact memory only when the user clearly asks to forget or remove it. First use
+    powercontext_recall to obtain the complete immutable citation. Never guess citation fields
+    and never retire memory proactively.
+execution:
+  python:
+    path: forget.py
+    attr: Forget

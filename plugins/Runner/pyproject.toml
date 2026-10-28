@@ -1,0 +1,60 @@
+[project]
+name = "langbot-agent-runner"
+version = "0.1.0"
+description = "Official Runner plugins for LangBot"
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+license = { text = "MIT" }
+authors = [{ name = "LangBot Team" }]
+keywords = ["langbot", "agent", "runner", "plugin"]
+
+dependencies = [
+    "langbot-plugin==0.7.4",
+    "pydantic>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "pyyaml>=6.0.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "dashscope>=1.20.0",
+    "pyjwt>=2.8.0",
+    "tboxsdk>=0.0.12",
+]
+
+[tool.pytest.ini_options]
+# LocalAgent and RunnerDemo run in fresh interpreters via tests/test_migrated_runners.py.
+# Their generic pkg/components/tests imports must not share the external Runner process.
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.hatch.build.targets.wheel]
+only-include = [
+    "LocalAgent",
+    "RunnerDemo",
+    "acp-agent-runner",
+    "claude-code-agent",
+    "codex-agent",
+    "coze-agent",
+    "dashscope-agent",
+    "deerflow-agent",
+    "dify-agent",
+    "docs",
+    "langflow-agent",
+    "n8n-agent",
+    "tbox-agent",
+    "weknora-agent",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

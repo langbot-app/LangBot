@@ -1,0 +1,13 @@
+{
+  "event_type": "group.member_joined",
+  "data": {
+    "member": {
+      "id": "demo-alice",
+      "nickname": "Alice"
+    },
+    "group": {
+      "id": "demo-community",
+      "name": "Runner Workshop"
+    }
+  }
+}

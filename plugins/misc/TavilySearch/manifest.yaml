@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: TavilySearch
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/TavilySearch
+  version: 0.1.5
+  description:
+    en_US: A search engine tool built specifically for AI agents (LLMs), 
+      delivering real-time, accurate, and factual results at speed.
+    zh_Hans: 专为人工智能代理 (LLM) 构建的搜索引擎工具，可快速提供实时、准确和真实的结果。
+    zh_Hant: Tavily 搜尋插件，將 Tavily AI 搜尋引擎暴露為 LangBot Tool。
+    ja_JP: Tavily検索プラグイン。Tavily AI検索エンジンをLangBot Toolとして公開します。
+    vi_VN: Plugin tìm kiếm Tavily, cung cấp công cụ tìm kiếm AI Tavily dưới dạng
+      LangBot Tool.
+    th_TH: ปลั๊กอินค้นหา Tavily เปิดเครื่องมือค้นหา AI Tavily เป็น LangBot Tool
+    es_ES: Plugin de búsqueda Tavily que expone el motor de búsqueda AI Tavily 
+      como una herramienta LangBot Tool.
+  label:
+    en_US: TavilySearch
+    zh_Hans: TavilySearch
+    zh_Hant: TavilySearch
+    ja_JP: TavilySearch
+    vi_VN: TavilySearch
+    th_TH: TavilySearch
+    es_ES: TavilySearch
+  icon: assets/icon.png
+spec:
+  config:
+  - name: tavily_api_key
+    type: string
+    label:
+      en_US: Tavily API Key
+      zh_Hans: Tavily API 密钥
+    description:
+      en_US: API key from Tavily, you can get it from https://tavily.com/
+      zh_Hans: Tavily 的 API 密钥，可以在 https://tavily.com/ 获取
+    required: true
+    default: ''
+  components:
+    Tool:
+      fromDirs:
+      - path: components/tools/
+execution:
+  python:
+    path: main.py
+    attr: TavilySearch
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

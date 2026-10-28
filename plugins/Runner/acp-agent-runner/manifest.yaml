@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: ACPAgentRunner
+  version: 0.1.16
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner
+  label:
+    en_US: ACP Agent Runner
+    zh_Hans: ACP Agent Runner
+    zh_Hant: ACP Agent Runner
+    ja_JP: ACP Agent Runner
+    th_TH: ACP Agent Runner
+    vi_VN: ACP Agent Runner
+    es_ES: ACP Agent Runner
+    ru_RU: ACP Agent Runner
+  description:
+    en_US: Run any Agent Client Protocol compatible coding agent as a LangBot Runner.
+    zh_Hans: 将任意兼容 Agent Client Protocol 的编码智能体作为 LangBot 运行器运行。
+    zh_Hant: 將任何相容 Agent Client Protocol 的程式設計代理作為 LangBot 運行器執行。
+    ja_JP: Agent Client Protocol 対応のコーディングエージェントを LangBot Runner として実行します。
+    th_TH: เรียกใช้เอเจนต์เขียนโค้ดที่รองรับ Agent Client Protocol เป็น LangBot Runner
+    vi_VN: Chạy tác nhân lập trình tương thích Agent Client Protocol dưới dạng LangBot Runner.
+    es_ES: Ejecuta cualquier agente de programación compatible con Agent Client Protocol como LangBot Runner.
+    ru_RU: Запускает совместимый с Agent Client Protocol агент программирования как LangBot Runner.
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: daemon-enabled
+      label:
+        en_US: Enable Runner Daemon Hub
+        zh_Hans: 启用 Runner Daemon Hub
+      description:
+        en_US: Start a WebSocket hub so user-side runner daemons can connect outward to this plugin.
+        zh_Hans: 启动 WebSocket Hub，让用户侧 runner daemon 主动连接到此插件。
+      type: boolean
+      required: false
+      default: false
+    - name: daemon-host
+      label:
+        en_US: Daemon Hub Host
+        zh_Hans: Daemon Hub 监听地址
+      description:
+        en_US: Bind host for the daemon WebSocket hub. Use 0.0.0.0 only when the container or reverse proxy intentionally exposes it.
+        zh_Hans: Daemon WebSocket Hub 的监听地址。仅在容器或反向代理明确暴露时使用 0.0.0.0。
+      type: string
+      required: false
+      default: 127.0.0.1
+    - name: daemon-port
+      label:
+        en_US: Daemon Hub Port
+        zh_Hans: Daemon Hub 端口
+      type: integer
+      required: false
+      default: 8766
+    - name: daemon-token
+      label:
+        en_US: Daemon Shared Token
+        zh_Hans: Daemon 共享 Token
+      description:
+        en_US: Optional shared token required from user-side runner daemons.
+        zh_Hans: 可选，用户侧 runner daemon 连接时必须提供的共享 Token。
+      type: secret
+      required: false
+      default: ''
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: AcpRunnerPlugin

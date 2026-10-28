@@ -1,0 +1,39 @@
+name: Plugins / Build package
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Exact catalog path, for example Runner/LocalAgent'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+      - name: Install the plugin build CLI independently of Core
+        run: |
+          uv venv "$RUNNER_TEMP/plugin-build"
+          uv pip install --python "$RUNNER_TEMP/plugin-build/bin/python" 'langbot-plugin==0.7.18' pyyaml
+          echo "$RUNNER_TEMP/plugin-build/bin" >> "$GITHUB_PATH"
+      - name: Build selected plugin without publishing
+        env:
+          PLUGIN_PATH: ${{ inputs.plugin }}
+        run: python plugins/scripts/package_plugin.py "$PLUGIN_PATH" --output "$RUNNER_TEMP/plugin-packages"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-package-${{ github.run_id }}
+          path: ${{ runner.temp }}/plugin-packages/*.lbpkg
+          if-no-files-found: error

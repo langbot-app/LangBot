@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="#2563EB"/>
+  <!-- 对话气泡 -->
+  <path d="M16 20a6 6 0 0 1 6-6h20a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H28l-8 7v-7h-0a6 6 0 0 1-4-6V20z" fill="#FFFFFF"/>
+  <!-- 客服耳机 -->
+  <path d="M26 30a6 6 0 0 1 12 0" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="24" y="29" width="3.6" height="6.4" rx="1.8" fill="#2563EB"/>
+  <rect x="36.4" y="29" width="3.6" height="6.4" rx="1.8" fill="#2563EB"/>
+  <!-- 人工接管圆点(红色未处理提醒意象) -->
+  <circle cx="46" cy="18" r="6" fill="#EF4444" stroke="#FFFFFF" stroke-width="2.4"/>
+</svg>

@@ -1,0 +1,162 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: DeerFlow
+    zh_Hans: DeerFlow
+  description:
+    en_US: Run a DeerFlow LangGraph agent as a LangBot Runner.
+    zh_Hans: 将 DeerFlow LangGraph 智能体作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: api-base
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础 URL
+      description:
+        en_US: The base URL of the DeerFlow server, such as http://127.0.0.1:2026.
+        zh_Hans: DeerFlow 服务器的基础 URL，例如 http://127.0.0.1:2026。
+      type: string
+      required: true
+      default: 'http://127.0.0.1:2026'
+    - name: api-key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+      description:
+        en_US: Optional API key for DeerFlow. Leave empty if the server does not require authentication.
+        zh_Hans: DeerFlow API 密钥。如果服务端不需要鉴权可留空。
+      type: secret
+      required: false
+      default: ''
+    - name: auth-header
+      label:
+        en_US: Authorization Header Value
+        zh_Hans: Authorization 请求头值
+      description:
+        en_US: Optional complete Authorization header value. When set, it takes precedence over api-key.
+        zh_Hans: 可选的完整 Authorization 请求头值。设置后优先于 api-key。
+      type: secret
+      required: false
+      default: ''
+    - name: assistant-id
+      label:
+        en_US: Assistant ID
+        zh_Hans: 助手 ID
+      description:
+        en_US: The DeerFlow assistant or graph id.
+        zh_Hans: DeerFlow 助手或图 ID。
+      type: string
+      required: true
+      default: 'lead_agent'
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show model, timeout, and recursion tuning controls.
+        zh_Hans: 显示模型、超时和递归调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: model-name
+      label:
+        en_US: Model Name
+        zh_Hans: 模型名称
+      description:
+        en_US: Optional model override forwarded to DeerFlow configurable.
+        zh_Hans: 可选的模型名称覆盖，会作为 configurable 转发给 DeerFlow。
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: thinking-enabled
+      label:
+        en_US: Enable Thinking
+        zh_Hans: 启用思考
+      description:
+        en_US: Whether to enable DeerFlow thinking mode.
+        zh_Hans: 是否启用 DeerFlow 思考模式。
+      type: boolean
+      required: false
+      default: false
+    - name: plan-mode
+      label:
+        en_US: Plan Mode
+        zh_Hans: 规划模式
+      description:
+        en_US: Whether to enable DeerFlow plan mode.
+        zh_Hans: 是否启用 DeerFlow 规划模式。
+      type: boolean
+      required: false
+      default: false
+    - name: subagent-enabled
+      label:
+        en_US: Enable Subagents
+        zh_Hans: 启用子代理
+      description:
+        en_US: Whether to enable parallel subagent execution.
+        zh_Hans: 是否启用并行子代理执行。
+      type: boolean
+      required: false
+      default: false
+    - name: max-concurrent-subagents
+      label:
+        en_US: Max Concurrent Subagents
+        zh_Hans: 最大并发子代理数
+      description:
+        en_US: Maximum number of concurrent subagents. Only effective when subagents are enabled.
+        zh_Hans: 最大并发子代理数。仅在启用子代理时生效。
+      type: integer
+      required: false
+      default: 3
+      show_if:
+        field: subagent-enabled
+        operator: eq
+        value: true
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_Hans: 超时时间
+      description:
+        en_US: Request timeout in seconds. DeerFlow runs may take a long time.
+        zh_Hans: 请求超时时间（秒）。DeerFlow 运行可能耗时较长。
+      type: integer
+      required: false
+      default: 300
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: recursion-limit
+      label:
+        en_US: Recursion Limit
+        zh_Hans: 递归上限
+      description:
+        en_US: LangGraph recursion limit for a single run.
+        zh_Hans: 单次运行的 LangGraph 递归上限。
+      type: integer
+      required: false
+      default: 1000
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: true
+    interrupt: false
+  permissions:
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

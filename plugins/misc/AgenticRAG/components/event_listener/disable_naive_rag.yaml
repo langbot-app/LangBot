@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: disable_naive_rag
+  label:
+    en_US: DisableNaiveRAG
+    zh_Hans: 禁用前置RAG
+spec:
+execution:
+  python:
+    path: disable_naive_rag.py
+    attr: DisableNaiveRAG

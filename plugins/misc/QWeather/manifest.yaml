@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: QWeather
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/QWeather
+  version: 0.1.6
+  description:
+    en_US: Display weather information using QWeather API
+    zh_Hans: 使用和风天气 API 显示天气信息
+    zh_Hant: 和風天氣插件，透過 Tool 呼叫提供天氣查詢功能。
+    ja_JP: QWeather天気プラグイン。Tool呼び出しで天気情報の照会機能を提供します。
+    vi_VN: Plugin thời tiết QWeather, cung cấp chức năng tra cứu thời tiết thông
+      qua Tool call.
+    th_TH: ปลั๊กอินสภาพอากาศ QWeather ให้ฟังก์ชันสอบถามสภาพอากาศผ่าน Tool call
+    es_ES: Plugin de clima QWeather que proporciona consultas meteorológicas 
+      mediante llamadas Tool.
+  label:
+    en_US: QWeather
+    zh_Hans: 和风天气
+    zh_Hant: QWeather
+    ja_JP: QWeather
+    vi_VN: QWeather
+    th_TH: QWeather
+    es_ES: QWeather
+  icon: assets/icon.png
+spec:
+  config:
+  - name: qweather_apikey
+    type: string
+    label:
+      en_US: QWeather API Key
+      zh_Hans: 和风天气 API Key
+    description:
+      en_US: API key from https://dev.qweather.com/
+      zh_Hans: 从 https://dev.qweather.com/ 获取的 API Key
+    default: ''
+    required: true
+  - name: qweather_apitype
+    type: select
+    label:
+      en_US: API Type
+      zh_Hans: API 类型
+    description:
+      en_US: Select your subscription type
+      zh_Hans: 选择您的订阅类型
+    options:
+    - name: '0'
+      label:
+        en_US: Free Subscription
+        zh_Hans: 免费订阅
+    - name: '1'
+      label:
+        en_US: Standard Subscription
+        zh_Hans: 标准订阅
+    - name: '2'
+      label:
+        en_US: Commercial Version
+        zh_Hans: 商业版
+    default: '0'
+    required: true
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: QWeatherPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -48,6 +48,8 @@ mkdir -p "${FPK_DIR}/app/langbot"
 cd "${SRC_ROOT}"
 rsync -a \
     --exclude='.git' \
+    --exclude='/plugins/' \
+    --exclude='*.lbpkg' \
     --exclude='.venv' \
     --exclude='__pycache__' \
     --exclude='*.pyc' \

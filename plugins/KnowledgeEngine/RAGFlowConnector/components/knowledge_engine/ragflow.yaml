@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: KnowledgeEngine
+metadata:
+  name: ragflow-connector
+  label:
+    en_US: RAGFlow Knowledge Base
+    zh_Hans: RAGFlow 知识库
+    ja_JP: RAGFlow 知識ベース
+  description:
+    en_US: Retrieve knowledge from or store files into RAGFlow knowledge bases
+    zh_Hans: 从 RAGFlow 知识库中检索知识或向其中存入文件
+    ja_JP: RAGFlow 知識ベースから知識を検索またはファイルを保存
+spec:
+  creation_schema:
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础地址
+        ja_JP: API ベース URL
+      description:
+        en_US: 'Base URL for RAGFlow API (e.g., http://localhost:9380 for local, or your server URL)'
+        zh_Hans: 'RAGFlow API 基础地址（本地版本使用 http://localhost:9380，或使用您的服务器地址）'
+        ja_JP: 'RAGFlow API ベース URL（ローカル版は http://localhost:9380、またはサーバーの URL）'
+      type: string
+      default: http://localhost:9380
+      required: true
+    - name: api_key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+        ja_JP: API キー
+      description:
+        en_US: 'API key from your RAGFlow instance'
+        zh_Hans: '从您的 RAGFlow 实例获取的 API Key'
+        ja_JP: 'RAGFlow インスタンスから取得した API Key'
+      type: password
+      required: true
+    - name: dataset_ids
+      label:
+        en_US: Dataset IDs
+        zh_Hans: 数据集 IDs
+        ja_JP: データセット ID
+      description:
+        en_US: 'Comma-separated dataset IDs to search (e.g., "id1,id2,id3")'
+        zh_Hans: '要搜索的数据集 ID，用逗号分隔（例如："id1,id2,id3"）'
+        ja_JP: '検索するデータセット ID（カンマ区切り、例："id1,id2,id3"）'
+      type: string
+      required: true
+    - name: auto_graphrag
+      label:
+        en_US: Auto Build Knowledge Graph
+        zh_Hans: 自动构建知识图谱
+        ja_JP: ナレッジグラフ自動構築
+      description:
+        en_US: 'Automatically trigger GraphRAG construction after file ingestion'
+        zh_Hans: '文件上传解析后自动触发知识图谱构建'
+        ja_JP: 'ファイル取り込み後に自動的にナレッジグラフを構築'
+      type: boolean
+      default: false
+      required: false
+    - name: auto_raptor
+      label:
+        en_US: Auto Build RAPTOR
+        zh_Hans: 自动构建 RAPTOR
+        ja_JP: RAPTOR 自動構築
+      description:
+        en_US: 'Automatically trigger RAPTOR hierarchical summarization after file ingestion'
+        zh_Hans: '文件上传解析后自动触发 RAPTOR 层次摘要构建'
+        ja_JP: 'ファイル取り込み後に自動的に RAPTOR 階層要約を構築'
+      type: boolean
+      default: false
+      required: false
+  retrieval_schema:
+    - name: vector_similarity_weight
+      label:
+        en_US: Vector Similarity Weight
+        zh_Hans: 向量相似度权重
+        ja_JP: ベクトル類似性の重み
+      description:
+        en_US: 'Balance between keyword and vector search (0=keyword only, 1=vector only, default 0.3)'
+        zh_Hans: '关键词与向量检索的平衡（0=纯关键词，1=纯向量，默认 0.3）'
+        ja_JP: 'キーワードとベクトル検索のバランス（0=キーワードのみ、1=ベクトルのみ、デフォルト 0.3）'
+      type: float
+      default: 0.3
+      required: false
+    - name: top_k
+      label:
+        en_US: Top K
+        zh_Hans: 候选数量
+        ja_JP: 候補数
+      description:
+        en_US: 'Maximum number of candidates to consider before pagination'
+        zh_Hans: '分页前考虑的最大候选数量'
+        ja_JP: 'ページネーション前に考慮する最大候補数'
+      type: integer
+      default: 1024
+      required: false
+    - name: page_size
+      label:
+        en_US: Page Size
+        zh_Hans: 返回数量
+        ja_JP: ページサイズ
+      description:
+        en_US: 'Number of results to return'
+        zh_Hans: '返回的结果数量'
+        ja_JP: '返す結果の数'
+      type: integer
+      default: 30
+      required: false
+    - name: similarity_threshold
+      label:
+        en_US: Similarity Threshold
+        zh_Hans: 相似度阈值
+        ja_JP: 類似度しきい値
+      description:
+        en_US: 'Minimum similarity score (0-1)'
+        zh_Hans: '最小相似度分数 (0-1)'
+        ja_JP: '最小類似性スコア (0-1)'
+      type: float
+      default: 0.2
+      required: false
+    - name: keyword
+      label:
+        en_US: LLM Keyword Extraction
+        zh_Hans: LLM 关键词提取
+        ja_JP: LLM キーワード抽出
+      description:
+        en_US: 'Use LLM to extract keywords from query to enhance retrieval (increases response time)'
+        zh_Hans: '使用 LLM 从查询中提取关键词以增强检索（会增加响应时间）'
+        ja_JP: 'LLM でクエリからキーワードを抽出して検索を強化（応答時間が増加）'
+      type: boolean
+      default: false
+      required: false
+    - name: rerank_id
+      label:
+        en_US: Rerank Model ID
+        zh_Hans: 重排序模型 ID
+        ja_JP: リランクモデル ID
+      description:
+        en_US: 'Rerank model ID configured in RAGFlow (e.g., BAAI/bge-reranker-v2-m3). Leave empty to disable'
+        zh_Hans: '在 RAGFlow 中配置的重排序模型 ID（如 BAAI/bge-reranker-v2-m3），留空则不启用'
+        ja_JP: 'RAGFlow で設定されたリランクモデル ID（例：BAAI/bge-reranker-v2-m3）、空欄で無効'
+      type: string
+      default: ''
+      required: false
+    - name: use_kg
+      label:
+        en_US: Knowledge Graph
+        zh_Hans: 知识图谱
+        ja_JP: ナレッジグラフ
+      description:
+        en_US: 'Enable knowledge graph retrieval (increases response time)'
+        zh_Hans: '启用知识图谱检索（会增加响应时间）'
+        ja_JP: 'ナレッジグラフ検索を有効化（応答時間が増加）'
+      type: boolean
+      default: false
+      required: false
+execution:
+  python:
+    path: engine.py
+    attr: RAGFlowConnector

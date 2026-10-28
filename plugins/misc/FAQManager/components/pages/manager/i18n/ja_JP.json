@@ -1,0 +1,14 @@
+{
+  "title": "FAQ 管理",
+  "searchPlaceholder": "FAQを検索...",
+  "addNew": "新しいエントリを追加",
+  "questionPlaceholder": "質問",
+  "answerPlaceholder": "回答",
+  "add": "追加",
+  "edit": "編集",
+  "delete": "削除",
+  "save": "保存",
+  "cancel": "キャンセル",
+  "entries": "件",
+  "empty": "FAQエントリがありません。上から追加してください。"
+}

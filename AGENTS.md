@@ -46,6 +46,7 @@ Run tests in Linux to match CI; on Windows, use Linux containers through `wslc` 
 
 - Public documentation source: `docs/`; published at https://langbot.app/docs/. `langbot-app/langbot-docs` is a legacy archive; edit here.
 - Architecture map: `ARCHITECTURE.md`.
+- Official plugin sources: `plugins/`, with independent CI, dependencies and Marketplace releases; follow `plugins/AGENTS.md` and `plugins/RELEASING.md`. Never bundle this tree in Core artifacts.
 - Dev environment guide: https://langbot.app/docs/zh/develop/dev-config.
 - Plugin runtime / CLI / SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.
 - API-key auth: `dev-docs/API_KEY_AUTH.md`.

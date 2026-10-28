@@ -63,6 +63,8 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ## 快速开始
 
+官方插件源码索引：[plugins/README.md](plugins/README.md) · [机器可读目录](plugins/catalog.json) · [插件独立上架流程](plugins/RELEASING.md)。插件保持独立安装，不随 Core 发版打包。
+
 ### ☁️ LangBot Cloud（推荐）
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)

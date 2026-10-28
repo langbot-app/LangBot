@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: EssentialCommands
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/EssentialCommands
+  version: 0.1.10
+  description:
+    en_US: Essential commands, previously included in LangBot
+    zh_Hans: 实用命令, 以前包含在 LangBot 中
+    zh_Hant: 基礎指令插件，提供管理對話、查看幫助和配置等基本指令。
+    ja_JP: 基本コマンドプラグイン。会話管理、ヘルプ表示、設定確認などの基本コマンドを提供します。
+    vi_VN: Plugin lệnh cơ bản, cung cấp các lệnh quản lý hội thoại, xem trợ giúp và
+      cấu hình.
+    th_TH: ปลั๊กอินคำสั่งพื้นฐาน ให้คำสั่งจัดการการสนทนา ดูความช่วยเหลือ และการตั้งค่า
+    es_ES: Plugin de comandos esenciales que proporciona comandos básicos para gestionar
+      conversaciones, ver ayuda y configuración.
+  label:
+    en_US: EssentialCommands
+    zh_Hans: EssentialCommands
+    zh_Hant: EssentialCommands
+    ja_JP: EssentialCommands
+    vi_VN: EssentialCommands
+    th_TH: EssentialCommands
+    es_ES: EssentialCommands
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: language
+    label:
+      en_US: Language
+      zh_Hans: 语言
+    type: select
+    options:
+    - name: zh_Hans
+      label:
+        en_US: Chinese
+        zh_Hans: 简体中文
+    - name: en_US
+      label:
+        en_US: English
+        zh_Hans: 英文
+    default: en_US
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: EssentialCommands
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -48,6 +48,7 @@ jobs:
     if: >-
       github.repository == 'langbot-app/LangBot' &&
       github.event_name == 'release' && github.event.action == 'published' &&
+      !startsWith(github.event.release.tag_name, 'plugins/') &&
       github.event.release.draft == false && github.event.release.prerelease == false
     needs: tests
     runs-on: ubuntu-24.04

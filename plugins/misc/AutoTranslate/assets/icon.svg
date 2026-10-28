@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <circle cx="50" cy="50" r="45" fill="#4A90D9" />
+  <text x="50" y="38" text-anchor="middle" font-size="24" font-weight="bold" fill="white" font-family="Arial">🌐</text>
+  <text x="50" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="white" font-family="Arial">A→中</text>
+</svg>

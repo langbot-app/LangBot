@@ -14,9 +14,9 @@ latest-LocalAgent Space-resolution work in PR #2632.
 ## Official plugin identity boundary
 
 The source lock in `tests/fixtures/legacy_plugin_identity_sources.json` records
-the official repository, immutable revision, and SHA-256 of the consumed Python
-source files. CI checks out that revision with read-only access
-and no persisted Git credentials. Tests verify file digests before executing the
+the official in-tree source root and SHA-256 of the consumed Python source files.
+CI uses `plugins/` from the same Core checkout, without a second plugin checkout.
+Tests verify file digests before executing the
 actual identity methods, their genuine configuration-error classes, and their
 real `scoped_identity` dependency. Vendor HTTP clients are not constructed.
 
@@ -25,9 +25,9 @@ from a hard-coded sibling checkout. Supported current plugins intentionally
 namespace IDs by Workspace or trusted installation, so merely provisioning that
 old test produced false failures. The current fixture is:
 
-- Official repository: `langbot-app/langbot-plugins`
-- Revision: `7ad54b1a139d88113bc55128326800ed29779737`
-- DifyAgent 0.2.3; N8nAgent, CozeAgent and TboxAgent 0.2.2
+- Official repository: `langbot-app/LangBot`, source root `plugins/`
+- Revision: `in-tree`; the checkout revision selects both Core and plugins
+- Plugin versions are indexed in `plugins/catalog.json`
 - All exceed Core's current migration minimums (0.1.10; TboxAgent 0.1.8)
 
 The 19 Host provenance/resume tests retain their exact raw-identity assertions.
@@ -46,7 +46,7 @@ claim current compatibility.
 To run with an official checkout at the locked revision:
 
 ```bash
-export LANGBOT_LEGACY_PLUGIN_ROOT=/absolute/path/to/langbot-plugins
+export LANGBOT_LEGACY_PLUGIN_ROOT="$PWD/plugins"
 uv run --frozen pytest --required-suite plugin_identity -q -rs
 ```
 

@@ -197,4 +197,4 @@ Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline �
 | **LangBot**（后端） | 适配器实现、事件路由引擎、Bot/Agent 实体、Runner Host 编排 |
 | **LangBot**（前端） | Bot 事件处理器编排面板 |
 | **langbot-wiki** | 新架构文档、插件开发指南更新、适配器开发指南 |
-| **langbot-plugin-demo** | 示例更新（使用新事件和 API） |
+| **LangBot/plugins** | 示例更新（使用新事件和 API，插件保持独立发布） |

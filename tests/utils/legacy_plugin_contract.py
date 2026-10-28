@@ -18,7 +18,9 @@ def verified_plugin_root(*, files_key: str = 'files') -> Path:
     """Allow optional local execution, but never skip an explicitly provisioned source."""
     configured = os.environ.get('LANGBOT_LEGACY_PLUGIN_ROOT')
     if configured is None:
-        pytest.skip('set LANGBOT_LEGACY_PLUGIN_ROOT to the official revision in legacy_plugin_identity_sources.json')
+        configured = str(Path(__file__).resolve().parents[2] / 'plugins')
+        if not Path(configured).is_dir():
+            pytest.skip('official plugin sources are only available in the source checkout')
     if not configured.strip():
         pytest.fail('LANGBOT_LEGACY_PLUGIN_ROOT is set but empty', pytrace=False)
     root = Path(configured).resolve()

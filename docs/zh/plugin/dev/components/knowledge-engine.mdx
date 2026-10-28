@@ -114,7 +114,7 @@ class SimpleRag(KnowledgeEngine):
 
 ## 插件处理
 
-默认会生成如下代码（`components/knowledge_engine/<引擎名称>.py`），您需要实现 `ingest`、`retrieve`、`delete_document` 三个核心方法。完整代码可在 [langbot-plugin-demo](https://github.com/langbot-app/langbot-plugin-demo) 的 `SimpleKnowledgeEngine` 中找到。
+默认会生成如下代码（`components/knowledge_engine/<引擎名称>.py`），您需要实现 `ingest`、`retrieve`、`delete_document` 三个核心方法。完整实现可参考官方 [LangRAG 知识引擎](https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LangRAG)。
 
 ```python
 from langbot_plugin.api.definition.components.knowledge_engine.engine import KnowledgeEngine, KnowledgeEngineCapability

@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: KnowledgeEngine
+metadata:
+  name: fastgpt-connector
+  label:
+    en_US: FastGPT Knowledge Base
+    zh_Hans: FastGPT 知识库
+    ja_JP: FastGPT ナレッジベース
+  description:
+    en_US: Retrieve knowledge from FastGPT knowledge bases
+    zh_Hans: 从 FastGPT 知识库中检索知识
+    ja_JP: FastGPT ナレッジベースから知識を取得
+spec:
+  creation_schema:
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础地址
+        ja_JP: API ベース URL
+      description:
+        en_US: 'Base URL for FastGPT API (e.g., http://localhost:3000 for local, or your server URL)'
+        zh_Hans: 'FastGPT API 基础地址（本地版本使用 http://localhost:3000，或使用您的服务器地址）'
+        ja_JP: 'FastGPT API ベース URL（ローカル版は http://localhost:3000、またはサーバーの URL）'
+      type: string
+      default: http://localhost:3000
+      required: true
+    - name: api_key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+        ja_JP: API キー
+      description:
+        en_US: 'API key from your FastGPT instance (format: fastgpt-xxxxx)'
+        zh_Hans: '从您的 FastGPT 实例获取的 API Key（格式：fastgpt-xxxxx）'
+        ja_JP: 'FastGPT インスタンスから取得した API Key（フォーマット：fastgpt-xxxxx）'
+      type: password
+      required: true
+    - name: dataset_id
+      label:
+        en_US: Dataset ID
+        zh_Hans: 数据集 ID
+        ja_JP: データセット ID
+      description:
+        en_US: 'The ID of the FastGPT knowledge base/dataset'
+        zh_Hans: 'FastGPT 知识库/数据集的 ID'
+        ja_JP: 'FastGPT ナレッジベース/データセットの ID'
+      type: string
+      required: true
+    - name: search_mode
+      label:
+        en_US: Search Mode
+        zh_Hans: 搜索模式
+        ja_JP: 検索モード
+      description:
+        en_US: 'The search method to use'
+        zh_Hans: '使用的搜索方法'
+        ja_JP: '使用する検索方法'
+      type: select
+      default: embedding
+      options:
+        - name: embedding
+          label:
+            en_US: Embedding Search
+            zh_Hans: 向量搜索
+            ja_JP: 埋め込み検索
+        - name: fullTextRecall
+          label:
+            en_US: Full-Text Recall
+            zh_Hans: 全文检索
+            ja_JP: 全文検索
+        - name: mixedRecall
+          label:
+            en_US: Mixed Recall
+            zh_Hans: 混合检索
+            ja_JP: 混合検索
+      required: false
+    - name: limit
+      label:
+        en_US: Token Limit
+        zh_Hans: Token 限制
+        ja_JP: トークン制限
+      description:
+        en_US: 'Maximum number of tokens to retrieve'
+        zh_Hans: '检索的最大 token 数量'
+        ja_JP: '取得する最大トークン数'
+      type: integer
+      default: 5000
+      required: false
+    - name: similarity
+      label:
+        en_US: Similarity Threshold
+        zh_Hans: 相似度阈值
+        ja_JP: 類似度しきい値
+      description:
+        en_US: 'Minimum similarity score (0-1)'
+        zh_Hans: '最小相似度分数 (0-1)'
+        ja_JP: '最小類似度スコア (0-1)'
+      type: float
+      default: 0.0
+      required: false
+    - name: using_rerank
+      label:
+        en_US: Use Re-ranking
+        zh_Hans: 使用重排序
+        ja_JP: リランキングを使用
+      description:
+        en_US: 'Whether to use re-ranking for better results'
+        zh_Hans: '是否使用重排序以获得更好的结果'
+        ja_JP: 'より良い結果を得るためにリランキングを使用するかどうか'
+      type: boolean
+      default: false
+      required: false
+    - name: dataset_search_using_extension_query
+      label:
+        en_US: Use Query Optimization
+        zh_Hans: 使用查询优化
+        ja_JP: クエリ最適化を使用
+      description:
+        en_US: 'Whether to use query optimization with extension models'
+        zh_Hans: '是否使用扩展模型进行查询优化'
+        ja_JP: '拡張モデルを使用してクエリ最適化を行うかどうか'
+      type: boolean
+      default: false
+      required: false
+    - name: dataset_search_extension_model
+      label:
+        en_US: Extension Model
+        zh_Hans: 扩展模型
+        ja_JP: 拡張モデル
+      description:
+        en_US: 'Model for query optimization (only when query optimization is enabled)'
+        zh_Hans: '查询优化使用的模型（仅在启用查询优化时有效）'
+        ja_JP: 'クエリ最適化に使用するモデル（クエリ最適化が有効な場合のみ）'
+      type: string
+      default: ''
+      required: false
+    - name: dataset_search_extension_bg
+      label:
+        en_US: Extension Background
+        zh_Hans: 扩展背景
+        ja_JP: 拡張背景
+      description:
+        en_US: 'Background description for query optimization (only when query optimization is enabled)'
+        zh_Hans: '查询优化的背景描述（仅在启用查询优化时有效）'
+        ja_JP: 'クエリ最適化の背景説明（クエリ最適化が有効な場合のみ）'
+      type: string
+      default: ''
+      required: false
+  retrieval_schema: []
+execution:
+  python:
+    path: engine.py
+    attr: FastGPTConnector

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: summarize_group_chat
+  label:
+    en_US: Summarize Group Chat
+    zh_Hans: 总结群聊
+  description:
+    en_US: 'Summarize recent group chat messages using AI'
+    zh_Hans: '使用 AI 总结最近的群聊消息'
+spec:
+  parameters:
+    type: object
+    properties:
+      count:
+        type: integer
+        description: 'Number of recent messages to summarize. If not specified, uses the default from plugin config.'
+      hours:
+        type: number
+        description: 'Summarize messages from the last N hours. Takes priority over count if both specified.'
+    required: []
+  llm_prompt: 'Summarize recent group chat messages. Use this when a user asks for a chat summary, what they missed, or wants to catch up on the conversation. You can specify a message count or time range in hours.'
+execution:
+  python:
+    path: summarize_group_chat.py
+    attr: SummarizeGroupChat

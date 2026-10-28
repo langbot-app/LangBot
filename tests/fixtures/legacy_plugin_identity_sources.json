@@ -1,6 +1,6 @@
 {
-  "repository": "langbot-app/langbot-plugins",
-  "revision": "998b822c412d2604f3c5eca91f04519d98a51b15",
+  "repository": "langbot-app/LangBot",
+  "revision": "in-tree",
   "contract": "Current dedicated-workspace and trusted shared-installation identity; see each plugin SHARED_RUNTIME.md.",
   "files": {
     "Runner/dify-agent/components/runner/default.py": "8ca64052fb8df872272726aa060e21ba3b4afa454346b6babcc7e9d2df600980",
@@ -18,24 +18,25 @@
   },
   "local_agent_files": {
     "Runner/LocalAgent/assets/icon.svg": "7e1cb51793e898fca810ec72ba6fe9af377074f52139cdd56c93e87f3459f964",
-    "Runner/LocalAgent/components/runner/default.py": "e548096b910e1faaa4a97a2f7f3e63e42a8227bc789e296ff546c07ab27f3e55",
+    "Runner/LocalAgent/components/runner/default.py": "49f80640d5b26442516b210cd9e65c452c9ce3a9909d6dbd1aa05e5bf3b232ac",
     "Runner/LocalAgent/components/runner/default.yaml": "c1364cf0f211162bb701e27ed92b351fd9ff4cfa0b4469cfeb83ad58136cdf47",
     "Runner/LocalAgent/main.py": "0cde45d7f6f411563fbded09be70d0a497c7c7999b5eaa27f83052383348277f",
-    "Runner/LocalAgent/manifest.yaml": "e71e03f2670dade9ae43e58ddf787bb87254ba9f05e1a691822679f3641bb885",
+    "Runner/LocalAgent/manifest.yaml": "bc04121a6ffe73fee06c70634726216a6c45b656a350fdab7807d06403cad2cf",
     "Runner/LocalAgent/pkg/__init__.py": "ce5142b4971e8d7945fb3c202bacbc28011b033de0ddcb612d5d29106d6985ec",
     "Runner/LocalAgent/pkg/agent_core/__init__.py": "56e95f2391f796e17aee6a168603853ea78b59df97a136bfa33532aede2fa413",
     "Runner/LocalAgent/pkg/agent_core/langbot.py": "6bc0e6ee89e8ba3705d14545169f25f54a0c56dc5da89bd8384b3e22e3f21fea",
-    "Runner/LocalAgent/pkg/agent_core/loop.py": "6a3d67945dee199b4820a9788b207e148355420fa1216bbb82face2fe361394f",
+    "Runner/LocalAgent/pkg/agent_core/loop.py": "205226e2b6c434369df7260edcfddeaa7b022bf29318c61abec17f36a482ba7e",
     "Runner/LocalAgent/pkg/agent_core/types.py": "78053571e662fd16d42b9f6bd506f282c54adec317cbc8cbf6ed0deab80df4e0",
-    "Runner/LocalAgent/pkg/box.py": "9ddc2e670234a4be0d0946d9acc376748c8a6fa7714f47c30f8355a1739e499f",
+    "Runner/LocalAgent/pkg/box.py": "9c864f944a4c104ffa34ef7c12451152afe29324721965a69e4cefaeb9f2f125",
     "Runner/LocalAgent/pkg/config.py": "8dee31aecbcdba4c1e79e1735499c3c7ee826ec395032b045169652b38216faf",
-    "Runner/LocalAgent/pkg/context_pipeline.py": "8f338aa10e9ee384719f215f6e87607baa6caae970fd0aab04303103502c5298",
+    "Runner/LocalAgent/pkg/context_pipeline.py": "0afa1a4fbb60827f20f76ff97a21ca88ce3adf266d07201fefdd404fc6d2ce76",
     "Runner/LocalAgent/pkg/messages.py": "620a0a225e95c5f2c8c6e977801413e553d4a1da3fb2ddea14e527ad41f7a3af",
     "Runner/LocalAgent/pkg/model_calling.py": "3ebdb8900bb0de5b14e84bf027cc4ff01e59a4669d28dcede7ca3dcea3a3de4c",
     "Runner/LocalAgent/pkg/rag.py": "ea407af8d4f6fe5b00cde72c7d85ccc541d6fc46254188c372351d93da4a1f0f",
-    "Runner/LocalAgent/pkg/run_assembly.py": "ab08c6a18a108cfc6048f158b09ad874577451072dce0bbaa3aa9d15c33a3afe",
-    "Runner/LocalAgent/pyproject.toml": "f518d499922583c140d5f279bfaacc6f50c1b576e5cec15d170199266820ef84",
-    "Runner/LocalAgent/requirements.txt": "dd4542c179fa98c8341e7a0b582eb741a70633cd621f4509d09a9ff5c7e52c76",
-    "Runner/LocalAgent/uv.lock": "39d5851bd787d5207cad0b853b123b02e938fa00124d6f48e2f07c9f3bb770c2"
-  }
+    "Runner/LocalAgent/pkg/run_assembly.py": "e1e2dd0029c976b6c0eb3763e5f94a369fd1909e8bf796a2cb84658c59727630",
+    "Runner/LocalAgent/pyproject.toml": "7f75c366ef0c6817c84cc906c9cd2783df9782876983ae6b15cb299a27409e62",
+    "Runner/LocalAgent/requirements.txt": "5c91c75dba82f776218d1e63541df3d2f444bb1f9354ea991826df57dad401c9",
+    "Runner/LocalAgent/uv.lock": "fc82991d3b2fadff999198c3c1ab35fc04eb8f64aa3f1f464aa93c87afa5ae01"
+  },
+  "root": "plugins"
 }

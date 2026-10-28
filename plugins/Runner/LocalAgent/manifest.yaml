@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: LocalAgent
+  version: 0.2.2
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent
+  label:
+    en_US: Local Agent
+    zh_Hans: 内置 Agent
+    zh_Hant: 內建 Agent
+    ja_JP: 組み込みエージェント
+    th_TH: เอเจนต์ในตัว
+    vi_VN: Tác nhân tích hợp
+    es_ES: Agente integrado
+    ru_RU: Встроенный агент
+  description:
+    en_US: Built-in agent with model fallback, tools, and knowledge retrieval.
+    zh_Hans: 内置 Agent，支持模型 fallback、工具调用和知识库检索。
+    zh_Hant: 內建 Agent，支援模型備援、工具呼叫與知識庫檢索。
+    ja_JP: モデルのフォールバック、ツール呼び出し、ナレッジ検索に対応する組み込みエージェントです。
+    th_TH: เอเจนต์ในตัวที่รองรับโมเดลสำรอง การเรียกใช้เครื่องมือ และการค้นคืนความรู้
+    vi_VN: Tác nhân tích hợp hỗ trợ mô hình dự phòng, gọi công cụ và truy xuất tri thức.
+    es_ES: Agente integrado con modelos de respaldo, herramientas y recuperación de conocimiento.
+    ru_RU: Встроенный агент с резервными моделями, инструментами и поиском по базе знаний.
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
+  python:
+    path: main.py
+    attr: LocalAgentPlugin

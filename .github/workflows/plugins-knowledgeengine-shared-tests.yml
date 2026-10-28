@@ -1,0 +1,58 @@
+name: Plugins / KnowledgeEngine shared SDK verification
+
+on:
+  push:
+    paths:
+      - "plugins/pytest.ini"
+      - 'plugins/KnowledgeEngine/**'
+      - '.github/workflows/plugins-knowledgeengine-shared-tests.yml'
+  pull_request:
+    paths:
+      - "plugins/pytest.ini"
+      - 'plugins/KnowledgeEngine/**'
+      - '.github/workflows/plugins-knowledgeengine-shared-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+      - name: Install released SDK and test dependencies
+        run: |
+          uv venv
+          uv pip install 'https://files.pythonhosted.org/packages/f2/c7/c870377771cbe27e047b19778b5f249b15efef52409358901af94d13e6c0/langbot_plugin-0.7.4-py3-none-any.whl#sha256=596ecd776c13efa6f6cfe178463dc4a967653238548c9569195cdbb5aa47506e' pytest pytest-asyncio \
+            -r KnowledgeEngine/LangRAG/requirements.txt \
+            -r KnowledgeEngine/DifyDatasetsConnector/requirements.txt \
+            -r KnowledgeEngine/FastGPTConnector/requirements.txt \
+            -r KnowledgeEngine/RAGFlowConnector/requirements.txt
+      - name: Behavioral regressions (fake Host and HTTP provider)
+        run: .venv/bin/python -m pytest KnowledgeEngine/certification-tests -q
+      - name: LangRAG legacy unit and benchmark fixtures
+        working-directory: plugins/KnowledgeEngine/LangRAG
+        run: ../../.venv/bin/python -m unittest discover -s tests -v
+      - name: LongTermMemory regressions
+        working-directory: plugins/KnowledgeEngine/LongTermMemory
+        run: PYTHONPATH=. ../../.venv/bin/python -m pytest tests -q
+      - name: Exact archives, real dependency prepare, discovery and RPC
+        run: .venv/bin/python KnowledgeEngine/certification-tests/verify_candidates.py --evidence "$RUNNER_TEMP/ke-evidence"
+      - name: Retain unsigned candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledgeengine-unsigned-candidates
+          path: |
+            ${{ runner.temp }}/ke-evidence/*.json
+            ${{ runner.temp }}/ke-evidence/*.log
+            ${{ runner.temp }}/ke-evidence/packages/**/*.lbpkg

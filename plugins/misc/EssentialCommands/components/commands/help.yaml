@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: help
+  label:
+    en_US: Help
+    zh_Hans: Help
+  description:
+    en_US: 'Show help message'
+    zh_Hans: 'Show help message'
+spec:
+execution:
+  python:
+    path: help.py
+    attr: Help

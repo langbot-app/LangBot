@@ -1,0 +1,45 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: observer
+  label:
+    en_US: Event observer
+    zh_Hans: 事件观察员
+  description:
+    en_US: Observe any routed event without tools or outgoing messages.
+    zh_Hans: 观察路由至此实例的任意事件，不调用工具，不发送消息。
+spec:
+  usages: [event]
+  events:
+  - '*'
+  config:
+  - name: language
+    type: select
+    label:
+      en_US: Output language
+      zh_Hans: 输出语言
+    default: zh_Hans
+    required: true
+    options:
+    - name: zh_Hans
+      label:
+        en_US: Simplified Chinese
+        zh_Hans: 简体中文
+    - name: en_US
+      label:
+        en_US: English
+        zh_Hans: 英语
+  - name: include_payload
+    type: boolean
+    label:
+      en_US: Include event payload in logs
+      zh_Hans: 在日志中记录事件载荷
+    default: false
+    required: true
+  capabilities:
+    tool_calling: false
+  permissions: {}
+execution:
+  python:
+    path: observer.py
+    attr: ObserverProcessor

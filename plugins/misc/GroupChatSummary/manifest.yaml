@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: GroupChatSummary
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GroupChatSummary
+  version: 0.1.4
+  description:
+    en_US: Summarize group chat messages using LLM. Supports manual commands, LLM
+      tool calls, and scheduled auto-summaries.
+    zh_Hans: 使用 LLM 总结群聊消息。支持手动命令、LLM 工具调用和定时自动总结。
+    zh_Hant: 群聊摘要插件，自動總結群聊訊息，提供即時的對話摘要。
+    ja_JP: グループチャット要約プラグイン。グループチャットのメッセージを自動的に要約し、リアルタイムの会話サマリーを提供します。
+    vi_VN: Plugin tóm tắt nhóm chat, tự động tóm tắt tin nhắn nhóm chat và cung cấp
+      bản tóm tắt hội thoại.
+    th_TH: ปลั๊กอินสรุปแชทกลุ่ม สรุปข้อความแชทกลุ่มอัตโนมัติและให้บทสรุปการสนทนา
+    es_ES: Plugin de resumen de chat grupal que resume automáticamente los mensajes
+      del grupo y proporciona un resumen de la conversación.
+  label:
+    en_US: GroupChatSummary
+    zh_Hans: 群聊总结
+    zh_Hant: GroupChatSummary
+    ja_JP: GroupChatSummary
+    vi_VN: GroupChatSummary
+    th_TH: GroupChatSummary
+    es_ES: GroupChatSummary
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: max_messages
+    type: int
+    label:
+      en_US: Max Messages to Store
+      zh_Hans: 最大存储消息数
+    description:
+      en_US: Maximum number of messages to store per group (default 500)
+      zh_Hans: 每个群最多存储的消息数量（默认 500）
+    required: false
+    default: 500
+  - name: default_summary_count
+    type: int
+    label:
+      en_US: Default Summary Count
+      zh_Hans: 默认总结消息数
+    description:
+      en_US: Number of messages to summarize by default (default 100)
+      zh_Hans: 默认总结的消息数量（默认 100）
+    required: false
+    default: 100
+  - name: auto_summary_enabled
+    type: bool
+    label:
+      en_US: Enable Auto Summary
+      zh_Hans: 启用自动总结
+    description:
+      en_US: Automatically summarize every N messages (default false)
+      zh_Hans: 每积累 N 条消息自动发送总结（默认关闭）
+    required: false
+    default: false
+  - name: auto_summary_threshold
+    type: int
+    label:
+      en_US: Auto Summary Threshold
+      zh_Hans: 自动总结阈值
+    description:
+      en_US: Number of messages to trigger auto summary (default 200)
+      zh_Hans: 触发自动总结的消息数量（默认 200）
+    required: false
+    default: 200
+  - name: model
+    type: llm-model-selector
+    label:
+      en_US: LLM Model
+      zh_Hans: LLM 模型
+    description:
+      en_US: Select the LLM model for generating summaries. If not set, the first
+        available model will be used.
+      zh_Hans: 选择用于生成总结的 LLM 模型。未设置时使用第一个可用模型。
+    required: false
+  - name: language
+    type: select
+    label:
+      en_US: Summary Language
+      zh_Hans: 总结语言
+    description:
+      en_US: Language for the summary output
+      zh_Hans: 总结输出的语言
+    required: false
+    default: zh_Hans
+    options:
+    - label:
+        en_US: English
+        zh_Hans: 英语
+      name: en_US
+    - label:
+        en_US: Chinese (Simplified)
+        zh_Hans: 简体中文
+      name: zh_Hans
+    - label:
+        en_US: Japanese
+        zh_Hans: 日语
+      name: ja_JP
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+    Command:
+      fromDirs:
+      - path: components/commands/
+    Tool:
+      fromDirs:
+      - path: components/tools/
+execution:
+  python:
+    path: main.py
+    attr: GroupChatSummary
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

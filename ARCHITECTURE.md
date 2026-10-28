@@ -22,6 +22,7 @@ At runtime, one LangBot process owns:
 LangBot is not a single-repo system.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
+- `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
 - `langbot-plugin-sdk/` is published as `langbot-plugin` and pinned in `LangBot/pyproject.toml`. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
