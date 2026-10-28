@@ -498,6 +498,39 @@ bind their own extensions to avoid changing unrelated prompts/tools. The suite a
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
 
+## Local API contract job
+
+Run on the same disposable Linux/Docker host used by `regression_ci.py`:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite api --api-seed 20261028 \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
+```
+
+This separate suite executes seven independent operation chains once in fixed
+order, then once in seed-shuffled order (14 case rows). Operations within each
+chain retain their create/read/update/delete dependencies. Reuse the seed to
+replay chain ordering; resource names and credentials remain unique. Preparation
+is outside the 600-second execution guard; a completed run ends immediately.
+The default PR smoke and daily scenario groups do not include these cases.
+
+The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
+validation, API key permissions/revocation, Skill files and revision conflicts,
+and disabled MCP configuration. Checks require matching HTTP/business status,
+read back stored state, and reject unexpected mutation after invalid requests.
+Resources carry unique ownership markers and are deleted in `finally`; API keys
+are revoked. Cleanup errors remain failures. MCP fixtures stay disabled and use
+loopback addresses. This job does not exercise external MCP servers, real model
+inference, concurrent API mutations, or cross-Workspace isolation.
+
+Inspect `gate/gate.json` for the verdict, seed and exact case order;
+`gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
+`gate/suite/coverage.json` for observed route templates and behavior contracts.
+An HTTP route hit includes rejected requests and is not proof of all behavior
+behind that route. The job intentionally fails on invalid MCP modes accepted
+and persisted by Core; fixing that product validation should make the existing
+negative case pass without changing its expected result.
+
 ## Sustained regression and baseline comparison
 
 [`regression_profiles/endurance.json`](regression_profiles/endurance.json) runs

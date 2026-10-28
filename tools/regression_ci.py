@@ -16,17 +16,17 @@ import yaml
 from regression_gate import supervise
 from regression_coverage import write_report
 from regression_plugins import PLUGIN_IDS, install_plugins, prepare_published_plugins, prepare_source_plugins
-from regression_local_cases import GROUPS, api, require
+from regression_local_cases import DEFAULT_GROUPS, api, require
 from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900}
+SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900, 'api': 600}
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
 
-def suite_profile(name, run_id, groups=()):
+def suite_profile(name, run_id, groups=(), api_seed=1):
     profile_path = ROOT / 'tools/regression_profiles' / ('endurance.json' if name == 'endurance' else 'smoke.json')
     if name in ('scenarios', 'daily'):
         from regression_scenarios import expanded_profile
@@ -34,6 +34,12 @@ def suite_profile(name, run_id, groups=()):
         profile = expanded_profile(groups)
     else:
         profile = json.loads(profile_path.read_text())
+    if name == 'api':
+        from regression_api_cases import add_cases
+
+        profile.update(resources=[], cases=[], coverage_suite='api')
+        profile['vars']['api_seed'] = api_seed
+        add_cases(profile)
     for resource in profile['resources']:
         if resource['kind'] == 'pipeline':
             resource['body'].setdefault(
@@ -172,10 +178,12 @@ def run(args):
         config_path.write_text(yaml.safe_dump(config))
         groups = args.scenario_groups
         if groups is None:
-            groups = list(GROUPS) if args.suite in ('scenarios', 'daily') else []
+            groups = list(DEFAULT_GROUPS) if args.suite in ('scenarios', 'daily') else []
+            if args.suite == 'api':
+                groups = ['api']
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
-        profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups)
+        profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups, args.api_seed)
         cli_config = private / 'lbctl.yaml'
         cli_config.write_text(
             yaml.safe_dump(
@@ -270,7 +278,7 @@ def run(args):
         cli_data = yaml.safe_load(cli_config.read_text())
         cli_data['contexts']['smoke']['expected_workspace_uuid'] = identity['workspace_uuid']
         cli_config.write_text(yaml.safe_dump(cli_data))
-        if 'resources' in groups or args.restart_services:
+        if {'resources', 'api'} & set(groups) or args.restart_services:
             # Account creation is restricted to this runner's newly created private database.
             credentials = {'user': 'regression@langbot.test', 'password': secrets.token_urlsafe(32)}
             suite.secrets.append(credentials['password'])
@@ -324,6 +332,9 @@ def run(args):
         coverage = write_report(evidence, root / 'gate/suite', http_logs=[root / 'core.log'])
         result['coverage_errors'] = coverage['evidence_errors']
         result['scenario_groups'] = groups
+        if args.suite == 'api':
+            result['api_seed'] = args.api_seed
+            result['case_order'] = [case['name'] for case in profile['cases']]
         result['passed'] = result['passed'] and not result['coverage_errors']
         (root / 'gate/gate.json').write_text(json.dumps(result, indent=2) + '\n')
         return result
@@ -357,9 +368,10 @@ def main():
     parser.add_argument(
         '--scenario-groups',
         nargs='*',
-        choices=tuple(GROUPS),
+        choices=DEFAULT_GROUPS,
         help='Local groups for scenarios/daily (default: all); an empty list selects only the base cases',
     )
+    parser.add_argument('--api-seed', type=int, default=1, help='Replay the API suite chain shuffle (default: 1)')
     parser.add_argument('--restart-services', action='store_true', help='Check owned Core/Runtime restarts once')
     args = parser.parse_args()
     if args.extra_plugins and args.plugins is None:

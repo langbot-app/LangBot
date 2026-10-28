@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from regression_local_cases import GROUPS, ScenarioUnavailable
+from regression_local_cases import DEFAULT_GROUPS, ScenarioUnavailable
 from regression_scenarios import expanded_profile
 from regression_smoke import run_smoke
 from regression_suite import Suite, validate
@@ -17,7 +17,7 @@ from regression_traffic import reconcile_runs
 class LocalScenarioTests(unittest.TestCase):
     def test_group_switches_keep_base_cases_and_reject_unknown_handlers(self):
         base = expanded_profile()
-        for group in GROUPS:
+        for group in DEFAULT_GROUPS:
             profile = expanded_profile([group])
             validate(profile)
             self.assertEqual(profile['scenario_groups'], [group])
