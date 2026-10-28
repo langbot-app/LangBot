@@ -5,169 +5,170 @@
     {"id": "configuration.identity",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "CLI resolves the configured Workspace identity",
-     "bindings": [{"profile": "smoke", "case": "identity", "checks": ["response"]}]
+     "bindings": [{"profile": "smoke", "case": "identity", "checks": ["response"]}, {"profile": "scenarios", "case": "identity", "checks": ["response"]}]
     },
     {"id": "configuration.plugins",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Installed LocalAgent is visible through the plugin API",
-     "bindings": [{"profile": "smoke", "case": "plugins", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "plugins", "checks": ["response"]}, {"profile": "scenarios", "case": "plugins", "checks": ["response"]}],
      "routes": ["GET /api/v1/plugins"]
     },
     {"id": "configuration.provider_readback",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Created provider is visible through the public API",
-     "bindings": [{"profile": "smoke", "case": "provider_readback", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "provider_readback", "checks": ["response"]}, {"profile": "scenarios", "case": "provider_readback", "checks": ["response"]}],
      "routes": ["GET /api/v1/provider/providers/<provider_uuid>"]
     },
     {"id": "configuration.model_readback",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Created model is visible through the public API",
-     "bindings": [{"profile": "smoke", "case": "model_readback", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "model_readback", "checks": ["response"]}, {"profile": "scenarios", "case": "model_readback", "checks": ["response"]}],
      "routes": ["GET /api/v1/provider/models/llm/<model_uuid>"]
     },
     {"id": "configuration.pipeline_readback",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Pipeline readback includes its configured model",
-     "bindings": [{"profile": "smoke", "case": "pipeline_readback", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "pipeline_readback", "checks": ["response"]}, {"profile": "scenarios", "case": "pipeline_readback", "checks": ["response"]}],
      "routes": ["GET /api/v1/pipelines/<pipeline_uuid>"]
     },
     {"id": "configuration.kb_readback",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Knowledge-base identity and engine match configuration",
-     "bindings": [{"profile": "smoke", "case": "kb_readback", "checks": ["response", "fields"]}],
+     "bindings": [{"profile": "smoke", "case": "kb_readback", "checks": ["response", "fields"]}, {"profile": "scenarios", "case": "kb_readback", "checks": ["response", "fields"]}],
      "routes": ["GET /api/v1/knowledge/bases/<knowledge_base_uuid>"]
     },
     {"id": "configuration.document_readback",
      "area": "configuration", "kind": "blackbox", "priority": "P1",
      "description": "Uploaded document completes ingestion in its owning knowledge base",
-     "bindings": [{"profile": "smoke", "case": "document_readback", "checks": ["response", "fields"]}],
+     "bindings": [{"profile": "smoke", "case": "document_readback", "checks": ["response", "fields"]}, {"profile": "scenarios", "case": "document_readback", "checks": ["response", "fields"]}],
      "routes": ["GET /api/v1/knowledge/bases/<knowledge_base_uuid>/files"]
     },
     {"id": "ingress.missing_signature",
      "area": "ingress", "kind": "blackbox", "priority": "P0",
      "description": "Unsigned bot messages are rejected",
-     "bindings": [{"profile": "smoke", "case": "missing_signature", "checks": ["response", "fields"]}]
+     "bindings": [{"profile": "smoke", "case": "missing_signature", "checks": ["response", "fields"]}, {"profile": "scenarios", "case": "missing_signature", "checks": ["response", "fields"]}]
     },
     {"id": "ingress.bad_signature",
      "area": "ingress", "kind": "blackbox", "priority": "P0",
      "description": "Messages with an invalid signature are rejected",
-     "bindings": [{"profile": "smoke", "case": "bad_signature", "checks": ["response", "fields"]}]
+     "bindings": [{"profile": "smoke", "case": "bad_signature", "checks": ["response", "fields"]}, {"profile": "scenarios", "case": "bad_signature", "checks": ["response", "fields"]}]
     },
     {"id": "conversation.chat",
      "area": "conversation", "kind": "blackbox", "priority": "P1",
      "description": "Pipeline returns the expected chat response",
-     "bindings": [{"profile": "smoke", "case": "chat", "checks": ["response"]}, {"profile": "endurance", "case": "chat", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "chat", "checks": ["response"]}, {"profile": "endurance", "case": "chat", "checks": ["response"]}, {"profile": "scenarios", "case": "chat", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "conversation.unicode",
      "area": "conversation", "kind": "blackbox", "priority": "P1",
      "description": "Unicode input and streamed output survive the full conversation chain",
-     "bindings": [{"profile": "smoke", "case": "unicode", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "unicode", "checks": ["response"]}, {"profile": "scenarios", "case": "unicode", "checks": ["response"]}, {"profile": "scenarios", "case": "group_unicode", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "model.slow",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Slow streamed model output reaches the caller",
-     "bindings": [{"profile": "smoke", "case": "slow", "checks": ["response", "model_sequence"]}],
+     "bindings": [{"profile": "smoke", "case": "slow", "checks": ["response", "model_sequence"]}, {"profile": "scenarios", "case": "slow", "checks": ["response", "model_sequence"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "model.fallback401",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Authentication failure falls back to the configured secondary model",
-     "bindings": [{"profile": "smoke", "case": "fallback401", "checks": ["response", "model_sequence"]}],
+     "bindings": [{"profile": "smoke", "case": "fallback401", "checks": ["response", "model_sequence"]}, {"profile": "scenarios", "case": "fallback401", "checks": ["response", "model_sequence"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "model.fallback429",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Rate limiting falls back to the configured secondary model",
-     "bindings": [{"profile": "smoke", "case": "fallback429", "checks": ["response", "model_sequence"]}],
+     "bindings": [{"profile": "smoke", "case": "fallback429", "checks": ["response", "model_sequence"]}, {"profile": "scenarios", "case": "fallback429", "checks": ["response", "model_sequence"]}, {"profile": "scenarios", "case": "group_fallback429", "checks": ["response", "model_sequence"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "model.fallback503",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Unavailable primary model falls back to the secondary model",
-     "bindings": [{"profile": "smoke", "case": "fallback503", "checks": ["response", "model_sequence"]}],
+     "bindings": [{"profile": "smoke", "case": "fallback503", "checks": ["response", "model_sequence"]}, {"profile": "scenarios", "case": "fallback503", "checks": ["response", "model_sequence"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "tools.exec_error",
      "area": "tools", "kind": "blackbox", "priority": "P1",
      "description": "Tool error output is delivered to the model and handled",
-     "bindings": [{"profile": "smoke", "case": "exec_error", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "exec_error", "checks": ["response"]}, {"profile": "scenarios", "case": "exec_error", "checks": ["response"]}, {"profile": "scenarios", "case": "group_exec_error", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "tools.parallel",
      "area": "tools", "kind": "blackbox", "priority": "P1",
      "description": "Parallel tool calls return matched results to the model",
-     "bindings": [{"profile": "smoke", "case": "parallel", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "parallel", "checks": ["response"]}, {"profile": "scenarios", "case": "parallel", "checks": ["response"]}, {"profile": "scenarios", "case": "group_parallel", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "delivery.unicode_export",
      "area": "delivery", "kind": "blackbox", "priority": "P1",
      "description": "Exported Unicode file name and bytes survive delivery",
-     "bindings": [{"profile": "smoke", "case": "unicode_export", "checks": ["response", "attachment"]}],
+     "bindings": [{"profile": "smoke", "case": "unicode_export", "checks": ["response", "attachment"]}, {"profile": "scenarios", "case": "unicode_export", "checks": ["response", "attachment"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "retrieval.other_rag",
      "area": "retrieval", "kind": "blackbox", "priority": "P1",
      "description": "A second knowledge base supplies its own content to the model",
-     "bindings": [{"profile": "smoke", "case": "other_rag", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "other_rag", "checks": ["response"]}, {"profile": "scenarios", "case": "other_rag", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "tools.box",
      "area": "tools", "kind": "blackbox", "priority": "P1",
      "description": "A real Box write/read round trip reaches the final reply",
-     "bindings": [{"profile": "smoke", "case": "box", "checks": ["response"]}, {"profile": "endurance", "case": "box", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "box", "checks": ["response"]}, {"profile": "endurance", "case": "box", "checks": ["response"]}, {"profile": "scenarios", "case": "box", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "delivery.box_export",
      "area": "delivery", "kind": "blackbox", "priority": "P1",
      "description": "Exported file bytes match the generated fixture",
-     "bindings": [{"profile": "smoke", "case": "box_export", "checks": ["response", "attachment"]}],
+     "bindings": [{"profile": "smoke", "case": "box_export", "checks": ["response", "attachment"]}, {"profile": "scenarios", "case": "box_export", "checks": ["response", "attachment"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "retrieval.rag_chat",
      "area": "retrieval", "kind": "blackbox", "priority": "P1",
      "description": "Retrieved fixture content reaches the model and final reply",
-     "bindings": [{"profile": "smoke", "case": "rag_chat", "checks": ["response"]}, {"profile": "endurance", "case": "rag_chat", "checks": ["response"]}],
+     "bindings": [{"profile": "smoke", "case": "rag_chat", "checks": ["response"]}, {"profile": "endurance", "case": "rag_chat", "checks": ["response"]}, {"profile": "scenarios", "case": "rag_chat", "checks": ["response"]}],
      "routes": ["POST /api/v1/pipelines/<pipeline_uuid>/run"]
     },
     {"id": "retrieval.rag_retrieve",
      "area": "retrieval", "kind": "blackbox", "priority": "P0",
      "description": "Retrieval returns the owning knowledge-base marker without the other fixture",
-     "bindings": [{"profile": "smoke", "case": "rag_retrieve", "checks": ["response", "fields", "isolation"]}],
+     "bindings": [{"profile": "smoke", "case": "rag_retrieve", "checks": ["response", "fields", "isolation"]}, {"profile": "scenarios", "case": "rag_retrieve", "checks": ["response", "fields", "isolation"]}],
      "routes": ["POST /api/v1/knowledge/bases/<knowledge_base_uuid>/retrieve"]
     },
     {"id": "retrieval.retrieve_other",
      "area": "retrieval", "kind": "blackbox", "priority": "P0",
      "description": "Retrieval from the second knowledge base excludes the first fixture",
-     "bindings": [{"profile": "smoke", "case": "retrieve_other", "checks": ["response", "fields", "isolation"]}],
+     "bindings": [{"profile": "smoke", "case": "retrieve_other", "checks": ["response", "fields", "isolation"]}, {"profile": "scenarios", "case": "retrieve_other", "checks": ["response", "fields", "isolation"]}],
      "routes": ["POST /api/v1/knowledge/bases/<knowledge_base_uuid>/retrieve"]
     },
     {"id": "retrieval.retrieve_empty",
      "area": "retrieval", "kind": "blackbox", "priority": "P1",
      "description": "Empty knowledge base returns an empty retrieval result",
-     "bindings": [{"profile": "smoke", "case": "retrieve_empty", "checks": ["response", "fields"]}],
+     "bindings": [{"profile": "smoke", "case": "retrieve_empty", "checks": ["response", "fields"]}, {"profile": "scenarios", "case": "retrieve_empty", "checks": ["response", "fields"]}],
      "routes": ["POST /api/v1/knowledge/bases/<knowledge_base_uuid>/retrieve"]
     },
     {"id": "conversation.group_chat_history",
      "area": "conversation", "kind": "blackbox", "priority": "P0",
      "description": "Multi-turn chat preserves the prior reply without mixing group history",
-     "bindings": [{"profile": "smoke", "case": "group_chat_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "chat", "checks": ["response"], "min_turn": 2}]
+     "bindings": [{"profile": "smoke", "case": "group_chat_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "chat", "checks": ["response"], "min_turn": 2}, {"profile": "scenarios", "case": "group_chat_history", "checks": ["response"], "min_turn": 2}]
     },
     {"id": "conversation.group_box_history",
      "area": "conversation", "kind": "blackbox", "priority": "P1",
      "description": "Multi-turn Box conversation preserves group history",
-     "bindings": [{"profile": "smoke", "case": "group_box_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "box", "checks": ["response"], "min_turn": 2}]
+     "bindings": [{"profile": "smoke", "case": "group_box_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "box", "checks": ["response"], "min_turn": 2}, {"profile": "scenarios", "case": "group_box_history", "checks": ["response"], "min_turn": 2}]
     },
     {"id": "conversation.group_rag_history",
      "area": "conversation", "kind": "blackbox", "priority": "P1",
      "description": "Multi-turn RAG conversation preserves group history",
-     "bindings": [{"profile": "smoke", "case": "group_rag_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "rag_chat", "checks": ["response"], "min_turn": 2}]
+     "bindings": [{"profile": "smoke", "case": "group_rag_history", "checks": ["response"], "min_turn": 2}, {"profile": "endurance", "case": "rag_chat", "checks": ["response"], "min_turn": 2}, {"profile": "scenarios", "case": "group_rag_history", "checks": ["response"], "min_turn": 2}]
     },
     {"id": "auth.invalid_credentials",
      "area": "auth", "kind": "blackbox", "priority": "P0",
-     "description": "Missing and invalid API credentials cannot access Workspace resources",
-     "bindings": []
+     "description": "Invalid API credentials cannot access Workspace resources",
+     "bindings": [{"profile": "scenarios", "case": "api_auth_invalid", "checks": ["response", "fields"]}],
+     "routes": ["GET /api/v1/pipelines"]
     },
     {"id": "auth.revocation",
      "area": "auth", "kind": "blackbox", "priority": "P0",
@@ -227,7 +228,7 @@
     {"id": "tools.timeout_recovery",
      "area": "tools", "kind": "blackbox", "priority": "P1",
      "description": "Timed-out tools stop running and the next tool can execute",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "tool_timeout_recovery", "checks": ["response"]}]
     },
     {"id": "delivery.callback_retry",
      "area": "delivery", "kind": "blackbox", "priority": "P1",
@@ -267,17 +268,103 @@
     {"id": "execution.persisted_terminal",
      "area": "execution", "kind": "graybox", "priority": "P0",
      "description": "Each executed request has a unique completed persisted run and terminal event",
-     "bindings": [{"profile": "smoke", "case": "chat", "checks": ["ledger"]}, {"profile": "endurance", "case": "chat", "checks": ["ledger"]}]
+     "bindings": [{"profile": "smoke", "case": "chat", "checks": ["ledger"]}, {"profile": "endurance", "case": "chat", "checks": ["ledger"]}, {"profile": "scenarios", "case": "chat", "checks": ["ledger"]}]
     },
     {"id": "tools.persisted_box_results",
      "area": "tools", "kind": "graybox", "priority": "P0",
      "description": "Persisted Box events match backend, exit status and output",
-     "bindings": [{"profile": "smoke", "case": "box", "checks": ["ledger"]}, {"profile": "endurance", "case": "box", "checks": ["ledger"]}]
+     "bindings": [{"profile": "smoke", "case": "box", "checks": ["ledger"]}, {"profile": "endurance", "case": "box", "checks": ["ledger"]}, {"profile": "scenarios", "case": "box", "checks": ["ledger"]}]
     },
     {"id": "ingress.no_run_on_reject",
      "area": "ingress", "kind": "graybox", "priority": "P0",
      "description": "Rejected ingress does not create an AgentRun",
-     "bindings": [{"profile": "smoke", "case": "missing_signature", "checks": ["no_run"]}]
+     "bindings": [{"profile": "smoke", "case": "missing_signature", "checks": ["no_run"]}, {"profile": "scenarios", "case": "missing_signature", "checks": ["no_run"]}, {"profile": "scenarios", "case": "expired_signature", "checks": ["no_run"]}, {"profile": "scenarios", "case": "future_signature", "checks": ["no_run"]}, {"profile": "scenarios", "case": "bad_timestamp", "checks": ["no_run"]}, {"profile": "scenarios", "case": "tampered_body", "checks": ["no_run"]}, {"profile": "scenarios", "case": "invalid_json", "checks": ["no_run"]}, {"profile": "scenarios", "case": "invalid_object", "checks": ["no_run"]}, {"profile": "scenarios", "case": "missing_session", "checks": ["no_run"]}, {"profile": "scenarios", "case": "invalid_message", "checks": ["no_run"]}]
+    },
+    {"id": "ingress.expired_signature",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Expired signed messages are rejected",
+     "bindings": [{"profile": "scenarios", "case": "expired_signature", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.future_signature",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Signed messages too far in the future are rejected",
+     "bindings": [{"profile": "scenarios", "case": "future_signature", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.bad_timestamp",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Malformed signing timestamps are rejected",
+     "bindings": [{"profile": "scenarios", "case": "bad_timestamp", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.tampered_body",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "A changed body cannot reuse a valid signature",
+     "bindings": [{"profile": "scenarios", "case": "tampered_body", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.invalid_json",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Validly signed malformed JSON is rejected",
+     "bindings": [{"profile": "scenarios", "case": "invalid_json", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.invalid_object",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Validly signed non-object JSON is rejected",
+     "bindings": [{"profile": "scenarios", "case": "invalid_object", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.missing_session",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Messages without a session identity are rejected",
+     "bindings": [{"profile": "scenarios", "case": "missing_session", "checks": ["response", "fields"]}]
+    },
+    {"id": "ingress.invalid_message",
+     "area": "ingress", "kind": "blackbox", "priority": "P0",
+     "description": "Invalid message chains are rejected",
+     "bindings": [{"profile": "scenarios", "case": "invalid_message", "checks": ["response", "fields"]}]
+    },
+    {"id": "auth.missing_credentials",
+     "area": "auth", "kind": "blackbox", "priority": "P0",
+     "description": "Unauthenticated requests cannot access Workspace resources",
+     "bindings": [{"profile": "scenarios", "case": "api_auth_missing", "checks": ["response", "fields"]}],
+     "routes": ["GET /api/v1/pipelines"]
+    },
+    {"id": "conversation.group_unicode",
+     "area": "conversation", "kind": "blackbox", "priority": "P1",
+     "description": "Multiple group turns preserve history with Unicode replies",
+     "bindings": [{"profile": "scenarios", "case": "group_unicode", "checks": ["response"], "min_turn": 2}]
+    },
+    {"id": "conversation.group_fallback429",
+     "area": "conversation", "kind": "blackbox", "priority": "P1",
+     "description": "Multiple group turns preserve history with model fallback",
+     "bindings": [{"profile": "scenarios", "case": "group_fallback429", "checks": ["response"], "min_turn": 2}]
+    },
+    {"id": "conversation.group_exec_error",
+     "area": "conversation", "kind": "blackbox", "priority": "P1",
+     "description": "Multiple group turns preserve history with handled tool errors",
+     "bindings": [{"profile": "scenarios", "case": "group_exec_error", "checks": ["response"], "min_turn": 2}]
+    },
+    {"id": "conversation.group_parallel",
+     "area": "conversation", "kind": "blackbox", "priority": "P1",
+     "description": "Multiple group turns preserve history with parallel tools",
+     "bindings": [{"profile": "scenarios", "case": "group_parallel", "checks": ["response"], "min_turn": 2}]
+    },
+    {"id": "conversation.reset_history",
+     "area": "conversation", "kind": "blackbox", "priority": "P0",
+     "description": "Reset clears the selected group history before the next turn",
+     "bindings": [{"profile": "scenarios", "case": "group_reset_isolation", "checks": ["reset", "response"], "group_index": 0, "turn": 2}]
+    },
+    {"id": "conversation.reset_isolation",
+     "area": "conversation", "kind": "blackbox", "priority": "P0",
+     "description": "Resetting one group preserves the other group history",
+     "bindings": [{"profile": "scenarios", "case": "group_reset_isolation", "checks": ["response"], "group_index": 1, "min_turn": 2}]
+    },
+    {"id": "tools.failure_then_success",
+     "area": "tools", "kind": "blackbox", "priority": "P1",
+     "description": "A failed tool is followed by a successful tool in the same run",
+     "bindings": [{"profile": "scenarios", "case": "tool_recovery", "checks": ["response"]}]
+    },
+    {"id": "retrieval.empty_context_chat",
+     "area": "retrieval", "kind": "blackbox", "priority": "P1",
+     "description": "An empty knowledge base allows chat without injecting other knowledge fixtures",
+     "bindings": [{"profile": "scenarios", "case": "empty_rag_chat", "checks": ["response"]}]
     }
   ]
 }

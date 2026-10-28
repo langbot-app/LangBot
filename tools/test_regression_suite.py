@@ -282,16 +282,24 @@ class ProfileTests(unittest.TestCase):
                     str(config),
                 ]
                 environment = {**os.environ, 'LBCTL_TEST_ROOT': folder}
-                for enforce_latency in (False, True):
+                for enforce_latency, mode, wrong_reply in (
+                    (False, 'gate', False),
+                    (True, 'gate', False),
+                    (True, 'observe', False),
+                    (True, 'observe', True),
+                ):
+                    current['performance_mode'] = mode
+                    current['cases'][0]['expect'] = 'WRONG_RESULT' if wrong_reply else 'TEST_OK'
+                    expected_failure = wrong_reply or (enforce_latency and mode == 'gate')
                     current['thresholds'] = {'max_p95_seconds': {'chat': 0.001}} if enforce_latency else {}
                     config.write_text(json.dumps(current))
-                    output = root / ('failure' if enforce_latency else 'success')
+                    output = root / f'{enforce_latency}-{mode}-{wrong_reply}'
                     result = subprocess.run(
                         [*command, '--output', str(output)], env=environment, capture_output=True, text=True, timeout=30
                     )
                     summary = json.loads((output / 'summary.json').read_text())
-                    self.assertEqual(result.returncode, int(enforce_latency), result.stdout + result.stderr)
-                    self.assertEqual(summary['passed'], not enforce_latency)
+                    self.assertEqual(result.returncode, int(expected_failure), result.stdout + result.stderr)
+                    self.assertEqual(summary['passed'], not expected_failure)
                     self.assertEqual(len(summary['phases']), 2)
                     for phase in summary['phases']:
                         self.assertGreater(phase['achieved_rps'], 0)

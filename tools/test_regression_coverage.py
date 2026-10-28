@@ -100,6 +100,35 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(data['contracts'][0]['status'], 'not_run')
         self.assertEqual(data['unclassified_cases'], [{'profile': 'smoke', 'case': 'new_case'}])
 
+    def test_reset_failure_and_peer_skip_cannot_be_hidden_by_first_turns(self):
+        c = load_catalog()
+        rows = [
+            {
+                'profile': 'scenarios',
+                'case': 'group_reset_isolation',
+                'status': 'passed',
+                'group_index': group,
+                'turn': 1,
+                'assertions': {'response': 'passed'},
+            }
+            for group in (0, 1)
+        ]
+        rows += [
+            {
+                'profile': 'scenarios',
+                'case': 'group_reset_isolation',
+                'status': 'failed',
+                'group_index': 0,
+                'turn': 2,
+                'assertions': {'reset': 'failed'},
+            },
+            {'profile': 'scenarios', 'case': 'group_reset_isolation', 'status': 'skipped', 'group_index': 1, 'turn': 2},
+        ]
+        selected = [
+            x for x in report(c, rows)['contracts'] if any(b['case'] == 'group_reset_isolation' for b in x['bindings'])
+        ]
+        self.assertEqual(sorted(x['status'] for x in selected), ['failed', 'skipped'])
+
     def test_partial_evidence_produces_an_error_and_a_report(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -260,7 +289,13 @@ class Routes:
                 name = binding['profile']
                 if name not in profiles:
                     path = Path(__file__).with_name('regression_profiles') / f'{name}.json'
-                    profiles[name] = {x['name']: x for x in json.loads(path.read_text())['cases']}
+                    if name == 'scenarios':
+                        from regression_scenarios import expanded_profile
+
+                        profile = expanded_profile()
+                    else:
+                        profile = json.loads(path.read_text())
+                    profiles[name] = {x['name']: x for x in profile['cases']}
                 self.assertIn(binding['case'], profiles[name])
                 self.assertTrue(binding['checks'])
         broken = copy.deepcopy(c)

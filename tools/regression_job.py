@@ -102,6 +102,7 @@ class Job:
         self.env = {**os.environ, 'XDG_CONFIG_HOME': str(self.private / 'config')}
         self.cli = [profile.get('lbctl', 'lbctl'), '--config', str(self.cli_config), '-o', 'json']
         self.redactions = []
+        self.suite = None
         self.state = {'job_id': secrets.token_hex(8), 'record': None, 'bound': False, 'phase': 'created'}
 
     def redact(self, value):
@@ -347,13 +348,14 @@ class Job:
             pid = int(self.checked(['docker', 'inspect', '--format', '{{.State.Pid}}', container]).strip())
             name = (
                 {'langbot': 'core', 'langbot_plugin_runtime': 'runtime', 'langbot_box': 'box'}.get(service, service)
-                if profile.get('verification')
+                if profile.get('verification') or profile.get('execution')
                 else service
             )
             profile['observe']['pids'][name] = pid
+        profile['observe']['box_data_root'] = str(Path(self.state['record']['data_dir']) / 'box')
         destination = self.output / 'suite'
         destination.mkdir(mode=0o700)
-        suite = Suite(profile, self.suite_path, destination, env=self.env)
+        suite = self.suite = Suite(profile, self.suite_path, destination, env=self.env)
         self.redactions.extend(suite.secrets)
         if published is not None:
             self.state['phase'] = 'plugins'
@@ -377,7 +379,6 @@ class Job:
             data = suite.call(case['args'], case.get('body'))
             if case['expect'] not in json.dumps(data, ensure_ascii=False):
                 raise RuntimeError(f'warmup oracle failed: {case["name"]}')
-        profile['observe']['box_data_root'] = str(Path(self.state['record']['data_dir']) / 'box')
         suite.write('profile.json', profile)
         return suite
 
@@ -436,14 +437,11 @@ class Job:
         self.save()
         result = {'errors': [], 'completed': False}
         try:
-            suite = self.prepare()
+            suite = self.suite = self.prepare()
             self.state['phase'] = 'traffic'
             self.save()
             summary = suite.run()
-            suite.finish(summary)
             result.update(completed=True, suite=summary, errors=list(summary['errors']))
-            self.state['phase'] = 'finished'
-            self.save()
         except KeyboardInterrupt:
             result['errors'].append('Job interrupted; in-flight outcomes may be unknown')
         except (RuntimeError, ValueError, OSError, KeyError, subprocess.TimeoutExpired) as exc:
@@ -451,6 +449,20 @@ class Job:
         finally:
             if not result['completed'] and not result['errors']:
                 result['errors'].append('Job aborted before completion')
+            if self.suite is not None:
+                summary = result.setdefault('suite', {'phases': [], 'errors': list(result['errors'])})
+                try:
+                    self.suite.finish(summary)
+                except (Exception, KeyboardInterrupt) as exc:
+                    summary['errors'].append(f'suite finalization: {type(exc).__name__}: ' + self.redact(str(exc)))
+                    summary.update(passed=False, outcome='FAIL')
+                result['errors'] = list(dict.fromkeys([*result['errors'], *summary['errors']]))
+            if result['completed']:
+                self.state['phase'] = 'finished'
+                try:
+                    self.save()
+                except OSError as exc:
+                    result['errors'].append('state persistence: ' + self.redact(str(exc)))
             try:
                 self.collect()
             except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
