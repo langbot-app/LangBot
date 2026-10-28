@@ -1857,6 +1857,22 @@ const viVN = {
       stepInfo: 'Thông tin plugin',
       stepSettings: 'Ghi chú phát hành',
       stepConfirm: 'Xác nhận tải lên',
+      stepResult: 'Kết quả tải lên',
+      startUpload: 'Bắt đầu tải lên',
+      uploadingTitle: 'Đang tải lên chợ tiện ích...',
+      uploadingDesc:
+        'Đang đóng gói tệp plugin cục bộ, kiểm tra manifest và đồng bộ với LangBot Space...',
+      uploadSuccessTitle: 'Tải plugin lên thành công!',
+      uploadSuccessDesc:
+        'Plugin {{author}}/{{name}} (v{{version}}) đã được gửi tới LangBot Space.',
+      reviewNoticeTitle: 'Thông báo kiểm duyệt',
+      reviewNoticeDesc:
+        'Plugin đã vào hàng đợi kiểm duyệt. Sau khi được duyệt, plugin sẽ hiển thị công khai trên chợ tiện ích.',
+      viewInSpace: 'Xem trên chợ Space',
+      viewMyPlugins: 'Quản lý plugin của tôi',
+      finishAndClose: 'Xong',
+      retryUpload: 'Thử tải lên lại',
+      backToEdit: 'Quay lại chỉnh sửa',
       manifestNotice:
         'Thông tin dưới đây được đọc từ tệp manifest (manifest.yaml) chỉ để xác nhận. Nếu cần sửa đổi, vui lòng chỉnh sửa tệp manifest và khởi động lại gỡ lỗi.',
       manifestSource: 'Đã xác nhận từ manifest',

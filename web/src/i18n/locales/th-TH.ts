@@ -1828,6 +1828,22 @@ const thTH = {
       stepInfo: 'ข้อมูลปลั๊กอิน',
       stepSettings: 'บันทึกการเปลี่ยนแปลง',
       stepConfirm: 'ยืนยันการอัปโหลด',
+      stepResult: 'ผลการอัปโหลด',
+      startUpload: 'เริ่มอัปโหลด',
+      uploadingTitle: 'กำลังอัปโหลดไปยังตลาดส่วนขยาย...',
+      uploadingDesc:
+        'กำลังแพ็กไฟล์ปลั๊กอินในเครื่อง ตรวจสอบ manifest และซิงค์ไปยัง LangBot Space...',
+      uploadSuccessTitle: 'อัปโหลดปลั๊กอินสำเร็จ!',
+      uploadSuccessDesc:
+        'ปลั๊กอิน {{author}}/{{name}} (v{{version}}) ถูกส่งไปยัง LangBot Space แล้ว',
+      reviewNoticeTitle: 'แจ้งเตือนการตรวจสอบ',
+      reviewNoticeDesc:
+        'ปลั๊กอินเข้าสู่คิวการตรวจสอบแล้ว เมื่อได้รับอนุมัติจะเผยแพร่ในตลาดส่วนขยาย',
+      viewInSpace: 'ดูในตลาด Space',
+      viewMyPlugins: 'จัดการปลั๊กอินของฉัน',
+      finishAndClose: 'เสร็จสิ้น',
+      retryUpload: 'อัปโหลดอีกครั้ง',
+      backToEdit: 'กลับไปแก้ไข',
       manifestNotice:
         'ข้อมูลต่อไปนี้อ่านจากไฟล์ manifest (manifest.yaml) เพื่อยืนยันเท่านั้น หากต้องการแก้ไขโปรดแก้ไขไฟล์ manifest แล้วเริ่มการดีบักใหม่',
       manifestSource: 'ยืนยันจาก manifest',

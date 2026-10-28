@@ -1879,6 +1879,22 @@ const jaJP = {
       stepInfo: 'プラグイン情報',
       stepSettings: '更新履歴',
       stepConfirm: 'アップロード確認',
+      stepResult: 'アップロード結果',
+      startUpload: 'アップロード開始',
+      uploadingTitle: '拡張マーケットにアップロード中...',
+      uploadingDesc:
+        'プラグインファイルをパッケージ化し、マニフェストを検証して LangBot Space と同期しています...',
+      uploadSuccessTitle: 'プラグインのアップロードに成功しました！',
+      uploadSuccessDesc:
+        'プラグイン {{author}}/{{name}} (v{{version}}) を LangBot Space に送信しました。',
+      reviewNoticeTitle: 'レビューのお知らせ',
+      reviewNoticeDesc:
+        'プラグインはレビュー待ちのキューに入りました。承認されると拡張マーケットで公開されます。',
+      viewInSpace: 'Space のマーケットで見る',
+      viewMyPlugins: 'マイプラグインを管理',
+      finishAndClose: '完了',
+      retryUpload: 'アップロードを再試行',
+      backToEdit: '編集に戻る',
       manifestNotice:
         '以下の情報はプラグインマニフェスト（manifest.yaml）から読み込まれた確認用です。変更が必要な場合は、マニフェストを直接編集してデバッグを再起動してください。',
       manifestSource: 'マニフェスト確認済み',

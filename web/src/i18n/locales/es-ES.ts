@@ -1896,6 +1896,22 @@ const esES = {
       stepInfo: 'Información del plugin',
       stepSettings: 'Notas de la versión',
       stepConfirm: 'Confirmar subida',
+      stepResult: 'Resultado de la subida',
+      startUpload: 'Iniciar subida',
+      uploadingTitle: 'Subiendo al mercado de extensiones...',
+      uploadingDesc:
+        'Empaquetando los archivos locales del plugin, validando el manifiesto y sincronizando con LangBot Space...',
+      uploadSuccessTitle: '¡Plugin subido correctamente!',
+      uploadSuccessDesc:
+        'El plugin {{author}}/{{name}} (v{{version}}) se ha enviado a LangBot Space.',
+      reviewNoticeTitle: 'Aviso de revisión',
+      reviewNoticeDesc:
+        'El plugin ha entrado en la cola de revisión. Una vez aprobado, estará disponible públicamente en el mercado de extensiones.',
+      viewInSpace: 'Ver en el mercado de Space',
+      viewMyPlugins: 'Gestionar mis plugins',
+      finishAndClose: 'Listo',
+      retryUpload: 'Reintentar subida',
+      backToEdit: 'Volver a editar',
       manifestNotice:
         'La siguiente información se lee del manifiesto del plugin (manifest.yaml) solo para confirmación. Para modificarla, edite su archivo manifest y reinicie la depuración.',
       manifestSource: 'Confirmado del manifiesto',
