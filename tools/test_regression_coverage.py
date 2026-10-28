@@ -191,6 +191,46 @@ class CoverageTest(unittest.TestCase):
                 self.assertNotIn(value, encoded)
             self.assertTrue(http_observations([path.with_name('missing')], inventory)['evidence_errors'])
 
+    def test_http_converter_and_invalid_url_do_not_create_false_hits_or_leaks(self):
+        inventory = {'routes': [{'route': 'GET /keys/<int:id>'}]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'access.log'
+            path.write_text(
+                '\n'.join(
+                    [
+                        'GET /keys/not-an-int 1.1 404',
+                        'GET http://[private-tenant]/?token=secret 1.1 400',
+                        'GET /keys/42 1.1 200',
+                    ]
+                )
+            )
+            result = http_observations([path], inventory)
+            self.assertEqual(result['routes'], [{'route': 'GET /keys/<int:id>', 'statuses': {'200': 1}}])
+            self.assertEqual(result['unclassified'], {'GET 404': 1, 'GET 400': 1})
+            self.assertEqual(len(result['evidence_errors']), 1)
+            self.assertNotIn('private-tenant', json.dumps(result))
+            self.assertNotIn('secret', json.dumps(result))
+
+    def test_suite_finalization_rejects_missing_evidence_for_direct_callers(self):
+        from regression_suite import Suite
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = {
+                'version': 1,
+                'coverage_suite': 'smoke',
+                'smoke': {},
+                'cli': {'config': 'unused'},
+                'cases': [{'name': 'chat'}],
+            }
+            suite = Suite(profile, root / 'input.json', root)
+            suite.write('profile.json', profile)
+            result = {'errors': []}
+            suite.finish(result)
+            self.assertFalse(result['passed'])
+            self.assertTrue((root / 'coverage.json').exists())
+            self.assertFalse(json.loads((root / 'summary.json').read_text())['passed'])
+
     def test_new_routes_are_discovered_without_adding_test_cases(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

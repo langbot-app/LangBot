@@ -148,12 +148,15 @@ def route_inventory(catalog, root=None):
 
 def http_observations(paths, inventory):
     """Map Hypercorn access records to declared routes without retaining request URLs."""
-    patterns = []
+    patterns, unsupported = [], []
     for route in inventory['routes']:
         method, path = route['route'].split(' ', 1)
         parts = re.split(r'(<[^>]+>)', path)
+        if any(part.startswith('<') and ':' in part and not part.startswith(('<int:', '<path:')) for part in parts):
+            unsupported.append(route['route'])
+            continue
         pattern = ''.join(
-            ('.+' if part.startswith('<path:') else '[^/]+')
+            ('.+' if part.startswith('<path:') else r'\d+' if part.startswith('<int:') else '[^/]+')
             if part.startswith('<') and part.endswith('>')
             else re.escape(part)
             for part in parts
@@ -166,13 +169,18 @@ def http_observations(paths, inventory):
     for path in paths:
         try:
             with Path(path).open() as stream:
-                for line in stream:
+                for line_number, line in enumerate(stream, 1):
                     match = access.search(line)
                     if not match:
                         continue
                     method, target, status = match.groups()
                     records += 1
-                    request_path = urlsplit(target).path
+                    try:
+                        request_path = urlsplit(target).path
+                    except ValueError:
+                        errors.append(f'{path}:{line_number}: invalid request target')
+                        unclassified[f'{method} {status}'] += 1
+                        continue
                     route = next(
                         (
                             name
@@ -194,6 +202,7 @@ def http_observations(paths, inventory):
         'records': records,
         'routes': [{'route': route, 'statuses': dict(statuses)} for route, statuses in sorted(matched.items())],
         'unclassified': dict(unclassified),
+        'unsupported_templates': unsupported,
         'evidence_errors': errors,
     }
 

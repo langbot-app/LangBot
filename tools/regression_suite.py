@@ -436,6 +436,15 @@ class Suite:
         path.chmod(0o600)
         return str(path)
 
+    def finish(self, result):
+        if self.profile.get('coverage_suite'):
+            from regression_coverage import write_report
+
+            coverage = write_report([self.output], self.output)
+            result['errors'].extend(coverage['evidence_errors'])
+        result['passed'] = not result['errors']
+        self.write('summary.json', result)
+
     def call(self, args, body=None, *, defer_bot_readback=False):
         command = [*self.cli, *args]
         if body is not None:
@@ -781,13 +790,7 @@ def main():
                         result['errors'].extend(suite.cleanup())
                     except (RuntimeError, ValueError, OSError, KeyError) as exc:
                         result['errors'].append(f'cleanup failed: {exc}')
-            if profile.get('coverage_suite'):
-                from regression_coverage import write_report
-
-                coverage = write_report([suite.output], suite.output)
-                result['errors'].extend(coverage['evidence_errors'])
-            result['passed'] = not result['errors']
-            suite.write('summary.json', result)
+            suite.finish(result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result['passed']:
             raise SystemExit(1)

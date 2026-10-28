@@ -110,6 +110,7 @@ class JobTests(unittest.TestCase):
                 cli.chmod(0o700)
                 manifest = {'lbctl': str(cli), 'deployment': {'version': 'v4.11.0', 'port': 15351}}
                 suite = profile()
+                suite['coverage_suite'] = 'smoke'
                 suite['resources'] = [{'id': 'chat', 'kind': 'pipeline', 'body': {'name': 'QA', 'config': {'ai': {}}}}]
                 suite['cases'][0].update(args=['pipeline', 'run', '${chat}'], expect='TEST_OK')
                 suite['phases'][0].update(duration_seconds=0.5, rps=4, workers=2)
@@ -117,6 +118,7 @@ class JobTests(unittest.TestCase):
                 job = ControlledJob(manifest, suite, root / 'profile.json', root / 'success', health)
                 result = job.run()
                 self.assertTrue(result['passed'], result)
+                self.assertTrue((job.output / 'suite/coverage.json').exists())
                 self.assertEqual(result['phase'], 'cleaned')
                 self.assertFalse((job.deploy / 'data').exists())
                 self.assertFalse((job.private / 'api-key').exists())
