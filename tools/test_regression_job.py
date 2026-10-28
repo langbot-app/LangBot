@@ -14,6 +14,8 @@ from unittest.mock import patch
 import yaml
 
 from regression_job import Job, load_profile, main
+from regression_scenarios import ExecutionWindow
+from regression_suite import Suite
 from test_regression_suite import FAKE_CLI, profile
 
 
@@ -176,6 +178,74 @@ class JobTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def test_shared_finish_cleans_owned_resources_before_environment_teardown(self):
+        for failure in ('prepare', 'finish-error', 'finish-raises'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                current = profile()
+                current.pop('phases')
+                current.update(
+                    smoke={'ledger_db': 'unused.db'},
+                    cleanup='always',
+                    execution={'total_seconds': 1, 'drain_seconds': 0.1, 'cooldown_seconds': 0.01},
+                )
+                job = Job({'cleanup': 'always'}, current, root / 'profile.json', root / 'job')
+                events, visible = [], ['owned']
+
+                def prepare():
+                    destination = job.output / 'suite'
+                    destination.mkdir()
+                    suite = job.suite = Suite(current, root / 'profile.json', destination)
+                    suite.variables['workspace_uuid'] = 'workspace'
+                    suite.owned = [{'kind': 'provider', 'uuid': 'owned'}]
+                    suite.journal()
+
+                    def call(args, body=None):
+                        if args == ['whoami']:
+                            return {'workspace_uuid': 'workspace'}
+                        if args == ['provider', 'delete', 'owned', '--yes']:
+                            events.append('delete-owned')
+                            visible.remove('owned')
+                            return {}
+                        if args == ['provider', 'list']:
+                            return {'providers': [{'uuid': item} for item in visible]}
+                        raise AssertionError(args)
+
+                    suite.call = call
+                    suite.run = lambda: {'errors': [], 'phases': []}
+                    suite.execution = ExecutionWindow(suite)
+                    suite.execution.start()
+                    if failure == 'prepare':
+                        raise RuntimeError('prepare failed after creating resource')
+                    finish = suite.finish
+
+                    def failing_finish(summary):
+                        if failure == 'finish-error':
+                            suite.execution.errors.append('health failed during execution')
+                        finish(summary)
+                        if failure == 'finish-raises':
+                            raise TypeError('finalization defect')
+
+                    suite.finish = failing_finish
+                    return suite
+
+                with (
+                    patch.object(job, 'prepare', side_effect=prepare),
+                    patch.object(job, 'collect', side_effect=lambda: events.append('collect')),
+                    patch.object(job, 'cleanup', side_effect=lambda: events.append('teardown')),
+                    patch('regression_traffic.read_endpoint_snapshot', return_value={'http.ok': 1}),
+                ):
+                    result = job.run()
+                self.assertFalse(result['passed'])
+                self.assertFalse(result['suite']['passed'])
+                self.assertEqual(result['suite']['outcome'], 'FAIL')
+                self.assertFalse(job.suite.execution.thread.is_alive())
+                self.assertEqual(events, ['delete-owned', 'collect', 'teardown'])
+                self.assertEqual(json.loads((job.output / 'suite/owned.json').read_text())['resources'], [])
+                self.assertIn('cleanup', [phase['stage'] for phase in result['suite']['execution']['phases']])
+                self.assertEqual(result['errors'], result['suite']['errors'])
+                self.assertEqual(result['completed'], failure != 'prepare')
 
     def test_cleanup_refuses_changed_deployment(self):
         with tempfile.TemporaryDirectory() as folder:

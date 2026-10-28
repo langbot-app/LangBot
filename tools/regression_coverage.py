@@ -228,6 +228,10 @@ def report(catalog, rows, errors=()):
             for row in rows:
                 if (row['profile'], row['case']) != (binding['profile'], binding['case']):
                     continue
+                if 'group_index' in binding and row.get('group_index') != binding['group_index']:
+                    continue
+                if 'turn' in binding and row.get('turn') != binding['turn']:
+                    continue
                 if row.get('turn', 0) < binding.get('min_turn', 0):
                     continue
                 checks = [row.get('assertions', {}).get(name) for name in binding['checks']]

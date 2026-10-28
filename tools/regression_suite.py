@@ -81,6 +81,8 @@ def validate(profile):
         'verification',
         'resource_limits',
         'coverage_suite',
+        'execution',
+        'performance_mode',
     }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
@@ -94,6 +96,20 @@ def validate(profile):
             raise ValueError(f'{field} must be an array of objects')
     if 'coverage_suite' in profile and not re.fullmatch(r'[a-z][a-z0-9_-]*', str(profile['coverage_suite'])):
         raise ValueError('coverage_suite must be a stable suite identifier')
+    if profile.get('performance_mode', 'gate') not in {'gate', 'observe'}:
+        raise ValueError('performance_mode must be gate or observe')
+    execution = profile.get('execution')
+    if execution is not None:
+        if (
+            'smoke' not in profile
+            or not isinstance(execution, dict)
+            or set(execution) != {'total_seconds', 'drain_seconds', 'cooldown_seconds'}
+        ):
+            raise ValueError('execution requires finite smoke cases and total_seconds/drain_seconds/cooldown_seconds')
+        for key, value in execution.items():
+            number(value, f'execution.{key}', minimum=0.001)
+        if execution['drain_seconds'] + execution['cooldown_seconds'] >= execution['total_seconds']:
+            raise ValueError('execution reserves must leave time for required cases')
     cli = profile.get('cli', {})
     if not isinstance(cli, dict) or cli.keys() - {'config', 'executable'}:
         raise ValueError('cli accepts config and executable')
@@ -174,6 +190,8 @@ def validate(profile):
             'fields',
             'forbid',
             'reject_group',
+            'http_probe',
+            'reset_group',
         }:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
@@ -181,7 +199,10 @@ def validate(profile):
         names.add(case['name'])
         if 'stage' in case and (not isinstance(case['stage'], str) or not case['stage']):
             raise ValueError('case stage must be a non-empty string')
-        if any(key in case for key in ('mock_requests', 'reject_group')) and 'smoke' not in profile:
+        if (
+            any(key in case for key in ('mock_requests', 'reject_group', 'http_probe', 'reset_group'))
+            and 'smoke' not in profile
+        ):
             raise ValueError('extended case checks require smoke mode')
         if 'fields' in case and (not isinstance(case['fields'], dict) or not case['fields']):
             raise ValueError('fields must be a non-empty mapping of dotted paths to exact values')
@@ -209,11 +230,37 @@ def validate(profile):
                 number(request['status'], 'mock request status', minimum=100, integer=True)
         if 'reject_group' in case and (
             'http_group' not in case
-            or case['reject_group'] not in ('missing_signature', 'bad_signature')
+            or case['reject_group']
+            not in (
+                'missing_signature',
+                'bad_signature',
+                'expired_signature',
+                'future_signature',
+                'bad_timestamp',
+                'tampered_body',
+                'invalid_json',
+                'invalid_object',
+                'missing_session',
+                'invalid_message',
+            )
             or any(key in case for key in ('box_exec', 'attachment', 'mock_requests'))
         ):
             raise ValueError('reject_group must name a signature rejection on an HTTP group case')
-        if 'http_group' in case:
+        if 'reset_group' in case and (
+            case['reset_group'] is not True or 'http_group' not in case or 'reject_group' in case
+        ):
+            raise ValueError('reset_group requires an accepted group case')
+        if 'http_probe' in case:
+            probe = case['http_probe']
+            if (
+                not isinstance(probe, dict)
+                or set(probe) != {'url', 'auth'}
+                or probe['auth'] not in ('missing', 'invalid')
+                or not resolve(probe['url'], variables).startswith(('http://', 'https://'))
+                or any(key in case for key in ('args', 'body', 'http_group', 'box_exec', 'attachment'))
+            ):
+                raise ValueError('http_probe requires url/auth without CLI or group inputs')
+        elif 'http_group' in case:
             settings = case['http_group']
             if (
                 'args' in case
@@ -347,7 +394,7 @@ def validate(profile):
             raise ValueError(f'unknown case in max_p95_seconds: {name}')
         number(value, 'max_p95_seconds', minimum=0.001)
     if 'resource_limits' in profile:
-        if 'smoke' in profile:
+        if 'smoke' in profile and execution is None:
             raise ValueError('resource_limits requires measured load and cooldown phases')
         from regression_analysis import validate_resource_limits
 
@@ -383,6 +430,14 @@ def validate(profile):
         configured = set(observed.get('pids', {})) | set(observed.get('pid_files', {}))
         if set(profile['resource_limits']['targets']) - configured:
             raise ValueError('Resource limit targets must have configured PIDs or PID files')
+        if execution:
+            limits = profile['resource_limits']
+            if (
+                execution['cooldown_seconds'] < limits['window_seconds']
+                or execution['total_seconds'] - execution['drain_seconds'] - execution['cooldown_seconds']
+                < limits['warmup_seconds'] + limits['window_seconds']
+            ):
+                raise ValueError('execution must cover resource warmup, stable window and cooldown')
         for phase in phases:
             limits = profile['resource_limits']
             if (
@@ -414,6 +469,7 @@ class Suite:
         ]
         self.owned = []
         self.connection = {}
+        self.execution = None
         self.env = dict(os.environ if env is None else env)
         if any('http_group' in case for case in profile['cases']):
             self.variables['group_secret'] = secrets.token_urlsafe(32)
@@ -421,6 +477,9 @@ class Suite:
         self.secrets = [
             value for key, value in self.env.items() if ('API_KEY' in key or key == 'LANGBOT_QA_GROUP_SECRET') and value
         ]
+
+    def timeout(self, maximum):
+        return self.execution.timeout(maximum) if self.execution else maximum
 
     def path(self, value):
         path = Path(resolve(value, self.variables)).expanduser()
@@ -437,12 +496,26 @@ class Suite:
         return str(path)
 
     def finish(self, result):
+        policy = self.profile.get('cleanup', 'on-success')
+        if policy == 'always' or (policy == 'on-success' and not result['errors']):
+            if (self.output / 'owned.json').exists():
+                try:
+                    result['errors'].extend(self.cleanup())
+                except (RuntimeError, ValueError, OSError, KeyError) as exc:
+                    result['errors'].append(f'cleanup failed: {exc}')
+        if self.execution:
+            self.execution.finish(result)
         if self.profile.get('coverage_suite'):
             from regression_coverage import write_report
 
             coverage = write_report([self.output], self.output)
             result['errors'].extend(coverage['evidence_errors'])
+            result.setdefault('incomplete', []).extend(coverage['evidence_errors'])
         result['passed'] = not result['errors']
+        if result['errors']:
+            result['outcome'] = 'FAIL' if set(result['errors']) - set(result.get('incomplete', [])) else 'INCOMPLETE'
+        else:
+            result['outcome'] = 'PASS'
         self.write('summary.json', result)
 
     def call(self, args, body=None, *, defer_bot_readback=False):
@@ -450,7 +523,7 @@ class Suite:
         if body is not None:
             command += ['--file', self.write('request.json', body)]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=360, env=self.env)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout(360), env=self.env)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError('lbctl timed out; outcome unknown, no automatic retry') from exc
         if result.returncode:
@@ -486,7 +559,7 @@ class Suite:
         )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
-            with opener.open(request, timeout=30) as response:
+            with opener.open(request, timeout=self.timeout(30)) as response:
                 payload = json.load(response)
         except (urllib.error.URLError, OSError) as exc:
             raise RuntimeError('Bot readback request failed; the creation was not retried') from exc
@@ -523,6 +596,11 @@ class Suite:
             self.write('environment.json', {'identity': identity, 'capabilities': capabilities, 'plugins': plugins})
             if missing:
                 raise RuntimeError(f'Required plugins are not initialized: {sorted(missing)}')
+        if self.profile.get('execution'):
+            from regression_scenarios import ExecutionWindow
+
+            self.execution = ExecutionWindow(self)
+            self.execution.start()
         for item in self.profile.get('resources', []):
             kind = item['kind']
             body = resolve(item['body'], self.variables)
@@ -588,6 +666,8 @@ class Suite:
                 self.write('warmup.json', warmups)
 
     def cleanup(self):
+        if self.execution:
+            self.execution.mark('cleanup')
         saved = json.loads((self.output / 'owned.json').read_text())
         identity = self.call(['whoami'])
         if saved['workspace_uuid'] != identity['workspace_uuid']:
@@ -715,6 +795,9 @@ class Suite:
                 errors.extend(f'{phase["name"]}: {error}' for error in summary['resources']['errors'])
             if result.returncode:
                 errors.append(f'{phase["name"]}: business or health/resource checks failed')
+            summary['performance_mode'] = self.profile.get('performance_mode', 'gate')
+            if summary['performance_mode'] == 'observe':
+                continue
             thresholds = self.profile.get('thresholds', {})
             if summary['achieved_rps'] < phase['rps'] * thresholds.get('min_rps_ratio', 0):
                 errors.append(f'{phase["name"]}: achieved RPS below configured threshold')
@@ -783,13 +866,6 @@ def main():
         finally:
             if not completed and not result['errors']:
                 result['errors'].append('Run aborted before completion; inspect logs and retained resources.')
-            policy = profile.get('cleanup', 'on-success')
-            if policy == 'always' or (policy == 'on-success' and not result['errors']):
-                if (args.output / 'owned.json').exists():
-                    try:
-                        result['errors'].extend(suite.cleanup())
-                    except (RuntimeError, ValueError, OSError, KeyError) as exc:
-                        result['errors'].append(f'cleanup failed: {exc}')
             suite.finish(result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result['passed']:

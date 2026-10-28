@@ -519,3 +519,72 @@ resource identifiers are not retained in this report. Unmatched requests are
 counted by method/status; webhook sub-paths are not separate declared routes.
 Missing logs or logs without recognizable access records are evidence errors.
 HTTP hits remain separate from assertion coverage.
+
+`regression_scenarios.expanded_profile()` builds 46 finite cases from the smoke
+fixtures (86 requests with two groups and three turns). It adds signed ingress
+rejection, API authentication, group reset/history isolation, tool recovery and
+empty retrieval cases. Save its returned profile alongside the existing fixture
+paths, bind `cli.config` to the target Workspace, and run it through
+`regression_suite.py`. Its three `mock-daily-*` models require the matching
+expanded mock scenario fixtures. The profile exercises one authenticated
+Workspace; OSS does not support creating a second Workspace. Multiple resources
+or group IDs do not establish cross-Workspace isolation.
+
+## Repeating finite scenarios within one budget
+
+Add this to a finite smoke/scenario profile to run its ordered cases repeatedly:
+
+```json
+"execution": {
+  "total_seconds": 1800,
+  "drain_seconds": 120,
+  "cooldown_seconds": 60
+}
+```
+
+Run it with the existing `regression_suite.py run --profile ... --output ...`
+entry point. Installation and plugin readiness precede the shared clock; the clock
+starts immediately before creating scenario resources. It covers preparation,
+case execution, owned-resource cleanup and final quiet sampling. The existing
+cleanup policy still applies; use `cleanup: "always"` in disposable deployments
+that must clean up after a failed run. Keep an outer process/environment supervisor
+as the hard wall-clock backstop: socket timeouts bound individual I/O waits, and
+local process termination cannot cancel work already accepted by the server.
+
+Every configured case and group turn is required in the first pass. A shortfall
+is `INCOMPLETE` and returns nonzero. Further cycles are optional: admission stops
+before the drain/cleanup reserve, including between cases and turns. An unfinished
+optional cycle does not fail the run by itself. Each attempted failure/unknown
+remains recorded; unknown results stop subsequent cycles after independent cases
+in the current cycle finish. Side-effecting requests are never retried. Known
+conversation AgentRuns are reconciled again at closeout for unexpected/unfinished
+runs. Outcomes without a session identity remain unknown.
+
+`cases.json` retains every attempted row and its cycle number; `cycles.json`
+records completion and status per cycle. `execution.json` records stage times.
+`resources.jsonl` uses the existing load/cooldown format plus the specific stage;
+existing `resource_limits` apply, including failure for missing recovery evidence.
+The final summary distinguishes `FAIL` and `INCOMPLETE`; both return nonzero.
+The CLI and deployment Job share the same resource cleanup, quiet sampling, final
+ledger reconciliation, coverage report and verdict. The Job preserves this
+sequence after partial resource preparation; its environment teardown follows
+the suite result and its own cleanup policy.
+Sampling starts before scenario resource creation, so choose the existing warmup
+window to cover the measured preparation and initial case warmup.
+
+Repeated cases create fresh group/conversation identities. The summary records
+observed session/run counts and the owned API resource count. History, Box reuse
+keys and idle expiry retain their product semantics, so repeated sessions can
+intentionally grow stored test data and live sandboxes. Resource budget failures
+remain failures; use an explicitly bounded profile when measuring steady reuse.
+Cleanup uses only `owned.json` and checks the authenticated Workspace. It does not
+delete arbitrary history, files, or containers; the deployment owner handles its
+outer teardown. The final quiet period lasts the configured cooldown, bounded by the remaining
+total budget. An early abort does not wait out the unused execution budget. Cleanup or drain exceeding its reserved endpoint is a failure.
+
+Finite scenarios record successful request rate and full-step P95 as observations
+(the step includes its verification). Load profiles can set
+`performance_mode: "observe"` to record throughput and latency while disabling
+only configured RPS/P95 thresholds. Business assertions, unresolved results,
+health failures, and process/container resource limits still determine success.
+The default load mode remains `gate` for existing benchmark users.

@@ -87,7 +87,7 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
     return observation
 
 
-def group_request(case, group_id, member_id, turn, token, previous, env=None):
+def group_request(case, group_id, member_id, turn, token, previous, env=None, *, timeout=90):
     """Send one signed GroupMessage through the existing HTTP Bot adapter."""
     settings = case['http_group']
     secret = (os.environ if env is None else env)[settings['secret_env']]
@@ -113,7 +113,7 @@ def group_request(case, group_id, member_id, turn, token, previous, env=None):
         },
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=90) as response:
+    with opener.open(request, timeout=timeout) as response:
         payload = json.load(response)
         if response.status != 200 or not isinstance(payload, dict) or payload.get('code') != 0:
             raise ValueError('group ingress did not return a completed response')

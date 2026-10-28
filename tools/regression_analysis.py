@@ -72,10 +72,11 @@ def container_metrics(row):
 def resource_verdict(directory, limits):
     validate_resource_limits(limits)
     rows = [json.loads(line) for line in (Path(directory) / 'resources.jsonl').read_text().splitlines()]
-    result = {'errors': [], 'targets': {}, 'limits': limits}
+    result = {'errors': [], 'incomplete': [], 'targets': {}, 'limits': limits}
     cooldown = [row for row in rows if row['phase'] == 'cooldown']
     if not cooldown:
-        result['errors'].append('No cooldown resource samples; recovery is unknown')
+        result['incomplete'].append('No cooldown resource samples; recovery is unknown')
+        result['errors'].extend(result['incomplete'])
         return result
     end = max(row['elapsed'] for row in cooldown)
     baseline = [
@@ -86,7 +87,8 @@ def resource_verdict(directory, limits):
     ]
     tail = [row for row in cooldown if row['elapsed'] >= end - limits['window_seconds']]
     if min(len(baseline), len(tail)) < limits['min_samples']:
-        result['errors'].append('Insufficient stable/cooldown samples; resource recovery is unknown')
+        result['incomplete'].append('Insufficient stable/cooldown samples; resource recovery is unknown')
+        result['errors'].extend(result['incomplete'])
         return result
     targets = dict(limits['targets'])
     if limits.get('containers'):
@@ -105,7 +107,7 @@ def resource_verdict(directory, limits):
                 not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or (metric == 'rss_bytes' and v == 0)
                 for v in before + after
             ):
-                result['errors'].append(f'{name}/{metric}: missing or invalid samples')
+                result['incomplete'].append(f'{name}/{metric}: missing or invalid samples')
                 continue
             initial, final = statistics.median(before), statistics.median(after)
             growth = final - initial
@@ -117,6 +119,7 @@ def resource_verdict(directory, limits):
             }
             if growth > allowance:
                 result['errors'].append(f'{name}/{metric}: retained growth {growth:g} exceeds {allowance:g}')
+    result['errors'].extend(result['incomplete'])
     return result
 
 
