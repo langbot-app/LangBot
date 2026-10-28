@@ -11,8 +11,10 @@ if TYPE_CHECKING:
 else:
     import sys
     import enum
+
     if 'enum' not in sys.modules or not hasattr(sys.modules['enum'], 'Enum'):
         import importlib
+
         sys.modules.pop('enum', None)
         enum = importlib.import_module('enum')
     Enum = enum.Enum
