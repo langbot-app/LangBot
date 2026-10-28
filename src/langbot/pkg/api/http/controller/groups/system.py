@@ -59,6 +59,7 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'plugin.install.marketplace',
     'plugin.install.local',
     'plugin.upgrade',
+    'plugin.space_upload',
     'plugin.get',
     'plugin.list',
     'plugin.config.get',
@@ -227,7 +228,10 @@ class SystemRouterGroup(group.RouterGroup):
                         'enable_marketplace', True
                     ),
                     'cloud_service_url': (
-                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app')
+                        self.ap.instance_config.data.get('space', {}).get(
+                            'web_url',
+                            self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app'),
+                        )
                     ),
                     'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get(
                         'allow_modify_login_info', True

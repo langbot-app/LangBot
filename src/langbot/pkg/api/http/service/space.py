@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from langbot.pkg.utils import httpclient
+import aiohttp
 import typing
 import datetime
 import time
@@ -202,6 +203,33 @@ class SpaceService:
             return None
         return await self.get_user_info_raw(access_token)
 
+    async def get_creator_profile(self, access_token: str) -> typing.Tuple[bool, dict | None]:
+        """Fetch the authenticated user's Creator Profile from Space.
+
+        Returns (is_token_valid, creator_dict_or_none).
+        """
+        if not access_token:
+            return False, None
+        space_url = self._get_space_config()['url'].rstrip('/')
+        session = httpclient.get_session()
+        try:
+            async with session.get(
+                f'{space_url}/api/v1/creator/profile',
+                headers={'Authorization': f'Bearer {access_token}'},
+            ) as response:
+                if response.status == 401:
+                    return False, None
+                if response.status != 200:
+                    return True, None
+                payload = await httpclient.read_json_limited(response)
+                if payload.get('code') != 0:
+                    return True, None
+                data = payload.get('data') or {}
+                return True, data.get('creator')
+        except Exception:
+            self.ap.logger.exception('Failed to fetch creator profile from Space')
+            return True, None
+
     async def get_credits(self, user_email: str, force_refresh: bool = False) -> int | None:
         """Get Space credits for user with caching (60s TTL)"""
         now = time.time()
@@ -284,6 +312,57 @@ class SpaceService:
                 else:
                     models.append(selection)
             return [SpaceModelSelection.model_validate(model) for model in models]
+
+    # === Plugin publishing ===
+
+    async def publish_plugin(
+        self,
+        access_token: str,
+        package_bytes: bytes,
+        *,
+        filename: str = 'plugin.lbpkg',
+        changelog: str = '',
+    ) -> typing.Dict:
+        """Publish a built ``.lbpkg`` to the LangBot Space marketplace.
+
+        Mirrors the CLI's ``POST /api/v1/marketplace/plugins/publish`` contract
+        (multipart ``file`` + ``changelog``). The caller supplies a valid Space
+        access token resolved from the Workspace owner.
+        """
+
+        if not access_token:
+            raise ValueError('A LangBot Space account is required to publish plugins')
+
+        space_url = self._get_space_config()['url'].rstrip('/')
+
+        form = aiohttp.FormData()
+        form.add_field('changelog', changelog or '')
+        form.add_field(
+            'file',
+            package_bytes,
+            filename=filename,
+            content_type='application/octet-stream',
+        )
+
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/marketplace/plugins/publish',
+            data=form,
+            headers={'Authorization': f'Bearer {access_token}'},
+        ) as response:
+            if response.status != 200:
+                try:
+                    payload = await httpclient.read_json_limited(response)
+                    msg = payload.get('msg') or payload.get('message') or ''
+                except Exception:
+                    msg = ''
+                if not msg:
+                    msg = await httpclient.read_text_limited(response)
+                raise ValueError(msg or 'Failed to publish plugin')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(data.get('msg') or 'Failed to publish plugin')
+            return data.get('data', {})
 
     async def get_recommended_chat_model(self, context: typing.Any) -> dict:
         """Resolve Space's first ranked chat model to a local Workspace model."""
