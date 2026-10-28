@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import html
 import re
 
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
@@ -21,18 +22,35 @@ def _is_base64_data(value: str) -> bool:
 
 class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
-    async def yiri2target(message_chain: platform_message.MessageChain) -> list[dict]:
+    async def yiri2target(message_chain: platform_message.MessageChain, target_type: str | None = None) -> list[dict]:
         content_list: list[dict] = []
+        text_parts: list[str] = []
+
+        def flush_text() -> None:
+            content = ''.join(text_parts)
+            if content:
+                content_list.append({'type': 'text', 'content': content})
+            text_parts.clear()
+
         for component in message_chain:
             if isinstance(component, platform_message.Source):
                 continue
             if isinstance(component, platform_message.Plain):
-                content_list.append({'type': 'text', 'content': component.text})
+                text_parts.append(component.text)
+                continue
             elif isinstance(component, platform_message.At):
-                content_list.append({'type': 'text', 'content': f'@{component.display or component.target}'})
+                if target_type in {None, 'group', 'channel'}:
+                    target = html.escape(str(component.target), quote=True)
+                    text_parts.append(f'<qqbot-at-user id="{target}" />')
+                else:
+                    text_parts.append(f'@{component.display or component.target}')
+                continue
             elif isinstance(component, platform_message.AtAll):
-                content_list.append({'type': 'text', 'content': '@all'})
-            elif isinstance(component, platform_message.Image):
+                text_parts.append('<qqbot-at-everyone />' if target_type == 'channel' else '@all')
+                continue
+
+            flush_text()
+            if isinstance(component, platform_message.Image):
                 content_list.append(QQOfficialMessageConverter._media_payload(component, 'image'))
             elif isinstance(component, platform_message.Voice):
                 content_list.append(QQOfficialMessageConverter._media_payload(component, 'voice'))
@@ -44,15 +62,18 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                 if component.id is not None:
                     content_list.append({'type': 'text', 'content': f'[Quote {component.id}]'})
                 if component.origin:
-                    content_list.extend(await QQOfficialMessageConverter.yiri2target(component.origin))
+                    content_list.extend(await QQOfficialMessageConverter.yiri2target(component.origin, target_type))
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
                     if node.message_chain:
-                        content_list.extend(await QQOfficialMessageConverter.yiri2target(node.message_chain))
+                        content_list.extend(
+                            await QQOfficialMessageConverter.yiri2target(node.message_chain, target_type)
+                        )
             else:
                 text = str(component)
                 if text:
                     content_list.append({'type': 'text', 'content': text})
+        flush_text()
         return content_list
 
     @staticmethod

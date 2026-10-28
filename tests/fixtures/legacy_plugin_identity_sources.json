@@ -21,7 +21,7 @@
     "Runner/LocalAgent/components/runner/default.py": "49f80640d5b26442516b210cd9e65c452c9ce3a9909d6dbd1aa05e5bf3b232ac",
     "Runner/LocalAgent/components/runner/default.yaml": "c1364cf0f211162bb701e27ed92b351fd9ff4cfa0b4469cfeb83ad58136cdf47",
     "Runner/LocalAgent/main.py": "0cde45d7f6f411563fbded09be70d0a497c7c7999b5eaa27f83052383348277f",
-    "Runner/LocalAgent/manifest.yaml": "bc04121a6ffe73fee06c70634726216a6c45b656a350fdab7807d06403cad2cf",
+    "Runner/LocalAgent/manifest.yaml": "d4ccb50d83e83e452ab0b14822f245d5dc4bb85c7bc963ee467f299d4723063f",
     "Runner/LocalAgent/pkg/__init__.py": "ce5142b4971e8d7945fb3c202bacbc28011b033de0ddcb612d5d29106d6985ec",
     "Runner/LocalAgent/pkg/agent_core/__init__.py": "56e95f2391f796e17aee6a168603853ea78b59df97a136bfa33532aede2fa413",
     "Runner/LocalAgent/pkg/agent_core/langbot.py": "6bc0e6ee89e8ba3705d14545169f25f54a0c56dc5da89bd8384b3e22e3f21fea",
@@ -34,9 +34,9 @@
     "Runner/LocalAgent/pkg/model_calling.py": "3ebdb8900bb0de5b14e84bf027cc4ff01e59a4669d28dcede7ca3dcea3a3de4c",
     "Runner/LocalAgent/pkg/rag.py": "ea407af8d4f6fe5b00cde72c7d85ccc541d6fc46254188c372351d93da4a1f0f",
     "Runner/LocalAgent/pkg/run_assembly.py": "e1e2dd0029c976b6c0eb3763e5f94a369fd1909e8bf796a2cb84658c59727630",
-    "Runner/LocalAgent/pyproject.toml": "7f75c366ef0c6817c84cc906c9cd2783df9782876983ae6b15cb299a27409e62",
-    "Runner/LocalAgent/requirements.txt": "5c91c75dba82f776218d1e63541df3d2f444bb1f9354ea991826df57dad401c9",
-    "Runner/LocalAgent/uv.lock": "fc82991d3b2fadff999198c3c1ab35fc04eb8f64aa3f1f464aa93c87afa5ae01"
+    "Runner/LocalAgent/pyproject.toml": "18ec79e6bf40cca8d7b49df93489e2b3d9d74d820ac2f2032fb86d99b0b3cec4",
+    "Runner/LocalAgent/requirements.txt": "7ae9e2f4a957346c938f46dca3769c386c57cc4bc9044fd342358c0163d82bc4",
+    "Runner/LocalAgent/uv.lock": "6ee65461bcff71e93e0701ec91d56f298449144f708d83dd7dde3b1b8f548d05"
   },
   "root": "plugins"
 }

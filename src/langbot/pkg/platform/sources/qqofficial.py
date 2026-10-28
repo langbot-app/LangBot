@@ -387,7 +387,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         *,
         msg_id: typing.Optional[str] = None,
         event_id: typing.Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: typing.Optional[int] = None,
     ) -> None:
         """Send a text reply using the configured C2C/group render mode."""
         use_markdown = self.config.get('enable-markdown-rendering', False)
