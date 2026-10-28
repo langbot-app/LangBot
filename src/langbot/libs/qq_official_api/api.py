@@ -352,6 +352,7 @@ class QQOfficialClient:
             return {}
         message_data = {
             't': msg.get('t', {}),
+            'bot_account_id': self.app_id,
             'user_openid': d.get('author', {}).get('user_openid', {}),
             'timestamp': d.get('timestamp', {}),
             'd_author_id': d.get('author', {}).get('id', {}),
@@ -361,9 +362,27 @@ class QQOfficialClient:
             'channel_id': d.get('channel_id', {}),
             'username': d.get('author', {}).get('username', {}),
             'guild_id': d.get('guild_id', {}),
-            'member_openid': d.get('author', {}).get('openid', {}),
+            'member_openid': d.get('author', {}).get('member_openid') or d.get('author', {}).get('openid') or '',
             'group_openid': d.get('group_openid', {}),
         }
+        # Full-group mode delivers native bot mentions through this event too.
+        # Only QQ's explicit self marker and a matching token authorize an At.
+        if msg.get('t') == 'GROUP_MESSAGE_CREATE':
+            content = d.get('content')
+            mentions = d.get('mentions')
+            if isinstance(content, str) and isinstance(mentions, list):
+                for mention in mentions:
+                    if not isinstance(mention, dict) or mention.get('is_you') is not True:
+                        continue
+                    for key in ('id', 'member_openid', 'openid'):
+                        bot_id = mention.get(key)
+                        if not isinstance(bot_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', bot_id):
+                            continue
+                        for token in (f'<@{bot_id}>', f'<@!{bot_id}>'):
+                            if token in content:
+                                content = content.replace(token, '')
+                                message_data['is_at_bot'] = True
+                message_data['content'] = content
         attachments = d.get('attachments', [])
         image_attachments = [attachment['url'] for attachment in attachments if await self.is_image(attachment)]
         image_attachments_type = [
