@@ -456,7 +456,7 @@ wheels = [
 
 [[package]]
 name = "langbot-local-agent"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "langbot-plugin" },
@@ -472,7 +472,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langbot-plugin", specifier = "==0.7.18" },
+    { name = "langbot-plugin", specifier = ">=0.7.18,<0.8.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },

@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"

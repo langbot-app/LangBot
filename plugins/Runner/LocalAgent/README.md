@@ -6,6 +6,10 @@ Local Agent 是 LangBot 官方的进程内运行器。它在 LangBot 插件进�
 
 `plugin:langbot-team/LocalAgent/default`
 
+## SDK 兼容性
+
+LocalAgent 0.2.3 使用 `langbot-plugin>=0.7.18,<0.8.0`，允许同一 0.7 系列的稳定补丁更新，不再精确锁定单个 SDK 版本。测试环境的 `uv.lock` 仍固定已验证版本以保证可复现；插件包的 `requirements.txt` 与项目声明使用相同的兼容范围。跨 0.8 系列升级需要单独验证。
+
 ## 主要能力
 
 - 支持主模型与 fallback 模型切换。

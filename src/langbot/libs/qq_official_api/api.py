@@ -401,13 +401,21 @@ class QQOfficialClient:
         content_type = attachment.get('content_type', '')
         return content_type.startswith('image/')
 
+    def _resolve_msg_seq(self, msg_seq: Optional[int] = None) -> int:
+        """Allocate automatic sequences across message types, preserving explicit stream sequences."""
+        if msg_seq is None:
+            self._msg_seq_counter += 1
+            return self._msg_seq_counter
+        self._msg_seq_counter = max(self._msg_seq_counter, msg_seq)
+        return msg_seq
+
     async def send_private_text_msg(
         self,
         user_openid: str,
         content: str,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ):
         """Send a c2c text message.
 
@@ -427,7 +435,7 @@ class QQOfficialClient:
             data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_seq': msg_seq,
+                'msg_seq': self._resolve_msg_seq(msg_seq),
             }
             if msg_id:
                 data['msg_id'] = msg_id
@@ -448,7 +456,7 @@ class QQOfficialClient:
         content: str,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ) -> None:
         """Send a Markdown message to a C2C user or QQ group."""
         if not await self.check_access_token():
@@ -464,7 +472,7 @@ class QQOfficialClient:
         data: dict[str, Any] = {
             'msg_type': 2,
             'markdown': {'content': content},
-            'msg_seq': msg_seq,
+            'msg_seq': self._resolve_msg_seq(msg_seq),
         }
         if msg_id:
             data['msg_id'] = msg_id
@@ -488,7 +496,7 @@ class QQOfficialClient:
         content: str,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ) -> None:
         """Send a Markdown C2C message."""
         await self._send_markdown_msg('c2c', user_openid, content, msg_id, event_id, msg_seq)
@@ -499,7 +507,7 @@ class QQOfficialClient:
         content: str,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ) -> None:
         """Send a Markdown QQ group message."""
         await self._send_markdown_msg('group', group_openid, content, msg_id, event_id, msg_seq)
@@ -510,7 +518,7 @@ class QQOfficialClient:
         content: str,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ):
         """Send a group text message.
 
@@ -529,7 +537,7 @@ class QQOfficialClient:
             data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_seq': msg_seq,
+                'msg_seq': self._resolve_msg_seq(msg_seq),
             }
             if msg_id:
                 data['msg_id'] = msg_id
@@ -685,12 +693,10 @@ class QQOfficialClient:
         else:
             raise ValueError(f'Unsupported target_type: {target_type}')
 
-        self._msg_seq_counter += 1
-        msg_seq = self._msg_seq_counter
         body = {
             'msg_type': 7,
             'media': {'file_info': file_info},
-            'msg_seq': msg_seq,
+            'msg_seq': self._resolve_msg_seq(),
         }
         if content:
             body['content'] = content
@@ -792,7 +798,7 @@ class QQOfficialClient:
             'content_raw': content,
             'event_id': event_id,
             'msg_id': msg_id,
-            'msg_seq': msg_seq,
+            'msg_seq': self._resolve_msg_seq(msg_seq),
             'index': index,
         }
         if stream_msg_id:
@@ -817,7 +823,7 @@ class QQOfficialClient:
         keyboard: Optional[dict] = None,
         msg_id: Optional[str] = None,
         event_id: Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: Optional[int] = None,
     ) -> dict:
         """Send a ``msg_type=2`` (markdown) message carrying a keyboard.
 
@@ -838,7 +844,7 @@ class QQOfficialClient:
             event_id: Use ``INTERACTION_CREATE`` event id from a prior
                 button click to keep within the 30-minute passive window
                 without an inbound msg_id.
-            msg_seq: De-dup counter when reusing msg_id.
+            msg_seq: Explicit de-dup counter, or None to allocate automatically.
         """
         if not await self.check_access_token():
             await self.get_access_token()
@@ -853,7 +859,7 @@ class QQOfficialClient:
         body: dict[str, Any] = {
             'msg_type': 2,
             'markdown': {'content': markdown_content},
-            'msg_seq': msg_seq,
+            'msg_seq': self._resolve_msg_seq(msg_seq),
         }
         if keyboard and keyboard.get('content', {}).get('rows'):
             body['keyboard'] = keyboard

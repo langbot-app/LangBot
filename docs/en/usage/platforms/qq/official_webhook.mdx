@@ -82,6 +82,12 @@ As shown in the image:
 
 For example, if the domain is `testlb.com`, then enter `testlb.com/bots/xxxxxx-xxxxxx` in the request address, and click to confirm the configuration. If the callback address is saved successfully, it means the deployment is successful. If you see `Verification Failed`, please carefully check if the above configuration items are filled in correctly.
 
+## Group replies and At components
+
+QQ Official Omni disables `Enable Markdown Rendering` by default. Plain-text group replies omit At components rather than exposing literal markup, while preserving the original reply `msg_id`. This does not guarantee a mention notification in QQ.
+
+For explicit group mentions, obtain Markdown permission for your QQ bot and enable this option. Markdown uses the member's original OpenID, not their display name or QQ number. Verify rendering in the actual QQ client; LangBot does not automatically switch to a potentially unauthorized Markdown mode. Although the official text-interaction documentation lists plain-text support, [adapter testing](https://github.com/nonebot/adapter-qq/issues/220) and user acceptance have shown literal tags in plain-text group replies.
+
 ## Publication Method
 
 Enter the release process in `Home` and follow the process to publish and launch the bot.

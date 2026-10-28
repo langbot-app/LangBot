@@ -139,7 +139,13 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
         raw = await self._send_content_list(
-            str(target_type), str(target_id), await QQOfficialMessageConverter.yiri2target(message)
+            str(target_type),
+            str(target_id),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(str(target_type)),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
         )
         return platform_events.MessageResult(raw={'results': raw})
 
@@ -156,7 +162,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         raw = await self._send_content_list(
             target_type,
             target_id,
-            await QQOfficialMessageConverter.yiri2target(message),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(target_type),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
             msg_id=source.d_id,
         )
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
@@ -177,7 +187,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         *,
         msg_id: typing.Optional[str] = None,
         event_id: typing.Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: typing.Optional[int] = None,
     ) -> typing.Any:
         """Send a text reply using the configured C2C/group render mode."""
         use_markdown = self.config.get('enable-markdown-rendering', False)
