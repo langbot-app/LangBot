@@ -128,6 +128,7 @@ def _stream(suite, agent, scope, row, *, interrupt=None, box_session_id=None, fr
                     'command', ''
                 ).startswith('sleep 8;'):
                     row['box_session_id'] = checked(row, 'exec_active', lambda: _running_box(suite, box_session_id))
+                    row['box_before_interrupt'] = _sessions(suite).get(row['box_session_id'])
                     if interrupt == 'cancel':
                         break  # Closing this public debug stream cancels its run.
             if frame.get('kind') in {'completed', 'error'}:
@@ -299,13 +300,15 @@ def run_case(suite, case, row):
                 'exec_stopped',
                 lambda: _poll(
                     suite,
-                    lambda: _sessions(suite).get(row['box_session_id'], {}).get('status') == 'idle',
+                    lambda: _sessions(suite).get(row['box_session_id'], {}).get('status') in (None, 'idle'),
                     'Interrupted Box exec remains active',
                 ),
             )
+            row['box_after_interrupt'] = _sessions(suite).get(row['box_session_id'])
             config = _agent_config(suite, box_key, 'fault_interrupt_check_model', box=True)
             _data(suite, 'PUT', f'/api/v1/agents/{agent}', {'config': config})
             recovery = _stream(suite, agent, scope, row, frame_key='recovery_frames')
+            row['box_after_recovery'] = _sessions(suite).get(row['box_session_id'])
             calls = _tool_events([frame['data'] for frame in recovery if frame.get('kind') == 'result'], 'exec')
             row['recovery_exec_results'] = calls
             try:

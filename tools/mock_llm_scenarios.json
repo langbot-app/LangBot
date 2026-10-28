@@ -303,7 +303,7 @@
           {
             "name": "exec",
             "arguments": {
-              "command": "test ! -e /tmp/langbot-{mock_scope}-ready && test ! -e /tmp/langbot-{mock_scope}-leak && printf SETUP_READY > /tmp/langbot-{mock_scope}-ready && cat /tmp/langbot-{mock_scope}-ready"
+              "command": "test ! -e /workspace/langbot-{mock_scope}-ready && test ! -e /workspace/langbot-{mock_scope}-leak && printf SETUP_READY > /workspace/langbot-{mock_scope}-ready && cat /workspace/langbot-{mock_scope}-ready"
             }
           }
         ]
@@ -314,7 +314,7 @@
           {
             "name": "exec",
             "arguments": {
-              "command": "sleep 8; printf LATE_SIDE_EFFECT > /tmp/langbot-{mock_scope}-leak",
+              "command": "sleep 8; printf LATE_SIDE_EFFECT > /workspace/langbot-{mock_scope}-leak",
               "timeout_sec": 20
             }
           }
@@ -333,7 +333,7 @@
           {
             "name": "exec",
             "arguments": {
-              "command": "sleep 9; if test ! -f /tmp/langbot-{mock_scope}-ready; then printf INTERRUPT_SETUP_MISSING; exit 41; fi; if test -e /tmp/langbot-{mock_scope}-leak; then printf INTERRUPT_LATE_SIDE_EFFECT; exit 42; fi; rm /tmp/langbot-{mock_scope}-ready && printf INTERRUPT_CLEANUP_OK",
+              "command": "sleep 9; if test ! -f /workspace/langbot-{mock_scope}-ready; then printf INTERRUPT_SETUP_MISSING; exit 41; fi; if test -e /workspace/langbot-{mock_scope}-leak; then printf INTERRUPT_LATE_SIDE_EFFECT; exit 42; fi; rm /workspace/langbot-{mock_scope}-ready && printf INTERRUPT_CLEANUP_OK",
               "timeout_sec": 15
             }
           }
