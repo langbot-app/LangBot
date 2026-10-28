@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -246,6 +247,32 @@ class JobTests(unittest.TestCase):
                 self.assertIn('cleanup', [phase['stage'] for phase in result['suite']['execution']['phases']])
                 self.assertEqual(result['errors'], result['suite']['errors'])
                 self.assertEqual(result['completed'], failure != 'prepare')
+
+    def test_finished_state_save_failure_does_not_skip_collection_or_cleanup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = Job({'cleanup': 'always'}, profile(), root / 'profile.json', root / 'job')
+            suite = SimpleNamespace(run=lambda: {'errors': []}, finish=lambda summary: None)
+            events = []
+            save = job.save
+
+            def failing_save():
+                if job.state['phase'] == 'finished':
+                    raise OSError('state disk unavailable')
+                save()
+
+            with (
+                patch.object(job, 'prepare', return_value=suite),
+                patch.object(job, 'save', side_effect=failing_save),
+                patch.object(job, 'collect', side_effect=lambda: events.append('collect')),
+                patch.object(job, 'cleanup', side_effect=lambda: events.append('cleanup')),
+            ):
+                result = job.run()
+            self.assertEqual(events, ['collect', 'cleanup'])
+            self.assertTrue(result['completed'])
+            self.assertFalse(result['passed'])
+            self.assertEqual(result['errors'], ['state persistence: state disk unavailable'])
+            self.assertEqual(json.loads((job.output / 'summary.json').read_text()), result)
 
     def test_cleanup_refuses_changed_deployment(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -459,7 +459,10 @@ class Job:
                 result['errors'] = list(dict.fromkeys([*result['errors'], *summary['errors']]))
             if result['completed']:
                 self.state['phase'] = 'finished'
-                self.save()
+                try:
+                    self.save()
+                except OSError as exc:
+                    result['errors'].append('state persistence: ' + self.redact(str(exc)))
             try:
                 self.collect()
             except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
