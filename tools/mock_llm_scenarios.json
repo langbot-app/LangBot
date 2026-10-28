@@ -295,5 +295,105 @@
     "kind": "embedding",
     "status": 503,
     "recover_after": 1
+  },
+  "mock-local-interrupt": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "test ! -e /tmp/langbot-{mock_scope}-ready && test ! -e /tmp/langbot-{mock_scope}-leak && printf SETUP_READY > /tmp/langbot-{mock_scope}-ready && cat /tmp/langbot-{mock_scope}-ready"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SETUP_READY",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "sleep 8; printf LATE_SIDE_EFFECT > /tmp/langbot-{mock_scope}-leak",
+              "timeout_sec": 20
+            }
+          }
+        ]
+      },
+      {
+        "content": "UNEXPECTED_INTERRUPT_COMPLETION"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-interrupt-check": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "sleep 9; if test ! -f /tmp/langbot-{mock_scope}-ready; then printf INTERRUPT_SETUP_MISSING; exit 41; fi; if test -e /tmp/langbot-{mock_scope}-leak; then printf INTERRUPT_LATE_SIDE_EFFECT; exit 42; fi; rm /tmp/langbot-{mock_scope}-ready && printf INTERRUPT_CLEANUP_OK",
+              "timeout_sec": 15
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "INTERRUPT_CLEANUP_OK",
+        "content": "INTERRUPT_CLEANUP_OK"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-retry-side-effect": {
+    "status": 503,
+    "recover_after": 1,
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf 'once\\n' >> /tmp/langbot-{mock_scope}-effects; printf SIDE_EFFECT_WRITTEN"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SIDE_EFFECT_WRITTEN",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "test \"$(wc -l < /tmp/langbot-{mock_scope}-effects)\" -eq 1 && rm /tmp/langbot-{mock_scope}-effects && printf SIDE_EFFECT_ONCE"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SIDE_EFFECT_ONCE",
+        "content": "MODEL_RETRY_SIDE_EFFECT_ONCE"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-path-escape": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "read",
+            "arguments": {
+              "path": "/workspace/../../etc/passwd"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "Path escapes the workspace boundary",
+        "content": "PATH_ESCAPE_REJECTED"
+      }
+    ]
   }
 }

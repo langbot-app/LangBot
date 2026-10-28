@@ -9,7 +9,10 @@ import time
 import urllib.error
 import urllib.request
 
-GROUPS = {'resources': 'regression_resource_cases'}
+GROUPS = {
+    'faults': 'regression_execution_cases',
+    'resources': 'regression_resource_cases',
+}
 
 
 class ScenarioUnavailable(RuntimeError):
