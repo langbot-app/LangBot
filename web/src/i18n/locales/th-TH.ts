@@ -1773,13 +1773,13 @@ const thTH = {
     debugging: 'ดีบัก',
     uploadLocalPlugin: 'อัปโหลดปลั๊กอินจากเครื่อง',
     spaceUpload: {
-      menuAction: 'อัปโหลดไปยัง LangBot Space',
-      title: 'อัปโหลดปลั๊กอินไปยัง LangBot Space',
+      menuAction: 'อัปโหลดไปยังตลาดปลั๊กอิน',
+      title: 'อัปโหลดปลั๊กอินไปยังตลาดปลั๊กอิน',
       description:
-        'บิลด์ปลั๊กอินที่กำลังดีบัก {{author}}/{{name}} แล้วเผยแพร่ไปยัง LangBot Space',
+        'บิลด์ปลั๊กอินที่กำลังดีบัก {{author}}/{{name}} แล้วเผยแพร่ไปยังตลาดปลั๊กอิน',
       loadFailed: 'โหลดข้อมูลการอัปโหลดปลั๊กอินไม่สำเร็จ',
       spaceNotConnected:
-        'Workspace นี้ยังไม่ได้ผูกกับบัญชี LangBot Space กรุณาผูกก่อนอัปโหลด',
+        'Workspace นี้ยังไม่ได้ผูกกับบัญชี LangBot กรุณาผูกก่อนอัปโหลด',
       label: 'ชื่อ',
       version: 'เวอร์ชัน',
       pluginDescription: 'คำอธิบาย',
@@ -1787,7 +1787,7 @@ const thTH = {
       repositoryPublicHint:
         'เมื่อซิงค์ไปยัง GitHub ที่เก็บที่ยังไม่มีจะถูกสร้าง และที่เก็บส่วนตัวที่มีอยู่จะถูกเปลี่ยนเป็นสาธารณะ',
       author: 'ผู้พัฒนา',
-      authorHint: 'เมื่อเผยแพร่จะใช้ชื่อผู้พัฒนานี้บน LangBot Space',
+      authorHint: 'เมื่อเผยแพร่จะใช้ชื่อผู้พัฒนานี้บนตลาดปลั๊กอิน',
       license: 'สัญญาอนุญาต',
       licensePlaceholder: 'เลือกสัญญาอนุญาต',
       licenseNone: 'ไม่ระบุ',
@@ -1807,8 +1807,8 @@ const thTH = {
         'คอมมิตในเครื่องแล้ว แต่ยังไม่ได้ตั้งค่ารีโมตให้พุช',
       gitNothing: 'ไม่มีสิ่งที่ต้องซิงค์',
       gitFailed: 'ซิงค์ Git ล้มเหลว: ',
-      uploadSuccess: 'อัปโหลดปลั๊กอินไปยัง LangBot Space แล้ว',
-      reviewOnSpace: 'ส่งขอตรวจสอบบน LangBot Space',
+      uploadSuccess: 'อัปโหลดปลั๊กอินไปยังตลาดปลั๊กอินแล้ว',
+      reviewOnSpace: 'ส่งขอตรวจสอบบนตลาดปลั๊กอิน',
       uploadFailed: 'อัปโหลดปลั๊กอินล้มเหลว: ',
       basicInfo: 'ข้อมูลพื้นฐาน',
       changeIcon: 'เปลี่ยนไอคอน',
@@ -1822,9 +1822,142 @@ const thTH = {
       langTh: 'ไทย',
       langVi: 'เวียดนาม',
       langEs: 'สเปน',
-      uploadButton: 'อัปโหลดไปยัง LangBot Space',
+      uploadButton: 'อัปโหลดไปยังตลาดปลั๊กอิน',
       notDebugHint:
         'อัปโหลดได้เฉพาะปลั๊กอินที่เชื่อมต่อเพื่อดีบักเท่านั้น กรุณาเริ่มดีบักด้วย `lbp run` ก่อน',
+      stepInfo: 'ข้อมูลปลั๊กอิน',
+      stepSettings: 'บันทึกการเปลี่ยนแปลง',
+      stepConfirm: 'ยืนยันการอัปโหลด',
+      manifestNotice:
+        'ข้อมูลต่อไปนี้อ่านจากไฟล์ manifest (manifest.yaml) เพื่อยืนยันเท่านั้น หากต้องการแก้ไขโปรดแก้ไขไฟล์ manifest แล้วเริ่มการดีบักใหม่',
+      manifestSource: 'ยืนยันจาก manifest',
+      nextStep: 'ถัดไป',
+      prevStep: 'ย้อนกลับ',
+      nextToSettings: 'ถัดไป: บันทึกการเปลี่ยนแปลง',
+      nextToConfirm: 'ถัดไป: ยืนยันการอัปโหลด',
+      confirmAndUpload: 'ยืนยันและอัปโหลดไปยังตลาดส่วนขยาย',
+      noDescription: 'ไม่มีคำอธิบาย',
+      noRepository: 'ไม่ได้ระบุคลังรหัส',
+      noLicense: 'ไม่ได้ระบุสัญญาอนุญาต',
+      changelogPlaceholder:
+        'กรอกบันทึกการเปลี่ยนแปลงสำหรับเวอร์ชันนี้ (เช่น คุณสมบัติใหม่ การแก้ไขข้อบกพร่อง)...',
+      changelogHint:
+        'บันทึกการเปลี่ยนแปลงจะแสดงในประวัติเวอร์ชันของตลาดส่วนขยาย',
+      reviewSummaryTitle: 'ตรวจสอบก่อนเผยแพร่',
+      reviewTargetMarket: 'ตลาดเป้าหมาย',
+      reviewTargetMarketValue: 'ตลาดส่วนขยาย (LangBot Space)',
+      reviewAccountStatus: 'สถานะบัญชี',
+      reviewAccountConnected: 'เชื่อมต่อกับบัญชี LangBot แล้ว',
+      reviewAccountNotConnected:
+        'ยังไม่ได้เชื่อมต่อบัญชี (การอัปโหลดจะล้มเหลว)',
+      spaceNotConnectedTitle: 'ยังไม่ได้ผูกบัญชีตลาดส่วนขยาย',
+      bindSpaceButton: 'ผูกบัญชีทันที',
+      bindRequiredToProceed: 'กรุณาผูกบัญชีก่อนดำเนินการต่อ',
+      prerequisitesTitle: 'ข้อกำหนดเบื้องต้นสำหรับการเผยแพร่',
+      prerequisitesDescription:
+        'ก่อนเผยแพร่ปลั๊กอินไปยังตลาดส่วนขยาย โปรดตรวจสอบว่าคุณมีคุณสมบัติตรงตามข้อกำหนดต่อไปนี้',
+      req1Title: 'ข้อกำหนดที่ 1: ผูกบัญชี LangBot Space',
+      req1Desc:
+        'อินสแตนซ์ LangBot ในเครื่องต้องเข้าสู่ระบบหรือผูกกับ LangBot Space',
+      reqBound: 'ผูกบัญชีแล้ว',
+      reqCompleted: 'พร้อมใช้งาน',
+      req2Title: 'ข้อกำหนดที่ 2: สร้างตัวตนผู้สร้างใน Space',
+      req2Desc:
+        'บัญชี Space ต้องมีตัวตนผู้สร้างและชื่อระบุตัวตนต้องตรงกับชื่อผู้เขียนปลั๊กอิน',
+      req2WaitSpace: 'โปรดทำข้อกำหนดที่ 1 (ผูกบัญชี Space) ให้เสร็จก่อน',
+      req2NoCreator: 'บัญชี Space นี้ยังไม่ได้สร้างตัวตนผู้สร้าง',
+      req2Mismatch: 'ชื่อระบุตัวตนผู้สร้างไม่ตรงกัน',
+      req2MismatchDetail:
+        'ชื่อผู้สร้าง Space ของคุณคือ @{{creator}} แต่ชื่อผู้เขียนปลั๊กอินคือ {{author}}',
+      createCreatorButton: 'ไปสร้างตัวตนผู้สร้าง',
+      manageCreatorButton: 'ดูการตั้งค่าผู้สร้าง',
+      pendingReq: 'รอดำเนินการ',
+      autoProceedTip:
+        'เมื่อผ่านข้อกำหนดทั้งหมดแล้ว ตัวช่วยอัปโหลดจะเปิดขึ้นโดยอัตโนมัติ',
+      refreshStatus: 'รีเฟรชสถานะ',
+      reviewGitSync: 'การซิงค์ GitHub',
+      reviewGitSyncEnabled: 'เปิดใช้งาน (ส่งไปยัง {{branch}})',
+      reviewGitSyncDisabled: 'ปิดใช้งาน',
+      reviewChangelog: 'บันทึกการเปลี่ยนแปลง',
+      reviewChangelogEmpty: '(ไม่ได้กรอกบันทึกการเปลี่ยนแปลง)',
+      pluginIdentifier: 'รหัสระบุปลั๊กอิน',
+      banners: {
+        guideTitle: 'คำแนะนำการดำเนินการ:',
+        disabledTooltip: 'โปรดทำตามคำแนะนำในแบนเนอร์ด้านบนก่อนอัปโหลด',
+        bindButton: 'เชื่อมต่อบัญชี Space',
+        reauthButton: 'ยืนยันตัวตนบัญชีใหม่',
+        createCreatorButton: 'สร้างโปรไฟล์ผู้สร้าง',
+        manageCreatorButton: 'จัดการโปรไฟล์ผู้สร้าง',
+        viewMyPluginsButton: 'ดูปลั๊กอินของฉันบน Space',
+        refreshButton: 'รีเฟรชสถานะ',
+        retryButton: 'ลองใหม่อีกครั้ง',
+        readyToUpload: {
+          title: 'พร้อมสำหรับการเผยแพร่',
+          description:
+            'บัญชี Space และโปรไฟล์ผู้สร้างพร้อมแล้ว โปรดตรวจสอบรายละเอียดด้านล่างและยืนยันการอัปโหลด',
+        },
+        notConnected: {
+          title: 'ยังไม่ได้เชื่อมต่อบัญชี Space',
+          description:
+            'อินสแตนซ์นี้ยังไม่ได้เชื่อมต่อกับ LangBot Space จำเป็นต้องมีบัญชี Space เพื่อเผยแพร่ปลั๊กอิน',
+          guide:
+            'โปรดคลิก "เชื่อมต่อบัญชี Space" ด้านล่างเพื่อเข้าสู่ระบบ เมื่อเชื่อมต่อแล้วจะสามารถเผยแพร่ปลั๊กอินได้',
+        },
+        noCreator: {
+          title: 'ยังไม่ได้สร้างโปรไฟล์ผู้สร้างบน Space',
+          description:
+            'การเผยแพร่ปลั๊กอินต้องมีโปรไฟล์ผู้สร้าง (Creator Profile) เพื่อแสดงข้อมูลผู้เขียนในตลาด',
+          guide:
+            'โปรดคลิกปุ่มด้านล่างเพื่อตั้งค่า Slug, ประวัติย่อ และรูปโปรไฟล์บน Space จากนั้นกลับมาคลิก "รีเฟรชสถานะ"',
+        },
+        authorMismatch: {
+          title: 'ผู้เขียนปลั๊กอินไม่ตรงกับรหัสผู้สร้าง Space',
+          description:
+            'ผู้เขียนที่ระบุใน manifest คือ "{{author}}" แต่รหัสผู้สร้างของคุณคือ "@{{creator}}" ทั้งสองต้องตรงกันทุกประการ',
+          guide:
+            'วิธีแก้ไข:\n1. แก้ไข metadata.author ใน manifest.yaml เป็น "{{creator}}"\n2. หรือเปลี่ยนไปใช้บัญชี Space ที่ตรงกับ "{{author}}"',
+        },
+        pendingReview: {
+          title: 'มีเวอร์ชันที่อยู่ระหว่างรอการตรวจสอบแล้ว',
+          description:
+            'มีเวอร์ชันก่อนหน้าของปลั๊กอินนี้ที่อยู่ระหว่างการตรวจสอบ โปรดรอให้การตรวจสอบเสร็จสิ้นก่อนส่งเวอร์ชันใหม่',
+          guide:
+            'โปรดคลิก "ดูปลั๊กอินของฉันบน Space" เพื่อตรวจสอบสถานะและข้อเสนอแนะ',
+        },
+        sessionExpired: {
+          title: 'เซสชันการเข้าสู่ระบบ Space หมดอายุ',
+          description:
+            'โทเค็นการเข้าถึง Space หมดอายุหรือไม่ถูกต้อง การยืนยันตัวตนล้มเหลว',
+          guide:
+            'โปรดคลิก "ยืนยันตัวตนบัญชีใหม่" ด้านล่างเพื่อเข้าสู่ระบบใหม่อีกครั้ง',
+        },
+        validationFailed: {
+          title: 'การตรวจสอบแพ็กเกจปลั๊กอินไม่ผ่าน',
+          description: 'การตรวจสอบล้มเหลว: {{detail}}',
+          guide:
+            'โปรดตรวจสอบไฟล์ manifest.yaml, รูปแบบเวอร์ชัน SemVer, รูปไอคอน และไฟล์ README',
+        },
+        genericError: {
+          title: 'การเผยแพร่ปลั๊กอินล้มเหลว',
+          description: '{{detail}}',
+          guide:
+            'โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือลองใหม่อีกครั้งในภายหลัง',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'โปรดตั้งค่าโปรไฟล์ผู้สร้างบน Space ก่อนอัปโหลดปลั๊กอิน',
+        authorMismatch:
+          'ผู้เขียนปลั๊กอิน "{{author}}" ไม่ตรงกับรหัสผู้สร้างบน Space ของคุณ "@{{slug}}"',
+        pendingReview:
+          'คุณมีปลั๊กอินที่อยู่ระหว่างการตรวจสอบแล้ว โปรดรอให้การตรวจสอบเสร็จสิ้น',
+        sessionExpired: 'เซสชัน Space หมดอายุแล้ว โปรดเข้าสู่ระบบใหม่อีกครั้ง',
+        notConnected: 'โปรดเชื่อมต่อบัญชี LangBot Space ก่อนอัปโหลดปลั๊กอิน',
+        packageFailed:
+          'สร้างแพ็กเกจปลั๊กอินไม่สำเร็จ โปรดตรวจสอบโค้ดและโครงสร้างไฟล์',
+        inspectFailed: 'การตรวจสอบไฟล์กำกับปลั๊กอินล้มเหลว: {{detail}}',
+        certPrecheckFailed: 'การตรวจสอบสิทธิ์ล่วงหน้าล้มเหลว: {{detail}}',
+      },
     },
     localPreview: {
       title: 'ดูตัวอย่างแพ็กเกจปลั๊กอินในเครื่อง',

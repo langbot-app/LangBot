@@ -1699,13 +1699,11 @@ const zhHans = {
     debugging: '调试中',
     uploadLocalPlugin: '上传本地插件',
     spaceUpload: {
-      menuAction: '上传到 LangBot Space',
-      title: '上传插件到 LangBot Space',
-      description:
-        '构建正在调试的插件 {{author}}/{{name}} 并发布到 LangBot Space。',
+      menuAction: '上传到扩展市场',
+      title: '上传插件到扩展市场',
+      description: '构建正在调试的插件 {{author}}/{{name}} 并发布到扩展市场。',
       loadFailed: '加载插件上传信息失败',
-      spaceNotConnected:
-        '当前工作区未绑定 LangBot Space 账号，请先绑定后再上传。',
+      spaceNotConnected: '当前工作区未绑定 LangBot 账号，请先绑定后再上传。',
       label: '名称',
       version: '版本',
       pluginDescription: '描述',
@@ -1713,7 +1711,7 @@ const zhHans = {
       repositoryPublicHint:
         '同步到 GitHub 时，仓库不存在会自动创建，已存在的私有仓库也会自动改为公开。',
       author: '作者',
-      authorHint: '发布到 LangBot Space 时将使用此作者身份。',
+      authorHint: '发布到扩展市场时将使用此作者身份。',
       license: '开源协议',
       licensePlaceholder: '选择开源协议',
       licenseNone: '未指定',
@@ -1732,8 +1730,8 @@ const zhHans = {
       gitCommittedNoRemote: '已在本地提交，但未配置可推送的远程仓库',
       gitNothing: '没有需要同步的变更',
       gitFailed: 'Git 同步失败：',
-      uploadSuccess: '插件已上传到 LangBot Space',
-      reviewOnSpace: '前往 LangBot Space 提交审核',
+      uploadSuccess: '插件已上传到扩展市场',
+      reviewOnSpace: '前往扩展市场提交审核',
       uploadFailed: '上传插件失败：',
       basicInfo: '基本信息',
       changeIcon: '更换图标',
@@ -1747,8 +1745,151 @@ const zhHans = {
       langTh: '泰语',
       langVi: '越南语',
       langEs: '西班牙语',
-      uploadButton: '上传到 LangBot Space',
+      uploadButton: '上传到扩展市场',
       notDebugHint: '仅支持上传处于调试中的插件，请先通过 `lbp run` 启动调试。',
+      stepInfo: '插件信息',
+      stepSettings: '更新说明',
+      stepConfirm: '确认上传',
+      stepResult: '发布结果',
+      startUpload: '开始上传',
+      uploadingTitle: '正在上传到扩展市场...',
+      uploadingDesc:
+        '正在打包本地插件资源、验证规范并同步至 LangBot Space，请稍候...',
+      uploadSuccessTitle: '插件发布成功！',
+      uploadSuccessDesc:
+        '插件 {{author}}/{{name}} (v{{version}}) 已成功提交至 LangBot Space 扩展市场。',
+      reviewNoticeTitle: '审核流程提示',
+      reviewNoticeDesc:
+        '插件提交后将进入 Space 扩展市场审核队列。审核通过后，扩展市场中的所有用户均可直接浏览、安装与更新该插件。',
+      viewInSpace: '前往扩展市场查看',
+      viewMyPlugins: '管理我的插件',
+      finishAndClose: '完成',
+      retryUpload: '重试上传',
+      backToEdit: '返回上一步修改',
+      manifestNotice:
+        '以下信息已从插件清单（manifest.yaml）读取，仅供确认。如需修改，请直接修改插件配置文件后重新调试。',
+      manifestSource: '清单已确认',
+      nextStep: '下一步',
+      prevStep: '上一步',
+      nextToSettings: '下一步：更新说明',
+      nextToConfirm: '下一步：确认上传',
+      confirmAndUpload: '确认上传到扩展市场',
+      noDescription: '暂无描述',
+      noRepository: '未指定代码仓库',
+      noLicense: '未指定开源协议',
+      changelogPlaceholder:
+        '请填写本次发布的更新说明（例如新增功能、修复的问题等）',
+      changelogHint: '更新说明将展示在扩展市场的插件版本历史中。',
+      reviewSummaryTitle: '发布信息核对',
+      reviewTargetMarket: '发布目标',
+      reviewTargetMarketValue: '扩展市场 (LangBot Space)',
+      reviewAccountStatus: '账号绑定',
+      reviewAccountConnected: '已绑定 LangBot 账号',
+      reviewAccountNotConnected: '未绑定账号（无法上传）',
+      spaceNotConnectedTitle: '未绑定扩展市场账号',
+      bindSpaceButton: '关联账号',
+      bindRequiredToProceed: '请先关联账号后再进入下一步',
+      prerequisitesTitle: '发布前准备',
+      prerequisitesDescription:
+        '在上传插件至扩展市场前，需确认完成账号关联与创作者身份设置。',
+      req1Title: '关联 LangBot Space 账号',
+      req1Desc: '将当前本地实例关联至 LangBot Space 云端平台。',
+      reqBound: '已关联',
+      reqCompleted: '已就绪',
+      req2Title: '设置 Space 创作者身份',
+      req2Desc:
+        '在 Space 开通创作者身份，且创作者标识（Slug）需与插件作者名一致。',
+      req2WaitSpace: '需先完成 Space 账号关联',
+      req2NoCreator: '当前 Space 账号尚未开通创作者身份',
+      req2Mismatch: '创作者标识不匹配',
+      req2MismatchDetail:
+        '当前 Space 创作者标识为 @{{creator}}，与插件声明的作者 {{author}} 不一致。请修改插件作者名或切换对应创作者账号。',
+      createCreatorButton: '开通创作者身份',
+      manageCreatorButton: '查看创作者设置',
+      pendingReq: '待完成',
+      autoProceedTip: '',
+      refreshStatus: '刷新状态',
+      reviewGitSync: 'GitHub 代码同步',
+      reviewGitSyncEnabled: '已启用（推送至 {{branch}}）',
+      reviewGitSyncDisabled: '未启用',
+      reviewChangelog: '更新说明',
+      reviewChangelogEmpty: '（未填写更新说明）',
+      pluginIdentifier: '插件标识',
+      banners: {
+        guideTitle: '操作指引：',
+        disabledTooltip: '请先根据上方横幅指引完成操作',
+        bindButton: '关联 Space 账号',
+        reauthButton: '重新关联账号',
+        createCreatorButton: '前往开通创作者身份',
+        manageCreatorButton: '查看创作者设置',
+        viewMyPluginsButton: '前往 Space 查看我的插件',
+        refreshButton: '刷新状态',
+        retryButton: '重试上传',
+        readyToUpload: {
+          title: '发布前准备已就绪',
+          description:
+            'Space 账号与创作者身份均已就绪，请核对信息后点击下方按钮确认发布。',
+        },
+        notConnected: {
+          title: '未关联 LangBot Space 账号',
+          description:
+            '当前本地实例尚未关联 LangBot Space 平台账号。发布插件需要使用 Space 账号验证创作者身份并托管发布。',
+          guide:
+            '请点击下方「关联 Space 账号」完成登录授权，关联成功后即可继续发布。',
+        },
+        noCreator: {
+          title: '尚未开通 Space 创作者身份',
+          description:
+            '扩展市场要求发布者必须拥有独立的创作者身份（Creator Profile），用于在市场上署名及展示您的公开作者主页。',
+          guide:
+            '请点击下方「前往开通创作者身份」设置您的唯一标识（Slug）、简介和头像。开通后返回本页面点击「刷新状态」即可。',
+        },
+        authorMismatch: {
+          title: '插件作者与 Space 创作者标识不匹配',
+          description:
+            '插件清单中声明的作者为 “{{author}}”，而您当前 Space 账号的创作者标识为 “@{{creator}}”。扩展市场要求二者必须完全一致。',
+          guide:
+            '解决方案（任选其一）：\n1. 修改本地插件工作目录下的 manifest.yaml，将 metadata.author 改为 “{{creator}}”；\n2. 或切换登录至与 “{{author}}” 对应的 Space 创作者账号。修改后点击「刷新状态」。',
+        },
+        pendingReview: {
+          title: '该插件已有正在等待审核的版本',
+          description:
+            '扩展市场中已存在该插件提交的新版本，当前正处于审核流程中。为了确保发布流程有序，需等待上一版本审核完成后方可提交新版本。',
+          guide:
+            '请点击下方「前往 Space 查看我的插件」查看当前的审核进度及审核意见。',
+        },
+        sessionExpired: {
+          title: 'Space 登录授权已过期',
+          description:
+            '本地保存的 Space 访问令牌已失效或已在云端被撤销，无法完成本次发布鉴权。',
+          guide:
+            '请点击下方「重新关联账号」完成重新授权登录，然后再次尝试发布。',
+        },
+        validationFailed: {
+          title: '插件包规范校验未通过',
+          description: '插件包解析或规范预检失败：{{detail}}',
+          guide:
+            '请检查插件清单（manifest.yaml）的字段格式、版本号语义规范（SemVer）以及所引用的图标和 README 文件是否完整。修复后重试。',
+        },
+        genericError: {
+          title: '插件发布失败',
+          description: '{{detail}}',
+          guide:
+            '请检查网络连接或稍后重试。若问题持续出现，请前往 Space 社区寻求帮助。',
+        },
+      },
+      errors: {
+        noCreatorProfile: '请先在 Space 开通创作者身份后再上传插件',
+        authorMismatch:
+          '插件作者名 “{{author}}” 与 Space 创作者标识 “@{{slug}}” 不一致',
+        pendingReview:
+          '该插件已有正在等待审核的提交，请等待审核完成后再发布新版本',
+        sessionExpired: 'Space 登录状态已过期，请重新关联登录',
+        notConnected: '当前工作区尚未关联 LangBot Space 账号，请先完成关联',
+        packageFailed: '插件打包失败，请检查插件代码与目录结构',
+        inspectFailed: '插件清单检验失败：{{detail}}',
+        certPrecheckFailed: '插件认证预检失败：{{detail}}',
+      },
     },
     localPreview: {
       title: '预览本地插件包',

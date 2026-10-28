@@ -58,6 +58,9 @@ export interface PluginSpaceUploadConfig {
     license?: string;
   };
   space_connected: boolean;
+  has_creator_profile: boolean;
+  creator_slug?: string | null;
+  author_matches: boolean;
   cloud_service_url: string;
 }
 

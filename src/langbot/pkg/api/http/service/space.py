@@ -203,6 +203,33 @@ class SpaceService:
             return None
         return await self.get_user_info_raw(access_token)
 
+    async def get_creator_profile(self, access_token: str) -> typing.Tuple[bool, dict | None]:
+        """Fetch the authenticated user's Creator Profile from Space.
+
+        Returns (is_token_valid, creator_dict_or_none).
+        """
+        if not access_token:
+            return False, None
+        space_url = self._get_space_config()['url'].rstrip('/')
+        session = httpclient.get_session()
+        try:
+            async with session.get(
+                f'{space_url}/api/v1/creator/profile',
+                headers={'Authorization': f'Bearer {access_token}'},
+            ) as response:
+                if response.status == 401:
+                    return False, None
+                if response.status != 200:
+                    return True, None
+                payload = await httpclient.read_json_limited(response)
+                if payload.get('code') != 0:
+                    return True, None
+                data = payload.get('data') or {}
+                return True, data.get('creator')
+        except Exception:
+            self.ap.logger.exception('Failed to fetch creator profile from Space')
+            return True, None
+
     async def get_credits(self, user_email: str, force_refresh: bool = False) -> int | None:
         """Get Space credits for user with caching (60s TTL)"""
         now = time.time()
@@ -324,11 +351,17 @@ class SpaceService:
             headers={'Authorization': f'Bearer {access_token}'},
         ) as response:
             if response.status != 200:
-                error = await httpclient.read_text_limited(response)
-                raise ValueError(f'Failed to publish plugin: {error}')
+                try:
+                    payload = await httpclient.read_json_limited(response)
+                    msg = payload.get('msg') or payload.get('message') or ''
+                except Exception:
+                    msg = ''
+                if not msg:
+                    msg = await httpclient.read_text_limited(response)
+                raise ValueError(msg or 'Failed to publish plugin')
             data = await httpclient.read_json_limited(response)
             if data.get('code') != 0:
-                raise ValueError(f'Failed to publish plugin: {data.get("msg")}')
+                raise ValueError(data.get('msg') or 'Failed to publish plugin')
             return data.get('data', {})
 
     async def get_recommended_chat_model(self, context: typing.Any) -> dict:

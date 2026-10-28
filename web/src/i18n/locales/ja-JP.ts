@@ -1823,10 +1823,10 @@ const jaJP = {
     debugging: 'デバッグ中',
     uploadLocalPlugin: 'ローカルプラグインのアップロード',
     spaceUpload: {
-      menuAction: 'LangBot Space にアップロード',
-      title: 'プラグインを LangBot Space にアップロード',
+      menuAction: 'プラグインマーケットにアップロード',
+      title: 'プラグインをプラグインマーケットにアップロード',
       description:
-        'デバッグ中のプラグイン {{author}}/{{name}} をビルドして LangBot Space に公開します。',
+        'デバッグ中のプラグイン {{author}}/{{name}} をビルドしてプラグインマーケットに公開します。',
       loadFailed: 'プラグインのアップロード情報の読み込みに失敗しました',
       spaceNotConnected:
         'このワークスペースは LangBot アカウントに連携されていません。先に連携してください。',
@@ -1837,7 +1837,8 @@ const jaJP = {
       repositoryPublicHint:
         'GitHub へ同期する際、存在しないリポジトリは作成され、既存のプライベートリポジトリは公開に変更されます。',
       author: '作者',
-      authorHint: '公開時は LangBot Space 上でこの作者として登録されます。',
+      authorHint:
+        '公開時はプラグインマーケット上でこの作者として登録されます。',
       license: 'ライセンス',
       licensePlaceholder: 'ライセンスを選択',
       licenseNone: '未指定',
@@ -1857,8 +1858,8 @@ const jaJP = {
         'ローカルにコミットしましたが、プッシュ先が未設定です',
       gitNothing: '同期する変更はありません',
       gitFailed: 'Git 同期に失敗しました：',
-      uploadSuccess: 'プラグインを LangBot Space にアップロードしました',
-      reviewOnSpace: 'LangBot Space で審査を申請',
+      uploadSuccess: 'プラグインをプラグインマーケットにアップロードしました',
+      reviewOnSpace: 'プラグインマーケットで審査を申請',
       uploadFailed: 'プラグインのアップロードに失敗しました：',
       basicInfo: '基本情報',
       changeIcon: 'アイコンを変更',
@@ -1872,9 +1873,144 @@ const jaJP = {
       langTh: 'タイ語',
       langVi: 'ベトナム語',
       langEs: 'スペイン語',
-      uploadButton: 'LangBot Space にアップロード',
+      uploadButton: 'プラグインマーケットにアップロード',
       notDebugHint:
         'アップロードできるのはデバッグ接続中のプラグインのみです。先に `lbp run` を実行してください。',
+      stepInfo: 'プラグイン情報',
+      stepSettings: '更新履歴',
+      stepConfirm: 'アップロード確認',
+      manifestNotice:
+        '以下の情報はプラグインマニフェスト（manifest.yaml）から読み込まれた確認用です。変更が必要な場合は、マニフェストを直接編集してデバッグを再起動してください。',
+      manifestSource: 'マニフェスト確認済み',
+      nextStep: '次へ',
+      prevStep: '前へ',
+      nextToSettings: '次へ：更新履歴',
+      nextToConfirm: '次へ：アップロード確認',
+      confirmAndUpload: '拡張機能マーケットにアップロード確認',
+      noDescription: '説明はありません',
+      noRepository: 'リポジトリ未指定',
+      noLicense: 'ライセンス未指定',
+      changelogPlaceholder:
+        'このバージョンの変更履歴を入力してください（新機能、バグ修正など）',
+      changelogHint:
+        '更新履歴は拡張機能マーケットのプラグインバージョン履歴に表示されます。',
+      reviewSummaryTitle: 'リリース確認',
+      reviewTargetMarket: '対象マーケット',
+      reviewTargetMarketValue: '拡張機能マーケット (LangBot Space)',
+      reviewAccountStatus: 'アカウント連携',
+      reviewAccountConnected: 'LangBot アカウント連携済み',
+      reviewAccountNotConnected: '未連携（アップロードに失敗します）',
+      spaceNotConnectedTitle: 'マーケットアカウント未連携',
+      bindSpaceButton: 'アカウントを連携',
+      bindRequiredToProceed: '次へ進むにはアカウントを連携してください',
+      prerequisitesTitle: '公開前の準備',
+      prerequisitesDescription:
+        'マーケットプレイスにプラグインを公開する前に、アカウントの連携とクリエイタープロフィールの設定を行ってください。',
+      req1Title: 'LangBot Space アカウントを連携',
+      req1Desc:
+        'ローカルの LangBot インスタンスが LangBot Space クラウドにログインまたは連携されている必要があります。',
+      reqBound: '連携済み',
+      reqCompleted: '準備完了',
+      req2Title: 'Space クリエイタープロフィールを設定',
+      req2Desc:
+        '連携された Space アカウントにクリエイターIDが存在し、プラグインの author と一致している必要があります。',
+      req2WaitSpace: '先に Space アカウントの連携が必要です',
+      req2NoCreator:
+        '現在の Space アカウントにはクリエイターIDがまだ作成されていません',
+      req2Mismatch: 'クリエイター識別子の不一致',
+      req2MismatchDetail:
+        'Space のクリエイターIDは @{{creator}} ですが、プラグインの author は {{author}} です。manifest.yaml の author を変更するかアカウントを切り替えてください。',
+      createCreatorButton: 'クリエイタープロフィールを設定',
+      manageCreatorButton: 'クリエイター設定を確認',
+      pendingReq: '未完了',
+      autoProceedTip: '',
+      refreshStatus: '状態を更新',
+      reviewGitSync: 'GitHub 同期',
+      reviewGitSyncEnabled: '有効（{{branch}} にプッシュ）',
+      reviewGitSyncDisabled: '無効',
+      reviewChangelog: '更新履歴',
+      reviewChangelogEmpty: '（更新履歴の記入なし）',
+      pluginIdentifier: 'プラグイン識別子',
+      banners: {
+        guideTitle: '操作手順:',
+        disabledTooltip: '上のバナーの手順に従って操作を完了してください',
+        bindButton: 'Spaceアカウントを連携',
+        reauthButton: 'アカウントを再認証',
+        createCreatorButton: 'クリエイタープロフィールを開設',
+        manageCreatorButton: 'クリエイター設定を確認',
+        viewMyPluginsButton: 'Spaceでマイプラグインを確認',
+        refreshButton: '状態を更新',
+        retryButton: '再試行',
+        readyToUpload: {
+          title: '公開準備が整いました',
+          description:
+            'Spaceアカウントとクリエイタープロフィールが確認されました。内容を確認し、下のボタンをクリックして公開してください。',
+        },
+        notConnected: {
+          title: 'LangBot Spaceアカウントが未連携です',
+          description:
+            'このローカルインスタンスはLangBot Spaceに連携されていません。プラグインを公開するにはSpaceアカウントが必要です。',
+          guide:
+            '下の「Spaceアカウントを連携」をクリックして認証を完了してください。連携後に公開が可能になります。',
+        },
+        noCreator: {
+          title: 'Spaceクリエイタープロフィールが未作成です',
+          description:
+            'プラグインをマーケットプレイスに公開するには、作者表示用のクリエイタープロフィールが必要です。',
+          guide:
+            '下のボタンをクリックしてSpaceでクリエイタースラッグ、自己紹介、アイコンを設定し、本画面で「状態を更新」してください。',
+        },
+        authorMismatch: {
+          title: 'プラグイン作者名とSpaceクリエイター識別子が一致しません',
+          description:
+            'マニフェストの作者名は「{{author}}」ですが、現在のSpaceクリエイター識別子は「@{{creator}}」です。マーケットプレイスの規定により完全一致が必要です。',
+          guide:
+            '解決方法:\n1. プラグインの manifest.yaml 内の metadata.author を「{{creator}}」に変更してください。\n2. または「{{author}}」に対応するSpaceアカウントに切り替えてください。',
+        },
+        pendingReview: {
+          title: 'このプラグインには審査待ちのバージョンがあります',
+          description:
+            'すでに審査中の提出が存在します。前回の審査が完了するまで新しいバージョンは提出できません。',
+          guide:
+            '下の「Spaceでマイプラグインを確認」をクリックして、審査状況をご確認ください。',
+        },
+        sessionExpired: {
+          title: 'Spaceログインセッションが期限切れです',
+          description:
+            'Spaceのアクセストークンが無効または期限切れです。再認証が必要です。',
+          guide:
+            '下の「アカウントを再認証」をクリックして再度ログインしてください。',
+        },
+        validationFailed: {
+          title: 'プラグインの仕様検証に失敗しました',
+          description:
+            'パッケージの解析または事前認証チェックに失敗しました: {{detail}}',
+          guide:
+            'manifest.yaml の記述内容、セマンティックバージョン、アイコン、READMEファイルを確認してください。',
+        },
+        genericError: {
+          title: 'プラグインの公開に失敗しました',
+          description: '{{detail}}',
+          guide:
+            'ネットワーク接続を確認して再試行してください。問題が続く場合はコミュニティへお問い合わせください。',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'プラグインをアップロードする前に、Spaceでクリエイタープロフィールを設定してください',
+        authorMismatch:
+          'プラグイン作者「{{author}}」はSpaceのクリエイター識別子「@{{slug}}」と一致しません',
+        pendingReview:
+          '現在審査待ちのプラグイン提出があります。審査完了までお待ちください',
+        sessionExpired:
+          'Spaceのログインセッションが期限切れです。再連携してください',
+        notConnected:
+          'プラグインをアップロードする前に、LangBot Spaceアカウントを連携してください',
+        packageFailed:
+          'プラグインパッケージのビルドに失敗しました。コードと構成を確認してください',
+        inspectFailed: 'マニフェスト検査に失敗しました: {{detail}}',
+        certPrecheckFailed: '認証事前チェックに失敗しました: {{detail}}',
+      },
     },
     localPreview: {
       title: 'ローカルプラグインパッケージをプレビュー',

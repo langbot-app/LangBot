@@ -1840,13 +1840,13 @@ const esES = {
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
     spaceUpload: {
-      menuAction: 'Subir a LangBot Space',
-      title: 'Subir plugin a LangBot Space',
+      menuAction: 'Subir a la tienda de extensiones',
+      title: 'Subir plugin a la tienda de extensiones',
       description:
-        'Compila el plugin en depuración {{author}}/{{name}} y publícalo en LangBot Space.',
+        'Compila el plugin en depuración {{author}}/{{name}} y publícalo en la tienda de extensiones.',
       loadFailed: 'No se pudo cargar la información de subida del plugin',
       spaceNotConnected:
-        'Este Workspace no está vinculado a una cuenta de LangBot Space. Vincúlala antes de subir.',
+        'Este Workspace no está vinculado a una cuenta de LangBot. Vincúlala antes de subir.',
       label: 'Nombre',
       version: 'Versión',
       pluginDescription: 'Descripción',
@@ -1854,7 +1854,8 @@ const esES = {
       repositoryPublicHint:
         'Al sincronizar con GitHub, un repositorio inexistente se crea y un repositorio privado existente pasa a ser público.',
       author: 'Autor',
-      authorHint: 'Al publicar se usa esta identidad de autor en LangBot Space.',
+      authorHint:
+        'Al publicar se usa esta identidad de autor en la tienda de extensiones.',
       license: 'Licencia',
       licensePlaceholder: 'Selecciona una licencia',
       licenseNone: 'Sin especificar',
@@ -1874,8 +1875,8 @@ const esES = {
         'Confirmado localmente, pero no hay remoto configurado para subir',
       gitNothing: 'No hay cambios que sincronizar',
       gitFailed: 'Falló la sincronización con Git: ',
-      uploadSuccess: 'Plugin subido a LangBot Space',
-      reviewOnSpace: 'Enviar a revisión en LangBot Space',
+      uploadSuccess: 'Plugin subido a la tienda de extensiones',
+      reviewOnSpace: 'Enviar a revisión en la tienda de extensiones',
       uploadFailed: 'No se pudo subir el plugin: ',
       basicInfo: 'Información básica',
       changeIcon: 'Cambiar icono',
@@ -1889,9 +1890,149 @@ const esES = {
       langTh: 'Tailandés',
       langVi: 'Vietnamita',
       langEs: 'Español',
-      uploadButton: 'Subir a LangBot Space',
+      uploadButton: 'Subir a la tienda de extensiones',
       notDebugHint:
         'Solo se pueden subir plugins conectados para depuración. Inicia la depuración con `lbp run` primero.',
+      stepInfo: 'Información del plugin',
+      stepSettings: 'Notas de la versión',
+      stepConfirm: 'Confirmar subida',
+      manifestNotice:
+        'La siguiente información se lee del manifiesto del plugin (manifest.yaml) solo para confirmación. Para modificarla, edite su archivo manifest y reinicie la depuración.',
+      manifestSource: 'Confirmado del manifiesto',
+      nextStep: 'Siguiente',
+      prevStep: 'Atrás',
+      nextToSettings: 'Siguiente: Notas de la versión',
+      nextToConfirm: 'Siguiente: Confirmar subida',
+      confirmAndUpload: 'Confirmar y subir al mercado de extensiones',
+      noDescription: 'Sin descripción',
+      noRepository: 'Sin repositorio especificado',
+      noLicense: 'Sin licencia especificada',
+      changelogPlaceholder:
+        'Ingrese las notas de lanzamiento de esta versión (nuevas funciones, correcciones, etc.)...',
+      changelogHint:
+        'El registro de cambios se mostrará en el historial de versiones del mercado de extensiones.',
+      reviewSummaryTitle: 'Revisión previa a la publicación',
+      reviewTargetMarket: 'Mercado de destino',
+      reviewTargetMarketValue: 'Mercado de extensiones (LangBot Space)',
+      reviewAccountStatus: 'Estado de la cuenta',
+      reviewAccountConnected: 'Conectado a la cuenta LangBot',
+      reviewAccountNotConnected: 'Cuenta no conectada (la subida fallará)',
+      spaceNotConnectedTitle: 'Cuenta del mercado no vinculada',
+      bindSpaceButton: 'Vincular cuenta ahora',
+      bindRequiredToProceed: 'Por favor vincula tu cuenta para continuar',
+      prerequisitesTitle: 'Requisitos previos de publicación',
+      prerequisitesDescription:
+        'Antes de publicar este plugin en el mercado, asegúrate de cumplir con los siguientes requisitos.',
+      req1Title: 'Requisito 1: Vincular cuenta de LangBot Space',
+      req1Desc:
+        'La instancia local de LangBot debe estar iniciada sesión o vinculada a LangBot Space.',
+      reqBound: 'Vinculado',
+      reqCompleted: 'Completado',
+      req2Title: 'Requisito 2: Crear identidad de creador en Space',
+      req2Desc:
+        'La cuenta de Space vinculada debe tener una identidad de creador y coincidir con el autor del plugin.',
+      req2WaitSpace:
+        'Completa primero el Requisito 1 (Vincular cuenta de Space)',
+      req2NoCreator:
+        'Esta cuenta de Space aún no tiene una identidad de creador',
+      req2Mismatch: 'Discrepancia en la identidad de creador',
+      req2MismatchDetail:
+        'Tu identificador de creador en Space es @{{creator}}, pero el autor del plugin es {{author}}.',
+      createCreatorButton: 'Crear identidad de creador',
+      manageCreatorButton: 'Ver ajustes de creador',
+      pendingReq: 'Pendiente',
+      autoProceedTip:
+        'Una vez cumplidos los requisitos, se abrirá automáticamente el asistente de publicación.',
+      refreshStatus: 'Actualizar estado',
+      reviewGitSync: 'Sincronización con GitHub',
+      reviewGitSyncEnabled: 'Habilitado (empujar a {{branch}})',
+      reviewGitSyncDisabled: 'Deshabilitado',
+      reviewChangelog: 'Notas de la versión',
+      reviewChangelogEmpty: '(Sin notas de versión)',
+      pluginIdentifier: 'Identificador del plugin',
+      banners: {
+        guideTitle: 'Instrucciones:',
+        disabledTooltip:
+          'Sigue las instrucciones del banner superior antes de subir',
+        bindButton: 'Conectar cuenta de Space',
+        reauthButton: 'Reautenticar cuenta',
+        createCreatorButton: 'Crear perfil de creador',
+        manageCreatorButton: 'Administrar perfil de creador',
+        viewMyPluginsButton: 'Ver mis plugins en Space',
+        refreshButton: 'Actualizar estado',
+        retryButton: 'Reintentar subida',
+        readyToUpload: {
+          title: 'Listo para publicar',
+          description:
+            'La cuenta de Space y el perfil de creador están listos. Revisa los detalles a continuación y confirma la subida.',
+        },
+        notConnected: {
+          title: 'Cuenta de Space no conectada',
+          description:
+            'Esta instancia local aún no está conectada a una cuenta de LangBot Space. Se requiere una cuenta de Space para verificar tu identidad.',
+          guide:
+            'Haz clic en "Conectar cuenta de Space" para iniciar sesión. Podrás publicar el plugin una vez conectada.',
+        },
+        noCreator: {
+          title: 'Perfil de creador de Space no creado',
+          description:
+            'La publicación en el marketplace requiere un perfil de creador para atribuir la autoría y mostrar tu página pública.',
+          guide:
+            'Haz clic en "Crear perfil de creador" para configurar tu slug, biografía y avatar. Luego regresa y haz clic en "Actualizar estado".',
+        },
+        authorMismatch: {
+          title:
+            'El autor del plugin no coincide con el identificador de creador',
+          description:
+            'El autor en manifest.yaml es "{{author}}", pero tu identificador en Space es "@{{creator}}". Deben coincidir exactamente.',
+          guide:
+            'Soluciones:\n1. Actualiza manifest.yaml y establece metadata.author en "{{creator}}";\n2. O cambia a la cuenta de Space que coincida con "{{author}}". Luego haz clic en "Actualizar estado".',
+        },
+        pendingReview: {
+          title: 'Ya existe un envío pendiente de revisión',
+          description:
+            'Un envío anterior de este plugin está actualmente en revisión. Espera a que finalice antes de enviar una nueva versión.',
+          guide:
+            'Haz clic en "Ver mis plugins en Space" para consultar el estado y los comentarios de la revisión.',
+        },
+        sessionExpired: {
+          title: 'La sesión de autenticación de Space ha expirado',
+          description:
+            'El token de acceso de Space ha expirado o es inválido. La autenticación ha fallado.',
+          guide:
+            'Haz clic en "Reautenticar cuenta" para iniciar sesión de nuevo e intenta subirlo otra vez.',
+        },
+        validationFailed: {
+          title: 'La validación del paquete del plugin falló',
+          description:
+            'Error en la inspección o verificación del paquete: {{detail}}',
+          guide:
+            'Comprueba los campos de manifest.yaml, el formato de versión semántica y los archivos de icono y README.',
+        },
+        genericError: {
+          title: 'Error al publicar el plugin',
+          description: '{{detail}}',
+          guide: 'Comprueba tu conexión de red o inténtalo más tarde.',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'Debes configurar un perfil de creador en Space antes de subir plugins',
+        authorMismatch:
+          'El autor del plugin "{{author}}" no coincide con tu identificador de creador en Space "@{slug}"',
+        pendingReview:
+          'Ya tienes un envío de plugin pendiente de revisión. Espera a que finalice',
+        sessionExpired:
+          'La sesión de Space ha expirado. Vuelve a iniciar sesión',
+        notConnected:
+          'Conecta una cuenta de LangBot Space antes de subir plugins',
+        packageFailed:
+          'Error al compilar el paquete del plugin. Revisa el código y los archivos',
+        inspectFailed:
+          'Error al inspeccionar el manifiesto del plugin: {{detail}}',
+        certPrecheckFailed:
+          'Error en la verificación previa de certificación: {{detail}}',
+      },
     },
     localPreview: {
       title: 'Previsualizar paquete de plugin local',

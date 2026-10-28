@@ -1,5 +1,5 @@
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -57,6 +57,10 @@ export default function ExtensionCardComponent({
         : Puzzle;
   const iconSrc = cardVO.type === 'plugin' ? pluginIconURL : cardVO.iconURL;
   const showFallback = iconFailed || !iconSrc;
+
+  useEffect(() => {
+    setIconFailed(false);
+  }, [iconSrc]);
   // Debug plugins can always be uploaded to LangBot Space; surface the same
   // persistent red-dot reminder as an available plugin update.
   const hasSpaceUpload = cardVO.type === 'plugin' && !!cardVO.debug;

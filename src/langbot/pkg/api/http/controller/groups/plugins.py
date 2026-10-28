@@ -23,6 +23,7 @@ from ...context import ExecutionContext, RequestContext
 from .....operation_trace import service as settings_service
 from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
+from langbot_plugin.entities.io.errors import ActionCallError
 from .....plugin.github import validate_github_plugin_install_info
 from .....plugin.archive import inspect_plugin_archive_metadata
 from .....utils import httpclient
@@ -439,7 +440,7 @@ class PluginsRouterGroup(group.RouterGroup):
         async def _space_access_token_for_workspace(
             request_context: RequestContext,
         ) -> str | None:
-            """Resolve the Workspace owner's LangBot Space token, if bound.
+            """Resolve the Workspace owner's or requesting account's LangBot Space token, if bound.
 
             Every step is best-effort: a Space account is optional for the
             underlying LangBot install, so an unavailable identity service must
@@ -450,6 +451,12 @@ class PluginsRouterGroup(group.RouterGroup):
                 space_service = getattr(self.ap, 'space_service', None)
                 if user_service is None or space_service is None:
                     return None
+                if request_context.account_uuid:
+                    account = await user_service.get_user_by_uuid(request_context.account_uuid)
+                    if account and account.account_type == 'space':
+                        token = await space_service.get_valid_access_token(account.user)
+                        if token:
+                            return token
                 owner = await user_service.get_workspace_owner(request_context.workspace_uuid)
                 if owner is None:
                     return None
@@ -495,6 +502,27 @@ class PluginsRouterGroup(group.RouterGroup):
 
             metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}) or {}
             access_token = await _space_access_token_for_workspace(request_context)
+            space_connected = False
+            has_creator_profile = False
+            creator_slug = None
+            author_matches = False
+
+            if access_token:
+                try:
+                    space_service = getattr(self.ap, 'space_service', None)
+                    if space_service is not None:
+                        token_valid, creator_profile = await space_service.get_creator_profile(access_token)
+                        if token_valid:
+                            space_connected = True
+                            if creator_profile and creator_profile.get('slug'):
+                                has_creator_profile = True
+                                creator_slug = creator_profile['slug']
+                                plugin_author = metadata.get('author', author)
+                                if plugin_author and creator_slug and plugin_author.lower() == creator_slug.lower():
+                                    author_matches = True
+                except Exception:
+                    self.ap.logger.exception('Failed to retrieve creator profile for space-upload/config')
+
             return self.success(
                 data={
                     'debug': bool(plugin.get('debug')),
@@ -507,9 +535,13 @@ class PluginsRouterGroup(group.RouterGroup):
                         'repository': metadata.get('repository'),
                         'license': metadata.get('license'),
                     },
-                    'space_connected': bool(access_token),
+                    'space_connected': space_connected,
+                    'has_creator_profile': has_creator_profile,
+                    'creator_slug': creator_slug,
+                    'author_matches': author_matches,
                     'cloud_service_url': self.ap.instance_config.data.get('space', {}).get(
-                        'url', 'https://space.langbot.app'
+                        'web_url',
+                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app'),
                     ),
                 }
             )
@@ -581,8 +613,25 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(
                     400,
                     -1,
-                    'Bind a LangBot Space account before uploading plugins',
+                    'Please connect a LangBot Space account before uploading plugins',
                 )
+
+            space_service = getattr(self.ap, 'space_service', None)
+            if space_service is not None:
+                token_valid, creator_profile = await space_service.get_creator_profile(access_token)
+                if not token_valid:
+                    return self.http_status(401, -1, 'Space login session has expired. Please re-authenticate.')
+                if not creator_profile or not creator_profile.get('slug'):
+                    return self.http_status(
+                        400, -1, 'Please set up a creator profile on Space before uploading plugins.'
+                    )
+                creator_slug = creator_profile.get('slug')
+                if author and creator_slug and author.lower() != creator_slug.lower():
+                    return self.http_status(
+                        400,
+                        -1,
+                        f"Plugin author '{author}' does not match your Space creator slug '@{creator_slug}'.",
+                    )
 
             try:
                 submission = await self.ap.space_service.publish_plugin(
@@ -819,15 +868,17 @@ class PluginsRouterGroup(group.RouterGroup):
             await self._require_authenticated_plugin_runtime_context(request_context)
             try:
                 icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
-            except ValueError as exc:
+                if not icon_data or not icon_data.get('plugin_icon_base64'):
+                    return quart.Response('Icon not found', status=404)
+            except (ValueError, ActionCallError) as exc:
                 # A plugin that is not installed for this Workspace is a missing
                 # resource, not a server fault: the WebUI asks for icons by plugin
                 # identity and must be able to fall back silently.
-                if _is_plugin_not_installed(exc):
+                if isinstance(exc, ActionCallError) or _is_plugin_not_installed(exc):
                     return quart.Response('Icon not found', status=404)
                 raise
             icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
-            return quart.Response(icon_bytes, mimetype=icon_data['mime_type'])
+            return quart.Response(icon_bytes, mimetype=icon_data.get('mime_type', 'image/svg+xml'))
 
         @self.route(
             '/<author>/<plugin_name>/authenticated-assets/<path:filepath>',
@@ -845,7 +896,10 @@ class PluginsRouterGroup(group.RouterGroup):
             asset_path = _normalize_plugin_asset_path(filepath)
             if asset_path is None:
                 return quart.Response('Asset not found', status=404)
-            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+            try:
+                asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+            except (ValueError, ActionCallError):
+                return quart.Response('Asset not found', status=404)
             if not asset_data.get('asset_base64'):
                 return quart.Response('Asset not found', status=404)
             asset_bytes = await asyncio.to_thread(base64.b64decode, asset_data['asset_base64'])
@@ -857,14 +911,15 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.NONE,
         )
         async def _(author: str, plugin_name: str) -> quart.Response:
-            await self._require_public_plugin_runtime_context()
-            icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
-            icon_base64 = icon_data['plugin_icon_base64']
-            mime_type = icon_data['mime_type']
-
-            icon_data = await asyncio.to_thread(base64.b64decode, icon_base64)
-
-            return quart.Response(icon_data, mimetype=mime_type)
+            try:
+                await self._require_public_plugin_runtime_context()
+                icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+                if not icon_data or not icon_data.get('plugin_icon_base64'):
+                    return quart.Response('Icon not found', status=404)
+                icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
+                return quart.Response(icon_bytes, mimetype=icon_data.get('mime_type', 'image/svg+xml'))
+            except (ValueError, ActionCallError, WorkspaceNotFoundError):
+                return quart.Response('Icon not found', status=404)
 
         @self.route(
             '/<author>/<plugin_name>/assets/<path:filepath>',
@@ -872,20 +927,23 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.NONE,
         )
         async def _(author: str, plugin_name: str, filepath: str) -> quart.Response:
-            await self._require_public_plugin_runtime_context()
-            asset_path = _normalize_plugin_asset_path(filepath)
-            if asset_path is None:
-                return quart.Response('Asset not found', status=404)
+            try:
+                await self._require_public_plugin_runtime_context()
+                asset_path = _normalize_plugin_asset_path(filepath)
+                if asset_path is None:
+                    return quart.Response('Asset not found', status=404)
 
-            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
-            if not asset_data.get('asset_base64'):
+                asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+                if not asset_data.get('asset_base64'):
+                    return quart.Response('Asset not found', status=404)
+                asset_bytes = await asyncio.to_thread(
+                    base64.b64decode,
+                    asset_data['asset_base64'],
+                )
+                mime_type = asset_data['mime_type']
+                resp = quart.Response(asset_bytes, mimetype=mime_type)
+            except (ValueError, ActionCallError, WorkspaceNotFoundError):
                 return quart.Response('Asset not found', status=404)
-            asset_bytes = await asyncio.to_thread(
-                base64.b64decode,
-                asset_data['asset_base64'],
-            )
-            mime_type = asset_data['mime_type']
-            resp = quart.Response(asset_bytes, mimetype=mime_type)
             # CSP for HTML pages served to sandboxed iframes (opaque origin).
             # 'self' doesn't work in sandboxed iframes — use actual server origin.
             if mime_type and mime_type.startswith('text/html'):

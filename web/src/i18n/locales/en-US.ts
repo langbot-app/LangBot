@@ -1812,10 +1812,10 @@ const enUS = {
     debugging: 'Debugging',
     uploadLocalPlugin: 'Upload Local Plugin',
     spaceUpload: {
-      menuAction: 'Upload to LangBot Space',
-      title: 'Upload plugin to LangBot Space',
+      menuAction: 'Upload to Extension Market',
+      title: 'Upload plugin to Extension Market',
       description:
-        'Build the debugging plugin {{author}}/{{name}} and publish it to LangBot Space.',
+        'Build the debugging plugin {{author}}/{{name}} and publish it to the Extension Market.',
       loadFailed: 'Failed to load plugin upload information',
       spaceNotConnected:
         'This Workspace is not bound to a LangBot Account. Bind one before uploading.',
@@ -1826,7 +1826,8 @@ const enUS = {
       repositoryPublicHint:
         'When syncing to GitHub, a missing repository is created and an existing private repository is switched to public.',
       author: 'Author',
-      authorHint: 'Publishing uses this author identity on LangBot Space.',
+      authorHint:
+        'Publishing uses this author identity on the Extension Market.',
       license: 'License',
       licensePlaceholder: 'Select a license',
       licenseNone: 'Not specified',
@@ -1846,8 +1847,8 @@ const enUS = {
         'Committed locally, but no remote was configured to push to',
       gitNothing: 'No changes to synchronise',
       gitFailed: 'Git sync failed: ',
-      uploadSuccess: 'Plugin uploaded to LangBot Space',
-      reviewOnSpace: 'Submit for review on LangBot Space',
+      uploadSuccess: 'Plugin uploaded to Extension Market',
+      reviewOnSpace: 'Submit for review on Extension Market',
       uploadFailed: 'Failed to upload plugin: ',
       basicInfo: 'Basic information',
       changeIcon: 'Change icon',
@@ -1861,9 +1862,160 @@ const enUS = {
       langTh: 'Thai',
       langVi: 'Vietnamese',
       langEs: 'Spanish',
-      uploadButton: 'Upload to LangBot Space',
+      uploadButton: 'Upload to Extension Market',
       notDebugHint:
         'Only plugins connected for debugging can be uploaded. Start debugging with `lbp run` first.',
+      stepInfo: 'Plugin Info',
+      stepSettings: 'Release Notes',
+      stepConfirm: 'Confirm & Upload',
+      stepResult: 'Upload Result',
+      startUpload: 'Start Upload',
+      uploadingTitle: 'Uploading to Extension Market...',
+      uploadingDesc:
+        'Packaging local plugin files, validating manifest, and syncing to LangBot Space...',
+      uploadSuccessTitle: 'Plugin Uploaded Successfully!',
+      uploadSuccessDesc:
+        'Plugin {{author}}/{{name}} (v{{version}}) has been submitted to LangBot Space.',
+      reviewNoticeTitle: 'Review Notice',
+      reviewNoticeDesc:
+        'The plugin has entered the review queue. Once approved, it will be publicly available in the Extension Market.',
+      viewInSpace: 'View in Space Marketplace',
+      viewMyPlugins: 'Manage My Plugins',
+      finishAndClose: 'Done',
+      retryUpload: 'Retry Upload',
+      backToEdit: 'Back to Edit',
+      manifestNotice:
+        'The following information is read from the plugin manifest (manifest.yaml) for confirmation only. To modify it, please edit your manifest file and restart debugging.',
+      manifestSource: 'Confirmed from manifest',
+      nextStep: 'Next',
+      prevStep: 'Back',
+      nextToSettings: 'Next: Release Notes',
+      nextToConfirm: 'Next: Confirm & Upload',
+      confirmAndUpload: 'Confirm and Upload to Market',
+      noDescription: 'No description provided',
+      noRepository: 'No repository specified',
+      noLicense: 'No license specified',
+      changelogPlaceholder:
+        'Enter release notes for this version (e.g., new features, bug fixes)...',
+      changelogHint:
+        'Changelog will be displayed in the plugin version history on the Extension Market.',
+      reviewSummaryTitle: 'Pre-flight Review',
+      reviewTargetMarket: 'Target Market',
+      reviewTargetMarketValue: 'Extension Market (LangBot Space)',
+      reviewAccountStatus: 'Account Status',
+      reviewAccountConnected: 'Connected to LangBot Account',
+      reviewAccountNotConnected: 'Account not connected (Upload will fail)',
+      spaceNotConnectedTitle: 'Extension Market Account Not Bound',
+      bindSpaceButton: 'Connect Space Account',
+      bindRequiredToProceed: 'Please connect your account to proceed',
+      prerequisitesTitle: 'Publishing Preparation',
+      prerequisitesDescription:
+        'Connect your Space account and configure your creator identity before publishing.',
+      req1Title: 'Connect LangBot Space Account',
+      req1Desc: 'Link this local instance to your LangBot Space account.',
+      reqBound: 'Connected',
+      reqCompleted: 'Ready',
+      req2Title: 'Space Creator Profile',
+      req2Desc:
+        'Configure a creator profile on Space with a slug matching the plugin author name.',
+      req2WaitSpace: 'Requires Space account connection first',
+      req2NoCreator:
+        'No creator profile has been set up for this Space account',
+      req2Mismatch: 'Creator slug mismatch',
+      req2MismatchDetail:
+        'Space creator slug is @{{creator}}, but plugin manifest author is {{author}}. Please update author in manifest.yaml or switch accounts.',
+      createCreatorButton: 'Set Up Creator Profile',
+      manageCreatorButton: 'View Creator Settings',
+      pendingReq: 'Pending',
+      autoProceedTip: '',
+      refreshStatus: 'Refresh Status',
+      reviewGitSync: 'GitHub Sync',
+      reviewGitSyncEnabled: 'Enabled (pushing to {{branch}})',
+      reviewGitSyncDisabled: 'Disabled',
+      reviewChangelog: 'Release Notes',
+      reviewChangelogEmpty: '(No release notes provided)',
+      pluginIdentifier: 'Plugin Identifier',
+      banners: {
+        guideTitle: 'How to resolve:',
+        disabledTooltip:
+          'Please follow the banner instructions above before uploading',
+        bindButton: 'Connect Space Account',
+        reauthButton: 'Re-authenticate Account',
+        createCreatorButton: 'Create Creator Profile',
+        manageCreatorButton: 'Manage Creator Profile',
+        viewMyPluginsButton: 'View My Plugins on Space',
+        refreshButton: 'Refresh Status',
+        retryButton: 'Retry Upload',
+        readyToUpload: {
+          title: 'Ready to Publish',
+          description:
+            'Space account and creator profile are ready. Please review details below and click confirm to upload.',
+        },
+        notConnected: {
+          title: 'Space Account Not Connected',
+          description:
+            'This local instance is not yet connected to a LangBot Space account. A Space account is required to verify identity and publish plugins.',
+          guide:
+            'Please click "Connect Space Account" below to authorize sign-in. Once connected, you can publish plugins.',
+        },
+        noCreator: {
+          title: 'Space Creator Profile Not Created',
+          description:
+            'Publishing plugins requires a Creator Profile to attribute ownership and showcase your public author page on the marketplace.',
+          guide:
+            'Please click "Create Creator Profile" below to configure your unique slug, bio, and avatar. Then return here and click "Refresh Status".',
+        },
+        authorMismatch: {
+          title: 'Plugin Author Does Not Match Space Creator Slug',
+          description:
+            'The author declared in your plugin manifest is "{{author}}", but your Space creator slug is "@{{creator}}". The marketplace requires them to match exactly.',
+          guide:
+            'How to resolve:\n1. Update manifest.yaml in your plugin directory and set metadata.author to "{{creator}}";\n2. Or switch your connected Space account to the one matching "{{author}}". Then click "Refresh Status".',
+        },
+        pendingReview: {
+          title: 'A Submission Is Already Pending Review',
+          description:
+            'A previous submission for this plugin is currently pending review. Please wait for the current review to complete before submitting another version.',
+          guide:
+            'Please click "View My Plugins on Space" below to check your submission review progress and reviewer feedback.',
+        },
+        sessionExpired: {
+          title: 'Space Authentication Session Expired',
+          description:
+            'The Space access token has expired or is invalid. Authentication failed.',
+          guide:
+            'Please click "Re-authenticate Account" below to sign in again, then retry uploading.',
+        },
+        validationFailed: {
+          title: 'Plugin Package Validation Failed',
+          description:
+            'Package inspection or certification precheck failed: {{detail}}',
+          guide:
+            'Please check your manifest.yaml fields, semantic version format, and ensure all icon and README assets exist. Fix and retry.',
+        },
+        genericError: {
+          title: 'Plugin Publish Failed',
+          description: '{{detail}}',
+          guide:
+            'Please check your network connection or try again later. If the issue persists, visit the Space community.',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'Please set up a creator profile on Space before uploading plugins',
+        authorMismatch:
+          'Plugin author "{{author}}" does not match your Space creator slug "@{{slug}}"',
+        pendingReview:
+          'You already have a plugin submission pending review. Please wait for it to complete',
+        sessionExpired:
+          'Space login session has expired. Please re-authenticate',
+        notConnected:
+          'Please connect a LangBot Space account before uploading plugins',
+        packageFailed:
+          'Failed to build the plugin package. Please check your plugin code and files',
+        inspectFailed: 'Plugin manifest inspection failed: {{detail}}',
+        certPrecheckFailed: 'Plugin certification precheck failed: {{detail}}',
+      },
     },
     localPreview: {
       title: 'Preview Local Plugin Package',

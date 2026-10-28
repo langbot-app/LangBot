@@ -1,5 +1,5 @@
 import { PluginCardVO } from '@/app/home/plugins/components/plugin-installed/PluginCardVO';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,12 @@ export default function PluginCardComponent({
 }) {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [iconFailed, setIconFailed] = useState(false);
   const iconURL = useInstalledPluginIcon(cardVO.author, cardVO.name);
+
+  useEffect(() => {
+    setIconFailed(false);
+  }, [iconURL]);
 
   return (
     <>
@@ -71,11 +76,12 @@ export default function PluginCardComponent({
           )}
         >
           {/* Icon - fixed width */}
-          {iconURL ? (
+          {iconURL && !iconFailed ? (
             <img
               src={iconURL}
               alt="plugin icon"
               className="w-16 h-16 rounded-[8%] flex-shrink-0"
+              onError={() => setIconFailed(true)}
             />
           ) : (
             <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">

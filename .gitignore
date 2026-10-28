@@ -71,3 +71,6 @@ packaging/fnos/app/desktop/images/
 packaging/fnos/*.fpk
 
 r.ps1
+
+*.log
+*.pid
