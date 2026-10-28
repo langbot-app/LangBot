@@ -12,6 +12,7 @@ import urllib.request
 GROUPS = {
     'faults': 'regression_execution_cases',
     'resources': 'regression_resource_cases',
+    'lifecycle': 'regression_lifecycle_cases',
 }
 
 
