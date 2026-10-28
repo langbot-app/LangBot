@@ -11,7 +11,7 @@ ROOT = Path(__file__).parent
 RUNNER = 'plugin:langbot-team/LocalAgent/default'
 
 
-def expanded_profile():
+def expanded_profile(groups=()):
     profile = json.loads((ROOT / 'regression_profiles/smoke.json').read_text())
     profile['coverage_suite'] = 'scenarios'
     profile['smoke']['group_turns'] = 3
@@ -102,6 +102,10 @@ def expanded_profile():
             expect='LANGBOT_' + name.upper() + '_OK',
         )
         profile['cases'].append(case)
+    if groups:
+        from regression_local_cases import add_cases
+
+        add_cases(profile, groups)
     return profile
 
 

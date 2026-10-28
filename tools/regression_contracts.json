@@ -173,7 +173,7 @@
     {"id": "auth.revocation",
      "area": "auth", "kind": "blackbox", "priority": "P0",
      "description": "Revoked credentials stop authorizing new requests",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "auth_revocation", "checks": ["credential_active", "credential_revoked", "key_status", "key_cleanup"]}]
     },
     {"id": "workspace.read_isolation",
      "area": "workspace", "kind": "blackbox", "priority": "P0",
@@ -188,42 +188,42 @@
     {"id": "execution.cancel_cleanup",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Cancelling a running execution reaches cancelled state and releases its work",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.cancel_cleanup", "checks": ["run_status", "exec_active", "exec_stopped", "no_late_side_effect"]}]
     },
     {"id": "execution.timeout_cleanup",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Deadline expiry stops child work and allows a subsequent request",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.timeout_cleanup", "checks": ["run_status", "exec_active", "exec_stopped", "no_late_side_effect"]}]
     },
     {"id": "execution.retry_side_effects",
      "area": "execution", "kind": "blackbox", "priority": "P0",
      "description": "Retries do not duplicate externally visible side effects",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "execution.retry_side_effects", "checks": ["run_status", "fault_injected", "side_effect_once"]}]
     },
     {"id": "runtime.restart_recovery",
      "area": "runtime", "kind": "blackbox", "priority": "P0",
      "description": "A runtime restart produces a known outcome and subsequent execution works",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "runtime_restart_recovery", "checks": ["process_replaced", "no_false_success", "interrupted_terminal", "response_after_restart"]}]
     },
     {"id": "storage.restart_history",
      "area": "storage", "kind": "blackbox", "priority": "P1",
      "description": "Conversation history remains usable across a Core restart",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "core_restart_history", "checks": ["before_restart", "process_replaced", "history_after_restart"]}]
     },
     {"id": "model.stream_disconnect",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "A partial model stream disconnect is handled without a false successful completion",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "model.stream_disconnect", "checks": ["run_status", "fault_injected", "no_fallback_after_partial", "recovered"]}]
     },
     {"id": "model.exhausted_fallback",
      "area": "model", "kind": "blackbox", "priority": "P1",
      "description": "Failure of every configured model reaches a visible failed outcome",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "model.exhausted_fallback", "checks": ["run_status", "fallback_exhausted", "recovered"]}]
     },
     {"id": "tools.path_escape",
      "area": "tools", "kind": "blackbox", "priority": "P0",
      "description": "Box operations reject access outside their authorized filesystem scope",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "tools.path_escape", "checks": ["run_status", "path_rejected", "no_file_content"]}]
     },
     {"id": "tools.timeout_recovery",
      "area": "tools", "kind": "blackbox", "priority": "P1",
@@ -248,7 +248,7 @@
     {"id": "agent.direct_execution",
      "area": "agent", "kind": "blackbox", "priority": "P1",
      "description": "Standalone Agent entrypoint completes through the public API",
-     "bindings": []
+     "bindings": [{"profile": "scenarios", "case": "agent_direct_execution", "checks": ["agent_response", "agent_terminal", "agent_events", "agent_cleanup"]}]
     },
     {"id": "persistence.postgres_parity",
      "area": "persistence", "kind": "blackbox", "priority": "P1",
@@ -265,6 +265,8 @@
      "description": "A real embedding model retrieves relevant fixed documents",
      "bindings": []
     },
+    {"id": "retrieval.delete_visibility", "area": "retrieval", "kind": "blackbox", "priority": "P1", "description": "Deleting one ingested document removes its retrieval results while preserving a second document", "bindings": [{"profile": "scenarios", "case": "retrieval_delete_visibility", "checks": ["retrieval_initial", "retrieval_deleted", "retrieval_control", "document_cleanup"]}]},
+    {"id": "delivery.callback_retry_identity", "area": "delivery", "kind": "blackbox", "priority": "P1", "description": "A 5xx callback retry preserves body and delivery identity, completes delivery, and permits a subsequent message", "bindings": [{"profile": "scenarios", "case": "callback_retry_identity", "checks": ["callback_retry", "callback_followup", "callback_cleanup"]}]},
     {"id": "execution.persisted_terminal",
      "area": "execution", "kind": "graybox", "priority": "P0",
      "description": "Each executed request has a unique completed persisted run and terminal event",

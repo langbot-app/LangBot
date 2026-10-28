@@ -124,6 +124,9 @@ def select_message(body, scenario):
         raise ValueError('stream must be a boolean')
     if body.get('stream_options') is not None and not isinstance(body['stream_options'], dict):
         raise ValueError('stream_options must be an object')
+    scope = fault_scope(body, False) if scenario.get('substitute_mock_scope') else None
+    if scenario.get('substitute_mock_scope') and scope is None:
+        raise ValueError('this scenario requires mock_scope or LB_MOCK_SCOPE for tool file isolation')
     # Select from the current turn's history, never a shared request counter.
     start = next(
         (i for i in range(len(messages) - 1, -1, -1) if messages[i].get('role') == 'user'),
@@ -172,7 +175,9 @@ def select_message(body, scenario):
                 'type': 'function',
                 'function': {
                     'name': call['name'],
-                    'arguments': json.dumps(call['arguments']),
+                    'arguments': json.dumps(call['arguments']).replace('{mock_scope}', scope)
+                    if scope is not None
+                    else json.dumps(call['arguments']),
                 },
             }
             for i, call in enumerate(tool_calls)
@@ -471,6 +476,8 @@ def validate_scenarios(scenarios):
             raise ValueError(f'{name}: scenario must be an object')
         if scenario.get('kind', 'chat') not in ('chat', 'embedding'):
             raise ValueError(f'{name}: kind must be chat or embedding')
+        if 'substitute_mock_scope' in scenario and not isinstance(scenario['substitute_mock_scope'], bool):
+            raise ValueError(f'{name}: substitute_mock_scope must be a boolean')
         steps = scenario.get('steps', [])
         if not isinstance(steps, list) or (not steps and scenario.get('kind') != 'embedding'):
             raise ValueError(f'{name}: steps must be a non-empty array')

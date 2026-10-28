@@ -131,9 +131,14 @@ def group_request(case, group_id, member_id, turn, token, previous, env=None, *,
     return payload
 
 
-def reconcile_runs(path, workspace, after_id, conversations, expected_ids):
+def reconcile_runs(path, workspace, after_id, conversations, expected_ids, *, expected_statuses=None):
     """Catch delayed extra or nonterminal runs after request-level verification."""
     actual, unfinished = set(), []
+    expected_statuses = expected_statuses or {}
+    if set(expected_statuses) - set(expected_ids) or any(
+        status not in {'completed', 'failed', 'cancelled', 'timeout'} for status in expected_statuses.values()
+    ):
+        raise ValueError('Expected statuses must name owned runs and terminal states')
     connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
     try:
         values = sorted(conversations)
@@ -145,7 +150,7 @@ def reconcile_runs(path, workspace, after_id, conversations, expected_ids):
             )
             for run_id, status in connection.execute(query, [workspace, after_id, *part]):
                 actual.add(run_id)
-                if status != 'completed':
+                if status != expected_statuses.get(run_id, 'completed'):
                     unfinished.append(run_id)
     finally:
         connection.close()

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from regression_traffic import group_request, percentile, read_endpoint_snapshot, reconcile_runs
 from regression_coverage import checked, check_response
+from regression_local_cases import ScenarioUnavailable
 
 
 class UnresolvedRun(RuntimeError):
@@ -316,7 +317,11 @@ def run_cycle(suite, rows, health, cycle):
                     token = uuid4().hex
                     offset = mock_path.stat().st_size if case.get('mock_requests') and mock_path.exists() else 0
                     try:
-                        if rejected:
+                        if 'scenario' in case:
+                            from regression_local_cases import run_case
+
+                            data = run_case(suite, case, row)
+                        elif rejected:
                             data = checked(
                                 row,
                                 'response',
@@ -358,7 +363,7 @@ def run_cycle(suite, rows, health, cycle):
                         row['output'] = data
                         if case.get('forbid'):
                             checked(row, 'isolation', lambda: check_response(data, case['expect'], case['forbid']))
-                        row['checks'] = {}
+                        row.setdefault('checks', {})
                         if case.get('fields'):
                             row['checks']['fields'] = checked(row, 'fields', lambda: check_fields(data, case['fields']))
                         if case.get('attachment'):
@@ -392,6 +397,8 @@ def run_cycle(suite, rows, health, cycle):
                         row['status'] = 'passed'
                         previous[group] = token
                         history_turns[group] += 1
+                    except ScenarioUnavailable as exc:
+                        row.update(status='skipped', error=redact(str(exc)))
                     except urllib.error.HTTPError as exc:
                         row.update(
                             status='unknown' if exc.code >= 500 else 'failed', error=f'HTTP {exc.code}; not retried'
@@ -413,6 +420,8 @@ def run_cycle(suite, rows, health, cycle):
                         if 'timed out' in message:
                             row['timed_out'] = True
                     row['seconds'] = time.monotonic() - before
+                    for error in row.get('cleanup_errors', []):
+                        errors.append(f'{case["name"]}: cleanup failed: {redact(str(error))}')
                     if row['status'] != 'passed':
                         errors.append(f'{case["name"]}: {row["status"]}: {row["error"]}')
                         if is_group:
@@ -462,7 +471,7 @@ def run_smoke(suite):
             }
         )
         suite.write('cycles.json', cycles)
-        if not execution or not execution.admitting() or any(row['status'] == 'unknown' for row in rows):
+        if not execution or not execution.admitting() or any(row['status'] in ('unknown', 'skipped') for row in rows):
             break
     result['errors'] = errors
     result['cycles'] = cycles
@@ -470,7 +479,7 @@ def run_smoke(suite):
     result['incomplete'] = [
         f'{row["case"]}: {row["status"]}: {row["error"]}'
         for row in rows
-        if row['status'] == 'unknown' and not row.get('timed_out')
+        if row['status'] in ('unknown', 'skipped') and not row.get('timed_out')
     ]
     if not result['first_pass_complete']:
         error = 'Required first pass did not finish before the admission deadline'
@@ -486,7 +495,7 @@ def run_smoke(suite):
             for name in dict.fromkeys(row['case'] for row in rows)
         },
     }
-    executed = [row for row in rows if row.get('requires_runner') and 'after_id' in row]
+    executed = scenario_run_rows(rows)
     result['test_data'] = {
         'observed_conversations': len({row['conversation_id'] for row in executed if 'conversation_id' in row}),
         'observed_agent_runs': len({row['run']['run_id'] for row in executed if 'run' in row}),
@@ -497,9 +506,24 @@ def run_smoke(suite):
     return result
 
 
+def scenario_run_rows(rows):
+    executed = [row for row in rows if row.get('requires_runner') and 'after_id' in row]
+    for row in rows:
+        for run in row.get('scenario_runs', []):
+            executed.append(
+                {
+                    'after_id': row['after_id'],
+                    'conversation_id': run['conversation_id'],
+                    'run': {'run_id': run['run_id']},
+                    'expected_status': run['expected_status'],
+                }
+            )
+    return executed
+
+
 def reconcile_scenario_runs(suite, result, *, key='ledger'):
     """Recheck the originally observed conversations without expanding run ownership."""
-    executed = [row for row in result.get('cases', []) if row.get('requires_runner') and 'after_id' in row]
+    executed = scenario_run_rows(result.get('cases', []))
     if not executed:
         return
     try:
@@ -509,6 +533,9 @@ def reconcile_scenario_runs(suite, result, *, key='ledger'):
             min(row['after_id'] for row in executed),
             {row['conversation_id'] for row in executed if 'conversation_id' in row},
             {row['run']['run_id'] for row in executed if 'run' in row},
+            expected_statuses={
+                row['run']['run_id']: row.get('expected_status', 'completed') for row in executed if 'run' in row
+            },
         )
     except (OSError, sqlite3.Error) as exc:
         error = f'Scenario {key} evidence unavailable: {exc}'
@@ -516,5 +543,5 @@ def reconcile_scenario_runs(suite, result, *, key='ledger'):
         result.setdefault('incomplete', []).append(error)
         return
     if not result[key]['matched']:
-        error = f'Scenario {key} found extra, missing or non-completed AgentRuns'
+        error = f'Scenario {key} found extra, missing or unexpected AgentRun states'
         result['errors'].append(error)
