@@ -367,9 +367,14 @@ phases. The dedicated Docker daemon requirement above still applies.
 
 `Core Smoke` runs regression-tool tests and a real Core smoke in parallel on
 GitHub-hosted Linux runners. The smoke starts Core from the checked-out candidate,
-uses the SDK from `uv.lock`, the existing official-plugin source pin, `lbctl`
+uses the SDK from `uv.lock`, plugins built from the same checkout, `lbctl`
 v0.3.0, a Docker Box and mock generation/embedding. It needs no model credentials
 or access to a developer's running environment.
+The SDK CLI builds LocalAgent, LangRAG and GeneralParsers into `.lbpkg` archives.
+`plugins/manifest.json` records selection mode, plugin versions, archive hashes
+and exact installation/readiness readback. Build logs are preserved alongside it.
+The published route remains available when `--plugins` is omitted; see
+[published plugin preparation and replay](published-plugins.md).
 
 Dependency installation, service startup, sandbox image download and plugin
 installation are preparation. After readiness, the gate allows **60 seconds total**
@@ -396,11 +401,102 @@ inspect its retained ownership journal before cleanup. CI tears down its own
 service processes and owned sandboxes afterward.
 
 The workflow always creates its two checks on PRs and cancels superseded runs.
-After the workflow is merged, configure `Regression tools` and `Core smoke (60s)`
-as required status checks in the repository ruleset. A green workflow alone does
-not enforce merge protection. Longer load and soak tests use the existing Suite
-and Job entry points with separately calibrated latency, throughput and resource
-budgets; the one-minute smoke does not replace them.
+The existing required check names remain `Regression tools` and `Core smoke (60s)`.
+`Daily Endurance` is independent and is not required for merging. Longer load and
+soak tests use the existing Suite and Job entry points with separately calibrated
+latency, throughput and resource budgets; the one-minute smoke does not replace them.
+
+## Daily regression
+
+`Daily Endurance` runs independently of PR checks at 19:23 UTC (03:23
+Asia/Shanghai) on the default branch. GitHub may delay scheduled starts. It also
+supports **Run workflow** with a selected branch. The schedule becomes active
+only after the workflow is merged into the default branch; it is not a required
+merge check.
+
+The workflow reuses the disposable smoke stack and builds plugins from this checkout.
+`--suite daily` consumes 46 base cases plus the selected local groups, requires its first pass, then
+repeats ordered cases within one **1800-second** window. The clock starts before
+creating scenario resources and includes a 120-second reserve for drain/API
+cleanup and a 60-second cooldown. Service and plugin preparation precede this
+clock. A separate 1860-second process guard allows startup and final reporting;
+it does not grant extra scenario time. The whole job retains its 45-minute limit.
+
+The scheduled job enables all local groups (including `plugins`) and the optional one-time restart
+checks. Manual dispatch exposes both switches. `--scenario-groups` accepts a
+space-separated selection; supplying the flag with no values runs only base
+cases. `scenarios` and `daily` enable all three groups when the flag is omitted.
+
+| Group | Additional behavior |
+|---|---|
+| `faults` | Cancel/timeout cleanup, model retry side effects, partial stream failure, exhausted fallback, Box path rejection |
+| `resources` | API-key revocation, direct Agent execution, document deletion with a surviving retrieval control |
+| `plugins` | EssentialCommands version command without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
+| `lifecycle` | Signed HTTP callback 5xx retry identity and subsequent delivery |
+
+For example, select resource and callback cases with
+`--suite scenarios --scenario-groups resources lifecycle`. Add
+`--restart-services` to check Core history after restart and a Runtime restart
+during an active request. These checks run only against services owned by this
+disposable runner, once before the fixed-PID resource sampler starts. Their
+elapsed time is deducted from both scenario and outer process budgets; the
+resource baseline never joins measurements from old and new PIDs. Failed restart
+checks retain their own evidence and fail the run before repeated traffic starts.
+
+Credential revocation and restart diagnostics use an ephemeral user created
+through the normal initialization/login APIs in the runner's new private database.
+Generic Suite callers must provide `LANGBOT_QA_USER_TOKEN` for credential tests;
+missing prerequisites are skipped and produce an incomplete result. Disabled
+groups remain unexecuted in coverage, and a saved profile cannot execute a case
+whose group is disabled. Expected failed/cancelled/timeout Runs are recorded by
+exact ID and status; extra, missing or nonterminal Runs still fail reconciliation.
+
+Fault cases reuse one Box per case and suite, with unique files per invocation.
+This bounds normal sandbox growth while preserving cancellation side-effect
+checks. The callback receiver uses the standard library and loopback; Core and
+the runner must share a network namespace. Document deletion and callback retry
+identity have separate narrow contracts: they do not establish document update
+semantics or exactly-once effects at an arbitrary callback receiver. Plugin
+upgrade rollback and cases needing additional environments remain explicit gaps.
+
+The daily profile uses the existing endurance resource allowances with a
+180-second warmup before baseline sampling. Each pipeline that enables Box uses
+one stable reuse key unique to this CI run, so conversations created by repeated
+cycles reuse that pipeline's sandbox. This measures repeated tool use; it does not test
+cross-group Box file isolation. The profile uses one Workspace and does not
+establish isolation between tenants. Conversation history and AgentRuns still
+accumulate and are reported. Resource excesses remain failures.
+
+Throughput and full-step P95 are observations. Business assertions, unknown
+results, health failures, incomplete evidence and resource limits determine the
+verdict. Summaries include first-pass completion, cycles, plugin installation
+readback, final ledger reconciliation and coverage. Manifests, case results,
+coverage, cycles, execution stages, resource samples and service logs are retained
+for 30 days, including failures. Hosted runners do not provide a controlled
+performance baseline. No automatic comparison between runs is enabled.
+
+To run the same entrypoint on a disposable Linux host with an idle Docker daemon:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite daily --restart-services \
+  --lbctl /path/to/lbctl --plugins plugins \
+  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/daily-001
+```
+
+`--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
+expanded profile once under a 300-second guard. `--suite endurance` retains the
+separate ten-minute load profile under a 900-second guard; its CI entry point also
+reports throughput/P95 without applying their thresholds. All four modes use
+published plugins when `--plugins` is omitted. Both workflows explicitly select
+`--plugins plugins` so source changes are tested in the same PR. Daily additionally
+selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
+space-separated `extra_plugins` list or leave it empty. `--extra-plugins` requires
+source mode and accepts categorized plugin paths, without removing the three base
+plugins. Missing or incompatible packages fail preparation, with no silent fallback.
+Existing conversation Pipelines allow only the base plugins; plugin-specific cases
+bind their own extensions to avoid changing unrelated prompts/tools. The suite attempts owned API cleanup
+even after failures. The CI owner then stops its service processes and removes
+its Box containers; a process guard timeout can interrupt API cleanup.
 
 ## Sustained regression and baseline comparison
 

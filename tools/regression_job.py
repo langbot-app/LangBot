@@ -17,7 +17,7 @@ import urllib.request
 import yaml
 
 from regression_suite import Suite, number, resolve, validate
-from regression_plugins import install_published_plugins, prepare_published_plugins
+from regression_plugins import install_plugins, prepare_published_plugins
 from regression_traffic import owned_box_containers
 
 
@@ -360,7 +360,7 @@ class Job:
         if published is not None:
             self.state['phase'] = 'plugins'
             self.save()
-            install_published_plugins(suite.call, self.output / 'plugins', published)
+            install_plugins(suite.call, self.output / 'plugins', published)
             self.state['phase'] = 'resources'
             self.save()
         suite.write('profile.json', profile)
