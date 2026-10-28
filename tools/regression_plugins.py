@@ -1,4 +1,4 @@
-"""Resolve official published regression plugins once, then install the recorded bytes."""
+"""Prepare source or published regression plugins and verify installed artifacts."""
 
 from datetime import datetime, timezone
 import hashlib
@@ -6,6 +6,10 @@ import io
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -15,6 +19,7 @@ import yaml
 
 MARKETPLACE = 'https://space.langbot.app'
 PLUGIN_IDS = ('langbot-team/LocalAgent', 'langbot-team/LangRAG', 'langbot-team/GeneralParsers')
+PLUGIN_PATHS = ('Runner/LocalAgent', 'KnowledgeEngine/LangRAG', 'misc/GeneralParsers')
 METADATA_LIMIT = 1024 * 1024
 PACKAGE_LIMIT = 64 * 1024 * 1024
 
@@ -83,7 +88,7 @@ def check_archive(content, plugin_id, version):
         ):
             raise ValueError('package manifest identity/version differs from the selected release')
     except (zipfile.BadZipFile, yaml.YAMLError, KeyError, ValueError, RuntimeError) as exc:
-        raise ValueError(f'Invalid published package for {plugin_id}@{version}: {exc}') from exc
+        raise ValueError(f'Invalid plugin package for {plugin_id}@{version}: {exc}') from exc
 
 
 def prepare_published_plugins(directory, replay=None):
@@ -141,8 +146,61 @@ def prepare_published_plugins(directory, replay=None):
     return manifest
 
 
-def install_published_plugins(call, directory, manifest):
-    """Install the downloaded packages and require exact, initialized CLI readback."""
+def prepare_source_plugins(directory, source, extra_plugins=()):
+    """Build selected plugin directories with the SDK CLI, without publishing."""
+    directory, source = Path(directory).resolve(), Path(source).resolve()
+    paths = [*PLUGIN_PATHS, *extra_plugins]
+    if len(paths) != len(set(paths)):
+        raise ValueError('Duplicate source plugin selection')
+    for path in paths:
+        if (
+            not re.fullmatch(r'(Runner|KnowledgeEngine|misc)/[A-Za-z0-9_.-]+', path)
+            or not (source / path).resolve().is_relative_to(source)
+            or not (source / path / 'manifest.yaml').is_file()
+        ):
+            raise ValueError(f'Invalid source plugin path: {path}')
+    directory.mkdir(parents=True, exist_ok=False)
+    manifest = {'version': 1, 'selection': 'source', 'plugins': []}
+    write_manifest(directory, manifest)
+    for path in paths:
+        metadata = yaml.safe_load((source / path / 'manifest.yaml').read_text())['metadata']
+        plugin_id = f'{metadata["author"]}/{metadata["name"]}'
+        if any(entry['id'] == plugin_id for entry in manifest['plugins']):
+            raise ValueError(f'Duplicate source plugin identity: {plugin_id}')
+        if not all(re.fullmatch(r'[A-Za-z0-9_.-]+', metadata[key]) for key in ('author', 'name')):
+            raise ValueError(f'Invalid source plugin identity: {plugin_id}')
+        version = release_version(metadata['version'])
+        entry = {
+            'id': plugin_id,
+            'version': version,
+            'source': path,
+            'archive': f'{metadata["author"]}-{metadata["name"]}-{version}.lbpkg',
+        }
+        manifest['plugins'].append(entry)
+        write_manifest(directory, manifest)
+        with tempfile.TemporaryDirectory() as temporary:
+            package_source = Path(temporary) / 'plugin'
+            shutil.copytree(
+                source / path, package_source, ignore=shutil.ignore_patterns('.git', '.venv*', '__pycache__')
+            )
+            with (directory / f'{metadata["name"]}-build.log').open('w') as log:
+                subprocess.run(
+                    [sys.executable, '-m', 'langbot_plugin.cli.__init__', 'build', '--output', str(directory)],
+                    cwd=package_source,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                    timeout=180,
+                )
+        content = (directory / entry['archive']).read_bytes()
+        check_archive(content, plugin_id, version)
+        entry['sha256'] = hashlib.sha256(content).hexdigest()
+        write_manifest(directory, manifest)
+    return manifest
+
+
+def install_plugins(call, directory, manifest):
+    """Install recorded packages and require exact, initialized CLI readback."""
     directory = Path(directory)
     for entry in manifest['plugins']:
         archive = directory / entry['archive']
@@ -151,7 +209,7 @@ def install_published_plugins(call, directory, manifest):
         try:
             call(['plugin', 'install', 'local', '--file', str(archive), '--wait'])
         except RuntimeError as exc:
-            raise RuntimeError(f'Published plugin install failed: {entry["id"]}@{entry["version"]}: {exc}') from exc
+            raise RuntimeError(f'Plugin install failed: {entry["id"]}@{entry["version"]}: {exc}') from exc
         response = call(['plugin', 'list'])
         plugins = response.get('plugins') if isinstance(response, dict) else None
         if not isinstance(plugins, list) or any(not isinstance(item, dict) for item in plugins):
@@ -165,6 +223,4 @@ def install_published_plugins(call, directory, manifest):
             or matches[0].get('enabled') is not True
             or matches[0].get('status') != 'initialized'
         ):
-            raise RuntimeError(
-                f'Published plugin is not ready at the selected version: {entry["id"]}: {entry["installed"]}'
-            )
+            raise RuntimeError(f'Plugin is not ready at the selected version: {entry["id"]}: {entry["installed"]}')

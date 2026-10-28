@@ -13,6 +13,7 @@ GROUPS = {
     'faults': 'regression_execution_cases',
     'resources': 'regression_resource_cases',
     'lifecycle': 'regression_lifecycle_cases',
+    'plugins': 'regression_plugin_cases',
 }
 
 

@@ -9,7 +9,11 @@ on:
       scenario_groups:
         description: 'Optional local groups, space separated; empty runs only base cases'
         type: string
-        default: 'faults resources lifecycle'
+        default: 'faults resources lifecycle plugins'
+      extra_plugins:
+        description: 'Additional source plugin paths; clear with the plugins group to run only base plugins'
+        type: string
+        default: 'misc/EssentialCommands misc/FAQManager'
       restart_services:
         description: 'Check owned Core and Runtime restarts once before resource sampling'
         type: boolean
@@ -52,15 +56,17 @@ jobs:
           docker pull python:3.12-alpine
       - name: Run repeated scenarios and recovery checks
         env:
-          SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle' || inputs.scenario_groups }}
+          SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle plugins' || inputs.scenario_groups }}
+          EXTRA_PLUGINS: ${{ github.event_name == 'schedule' && 'misc/EssentialCommands misc/FAQManager' || inputs.extra_plugins }}
           RESTART_SERVICES: ${{ github.event_name == 'schedule' || inputs.restart_services }}
         run: |
           read -r -a groups <<< "$SCENARIO_GROUPS"
+          read -r -a extras <<< "$EXTRA_PLUGINS"
           args=()
           if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
           uv run --no-sync python tools/regression_ci.py \
             --suite daily --scenario-groups "${groups[@]}" "${args[@]}" \
-            --lbctl .endurance-bin/lbctl_linux_amd64 --output .qa/daily
+            --lbctl .endurance-bin/lbctl_linux_amd64 --plugins plugins --extra-plugins "${extras[@]}" --output .qa/daily
       - name: Publish observations
         if: always()
         run: |
@@ -83,15 +89,16 @@ jobs:
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
               out.write(f"Daily regression: {outcome}\n\nCore: `{os.environ['GITHUB_SHA']}`.\n\n")
               out.write('One 1800-second scenario/resource budget, including 120 seconds reserved for drain/cleanup and 60 seconds for cooldown. The outer process guard is 1860 seconds; deployment and plugin installation precede the scenario clock.\n\n')
-              out.write('Real Core/Runtime/published plugins/Box; mock generation and embedding. Throughput/P95 are observations; business, health and resource failures still fail this non-required job.\n\n')
+              out.write('Real Core/Runtime/source plugins/Box; mock generation and embedding. Throughput/P95 are observations; business, health and resource failures still fail this non-required job.\n\n')
               out.write(f"Enabled local groups: {gate.get('scenario_groups', 'not reported')}.\n\n")
               restart = gate.get('restart_checks')
               if restart:
                   out.write(f"Owned-service restart checks: {restart.get('outcome', 'not reported')}; {restart.get('elapsed_seconds', 0):.2f}s, deducted from the shared budget. Resource baselines begin after restarts.\n\n")
                   for error in restart.get('errors', []):
                       out.write(f"Restart check error: {error}\n")
+              out.write(f"Plugin selection: `{manifest.get('selection', 'not reported')}`.\n\n")
               for plugin in manifest.get('plugins', []):
-                  out.write(f"Published plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
+                  out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
               out.write(f"Required first pass complete: {suite.get('first_pass_complete', 'not reported')}; cycles: {len(suite.get('cycles', []))}; requests: {suite.get('requests', 'not reported')}.\n\n")
               out.write(f"Final ledger reconciliation: {suite.get('ledger_closeout', {}).get('matched', 'not reported')}.\n\n")
               data = suite.get('test_data', {})
@@ -140,6 +147,7 @@ jobs:
             .qa/daily/gate/suite/coverage.json
             .qa/daily/gate/suite/coverage.md
             .qa/daily/plugins/manifest.json
+            .qa/daily/plugins/*-build.log
             .qa/daily/restart-checks/profile.json
             .qa/daily/restart-checks/cases.json
             .qa/daily/restart-checks/summary.json

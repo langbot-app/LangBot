@@ -367,12 +367,13 @@ phases. The dedicated Docker daemon requirement above still applies.
 
 `Core Smoke` runs regression-tool tests and a real Core smoke in parallel on
 GitHub-hosted Linux runners. The smoke starts Core from the checked-out candidate,
-uses the SDK from `uv.lock`, the latest published official plugins, `lbctl`
+uses the SDK from `uv.lock`, plugins built from the same checkout, `lbctl`
 v0.3.0, a Docker Box and mock generation/embedding. It needs no model credentials
 or access to a developer's running environment.
-Plugin versions are resolved once per run, installed from the downloaded release
-archives and recorded with hashes and installation readback in `plugins/manifest.json`.
-An unavailable or incompatible published package fails preparation; see
+The SDK CLI builds LocalAgent, LangRAG and GeneralParsers into `.lbpkg` archives.
+`plugins/manifest.json` records selection mode, plugin versions, archive hashes
+and exact installation/readiness readback. Build logs are preserved alongside it.
+The published route remains available when `--plugins` is omitted; see
 [published plugin preparation and replay](published-plugins.md).
 
 Dependency installation, service startup, sandbox image download and plugin
@@ -413,7 +414,7 @@ supports **Run workflow** with a selected branch. The schedule becomes active
 only after the workflow is merged into the default branch; it is not a required
 merge check.
 
-The workflow reuses the disposable smoke stack and latest published plugins.
+The workflow reuses the disposable smoke stack and builds plugins from this checkout.
 `--suite daily` consumes 46 base cases plus the selected local groups, requires its first pass, then
 repeats ordered cases within one **1800-second** window. The clock starts before
 creating scenario resources and includes a 120-second reserve for drain/API
@@ -421,7 +422,7 @@ cleanup and a 60-second cooldown. Service and plugin preparation precede this
 clock. A separate 1860-second process guard allows startup and final reporting;
 it does not grant extra scenario time. The whole job retains its 45-minute limit.
 
-The scheduled job enables all local groups and the optional one-time restart
+The scheduled job enables all local groups (including `plugins`) and the optional one-time restart
 checks. Manual dispatch exposes both switches. `--scenario-groups` accepts a
 space-separated selection; supplying the flag with no values runs only base
 cases. `scenarios` and `daily` enable all three groups when the flag is omitted.
@@ -430,6 +431,7 @@ cases. `scenarios` and `daily` enable all three groups when the flag is omitted.
 |---|---|
 | `faults` | Cancel/timeout cleanup, model retry side effects, partial stream failure, exhausted fallback, Box path rejection |
 | `resources` | API-key revocation, direct Agent execution, document deletion with a surviving retrieval control |
+| `plugins` | EssentialCommands version command without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
 | `lifecycle` | Signed HTTP callback 5xx retry identity and subsequent delivery |
 
 For example, select resource and callback cases with
@@ -477,15 +479,22 @@ To run the same entrypoint on a disposable Linux host with an idle Docker daemon
 
 ```sh
 uv run --no-sync python tools/regression_ci.py --suite daily --restart-services \
-  --lbctl /path/to/lbctl --output .qa/daily-001
+  --lbctl /path/to/lbctl --plugins plugins \
+  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/daily-001
 ```
 
 `--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
 expanded profile once under a 300-second guard. `--suite endurance` retains the
 separate ten-minute load profile under a 900-second guard; its CI entry point also
 reports throughput/P95 without applying their thresholds. All four modes use
-published plugins by default. Explicit `--plugins` remains available for source
-development; neither workflow selects it. The suite attempts owned API cleanup
+published plugins when `--plugins` is omitted. Both workflows explicitly select
+`--plugins plugins` so source changes are tested in the same PR. Daily additionally
+selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
+space-separated `extra_plugins` list or leave it empty. `--extra-plugins` requires
+source mode and accepts categorized plugin paths, without removing the three base
+plugins. Missing or incompatible packages fail preparation, with no silent fallback.
+Existing conversation Pipelines allow only the base plugins; plugin-specific cases
+bind their own extensions to avoid changing unrelated prompts/tools. The suite attempts owned API cleanup
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
 

@@ -240,6 +240,17 @@
      "description": "Updated/deleted documents change retrieval results without stale leakage",
      "bindings": []
     },
+    {"id": "plugins.command_dispatch",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "An installed command returns the Core version through signed Bot ingress without invoking an agent or model",
+     "bindings": [{"profile": "scenarios", "case": "plugins.command_version", "checks": ["command_plugin_bindings", "command_version", "command_no_run", "command_no_model", "command_bot_cleanup"]}]
+    },
+    {"id": "plugins.page_storage_crud",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "An installed Page API persists FAQ creates and updates and removes deleted entries from reads and search",
+     "bindings": [{"profile": "scenarios", "case": "plugins.faq_crud", "checks": ["faq_create", "faq_read", "faq_search", "faq_update", "faq_update_read", "faq_update_search", "faq_old_answer_absent", "faq_delete"]}],
+     "routes": ["POST /api/v1/plugins/<author>/<plugin_name>/page-api"]
+    },
     {"id": "plugins.upgrade_recovery",
      "area": "plugins", "kind": "blackbox", "priority": "P1",
      "description": "Plugin upgrade failure preserves a usable installation",

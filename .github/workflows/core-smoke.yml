@@ -73,7 +73,7 @@ jobs:
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
               if manifest.exists():
                   for plugin in json.loads(manifest.read_text())['plugins']:
-                      out.write(f"Published plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
+                      out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
               if path.exists():
                   data = json.loads(path.read_text())
                   out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
@@ -104,6 +104,7 @@ jobs:
             .qa/core-smoke/gate/suite/cycles.json
             .qa/core-smoke/gate/suite/execution.json
             .qa/core-smoke/plugins/manifest.json
+            .qa/core-smoke/plugins/*-build.log
             .qa/core-smoke/*.log
           if-no-files-found: warn
           retention-days: 7

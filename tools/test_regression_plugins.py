@@ -1,4 +1,4 @@
-"""Exercise published resolution, replay integrity and installation readback."""
+"""Exercise plugin selection, artifact integrity and installation readback."""
 
 from collections import Counter
 import copy
@@ -11,6 +11,8 @@ import threading
 import unittest
 from unittest.mock import patch
 import zipfile
+
+import yaml
 
 import regression_plugins as plugins
 
@@ -25,6 +27,66 @@ def archive(plugin_id, version='1.2.3'):
         )
         package.writestr(zipfile.ZipInfo('main.py'), '# Published fixture\n')
     return output.getvalue()
+
+
+class SourcePluginsTests(unittest.TestCase):
+    def test_selected_sources_build_in_isolation_and_record_actual_artifacts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, output = root / 'sources', root / 'packages'
+            paths = (*plugins.PLUGIN_PATHS, 'misc/ExtraPlugin')
+            for path in paths:
+                folder = source / path
+                folder.mkdir(parents=True)
+                with zipfile.ZipFile(io.BytesIO(archive('test/' + folder.name))) as package:
+                    package.extractall(folder)
+
+            def build(args, *, cwd, **kwargs):
+                self.assertEqual(args[1:5], ['-m', 'langbot_plugin.cli.__init__', 'build', '--output'])
+                self.assertFalse(cwd.is_relative_to(source))
+                metadata = yaml.safe_load((cwd / 'manifest.yaml').read_text())['metadata']
+                (cwd / 'generated.html').write_text('Generated only in the isolated build copy')
+                filename = f'{metadata["author"]}-{metadata["name"]}-{metadata["version"]}.lbpkg'
+                (Path(args[-1]) / filename).write_bytes(archive('test/' + metadata['name']))
+
+            with patch.object(plugins.subprocess, 'run', side_effect=build):
+                manifest = plugins.prepare_source_plugins(output, source, ['misc/ExtraPlugin'])
+            self.assertEqual(manifest['selection'], 'source')
+            self.assertEqual([entry['source'] for entry in manifest['plugins']], list(paths))
+            for entry in manifest['plugins']:
+                self.assertEqual(
+                    entry['sha256'], plugins.hashlib.sha256((output / entry['archive']).read_bytes()).hexdigest()
+                )
+                self.assertFalse((source / entry['source'] / 'generated.html').exists())
+
+    def test_invalid_or_duplicate_selection_is_rejected_before_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for path in plugins.PLUGIN_PATHS:
+                (root / path).mkdir(parents=True)
+                (root / path / 'manifest.yaml').write_text('kind: Plugin')
+            (root / 'misc/escape').symlink_to(root.parent, target_is_directory=True)
+            for selected in (['../outside'], ['/tmp/plugin'], ['misc/escape'], [plugins.PLUGIN_PATHS[0]]):
+                with self.subTest(selected=selected), patch.object(plugins.subprocess, 'run') as build:
+                    with self.assertRaises(ValueError):
+                        plugins.prepare_source_plugins(root / 'output', root, selected)
+                    build.assert_not_called()
+
+    def test_wrong_built_identity_fails_without_installation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for path in plugins.PLUGIN_PATHS:
+                folder = root / path
+                folder.mkdir(parents=True)
+                with zipfile.ZipFile(io.BytesIO(archive('test/' + folder.name))) as package:
+                    package.extractall(folder)
+
+            def build(args, **kwargs):
+                (Path(args[-1]) / 'test-LocalAgent-1.2.3.lbpkg').write_bytes(archive('test/WrongPlugin'))
+
+            with patch.object(plugins.subprocess, 'run', side_effect=build):
+                with self.assertRaisesRegex(ValueError, 'identity/version differs'):
+                    plugins.prepare_source_plugins(root / 'output', root)
 
 
 class PublishedPluginsTests(unittest.TestCase):
@@ -95,7 +157,7 @@ class PublishedPluginsTests(unittest.TestCase):
             self.assertEqual(args, ['plugin', 'list'])
             return {'plugins': installed}
 
-        plugins.install_published_plugins(call, directory, manifest)
+        plugins.install_plugins(call, directory, manifest)
         recorded = json.loads((directory / 'manifest.json').read_text())
         self.assertTrue(all(entry['installed'][0]['status'] == 'initialized' for entry in recorded['plugins']))
         self.requests.clear()
@@ -178,13 +240,13 @@ class PublishedPluginsTests(unittest.TestCase):
             }
 
         with self.assertRaisesRegex(RuntimeError, 'not ready at the selected version'):
-            plugins.install_published_plugins(call, directory, manifest)
+            plugins.install_plugins(call, directory, manifest)
         self.assertEqual(len(calls), 2)
         recorded = json.loads((directory / 'manifest.json').read_text())
         self.assertEqual(recorded['plugins'][0]['installed'][0]['version'], '0.0.1')
         (directory / manifest['plugins'][0]['archive']).write_bytes(b'changed after download')
         with self.assertRaisesRegex(ValueError, 'changed before installation'):
-            plugins.install_published_plugins(call, directory, manifest)
+            plugins.install_plugins(call, directory, manifest)
         self.assertEqual(len(calls), 2)
 
 

@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import shutil
 import signal
 import subprocess
 import sys
@@ -16,7 +15,7 @@ import yaml
 
 from regression_gate import supervise
 from regression_coverage import write_report
-from regression_plugins import install_published_plugins, prepare_published_plugins
+from regression_plugins import PLUGIN_IDS, install_plugins, prepare_published_plugins, prepare_source_plugins
 from regression_local_cases import GROUPS, api, require
 from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
@@ -35,6 +34,15 @@ def suite_profile(name, run_id, groups=()):
         profile = expanded_profile(groups)
     else:
         profile = json.loads(profile_path.read_text())
+    for resource in profile['resources']:
+        if resource['kind'] == 'pipeline':
+            resource['body'].setdefault(
+                'extensions_preferences',
+                {
+                    'enable_all_plugins': False,
+                    'plugins': [dict(zip(('author', 'name'), plugin.split('/'))) for plugin in PLUGIN_IDS],
+                },
+            )
     if name == 'smoke':
         profile['smoke']['group_turns'] = 2
     if name == 'daily':
@@ -147,9 +155,11 @@ def run(args):
         return {'service': name, 'old_pid': old_pid, 'new_pid': pids[name], 'old_exit_code': process.returncode}
 
     try:
-        published = None
-        if args.plugins is None:
-            published = prepare_published_plugins(root / 'plugins', args.plugin_manifest)
+        packages = (
+            prepare_source_plugins(root / 'plugins', args.plugins, args.extra_plugins)
+            if args.plugins is not None
+            else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
+        )
         config_path = create_minimal_config(private, port=15301)
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
@@ -163,6 +173,8 @@ def run(args):
         groups = args.scenario_groups
         if groups is None:
             groups = list(GROUPS) if args.suite in ('scenarios', 'daily') else []
+            if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
+                groups.remove('plugins')
         profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups)
         cli_config = private / 'lbctl.yaml'
         cli_config.write_text(
@@ -189,6 +201,8 @@ def run(args):
             mock_records=str(root / 'mock-requests.jsonl'),
         )
         profile['plugins'] = []
+        if 'smoke' in profile:
+            profile['smoke']['required_plugins'] = [entry['id'] for entry in packages['plugins']]
         for resource in profile['resources']:
             if resource['kind'] == 'model' and resource.get('type') == 'embedding':
                 resource['body']['name'] = 'mock-embedding'
@@ -267,15 +281,7 @@ def run(args):
             env['LANGBOT_QA_USER_TOKEN'] = response['data']['token']
             suite.env['LANGBOT_QA_USER_TOKEN'] = env['LANGBOT_QA_USER_TOKEN']
             suite.secrets.append(env['LANGBOT_QA_USER_TOKEN'])
-        if published is not None:
-            install_published_plugins(suite.call, root / 'plugins', published)
-        else:
-            for directory in ('Runner/LocalAgent', 'KnowledgeEngine/LangRAG', 'misc/GeneralParsers'):
-                source = args.plugins / directory
-                package_source = private / source.name
-                shutil.copytree(source, package_source, ignore=shutil.ignore_patterns('.git', '.venv*', '__pycache__'))
-                archive = shutil.make_archive(str(private / source.name), 'zip', root_dir=package_source)
-                suite.call(['plugin', 'install', 'local', '--file', archive, '--wait'])
+        install_plugins(suite.call, root / 'plugins', packages)
         restart_result = None
         restart_elapsed = 0
         if args.restart_services:
@@ -342,8 +348,11 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--lbctl', type=Path, required=True)
     plugins = parser.add_mutually_exclusive_group()
-    plugins.add_argument('--plugins', type=Path, help='Explicit developer override: package a plugin source checkout')
+    plugins.add_argument('--plugins', type=Path, help='Build and install plugins from this source root')
     plugins.add_argument('--plugin-manifest', type=Path, help='Replay published versions and hashes from a prior run')
+    parser.add_argument(
+        '--extra-plugins', nargs='*', default=[], help='Additional paths under --plugins, e.g. misc/HelloPlugin'
+    )
     parser.add_argument('--suite', choices=tuple(SUITE_BUDGETS), default='smoke')
     parser.add_argument(
         '--scenario-groups',
@@ -353,6 +362,8 @@ def main():
     )
     parser.add_argument('--restart-services', action='store_true', help='Check owned Core/Runtime restarts once')
     args = parser.parse_args()
+    if args.extra_plugins and args.plugins is None:
+        parser.error('--extra-plugins requires --plugins')
     if args.suite not in ('scenarios', 'daily') and (args.scenario_groups is not None or args.restart_services):
         parser.error('Optional scenarios and restarts require --suite scenarios or --suite daily')
     if args.output.exists():
