@@ -2024,8 +2024,7 @@ const esES = {
           'Ya tienes un envío de plugin pendiente de revisión. Espera a que finalice',
         sessionExpired:
           'La sesión de Space ha expirado. Vuelve a iniciar sesión',
-        notConnected:
-          'Conecta una cuenta de LangBot antes de subir plugins',
+        notConnected: 'Conecta una cuenta de LangBot antes de subir plugins',
         packageFailed:
           'Error al compilar el paquete del plugin. Revisa el código y los archivos',
         inspectFailed:
