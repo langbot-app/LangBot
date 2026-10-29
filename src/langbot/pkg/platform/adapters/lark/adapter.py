@@ -490,6 +490,31 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             self.reply_to_monitoring_msg.pop(next(iter(self.reply_to_monitoring_msg)), None)
         return True
 
+    async def create_message_card_for_target(self, message_id: str, target_type: str, target_id: str) -> bool:
+        if target_type not in {'group', 'person'} or not target_id:
+            raise ValueError('Lark streaming card requires a group or person target')
+        card_id = await self.create_card_id(message_id)
+        content = {'type': 'card', 'data': {'card_id': card_id, 'template_variable': {'content': 'Thinking...'}}}
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type('chat_id' if target_type == 'group' else 'open_id')
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(target_id)
+                .content(json.dumps(content))
+                .msg_type('interactive')
+                .uuid(str(uuid.uuid4()))
+                .build()
+            )
+            .build()
+        )
+        response: CreateMessageResponse = await self.api_client.im.v1.message.acreate(request)
+        if not response.success():
+            self.card_id_dict.pop(message_id, None)
+            self.card_sequence_dict.pop(card_id, None)
+            raise RuntimeError(f'Lark create_message_card_for_target failed: {response.code} {response.msg}')
+        return True
+
     async def create_card_id(self, message_id) -> str:
         while len(self.card_id_dict) >= 1000:
             old_key = next(iter(self.card_id_dict))
@@ -552,13 +577,6 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         quote_origin: bool = False,
         is_final: bool = False,
     ):
-        card_id = self.card_id_dict[bot_message.resp_message_id]
-        has_sent_update = self.card_sequence_dict.get(card_id, 0) > 0
-        now = time.monotonic()
-        last_update = self.card_last_update_dict.get(card_id, 0.0)
-        is_high_frequency_chunk = now - last_update < 1.0
-        if has_sent_update and is_high_frequency_chunk and bot_message.msg_sequence % 8 != 0 and not is_final:
-            return
         cumulative_content = getattr(bot_message, 'all_content', None)
         if isinstance(cumulative_content, str) and cumulative_content:
             content = cumulative_content
@@ -568,8 +586,37 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 ''.join(ele.get('text', '') for ele in paragraph if ele.get('tag') in {'text', 'md'})
                 for paragraph in text_elements
             )
-        if (is_final and not bot_message.tool_calls) or card_id in self.closed_streaming_cards:
-            await self._replace_streaming_card(card_id, content, finished=is_final and not bot_message.tool_calls)
+        await self._update_streaming_card(
+            bot_message.resp_message_id,
+            content,
+            is_final=is_final,
+            tool_calls=bot_message.tool_calls,
+            msg_sequence=bot_message.msg_sequence,
+            tenant_key=self._tenant_key_from_source(message_source),
+        )
+
+    async def reply_message_chunk_for_target(self, *, message_id: str, content: str, is_final: bool) -> None:
+        await self._update_streaming_card(message_id, content, is_final=is_final, msg_sequence=1)
+
+    async def _update_streaming_card(
+        self,
+        message_id: str,
+        content: str,
+        *,
+        is_final: bool,
+        msg_sequence: int,
+        tool_calls: typing.Any = None,
+        tenant_key: str | None = None,
+    ) -> None:
+        card_id = self.card_id_dict[message_id]
+        has_sent_update = self.card_sequence_dict.get(card_id, 0) > 0
+        now = time.monotonic()
+        last_update = self.card_last_update_dict.get(card_id, 0.0)
+        is_high_frequency_chunk = now - last_update < 1.0
+        if has_sent_update and is_high_frequency_chunk and msg_sequence % 8 != 0 and not is_final:
+            return
+        if (is_final and not tool_calls) or card_id in self.closed_streaming_cards:
+            await self._replace_streaming_card(card_id, content, finished=is_final and not tool_calls)
         else:
             sequence = self._next_card_sequence(card_id)
             request = (
@@ -582,18 +629,16 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 .build()
             )
             response: ContentCardElementResponse = await self.api_client.cardkit.v1.card_element.acontent(
-                request, self.request_option(self._tenant_key_from_source(message_source))
+                request, self.request_option(tenant_key)
             )
             if not response.success():
                 if self._streaming_mode_closed(response):
-                    await self._replace_streaming_card(
-                        card_id, content, finished=is_final and not bot_message.tool_calls
-                    )
+                    await self._replace_streaming_card(card_id, content, finished=is_final and not tool_calls)
                 else:
                     raise RuntimeError(f'Lark card_element update failed: {response.code} {response.msg}')
         self.card_last_update_dict[card_id] = now
-        if is_final and bot_message.tool_calls is None:
-            self.card_id_dict.pop(bot_message.resp_message_id, None)
+        if is_final and tool_calls is None:
+            self.card_id_dict.pop(message_id, None)
             self.card_sequence_dict.pop(card_id, None)
             self.card_last_update_dict.pop(card_id, None)
             self.closed_streaming_cards.discard(card_id)
