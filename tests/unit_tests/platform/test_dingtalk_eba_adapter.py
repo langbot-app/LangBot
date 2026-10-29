@@ -632,6 +632,112 @@ async def test_dingtalk_interaction_update_reuses_existing_a2ui_card():
     assert adapter.interaction_callback_contexts['existing-track-id']['callback_token'] == 'new-token'
 
 
+@pytest.mark.asyncio
+async def test_dingtalk_acknowledgement_shows_text_selection_and_clicked_button():
+    adapter = make_adapter()
+    assert 'interaction.acknowledge' in adapter.get_supported_apis()
+    result = await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'request': {
+                'title': 'Review',
+                'fields': [
+                    {'id': 'reason', 'label': 'Reason', 'type': 'text'},
+                    {
+                        'id': 'priority',
+                        'label': 'Priority',
+                        'type': 'select',
+                        'options': [{'value': 'urgent', 'label': 'Urgent'}],
+                    },
+                ],
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+            },
+            'submission': {'values': {'reason': 'Looks good', 'priority': 'urgent'}, 'action_id': 'approve'},
+            'update_target': {'message_id': 'card-1', 'rich': True},
+        },
+    )
+
+    kwargs = adapter.bot.update_ai_card.await_args.kwargs
+    assert kwargs['out_track_id'] == 'card-1'
+    assert kwargs['flow_status'] == 'CONFIRMED'
+    components = kwargs['a2ui_messages'][1]['updateComponents']['components']
+    assert [
+        component['text']
+        for component in components
+        if component['component'] == 'Text' and component['id'].startswith('submitted-')
+    ] == [
+        '\u2705 Reason: Looks good',
+        '\u2705 Priority: Urgent',
+        '\u2705 Approve',
+    ]
+    assert not any(component['component'] in {'Button', 'TextField', 'ChoicePicker'} for component in components)
+    assert result['submitted_values'] == [
+        {'label': 'Reason', 'value': 'Looks good'},
+        {'label': 'Priority', 'value': 'Urgent'},
+        {'label': '', 'value': 'Approve'},
+    ]
+
+    next_result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'next-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'update_target': result,
+            'request': {'title': 'Next step', 'actions': [{'id': 'finish', 'label': 'Finish'}]},
+        },
+    )
+    components = adapter.bot.update_ai_card.await_args.kwargs['a2ui_messages'][1]['updateComponents']['components']
+    assert next_result['submitted_values'] == result['submitted_values']
+    assert components[0]['children'][:4] == ['title', 'submitted-0', 'submitted-1', 'submitted-2']
+    assert any(component['component'] == 'Button' for component in components)
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_field_submit_shows_entered_value_without_submit_action():
+    adapter = make_adapter()
+    await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'request': {
+                'description': 'Please enter your question',
+                'fields': [{'id': 'question', 'label': 'Question', 'type': 'textarea'}],
+            },
+            'submission': {'values': {'question': 'What happened?'}},
+            'update_target': {'message_id': 'card-2', 'rich': True},
+        },
+    )
+    components = adapter.bot.update_ai_card.await_args.kwargs['a2ui_messages'][1]['updateComponents']['components']
+    assert [component['text'] for component in components if component['id'].startswith('submitted-')] == [
+        'Please enter your question',
+        '\u2705 Question: What happened?',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_button_submit_preserves_its_prompt():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'request': {
+                'title': 'Human input',
+                'description': 'Choose how to proceed',
+                'actions': [{'id': 'continue', 'label': 'Continue'}],
+            },
+            'submission': {'action_id': 'continue', 'values': {}},
+            'update_target': {'message_id': 'card-3', 'rich': True},
+        },
+    )
+    components = adapter.bot.update_ai_card.await_args.kwargs['a2ui_messages'][1]['updateComponents']['components']
+    assert [component['text'] for component in components if component['id'].startswith('submitted-')] == [
+        'Choose how to proceed',
+        '\u2705 Continue',
+    ]
+    assert result['submitted_values'] == [
+        {'label': '', 'value': 'Continue', 'description': 'Choose how to proceed'},
+    ]
+
+
 def test_dingtalk_stale_callback_does_not_consume_replacement_context():
     contexts = {
         'card-1': {

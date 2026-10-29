@@ -25,10 +25,87 @@ def _json_pointer_segment(value: str) -> str:
     return value.replace('~', '~0').replace('/', '~1')
 
 
+def _stored_submitted_values(value: typing.Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {
+            'label': str(item['label'])[:200],
+            'value': str(item['value'])[:2000],
+            **({'description': str(item['description'])[:4000]} if item.get('description') is not None else {}),
+        }
+        for item in value[:50]
+        if isinstance(item, dict) and item.get('label') is not None and item.get('value') is not None
+    ]
+
+
+def _submission_display_values(
+    request: dict[str, typing.Any], submission: dict[str, typing.Any]
+) -> list[dict[str, str]]:
+    values = submission.get('values') if isinstance(submission.get('values'), dict) else {}
+    displayed: list[dict[str, str]] = []
+    for field in request.get('fields') or []:
+        if not isinstance(field, dict):
+            continue
+        field_id = str(field.get('id') or '')
+        if not field_id or field_id not in values:
+            continue
+        value = values[field_id]
+        if field.get('type') == 'select':
+            value = next(
+                (
+                    option.get('label') or option.get('value')
+                    for option in field.get('options') or []
+                    if isinstance(option, dict) and option.get('value') == value
+                ),
+                value,
+            )
+        rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+        display_value = {'label': str(field.get('label') or field_id), 'value': rendered[:2000]}
+        description = str(request.get('description') or '').strip()
+        if description:
+            display_value['description'] = description[:4000]
+        displayed.append(display_value)
+
+    action_id = submission.get('action_id')
+    if action_id:
+        action_label = next(
+            (
+                str(action.get('label') or action_id)
+                for action in request.get('actions') or []
+                if isinstance(action, dict) and str(action.get('id') or '') == str(action_id)
+            ),
+            str(action_id),
+        )
+        action_value = {'label': '', 'value': action_label}
+        description = str(request.get('description') or '').strip()
+        if description and not displayed:
+            action_value['description'] = description[:4000]
+        displayed.append(action_value)
+    return displayed
+
+
+def _submitted_components(values: list[dict[str, str]]) -> tuple[list[dict[str, typing.Any]], list[str]]:
+    components = []
+    children = []
+    for index, item in enumerate(values):
+        description = item.get('description')
+        if description:
+            description_id = f'submitted-description-{index}'
+            components.append({'id': description_id, 'component': 'Text', 'text': description})
+            children.append(description_id)
+        component_id = f'submitted-{index}'
+        label = f'{item["label"]}: ' if item['label'] else ''
+        components.append({'id': component_id, 'component': 'Text', 'text': f'\u2705 {label}{item["value"]}'})
+        children.append(component_id)
+    return components, children
+
+
 def _build_interaction_messages(
     surface_id: str,
     request: dict[str, typing.Any],
     callback_token: str,
+    submitted_values: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, typing.Any], list[dict[str, typing.Any]], dict[str, str]]:
     raw_fields = request.get('fields') if isinstance(request.get('fields'), list) else []
     raw_actions = request.get('actions') if isinstance(request.get('actions'), list) else []
@@ -46,6 +123,9 @@ def _build_interaction_messages(
     if title:
         components.append({'id': 'title', 'component': 'Text', 'text': title})
         children.append('title')
+    history_components, history_children = _submitted_components(submitted_values or [])
+    components.extend(history_components)
+    children.extend(history_children)
     if description:
         components.append({'id': 'description', 'component': 'Markdown', 'content': description})
         children.append('description')
@@ -188,6 +268,9 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     if target_type not in {'group', 'person'} or not target_id:
         raise ValueError('interaction.request has an invalid DingTalk target')
     update_target = params.get('update_target')
+    submitted_values = _stored_submitted_values(
+        update_target.get('submitted_values') if isinstance(update_target, dict) else None
+    )
     if isinstance(update_target, dict):
         if update_target.get('rich') is not True or not update_target.get('message_id'):
             raise ValueError('DingTalk interaction update target is not an A2UI card')
@@ -195,7 +278,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     else:
         out_track_id = uuid.uuid4().hex
     surface_id = f'langbot-interaction-{out_track_id}'
-    data, components, field_types = _build_interaction_messages(surface_id, request, callback_token)
+    data, components, field_types = _build_interaction_messages(surface_id, request, callback_token, submitted_values)
     if isinstance(update_target, dict):
         await adapter.bot.update_ai_card(
             out_track_id=out_track_id,
@@ -222,12 +305,47 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
         'target_id': target_id,
         'expires_at': time.monotonic() + 30 * 60,
     }
-    return {
+    result = {
         'ok': True,
         'message_id': out_track_id,
         'rich': True,
         'updated': isinstance(update_target, dict),
     }
+    if submitted_values:
+        result['submitted_values'] = submitted_values
+    return result
+
+
+async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    request = params.get('request')
+    submission = params.get('submission')
+    target = params.get('update_target')
+    if not all(isinstance(value, dict) for value in (request, submission, target)):
+        raise ValueError('interaction.acknowledge requires request, submission, and update_target')
+    if target.get('rich') is not True or not target.get('message_id'):
+        raise ValueError('DingTalk interaction acknowledgement requires an A2UI card')
+
+    out_track_id = str(target['message_id'])
+    submitted_values = [
+        *_stored_submitted_values(target.get('submitted_values')),
+        *_submission_display_values(request, submission),
+    ][-50:]
+    components, children = _submitted_components(submitted_values)
+    title = str(request.get('title') or '').strip()
+    if title:
+        components.insert(0, {'id': 'title', 'component': 'Text', 'text': title})
+        children.insert(0, 'title')
+    children.append('langbot-brand')
+    components.extend(brand_components())
+    components.insert(0, {'id': 'root', 'component': 'Column', 'children': children, 'gap': 12})
+    await adapter.bot.update_ai_card(
+        out_track_id=out_track_id,
+        a2ui_messages=update_surface_messages(
+            f'langbot-interaction-{out_track_id}', data={'form': {}}, components=components
+        ),
+        flow_status='CONFIRMED',
+    )
+    return {**target, 'updated': True, 'submitted_values': submitted_values}
 
 
 def parse_callback_data(value: str) -> dict[str, typing.Any]:

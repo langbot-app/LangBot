@@ -19,6 +19,7 @@ from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEvent
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
 from langbot.pkg.platform.adapters.dingtalk.interaction import (
+    acknowledge_interaction,
     interaction_delivery_capabilities,
     interaction_event_from_native,
     send_interaction,
@@ -165,6 +166,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         ]
         if hasattr(self.bot, 'create_and_deliver_ai_card'):
             apis.append('interaction.request')
+            if hasattr(self.bot, 'update_ai_card'):
+                apis.append('interaction.acknowledge')
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
@@ -288,6 +291,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request' and action in self.get_supported_apis():
             return await send_interaction(self, params)
+        if action == 'interaction.acknowledge' and action in self.get_supported_apis():
+            return await acknowledge_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

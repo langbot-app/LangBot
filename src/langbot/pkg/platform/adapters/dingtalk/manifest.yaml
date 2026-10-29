@@ -86,6 +86,7 @@ spec:
       - get_file_url
       - call_platform_api
       - interaction.request
+      - interaction.acknowledge
 
   platform_specific_apis:
     - action: check_access_token
