@@ -15,6 +15,7 @@ GROUPS = {
     'lifecycle': 'regression_lifecycle_cases',
     'plugins': 'regression_plugin_cases',
     'api': 'regression_api_cases',
+    'isolation': 'regression_isolation_cases',
 }
 
 

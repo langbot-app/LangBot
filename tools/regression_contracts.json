@@ -449,6 +449,9 @@
      "area": "state", "kind": "blackbox", "priority": "P1",
      "description": "Knowledge documents survive restarts; replacement preserves control content and deletion removes stale results",
      "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_retrievable", "after_runtime_retrievable", "after_core_retrievable", "updated_retrievable", "updated_obsolete_absent", "persisted_update_retrievable", "persisted_update_obsolete_absent", "documents_deleted", "deleted_retrieval_empty"]}]
-    }
+    },
+    {"id": "isolation.same_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent sessions in one Pipeline retain their own request identity and prior history", "bindings": [{"profile": "isolation", "case": "isolation.same_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},
+    {"id": "isolation.cross_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent Pipelines retain their own model routing, Bot identity, and conversation history", "bindings": [{"profile": "isolation", "case": "isolation.cross_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},
+    {"id": "isolation.cancel_neighbor", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Cancelling an active tool run leaves a concurrent neighbor completed and no delayed tool side effect", "bindings": [{"profile": "isolation", "case": "isolation.cancel_neighbor", "checks": ["cancel_isolation", "neighbor_active_at_cancel", "cancellation_overlapped_neighbor", "neighbor_identity_once", "no_late_side_effect", "box_idle"]}]}
   ]
 }
