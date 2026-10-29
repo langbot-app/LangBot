@@ -62,6 +62,11 @@ _SENSITIVE_KEY_QUALIFIERS = frozenset(
 )
 
 
+def _validate_mcp_mode(mode: object) -> None:
+    if mode not in ('stdio', 'remote', 'sse', 'http'):
+        raise ValueError('MCP server mode must be one of: stdio, remote, sse, http')
+
+
 def _normalize_config_key(key: object) -> str:
     value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', str(key or ''))
     return re.sub(r'[^a-zA-Z0-9]+', '_', value).strip('_').lower()
@@ -210,6 +215,8 @@ class MCPService:
         execution_context = await self._execution_context(context)
         workspace_uuid = execution_context.workspace_uuid
 
+        _validate_mcp_mode(server_data.get('mode'))
+
         # This gate is independent of Box availability.  Cloud v2 disables
         # stdio MCP even though Box Runtime itself remains available.
         require_stdio_mcp_enabled(self.ap, server_data)
@@ -330,6 +337,8 @@ class MCPService:
         payload.pop('uuid', None)
         payload.pop('workspace_uuid', None)
         payload = restore_mcp_secret_placeholders(payload, old_server)
+        if 'mode' in payload:
+            _validate_mcp_mode(payload['mode'])
         if 'name' in payload:
             payload['name'] = str(payload['name'] or '').strip()
             if not payload['name']:
