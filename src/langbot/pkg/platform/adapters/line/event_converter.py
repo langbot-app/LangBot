@@ -18,6 +18,9 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
+from .message_converter import LineMessageConverter
+
+
 class MessageReceivedEvent(platform_events.MessageEvent):
     message_id: str = ''
     message_chain: typing.Any = None
@@ -26,9 +29,8 @@ class MessageReceivedEvent(platform_events.MessageEvent):
     chat_id: str = ''
     group: typing.Any = None
 
-setattr(platform_events, 'MessageReceivedEvent', MessageReceivedEvent)
 
-from .message_converter import LineMessageConverter
+setattr(platform_events, 'MessageReceivedEvent', MessageReceivedEvent)
 
 
 class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
