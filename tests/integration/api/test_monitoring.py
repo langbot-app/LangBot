@@ -135,6 +135,10 @@ def fake_monitoring_app():
     app.monitoring_service.export_embedding_calls = AsyncMock(return_value=[{'id': 'emb-1'}])
     app.monitoring_service._escape_csv_field = MonitoringService(app)._escape_csv_field
 
+    from tests.utils.application_api import bind_application_api, _tenant_scope
+
+    app.persistence_mgr.tenant_scope = _tenant_scope
+    bind_application_api(app, SimpleNamespace(instance_uuid='instance', workspace_uuid='00000000-0000-0000-0000-00000000000a', placement_generation=1))
     return app
 
 
@@ -617,3 +621,22 @@ class TestMonitoringExportEndpoint:
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
         assert called.await_args.kwargs['limit'] == 100000
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.asyncio
+@pytest.mark.parametrize('detail', [False, True])
+@pytest.mark.parametrize(('query', 'limit', 'offset'), [('limit=50&offset=2', 50, 2), ('limit=invalid&offset=-5', 100, 0), ('limit=9000&offset=0', 5000, 0)])
+async def test_execution_http_pagination_preserves_normalization(
+    fake_monitoring_app, quart_test_client, detail, query, limit, offset,
+):
+    service = fake_monitoring_app.monitoring_service
+    method = 'get_execution_detail' if detail else 'get_executions'
+    path = '/executions/agent/run-a?section=overview&' if detail else '/executions?'
+    result = {'events': []} if detail else {'items': [], 'total': 0}
+    with patch.dict(fake_monitoring_app.instance_config.data, {'monitoring': {'query_limits': {'page_rows': 5000}}}), patch.object(service, method, AsyncMock(return_value=result)) as operation:
+        response = await quart_test_client.get('/api/v1/monitoring' + path + query, headers={'Authorization': 'Bearer test_token'})
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == result
+    assert operation.await_args.kwargs['limit'] == limit
+    assert operation.await_args.kwargs['offset'] == offset

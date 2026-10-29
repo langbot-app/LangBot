@@ -1,14 +1,10 @@
-import json
-
 import quart
-import sqlalchemy
 
 from .. import group
 from .....utils import constants
 from .....cloud.banner import resolve_cloud_banner
-from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
-from ...context import PrincipalType, RequestContext
+from ...context import RequestContext
 from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
 from .....workspace.invitation_delivery import InvitationDeliveryService
 
@@ -148,41 +144,9 @@ class SystemRouterGroup(group.RouterGroup):
                     account, _ = await self._authenticate_account(authorization.removeprefix('Bearer '))
                     request_context = await self._resolve_account_context(account, group.AuthType.USER_TOKEN)
                     if request_context is not None:
-                        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
-
-                        async def load_workspace_metadata():
-                            return await self.ap.persistence_mgr.execute_async(
-                                sqlalchemy.select(
-                                    WorkspaceMetadata.key,
-                                    WorkspaceMetadata.value,
-                                ).where(
-                                    WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                                    WorkspaceMetadata.key.in_(['wizard_status', 'wizard_progress']),
-                                )
-                            )
-
-                        cloud_runtime = (
-                            getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
-                        )
-                        if cloud_runtime:
-                            if not callable(tenant_uow):
-                                raise RuntimeError('Cloud system metadata requires an explicit tenant UoW')
-                            async with tenant_uow(request_context.workspace_uuid):
-                                result = await load_workspace_metadata()
-                        else:
-                            result = await load_workspace_metadata()
-                        # ``execute_async`` deliberately preserves its historical
-                        # AsyncConnection result shape. Selecting the two fields
-                        # explicitly keeps this reader independent of ORM Session
-                        # scalar semantics inside a tenant UoW.
-                        for row in result:
-                            if row.key == 'wizard_status':
-                                wizard_status = row.value
-                            elif row.key == 'wizard_progress':
-                                try:
-                                    wizard_progress = json.loads(row.value)
-                                except (json.JSONDecodeError, TypeError):
-                                    wizard_progress = None
+                        wizard = await self.call_application('system.wizard.get', request_context, {})
+                        wizard_status = wizard['status'] or 'none'
+                        wizard_progress = wizard['progress']
             except Exception:
                 pass
 
@@ -257,50 +221,11 @@ class SystemRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def _(request_context: RequestContext) -> str:
-            """Mark wizard status in metadata table and clear progress.
-
-            Accepts JSON body: { "status": "skipped" | "completed" }
-            """
             data = await quart.request.get_json(silent=True) or {}
             status = data.get('status', 'completed')
             if status not in ('skipped', 'completed'):
                 return self.http_status(400, 400, f'Invalid wizard status: {status}')
-
-            try:
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(WorkspaceMetadata).where(
-                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                        WorkspaceMetadata.key == 'wizard_status',
-                    )
-                )
-                if result.first():
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.update(WorkspaceMetadata)
-                        .where(
-                            WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                            WorkspaceMetadata.key == 'wizard_status',
-                        )
-                        .values(value=status)
-                    )
-                else:
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.insert(WorkspaceMetadata).values(
-                            workspace_uuid=request_context.workspace_uuid,
-                            key='wizard_status',
-                            value=status,
-                        )
-                    )
-
-                # Clear wizard progress when wizard is completed/skipped
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.delete(WorkspaceMetadata).where(
-                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                        WorkspaceMetadata.key == 'wizard_progress',
-                    )
-                )
-            except Exception:
-                raise
-
+            await self.call_application('system.wizard.complete', request_context, {'status': status})
             return self.success(data={})
 
         @self.route(
@@ -310,42 +235,8 @@ class SystemRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def _(request_context: RequestContext) -> str:
-            """Save wizard progress to metadata table.
-
-            Accepts JSON body with wizard state fields:
-            { "step": int, "selected_scenario": str|null, "selected_adapter": str|null,
-              "created_bot_uuid": str|null, "bot_saved": bool, "selected_runner": str|null }
-            """
             data = await quart.request.get_json(silent=True) or {}
-            progress_json = json.dumps(data, ensure_ascii=False)
-
-            try:
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(WorkspaceMetadata).where(
-                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                        WorkspaceMetadata.key == 'wizard_progress',
-                    )
-                )
-                if result.first():
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.update(WorkspaceMetadata)
-                        .where(
-                            WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                            WorkspaceMetadata.key == 'wizard_progress',
-                        )
-                        .values(value=progress_json)
-                    )
-                else:
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.insert(WorkspaceMetadata).values(
-                            workspace_uuid=request_context.workspace_uuid,
-                            key='wizard_progress',
-                            value=progress_json,
-                        )
-                    )
-            except Exception:
-                raise
-
+            await self.call_application('system.wizard.progress.update', request_context, data)
             return self.success(data={})
 
         @self.route(
@@ -357,7 +248,7 @@ class SystemRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> str:
             """Resolve Space's best available chat model to this Workspace."""
             try:
-                model = await self.ap.space_service.get_recommended_chat_model(request_context)
+                model = await self.call_application('system.model.recommended', request_context, {})
             except ValueError as exc:
                 return self.http_status(503, -1, str(exc))
             return self.success(data=model)
@@ -371,11 +262,11 @@ class SystemRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> str:
             """Expose Space's latest persisted model probes to the WebUI."""
             try:
-                models = await self.ap.space_service.get_model_selection()
+                models = await self.call_application('system.model.availability', request_context, {})
             except Exception as exc:
                 self.ap.logger.warning(f'Failed to load LangBot Models availability: {exc}')
                 return self.http_status(503, -1, 'Model availability is unavailable')
-            return self.success(data={'models': [model.model_dump(mode='json') for model in models]})
+            return self.success(data={'models': models})
 
         @self.route(
             '/tasks',
@@ -384,22 +275,14 @@ class SystemRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            task_type = quart.request.args.get('type')
-            task_kind = quart.request.args.get('kind')
-
-            if task_type == '':
-                task_type = None
-            if task_kind == '':
-                task_kind = None
-
             return self.success(
-                data=self.ap.task_mgr.get_tasks_dict(
-                    task_type,
-                    task_kind,
-                    instance_uuid=request_context.instance_uuid,
-                    workspace_uuid=request_context.workspace_uuid,
-                    placement_generation=request_context.placement_generation,
-                    public=request_context.principal.principal_type == PrincipalType.API_KEY,
+                data=await self.call_application(
+                    'task.list',
+                    request_context,
+                    {
+                        'task_type': quart.request.args.get('type') or None,
+                        'task_kind': quart.request.args.get('kind') or None,
+                    },
                 )
             )
 
@@ -412,21 +295,12 @@ class SystemRouterGroup(group.RouterGroup):
         async def _(task_id: str, request_context: RequestContext) -> str:
             try:
                 task_index = int(task_id)
-            except (TypeError, ValueError):
+                if task_index < 0:
+                    return self.http_status(404, 404, 'Task not found')
+                task = await self.call_application('task.get', request_context, {'task_id': task_index})
+            except (TypeError, ValueError, FileNotFoundError):
                 return self.http_status(404, 404, 'Task not found')
-            task = self.ap.task_mgr.get_task_by_id(
-                task_index,
-                instance_uuid=request_context.instance_uuid,
-                workspace_uuid=request_context.workspace_uuid,
-                placement_generation=request_context.placement_generation,
-            )
-
-            if task is None:
-                return self.http_status(404, 404, 'Task not found')
-
-            if request_context.principal.principal_type == PrincipalType.API_KEY:
-                return self.success(data=task.to_public_dict())
-            return self.success(data=task.to_dict())
+            return self.success(data=task)
 
         @self.route(
             '/storage-analysis',
@@ -435,7 +309,7 @@ class SystemRouterGroup(group.RouterGroup):
             permission=Permission.AUDIT_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            return self.success(data=await self.ap.maintenance_service.get_storage_analysis(request_context))
+            return self.success(data=await self.call_application('system.storage.analysis', request_context, {}))
 
         @self.route(
             '/debug/plugin/action',
@@ -473,20 +347,4 @@ class SystemRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            await self.ap.plugin_connector.require_workspace_context(request_context)
-            plugin_connector_error = 'ok'
-            is_connected = True
-
-            try:
-                await self.ap.plugin_connector.ping_plugin_runtime()
-            except Exception as e:
-                plugin_connector_error = str(e)
-                is_connected = False
-
-            return self.success(
-                data={
-                    'is_enable': self.ap.plugin_connector.is_enable_plugin,
-                    'is_connected': is_connected,
-                    'plugin_connector_error': plugin_connector_error,
-                }
-            )
+            return self.success(data=await self.call_application('system.plugin.status', request_context, {}))

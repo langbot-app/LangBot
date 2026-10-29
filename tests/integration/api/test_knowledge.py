@@ -118,18 +118,29 @@ def fake_knowledge_app():
         }
     )
     app.knowledge_service.create_knowledge_base = AsyncMock(return_value='new-kb-uuid')
-    app.knowledge_service.update_knowledge_base = AsyncMock(return_value={})
-    app.knowledge_service.delete_knowledge_base = AsyncMock()
+    app.knowledge_service.update_knowledge_base = AsyncMock(return_value=None)
+    app.knowledge_service.delete_knowledge_base = AsyncMock(return_value=None)
     app.knowledge_service.get_files_by_knowledge_base = AsyncMock(
         return_value=[{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
     )
     app.knowledge_service.store_file = AsyncMock(return_value=17)
-    app.knowledge_service.delete_file = AsyncMock()
+    app.knowledge_service.delete_file = AsyncMock(return_value=None)
     app.knowledge_service.retrieve_knowledge_base = AsyncMock(return_value=[{'content': 'test result', 'score': 0.95}])
 
     # RAG manager
     app.rag_mgr = Mock()
 
+    from tests.utils.application_api import bind_application_api
+
+    app.persistence_mgr.tenant_scope = None
+    bind_application_api(
+        app,
+        SimpleNamespace(
+            instance_uuid='instance-knowledge-api',
+            workspace_uuid='00000000-0000-0000-0000-00000000000a',
+            placement_generation=1,
+        ),
+    )
     return app
 
 
@@ -198,8 +209,8 @@ class TestKnowledgeBaseEndpoints:
         called = fake_knowledge_app.knowledge_service.create_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ({'name': 'New KB', 'engine_plugin_id': 'test/engine'},)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'kb_data': {'name': 'New KB', 'engine_plugin_id': 'test/engine'}}
         assert data['data'] == {'uuid': 'new-kb-uuid'}
 
     @pytest.mark.asyncio
@@ -217,8 +228,8 @@ class TestKnowledgeBaseEndpoints:
         called = fake_knowledge_app.knowledge_service.get_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid',)
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'include_secret': True, 'kb_uuid': 'test-kb-uuid'}
         assert data['data']['base'] == {
             'uuid': 'test-kb-uuid',
             'name': 'Test Knowledge Base',
@@ -242,8 +253,8 @@ class TestKnowledgeBaseEndpoints:
         called = fake_knowledge_app.knowledge_service.update_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid', {'name': 'Updated KB'})
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'kb_uuid': 'test-kb-uuid', 'kb_data': {'name': 'Updated KB'}}
 
     @pytest.mark.asyncio
     async def test_delete_knowledge_base_success(self, quart_test_client, fake_knowledge_app):
@@ -257,8 +268,8 @@ class TestKnowledgeBaseEndpoints:
         called = fake_knowledge_app.knowledge_service.delete_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'kb_uuid': 'test-kb-uuid'}
         assert (await response.get_json())['code'] == 0
 
 
@@ -281,8 +292,8 @@ class TestKnowledgeBaseFilesEndpoints:
         called = fake_knowledge_app.knowledge_service.get_files_by_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'kb_uuid': 'test-kb-uuid'}
         assert data['data']['files'] == [{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
 
     @pytest.mark.asyncio
@@ -302,8 +313,12 @@ class TestKnowledgeBaseFilesEndpoints:
         called = fake_knowledge_app.knowledge_service.store_file
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid', 'test-file-id')
-        assert called.await_args.kwargs == {'parser_plugin_id': 'test/parser'}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'parser_plugin_id': 'test/parser',
+            'kb_uuid': 'test-kb-uuid',
+            'file_id': 'test-file-id',
+        }
         assert data['data'] == {'task_id': 17}
 
     @pytest.mark.asyncio
@@ -318,8 +333,8 @@ class TestKnowledgeBaseFilesEndpoints:
         called = fake_knowledge_app.knowledge_service.delete_file
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid', 'test-file-uuid')
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'kb_uuid': 'test-kb-uuid', 'file_id': 'test-file-uuid'}
         assert (await response.get_json())['code'] == 0
 
 
@@ -344,8 +359,12 @@ class TestKnowledgeBaseRetrieveEndpoint:
         called = fake_knowledge_app.knowledge_service.retrieve_knowledge_base
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
-        assert called.await_args.args[1:] == ('test-kb-uuid', 'test query', {'top_k': 5})
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'retrieval_settings': {'top_k': 5},
+            'kb_uuid': 'test-kb-uuid',
+            'query': 'test query',
+        }
         assert data['data']['results'] == [{'content': 'test result', 'score': 0.95}]
 
     @pytest.mark.asyncio

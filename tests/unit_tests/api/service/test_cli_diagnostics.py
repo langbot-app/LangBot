@@ -60,6 +60,9 @@ async def diagnostic_client(ap):
             permissions=ctx.workspace.permissions,
         )
 
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, request_context())
     ap.apikey_service = SimpleNamespace(authenticate_api_key=authenticate)
     app = quart.Quart(__name__)
     for cls in (MonitoringRouterGroup, BoxRouterGroup, PipelinesRouterGroup):

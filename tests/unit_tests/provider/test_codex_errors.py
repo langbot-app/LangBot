@@ -12,6 +12,7 @@ from langbot.pkg.api.http.controller.groups.provider.models import (
     RerankModelsRouterGroup,
 )
 from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.context import RequestContext, WorkspaceContext, PrincipalContext, PrincipalType
 from langbot.pkg.provider.modelmgr.requesters.codex import CodexRequester
 from tests.unit_tests.provider.test_codex import requester, MODEL, stream
 
@@ -78,12 +79,18 @@ async def client_for(error, model_kind='llm'):
     service = SimpleNamespace(**{method_name: AsyncMock(side_effect=error)})
     ap = SimpleNamespace(logger=Mock(), **{service_name: service})
     router = router_class(ap, app)
-    router._authenticate_api_key = AsyncMock(
-        return_value=SimpleNamespace(
-            workspace_uuid='w',
-            workspace=SimpleNamespace(permissions=frozenset({Permission.PROVIDER_SECRET_MANAGE.value})),
-        )
+    context = RequestContext(
+        'instance',
+        1,
+        'request',
+        'api-key',
+        PrincipalContext(PrincipalType.API_KEY, api_key_uuid='key'),
+        WorkspaceContext('w', None, None, frozenset({Permission.PROVIDER_SECRET_MANAGE.value})),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, context)
+    router._authenticate_api_key = AsyncMock(return_value=context)
     await router.initialize()
     return app.test_client(), ap
 

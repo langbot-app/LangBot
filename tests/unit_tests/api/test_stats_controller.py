@@ -71,6 +71,9 @@ async def create_client(*, role='viewer'):
         ),
         query_pool=SimpleNamespace(get_query_count=get_query_count),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-a', placement_generation=1))
     router = StatsRouterGroup(ap, quart_app)
     await router.initialize()
     return quart_app.test_client(), collaboration_service

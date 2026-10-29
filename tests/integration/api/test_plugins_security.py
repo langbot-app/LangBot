@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, Mock, call
 import pytest
 import quart
 from quart.datastructures import FileStorage
+from langbot.pkg.plugin.management import redact_plugin_secrets, restore_plugin_secret_placeholders
+from tests.utils.application_api import bind_application_api
 
 
 pytestmark = pytest.mark.integration
@@ -122,6 +124,14 @@ async def plugin_security_api(plugin_module):
     persistence_result.scalar_one_or_none.return_value = RAW_CONFIG
     application.persistence_mgr.execute_async = AsyncMock(return_value=persistence_result)
     application.persistence_mgr.tenant_uow = None
+    application.persistence_mgr.tenant_scope = None
+    application.workspace_service = None
+    application.workspace_settings_service = None
+    application.operation_trace_active = False
+    bind_application_api(
+        application,
+        SimpleNamespace(instance_uuid='instance-test', workspace_uuid=WORKSPACE_UUID, placement_generation=1),
+    )
 
     quart_app = quart.Quart(__name__)
     router = plugin_module.PluginsRouterGroup(application, quart_app)
@@ -137,7 +147,7 @@ def _headers(token: str) -> dict[str, str]:
 
 
 def test_recursive_redaction_preserves_structure_without_mutating_input(plugin_module):
-    redacted = plugin_module.redact_plugin_secrets(RAW_CONFIG)
+    redacted = redact_plugin_secrets(RAW_CONFIG)
 
     assert redacted['apiKey'] == '***'
     assert redacted['nested']['headers'] == {
@@ -154,7 +164,7 @@ def test_recursive_redaction_preserves_structure_without_mutating_input(plugin_m
     assert RAW_CONFIG['apiKey'] == 'api-secret'
     assert RAW_CONFIG['nested']['headers']['Authorization'] == 'Bearer nested-secret'
     with pytest.raises(ValueError, match='no existing value'):
-        plugin_module.restore_plugin_secret_placeholders({'api_key': '***'}, {})
+        restore_plugin_secret_placeholders({'api_key': '***'}, {})
 
 
 @pytest.mark.asyncio
@@ -197,7 +207,7 @@ async def test_manager_read_is_redacted_but_write_preserves_or_replaces_secrets(
         '/api/v1/plugins/example/secure-plugin/config',
         headers=_headers('manager-token'),
     )
-    masked_update = plugin_module.redact_plugin_secrets(RAW_CONFIG)
+    masked_update = redact_plugin_secrets(RAW_CONFIG)
     masked_update['enabled'] = False
     preserved_write = await client.put(
         '/api/v1/plugins/example/secure-plugin/config',
@@ -293,17 +303,17 @@ async def test_github_install_rejects_internal_asset_url_before_task_creation(
 
 
 @pytest.mark.asyncio
-async def test_local_install_forwards_explicit_administrator_force(plugin_security_api):
+@pytest.mark.parametrize('stale_generation', [False, True])
+async def test_local_install_forwards_explicit_administrator_force(plugin_security_api, stale_generation):
     application, client, _ = plugin_security_api
     execution_context = SimpleNamespace(
         instance_uuid='instance-test',
         workspace_uuid=WORKSPACE_UUID,
         placement_generation=1,
     )
-    application.persistence_mgr.tenant_scope = None
     application.plugin_connector.require_workspace_context = AsyncMock(return_value=execution_context)
     application.plugin_connector.install_plugin = AsyncMock()
-    application.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id='task-certification'))
+    application.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id=17))
 
     response = await client.post(
         '/api/v1/plugins/install/local',
@@ -316,8 +326,36 @@ async def test_local_install_forwards_explicit_administrator_force(plugin_securi
 
     assert response.status_code == 200
     operation = application.task_mgr.create_user_task.call_args.args[0]
+    if stale_generation:
+        from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
+
+        application.plugin_connector.require_workspace_context.side_effect = WorkspaceGenerationMismatchError('stale')
+        with pytest.raises(WorkspaceGenerationMismatchError):
+            await operation
+        application.plugin_connector.install_plugin.assert_not_awaited()
+        return
     await operation
     assert application.plugin_connector.install_plugin.await_args.args[1] == {
         'plugin_file': b'archive',
         'administrator_force': True,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['icon', 'assets'])
+async def test_authenticated_plugin_media_preserves_bytes_mime_and_missing_response(plugin_security_api, kind):
+    application, client, _ = plugin_security_api
+    method = 'get_plugin_icon' if kind == 'icon' else 'get_plugin_assets'
+    value_key = 'plugin_icon_base64' if kind == 'icon' else 'asset_base64'
+    reader = AsyncMock(return_value={value_key: 'AP8K', 'mime_type': 'image/png'})
+    setattr(application.plugin_connector, method, reader)
+    suffix = 'authenticated-icon' if kind == 'icon' else 'authenticated-assets/image.png'
+    path = '/api/v1/plugins/example/secure-plugin/' + suffix
+    response = await client.get(path, headers=_headers('viewer-token'))
+    assert response.status_code == 200
+    assert response.mimetype == 'image/png'
+    assert await response.get_data() == b'\x00\xff\n'
+    reader.side_effect = ValueError('Plugin example/secure-plugin is not installed in this Workspace')
+    missing = await client.get(path, headers=_headers('viewer-token'))
+    assert missing.status_code == 404
+    assert await missing.get_data(as_text=True) == ('Icon not found' if kind == 'icon' else 'Asset not found')

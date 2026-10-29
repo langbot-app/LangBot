@@ -62,11 +62,11 @@ async def _create_client(role: str):
         resolve_account_workspace=AsyncMock(return_value=_access(role))
     )
 
-    async def get_pipelines(_context, *_args, include_secret=False):
+    async def get_pipelines(_context, sort_by, sort_order, *, include_secret=False):
         value = copy.deepcopy(RAW_PIPELINE)
         return [value] if include_secret else [redact_secrets(value)]
 
-    async def get_pipeline(_context, _uuid, *, include_secret=False):
+    async def get_pipeline(_context, pipeline_uuid, *, include_secret=False):
         value = copy.deepcopy(RAW_PIPELINE)
         return value if include_secret else redact_secrets(value)
 
@@ -74,13 +74,13 @@ async def _create_client(role: str):
         get_pipelines=AsyncMock(side_effect=get_pipelines),
         get_pipeline=AsyncMock(side_effect=get_pipeline),
     )
-    application.plugin_connector = SimpleNamespace(list_plugins=AsyncMock(return_value=[]))
+    application.plugin_connector = SimpleNamespace(is_enable_plugin=False, list_plugins=AsyncMock(return_value=[]))
     application.mcp_service = SimpleNamespace(
         get_mcp_servers=AsyncMock(return_value=[redact_secrets(copy.deepcopy(RAW_MCP_SERVER))])
     )
     application.skill_service = SimpleNamespace(list_skills=AsyncMock(return_value=[]))
 
-    async def get_models_by_provider(_context, _provider_uuid, *, include_secret=False):
+    async def get_models_by_provider(_context, provider_uuid, *, include_secret=False):
         value = copy.deepcopy(RAW_MODEL)
         return [value] if include_secret else [redact_secrets(value)]
 
@@ -111,6 +111,18 @@ async def _create_client(role: str):
 
     application.webhook_service = SimpleNamespace(get_webhooks=AsyncMock(side_effect=get_webhooks))
 
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        application,
+        SimpleNamespace(instance_uuid='instance-test', workspace_uuid=WORKSPACE_UUID, placement_generation=1),
+    )
+    from langbot.pkg.api.http.service.pipeline import PipelineService
+
+    application.pipeline_service.ap = application
+    application.pipeline_service.get_pipeline_extensions = PipelineService.get_pipeline_extensions.__get__(
+        application.pipeline_service
+    )
     quart_app = quart.Quart(__name__)
     for router_type in (
         PipelinesRouterGroup,

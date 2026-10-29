@@ -126,8 +126,8 @@ def fake_bot_app():
         }
     )
     app.bot_service.create_bot = AsyncMock(return_value='new-bot-uuid')
-    app.bot_service.update_bot = AsyncMock(return_value={})
-    app.bot_service.delete_bot = AsyncMock()
+    app.bot_service.update_bot = AsyncMock(return_value=None)
+    app.bot_service.delete_bot = AsyncMock(return_value=None)
     app.bot_service.list_event_logs = AsyncMock(return_value=([{'uuid': 'log-1', 'message': 'test log'}], 1))
     app.bot_service.list_event_route_statuses = AsyncMock(
         return_value={
@@ -171,11 +171,17 @@ def fake_bot_app():
             'diagnostic_details': [{'step': 'evaluate_binding', 'binding_id': 'binding-1', 'matched': True}],
         }
     )
-    app.bot_service.send_message = AsyncMock()
+    app.bot_service.send_message = AsyncMock(return_value=None)
 
     # Platform manager
     app.platform_mgr = Mock()
 
+    from tests.utils.application_api import bind_application_api
+
+    app.persistence_mgr.tenant_scope = None
+    bind_application_api(
+        app, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1)
+    )
     return app
 
 
@@ -232,10 +238,10 @@ class TestBotEndpoints:
         called = fake_bot_app.bot_service.create_bot
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == (
-            {'name': 'New Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline'},
-        )
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'bot_data': {'name': 'New Bot', 'platform': 'telegram', 'pipeline_uuid': 'test-pipeline'}
+        }
         assert data['data'] == {'uuid': 'new-bot-uuid'}
 
     @pytest.mark.asyncio
@@ -253,8 +259,8 @@ class TestBotEndpoints:
         called = fake_bot_app.bot_service.get_runtime_bot_info
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-bot-uuid',)
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'include_secret': True, 'bot_uuid': 'test-bot-uuid'}
         assert data['data']['bot'] == {
             'uuid': 'test-bot-uuid',
             'name': 'Test Bot',
@@ -279,8 +285,8 @@ class TestBotEndpoints:
         called = fake_bot_app.bot_service.update_bot
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-bot-uuid', {'name': 'Updated Bot'})
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'bot_uuid': 'test-bot-uuid', 'bot_data': {'name': 'Updated Bot'}}
 
     @pytest.mark.asyncio
     async def test_delete_bot_success(self, quart_test_client, fake_bot_app):
@@ -294,8 +300,8 @@ class TestBotEndpoints:
         called = fake_bot_app.bot_service.delete_bot
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-bot-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'bot_uuid': 'test-bot-uuid'}
         assert (await response.get_json())['code'] == 0
 
 
@@ -321,8 +327,8 @@ class TestBotLogsEndpoint:
         called = fake_bot_app.bot_service.list_event_logs
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-bot-uuid', -1, 10)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'bot_uuid': 'test-bot-uuid', 'from_index': -1, 'max_count': 10}
         assert data['data'] == {'logs': [{'uuid': 'log-1', 'message': 'test log'}], 'total_count': 1}
 
     @pytest.mark.asyncio
@@ -379,8 +385,8 @@ class TestBotEventRouteDryRunEndpoint:
         assert data['data']['diagnostic_steps'][0].startswith('Route 1')
         fake_bot_app.bot_service.dry_run_event_route.assert_awaited_with(
             ANY,
-            bot_uuid='test-bot-uuid',
-            event_type='platform.member.joined',
+            'test-bot-uuid',
+            'platform.member.joined',
             event_data={'room': {'id': 'room-1'}},
             context={'source': 'ui'},
             event_bindings=[
@@ -411,7 +417,7 @@ class TestBotEventRouteStatusEndpoint:
         assert data['code'] == 0
         assert data['data']['routes'][0]['binding_id'] == 'binding-1'
         assert data['data']['routes'][0]['last_status'] == 'delivered'
-        fake_bot_app.bot_service.list_event_route_statuses.assert_awaited_with(ANY, 'test-bot-uuid')
+        fake_bot_app.bot_service.list_event_route_statuses.assert_awaited_with(ANY, bot_uuid='test-bot-uuid')
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -439,8 +445,13 @@ class TestBotSendMessageEndpoint:
         called = fake_bot_app.bot_service.send_message
         called.assert_awaited_once()
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-bot-uuid', 'person', 'user123', [{'type': 'text', 'text': 'Hello'}])
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'bot_uuid': 'test-bot-uuid',
+            'target_type': 'person',
+            'target_id': 'user123',
+            'message_chain_data': [{'type': 'text', 'text': 'Hello'}],
+        }
 
     @pytest.mark.asyncio
     async def test_send_message_missing_target_type(self, quart_test_client):

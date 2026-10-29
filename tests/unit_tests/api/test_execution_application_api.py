@@ -3,17 +3,20 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 from langbot_plugin.entities.io.resp import ActionResponse
+from langbot_plugin.entities.io.req import ActionRequest
 
 from langbot.pkg.api.application.contracts import ApplicationAPIException
 from langbot.pkg.api.application.execution import ExecutionAPI, ExecutionAPIContext
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot.pkg.agent.runner.session_registry import get_session_registry
+from tests.unit_tests.plugin.test_handler_tenancy import RecordingConnection
 
 
 @pytest.fixture
@@ -73,8 +76,11 @@ def stub_run(monkeypatch, session):
 
 def install_action(host, name, action):
     # The production constructor applies this wrapper after registration.
-    host.handler.actions[name] = action
+    wire_actions = host.handler.actions
+    host.handler.actions = {name: action}
     host.handler._secure_plugin_actions()
+    host.handler._execution_actions[name] = host.handler.actions[name]
+    host.handler.actions = wire_actions
 
 
 @pytest.mark.asyncio
@@ -522,3 +528,135 @@ async def test_platform_call_requires_bot_identity_outside_run(host):
             'execution.call_platform_api', ExecutionAPIContext(host.binding), {'action': 'send_message'}
         )
     assert exc.value.error.code == 'invalid_input'
+
+
+@pytest.mark.asyncio
+async def test_runtime_wire_calls_execution_api_and_preserves_response(host):
+    connection = RecordingConnection()
+    host.handler.conn = connection
+    host.handler.execution_api.invoke = AsyncMock(wraps=host.handler.execution_api.invoke)
+    request = ActionRequest.make_request(17, 'get_langbot_version', {}, host.binding)
+
+    await host.handler._handle_action(request.model_dump())
+
+    response = json.loads(connection.sent[-1])
+    assert response['seq_id'] == 17
+    assert response['code'] == 0
+    assert response['data']['version']
+    host.handler.execution_api.invoke.assert_awaited_once_with(
+        'execution.get_langbot_version', ExecutionAPIContext(host.binding), {}
+    )
+    assert host.handler.current_action_context is None
+    assert host.tenant.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('denial', ['workspace', 'plugin', 'expired', 'caller', 'stale'])
+async def test_runtime_wire_denies_untrusted_installation_and_run_before_model_access(host, monkeypatch, denial):
+    session = run_session(host)
+    if denial == 'workspace':
+        session['authorization']['workspace_id'] = 'workspace-b'
+    if denial == 'plugin':
+        session['plugin_identity'] = 'other/plugin'
+    stub_run(monkeypatch, None if denial == 'expired' else session)
+    host.ap.model_mgr = SimpleNamespace(get_model_by_uuid=AsyncMock())
+    connection = RecordingConnection()
+    host.handler.conn = connection
+    binding = host.binding.model_copy(update={'runtime_revision': 2}) if denial == 'stale' else host.binding
+    request = ActionRequest.make_request(
+        18,
+        'invoke_llm',
+        {
+            'run_id': 'run-a',
+            'llm_model_uuid': 'model',
+            'messages': [],
+            **({'caller_plugin_identity': 'other/plugin'} if denial == 'caller' else {}),
+        },
+        binding,
+    )
+
+    await host.handler._handle_action(request.model_dump())
+
+    response = json.loads(connection.sent[-1])
+    assert response['seq_id'] == 18
+    assert response['code'] != 0
+    assert response['data'] == {}
+    host.ap.model_mgr.get_model_by_uuid.assert_not_awaited()
+    assert host.handler.current_action_context is None
+    assert host.tenant.get() is None
+
+
+@pytest.mark.asyncio
+async def test_runtime_wire_retains_structured_box_errors(host, monkeypatch):
+    from langbot.pkg.box.export_errors import export_error
+
+    stub_run(monkeypatch, run_session(host))
+    error = export_error('file_bytes', limit=100, actual=101, path='report.txt')
+    expected = {'error': error.error.model_dump(mode='json')}
+    install_action(host, 'export_box_files', AsyncMock(return_value=ActionResponse.error(str(error), expected)))
+    connection = RecordingConnection()
+    host.handler.conn = connection
+    request = ActionRequest.make_request(
+        19, 'export_box_files', {'run_id': 'run-a', 'paths': ['report.txt']}, host.binding
+    )
+
+    await host.handler._handle_action(request.model_dump())
+
+    response = json.loads(connection.sent[-1])
+    assert response['code'] == 1
+    assert response['message'] == str(error)
+    assert response['data'] == expected
+
+
+@pytest.mark.asyncio
+async def test_runtime_stream_close_cancels_producer_without_leaking_context(host):
+    closed = asyncio.Event()
+
+    async def provider(data):
+        try:
+            assert host.handler.current_action_context == host.binding
+            assert host.tenant.get() == 'workspace-a'
+            yield ActionResponse.success({'chunk': {'text': 'first'}})
+            await asyncio.Event().wait()
+        finally:
+            closed.set()
+
+    install_action(host, 'invoke_llm_stream', provider)
+    token = host.handler._current_action_context.set(host.binding)
+    try:
+        async with contextlib.aclosing(
+            host.handler.actions['invoke_llm_stream']({'llm_model_uuid': 'model', 'messages': []})
+        ) as stream:
+            response = await anext(stream)
+            assert response.code == 0
+            assert response.data == {'chunk': {'text': 'first'}}
+            assert host.tenant.get() is None
+        assert closed.is_set()
+        assert host.handler.current_action_context == host.binding
+    finally:
+        host.handler._current_action_context.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_runtime_adapter_keeps_sdk_model_deadline_and_legacy_tool_inputs_compatible(host):
+    model = AsyncMock(return_value=ActionResponse.success({'message': {'role': 'assistant', 'content': 'ok'}}))
+    tool = AsyncMock(return_value=ActionResponse.success({'tool_response': {'ok': True}}))
+    install_action(host, 'invoke_llm', model)
+    install_action(host, 'call_tool', tool)
+    token = host.handler._current_action_context.set(host.binding)
+    try:
+        response = await host.handler.actions['invoke_llm'](
+            {'llm_model_uuid': 'model', 'messages': [], 'timeout': 120.0}
+        )
+        assert response.code == 0
+        assert response.data['message']['content'] == 'ok'
+        assert 'timeout' not in model.call_args.args[0]
+        response = await host.handler.actions['call_tool'](
+            {'tool_name': 'tool', 'tool_parameters': {'x': 1}, 'session': {}, 'query_id': 7}
+        )
+        assert response.code == 0
+        assert response.data == {'tool_response': {'ok': True}}
+        assert tool.call_args.args[0]['query_id'] == 7
+        assert tool.call_args.args[0]['tool_parameters'] == {'x': 1}
+    finally:
+        host.handler._current_action_context.reset(token)

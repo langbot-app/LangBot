@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 
+from ...application.transport import invoke_application, transport_records_audit
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext
 from .secrets import redact_secrets
@@ -252,16 +253,25 @@ def tool_definitions(context) -> list[LLMTool]:
 
 
 async def execute_tool(ap, context, name: str, arguments: dict):
+    # A background tool has its own audit record even when its parent is an HTTP turn.
+    token = transport_records_audit.set(False)
+    try:
+        return await _execute_tool(ap, context, name, arguments)
+    finally:
+        transport_records_audit.reset(token)
+
+
+async def _execute_tool(ap, context, name: str, arguments: dict):
     args = validate_call(context, name, arguments).model_dump(mode='json')
     if name == 'list_resources':
         readers = {
-            'models': ap.llm_model_service.get_llm_models,
-            'embedding_models': ap.embedding_models_service.get_embedding_models,
-            'pipelines': ap.pipeline_service.get_pipelines,
-            'knowledge_bases': ap.knowledge_service.get_knowledge_bases,
-            'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
+            'models': 'model.llm.list',
+            'embedding_models': 'model.embedding.list',
+            'pipelines': 'pipeline.list',
+            'knowledge_bases': 'knowledge.base.list',
+            'knowledge_engines': 'knowledge.engine.list',
         }
-        resources = await readers[args['kind']](context)
+        resources = await invoke_application(ap, readers[args['kind']], context, {})
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
             fields = ('uuid', 'name', 'description', 'abilities', 'knowledge_engine_plugin_id')
@@ -271,13 +281,17 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         # Delegates to the operation-trace service, so the assistant shows the
         # same records and tamper verification as the settings panel, then
         # compacts them so a full page still fits the per-result budget.
-        result = await ap.workspace_settings_service.query_logs(
-            context.workspace_uuid,
-            limit=args['limit'],
-            search=args['search'],
-            action=args['action'],
-            resource_type=args['resource_type'],
-            actor_account_uuid=args['actor'],
+        result = await invoke_application(
+            ap,
+            'settings.operation_logs.list',
+            context,
+            {
+                'limit': args['limit'],
+                'search': args['search'],
+                'action': args['action'],
+                'resource_type': args['resource_type'],
+                'actor_account_uuid': args['actor'],
+            },
         )
         compact = _compact_operation_records(result)
         # Echo the applied filters so the model can see why a result is empty
@@ -285,11 +299,15 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         compact['query'] = {key: args[key] for key in ('search', 'action', 'resource_type', 'actor') if args.get(key)}
         return compact
     if name == 'get_pipeline':
-        return await ap.pipeline_service.get_pipeline(context, args['pipeline_uuid'])
+        return await invoke_application(ap, 'pipeline.get', context, {'pipeline_uuid': args['pipeline_uuid']})
     if name == 'get_knowledge_schema':
         return {
-            'creation': await ap.knowledge_service.get_engine_creation_schema(context, args['plugin_id']),
-            'retrieval': await ap.knowledge_service.get_engine_retrieval_schema(context, args['plugin_id']),
+            'creation': await invoke_application(
+                ap, 'knowledge.engine.creation_schema', context, {'plugin_id': args['plugin_id']}
+            ),
+            'retrieval': await invoke_application(
+                ap, 'knowledge.engine.retrieval_schema', context, {'plugin_id': args['plugin_id']}
+            ),
         }
     if name == 'create_pipeline':
         args['extensions_preferences'] = {
@@ -301,15 +319,17 @@ async def execute_tool(ap, context, name: str, arguments: dict):
             'skills': [],
             'mcp_resources': [],
         }
-        resource_id = await ap.pipeline_service.create_pipeline(context, args)
+        resource_id = await invoke_application(ap, 'pipeline.create', context, {'pipeline_data': args})
         return {'uuid': resource_id, 'url': f'/home/pipelines?id={resource_id}', 'configured': False}
     if name == 'configure_pipeline':
-        pipeline = await ap.pipeline_service.get_pipeline(context, args['pipeline_uuid'], include_secret=True)
+        pipeline = await invoke_application(
+            ap, 'pipeline.get', context, {'pipeline_uuid': args['pipeline_uuid'], 'include_secret': True}
+        )
         if pipeline is None:
             raise ValueError('Pipeline not found')
         await ap.model_mgr.get_model_by_uuid(ExecutionContext.from_request(context), args['model_uuid'])
         for kb_id in args['knowledge_base_uuids']:
-            if await ap.knowledge_service.get_knowledge_base(context, kb_id) is None:
+            if await invoke_application(ap, 'knowledge.base.get', context, {'kb_uuid': kb_id}) is None:
                 raise ValueError('Knowledge base not found')
         config = copy.deepcopy(pipeline['config'])
         runner_id = 'plugin:langbot-team/LocalAgent/default'
@@ -340,7 +360,9 @@ async def execute_tool(ap, context, name: str, arguments: dict):
                 for p in plugins
             ):
                 update['extensions_preferences'] = {**prefs, 'plugins': [*plugins, entry]}
-        await ap.pipeline_service.update_pipeline(context, args['pipeline_uuid'], update)
+        await invoke_application(
+            ap, 'pipeline.update', context, {'pipeline_uuid': args['pipeline_uuid'], 'pipeline_data': update}
+        )
         return {'uuid': args['pipeline_uuid'], 'url': f'/home/pipelines?id={args["pipeline_uuid"]}'}
-    resource_id = await ap.knowledge_service.create_knowledge_base(context, args)
+    resource_id = await invoke_application(ap, 'knowledge.base.create', context, {'kb_data': args})
     return {'uuid': resource_id, 'url': f'/home/knowledge?id={resource_id}'}

@@ -50,6 +50,15 @@ async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
         ),
         **extra_ap,
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        ap, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1)
+    )
+    from langbot.pkg.api.http.service.pipeline import PipelineService
+
+    pipeline_service.ap = ap
+    pipeline_service.get_pipeline_extensions = PipelineService.get_pipeline_extensions.__get__(pipeline_service)
     router_class = import_module('langbot.pkg.api.http.controller.groups.pipelines.pipelines').PipelinesRouterGroup
     group = router_class(ap, app)
     await group.initialize()
@@ -191,7 +200,7 @@ async def test_pipeline_extensions_get_normalizes_malformed_enable_all_flags(inv
         plugin_connector=SimpleNamespace(list_plugins=AsyncMock(return_value=[])),
         mcp_service=SimpleNamespace(get_mcp_servers=AsyncMock(return_value=[])),
         skill_service=SimpleNamespace(list_skills=AsyncMock(return_value=[])),
-        logger=SimpleNamespace(warning=AsyncMock()),
+        logger=SimpleNamespace(warning=Mock()),
     )
 
     response = await client.get(
@@ -210,16 +219,14 @@ async def test_pipeline_extensions_get_normalizes_malformed_enable_all_flags(inv
 @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
 async def test_pipeline_extensions_get_malformed_root_is_fail_closed(invalid_preferences):
     pipeline_service = SimpleNamespace(
-        get_pipeline=AsyncMock(
-            return_value={'extensions_preferences': invalid_preferences}
-        ),
+        get_pipeline=AsyncMock(return_value={'extensions_preferences': invalid_preferences}),
     )
     client = await _create_test_client(
         pipeline_service,
         plugin_connector=SimpleNamespace(list_plugins=AsyncMock(return_value=[])),
         mcp_service=SimpleNamespace(get_mcp_servers=AsyncMock(return_value=[])),
         skill_service=SimpleNamespace(list_skills=AsyncMock(return_value=[])),
-        logger=SimpleNamespace(warning=AsyncMock()),
+        logger=SimpleNamespace(warning=Mock()),
     )
 
     response = await client.get(

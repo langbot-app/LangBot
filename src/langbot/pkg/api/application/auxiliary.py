@@ -13,7 +13,7 @@ import sqlalchemy
 from pydantic import Field
 
 from .contracts import Input, Operation
-from ..authz import Permission, PermissionDeniedError
+from ..authz import AuthenticationDeniedError, Permission, PermissionDeniedError
 from ..context import ExecutionContext, PrincipalType
 from ..secrets import redact_secrets
 from ...entity.persistence.metadata import WorkspaceMetadata
@@ -38,12 +38,12 @@ class Member(Input):
 
 
 class MemberRole(Member):
-    role: Literal['admin', 'developer', 'operator', 'viewer']
+    role: str
 
 
 class Invite(Input):
     email: str
-    role: Literal['admin', 'developer', 'operator', 'viewer'] = 'viewer'
+    role: str = 'viewer'
 
 
 class Invitation(Input):
@@ -120,7 +120,9 @@ class WizardProgress(Input):
     selected_scenario: str | None = None
     selected_adapter: str | None = None
     created_bot_uuid: str | None = None
+    created_pipeline_uuid: str | None = None
     bot_saved: bool = False
+    message_received: bool = False
     selected_runner: str | None = None
 
 
@@ -184,7 +186,21 @@ async def workspace_current(ap, context, payload):
     if context.principal.principal_type == PrincipalType.ACCOUNT:
         member = await _actor(ap, context)
         account = await ap.user_service.get_user_by_uuid(context.account_uuid)
+        if account is None:
+            raise AuthenticationDeniedError('Account not found')
         result['membership'] = _membership(member, display_name=account.user, email=account.normalized_email)
+    elif context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
+        result['membership'] = {
+            'uuid': None,
+            'workspace_uuid': context.workspace_uuid,
+            'account_uuid': None,
+            'display_name': None,
+            'email': None,
+            'role': 'owner',
+            'status': 'active',
+            'joined_at': None,
+            'created_at': None,
+        }
     resolver = getattr(ap, 'entitlement_resolver', None)
     if workspace.source == 'cloud_projection' and resolver is not None:
         from ..http.service.workspace_limits import LIMIT_KEYS
@@ -222,6 +238,10 @@ async def members_list(ap, context, payload):
 
 
 async def _record_change(ap, context, action, changes, resource_id=None):
+    from .transport import transport_records_audit
+
+    if transport_records_audit.get():
+        return
     service = ap.workspace_settings_service
     rule = tracing.ACTION_RULES_BY_ACTION[action]
     await service.record(
@@ -529,7 +549,9 @@ async def wizard_complete(ap, context, payload):
 
 
 async def wizard_progress(ap, context, payload):
-    await _metadata_set(ap, context, 'wizard_progress', json.dumps(payload.model_dump(), ensure_ascii=False))
+    await _metadata_set(
+        ap, context, 'wizard_progress', json.dumps(payload.model_dump(exclude_unset=True), ensure_ascii=False)
+    )
     return None
 
 
@@ -582,16 +604,17 @@ async def storage_analysis(ap, context, payload):
 
 async def wizard_get(ap, context, payload):
     result = await ap.persistence_mgr.execute_async(
-        sqlalchemy.select(WorkspaceMetadata).where(
+        sqlalchemy.select(WorkspaceMetadata.key, WorkspaceMetadata.value).where(
             WorkspaceMetadata.workspace_uuid == context.workspace_uuid,
             WorkspaceMetadata.key.in_(['wizard_status', 'wizard_progress']),
         )
     )
     values = {row.key: row.value for row in result.all()}
-    return {
-        'status': values.get('wizard_status'),
-        'progress': json.loads(values['wizard_progress']) if values.get('wizard_progress') else None,
-    }
+    try:
+        progress = json.loads(values['wizard_progress']) if values.get('wizard_progress') else None
+    except (json.JSONDecodeError, TypeError):
+        progress = None
+    return {'status': values.get('wizard_status'), 'progress': progress}
 
 
 async def plugin_status(ap, context, payload):

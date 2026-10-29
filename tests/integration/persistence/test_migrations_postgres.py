@@ -2202,6 +2202,9 @@ class TestPostgreSQLTenantRuntime:
                 )
             )
             await WebhookRouterGroup(runtime_application, quart_app).initialize()
+            from langbot.pkg.api.application import ApplicationAPI
+
+            runtime_application.application_api = ApplicationAPI(runtime_application)
             await SystemRouterGroup(runtime_application, quart_app).initialize()
             client = quart_app.test_client()
             account_a = await runtime_application.user_service.get_user_by_uuid(account_a_uuid)

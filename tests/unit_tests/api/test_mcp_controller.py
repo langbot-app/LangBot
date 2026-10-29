@@ -49,6 +49,11 @@ async def _create_test_client(mcp_service: SimpleNamespace, *, role: str = 'owne
         user_service=user_service,
         workspace_collaboration_service=workspace_collaboration_service,
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        ap, SimpleNamespace(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+    )
     MCPRouterGroup = import_module('langbot.pkg.api.http.controller.groups.resources.mcp').MCPRouterGroup
     group = MCPRouterGroup(ap, app)
     await group.initialize()
@@ -98,7 +103,8 @@ async def test_mcp_server_route_accepts_encoded_slash_name():
 
     assert response.status_code == 200
     mcp_service.get_mcp_server_by_name.assert_awaited_once()
-    context, server_name = mcp_service.get_mcp_server_by_name.await_args.args
+    (context,) = mcp_service.get_mcp_server_by_name.await_args.args
+    server_name = mcp_service.get_mcp_server_by_name.await_args.kwargs['server_name']
     assert context.workspace_uuid == 'workspace-a'
     assert server_name == 'pab1it0/prometheus'
     payload = await response.get_json()
@@ -125,7 +131,8 @@ async def test_mcp_resource_route_accepts_encoded_slash_name():
     assert response.status_code == 200
     mcp_service.get_mcp_server_by_name.assert_not_awaited()
     mcp_service.get_mcp_server_resources.assert_awaited_once()
-    context, server_name = mcp_service.get_mcp_server_resources.await_args.args
+    (context,) = mcp_service.get_mcp_server_resources.await_args.args
+    server_name = mcp_service.get_mcp_server_resources.await_args.kwargs['server_name']
     assert context.workspace_uuid == 'workspace-a'
     assert server_name == 'pab1it0/prometheus'
     payload = await response.get_json()

@@ -36,6 +36,9 @@ async def test_document_upload_uses_dedicated_scoped_owner_type():
         workspace_collaboration_service=SimpleNamespace(resolve_account_workspace=AsyncMock(return_value=access)),
         storage_mgr=storage_mgr,
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(application, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='00000000-0000-0000-0000-00000000000a', placement_generation=3))
     router = FilesRouterGroup(application, quart_app)
     await router.initialize()
     client = quart_app.test_client()

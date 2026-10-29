@@ -59,12 +59,15 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            metrics = await self.ap.monitoring_service.get_overview_metrics(
+            metrics = await self.call_application(
+                'monitoring.overview',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                },
             )
 
             return self.success(data=metrics)
@@ -80,7 +83,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             async def snapshot():
                 nonlocal previous
-                result = await self.ap.monitoring_service.get_inflight_snapshot(request_context, previous)
+                result = await self.call_application('monitoring.inflight', request_context, {'previous': previous})
                 previous = [row for row in result['items'] if row['status_group'] in {'running', 'queued'}]
                 return result
 
@@ -97,6 +100,9 @@ class MonitoringRouterGroup(group.RouterGroup):
         @self.route('/executions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_executions(request_context: RequestContext) -> str:
             """Unified execution list across agent runs and pipeline queries."""
+            limit, offset = self.ap.monitoring_service.normalize_page_window(
+                quart.request.args.get('limit', 50), quart.request.args.get('offset', 0)
+            )
             bot_ids = quart.request.args.getlist('botId')
             pipeline_ids = quart.request.args.getlist('pipelineId')
             agent_ids = quart.request.args.getlist('agentId')
@@ -107,18 +113,21 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
             validate_monitoring_window(start_time, end_time)
 
-            result = await self.ap.monitoring_service.get_executions(
+            result = await self.call_application(
+                'monitoring.executions',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                agent_ids=agent_ids if agent_ids else None,
-                statuses=statuses if statuses else None,
-                source=source,
-                mode=mode,
-                start_time=start_time,
-                end_time=end_time,
-                limit=quart.request.args.get('limit', 50),
-                offset=quart.request.args.get('offset', 0),
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'agent_ids': agent_ids if agent_ids else None,
+                    'statuses': statuses if statuses else None,
+                    'source': source,
+                    'mode': mode,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(data=result)
@@ -130,14 +139,20 @@ class MonitoringRouterGroup(group.RouterGroup):
         )
         async def get_execution_detail(source: str, execution_id: str, request_context: RequestContext) -> str:
             """Read a full trace, its initial overview, or one paginated section."""
+            limit, offset = self.ap.monitoring_service.normalize_page_window(
+                quart.request.args.get('limit', 100), quart.request.args.get('offset', 0)
+            )
             try:
-                detail = await self.ap.monitoring_service.get_execution_detail(
+                detail = await self.call_application(
+                    'monitoring.execution.detail',
                     request_context,
-                    source,
-                    execution_id,
-                    section=quart.request.args.get('section'),
-                    offset=quart.request.args.get('offset', 0),
-                    limit=quart.request.args.get('limit', 100),
+                    {
+                        'source': source,
+                        'execution_id': execution_id,
+                        'section': quart.request.args.get('section'),
+                        'offset': offset,
+                        'limit': limit,
+                    },
                 )
             except ValueError as exc:
                 return self.fail(404, str(exc))
@@ -158,15 +173,18 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            stats = await self.ap.monitoring_service.get_token_statistics(
+            stats = await self.call_application(
+                'monitoring.tokens',
                 request_context,
-                execution_statuses=quart.request.args.getlist('status') or None,
-                mode=quart.request.args.get('mode', 'all'),
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                bucket=bucket,
+                {
+                    'execution_statuses': quart.request.args.getlist('status') or None,
+                    'mode': quart.request.args.get('mode', 'all'),
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'bucket': bucket,
+                },
             )
 
             return self.success(data=stats)
@@ -194,15 +212,18 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            messages, total = await self.ap.monitoring_service.get_messages(
+            messages, total = await self.call_application(
+                'monitoring.messages',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                session_ids=session_ids if session_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=offset,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'session_ids': session_ids if session_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -236,14 +257,17 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            llm_calls, total = await self.ap.monitoring_service.get_llm_calls(
+            llm_calls, total = await self.call_application(
+                'monitoring.llm_calls',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=offset,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -276,15 +300,18 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            tool_calls, total = await self.ap.monitoring_service.get_tool_calls(
+            tool_calls, total = await self.call_application(
+                'monitoring.tool_calls',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                session_ids=session_ids if session_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=offset,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'session_ids': session_ids if session_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -317,13 +344,16 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            embedding_calls, total = await self.ap.monitoring_service.get_embedding_calls(
+            embedding_calls, total = await self.call_application(
+                'monitoring.embedding_calls',
                 request_context,
-                start_time=start_time,
-                end_time=end_time,
-                knowledge_base_id=knowledge_base_id if knowledge_base_id else None,
-                limit=limit,
-                offset=offset,
+                {
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'knowledge_base_id': knowledge_base_id if knowledge_base_id else None,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -368,16 +398,19 @@ class MonitoringRouterGroup(group.RouterGroup):
             if is_active_str:
                 is_active = is_active_str.lower() == 'true'
 
-            sessions, total = await self.ap.monitoring_service.get_sessions(
+            sessions, total = await self.call_application(
+                'monitoring.sessions',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                user_query=user_query,
-                is_active=is_active,
-                limit=limit,
-                offset=offset,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'user_query': user_query,
+                    'is_active': is_active,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -411,14 +444,17 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            errors, total = await self.ap.monitoring_service.get_errors(
+            errors, total = await self.call_application(
+                'monitoring.errors',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=offset,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(
@@ -450,83 +486,98 @@ class MonitoringRouterGroup(group.RouterGroup):
             validate_monitoring_window(start_time, end_time)
 
             # Get overview metrics
-            overview = await self.ap.monitoring_service.get_overview_metrics(
+            overview = await self.call_application(
+                'monitoring.overview',
                 request_context,
-                **execution_filters,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
+                {
+                    **execution_filters,
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                },
             )
 
             # Get messages
-            messages, messages_total = await self.ap.monitoring_service.get_messages(
+            messages, messages_total = await self.call_application(
+                'monitoring.messages',
                 request_context,
-                **execution_filters,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=0,
+                {
+                    **execution_filters,
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': 0,
+                },
             )
 
             # Get LLM calls
-            llm_calls, llm_calls_total = await self.ap.monitoring_service.get_llm_calls(
+            llm_calls, llm_calls_total = await self.call_application(
+                'monitoring.llm_calls',
                 request_context,
-                **execution_filters,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=0,
+                {
+                    **execution_filters,
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': 0,
+                },
             )
 
             # Get tool calls
-            tool_calls, tool_calls_total = await self.ap.monitoring_service.get_tool_calls(
+            tool_calls, tool_calls_total = await self.call_application(
+                'monitoring.tool_calls',
                 request_context,
-                **execution_filters,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=0,
+                {
+                    **execution_filters,
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': 0,
+                },
             )
 
             # Sessions have conversation scope, independent of execution status/mode.
-            sessions, sessions_total = await self.ap.monitoring_service.get_sessions(
+            sessions, sessions_total = await self.call_application(
+                'monitoring.sessions',
                 request_context,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                is_active=None,
-                limit=limit,
-                offset=0,
+                {
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'is_active': None,
+                    'limit': limit,
+                    'offset': 0,
+                },
             )
 
             # Get errors
-            errors, errors_total = await self.ap.monitoring_service.get_errors(
+            errors, errors_total = await self.call_application(
+                'monitoring.errors',
                 request_context,
-                **execution_filters,
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=0,
+                {
+                    **execution_filters,
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': 0,
+                },
             )
 
             # Get embedding calls
-            embedding_calls, embedding_calls_total = await self.ap.monitoring_service.get_embedding_calls(
+            embedding_calls, embedding_calls_total = await self.call_application(
+                'monitoring.embedding_calls',
                 request_context,
-                **execution_filters,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=0,
+                {**execution_filters, 'start_time': start_time, 'end_time': end_time, 'limit': limit, 'offset': 0},
             )
 
             return self.success(
@@ -569,10 +620,10 @@ class MonitoringRouterGroup(group.RouterGroup):
             if not isinstance(body, dict):
                 return self.http_status(400, 'invalid_request', 'Expected a JSON object')
             try:
-                result = await self.ap.monitoring_service.reset_session_context(
+                result = await self.call_application(
+                    'monitoring.session.reset',
                     request_context,
-                    body.get('bot_id'),
-                    body.get('session_id'),
+                    {'bot_id': body.get('bot_id'), 'session_id': body.get('session_id')},
                 )
             except ValueError as exc:
                 return self.http_status(400, 'invalid_request', str(exc))
@@ -594,12 +645,15 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(quart.request.args.get('endTime'))
             # Message pages can contain one timestamp; tool-call bounds are inclusive.
             validate_monitoring_window(start_time, end_time, allow_point_window=True)
-            analysis = await self.ap.monitoring_service.get_session_analysis(
+            analysis = await self.call_application(
+                'monitoring.session.analysis',
                 request_context,
-                session_id,
-                start_time=start_time,
-                end_time=end_time,
-                bot_id=quart.request.args.get('botId'),
+                {
+                    'session_id': session_id,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'bot_id': quart.request.args.get('botId'),
+                },
             )
 
             # Always return success with the analysis data
@@ -614,7 +668,9 @@ class MonitoringRouterGroup(group.RouterGroup):
         )
         async def get_message_details(message_id: str, request_context: RequestContext) -> str:
             """Get detailed information for a specific message"""
-            details = await self.ap.monitoring_service.get_message_details(request_context, message_id)
+            details = await self.call_application(
+                'monitoring.message.detail', request_context, {'message_id': message_id}
+            )
 
             if not details.get('found'):
                 return self.http_status(404, 'resource_not_found', 'Message not found')
@@ -639,13 +695,16 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             # Get data based on export type
             if export_type == 'messages':
-                data = await self.ap.monitoring_service.export_messages(
+                data = await self.call_application(
+                    'monitoring.export.messages',
                     request_context,
-                    bot_ids=bot_ids if bot_ids else None,
-                    pipeline_ids=pipeline_ids if pipeline_ids else None,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {
+                        'bot_ids': bot_ids if bot_ids else None,
+                        'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
                 )
                 headers = [
                     'id',
@@ -664,13 +723,16 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'user_id',
                 ]
             elif export_type == 'llm-calls':
-                data = await self.ap.monitoring_service.export_llm_calls(
+                data = await self.call_application(
+                    'monitoring.export.llm_calls',
                     request_context,
-                    bot_ids=bot_ids if bot_ids else None,
-                    pipeline_ids=pipeline_ids if pipeline_ids else None,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {
+                        'bot_ids': bot_ids if bot_ids else None,
+                        'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
                 )
                 headers = [
                     'id',
@@ -691,11 +753,10 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'error_message',
                 ]
             elif export_type == 'embedding-calls':
-                data = await self.ap.monitoring_service.export_embedding_calls(
+                data = await self.call_application(
+                    'monitoring.export.embedding_calls',
                     request_context,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {'start_time': start_time, 'end_time': end_time, 'limit': limit},
                 )
                 headers = [
                     'id',
@@ -714,13 +775,16 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'call_type',
                 ]
             elif export_type == 'errors':
-                data = await self.ap.monitoring_service.export_errors(
+                data = await self.call_application(
+                    'monitoring.export.errors',
                     request_context,
-                    bot_ids=bot_ids if bot_ids else None,
-                    pipeline_ids=pipeline_ids if pipeline_ids else None,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {
+                        'bot_ids': bot_ids if bot_ids else None,
+                        'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
                 )
                 headers = [
                     'id',
@@ -736,13 +800,16 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'stack_trace',
                 ]
             elif export_type == 'sessions':
-                data = await self.ap.monitoring_service.export_sessions(
+                data = await self.call_application(
+                    'monitoring.export.sessions',
                     request_context,
-                    bot_ids=bot_ids if bot_ids else None,
-                    pipeline_ids=pipeline_ids if pipeline_ids else None,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {
+                        'bot_ids': bot_ids if bot_ids else None,
+                        'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
                 )
                 headers = [
                     'session_id',
@@ -758,13 +825,16 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'user_id',
                 ]
             elif export_type == 'feedback':
-                data = await self.ap.monitoring_service.export_feedback(
+                data = await self.call_application(
+                    'monitoring.export.feedback',
                     request_context,
-                    bot_ids=bot_ids if bot_ids else None,
-                    pipeline_ids=pipeline_ids if pipeline_ids else None,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
+                    {
+                        'bot_ids': bot_ids if bot_ids else None,
+                        'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'limit': limit,
+                    },
                 )
                 headers = [
                     'id',
@@ -828,14 +898,17 @@ class MonitoringRouterGroup(group.RouterGroup):
             end_time = parse_iso_datetime(end_time_str)
             validate_monitoring_window(start_time, end_time)
 
-            stats = await self.ap.monitoring_service.get_feedback_stats(
+            stats = await self.call_application(
+                'monitoring.feedback.stats',
                 request_context,
-                execution_statuses=quart.request.args.getlist('status') or None,
-                mode=quart.request.args.get('mode', 'all'),
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                start_time=start_time,
-                end_time=end_time,
+                {
+                    'execution_statuses': quart.request.args.getlist('status') or None,
+                    'mode': quart.request.args.get('mode', 'all'),
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                },
             )
 
             return self.success(data=stats)
@@ -860,17 +933,20 @@ class MonitoringRouterGroup(group.RouterGroup):
             # Parse feedback type
             feedback_type = int(feedback_type_str) if feedback_type_str else None
 
-            feedback_list, total = await self.ap.monitoring_service.get_feedback_list(
+            feedback_list, total = await self.call_application(
+                'monitoring.feedback.list',
                 request_context,
-                execution_statuses=quart.request.args.getlist('status') or None,
-                mode=quart.request.args.get('mode', 'all'),
-                bot_ids=bot_ids if bot_ids else None,
-                pipeline_ids=pipeline_ids if pipeline_ids else None,
-                feedback_type=feedback_type,
-                start_time=start_time,
-                end_time=end_time,
-                limit=limit,
-                offset=offset,
+                {
+                    'execution_statuses': quart.request.args.getlist('status') or None,
+                    'mode': quart.request.args.get('mode', 'all'),
+                    'bot_ids': bot_ids if bot_ids else None,
+                    'pipeline_ids': pipeline_ids if pipeline_ids else None,
+                    'feedback_type': feedback_type,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'limit': limit,
+                    'offset': offset,
+                },
             )
 
             return self.success(

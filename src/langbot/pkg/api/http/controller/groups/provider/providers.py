@@ -20,7 +20,9 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def codex_status(provider_uuid: str, request_context: RequestContext):
             try:
                 return self.success(
-                    data=await self.ap.provider_service.codex_auth.status(request_context, provider_uuid)
+                    data=await self.call_application(
+                        'provider.codex.status', request_context, {'provider': provider_uuid}
+                    )
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -34,7 +36,9 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def codex_device(provider_uuid: str, request_context: RequestContext):
             try:
                 return self.success(
-                    data=await self.ap.provider_service.codex_auth.start(request_context, provider_uuid)
+                    data=await self.call_application(
+                        'provider.codex.start', request_context, {'provider': provider_uuid}
+                    )
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -51,8 +55,10 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'JSON object required')
             try:
                 return self.success(
-                    data=await self.ap.provider_service.codex_auth.poll(
-                        request_context, provider_uuid, body.get('authorization_id')
+                    data=await self.call_application(
+                        'provider.codex.poll',
+                        request_context,
+                        {'provider': provider_uuid, 'authorization_id': body.get('authorization_id')},
                     )
                 )
             except ValueError as exc:
@@ -66,7 +72,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         )
         async def codex_disconnect(provider_uuid: str, request_context: RequestContext):
             try:
-                await self.ap.provider_service.codex_auth.disconnect(request_context, provider_uuid)
+                await self.call_application('provider.codex.disconnect', request_context, {'provider': provider_uuid})
                 return self.success()
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -79,7 +85,11 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         )
         async def codex_cancel(provider_uuid: str, authorization_id: str, request_context: RequestContext):
             try:
-                await self.ap.provider_service.codex_auth.cancel(request_context, provider_uuid, authorization_id)
+                await self.call_application(
+                    'provider.codex.cancel',
+                    request_context,
+                    {'provider': provider_uuid, 'authorization_id': authorization_id},
+                )
                 return self.success()
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -97,12 +107,13 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            providers = await self.ap.provider_service.get_providers(
-                request_context,
-                include_secret=include_secret,
+            providers = await self.call_application(
+                'provider.list', request_context, {'include_secret': include_secret}
             )
             for provider in providers:
-                counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider['uuid'])
+                counts = await self.call_application(
+                    'provider.models.count', request_context, {'provider_uuid': provider['uuid']}
+                )
                 provider['llm_count'] = counts['llm_count']
                 provider['embedding_count'] = counts['embedding_count']
                 provider['rerank_count'] = counts['rerank_count']
@@ -117,7 +128,9 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                provider_uuid = await self.ap.provider_service.create_provider(request_context, json_data)
+                provider_uuid = await self.call_application(
+                    'provider.create', request_context, {'provider_data': json_data}
+                )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data={'uuid': provider_uuid})
@@ -135,14 +148,14 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            provider = await self.ap.provider_service.get_provider(
-                request_context,
-                provider_uuid,
-                include_secret=include_secret,
+            provider = await self.call_application(
+                'provider.get', request_context, {'provider_uuid': provider_uuid, 'include_secret': include_secret}
             )
             if provider is None:
                 return self.http_status(404, -1, 'provider not found')
-            counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider_uuid)
+            counts = await self.call_application(
+                'provider.models.count', request_context, {'provider_uuid': provider_uuid}
+            )
             provider['llm_count'] = counts['llm_count']
             provider['embedding_count'] = counts['embedding_count']
             provider['rerank_count'] = counts['rerank_count']
@@ -157,26 +170,15 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def _(provider_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                previous = await self.ap.provider_service.get_provider(
-                    request_context,
-                    provider_uuid,
-                    include_secret=True,
+                await self.call_application(
+                    'provider.update', request_context, {'provider_uuid': provider_uuid, 'provider_data': json_data}
                 )
-            except Exception:
-                previous = None
-            try:
-                await self.ap.provider_service.update_provider(request_context, provider_uuid, json_data)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             # Record which provider was reconfigured and which fields moved;
             # credential-looking keys are redacted by ``changed_fields``.
-            changes = settings_service.changed_fields(
-                previous if isinstance(previous, dict) else {},
-                json_data if isinstance(json_data, dict) else {},
-                ignore=('uuid', 'created_at', 'updated_at', 'llm_count', 'embedding_count', 'rerank_count'),
-            )
+            changes = quart.g.operation_log_changes
             rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
-            quart.g.operation_log_changes = changes
             if rule is not None and changes:
                 quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             return self.success()
@@ -193,11 +195,13 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 if cascade_values:
                     if len(cascade_values) != 1 or cascade_values[0] not in ('true', 'false'):
                         return self.http_status(400, -1, 'cascade must be a single true or false value')
-                    await self.ap.provider_service.delete_provider(
-                        request_context, provider_uuid, cascade=cascade_values[0] == 'true'
+                    await self.call_application(
+                        'provider.delete',
+                        request_context,
+                        {'provider_uuid': provider_uuid, 'cascade': cascade_values[0] == 'true'},
                     )
                 else:
-                    await self.ap.provider_service.delete_provider(request_context, provider_uuid)
+                    await self.call_application('provider.delete', request_context, {'provider_uuid': provider_uuid})
                 return self.success()
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
@@ -211,7 +215,9 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def _(provider_uuid: str, request_context: RequestContext) -> str:
             try:
                 model_type = quart.request.args.get('type')
-                result = await self.ap.provider_service.scan_provider_models(request_context, provider_uuid, model_type)
+                result = await self.call_application(
+                    'provider.models.scan', request_context, {'provider_uuid': provider_uuid, 'model_type': model_type}
+                )
                 return self.success(data=result)
             except ValueError as e:
                 return self.http_status(400, -1, str(e))

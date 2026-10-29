@@ -5,17 +5,14 @@ import typing
 import quart
 
 from ...authz import Permission, permissions_for_role
-from ...context import PrincipalType, RequestContext
+from ...context import RequestContext
 from ...service.user import AccountExistsLoginRequiredError, ControlPlaneDirectoryRequiredError
 from .....entity.persistence.workspace import Workspace, WorkspaceInvitation, WorkspaceMembership
 from .....entity.persistence.workspace import WorkspaceSource
-from .....workspace.collaboration import WorkspaceMemberView
 from .....workspace.errors import WorkspaceNotFoundError
-from .....workspace.invitation_delivery import InvitationDeliveryService
 from .....operation_trace import service as settings_service
 from .. import group
 from .....i18n import SUPPORTED_LANGUAGES
-from .....i18n.workspace import get_workspace_language, set_workspace_language
 
 
 def _workspace_payload(workspace: Workspace) -> dict[str, typing.Any]:
@@ -65,16 +62,6 @@ def _invitation_payload(invitation: WorkspaceInvitation) -> dict[str, typing.Any
 
 @group.group_class('workspaces', '/api/v1/workspaces')
 class WorkspacesRouterGroup(group.RouterGroup):
-    async def _run_in_workspace_uow(
-        self, workspace_uuid: str, operation: typing.Callable[[], typing.Awaitable[typing.Any]]
-    ):
-        """Bind collaboration persistence to the selected tenant in Cloud."""
-        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
-        if cloud_runtime:
-            async with self.ap.persistence_mgr.tenant_uow(workspace_uuid):
-                return await operation()
-        return await operation()
-
     async def initialize(self) -> None:
         @self.route(
             '/current/language',
@@ -83,12 +70,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_VIEW,
         )
         async def get_language(request_context: RequestContext):
-            return self.success(
-                data={
-                    'language': await get_workspace_language(self.ap, request_context.workspace_uuid, refresh=True),
-                    'supported_languages': list(SUPPORTED_LANGUAGES),
-                }
-            )
+            return self.success(data=await self.call_application('workspace.language.get', request_context, {}))
 
         @self.route(
             '/current/language',
@@ -101,8 +83,9 @@ class WorkspacesRouterGroup(group.RouterGroup):
             locale = body.get('language') if isinstance(body, dict) else None
             if locale not in SUPPORTED_LANGUAGES:
                 return self.http_status(400, 'invalid_language', 'Unsupported Workspace language')
-            locale = await set_workspace_language(self.ap, request_context.workspace_uuid, locale)
-            return self.success(data={'language': locale})
+            return self.success(
+                data=await self.call_application('workspace.language.update', request_context, {'language': locale})
+            )
 
         @self.route('/bootstrap', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> typing.Any:
@@ -156,88 +139,19 @@ class WorkspacesRouterGroup(group.RouterGroup):
 
         @self.route('/current', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(request_context: RequestContext) -> typing.Any:
-            membership = quart.g.workspace_membership
-            workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
-            plan_name: str | None = None
-            limitation = None
-            current_plan = None
-            resolver = getattr(self.ap, 'entitlement_resolver', None)
-            if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
-                entitlement = await resolver.resolve(
-                    workspace.uuid,
-                    minimum_revision=request_context.entitlement_revision,
-                )
-                plan_name = entitlement.plan_name
-                if entitlement.plan_revision is not None and entitlement.monthly_bonus_credits is not None:
-                    current_plan = {
-                        'name': entitlement.plan_name,
-                        'subscription_started_at': entitlement.subscription_started_at,
-                        'revision': entitlement.plan_revision,
-                        'monthly_bonus_credits': entitlement.monthly_bonus_credits,
-                        'limits': entitlement.limits,
-                        'entitlement_features': entitlement.features,
-                    }
-                from ...service.workspace_limits import LIMIT_KEYS
-
-                limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
-            if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
-                return self.success(
-                    data={
-                        'workspace': _workspace_payload(workspace),
-                        'membership': {
-                            'uuid': None,
-                            'workspace_uuid': request_context.workspace_uuid,
-                            'account_uuid': None,
-                            'display_name': None,
-                            'email': None,
-                            'role': 'owner',
-                            'status': 'active',
-                            'joined_at': None,
-                            'created_at': None,
-                        },
-                        'permissions': sorted(request_context.workspace.permissions),
-                        'placement_generation': request_context.placement_generation,
-                        'plan_name': plan_name,
-                        'current_plan': current_plan,
-                        'limitation': limitation,
-                    }
-                )
-            account = await self.ap.user_service.get_user_by_uuid(request_context.account_uuid)
-            if account is None:
-                return self.http_status(401, 'invalid_authentication', 'Account not found')
-            return self.success(
-                data={
-                    'workspace': _workspace_payload(workspace),
-                    'membership': _membership_payload(
-                        membership,
-                        display_name=account.user,
-                        email=account.normalized_email,
-                    ),
-                    'permissions': sorted(request_context.workspace.permissions),
-                    'placement_generation': request_context.placement_generation,
-                    'plan_name': plan_name,
-                    'current_plan': current_plan,
-                    'limitation': limitation,
-                }
-            )
+            return self.success(data=await self.call_application('workspace.current', request_context, {}))
 
         @self.route('/<workspace_uuid>', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
-            return self.success(data={'workspace': _workspace_payload(workspace)})
+            workspace = await self.call_application('workspace.get', request_context, {})
+            return self.success(data={'workspace': workspace})
 
         @self.route('/<workspace_uuid>/members', methods=['GET'], permission=Permission.MEMBER_VIEW)
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-
-            async def list_members():
-                return await self.ap.workspace_collaboration_service.list_members(
-                    workspace_uuid, quart.g.workspace_membership
-                )
-
-            members = await self._run_in_workspace_uow(workspace_uuid, list_members)
-            return self.success(data={'members': [self._member_view_payload(item) for item in members]})
+            members = await self.call_application('workspace.member.list', request_context, {})
+            return self.success(data={'members': members})
 
         @self.route(
             '/<workspace_uuid>/invitations',
@@ -247,54 +161,31 @@ class WorkspacesRouterGroup(group.RouterGroup):
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
             if quart.request.method == 'GET':
-
-                async def list_invitations():
-                    return await self.ap.workspace_collaboration_service.list_invitations(
-                        workspace_uuid, quart.g.workspace_membership
-                    )
-
-                invitations = await self._run_in_workspace_uow(workspace_uuid, list_invitations)
-                return self.success(data={'invitations': [_invitation_payload(item) for item in invitations]})
-
+                invitations = await self.call_application('workspace.invitation.list', request_context, {})
+                return self.success(data={'invitations': invitations})
             data = await quart.request.get_json(silent=True) or {}
-
-            async def create_invitation():
-                return await self.ap.workspace_collaboration_service.create_invitation(
-                    workspace_uuid,
-                    quart.g.workspace_membership,
-                    str(data.get('email', '')),
-                    str(data.get('role', 'viewer')),
-                )
-
-            created = await self._run_in_workspace_uow(workspace_uuid, create_invitation)
+            created = await self.call_application(
+                'workspace.invitation.create',
+                request_context,
+                {
+                    'email': str(data.get('email', '')),
+                    'role': str(data.get('role', 'viewer')),
+                },
+            )
+            invitation = created['invitation']
             invite_rule = settings_service.ACTION_RULES_BY_ACTION['member_invite']
             invite_changes = [
                 {
                     'field': 'invitation',
                     'before': None,
-                    'after': f'{created.invitation.normalized_email}:{created.invitation.role}',
+                    'after': f'{invitation["normalized_email"]}:{invitation["role"]}',
                 }
             ]
             quart.g.operation_log_changes = invite_changes
-            quart.g.operation_log_resource_id = created.invitation.uuid
-            quart.g.operation_log_detail = {'role': created.invitation.role}
+            quart.g.operation_log_resource_id = invitation['uuid']
+            quart.g.operation_log_detail = {'role': invitation['role']}
             quart.g.operation_log_summary = settings_service.build_summary(invite_rule, invite_changes)
-            delivery_service = self._invitation_delivery_service()
-            link = delivery_service.build_invitation_link(created.token)
-            workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
-            delivery = await delivery_service.deliver_invitation(
-                recipient_email=created.invitation.normalized_email,
-                workspace_name=workspace.name,
-                invitation_link=link,
-            )
-            return self.success(
-                data={
-                    'invitation': _invitation_payload(created.invitation),
-                    'token': created.token,
-                    'link': link,
-                    'delivery': delivery.to_public_dict(),
-                }
-            )
+            return self.success(data=created)
 
         @self.route(
             '/<workspace_uuid>/invitations/<invitation_uuid>',
@@ -307,14 +198,10 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-
-            async def revoke_invitation():
-                return await self.ap.workspace_collaboration_service.revoke_invitation(
-                    workspace_uuid, invitation_uuid, quart.g.workspace_membership
-                )
-
-            invitation = await self._run_in_workspace_uow(workspace_uuid, revoke_invitation)
-            return self.success(data={'invitation': _invitation_payload(invitation)})
+            invitation = await self.call_application(
+                'workspace.invitation.revoke', request_context, {'invitation_uuid': invitation_uuid}
+            )
+            return self.success(data={'invitation': invitation})
 
         @self.route(
             '/<workspace_uuid>/members/<account_uuid>',
@@ -327,80 +214,48 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-
-            # Capture the previous role before mutating so the operation trace
-            # can answer "what was changed into what" for this member.
-            before_role = await self._member_role(workspace_uuid, account_uuid)
-
+            before_role = await self._member_role(request_context, account_uuid)
             if quart.request.method == 'DELETE':
                 if Permission.MEMBER_REMOVE.value not in request_context.workspace.permissions:
                     return self.http_status(403, 'permission_denied', 'Member removal permission is required')
-
-                async def remove_member():
-                    return await self.ap.workspace_collaboration_service.remove_member(
-                        workspace_uuid, account_uuid, quart.g.workspace_membership
-                    )
-
-                member = await self._run_in_workspace_uow(workspace_uuid, remove_member)
+                member = await self.call_application(
+                    'workspace.member.remove', request_context, {'account_uuid': account_uuid}
+                )
                 await self._publish_member_trace(
                     rule_action='member_remove',
                     account_uuid=account_uuid,
                     changes=[
-                        {
-                            'field': 'member',
-                            'before': f'{account_uuid}:{before_role or "unknown"}',
-                            'after': 'removed',
-                        }
+                        {'field': 'member', 'before': f'{account_uuid}:{before_role or "unknown"}', 'after': 'removed'}
                     ],
                 )
-                return self.success(data={'account_uuid': member.account_uuid})
-
+                return self.success(data=member)
             data = await quart.request.get_json(silent=True) or {}
-
-            async def update_member_role():
-                return await self.ap.workspace_collaboration_service.update_member_role(
-                    workspace_uuid,
-                    account_uuid,
-                    str(data.get('role', '')),
-                    quart.g.workspace_membership,
-                )
-
-            member = await self._run_in_workspace_uow(workspace_uuid, update_member_role)
-            account = await self.ap.user_service.get_user_by_uuid(member.account_uuid)
-
-            role_changes = [
-                {'field': 'role', 'before': before_role, 'after': member.role},
-            ]
+            member = await self.call_application(
+                'workspace.member.update',
+                request_context,
+                {
+                    'account_uuid': account_uuid,
+                    'role': str(data.get('role', '')),
+                },
+            )
             await self._publish_member_trace(
                 rule_action='member_role_update',
                 account_uuid=account_uuid,
-                changes=role_changes,
-                detail={
-                    'member_email': account.normalized_email if account is not None else None,
-                },
+                changes=[{'field': 'role', 'before': before_role, 'after': member['role']}],
+                detail={'member_email': member['email'] or None},
             )
-            return self.success(
-                data={
-                    'member': _membership_payload(
-                        member,
-                        display_name=account.user if account is not None else '',
-                        email=account.normalized_email if account is not None else '',
-                    )
-                }
-            )
+            return self.success(data={'member': member})
 
-    async def _member_role(self, workspace_uuid: str, account_uuid: str) -> str | None:
+    async def _member_role(self, request_context: RequestContext, account_uuid: str) -> str | None:
         """Return a member's current role without failing the request."""
 
         try:
-            members = await self.ap.workspace_collaboration_service.list_members(
-                workspace_uuid, quart.g.workspace_membership
-            )
+            members = await self.call_application('workspace.member.list', request_context, {})
         except Exception:
             return None
         for view in members:
-            if view.membership.account_uuid == account_uuid:
-                return view.membership.role
+            if view['account_uuid'] == account_uuid:
+                return view['role']
         return None
 
     async def _publish_member_trace(
@@ -428,21 +283,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
     def _require_current_workspace(workspace_uuid: str, request_context: RequestContext) -> None:
         if workspace_uuid != request_context.workspace_uuid:
             raise WorkspaceNotFoundError('Workspace not found')
-
-    def _invitation_delivery_service(self) -> InvitationDeliveryService:
-        service = getattr(self.ap, 'invitation_delivery_service', None)
-        if service is None:
-            service = InvitationDeliveryService(self.ap)
-            self.ap.invitation_delivery_service = service
-        return service
-
-    @staticmethod
-    def _member_view_payload(view: WorkspaceMemberView) -> dict[str, typing.Any]:
-        return _membership_payload(
-            view.membership,
-            display_name=view.display_name,
-            email=view.email,
-        )
 
 
 @group.group_class('invitations', '/api/v1/invitations')

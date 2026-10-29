@@ -69,7 +69,7 @@ async def _register_session(
     run_id='run_1',
     conversation_id='conv_1',
     bot_id=None,
-    workspace_id=None,
+    workspace_id='workspace-test',
     thread_id=None,
     available_apis=None,
 ):
@@ -181,6 +181,7 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
     await _register_session(session_registry, available_apis={'event_get': True})
     store = EventLogStore(db_engine)
     event_id = await store.append_event(
+        workspace_id='workspace-test',
         event_id='evt_projection_1',
         event_type='message.received',
         source='platform',
@@ -216,11 +217,16 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('denial', 'message'),
-    [('missing_run', 'run_id is required'), ('expired_run', 'not found or expired'), ('capability', 'not authorized')],
+    [
+        ('missing_run', 'requires a trusted run context'),
+        ('expired_run', 'does not belong to this installation'),
+        ('capability', 'not authorized'),
+    ],
 )
 async def test_event_get_requires_active_run_capability(session_registry, db_engine, denial, message):
     await _register_session(session_registry, available_apis={'event_get': denial != 'capability'})
     await EventLogStore(db_engine).append_event(
+        workspace_id='workspace-test',
         event_id='evt_denied',
         event_type='message.received',
         source='platform',
@@ -269,6 +275,7 @@ async def test_event_page_returns_sdk_page_projection(session_registry, db_engin
     await _register_session(session_registry, available_apis={'event_page': True})
     store = EventLogStore(db_engine)
     await store.append_event(
+        workspace_id='workspace-test',
         event_id='evt_projection_page_1',
         event_type='message.received',
         source='platform',
@@ -309,6 +316,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
     )
     store = TranscriptStore(db_engine)
     await store.append_transcript(
+        workspace_id='workspace-test',
         transcript_id='tr_visible',
         event_id='evt_visible',
         conversation_id='conv_1',
@@ -318,6 +326,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
         content='visible',
     )
     await store.append_transcript(
+        workspace_id='workspace-test',
         transcript_id='tr_other_bot',
         event_id='evt_other_bot',
         conversation_id='conv_1',
@@ -327,6 +336,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
         content='hidden bot',
     )
     await store.append_transcript(
+        workspace_id='workspace-test',
         transcript_id='tr_other_thread',
         event_id='evt_other_thread',
         conversation_id='conv_1',
@@ -359,6 +369,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
     )
     store = EventLogStore(db_engine)
     await store.append_event(
+        workspace_id='workspace-test',
         event_id='evt_visible',
         event_type='message.received',
         source='platform',
@@ -367,6 +378,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
         thread_id='thread_1',
     )
     await store.append_event(
+        workspace_id='workspace-test',
         event_id='evt_other_bot',
         event_type='message.received',
         source='platform',
@@ -375,6 +387,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
         thread_id='thread_1',
     )
     await store.append_event(
+        workspace_id='workspace-test',
         event_id='evt_other_thread',
         event_type='message.received',
         source='platform',

@@ -329,7 +329,7 @@ _BINDINGS = (
         'bot',
         'BotService',
         'preview_group_filter_migration',
-        'RESOURCE_MANAGE',
+        'RESOURCE_VIEW',
         False,
     ),
     (
@@ -759,12 +759,18 @@ _OUTPUT_TYPES = {
 _INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight'}
 
 
+class MissingResourceResult(WorkspaceNotFoundError):
+    """A service returned None; existing transports retain their missing-resource response."""
+
+
 def _contract(operation_id, method):
     signature = inspect.signature(method)
     hints = typing.get_type_hints(method)
     fields = {}
     for name, parameter in signature.parameters.items():
-        if name in {'self', 'context', 'ctx'} | _INTERNAL_PARAMETERS:
+        if name in {'self', 'context', 'ctx'} | _INTERNAL_PARAMETERS and not (
+            operation_id == 'pipeline.create' and name == 'default'
+        ):
             continue
         annotation = _FIELD_TYPES.get(name, hints.get(name))
         default = parameter.default
@@ -777,9 +783,14 @@ def _contract(operation_id, method):
         default = ... if default is inspect.Parameter.empty else default
         constraints = {}
         if name in {'limit', 'max_count', 'max_entries'}:
-            constraints = {'ge': 1, 'le': 100_000 if '.export.' in operation_id else 1000}
+            maximum = 100_000 if '.export.' in operation_id else 1000
+            if operation_id.startswith('monitoring.') and '.export.' not in operation_id:
+                from ..http.service.monitoring import _HARD_MAX_MONITORING_PAGE_ROWS
+
+                maximum = _HARD_MAX_MONITORING_PAGE_ROWS
+            constraints = {'ge': 1, 'le': maximum}
         elif name in {'offset', 'from_index', 'after_sequence', 'before_id'}:
-            constraints = {'ge': 0}
+            constraints = {'ge': -1 if operation_id == 'bot.logs' and name == 'from_index' else 0}
         elif annotation is str and (name.endswith(('_uuid', '_id')) or name in {'query', 'uri'}):
             constraints = {'min_length': 1}
         fields[name] = (annotation, Field(default=default, **constraints))
@@ -789,6 +800,49 @@ def _contract(operation_id, method):
     if output is inspect.Parameter.empty:
         raise TypeError(f'Missing application output type: {operation_id}')
     return model, output
+
+
+_UPDATE_AUDITS = {
+    'pipeline.update': ('get_pipeline', 'pipeline_uuid', 'pipeline_data', False),
+    'pipeline.extensions.update': ('get_pipeline', 'pipeline_uuid', None, False),
+    'model.llm.update': ('get_llm_model', 'model_uuid', 'model_data', False),
+    'provider.update': ('get_provider', 'provider_uuid', 'provider_data', True),
+    'knowledge.base.update': ('get_knowledge_base', 'kb_uuid', 'kb_data', True),
+    'skill.update': ('get_skill', 'skill_name', 'data', False),
+}
+
+
+async def _update_audit(service, context, operation_id, payload):
+    from ..http.service.secrets import redact_secrets
+    from ...operation_trace.service import changed_fields
+    from ...pipeline.extension_preferences import normalize_extension_preferences
+
+    reader, identity, data_field, include_secret = _UPDATE_AUDITS[operation_id]
+    try:
+        previous = await getattr(service, reader)(
+            context, getattr(payload, identity), **({'include_secret': True} if include_secret else {})
+        )
+    except Exception as exc:
+        if operation_id == 'skill.update' and not isinstance(exc, ValueError):
+            raise
+        previous = None
+    before = previous if isinstance(previous, dict) else {}
+    ignore = ('uuid', 'created_at', 'updated_at')
+    if operation_id == 'pipeline.extensions.update':
+        before = normalize_extension_preferences(before.get('extensions_preferences'))
+        requested = {
+            field.removeprefix('bound_') if field.startswith('bound_') else field: value
+            for field, value in payload.model_dump().items()
+            if field != 'pipeline_uuid' and value is not None
+        }
+        after = {**before, **requested}
+    else:
+        after = getattr(payload, data_field)
+        if operation_id == 'provider.update':
+            ignore += ('llm_count', 'embedding_count', 'rerank_count')
+        elif operation_id == 'skill.update':
+            ignore = ('files', 'package_root', 'created_at', 'updated_at')
+    return changed_fields(redact_secrets(before), redact_secrets(after), ignore=ignore)
 
 
 def _operation(operation_id, service_name, method, permission, side_effect):
@@ -804,11 +858,19 @@ def _operation(operation_id, service_name, method, permission, side_effect):
             )
             require_permission(context, secret_permission)
         service = getattr(ap, service_name)
+        from .transport import application_audit_details, transport_records_audit
+
+        audit_details = application_audit_details.get()
+        changes = None
+        if transport_records_audit.get() and audit_details is not None and operation_id in _UPDATE_AUDITS:
+            changes = await _update_audit(service, context, operation_id, payload)
         result = await getattr(service, method.__name__)(context, **arguments)
+        if changes is not None:
+            audit_details['changes'] = changes
         if result is None and operation_id.endswith('.get') and output_type != type(None):
             # Optional defaults (e.g. starred model) are intentionally nullable.
             if operation_id not in {'model.llm.starred.get', 'model.llm.default.get'}:
-                raise WorkspaceNotFoundError('Resource not found')
+                raise MissingResourceResult('Resource not found')
         return result
 
     return Operation(operation_id, Permission[permission], invoke, input_type, output_type, side_effect)
@@ -884,7 +946,7 @@ async def _assistant(ap, context, payload, method):
 
 class RoutePreviewInput(Input):
     bot_uuid: str = Field(min_length=1)
-    event_type: str = Field(min_length=1)
+    event_type: str | None
     event_data: dict | None = None
     event_context: dict | None = None
     event_bindings: list[dict] | None = None
@@ -903,6 +965,37 @@ async def _route_preview(ap, context, payload):
 
 class MigrationInput(Input):
     body: dict
+
+
+class MCPServerNameInput(Input):
+    server_name: str = Field(min_length=1)
+
+
+class MCPServerUpdateByNameInput(MCPServerNameInput):
+    server_data: dict
+
+
+async def _mcp_server_update_by_name(ap, context, payload):
+    from ..http.service.mcp import redact_mcp_secrets
+    from ...operation_trace.service import changed_fields
+
+    previous = await ap.mcp_service.get_mcp_server_by_name(context, payload.server_name)
+    if previous is None:
+        return None
+    await ap.mcp_service.update_mcp_server(context, previous['uuid'], payload.server_data)
+    return {
+        'changes': changed_fields(
+            redact_mcp_secrets(previous), redact_mcp_secrets(payload.server_data), ignore=('uuid',)
+        )
+    }
+
+
+async def _mcp_server_delete_by_name(ap, context, payload):
+    server = await ap.mcp_service.get_mcp_server_by_name(context, payload.server_name)
+    if server is None:
+        return None
+    await ap.mcp_service.delete_mcp_server(context, server['uuid'])
+    return {}
 
 
 def _migration_service(ap):
@@ -934,7 +1027,23 @@ def _special_operations():
     account = frozenset({PrincipalType.ACCOUNT})
     result = [
         Operation('pipeline.run', Permission.RUNTIME_OPERATE, _pipeline_run, PipelineRunInput, dict, True),
-        Operation('bot.routes.preview', Permission.RESOURCE_MANAGE, _route_preview, RoutePreviewInput, dict),
+        Operation('bot.routes.preview', Permission.RESOURCE_VIEW, _route_preview, RoutePreviewInput, dict),
+        Operation(
+            'mcp.server.update_by_name',
+            Permission.RESOURCE_MANAGE,
+            _mcp_server_update_by_name,
+            MCPServerUpdateByNameInput,
+            dict | None,
+            True,
+        ),
+        Operation(
+            'mcp.server.delete_by_name',
+            Permission.RESOURCE_MANAGE,
+            _mcp_server_delete_by_name,
+            MCPServerNameInput,
+            dict | None,
+            True,
+        ),
         Operation(
             'pipeline.migration.preview', Permission.RESOURCE_VIEW, _migration_preview, Input, dict, principals=account
         ),

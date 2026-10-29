@@ -110,6 +110,9 @@ async def _create_client(*, role: str = 'developer'):
         platform_mgr=SimpleNamespace(),
         task_mgr=TestTaskManager(),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(application, _request_context())
     router = AdaptersRouterGroup(application, quart_app)
     await router.initialize()
     return quart_app.test_client()

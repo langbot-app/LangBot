@@ -92,13 +92,14 @@ The HTTP and MCP surfaces are parallel entrypoints into the same service layer:
 ```text
 HTTP client / Web UI
   → Quart route group
+  → ApplicationAPI (Workspace operations)
   → api/http/service/*
   → Application managers / persistence / runtime connectors
 
 MCP client
   → /mcp mount
   → api/mcp/server.py tools
-  → the same service layer directly
+  → ApplicationAPI → the same service layer
 ```
 
 ## Message Flow
@@ -259,8 +260,9 @@ marked for removal in the next major version. Start LangBot with
 ## HTTP API, Web UI, and MCP Server
 
 The [Application API foundation](dev-docs/architecture/application-api.md) provides
-versioned Workspace and execution-context operations for future consumer adoption.
-Existing HTTP/MCP/assistant entrypoints retain their current service paths.
+versioned Workspace operations used by HTTP, MCP and management-assistant tools.
+Runtime business actions use its ExecutionAPI before the secured Host dispatcher.
+Authentication, public ingress and instance administration retain their own boundaries.
 
 `pkg/api/http/controller/main.py` builds a Quart app, registers route groups, serves the built SPA, and wraps the ASGI app with the MCP dispatcher.
 

@@ -46,6 +46,9 @@ async def _create_test_client(agent_service: SimpleNamespace):
         apikey_service=SimpleNamespace(authenticate_api_key=AsyncMock(return_value=None)),
         workspace_collaboration_service=SimpleNamespace(resolve_account_workspace=AsyncMock(return_value=access)),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1))
     AgentsRouterGroup = import_module('langbot.pkg.api.http.controller.groups.agents').AgentsRouterGroup
     group = AgentsRouterGroup(ap, app)
     await group.initialize()
@@ -67,7 +70,7 @@ async def test_create_agent_returns_bad_request_for_invalid_runner_config():
     assert await response.get_json() == {'code': -1, 'msg': message}
     agent_service.create_agent.assert_awaited_once_with(
         ANY,
-        {'name': 'Invalid Agent', 'config': {'runner_config': []}},
+        agent_data={'name': 'Invalid Agent', 'config': {'runner_config': []}},
     )
 
 
@@ -86,8 +89,8 @@ async def test_update_agent_returns_bad_request_for_invalid_runner_config():
     assert await response.get_json() == {'code': -1, 'msg': message}
     agent_service.update_agent.assert_awaited_once_with(
         ANY,
-        'agent-1',
-        {'config': {'runner': {'id': 7}}},
+        agent_uuid='agent-1',
+        agent_data={'config': {'runner': {'id': 7}}},
     )
 
 
@@ -117,8 +120,8 @@ async def test_debug_agent_executes_with_runtime_permission():
     assert (await response.get_json())['data'] == result
     agent_service.debug_agent.assert_awaited_once_with(
         ANY,
-        'agent-1',
-        {
+        agent_uuid='agent-1',
+        payload={
             'event_type': 'message.received',
             'text': 'hello',
             'data': {},
@@ -204,7 +207,16 @@ async def test_debug_stream_cancels_execution_when_closed():
         finally:
             cancelled.set()
 
-    response = debug_stream_response(SimpleNamespace(debug_agent=debug_agent), None, 'agent-1', {})
+    from langbot.pkg.api.http.controller.group import RouterGroup
+    from tests.integration.api.test_application_foundation import context
+    from tests.utils.application_api import bind_application_api
+
+    ap = SimpleNamespace(agent_service=SimpleNamespace(debug_agent=debug_agent))
+    request_context = context()
+    bind_application_api(ap, request_context)
+    router = SimpleNamespace(ap=ap)
+    router.stream_application = RouterGroup.stream_application.__get__(router)
+    response = debug_stream_response(router, request_context, 'agent-1', {})
     iterator = response.response.__aiter__()
     first = await anext(iterator)
     assert 'message.delta' in first

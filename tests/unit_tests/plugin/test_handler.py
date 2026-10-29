@@ -283,7 +283,7 @@ class TestHandlerQueryVariables:
         )
 
         assert response.code != 0
-        assert response.message == 'Query variable key must be a non-empty string'
+        assert response.message == 'Input does not match ExecutionSetQueryVariableInput'
         assert mock_query.variables == {}
 
     @pytest.mark.asyncio

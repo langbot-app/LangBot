@@ -56,7 +56,7 @@ async def _create_client(role: str):
     async def get_providers(_context, *, include_secret=False):
         return [_project(RAW_PROVIDER, include_secret)]
 
-    async def get_provider(_context, _uuid, *, include_secret=False):
+    async def get_provider(_context, provider_uuid, *, include_secret=False):
         return _project(RAW_PROVIDER, include_secret)
 
     application.provider_service = SimpleNamespace(
@@ -69,7 +69,7 @@ async def _create_client(role: str):
         async def get_models(_context, *, include_secret=False):
             return [_project(RAW_MODEL, include_secret)]
 
-        async def get_model(_context, _uuid, *, include_secret=False):
+        async def get_model(_context, model_uuid, *, include_secret=False):
             return _project(RAW_MODEL, include_secret)
 
         return SimpleNamespace(
@@ -83,6 +83,12 @@ async def _create_client(role: str):
     application.embedding_models_service = model_service('get_embedding_models', 'get_embedding_model')
     application.rerank_models_service = model_service('get_rerank_models', 'get_rerank_model')
 
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        application,
+        SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1),
+    )
     quart_app = quart.Quart(__name__)
     for router_type in (
         ModelProvidersRouterGroup,

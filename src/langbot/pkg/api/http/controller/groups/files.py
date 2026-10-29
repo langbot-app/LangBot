@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import quart
 import mimetypes
-import uuid
 import asyncio
 
 import quart.datastructures
@@ -10,14 +9,6 @@ import quart.datastructures
 from ...authz import Permission
 from ...context import RequestContext
 from .. import group
-
-
-def _storage_owner(context: RequestContext) -> str:
-    if context.principal.account_uuid:
-        return f'account:{context.principal.account_uuid}'
-    if context.principal.api_key_uuid:
-        return f'api-key:{context.principal.api_key_uuid}'
-    return f'principal:{context.principal.principal_type.value}'
 
 
 @group.group_class('files', '/api/v1/files')
@@ -105,21 +96,10 @@ class FilesRouterGroup(group.RouterGroup):
             if '/' in file_name or '\\' in file_name:
                 return self.fail(400, 'File name contains invalid characters')
 
-            logical_key = f'{uuid.uuid4()}.{extension}'
-
-            # save file to storage
-            file_key = await self.ap.storage_mgr.save_scoped(
-                request_context,
-                owner_type='upload_image',
-                owner=_storage_owner(request_context),
-                key=logical_key,
-                value=file_bytes,
+            result = await self.call_application(
+                'file.image.upload', request_context, {'filename': file.filename, 'content': file_bytes}
             )
-            return self.success(
-                data={
-                    'file_key': file_key,
-                }
-            )
+            return self.success(data=result)
 
         @self.route(
             '/documents',
@@ -151,29 +131,15 @@ class FilesRouterGroup(group.RouterGroup):
 
             # Split filename and extension properly
             if '.' in file.filename:
-                file_name, extension = file.filename.rsplit('.', 1)
+                file_name = file.filename.rsplit('.', 1)[0]
             else:
                 file_name = file.filename
-                extension = ''
 
             # check if file name contains '/' or '\'
             if '/' in file_name or '\\' in file_name:
                 return self.fail(400, 'File name contains invalid characters')
 
-            logical_key = str(uuid.uuid4())
-            if extension:
-                logical_key += '.' + extension
-
-            # save file to storage
-            file_key = await self.ap.storage_mgr.save_scoped(
-                request_context,
-                owner_type='upload_document',
-                owner=_storage_owner(request_context),
-                key=logical_key,
-                value=file_bytes,
+            result = await self.call_application(
+                'file.document.upload', request_context, {'filename': file.filename, 'content': file_bytes}
             )
-            return self.success(
-                data={
-                    'file_id': file_key,
-                }
-            )
+            return self.success(data=result)

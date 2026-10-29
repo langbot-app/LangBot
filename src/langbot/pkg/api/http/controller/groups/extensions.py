@@ -23,22 +23,14 @@ class ExtensionsRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> quart.Response:
             if self.ap.plugin_connector.is_enable_plugin:
                 await self.ap.plugin_connector.require_workspace_context(request_context)
-
-            async def read_in_task_scope(operation):
-                tenant_scope = getattr(getattr(self.ap, 'persistence_mgr', None), 'tenant_scope', None)
-                if callable(tenant_scope):
-                    async with tenant_scope(request_context.workspace_uuid):
-                        return await operation()
-                return await operation()
-
             plugins, mcp_servers, skills = await asyncio.gather(
-                read_in_task_scope(self.ap.plugin_connector.list_plugins),
-                read_in_task_scope(
-                    lambda: self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
-                ),
-                read_in_task_scope(lambda: self.ap.skill_service.list_skills(request_context)),
+                self.call_application('plugin.list', request_context, {}),
+                self.call_application('mcp.server.list', request_context, {'contain_runtime_info': True}),
+                self.call_application('skill.list', request_context, {}),
                 return_exceptions=True,
             )
+            if isinstance(plugins, dict):
+                plugins = plugins['plugins']
 
             def _sort_key(item: dict) -> tuple[int, str]:
                 is_debug = 0 if (item.get('type') == 'plugin' and item.get('plugin', {}).get('debug')) else 1

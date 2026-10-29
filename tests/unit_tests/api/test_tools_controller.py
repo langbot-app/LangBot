@@ -46,6 +46,9 @@ async def _create_test_client(tool_mgr: SimpleNamespace, pipeline_service: Simpl
             resolve_account_workspace=AsyncMock(return_value=access)
         ),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1))
     router_class = import_module('langbot.pkg.api.http.controller.groups.resources.tools').ToolsRouterGroup
     group = router_class(ap, app)
     await group.initialize()

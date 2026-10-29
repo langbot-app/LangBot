@@ -8,6 +8,9 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from langbot.pkg.api.mcp import server as mcp_server
 from langbot.pkg.api.mcp.server import LangBotMCPServer
+from langbot.pkg.api.context import RequestContext, PrincipalContext, PrincipalType, WorkspaceContext
+from langbot.pkg.api.authz import permissions_for_role
+from tests.utils.application_api import bind_application_api
 
 
 def _make_app() -> SimpleNamespace:
@@ -91,7 +94,15 @@ async def test_monitoring_sessions_accept_only_conversation_filters(monkeypatch,
         normalize_page_window=lambda limit, offset: (limit, offset),
         get_sessions=AsyncMock(return_value=([], 0)),
     )
-    context = SimpleNamespace(workspace_uuid='workspace-1')
+    context = RequestContext(
+        'instance',
+        1,
+        'request',
+        'api_key',
+        PrincipalContext(PrincipalType.API_KEY, api_key_uuid='key'),
+        WorkspaceContext('workspace-1', None, 'developer', permissions_for_role('developer')),
+    )
+    bind_application_api(app, context)
     monkeypatch.setattr(mcp_server, 'get_request_context', lambda: context)
     monkeypatch.setattr(mcp_server, '_authorized', lambda permission: context)
     monkeypatch.setattr(mcp_server, 'get_workspace_language', AsyncMock(return_value='en_US'))
@@ -104,4 +115,47 @@ async def test_monitoring_sessions_accept_only_conversation_filters(monkeypatch,
         app.monitoring_service.get_sessions.assert_not_awaited()
     else:
         await server.mcp.call_tool('get_monitoring_records', arguments)
-        app.monitoring_service.get_sessions.assert_awaited_once_with(context, limit=100, offset=0, **filters)
+        app.monitoring_service.get_sessions.assert_awaited_once()
+        args, kwargs = app.monitoring_service.get_sessions.call_args
+        assert args == (context,)
+        assert kwargs['limit'] == 100 and kwargs['offset'] == 0
+        assert all(kwargs[key] == value for key, value in filters.items())
+
+
+@pytest.mark.asyncio
+async def test_mcp_application_binding_permissions_and_default_pipeline(monkeypatch):
+    import json
+    from dataclasses import replace
+
+    app = _make_app()
+    context = RequestContext(
+        'instance',
+        1,
+        'request',
+        'api_key',
+        PrincipalContext(PrincipalType.API_KEY, api_key_uuid='key'),
+        WorkspaceContext('workspace-1', None, 'developer', permissions_for_role('developer')),
+    )
+    bind_application_api(app, context)
+    monkeypatch.setattr(mcp_server, 'get_request_context', lambda: context)
+    server = LangBotMCPServer(app)
+    result = await server.mcp.call_tool('create_pipeline', {'pipeline_data': {'name': 'Default', 'is_default': True}})
+    assert json.loads(result[0][0].text) == {'uuid': 'pipeline-1'}
+    assert app.pipeline_service.create_pipeline.call_args.kwargs['default'] is True
+    assert app.pipeline_service.create_pipeline.call_args.kwargs['pipeline_data'] == {
+        'name': 'Default',
+        'is_default': True,
+    }
+    app.pipeline_service.create_pipeline.reset_mock()
+
+    context = replace(
+        context, workspace=replace(context.workspace, role='viewer', permissions=permissions_for_role('viewer'))
+    )
+    with pytest.raises(ToolError, match='resource.manage'):
+        await server.mcp.call_tool('create_pipeline', {'pipeline_data': {'name': 'Denied'}})
+    app.pipeline_service.create_pipeline.assert_not_awaited()
+
+    app.workspace_service.get_execution_binding.return_value.instance_uuid = 'other-instance'
+    with pytest.raises(ToolError, match='different instance'):
+        await server.mcp.call_tool('list_pipelines', {})
+    app.pipeline_service.get_pipelines.assert_not_awaited()

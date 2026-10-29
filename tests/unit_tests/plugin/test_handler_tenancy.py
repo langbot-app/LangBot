@@ -135,7 +135,10 @@ async def test_runtime_action_enters_trusted_workspace_scope():
     )
 
     assert response.code == 0
-    assert scope_events == [('enter', 'workspace-a'), ('exit', 'workspace-a')]
+    assert scope_events[0] == ('enter', 'workspace-a')
+    assert scope_events[-1] == ('exit', 'workspace-a')
+    assert {workspace for _, workspace in scope_events} == {'workspace-a'}
+    assert sum(event == 'enter' for event, _ in scope_events) == sum(event == 'exit' for event, _ in scope_events)
 
 
 @pytest.mark.asyncio
@@ -223,13 +226,14 @@ async def test_plugin_action_rejects_stale_workspace_generation():
     runtime_handler, app, installation_context = make_handler()
     app.workspace_service.get_execution_binding.side_effect = ValueError('generation is fenced')
 
-    with pytest.raises(ValueError, match='generation is fenced'):
-        await invoke_with_context(
-            runtime_handler,
-            installation_context,
-            PluginToRuntimeAction.GET_LANGBOT_VERSION,
-            {},
-        )
+    response = await invoke_with_context(
+        runtime_handler,
+        installation_context,
+        PluginToRuntimeAction.GET_LANGBOT_VERSION,
+        {},
+    )
+    assert response.code != 0
+    assert response.message == 'Installation binding is invalid or stale'
 
     app.workspace_service.get_execution_binding.assert_awaited_once_with(
         'workspace-a',

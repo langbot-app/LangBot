@@ -99,8 +99,8 @@ def fake_provider_app():
         return_value={'uuid': 'test-provider-uuid', 'name': 'OpenAI', 'requester': 'chatcmpl'}
     )
     app.provider_service.create_provider = AsyncMock(return_value='new-provider-uuid')
-    app.provider_service.update_provider = AsyncMock(return_value={})
-    app.provider_service.delete_provider = AsyncMock()
+    app.provider_service.update_provider = AsyncMock(return_value=None)
+    app.provider_service.delete_provider = AsyncMock(return_value=None)
     app.provider_service.get_provider_model_counts = AsyncMock(
         return_value={'llm_count': 2, 'embedding_count': 1, 'rerank_count': 0}
     )
@@ -110,9 +110,9 @@ def fake_provider_app():
     app.llm_model_service.get_llm_models = AsyncMock(return_value=[{'uuid': 'test-model-uuid', 'name': 'gpt-4'}])
     app.llm_model_service.get_llm_model = AsyncMock(return_value={'uuid': 'test-model-uuid', 'name': 'gpt-4'})
     app.llm_model_service.create_llm_model = AsyncMock(return_value='new-model-uuid')
-    app.llm_model_service.update_llm_model = AsyncMock(return_value={})
-    app.llm_model_service.delete_llm_model = AsyncMock()
-    app.llm_model_service.test_llm_model = AsyncMock()
+    app.llm_model_service.update_llm_model = AsyncMock(return_value=None)
+    app.llm_model_service.delete_llm_model = AsyncMock(return_value=None)
+    app.llm_model_service.test_llm_model = AsyncMock(return_value=None)
 
     # Embedding model service
     app.embedding_models_service = Mock()
@@ -120,19 +120,25 @@ def fake_provider_app():
         return_value=[{'uuid': 'embedding-model', 'name': 'Embedding'}]
     )
     app.embedding_models_service.create_embedding_model = AsyncMock(return_value='new-embedding-uuid')
-    app.embedding_models_service.test_embedding_model = AsyncMock()
+    app.embedding_models_service.test_embedding_model = AsyncMock(return_value=None)
 
     # Rerank model service
     app.rerank_models_service = Mock()
     app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[{'uuid': 'rerank-model', 'name': 'Rerank'}])
     app.rerank_models_service.create_rerank_model = AsyncMock(return_value='new-rerank-uuid')
-    app.rerank_models_service.test_rerank_model = AsyncMock()
+    app.rerank_models_service.test_rerank_model = AsyncMock(return_value=None)
 
     # Model manager
     app.model_mgr = Mock()
     app.model_mgr.load_provider = AsyncMock()
     app.model_mgr.unload_provider = AsyncMock()
 
+    from tests.utils.application_api import bind_application_api
+
+    app.persistence_mgr.tenant_scope = None
+    bind_application_api(
+        app, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1)
+    )
     return app
 
 
@@ -231,8 +237,11 @@ class TestProviderEndpoints:
         called = fake_provider_app.provider_service.update_provider
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-provider-uuid', {'name': 'Updated Provider'})
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'provider_uuid': 'test-provider-uuid',
+            'provider_data': {'name': 'Updated Provider'},
+        }
 
     @pytest.mark.asyncio
     async def test_delete_provider_success(self, quart_test_client, fake_provider_app):
@@ -246,8 +255,8 @@ class TestProviderEndpoints:
         called = fake_provider_app.provider_service.delete_provider
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-provider-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'cascade': False, 'provider_uuid': 'test-provider-uuid'}
         assert (await response.get_json())['code'] == 0
 
     @pytest.mark.asyncio
@@ -269,8 +278,8 @@ class TestProviderEndpoints:
         called = fake_provider_app.provider_service.get_provider_model_counts
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-provider-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'provider_uuid': 'test-provider-uuid'}
         assert {key: provider_data[key] for key in ('llm_count', 'embedding_count', 'rerank_count')} == {
             'llm_count': 2,
             'embedding_count': 1,
@@ -315,8 +324,8 @@ class TestModelEndpoints:
         called = fake_provider_app.llm_model_service.get_llm_model
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-model-uuid',)
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'include_secret': True, 'model_uuid': 'test-model-uuid'}
         assert data['data']['model'] == {'uuid': 'test-model-uuid', 'name': 'gpt-4'}
 
     @pytest.mark.asyncio
@@ -336,8 +345,11 @@ class TestModelEndpoints:
         called = fake_provider_app.llm_model_service.create_llm_model
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ({'name': 'New Model', 'provider_uuid': 'test-provider-uuid'},)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'auto_set_to_default_pipeline': True,
+            'model_data': {'name': 'New Model', 'provider_uuid': 'test-provider-uuid'},
+        }
         assert data['data'] == {'uuid': 'new-model-uuid'}
 
     @pytest.mark.asyncio
@@ -352,8 +364,8 @@ class TestModelEndpoints:
         called = fake_provider_app.llm_model_service.delete_llm_model
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-model-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'model_uuid': 'test-model-uuid'}
         assert (await response.get_json())['code'] == 0
 
     @pytest.mark.asyncio
@@ -434,8 +446,10 @@ class TestEmbeddingModelEndpoints:
         called = fake_provider_app.embedding_models_service.create_embedding_model
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ({'name': 'New Embedding Model', 'provider_uuid': 'test-provider-uuid'},)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'model_data': {'name': 'New Embedding Model', 'provider_uuid': 'test-provider-uuid'}
+        }
         assert data['data'] == {'uuid': 'new-embedding-uuid'}
 
 
@@ -479,6 +493,8 @@ class TestRerankModelEndpoints:
         called = fake_provider_app.rerank_models_service.create_rerank_model
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ({'name': 'New Rerank Model', 'provider_uuid': 'test-provider-uuid'},)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'model_data': {'name': 'New Rerank Model', 'provider_uuid': 'test-provider-uuid'}
+        }
         assert data['data'] == {'uuid': 'new-rerank-uuid'}

@@ -15,6 +15,7 @@ from langbot.pkg.api.http.context import RequestContext, PrincipalContext, Princ
 from langbot.pkg.api.http.service.assistant import AssistantError, AssistantService
 from langbot.pkg.api.http.service.assistant_tools import execute_tool, validate_call
 from langbot.pkg.entity.persistence.assistant import AssistantConversation
+from tests.utils.application_api import bind_application_api
 
 
 def context(account='alice', workspace='workspace-a', manage=True):
@@ -78,7 +79,9 @@ async def assistant(tmp_path):
         model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
         pipeline_service=SimpleNamespace(create_pipeline=AsyncMock(return_value='created-pipeline')),
     )
-    yield AssistantService(ap), ap, provider
+    bind_application_api(ap, context())
+    service = ap._application_assistant_service = AssistantService(ap)
+    yield service, ap, provider
     await engine.dispose()
 
 
@@ -101,7 +104,7 @@ async def test_confirmation_is_exact_once_and_private(assistant):
     )
     assert sum(isinstance(result, AssistantError) for result in results) == 1
     ap.pipeline_service.create_pipeline.assert_awaited_once()
-    assert ap.pipeline_service.create_pipeline.call_args.args[1]['name'] == 'Demo'
+    assert ap.pipeline_service.create_pipeline.call_args.kwargs['pipeline_data']['name'] == 'Demo'
     saved = await service.get(ctx, conversation['uuid'])
     assert saved['status'] == 'ready'
     assert saved['messages'][1]['provider_specific_fields']['thought_signature'] == 'preserved'
@@ -172,17 +175,17 @@ def test_rejected_malformed_tool_call_remains_readable():
 
 @pytest.mark.asyncio
 async def test_resource_readers_match_application_services():
-    from langbot.pkg.core.app import Application
     from langbot.pkg.api.http.service.model import LLMModelsService, EmbeddingModelsService
     from langbot.pkg.api.http.service.pipeline import PipelineService
     from langbot.pkg.api.http.service.knowledge import KnowledgeService
 
-    ap = create_autospec(Application, instance=True, spec_set=True)
+    ap = SimpleNamespace()
     ap.llm_model_service = create_autospec(LLMModelsService, instance=True)
     ap.embedding_models_service = create_autospec(EmbeddingModelsService, instance=True)
     ap.pipeline_service = create_autospec(PipelineService, instance=True)
     ap.knowledge_service = create_autospec(KnowledgeService, instance=True)
     ctx = context()
+    bind_application_api(ap, ctx)
     for kind, reader in (
         ('models', ap.llm_model_service.get_llm_models),
         ('embedding_models', ap.embedding_models_service.get_embedding_models),
@@ -197,7 +200,9 @@ async def test_resource_readers_match_application_services():
             'total': 1,
             'items': [{'name': kind}],
         }
-        reader.assert_awaited_once_with(ctx)
+        assert reader.await_count == 1
+        assert reader.call_args.args == (ctx,)
+        assert not reader.call_args.kwargs.get('include_secret', False)
 
 
 @pytest.mark.asyncio
@@ -358,7 +363,8 @@ async def test_http_stream_emits_before_provider_completion_and_restores_tenant(
     import json
     import quart
     from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
-    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response, TurnInput
+    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response
+    from langbot.pkg.api.application.transport import stream_application
 
     service, ap, provider = assistant
     released = asyncio.Event()
@@ -373,7 +379,7 @@ async def test_http_stream_emits_before_provider_completion_and_restores_tenant(
             scoped.pop()
 
     async def stream(**kwargs):
-        assert scoped == ['workspace-a']
+        assert scoped == ['workspace-a', 'workspace-a']
         yield MessageChunk(role='assistant', content='First')
         await released.wait()
         yield MessageChunk(role='assistant', content=' second', is_final=True)
@@ -386,7 +392,14 @@ async def test_http_stream_emits_before_provider_completion_and_restores_tenant(
 
     @app.post('/stream')
     async def route():
-        return assistant_stream_response(service, ctx, cid, TurnInput(revision=0, text='Hi'))
+        return await assistant_stream_response(
+            stream_application(
+                ap,
+                'assistant.stream',
+                ctx,
+                {'conversation_id': cid, 'revision': 0, 'text': 'Hi'},
+            )
+        )
 
     frames = []
     async with app.test_client().request('/stream', method='POST') as connection:
@@ -408,7 +421,8 @@ async def test_background_run_survives_http_disconnect_and_finishes(assistant):
     import json
     import quart
     from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
-    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response, TurnInput
+    from langbot.pkg.api.http.controller.groups.assistant import assistant_stream_response
+    from langbot.pkg.api.application.transport import stream_application
 
     service, ap, provider = assistant
     released = asyncio.Event()
@@ -425,7 +439,14 @@ async def test_background_run_survives_http_disconnect_and_finishes(assistant):
 
     @app.post('/stream')
     async def route():
-        return assistant_stream_response(service, ctx, cid, TurnInput(revision=0, text='Hi'))
+        return await assistant_stream_response(
+            stream_application(
+                ap,
+                'assistant.stream',
+                ctx,
+                {'conversation_id': cid, 'revision': 0, 'text': 'Hi'},
+            )
+        )
 
     async with app.test_client().request('/stream', method='POST') as connection:
         while True:
@@ -481,3 +502,150 @@ async def test_stop_is_private_revision_scoped_and_does_not_stop_other_chat(assi
     released.set()
     await asyncio.wait_for(tasks[1], 5)
     assert (await service.get(ctx, ids[1]))['status'] == 'ready'
+
+
+@pytest.mark.asyncio
+async def test_http_assistant_uses_application_operations_and_preserves_startup_errors(assistant):
+    from quart import Quart
+    from langbot.pkg.api.http.controller.groups.assistant import AssistantRouterGroup
+
+    service, ap, provider = assistant
+    app = Quart(__name__)
+    router = AssistantRouterGroup(ap, app)
+    router._authenticate_support_admin = AsyncMock(return_value=None)
+    router._authenticate_account = AsyncMock(return_value=(SimpleNamespace(uuid='alice'), 'alice@example.invalid'))
+    router._resolve_account_context = AsyncMock(return_value=context())
+    await router.initialize()
+    client = app.test_client()
+    base = '/api/v1/assistant/conversations'
+    headers = {'Authorization': 'Bearer synthetic-test'}
+
+    assert (await client.post(base)).status_code == 401
+    created = await client.post(base, headers=headers)
+    assert created.status_code == 200
+    conversation = (await created.get_json())['data']
+    cid = conversation['uuid']
+    listed = (await (await client.get(base, headers=headers)).get_json())['data']['conversations']
+    assert [row['uuid'] for row in listed] == [cid]
+    turn = await client.post(f'{base}/{cid}/turn', headers=headers, json={'revision': 0, 'text': 'Create'})
+    assert turn.status_code == 200
+    assert (await turn.get_json())['data']['status'] == 'approval'
+    approved = await client.post(f'{base}/{cid}/turn', headers=headers, json={'revision': 1, 'approved': True})
+    assert (await approved.get_json())['data']['status'] == 'ready'
+    ap.pipeline_service.create_pipeline.assert_awaited_once()
+    stale = await client.post(f'{base}/{cid}/turn', headers=headers, json={'revision': 1, 'approved': True})
+    assert stale.status_code == 409
+    assert (await stale.get_json())['code'] == 'stale_turn'
+
+    router._resolve_account_context.return_value = context(account='bob')
+    missing = await client.post(f'{base}/{cid}/turn/stream', headers=headers, json={'revision': 2, 'text': 'Hi'})
+    assert missing.status_code == 404
+    assert (await missing.get_json())['code'] == 'conversation_not_found'
+    router._resolve_account_context.return_value = context()
+    service._runs.update({f'occupied-{index}': {} for index in range(4)})
+    try:
+        busy = await client.post(f'{base}/{cid}/turn/stream', headers=headers, json={'revision': 2, 'text': 'Hi'})
+        assert busy.status_code == 429
+        assert (await busy.get_json())['code'] == 'busy'
+    finally:
+        service._runs.clear()
+
+
+@pytest.mark.asyncio
+async def test_background_assistant_tools_keep_their_audit_after_http_dispatch(assistant):
+    from langbot.pkg.api.application.transport import transport_records_audit
+    from langbot.pkg.api.http.controller.groups.assistant import TurnInput
+    from langbot.pkg.operation_trace.service import OPERATION_LEVEL_READ
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+    service, ap, provider = assistant
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    await service.turn(ctx, cid, 0, text='Create')
+    ap.workspace_settings_service = SimpleNamespace(
+        effective_level=AsyncMock(return_value=OPERATION_LEVEL_READ),
+        record=AsyncMock(),
+    )
+
+    async def completed(**kwargs):
+        yield MessageChunk(role='assistant', content='Done', is_final=True)
+
+    provider.invoke_llm_stream = completed
+    token = transport_records_audit.set(True)
+    try:
+        service.start_run(ctx, cid, TurnInput(revision=1, approved=True))
+        await service._runs[cid]['task']
+        assert transport_records_audit.get() is True
+    finally:
+        transport_records_audit.reset(token)
+    ap.workspace_settings_service.record.assert_awaited_once()
+    record = ap.workspace_settings_service.record.call_args.kwargs
+    assert record['route'] == 'pipeline.create'
+    assert record['outcome'] == 'ok'
+    assert (await service.get(ctx, cid))['status'] == 'ready'
+
+
+@pytest.mark.asyncio
+async def test_http_stream_headers_and_heartbeats_do_not_wait_for_model_resolution(assistant):
+    import json
+    from quart import Quart
+    from quart.testing.connections import TestHTTPConnection
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    from langbot.pkg.api.http.controller.groups.assistant import AssistantRouterGroup
+
+    service, ap, provider = assistant
+    blocked, release, headers_ready = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def recommend(*args):
+        blocked.set()
+        await release.wait()
+        return {'uuid': 'model'}
+
+    async def model_stream(**kwargs):
+        yield MessageChunk(role='assistant', content='Finished', is_final=True)
+
+    ap.space_service.get_recommended_assistant_model.side_effect = recommend
+    provider.invoke_llm_stream = model_stream
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    app = Quart(__name__)
+    router = AssistantRouterGroup(ap, app)
+    router._authenticate_support_admin = AsyncMock(return_value=None)
+    router._authenticate_account = AsyncMock(return_value=(SimpleNamespace(uuid='alice'), 'alice@example.invalid'))
+    router._resolve_account_context = AsyncMock(return_value=ctx)
+    await router.initialize()
+
+    class Connection(TestHTTPConnection):
+        async def _asgi_send(self, message):
+            await super()._asgi_send(message)
+            if message['type'] == 'http.response.start':
+                headers_ready.set()
+
+    client = app.test_client()
+    client.http_connection_class = Connection
+    async with client.request(
+        f'/api/v1/assistant/conversations/{cid}/turn/stream',
+        method='POST',
+        headers={'Authorization': 'Bearer synthetic-test', 'Content-Type': 'application/json'},
+    ) as connection:
+        try:
+            await connection.send(json.dumps({'revision': 0, 'text': 'Hi'}).encode())
+            await connection.send_complete()
+            await asyncio.wait_for(headers_ready.wait(), 1)
+            await asyncio.wait_for(blocked.wait(), 1)
+            assert connection.status_code == 200
+            for _ in range(2):
+                assert await asyncio.wait_for(connection.receive(), 16) == b'\n'
+                assert not release.is_set()
+                assert not service._runs[cid]['task'].done()
+            release.set()
+            frames = []
+            while not any(frame['kind'] == 'completed' for frame in frames):
+                chunk = await asyncio.wait_for(connection.receive(), 2)
+                frames.extend(json.loads(line) for line in chunk.decode().splitlines() if line.strip())
+            assert all(frame['kind'] != 'started' for frame in frames)
+            assert frames[-1]['data']['messages'][-1]['content'] == 'Finished'
+        finally:
+            release.set()
+            for run in list(service._runs.values()):
+                await asyncio.wait_for(run['task'], 2)

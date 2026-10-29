@@ -159,8 +159,9 @@ state as well; it is not the same operation as disconnecting an account.
 
 ## Implementation & maintenance (for LangBot developers)
 
-- Server: `src/langbot/pkg/api/mcp/server.py` (FastMCP). Tools call the service
-  layer directly, so the MCP surface stays aligned with the API.
+- Server: `src/langbot/pkg/api/mcp/server.py` (FastMCP). Workspace tools invoke
+  the same Application API operations as HTTP, with shared validation, permissions,
+  Workspace binding and audit. Tool names, arguments and result shapes stay stable.
 - Mount: `src/langbot/pkg/api/mcp/mount.py` — an ASGI dispatcher fronting Quart,
   authenticating `/mcp` requests, running the streamable-HTTP session manager.
 - Smoke test: `tests/manual/mcp_smoke.py`.

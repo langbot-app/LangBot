@@ -79,7 +79,7 @@ class SettingsRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> typing.Any:
             service = self.ap.workspace_settings_service
             if quart.request.method == 'GET':
-                return self.success(data=await service.describe_governance(request_context.workspace_uuid))
+                return self.success(data=await self.call_application('settings.governance.get', request_context, {}))
 
             if not settings_service.role_may_configure(request_context.workspace.role):
                 return self.http_status(
@@ -92,13 +92,16 @@ class SettingsRouterGroup(group.RouterGroup):
             # The previous level is captured before the write so the trace can
             # answer "what was changed into what" for the governance change
             # itself, not only for the resources it protects.
-            before = await service.describe_governance(request_context.workspace_uuid)
-            updated = await service.set_operation_level(
-                request_context.workspace_uuid,
-                data.get('level', before['configured_level']),
-                retention_days=data.get('retention_days'),
-                max_rows=data.get('max_rows'),
-                dedupe_window_seconds=data.get('dedupe_window_seconds'),
+            before = await self.call_application('settings.governance.get', request_context, {})
+            updated = await self.call_application(
+                'settings.governance.update',
+                request_context,
+                {
+                    'level': data.get('level', before['configured_level']),
+                    'retention_days': data.get('retention_days'),
+                    'max_rows': data.get('max_rows'),
+                    'dedupe_window_seconds': data.get('dedupe_window_seconds'),
+                },
             )
 
             account_name = None
@@ -144,6 +147,7 @@ class SettingsRouterGroup(group.RouterGroup):
                     ),
                     changes=changes,
                 )
+                quart.g.operation_log_recorded = True
             return self.success(data=updated)
 
         @self.route(
@@ -155,23 +159,26 @@ class SettingsRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> typing.Any:
             # Read-only by design: operation records are immutable and cannot
             # be deleted on demand. Only the retention policy may prune them.
-            service = self.ap.workspace_settings_service
-
             args = quart.request.args
             level_raw = args.get('level')
-            result = await service.query_logs(
-                request_context.workspace_uuid,
-                limit=_parse_int(args.get('limit'), settings_service.DEFAULT_PAGE_SIZE),
-                offset=_parse_int(args.get('offset'), 0),
-                action=args.get('action') or None,
-                resource_type=args.get('resource_type') or None,
-                actor_account_uuid=args.get('actor') or None,
-                level=_parse_int(level_raw, 0) if level_raw not in (None, '') else None,
-                since=_parse_timestamp(args.get('since')),
-                until=_parse_timestamp(args.get('until')),
-                # Optional verification filter: lets the panel turn the three
-                # tamper counters into a drill-down instead of a dead badge.
-                integrity=args.get('integrity') or None,
+            result = await self.call_application(
+                'settings.operation_logs.list',
+                request_context,
+                {
+                    'limit': max(
+                        1,
+                        _parse_int(args.get('limit'), settings_service.DEFAULT_PAGE_SIZE)
+                        or settings_service.DEFAULT_PAGE_SIZE,
+                    ),
+                    'offset': max(0, _parse_int(args.get('offset'), 0)),
+                    'action': args.get('action') or None,
+                    'resource_type': args.get('resource_type') or None,
+                    'actor_account_uuid': args.get('actor') or None,
+                    'level': _parse_int(level_raw, 0) if level_raw not in (None, '') else None,
+                    'since': _parse_timestamp(args.get('since')),
+                    'until': _parse_timestamp(args.get('until')),
+                    'integrity': args.get('integrity') or None,
+                },
             )
             return self.success(data=result)
 
@@ -182,9 +189,7 @@ class SettingsRouterGroup(group.RouterGroup):
             permission=Permission.AUDIT_VIEW,
         )
         async def _(request_context: RequestContext) -> typing.Any:
-            service = self.ap.workspace_settings_service
-            options = await service.list_filter_options(request_context.workspace_uuid)
-            options['governance'] = await service.describe_governance(request_context.workspace_uuid)
+            options = await self.call_application('settings.operation_logs.filters', request_context, {})
             return self.success(data=options)
 
         @self.route(
@@ -202,15 +207,17 @@ class SettingsRouterGroup(group.RouterGroup):
 
             args = quart.request.args
             level_raw = args.get('level')
-            service = self.ap.workspace_settings_service
-            document = await service.export_logs(
-                request_context.workspace_uuid,
-                action=args.get('action') or None,
-                resource_type=args.get('resource_type') or None,
-                actor_account_uuid=args.get('actor') or None,
-                level=_parse_int(level_raw, 0) if level_raw not in (None, '') else None,
-                since=_parse_timestamp(args.get('since')),
-                until=_parse_timestamp(args.get('until')),
+            document = await self.call_application(
+                'settings.operation_logs.export',
+                request_context,
+                {
+                    'action': args.get('action') or None,
+                    'resource_type': args.get('resource_type') or None,
+                    'actor_account_uuid': args.get('actor') or None,
+                    'level': _parse_int(level_raw, 0) if level_raw not in (None, '') else None,
+                    'since': _parse_timestamp(args.get('since')),
+                    'until': _parse_timestamp(args.get('until')),
+                },
             )
 
             columns = (

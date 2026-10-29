@@ -87,6 +87,36 @@ class RouterGroup(abc.ABC):
         self.ap = ap
         self.quart_app = quart_app
 
+    async def call_application(self, operation_id, context, payload):
+        from ...application.transport import application_audit_details, invoke_application, transport_records_audit
+
+        token = transport_records_audit.set(True)
+        details = {}
+        details_token = application_audit_details.set(details)
+        try:
+            result = await invoke_application(self.ap, operation_id, context, payload)
+            if 'changes' in details:
+                quart.g.operation_log_changes = details['changes']
+            return result
+        finally:
+            application_audit_details.reset(details_token)
+            transport_records_audit.reset(token)
+
+    async def stream_application(self, operation_id, context, payload):
+        from contextlib import aclosing
+        from ...application.transport import stream_application, transport_records_audit
+
+        async with aclosing(stream_application(self.ap, operation_id, context, payload)) as frames:
+            while True:
+                token = transport_records_audit.set(True)
+                try:
+                    frame = await anext(frames)
+                except StopAsyncIteration:
+                    return
+                finally:
+                    transport_records_audit.reset(token)
+                yield frame
+
     @abc.abstractmethod
     async def initialize(self) -> None:
         pass
@@ -283,6 +313,9 @@ class RouterGroup(abc.ABC):
                     return response
 
                 except Exception as e:  # 自动 500
+                    from ...application.contracts import ApplicationAPIException
+                    from ...application.transport import ApplicationInputError
+
                     if request_context is not None:
                         await self._record_operation(
                             request_context,
@@ -296,6 +329,10 @@ class RouterGroup(abc.ABC):
                         )
                     if isinstance(e, CodexProviderError):
                         return self.http_status(e.status_code, e.error_code, str(e))
+                    if isinstance(e, ApplicationInputError):
+                        return self.http_status(400, -1, str(e))
+                    if isinstance(e, ApplicationAPIException) and e.error.status_code < 500:
+                        return self.http_status(e.error.status_code, e.error.code, e.error.message)
                     if isinstance(e, EntitlementUnavailableError):
                         return self.http_status(403, 'entitlement_unavailable', str(e))
                     if isinstance(e, AuthorizationError):
@@ -363,6 +400,9 @@ class RouterGroup(abc.ABC):
         500. The service performs its own cheap level check before touching the
         database, so a disabled Workspace pays nothing at steady state.
         """
+
+        if getattr(quart.g, 'operation_log_recorded', False):
+            return
 
         # Cheap global gate: a single attribute read on the application object.
         # While no Workspace has enabled traceability this is ``False`` and the
@@ -454,6 +494,10 @@ class RouterGroup(abc.ABC):
         """Resolve the HTTP status of a handler result without consuming it."""
 
         if failure is not None:
+            from ...application.contracts import ApplicationAPIException
+
+            if isinstance(failure, ApplicationAPIException):
+                return failure.error.status_code
             status = getattr(failure, 'status_code', None)
             if isinstance(status, int):
                 return status

@@ -71,6 +71,8 @@ async def assistant_turn(ap, context, payload):
     queue = service.start_run(context, payload.conversation_id, payload)
 
     async def frames():
+        # Acknowledge admission before model resolution or other background work.
+        yield {'kind': 'started', 'data': {'conversation_id': payload.conversation_id}}
         # start_run owns a bounded queue and the run survives a subscriber disconnect.
         while True:
             frame = await queue.get()
