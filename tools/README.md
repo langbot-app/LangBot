@@ -498,6 +498,29 @@ bind their own extensions to avoid changing unrelated prompts/tools. The suite a
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
 
+## Durable state lifecycle job
+
+Run the finite state job on the same disposable Linux stack:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite state \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/state-001
+```
+
+The dependent chain creates a Pipeline, model bindings, HTTP Bot and isolated
+knowledge base. It verifies conversation history and exact document content
+through Runtime and Core restarts, changes the Pipeline model and replaces one
+document while retaining a control document, then repeats the readback after
+another Core restart. Deleting all documents must leave both file listings and
+retrieval empty; normal Suite cleanup checks the owned configuration resources.
+
+The business chain has a 270-second budget and a 30-second cleanup reserve;
+plugin installation and initial service startup are outside this budget.
+`gate/suite/cases.json` retains assertions, process replacement receipts, exact
+HTTP statuses and retrieved content. A missing phase or failed assertion fails
+the job. The job is opt-in and does not change Smoke or the daily schedule. It
+checks graceful process restart durability, not abrupt power loss or migrations.
+
 ## Daily API contract job
 
 `daily-endurance.yml` runs API contracts alongside the 30-minute endurance job

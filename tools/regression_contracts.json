@@ -434,6 +434,21 @@
      "priority": "P1",
      "description": "Invalid MCP transport is rejected without changing stored configuration",
      "bindings": [{"profile": "api", "case": "fixed_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}, {"profile": "api", "case": "shuffled_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}]
+    },
+    {"id": "state.configuration_persistence",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Created and updated pipeline configuration survives owned Core and Runtime restarts",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_configuration", "after_runtime_configuration", "after_core_configuration", "updated_configuration", "persisted_update_configuration", "initial_runtime_process_replaced", "initial_core_process_replaced", "updated_core_process_replaced"]}]
+    },
+    {"id": "state.history_and_model_update",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Conversation history survives restarts and the same session uses the updated model",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_chat_history", "after_runtime_chat_history", "after_core_chat_history", "updated_chat_history", "persisted_update_chat_history"]}]
+    },
+    {"id": "state.knowledge_replacement",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Knowledge documents survive restarts; replacement preserves control content and deletion removes stale results",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_retrievable", "after_runtime_retrievable", "after_core_retrievable", "updated_retrievable", "updated_obsolete_absent", "persisted_update_retrievable", "persisted_update_obsolete_absent", "documents_deleted", "deleted_retrieval_empty"]}]
     }
   ]
 }

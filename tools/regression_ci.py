@@ -21,7 +21,7 @@ from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900, 'api': 600}
+SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900, 'api': 600, 'state': 300}
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
@@ -34,6 +34,10 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
         profile = expanded_profile(groups)
     else:
         profile = json.loads(profile_path.read_text())
+    if name == 'state':
+        from regression_state import state_profile
+
+        profile = state_profile(profile)
     if name == 'api':
         from regression_api_cases import add_cases
 
@@ -309,21 +313,26 @@ def run(args):
                 )
         generated = private / f'{args.suite}.json'
         generated.write_text(json.dumps(profile, indent=2))
-        result = supervise(
-            [
-                sys.executable,
-                str(ROOT / 'tools/regression_suite.py'),
-                'run',
-                '--profile',
-                str(generated),
-                '--output',
-                str(root / 'gate/suite'),
-            ],
-            root / 'gate',
-            SUITE_BUDGETS[args.suite] - restart_elapsed,
-            pids,
-            env,
-        )
+        if args.suite == 'state':
+            from regression_state import run_state_checks
+
+            result = run_state_checks(profile, profile_path, root / 'gate/suite', env, restart_owned)
+        else:
+            result = supervise(
+                [
+                    sys.executable,
+                    str(ROOT / 'tools/regression_suite.py'),
+                    'run',
+                    '--profile',
+                    str(generated),
+                    '--output',
+                    str(root / 'gate/suite'),
+                ],
+                root / 'gate',
+                SUITE_BUDGETS[args.suite] - restart_elapsed,
+                pids,
+                env,
+            )
         evidence = [root / 'gate/suite']
         if restart_result is not None:
             evidence.append(root / 'restart-checks')

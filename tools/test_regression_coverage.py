@@ -289,10 +289,10 @@ class Routes:
                 name = binding['profile']
                 if name not in profiles:
                     path = Path(__file__).with_name('regression_profiles') / f'{name}.json'
-                    if name == 'api':
+                    if name in ('api', 'state'):
                         from regression_ci import suite_profile
 
-                        profile, _ = suite_profile('api', 'catalog-test')
+                        profile, _ = suite_profile(name, 'catalog-test')
                     elif name == 'scenarios':
                         from regression_scenarios import expanded_profile
                         from regression_local_cases import DEFAULT_GROUPS
