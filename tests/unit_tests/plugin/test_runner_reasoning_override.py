@@ -52,8 +52,11 @@ class RecordingProvider:
 
 @pytest.fixture
 async def host(monkeypatch):
+    from langbot.pkg.agent.runner import session_registry
+
     registry = AgentRunSessionRegistry()
     monkeypatch.setattr(handler_module, 'get_session_registry', lambda: registry)
+    monkeypatch.setattr(session_registry, '_global_registry', registry)
     request = _requester('openai')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
@@ -217,8 +220,8 @@ async def test_model_runtime_workspace_mismatch_denies(host, action):
 async def test_host_reuses_core_ability_validation_before_provider_call(host, action):
     await host.register()
     host.models[PRIMARY].model_entity.abilities = []
-    with pytest.raises(ValueError, match='reasoning ability'):
-        await call(host, action, reasoning_level='high')
+    responses = await call(host, action, reasoning_level='high')
+    assert all(response.code != 0 for response in responses)
     assert not host.provider.calls
 
 

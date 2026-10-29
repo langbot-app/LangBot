@@ -16,9 +16,10 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def handle_knowledge_bases(request_context: RequestContext) -> quart.Response:
-            knowledge_bases = await self.ap.knowledge_service.get_knowledge_bases(
+            knowledge_bases = await self.call_application(
+                'knowledge.base.list',
                 request_context,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                {'include_secret': has_permission(request_context, Permission.RESOURCE_MANAGE)},
             )
             return self.success(data={'bases': knowledge_bases})
 
@@ -31,9 +32,8 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
         async def create_knowledge_base(request_context: RequestContext) -> quart.Response:
             json_data = await quart.request.json
             try:
-                knowledge_base_uuid = await self.ap.knowledge_service.create_knowledge_base(
-                    request_context,
-                    json_data,
+                knowledge_base_uuid = await self.call_application(
+                    'knowledge.base.create', request_context, {'kb_data': json_data}
                 )
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
@@ -49,10 +49,13 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> quart.Response:
-            knowledge_base = await self.ap.knowledge_service.get_knowledge_base(
+            knowledge_base = await self.call_application(
+                'knowledge.base.get',
                 request_context,
-                knowledge_base_uuid,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                {
+                    'kb_uuid': knowledge_base_uuid,
+                    'include_secret': has_permission(request_context, Permission.RESOURCE_MANAGE),
+                },
             )
             if knowledge_base is None:
                 return self.http_status(404, 'resource_not_found', 'knowledge base not found')
@@ -74,17 +77,13 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
                 try:
-                    previous = await self.ap.knowledge_service.get_knowledge_base(
-                        request_context,
-                        knowledge_base_uuid,
-                        include_secret=True,
+                    previous = await self.call_application(
+                        'knowledge.base.get', request_context, {'kb_uuid': knowledge_base_uuid, 'include_secret': True}
                     )
                 except Exception:
                     previous = None
-                await self.ap.knowledge_service.update_knowledge_base(
-                    request_context,
-                    knowledge_base_uuid,
-                    json_data,
+                await self.call_application(
+                    'knowledge.base.update', request_context, {'kb_uuid': knowledge_base_uuid, 'kb_data': json_data}
                 )
                 changes = settings_service.changed_fields(
                     previous if isinstance(previous, dict) else {},
@@ -96,7 +95,7 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
                 return self.success(data={'uuid': knowledge_base_uuid})
-            await self.ap.knowledge_service.delete_knowledge_base(request_context, knowledge_base_uuid)
+            await self.call_application('knowledge.base.delete', request_context, {'kb_uuid': knowledge_base_uuid})
             return self.success({})
 
         @self.route(
@@ -109,9 +108,8 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> str:
-            files = await self.ap.knowledge_service.get_files_by_knowledge_base(
-                request_context,
-                knowledge_base_uuid,
+            files = await self.call_application(
+                'knowledge.file.list', request_context, {'kb_uuid': knowledge_base_uuid}
             )
             return self.success(data={'files': files})
 
@@ -130,11 +128,10 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             if not file_id:
                 return self.http_status(400, -1, 'File ID is required')
             parser_plugin_id = json_data.get('parser_plugin_id')
-            task_id = await self.ap.knowledge_service.store_file(
+            task_id = await self.call_application(
+                'knowledge.file.store',
                 request_context,
-                knowledge_base_uuid,
-                file_id,
-                parser_plugin_id=parser_plugin_id,
+                {'kb_uuid': knowledge_base_uuid, 'file_id': file_id, 'parser_plugin_id': parser_plugin_id},
             )
             return self.success({'task_id': task_id})
 
@@ -149,7 +146,9 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             knowledge_base_uuid: str,
             request_context: RequestContext,
         ) -> str:
-            await self.ap.knowledge_service.delete_file(request_context, knowledge_base_uuid, file_id)
+            await self.call_application(
+                'knowledge.file.delete', request_context, {'kb_uuid': knowledge_base_uuid, 'file_id': file_id}
+            )
             return self.success({})
 
         @self.route(
@@ -170,10 +169,9 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
 
             # Extract retrieval_settings to allow dynamic control over Knowledge Engine behavior (e.g. top_k, filters)
             retrieval_settings = json_data.get('retrieval_settings', {})
-            results = await self.ap.knowledge_service.retrieve_knowledge_base(
+            results = await self.call_application(
+                'knowledge.base.retrieve',
                 request_context,
-                knowledge_base_uuid,
-                query,
-                retrieval_settings,
+                {'kb_uuid': knowledge_base_uuid, 'query': query, 'retrieval_settings': retrieval_settings},
             )
             return self.success(data={'results': results})

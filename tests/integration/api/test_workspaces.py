@@ -35,6 +35,8 @@ from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.workspace.collaboration import WorkspaceCollaborationService
 from langbot.pkg.workspace.service import WorkspaceService
 from langbot.pkg.workspace.policy import CloudWorkspacePolicy
+from langbot.pkg.api.application import ApplicationAPI
+from langbot.pkg.operation_trace.routes import SettingsRouterGroup
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -70,6 +72,7 @@ async def workspace_api(tmp_path):
     )
     application.user_service = UserService(application)
     application.apikey_service = ApiKeyService(application)
+    application.application_api = ApplicationAPI(application)
 
     quart_app = Quart(__name__)
     await WorkspacesRouterGroup(application, quart_app).initialize()
@@ -77,6 +80,7 @@ async def workspace_api(tmp_path):
     await ApiKeysRouterGroup(application, quart_app).initialize()
     await UserRouterGroup(application, quart_app).initialize()
     await SystemRouterGroup(application, quart_app).initialize()
+    await SettingsRouterGroup(application, quart_app).initialize()
 
     client = quart_app.test_client()
     init_response = await client.post(
@@ -1003,3 +1007,91 @@ async def test_workspace_language_persists_and_controls_api_errors(workspace_api
     # An untrusted selector never causes us to read another tenant's language.
     unauthorized = await client.get('/api/v1/workspaces/current/language', headers=_auth(owner_token, 'language-other'))
     assert unauthorized.status_code in (403, 404)
+
+
+async def test_wizard_progress_roundtrip_uses_webui_fields(workspace_api):
+    application, client, _, token = workspace_api
+    application.application_api.execute = AsyncMock(wraps=application.application_api.execute)
+    progress = {
+        'step': 3,
+        'selected_scenario': None,
+        'selected_adapter': 'http',
+        'created_bot_uuid': 'bot-a',
+        'created_pipeline_uuid': 'pipeline-a',
+        'bot_saved': True,
+        'message_received': True,
+        'selected_runner': 'plugin:langbot-team/LocalAgent/default',
+    }
+    saved = await client.put('/api/v1/system/wizard/progress', headers=_auth(token), json=progress)
+    assert saved.status_code == 200
+    info = await client.get('/api/v1/system/info', headers=_auth(token))
+    assert (await info.get_json())['data']['wizard_progress'] == progress
+    completed = await client.post('/api/v1/system/wizard/completed', headers=_auth(token), json={'status': 'completed'})
+    assert completed.status_code == 200
+    info = await client.get('/api/v1/system/info', headers=_auth(token))
+    data = (await info.get_json())['data']
+    assert data['wizard_status'] == 'completed'
+    assert data['wizard_progress'] is None
+    assert {'system.wizard.progress.update', 'system.wizard.get', 'system.wizard.complete'} <= {
+        call.args[0] for call in application.application_api.execute.await_args_list
+    }
+
+
+async def test_migrated_workspace_mutations_record_one_rich_audit_each(workspace_api, monkeypatch):
+    from langbot.pkg.operation_trace import service as tracing
+    from langbot.pkg.entity.persistence.operation_log import WorkspaceOperationLog
+
+    application, client, engine, token = workspace_api
+    monkeypatch.setattr(tracing, '_global_enabled', False)
+    service = application.workspace_settings_service = tracing.WorkspaceSettingsService(application)
+    current = await client.get('/api/v1/workspaces/current', headers=_auth(token))
+    workspace_uuid = (await current.get_json())['data']['workspace']['uuid']
+    changed = await client.put(
+        '/api/v1/settings/governance',
+        headers={**_auth(token), 'X-Request-Id': 'governance-audit'},
+        json={'level': tracing.OPERATION_LEVEL_MUTATION, 'dedupe_window_seconds': 0},
+    )
+    assert changed.status_code == 200
+    invited = await client.post(
+        f'/api/v1/workspaces/{workspace_uuid}/invitations',
+        headers={**_auth(token), 'X-Request-Id': 'invitation-audit'},
+        json={'email': 'audited@example.com', 'role': 'viewer'},
+    )
+    assert invited.status_code == 200
+    invitation = (await invited.get_json())['data']
+    account, _ = await application.user_service.register_invited_account(
+        invitation['token'], 'audited@example.com', 'audit-password'
+    )
+    updated = await client.patch(
+        f'/api/v1/workspaces/{workspace_uuid}/members/{account.uuid}',
+        headers={**_auth(token), 'X-Request-Id': 'member-audit'},
+        json={'role': 'developer'},
+    )
+    assert updated.status_code == 200
+    await service.flush_pending()
+    async with engine.connect() as connection:
+        rows = (
+            await connection.execute(
+                sqlalchemy.select(WorkspaceOperationLog).where(
+                    WorkspaceOperationLog.request_id.in_(['governance-audit', 'invitation-audit', 'member-audit'])
+                )
+            )
+        ).all()
+    assert len(rows) == 3
+    by_request = {row.request_id: row for row in rows}
+    assert by_request['governance-audit'].action == 'settings_update'
+    assert by_request['invitation-audit'].action == 'member_invite'
+    assert by_request['member-audit'].action == 'member_role_update'
+    assert json.loads(by_request['member-audit'].changes) == [
+        {'field': 'role', 'before': 'viewer', 'after': 'developer'}
+    ]
+    assert json.loads(by_request['member-audit'].detail)['member_email'] == 'audited@example.com'
+    logs = await client.get('/api/v1/settings/operation-logs?action=member_role_update', headers=_auth(token))
+    assert logs.status_code == 200
+    assert len((await logs.get_json())['data']['records']) == 1
+    exported = await client.get(
+        '/api/v1/settings/operation-logs/export?action=member_role_update', headers=_auth(token)
+    )
+    assert exported.status_code == 200
+    assert 'text/csv' in exported.content_type
+    assert 'member_role_update' in await exported.get_data(as_text=True)

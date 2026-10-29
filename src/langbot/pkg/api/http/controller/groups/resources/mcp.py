@@ -20,7 +20,7 @@ class MCPRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            servers = await self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
+            servers = await self.call_application('mcp.server.list', request_context, {'contain_runtime_info': True})
             return self.success(data={'servers': servers})
 
         @self.route(
@@ -32,7 +32,7 @@ class MCPRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> str:
             data = await quart.request.json
             try:
-                server_uuid = await self.ap.mcp_service.create_mcp_server(request_context, data)
+                server_uuid = await self.call_application('mcp.server.create', request_context, {'server_data': data})
             except MCPStdioDisabledError as exc:
                 return self.http_status(403, exc.code, str(exc))
             except ValueError as exc:
@@ -47,7 +47,7 @@ class MCPRouterGroup(group.RouterGroup):
         )
         async def _(server_name: str, request_context: RequestContext) -> str:
             server_name = unquote(server_name)
-            server_data = await self.ap.mcp_service.get_mcp_server_by_name(request_context, server_name)
+            server_data = await self.call_application('mcp.server.get', request_context, {'server_name': server_name})
             if server_data is None:
                 return self.http_status(404, -1, 'Server not found')
             return self.success(data={'server': server_data})
@@ -60,7 +60,7 @@ class MCPRouterGroup(group.RouterGroup):
         )
         async def _(server_name: str, request_context: RequestContext) -> str:
             server_name = unquote(server_name)
-            server_data = await self.ap.mcp_service.get_mcp_server_by_name(request_context, server_name)
+            server_data = await self.call_application('mcp.server.get', request_context, {'server_name': server_name})
             if server_data is None:
                 return self.http_status(404, -1, 'Server not found')
             # Name the MCP server in the trace, and for an update record which
@@ -70,7 +70,9 @@ class MCPRouterGroup(group.RouterGroup):
             if quart.request.method == 'PUT':
                 data = await quart.request.json
                 try:
-                    await self.ap.mcp_service.update_mcp_server(request_context, server_data['uuid'], data)
+                    await self.call_application(
+                        'mcp.server.update', request_context, {'server_uuid': server_data['uuid'], 'server_data': data}
+                    )
                 except MCPStdioDisabledError as exc:
                     return self.http_status(403, exc.code, str(exc))
                 except ValueError as exc:
@@ -85,7 +87,7 @@ class MCPRouterGroup(group.RouterGroup):
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
-                await self.ap.mcp_service.delete_mcp_server(request_context, server_data['uuid'])
+                await self.call_application('mcp.server.delete', request_context, {'server_uuid': server_data['uuid']})
             return self.success()
 
         @self.route(
@@ -99,10 +101,8 @@ class MCPRouterGroup(group.RouterGroup):
             server_name = unquote(server_name)
             server_data = await quart.request.json
             try:
-                task_id = await self.ap.mcp_service.test_mcp_server(
-                    request_context,
-                    server_name=server_name,
-                    server_data=server_data,
+                task_id = await self.call_application(
+                    'mcp.server.test', request_context, {'server_name': server_name, 'server_data': server_data}
                 )
             except MCPStdioDisabledError as exc:
                 return self.http_status(403, exc.code, str(exc))
@@ -117,9 +117,13 @@ class MCPRouterGroup(group.RouterGroup):
         async def _(server_name: str, request_context: RequestContext) -> str:
             """Get resources from an MCP server"""
             server_name = unquote(server_name)
-            resources = await self.ap.mcp_service.get_mcp_server_resources(request_context, server_name)
-            templates = await self.ap.mcp_service.get_mcp_server_resource_templates(request_context, server_name)
-            runtime_info = await self.ap.mcp_service.get_runtime_info(request_context, server_name)
+            resources = await self.call_application('mcp.resource.list', request_context, {'server_name': server_name})
+            templates = await self.call_application(
+                'mcp.resource.templates', request_context, {'server_name': server_name}
+            )
+            runtime_info = await self.call_application(
+                'mcp.server.runtime', request_context, {'server_name': server_name}
+            )
             return self.success(
                 data={
                     'resources': resources,
@@ -137,7 +141,9 @@ class MCPRouterGroup(group.RouterGroup):
         async def _(server_name: str, request_context: RequestContext) -> str:
             """Get resource templates from an MCP server"""
             server_name = unquote(server_name)
-            templates = await self.ap.mcp_service.get_mcp_server_resource_templates(request_context, server_name)
+            templates = await self.call_application(
+                'mcp.resource.templates', request_context, {'server_name': server_name}
+            )
             return self.success(data={'resource_templates': templates})
 
         @self.route(
@@ -155,11 +161,8 @@ class MCPRouterGroup(group.RouterGroup):
                 limit = 200
             limit = min(limit, 500)
             level = quart.request.args.get('level') or None
-            logs = await self.ap.mcp_service.get_mcp_server_logs(
-                request_context,
-                server_name,
-                limit=limit,
-                level=level,
+            logs = await self.call_application(
+                'mcp.server.logs', request_context, {'server_name': server_name, 'limit': limit, 'level': level}
             )
             return self.success(data={'logs': logs})
 
@@ -176,11 +179,14 @@ class MCPRouterGroup(group.RouterGroup):
             uri = data.get('uri')
             if not uri:
                 return self.http_status(400, -1, 'URI is required')
-            envelope = await self.ap.mcp_service.read_mcp_server_resource_envelope(
+            envelope = await self.call_application(
+                'mcp.resource.read',
                 request_context,
-                server_name,
-                uri,
-                max_bytes=data.get('max_bytes'),
-                include_blob=bool(data.get('include_blob', False)),
+                {
+                    'server_name': server_name,
+                    'uri': uri,
+                    'max_bytes': data.get('max_bytes'),
+                    'include_blob': bool(data.get('include_blob', False)),
+                },
             )
             return self.success(data=envelope)

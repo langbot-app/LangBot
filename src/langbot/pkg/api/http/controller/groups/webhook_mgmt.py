@@ -12,9 +12,10 @@ class WebhookManagementRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def _(request_context: RequestContext) -> str:
-            webhooks = await self.ap.webhook_service.get_webhooks(
+            webhooks = await self.call_application(
+                'webhook.list',
                 request_context,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                {'include_secret': has_permission(request_context, Permission.RESOURCE_MANAGE)},
             )
             return self.success(data={'webhooks': webhooks})
 
@@ -32,12 +33,10 @@ class WebhookManagementRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'URL is required')
 
             try:
-                webhook = await self.ap.webhook_service.create_webhook(
+                webhook = await self.call_application(
+                    'webhook.create',
                     request_context,
-                    name,
-                    url,
-                    description,
-                    enabled,
+                    {'name': name, 'url': url, 'description': description, 'enabled': enabled},
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -45,10 +44,13 @@ class WebhookManagementRouterGroup(group.RouterGroup):
 
         @self.route('/<int:webhook_id>', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def _(webhook_id: int, request_context: RequestContext) -> str:
-            webhook = await self.ap.webhook_service.get_webhook(
+            webhook = await self.call_application(
+                'webhook.get',
                 request_context,
-                webhook_id,
-                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+                {
+                    'webhook_id': webhook_id,
+                    'include_secret': has_permission(request_context, Permission.RESOURCE_MANAGE),
+                },
             )
             if webhook is None:
                 return self.http_status(404, -1, 'Webhook not found')
@@ -62,19 +64,22 @@ class WebhookManagementRouterGroup(group.RouterGroup):
         async def _(webhook_id: int, request_context: RequestContext) -> str:
             if quart.request.method == 'PUT':
                 json_data = await quart.request.get_json(silent=True) or {}
-                updated = await self.ap.webhook_service.update_webhook(
+                updated = await self.call_application(
+                    'webhook.update',
                     request_context,
-                    webhook_id,
-                    json_data.get('name'),
-                    json_data.get('url'),
-                    json_data.get('description'),
-                    json_data.get('enabled'),
+                    {
+                        'webhook_id': webhook_id,
+                        'name': json_data.get('name'),
+                        'url': json_data.get('url'),
+                        'description': json_data.get('description'),
+                        'enabled': json_data.get('enabled'),
+                    },
                 )
                 if not updated:
                     return self.http_status(404, -1, 'Webhook not found')
                 return self.success()
 
-            deleted = await self.ap.webhook_service.delete_webhook(request_context, webhook_id)
+            deleted = await self.call_application('webhook.delete', request_context, {'webhook_id': webhook_id})
             if not deleted:
                 return self.http_status(404, -1, 'Webhook not found')
             return self.success()

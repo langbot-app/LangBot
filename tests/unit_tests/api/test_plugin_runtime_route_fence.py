@@ -8,7 +8,13 @@ import pytest
 import quart
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.api.application.plugin_operations import _run_fenced
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+
+
+@asynccontextmanager
+async def _empty_scope(workspace_uuid):
+    yield
 
 
 CONTEXT = ExecutionContext(
@@ -115,10 +121,10 @@ async def test_background_plugin_operation_refences_captured_generation(plugin_r
         require_workspace_context=AsyncMock(side_effect=WorkspaceNotFoundError('Plugin resource not found')),
     )
     router = object.__new__(plugin_router_cls)
-    router.ap = SimpleNamespace(plugin_connector=connector)
+    router.ap = SimpleNamespace(plugin_connector=connector, persistence_mgr=SimpleNamespace(tenant_scope=_empty_scope))
 
     with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
-        await router._run_fenced_plugin_operation(CONTEXT, operation)
+        await _run_fenced(router.ap, CONTEXT, operation)
 
     operation.assert_not_awaited()
 
@@ -158,7 +164,7 @@ async def test_background_plugin_operation_revalidates_and_runs_inside_tenant_uo
         ),
     )
 
-    result = await router._run_fenced_plugin_operation(CONTEXT, operation)
+    result = await _run_fenced(router.ap, CONTEXT, operation)
 
     assert result == 'done'
     assert scopes == [CONTEXT.workspace_uuid]

@@ -329,7 +329,7 @@ _BINDINGS = (
         'bot',
         'BotService',
         'preview_group_filter_migration',
-        'RESOURCE_MANAGE',
+        'RESOURCE_VIEW',
         False,
     ),
     (
@@ -759,12 +759,18 @@ _OUTPUT_TYPES = {
 _INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight'}
 
 
+class MissingResourceResult(WorkspaceNotFoundError):
+    """A service returned None; existing transports retain their missing-resource response."""
+
+
 def _contract(operation_id, method):
     signature = inspect.signature(method)
     hints = typing.get_type_hints(method)
     fields = {}
     for name, parameter in signature.parameters.items():
-        if name in {'self', 'context', 'ctx'} | _INTERNAL_PARAMETERS:
+        if name in {'self', 'context', 'ctx'} | _INTERNAL_PARAMETERS and not (
+            operation_id == 'pipeline.create' and name == 'default'
+        ):
             continue
         annotation = _FIELD_TYPES.get(name, hints.get(name))
         default = parameter.default
@@ -777,9 +783,14 @@ def _contract(operation_id, method):
         default = ... if default is inspect.Parameter.empty else default
         constraints = {}
         if name in {'limit', 'max_count', 'max_entries'}:
-            constraints = {'ge': 1, 'le': 100_000 if '.export.' in operation_id else 1000}
+            maximum = 100_000 if '.export.' in operation_id else 1000
+            if operation_id.startswith('monitoring.') and '.export.' not in operation_id:
+                from ..http.service.monitoring import _HARD_MAX_MONITORING_PAGE_ROWS
+
+                maximum = _HARD_MAX_MONITORING_PAGE_ROWS
+            constraints = {'ge': 1, 'le': maximum}
         elif name in {'offset', 'from_index', 'after_sequence', 'before_id'}:
-            constraints = {'ge': 0}
+            constraints = {'ge': -1 if operation_id == 'bot.logs' and name == 'from_index' else 0}
         elif annotation is str and (name.endswith(('_uuid', '_id')) or name in {'query', 'uri'}):
             constraints = {'min_length': 1}
         fields[name] = (annotation, Field(default=default, **constraints))
@@ -808,7 +819,7 @@ def _operation(operation_id, service_name, method, permission, side_effect):
         if result is None and operation_id.endswith('.get') and output_type != type(None):
             # Optional defaults (e.g. starred model) are intentionally nullable.
             if operation_id not in {'model.llm.starred.get', 'model.llm.default.get'}:
-                raise WorkspaceNotFoundError('Resource not found')
+                raise MissingResourceResult('Resource not found')
         return result
 
     return Operation(operation_id, Permission[permission], invoke, input_type, output_type, side_effect)
@@ -884,7 +895,7 @@ async def _assistant(ap, context, payload, method):
 
 class RoutePreviewInput(Input):
     bot_uuid: str = Field(min_length=1)
-    event_type: str = Field(min_length=1)
+    event_type: str | None
     event_data: dict | None = None
     event_context: dict | None = None
     event_bindings: list[dict] | None = None
@@ -934,7 +945,7 @@ def _special_operations():
     account = frozenset({PrincipalType.ACCOUNT})
     result = [
         Operation('pipeline.run', Permission.RUNTIME_OPERATE, _pipeline_run, PipelineRunInput, dict, True),
-        Operation('bot.routes.preview', Permission.RESOURCE_MANAGE, _route_preview, RoutePreviewInput, dict),
+        Operation('bot.routes.preview', Permission.RESOURCE_VIEW, _route_preview, RoutePreviewInput, dict),
         Operation(
             'pipeline.migration.preview', Permission.RESOURCE_VIEW, _migration_preview, Input, dict, principals=account
         ),

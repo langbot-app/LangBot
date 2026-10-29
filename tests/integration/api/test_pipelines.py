@@ -129,8 +129,8 @@ def fake_pipeline_app():
         }
     )
     app.pipeline_service.create_pipeline = AsyncMock(return_value='new-pipeline-uuid')
-    app.pipeline_service.update_pipeline = AsyncMock(return_value={})
-    app.pipeline_service.delete_pipeline = AsyncMock()
+    app.pipeline_service.update_pipeline = AsyncMock(return_value=None)
+    app.pipeline_service.delete_pipeline = AsyncMock(return_value=None)
     app.pipeline_service.copy_pipeline = AsyncMock(return_value='copied-pipeline-uuid')
 
     # Bot service
@@ -158,6 +158,16 @@ def fake_pipeline_app():
     # Plugin connector (for extensions endpoint)
     app.plugin_connector.list_plugins = AsyncMock(return_value=[])
 
+    from tests.utils.application_api import bind_application_api
+
+    app.persistence_mgr.tenant_scope = None
+    bind_application_api(
+        app, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1)
+    )
+    from langbot.pkg.api.http.service.pipeline import PipelineService
+
+    app.pipeline_service.ap = app
+    app.pipeline_service.get_pipeline_extensions = PipelineService.get_pipeline_extensions.__get__(app.pipeline_service)
     return app
 
 
@@ -227,8 +237,8 @@ class TestPipelinesListEndpoint:
         called = fake_pipeline_app.pipeline_service.get_pipelines
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('created_at', 'DESC')
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'sort_by': 'created_at', 'sort_order': 'DESC', 'include_secret': True}
         assert data['data']['pipelines'] == [
             {
                 'uuid': 'test-pipeline-uuid',
@@ -254,8 +264,8 @@ class TestPipelinesListEndpoint:
         called = fake_pipeline_app.pipeline_service.get_pipelines
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('name', 'ASC')
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'sort_by': 'name', 'sort_order': 'ASC', 'include_secret': True}
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -277,8 +287,8 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.get_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
-        assert called.await_args.kwargs == {'include_secret': True}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'include_secret': True, 'pipeline_uuid': 'test-pipeline-uuid'}
         assert data['data']['pipeline'] == {'uuid': 'test-pipeline-uuid', 'name': 'Test Pipeline', 'config': {}}
 
     @pytest.mark.asyncio
@@ -298,8 +308,8 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.create_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ({'name': 'New Pipeline', 'config': {}},)
-        assert called.await_args.kwargs == {'default': False}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'default': False, 'pipeline_data': {'name': 'New Pipeline', 'config': {}}}
         assert data['data'] == {'uuid': 'new-pipeline-uuid'}
 
     @pytest.mark.asyncio
@@ -315,8 +325,10 @@ class TestPipelinesCRUDEndpoints:
 
         assert response.status_code == 200
         call = fake_pipeline_app.pipeline_service.create_pipeline.await_args
-        assert call.kwargs == {'default': True}
-        assert call.args[1]['is_default'] is True
+        assert call.kwargs == {
+            'default': True,
+            'pipeline_data': {'name': 'Default Pipeline', 'config': {}, 'is_default': True},
+        }
 
     @pytest.mark.asyncio
     async def test_update_pipeline_success(self, quart_test_client, fake_pipeline_app):
@@ -334,8 +346,11 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.update_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-pipeline-uuid', {'name': 'Updated Pipeline'})
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {
+            'pipeline_uuid': 'test-pipeline-uuid',
+            'pipeline_data': {'name': 'Updated Pipeline'},
+        }
 
     @pytest.mark.asyncio
     async def test_delete_pipeline_success(self, quart_test_client, fake_pipeline_app):
@@ -351,8 +366,8 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.delete_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'pipeline_uuid': 'test-pipeline-uuid'}
 
     @pytest.mark.asyncio
     async def test_copy_pipeline_success(self, quart_test_client, fake_pipeline_app):
@@ -369,8 +384,8 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.copy_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ('test-pipeline-uuid',)
-        assert called.await_args.kwargs == {}
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'pipeline_uuid': 'test-pipeline-uuid'}
         assert data['data'] == {'uuid': 'copied-pipeline-uuid'}
 
 

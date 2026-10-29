@@ -21,7 +21,7 @@ class BoxRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                status = await self.ap.box_service.get_status(request_context)
+                status = await self.call_application('box.status', request_context, {})
             except (BoxAdmissionError, EntitlementUnavailableError) as exc:
                 return self.http_status(403, 'managed_sandbox_unavailable', str(exc))
             status['hidden'] = should_hide_box_runtime_status(constants.edition, status.get('enabled'))
@@ -47,7 +47,7 @@ class BoxRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                sessions = await self.ap.box_service.get_sessions(request_context)
+                sessions = await self.call_application('box.sessions.list', request_context, {})
             except (BoxAdmissionError, EntitlementUnavailableError) as exc:
                 return self.http_status(403, 'managed_sandbox_unavailable', str(exc))
             return self.success(data=sessions)
@@ -60,9 +60,7 @@ class BoxRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                if getattr(self.ap.box_service, 'managed_admission_required', False):
-                    await self.ap.box_service.require_workspace_sandbox(request_context)
+                errors = await self.call_application('box.errors.list', request_context, {})
             except (BoxAdmissionError, EntitlementUnavailableError) as exc:
                 return self.http_status(403, 'managed_sandbox_unavailable', str(exc))
-            errors = self.ap.box_service.get_recent_errors(request_context)
             return self.success(data=errors)

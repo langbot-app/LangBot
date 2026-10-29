@@ -151,3 +151,62 @@ async def test_setup_webhook_only_accepts_signed_verification():
 def test_invalid_callback_url(url):
     with pytest.raises(SlackSetupError):
         callback_url(url, 'bot')
+
+
+@pytest.mark.asyncio
+async def test_slack_http_application_adapter_preserves_errors_credentials_and_cache_headers():
+    from unittest.mock import Mock
+    from quart import Quart
+    from langbot.pkg.api.context import RequestContext, PrincipalContext, PrincipalType, WorkspaceContext
+    from langbot.pkg.api.http.controller.groups.platform.adapters import AdaptersRouterGroup
+    from tests.utils.application_api import bind_application_api
+
+    ctx = RequestContext(
+        'instance',
+        1,
+        'request',
+        'api_key',
+        PrincipalContext(PrincipalType.API_KEY, api_key_uuid='key'),
+        WorkspaceContext('workspace', None, 'developer', frozenset({'resource.manage'})),
+    )
+    setup = SimpleNamespace(
+        start=AsyncMock(return_value={'session_id': 'session'}),
+        status=Mock(return_value={'status': 'success', 'config': {'bot_token': 'synthetic-token'}}),
+        owned=Mock(),
+        discard=Mock(),
+    )
+    ap = SimpleNamespace(slack_setup_service=setup, task_mgr=SimpleNamespace())
+    bind_application_api(ap, ctx)
+    web = Quart(__name__)
+    router = AdaptersRouterGroup(ap, web)
+    router._authenticate_api_key = AsyncMock(return_value=ctx)
+    await router.initialize()
+    client = web.test_client()
+    headers = {'X-API-Key': 'synthetic-test'}
+    path = '/api/v1/platform/adapters/slack/setup'
+
+    invalid = await client.post(path, headers=headers, json={})
+    assert invalid.status_code == 400
+    assert (await invalid.get_json())['msg'] == 'invalid_input'
+    setup.start.assert_not_awaited()
+    started = await client.post(
+        path,
+        headers=headers,
+        json={
+            'bot_uuid': 'bot',
+            'access_token': 'access',
+            'refresh_token': 'refresh',
+        },
+    )
+    assert (await started.get_json())['data'] == {'session_id': 'session'}
+    polled = await client.get(path + '/session', headers=headers)
+    assert polled.status_code == 200
+    assert polled.headers['Cache-Control'] == 'no-store'
+    assert (await polled.get_json())['data'] == {'status': 'success', 'config': {'bot_token': 'synthetic-token'}}
+    cancelled = await client.delete(path + '/session', headers=headers)
+    assert (await cancelled.get_json())['data'] == {}
+    setup.discard.assert_called_once_with('session')
+    setup.status.side_effect = SlackSetupError('not owned')
+    missing = await client.get(path + '/foreign', headers=headers)
+    assert missing.status_code == 404
+    assert (await missing.get_json())['msg'] == 'session_not_found'

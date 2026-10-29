@@ -1156,7 +1156,7 @@ class BotService:
         bot_uuid: str,
         target_type: str,
         target_id: str,
-        message_chain_data: dict,
+        message_chain_data: list[dict],
     ) -> None:
         """Send message to a specific target via bot
 
@@ -1164,7 +1164,7 @@ class BotService:
             bot_uuid: The UUID of the bot
             target_type: The type of the target, can be "group", "person"
             target_id: The ID of the target
-            message_chain_data: The message chain data in dict format
+            message_chain_data: The message chain components
         """
         if await self.get_bot(context, bot_uuid, include_secret=False) is None:
             raise WorkspaceNotFoundError('Bot not found')

@@ -6,8 +6,8 @@ import quart
 
 from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.context import RequestContext
-from langbot.pkg.cloud.plan_policy import workspace_entitlement, platform_feature_names, require_workspace_platform
 from langbot.pkg.utils import importutil
+from langbot.pkg.api.application.transport import ApplicationInputError
 
 from ... import group
 
@@ -44,9 +44,10 @@ class AdaptersRouterGroup(group.RouterGroup):
             if not isinstance(data, dict):
                 return self.http_status(400, -1, 'invalid_input')
             try:
-                result = await slack_setup.start(
+                result = await self.call_application(
+                    'platform.setup.slack.start',
                     request_context,
-                    **{
+                    {
                         key: data[key]
                         for key in (
                             'bot_uuid',
@@ -61,8 +62,10 @@ class AdaptersRouterGroup(group.RouterGroup):
                     },
                 )
                 return self.success(data=result)
-            except (SlackSetupError, TypeError) as exc:
-                return self.http_status(400, -1, str(exc) if isinstance(exc, SlackSetupError) else 'invalid_input')
+            except CredentialSetupError as exc:
+                return self.http_status(exc.status_code, -1, str(exc))
+            except ApplicationInputError:
+                return self.http_status(400, -1, 'invalid_input')
 
         @self.route(
             '/slack/setup/<session_id>',
@@ -72,15 +75,17 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def slack_status(session_id: str, request_context: RequestContext):
             try:
-                slack_setup.owned(request_context, session_id)
+                action = 'cancel' if quart.request.method == 'DELETE' else 'status'
+                result = await self.call_application(
+                    'platform.setup.slack.' + action, request_context, {'session_id': session_id}
+                )
                 if quart.request.method == 'DELETE':
-                    slack_setup.discard(session_id)
-                    return self.success(data={})
-                response = await quart.make_response(self.success(data=slack_setup.status(request_context, session_id)))
+                    return self.success(data=result)
+                response = await quart.make_response(self.success(data=result))
                 response.headers['Cache-Control'] = 'no-store'
                 return response
-            except SlackSetupError:
-                return self.http_status(404, -1, 'session_not_found')
+            except CredentialSetupError as exc:
+                return self.http_status(exc.status_code, -1, str(exc))
 
         @self.route('/slack/setup/callback', methods=['GET'], auth_type=group.AuthType.NONE)
         async def slack_callback():
@@ -108,24 +113,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
         @self.route('', methods=['GET'])
         async def _(request_context: RequestContext) -> str:
-            snapshot = await workspace_entitlement(self.ap, request_context.workspace_uuid)
-            adapters = self.ap.platform_mgr.get_available_adapters_info()
-            if snapshot is not None:
-                adapters = [
-                    a
-                    for a in adapters
-                    if not any(snapshot.features.get(f) is False for f in platform_feature_names(a['name']))
-                ]
-            return self.success(data={'adapters': adapters})
+            return self.success(data={'adapters': await self.call_application('adapter.list', request_context, {})})
 
         @self.route('/<adapter_name>', methods=['GET'])
         async def _(adapter_name: str, request_context: RequestContext) -> str:
-            await require_workspace_platform(self.ap, request_context.workspace_uuid, adapter_name)
-            adapter_info = self.ap.platform_mgr.get_available_adapter_info_by_name(adapter_name)
-
-            if adapter_info is None:
+            try:
+                adapter_info = await self.call_application(
+                    'adapter.get', request_context, {'adapter_name': adapter_name}
+                )
+            except FileNotFoundError:
                 return self.http_status(404, -1, 'adapter not found')
-
             return self.success(data={'adapter': adapter_info})
 
         @self.route('/<adapter_name>/icon', methods=['GET'], auth_type=group.AuthType.NONE)
@@ -169,7 +166,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/lark/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
         async def lark_start(request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.lark_start(request_context=request_context)
+                result = await self.call_application('platform.setup.lark.start', request_context, {})
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -181,7 +178,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def lark_status(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.lark_status(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.lark.status', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -193,7 +192,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def lark_cancel(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.lark_cancel(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.lark.cancel', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -201,7 +202,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/weixin/login', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
         async def weixin_start(request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.weixin_start(request_context=request_context)
+                result = await self.call_application('platform.setup.weixin.start', request_context, {})
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -213,7 +214,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def weixin_status(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.weixin_status(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.weixin.status', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -225,7 +228,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def weixin_cancel(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.weixin_cancel(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.weixin.cancel', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -233,7 +238,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/dingtalk/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
         async def dingtalk_start(request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.dingtalk_start(request_context=request_context)
+                result = await self.call_application('platform.setup.dingtalk.start', request_context, {})
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -245,7 +250,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def dingtalk_status(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.dingtalk_status(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.dingtalk.status', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -257,7 +264,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def dingtalk_cancel(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.dingtalk_cancel(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.dingtalk.cancel', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -265,7 +274,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/wecombot/create-bot', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
         async def wecombot_start(request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.wecombot_start(request_context=request_context)
+                result = await self.call_application('platform.setup.wecombot.start', request_context, {})
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -277,7 +286,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def wecombot_status(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.wecombot_status(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.wecombot.status', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -289,7 +300,9 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def wecombot_cancel(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.wecombot_cancel(session_id=session_id, request_context=request_context)
+                result = await self.call_application(
+                    'platform.setup.wecombot.cancel', request_context, {'session_id': session_id}
+                )
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -297,7 +310,7 @@ class AdaptersRouterGroup(group.RouterGroup):
         @self.route('/qqofficial/bind', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
         async def qqofficial_start(request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.qqofficial_start(request_context=request_context)
+                result = await self.call_application('platform.setup.qqofficial.start', request_context, {})
                 return self.success(data=result)
             except CredentialSetupError as exc:
                 return self.http_status(exc.status_code, -1, str(exc))
@@ -309,8 +322,8 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def qqofficial_status(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.qqofficial_status(
-                    session_id=session_id, request_context=request_context
+                result = await self.call_application(
+                    'platform.setup.qqofficial.status', request_context, {'session_id': session_id}
                 )
                 return self.success(data=result)
             except CredentialSetupError as exc:
@@ -323,8 +336,8 @@ class AdaptersRouterGroup(group.RouterGroup):
         )
         async def qqofficial_cancel(session_id: str, request_context: RequestContext) -> str:
             try:
-                result = await credential_setup.qqofficial_cancel(
-                    session_id=session_id, request_context=request_context
+                result = await self.call_application(
+                    'platform.setup.qqofficial.cancel', request_context, {'session_id': session_id}
                 )
                 return self.success(data=result)
             except CredentialSetupError as exc:

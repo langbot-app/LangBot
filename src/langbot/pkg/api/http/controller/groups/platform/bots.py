@@ -28,10 +28,7 @@ class BotsRouterGroup(group.RouterGroup):
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
             return self.success(
                 data={
-                    'bots': await self.ap.bot_service.get_bots(
-                        request_context,
-                        include_secret=include_secret,
-                    )
+                    'bots': await self.call_application('bot.list', request_context, {'include_secret': include_secret})
                 }
             )
 
@@ -46,7 +43,7 @@ class BotsRouterGroup(group.RouterGroup):
             if not isinstance(json_data, dict):
                 return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
             try:
-                bot_uuid = await self.ap.bot_service.create_bot(request_context, json_data)
+                bot_uuid = await self.call_application('bot.create', request_context, {'bot_data': json_data})
             except BotApplyError as exc:
                 return self._apply_error_response(exc)
             except ValueError as exc:
@@ -61,10 +58,8 @@ class BotsRouterGroup(group.RouterGroup):
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
-            bot = await self.ap.bot_service.get_runtime_bot_info(
-                request_context,
-                bot_uuid,
-                include_secret=include_secret,
+            bot = await self.call_application(
+                'bot.runtime.get', request_context, {'bot_uuid': bot_uuid, 'include_secret': include_secret}
             )
             if bot is None:
                 return self.http_status(404, -1, 'bot not found')
@@ -82,13 +77,15 @@ class BotsRouterGroup(group.RouterGroup):
                 if not isinstance(json_data, dict):
                     return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
                 try:
-                    await self.ap.bot_service.update_bot(request_context, bot_uuid, json_data)
+                    await self.call_application(
+                        'bot.update', request_context, {'bot_uuid': bot_uuid, 'bot_data': json_data}
+                    )
                 except BotApplyError as exc:
                     return self._apply_error_response(exc)
                 except ValueError as exc:
                     return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             else:
-                await self.ap.bot_service.delete_bot(request_context, bot_uuid)
+                await self.call_application('bot.delete', request_context, {'bot_uuid': bot_uuid})
             return self.success()
 
         @self.route(
@@ -101,8 +98,8 @@ class BotsRouterGroup(group.RouterGroup):
             json_data = await quart.request.json
             from_index = json_data.get('from_index', -1)
             max_count = json_data.get('max_count', 10)
-            logs, total_count = await self.ap.bot_service.list_event_logs(
-                request_context, bot_uuid, from_index, max_count
+            logs, total_count = await self.call_application(
+                'bot.logs', request_context, {'bot_uuid': bot_uuid, 'from_index': from_index, 'max_count': max_count}
             )
             return self.success(data={'logs': logs, 'total_count': total_count})
 
@@ -113,20 +110,25 @@ class BotsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
-            return self.success(data=await self.ap.bot_service.list_event_route_statuses(request_context, bot_uuid))
+            return self.success(
+                data=await self.call_application('bot.routes.status', request_context, {'bot_uuid': bot_uuid})
+            )
 
         async def _dry_run_event_route(bot_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             if not isinstance(json_data, dict):
                 return self.http_status(400, -1, 'invalid request body')
 
-            result = await self.ap.bot_service.dry_run_event_route(
+            result = await self.call_application(
+                'bot.routes.preview',
                 request_context,
-                bot_uuid=bot_uuid,
-                event_type=json_data.get('event_type'),
-                event_data=json_data.get('event_data', json_data.get('payload')),
-                context=json_data.get('context'),
-                event_bindings=json_data.get('event_bindings'),
+                {
+                    'bot_uuid': bot_uuid,
+                    'event_type': json_data.get('event_type'),
+                    'event_data': json_data.get('event_data', json_data.get('payload')),
+                    'event_context': json_data.get('context'),
+                    'event_bindings': json_data.get('event_bindings'),
+                },
             )
             return self.success(data=result)
 
@@ -166,12 +168,15 @@ class BotsRouterGroup(group.RouterGroup):
             if target_type not in ['person', 'group']:
                 return self.http_status(400, -1, 'target_type must be either "person" or "group"')
 
-            await self.ap.bot_service.send_message(
+            await self.call_application(
+                'bot.message.send',
                 request_context,
-                bot_uuid,
-                target_type,
-                target_id,
-                message_chain_data,
+                {
+                    'bot_uuid': bot_uuid,
+                    'target_type': target_type,
+                    'target_id': target_id,
+                    'message_chain_data': message_chain_data,
+                },
             )
             return self.success(data={'sent': True})
 
@@ -184,10 +189,10 @@ class BotsRouterGroup(group.RouterGroup):
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.get_json(silent=True) or {}
             try:
-                result = await self.ap.bot_service.send_http_bot_test_message(
+                result = await self.call_application(
+                    'bot.message.test',
                     request_context,
-                    bot_uuid,
-                    str(json_data.get('message') or ''),
+                    {'bot_uuid': bot_uuid, 'message': str(json_data.get('message') or '')},
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -200,7 +205,7 @@ class BotsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
-            admins = await self.ap.bot_service.get_bot_admins(request_context, bot_uuid)
+            admins = await self.call_application('bot.admins.list', request_context, {'bot_uuid': bot_uuid})
             return self.success(data={'admins': admins})
 
         @self.route(
@@ -216,8 +221,10 @@ class BotsRouterGroup(group.RouterGroup):
             if not launcher_type or not launcher_id:
                 return self.http_status(400, -1, 'launcher_type and launcher_id are required')
             try:
-                admin_id = await self.ap.bot_service.add_bot_admin(
-                    request_context, bot_uuid, launcher_type, launcher_id
+                admin_id = await self.call_application(
+                    'bot.admins.add',
+                    request_context,
+                    {'bot_uuid': bot_uuid, 'launcher_type': launcher_type, 'launcher_id': launcher_id},
                 )
                 return self.success(data={'id': admin_id})
             except IntegrityError as e:
@@ -230,7 +237,9 @@ class BotsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(bot_uuid: str, admin_id: int, request_context: RequestContext) -> str:
-            await self.ap.bot_service.delete_bot_admin(request_context, bot_uuid, admin_id)
+            await self.call_application(
+                'bot.admins.delete', request_context, {'bot_uuid': bot_uuid, 'admin_id': admin_id}
+            )
             return self.success()
 
         @self.route(
@@ -241,7 +250,9 @@ class BotsRouterGroup(group.RouterGroup):
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             try:
-                result = await self.ap.bot_service.preview_group_filter_migration(request_context, bot_uuid)
+                result = await self.call_application(
+                    'bot.group_filter.preview', request_context, {'bot_uuid': bot_uuid}
+                )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data=result)
@@ -256,8 +267,10 @@ class BotsRouterGroup(group.RouterGroup):
             json_data = await quart.request.get_json(silent=True) or {}
             disable_pipeline_at_bot = bool(json_data.get('disable_pipeline_at_bot', True))
             try:
-                result = await self.ap.bot_service.apply_group_filter_migration(
-                    request_context, bot_uuid, disable_pipeline_at_bot=disable_pipeline_at_bot
+                result = await self.call_application(
+                    'bot.group_filter.apply',
+                    request_context,
+                    {'bot_uuid': bot_uuid, 'disable_pipeline_at_bot': disable_pipeline_at_bot},
                 )
             except BotApplyError as exc:
                 return self._apply_error_response(exc)

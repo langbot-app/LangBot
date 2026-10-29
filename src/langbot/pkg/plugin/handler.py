@@ -735,6 +735,79 @@ class RuntimeConnectionHandler(handler.Handler):
 
             self.actions[action_name] = secured_action
 
+    async def _execution_request(self, action: str, data: dict[str, Any]):
+        from ..api.application.contracts import ApplicationAPIError, ApplicationAPIException
+        from ..api.application.execution import ExecutionAPIContext
+
+        action_context = self._require_runtime_action_context()
+        async with self._tenant_action_scope(action_context):
+            action_context, identity = await self._require_plugin_action_context()
+        claimed_identity = data.get('caller_plugin_identity')
+        if claimed_identity not in {None, f'{identity.plugin_author}/{identity.plugin_name}'}:
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'permission_denied', 'Caller plugin identity does not match the installation binding', 403
+                )
+            )
+        if not isinstance(action_context, InstallationBinding):
+            action_context = InstallationBinding(
+                instance_uuid=action_context.instance_uuid,
+                workspace_uuid=action_context.workspace_uuid,
+                placement_generation=action_context.placement_generation,
+                installation_uuid=identity.installation_uuid,
+                runtime_revision=identity.runtime_revision,
+                artifact_digest=identity.artifact_digest,
+            )
+        payload = {key: value for key, value in data.items() if key not in _UNTRUSTED_SCOPE_FIELDS}
+        payload.pop('caller_plugin_identity', None)
+        run_id = payload.pop('run_id', None)
+        if action in {'invoke_llm', 'invoke_llm_stream', 'count_tokens'}:
+            # The SDK already applies this deadline to its transport call.
+            payload.pop('timeout', None)
+            # Obsolete policy hints never override the explicit reasoning option.
+            payload.pop('model_reasoning_overrides', None)
+            payload.pop('reasoning_config_override', None)
+        if action == 'call_tool':
+            # Legacy SDKs send a session projection; Core resolves the scoped query.
+            payload.pop('session', None)
+        if action in {'set_binary_storage', 'get_binary_storage', 'delete_binary_storage', 'get_binary_storage_keys'}:
+            # Storage ownership is derived from the installation, never its wire hint.
+            payload.pop('owner', None)
+        return ExecutionAPIContext(action_context, run_id), payload
+
+    def _route_execution_actions(self) -> None:
+        from ..api.application.contracts import ApplicationAPIException
+        from ..api.application.execution import ExecutionAPI
+
+        self._execution_actions = self.actions.copy()
+        self.execution_api = ExecutionAPI(self.ap, handler=self)
+        for operation in self.execution_api.operations():
+            if operation.streaming:
+
+                async def stream(data, *, _operation=operation):
+                    try:
+                        context, payload = await self._execution_request(_operation.action, data)
+                        async with aclosing(
+                            self.execution_api.stream(_operation.operation_id, context, payload)
+                        ) as source:
+                            async for item in source:
+                                yield handler.ActionResponse.success(item)
+                    except ApplicationAPIException as exc:
+                        yield handler.ActionResponse.error(exc.error.message, exc.error.details)
+
+                self.actions[operation.action] = stream
+            else:
+
+                async def invoke(data, *, _operation=operation):
+                    try:
+                        context, payload = await self._execution_request(_operation.action, data)
+                        result = await self.execution_api.invoke(_operation.operation_id, context, payload)
+                        return handler.ActionResponse.success(result)
+                    except ApplicationAPIException as exc:
+                        return handler.ActionResponse.error(exc.error.message, exc.error.details)
+
+                self.actions[operation.action] = invoke
+
     async def _get_plugin_setting(
         self,
         action_context: ActionContext,
@@ -2710,6 +2783,7 @@ class RuntimeConnectionHandler(handler.Handler):
             )
 
         self._secure_plugin_actions()
+        self._route_execution_actions()
 
     @contextlib.contextmanager
     def installation_scope(self, binding: InstallationBinding | None):

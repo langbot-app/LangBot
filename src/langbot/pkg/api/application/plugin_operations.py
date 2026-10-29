@@ -21,6 +21,7 @@ from pydantic import Field
 from ...core import taskmgr
 from ...entity.persistence import plugin as persistence_plugin
 from ...i18n import t
+from ...operation_trace.service import changed_fields
 from ...plugin.archive import inspect_plugin_archive_metadata
 from ...plugin.github import validate_github_plugin_install_info
 from ...plugin.management import (
@@ -205,10 +206,16 @@ async def get_config(ap, context, payload):
 
 async def update_config(ap, context, payload):
     plugin = await _get(ap, context, payload)
-    config = restore_plugin_secret_placeholders(payload.config, await _stored_config(ap, context, payload, plugin))
+    previous = await _stored_config(ap, context, payload, plugin)
+    config = restore_plugin_secret_placeholders(payload.config, previous)
     await _fence(ap, context)
     await ap.plugin_connector.set_plugin_config(payload.author, payload.plugin_name, config)
-    return {}
+    # Redact nested values before the audit formatter can turn them into strings.
+    return {
+        'changes': changed_fields(
+            redact_plugin_secrets(previous) if isinstance(previous, dict) else {}, redact_plugin_secrets(config)
+        )
+    }
 
 
 async def readme(ap, context, payload):

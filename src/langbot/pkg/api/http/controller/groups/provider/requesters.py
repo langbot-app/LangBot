@@ -2,6 +2,7 @@ import quart
 import mimetypes
 
 from ... import group
+from ....context import RequestContext
 from langbot.pkg.utils import importutil
 
 
@@ -9,15 +10,23 @@ from langbot.pkg.utils import importutil
 class RequestersRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('', methods=['GET'])
-        async def _() -> quart.Response:
+        async def _(request_context: RequestContext) -> quart.Response:
             model_type = quart.request.args.get('type', '')
-            return self.success(data={'requesters': self.ap.model_mgr.get_available_requesters_info(model_type)})
+            return self.success(
+                data={
+                    'requesters': await self.call_application(
+                        'requester.list', request_context, {'model_type': model_type}
+                    )
+                }
+            )
 
         @self.route('/<requester_name>', methods=['GET'])
-        async def _(requester_name: str) -> quart.Response:
-            requester_info = self.ap.model_mgr.get_available_requester_info_by_name(requester_name)
-
-            if requester_info is None:
+        async def _(requester_name: str, request_context: RequestContext) -> quart.Response:
+            try:
+                requester_info = await self.call_application(
+                    'requester.get', request_context, {'requester_name': requester_name}
+                )
+            except FileNotFoundError:
                 return self.http_status(404, -1, 'requester not found')
 
             return self.success(data={'requester': requester_info})

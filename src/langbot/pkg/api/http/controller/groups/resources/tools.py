@@ -5,7 +5,6 @@ import quart
 from ....authz import Permission
 from ....context import RequestContext
 from ... import group
-from ......pipeline.extension_preferences import normalize_extension_preferences
 
 
 @group.group_class('tools', '/api/v1/tools')
@@ -15,29 +14,10 @@ class ToolsRouterGroup(group.RouterGroup):
         request_context: RequestContext,
     ) -> list[dict] | None:
         pipeline_uuid = quart.request.args.get('pipeline_uuid') or quart.request.args.get('pipeline_id')
-        bound_plugins: list[str] | None = None
-        bound_mcp_servers: list[str] | None = None
-
-        if pipeline_uuid:
-            pipeline = await self.ap.pipeline_service.get_pipeline(
-                request_context,
-                pipeline_uuid,
-            )
-            if pipeline is None:
-                return None
-
-            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
-            if not extensions_prefs['enable_all_plugins']:
-                bound_plugins = [f'{plugin["author"]}/{plugin["name"]}' for plugin in extensions_prefs['plugins']]
-            if not extensions_prefs['enable_all_mcp_servers']:
-                bound_mcp_servers = extensions_prefs['mcp_servers']
-
-        return await self.ap.tool_mgr.get_resolved_tool_catalog(
-            request_context,
-            bound_plugins,
-            bound_mcp_servers,
-            include_skill_authoring=True,
-        )
+        try:
+            return await self.call_application('tool.list', request_context, {'pipeline_uuid': pipeline_uuid})
+        except FileNotFoundError:
+            return None
 
     async def initialize(self) -> None:
         @self.route(

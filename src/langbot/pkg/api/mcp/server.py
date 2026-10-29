@@ -1,8 +1,7 @@
 """LangBot MCP server definition.
 
-Wraps a curated subset of LangBot's HTTP service API as MCP tools. Tools call
-the existing service layer directly (not the HTTP API over the network), so the
-MCP surface stays aligned with the API by construction.
+Wraps a curated subset of LangBot's Application API as MCP tools. Tools use
+the same authorized application operations as HTTP consumers.
 
 IMPORTANT: when you add, remove, or change an HTTP API endpoint that should be
 agent-accessible, update the corresponding MCP tool here AND the skills under
@@ -23,10 +22,11 @@ import functools
 
 from mcp.server.fastmcp import FastMCP
 
+from ..application.transport import invoke_application
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
 from ...i18n import language_scope
-from ...i18n.workspace import get_workspace_language, set_workspace_language
+from ...i18n.workspace import get_workspace_language
 
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
@@ -84,7 +84,8 @@ class LangBotMCPServer:
         @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
         async def get_workspace_message_language() -> str:
             context = _authorized(Permission.WORKSPACE_VIEW)
-            return _dump({'language': await get_workspace_language(ap, context.workspace_uuid, refresh=True)})
+            result = await invoke_application(ap, 'workspace.language.get', context, {})
+            return _dump({'language': result['language']})
 
         @mcp.tool(
             description='Set the Workspace message language. Requires workspace.update; does not change personal UI language.'
@@ -93,7 +94,7 @@ class LangBotMCPServer:
             language: typing.Literal['en_US', 'zh_Hans', 'zh_Hant', 'ja_JP', 'es_ES', 'ru_RU', 'th_TH', 'vi_VN'],
         ) -> str:
             context = _authorized(Permission.WORKSPACE_UPDATE)
-            return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
+            return _dump(await invoke_application(ap, 'workspace.language.update', context, {'language': language}))
 
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
@@ -113,23 +114,38 @@ class LangBotMCPServer:
 
         @mcp.tool(description='List knowledge engines and their capabilities.')
         async def list_knowledge_engines() -> str:
-            return _dump(await ap.knowledge_service.list_knowledge_engines(_authorized(Permission.RESOURCE_VIEW)))
+            return _dump(
+                await invoke_application(ap, 'knowledge.engine.list', _authorized(Permission.RESOURCE_VIEW), {})
+            )
 
         @mcp.tool(description='Get creation or retrieval schema for an author/name knowledge engine.')
         async def get_knowledge_engine_schema(plugin_id: str, kind: typing.Literal['creation', 'retrieval']) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             if kind == 'creation':
-                return _dump(await ap.knowledge_service.get_engine_creation_schema(context, plugin_id))
-            return _dump(await ap.knowledge_service.get_engine_retrieval_schema(context, plugin_id))
+                return _dump(
+                    await invoke_application(ap, 'knowledge.engine.creation_schema', context, {'plugin_id': plugin_id})
+                )
+            return _dump(
+                await invoke_application(ap, 'knowledge.engine.retrieval_schema', context, {'plugin_id': plugin_id})
+            )
 
         @mcp.tool(description='List document parsers, optionally filtered by MIME type.')
         async def list_knowledge_parsers(mime_type: str | None = None) -> str:
-            return _dump(await ap.knowledge_service.list_parsers(_authorized(Permission.RESOURCE_VIEW), mime_type))
+            return _dump(
+                await invoke_application(
+                    ap, 'knowledge.parser.list', _authorized(Permission.RESOURCE_VIEW), {'mime_type': mime_type}
+                )
+            )
 
         @mcp.tool(description='Read Pipeline extension bindings, enable-all switches and available extensions.')
         async def get_pipeline_extensions(pipeline_uuid: str) -> str:
             return _dump(
-                await ap.pipeline_service.get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
+                await invoke_application(
+                    ap,
+                    'pipeline.extensions.get',
+                    _authorized(Permission.RESOURCE_VIEW),
+                    {'pipeline_uuid': pipeline_uuid},
+                )
             )
 
         @mcp.tool(
@@ -152,27 +168,38 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
-            await ap.pipeline_service.update_pipeline_extensions(
+            await invoke_application(
+                ap,
+                'pipeline.extensions.update',
                 context,
-                pipeline_uuid,
-                bound_plugins,
-                bound_mcp_servers,
-                enable_all_plugins,
-                enable_all_mcp_servers,
-                bound_skills,
-                enable_all_skills,
-                bound_mcp_resources,
-                mcp_resource_agent_read_enabled,
+                {
+                    'pipeline_uuid': pipeline_uuid,
+                    'bound_plugins': bound_plugins,
+                    'bound_mcp_servers': bound_mcp_servers,
+                    'enable_all_plugins': enable_all_plugins,
+                    'enable_all_mcp_servers': enable_all_mcp_servers,
+                    'bound_skills': bound_skills,
+                    'enable_all_skills': enable_all_skills,
+                    'bound_mcp_resources': bound_mcp_resources,
+                    'mcp_resource_agent_read_enabled': mcp_resource_agent_read_enabled,
+                },
             )
-            return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
+            return _dump(
+                await invoke_application(ap, 'pipeline.extensions.get', context, {'pipeline_uuid': pipeline_uuid})
+            )
 
         @mcp.tool(
             description='Run one Pipeline turn in a fresh session. Calls configured models/tools. Never retry an unknown outcome automatically.'
         )
         async def run_pipeline(pipeline_uuid: str, message: str) -> str:
-            from ..http.service.pipeline_run import run_pipeline as execute
-
-            return _dump(await execute(ap, _authorized(Permission.RUNTIME_OPERATE), pipeline_uuid, message))
+            return _dump(
+                await invoke_application(
+                    ap,
+                    'pipeline.run',
+                    _authorized(Permission.RUNTIME_OPERATE),
+                    {'pipeline_uuid': pipeline_uuid, 'text': message},
+                )
+            )
 
         @mcp.tool(
             description='Read Workspace sandbox status, sessions or recent errors. Does not create execution sessions.'
@@ -180,12 +207,12 @@ class LangBotMCPServer:
         async def get_sandbox_diagnostics(kind: typing.Literal['status', 'sessions', 'errors'] = 'status') -> str:
             context = _authorized(Permission.RESOURCE_VIEW if kind == 'status' else Permission.AUDIT_VIEW)
             if kind == 'status':
-                return _dump(await ap.box_service.get_status(context))
+                result = await invoke_application(ap, 'box.status', context, {})
+                result.pop('hidden', None)
+                return _dump(result)
             if kind == 'sessions':
-                return _dump(await ap.box_service.get_sessions(context))
-            if ap.box_service.managed_admission_required:
-                await ap.box_service.require_workspace_sandbox(context)
-            return _dump(ap.box_service.get_recent_errors(context))
+                return _dump(await invoke_application(ap, 'box.sessions.list', context, {}))
+            return _dump(await invoke_application(ap, 'box.errors.list', context, {}))
 
         @mcp.tool(
             description='Read bounded Workspace runtime records. Message image URLs may be renewed through the connected OneBot peer without downloading images or rewriting stored records; URLs remain temporary. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind. Sessions read stored conversation summaries and do not support mode or execution_statuses.'
@@ -219,8 +246,8 @@ class LangBotMCPServer:
                         value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
                     kwargs[field] = value
             limit, offset = ap.monitoring_service.normalize_page_window(limit, offset)
-            rows, total = await getattr(ap.monitoring_service, 'get_' + kind)(
-                context, limit=limit, offset=offset, **kwargs
+            rows, total = await invoke_application(
+                ap, 'monitoring.' + kind, context, {'limit': limit, 'offset': offset, **kwargs}
             )
             return _dump({kind: rows, 'total': total, 'limit': limit, 'offset': offset})
 
@@ -228,24 +255,29 @@ class LangBotMCPServer:
         async def get_monitoring_details(kind: typing.Literal['message', 'session'], identifier: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             if kind == 'message':
-                return _dump(await ap.monitoring_service.get_message_details(context, identifier))
-            return _dump(await ap.monitoring_service.get_session_analysis(context, identifier))
+                return _dump(
+                    await invoke_application(ap, 'monitoring.message.detail', context, {'message_id': identifier})
+                )
+            return _dump(
+                await invoke_application(ap, 'monitoring.session.analysis', context, {'session_id': identifier})
+            )
 
         @mcp.tool(
             description='Read a bounded snapshot of active and recently started Workspace executions, including the latest progress event. No percentage is estimated.'
         )
         async def get_inflight_executions() -> str:
-            return _dump(await ap.monitoring_service.get_inflight_snapshot(_authorized(Permission.RESOURCE_VIEW)))
+            return _dump(await invoke_application(ap, 'monitoring.inflight', _authorized(Permission.RESOURCE_VIEW), {}))
 
         @mcp.tool(
             description='Reset a bot session model context, preserving monitoring history. Refuses busy sessions.'
         )
         async def reset_session_context(bot_id: str, session_id: str) -> str:
             return _dump(
-                await ap.monitoring_service.reset_session_context(
+                await invoke_application(
+                    ap,
+                    'monitoring.session.reset',
                     _authorized(Permission.RESOURCE_MANAGE),
-                    bot_id,
-                    session_id,
+                    {'bot_id': bot_id, 'session_id': session_id},
                 )
             )
 
@@ -261,18 +293,20 @@ class LangBotMCPServer:
             socket_mode: bool = False,
             redirect_url: str = '',
         ) -> str:
-            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
-
             return _dump(
-                await get_slack_setup(ap).start(
+                await invoke_application(
+                    ap,
+                    'platform.setup.slack.start',
                     _authorized(Permission.RESOURCE_MANAGE),
-                    bot_uuid=bot_uuid,
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    webhook_url=webhook_url,
-                    name=name,
-                    socket_mode=socket_mode,
-                    redirect_url=redirect_url,
+                    {
+                        'bot_uuid': bot_uuid,
+                        'access_token': access_token,
+                        'refresh_token': refresh_token,
+                        'webhook_url': webhook_url,
+                        'name': name,
+                        'socket_mode': socket_mode,
+                        'redirect_url': redirect_url,
+                    },
                 )
             )
 
@@ -280,19 +314,22 @@ class LangBotMCPServer:
             description='Read an owned Slack setup session. Success includes adapter credentials; save them with the existing bot update tool. Socket Mode additionally needs an App-Level Token with connections:write.'
         )
         async def get_slack_setup_status(session_id: str) -> str:
-            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
-
-            return _dump(get_slack_setup(ap).status(_authorized(Permission.RESOURCE_MANAGE), session_id))
+            return _dump(
+                await invoke_application(
+                    ap,
+                    'platform.setup.slack.status',
+                    _authorized(Permission.RESOURCE_MANAGE),
+                    {'session_id': session_id},
+                )
+            )
 
         @mcp.tool(
             description='Discard an owned Slack setup session and its temporary credentials. Does not delete the Slack app.'
         )
         async def cancel_slack_setup(session_id: str) -> str:
-            from langbot.pkg.api.http.service.slack_setup import get_slack_setup
-
-            service = get_slack_setup(ap)
-            service.owned(_authorized(Permission.RESOURCE_MANAGE), session_id)
-            service.discard(session_id)
+            await invoke_application(
+                ap, 'platform.setup.slack.cancel', _authorized(Permission.RESOURCE_MANAGE), {'session_id': session_id}
+            )
             return _dump({'cancelled': True})
 
         @mcp.tool(
@@ -308,14 +345,18 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(
-                await ap.monitoring_service.get_executions(
+                await invoke_application(
+                    ap,
+                    'monitoring.executions',
                     context,
-                    limit=limit,
-                    offset=offset,
-                    bot_ids=bot_ids,
-                    pipeline_ids=pipeline_ids,
-                    statuses=statuses,
-                    mode=mode,
+                    {
+                        'limit': limit,
+                        'offset': offset,
+                        'bot_ids': bot_ids,
+                        'pipeline_ids': pipeline_ids,
+                        'statuses': statuses,
+                        'mode': mode,
+                    },
                 )
             )
 
@@ -331,13 +372,17 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(
-                await ap.monitoring_service.get_execution_detail(
+                await invoke_application(
+                    ap,
+                    'monitoring.execution.detail',
                     context,
-                    source,
-                    identifier,
-                    section=section,
-                    offset=offset,
-                    limit=limit,
+                    {
+                        'source': source,
+                        'execution_id': identifier,
+                        'section': section,
+                        'offset': offset,
+                        'limit': limit,
+                    },
                 )
             )
 
@@ -345,12 +390,14 @@ class LangBotMCPServer:
         @mcp.tool(description='List all messaging-platform bots. Secrets are redacted.')
         async def list_bots() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.bot_service.get_bots(context, include_secret=False))
+            return _dump(await invoke_application(ap, 'bot.list', context, {'include_secret': False}))
 
         @mcp.tool(description='Get a single bot by its UUID. Secrets are redacted.')
         async def get_bot(bot_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.bot_service.get_bot(context, bot_uuid, include_secret=False))
+            return _dump(
+                await invoke_application(ap, 'bot.get', context, {'bot_uuid': bot_uuid, 'include_secret': False})
+            )
 
         @mcp.tool(
             description=(
@@ -363,7 +410,7 @@ class LangBotMCPServer:
         )
         async def create_bot(bot_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            return _dump({'uuid': await ap.bot_service.create_bot(context, bot_data)})
+            return _dump({'uuid': await invoke_application(ap, 'bot.create', context, {'bot_data': bot_data})})
 
         @mcp.tool(
             description=(
@@ -374,18 +421,22 @@ class LangBotMCPServer:
         )
         async def update_bot(bot_uuid: str, bot_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.bot_service.update_bot(context, bot_uuid, bot_data)
+            await invoke_application(ap, 'bot.update', context, {'bot_uuid': bot_uuid, 'bot_data': bot_data})
             return _dump({'ok': True})
 
         @mcp.tool(description='Delete a bot by UUID.')
         async def delete_bot(bot_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.bot_service.delete_bot(context, bot_uuid)
+            await invoke_application(ap, 'bot.delete', context, {'bot_uuid': bot_uuid})
             return _dump({'ok': True})
 
         @mcp.tool(description='List recent runtime route status for a bot event route table.')
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
-            return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
+            return _dump(
+                await invoke_application(
+                    ap, 'bot.routes.status', _authorized(Permission.RESOURCE_VIEW), {'bot_uuid': bot_uuid}
+                )
+            )
 
         @mcp.tool(
             description=(
@@ -396,7 +447,7 @@ class LangBotMCPServer:
         )
         async def preview_bot_group_filter_migration(bot_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.bot_service.preview_group_filter_migration(context, bot_uuid))
+            return _dump(await invoke_application(ap, 'bot.group_filter.preview', context, {'bot_uuid': bot_uuid}))
 
         @mcp.tool(
             description=(
@@ -409,10 +460,11 @@ class LangBotMCPServer:
         async def apply_bot_group_filter_migration(bot_uuid: str, disable_pipeline_at_bot: bool = True) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump(
-                await ap.bot_service.apply_group_filter_migration(
+                await invoke_application(
+                    ap,
+                    'bot.group_filter.apply',
                     context,
-                    bot_uuid,
-                    disable_pipeline_at_bot=disable_pipeline_at_bot,
+                    {'bot_uuid': bot_uuid, 'disable_pipeline_at_bot': disable_pipeline_at_bot},
                 )
             )
 
@@ -420,12 +472,12 @@ class LangBotMCPServer:
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.pipeline_service.get_pipelines(context))
+            return _dump(await invoke_application(ap, 'pipeline.list', context, {}))
 
         @mcp.tool(description='Get a single pipeline by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.pipeline_service.get_pipeline(context, pipeline_uuid))
+            return _dump(await invoke_application(ap, 'pipeline.get', context, {'pipeline_uuid': pipeline_uuid}))
 
         @mcp.tool(
             description=(
@@ -439,10 +491,8 @@ class LangBotMCPServer:
             create_as_default = pipeline_data.get('is_default') is True
             return _dump(
                 {
-                    'uuid': await ap.pipeline_service.create_pipeline(
-                        context,
-                        pipeline_data,
-                        default=create_as_default,
+                    'uuid': await invoke_application(
+                        ap, 'pipeline.create', context, {'pipeline_data': pipeline_data, 'default': create_as_default}
                     )
                 }
             )
@@ -450,25 +500,27 @@ class LangBotMCPServer:
         @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)
+            await invoke_application(
+                ap, 'pipeline.update', context, {'pipeline_uuid': pipeline_uuid, 'pipeline_data': pipeline_data}
+            )
             return _dump({'ok': True})
 
         @mcp.tool(description='Delete a pipeline by UUID.')
         async def delete_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.pipeline_service.delete_pipeline(context, pipeline_uuid)
+            await invoke_application(ap, 'pipeline.delete', context, {'pipeline_uuid': pipeline_uuid})
             return _dump({'ok': True})
 
         # ----- Processors ---------------------------------------------- #
         @mcp.tool(description='List product-level processors, including Agents, Pipelines and Event processors.')
         async def list_processors() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.agent_service.get_agents(context))
+            return _dump(await invoke_application(ap, 'agent.list', context, {}))
 
         @mcp.tool(description='Get an Agent, Pipeline or Event processor by UUID.')
         async def get_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.agent_service.get_agent(context, processor_uuid))
+            return _dump(await invoke_application(ap, 'agent.get', context, {'agent_uuid': processor_uuid}))
 
         @mcp.tool(
             description=(
@@ -480,18 +532,20 @@ class LangBotMCPServer:
         )
         async def create_processor(processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            return _dump(await ap.agent_service.create_agent(context, processor_data))
+            return _dump(await invoke_application(ap, 'agent.create', context, {'agent_data': processor_data}))
 
         @mcp.tool(description='Update an Agent, Pipeline or Event processor by UUID.')
         async def update_processor(processor_uuid: str, processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.agent_service.update_agent(context, processor_uuid, processor_data)
+            await invoke_application(
+                ap, 'agent.update', context, {'agent_uuid': processor_uuid, 'agent_data': processor_data}
+            )
             return _dump({'ok': True})
 
         @mcp.tool(description='Delete an Agent, Pipeline or Event processor by UUID.')
         async def delete_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            await ap.agent_service.delete_agent(context, processor_uuid)
+            await invoke_application(ap, 'agent.delete', context, {'agent_uuid': processor_uuid})
             return _dump({'ok': True})
 
         @mcp.tool(
@@ -499,7 +553,7 @@ class LangBotMCPServer:
         )
         async def get_processor_metadata() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.agent_service.get_agent_metadata(context))
+            return _dump(await invoke_application(ap, 'agent.metadata', context, {}))
 
         @mcp.tool(
             description='List one Agent or plugin processor run history; use before_id to page older runs. '
@@ -507,7 +561,11 @@ class LangBotMCPServer:
         )
         async def list_processor_runs(processor_uuid: str, before_id: int | None = None) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.agent_service.get_processor_runs(context, processor_uuid, before_id=before_id))
+            return _dump(
+                await invoke_application(
+                    ap, 'agent.runs.list', context, {'processor_id': processor_uuid, 'before_id': before_id}
+                )
+            )
 
         @mcp.tool(
             description='Read logs and action results for an Agent or plugin processor run; page using after_sequence.'
@@ -519,11 +577,11 @@ class LangBotMCPServer:
         ) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(
-                await ap.agent_service.get_processor_run_events(
+                await invoke_application(
+                    ap,
+                    'agent.runs.events',
                     context,
-                    processor_uuid,
-                    run_id,
-                    after_sequence=after_sequence,
+                    {'processor_id': processor_uuid, 'run_id': run_id, 'after_sequence': after_sequence},
                 )
             )
 
@@ -540,19 +598,21 @@ class LangBotMCPServer:
         )
         async def debug_agent(processor_uuid: str, payload: dict) -> str:
             context = _authorized(Permission.RUNTIME_OPERATE)
-            return _dump(await ap.agent_service.debug_agent(context, processor_uuid, payload))
+            return _dump(
+                await invoke_application(ap, 'agent.debug', context, {'agent_uuid': processor_uuid, 'payload': payload})
+            )
 
         @mcp.tool(description='Get the single starred LLM model UUID for the current Workspace.')
         async def get_starred_model() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump({'uuid': await ap.llm_model_service.get_starred_model(context)})
+            return _dump({'uuid': await invoke_application(ap, 'model.llm.starred.get', context, {})})
 
         @mcp.tool(
             description='Star one LLM model for this Workspace, replacing the previous choice. Pass null to clear.'
         )
         async def set_starred_model(model_uuid: str | None = None) -> str:
             context = _authorized(Permission.PROVIDER_SECRET_MANAGE)
-            await ap.llm_model_service.set_starred_model(context, model_uuid)
+            await invoke_application(ap, 'model.llm.starred.set', context, {'model_uuid': model_uuid})
             return _dump({'uuid': model_uuid})
 
         @mcp.tool(
@@ -560,12 +620,12 @@ class LangBotMCPServer:
         )
         async def get_default_model() -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            return _dump({'uuid': await ap.llm_model_service.get_default_model(context)})
+            return _dump({'uuid': await invoke_application(ap, 'model.llm.default.get', context, {})})
 
         @mcp.tool(description='List all configured LLM models. Secrets are redacted.')
         async def list_llm_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.llm_model_service.get_llm_models(context, include_secret=False))
+            return _dump(await invoke_application(ap, 'model.llm.list', context, {'include_secret': False}))
 
         @mcp.tool(
             description=(
@@ -576,35 +636,41 @@ class LangBotMCPServer:
         )
         async def get_llm_model(model_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.llm_model_service.get_llm_model(context, model_uuid, include_secret=False))
+            return _dump(
+                await invoke_application(
+                    ap, 'model.llm.get', context, {'model_uuid': model_uuid, 'include_secret': False}
+                )
+            )
 
         @mcp.tool(description='List all configured embedding models.')
         async def list_embedding_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.embedding_models_service.get_embedding_models(context, include_secret=False))
+            return _dump(await invoke_application(ap, 'model.embedding.list', context, {'include_secret': False}))
 
         @mcp.tool(description='List all model providers (OpenAI-compatible, Anthropic, etc.).')
         async def list_model_providers() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.provider_service.get_providers(context, include_secret=False))
+            return _dump(await invoke_application(ap, 'provider.list', context, {'include_secret': False}))
 
         # ----- Knowledge bases ----------------------------------------- #
         @mcp.tool(description='List all knowledge bases (RAG).')
         async def list_knowledge_bases() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.knowledge_service.get_knowledge_bases(context))
+            return _dump(await invoke_application(ap, 'knowledge.base.list', context, {}))
 
         @mcp.tool(description='Get a single knowledge base by UUID.')
         async def get_knowledge_base(kb_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.knowledge_service.get_knowledge_base(context, kb_uuid))
+            return _dump(await invoke_application(ap, 'knowledge.base.get', context, {'kb_uuid': kb_uuid}))
 
         @mcp.tool(
             description=('Retrieve (semantic search) from a knowledge base. Returns the matched chunks for `query`.')
         )
         async def retrieve_knowledge_base(kb_uuid: str, query: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.knowledge_service.retrieve_knowledge_base(context, kb_uuid, query))
+            return _dump(
+                await invoke_application(ap, 'knowledge.base.retrieve', context, {'kb_uuid': kb_uuid, 'query': query})
+            )
 
         # ----- MCP servers (LangBot as MCP client) --------------------- #
         @mcp.tool(
@@ -614,18 +680,18 @@ class LangBotMCPServer:
         )
         async def list_mcp_servers() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.mcp_service.get_mcp_servers(context))
+            return _dump(await invoke_application(ap, 'mcp.server.list', context, {}))
 
         # ----- Skills -------------------------------------------------- #
         @mcp.tool(description='List installed skills.')
         async def list_skills() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.skill_service.list_skills(context))
+            return _dump(await invoke_application(ap, 'skill.list', context, {}))
 
         @mcp.tool(description='Get a single skill by name.')
         async def get_skill(skill_name: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.skill_service.get_skill(context, skill_name))
+            return _dump(await invoke_application(ap, 'skill.get', context, {'skill_name': skill_name}))
 
     def tool(self, **options):
         """Register a tool boundary before its authorization and service call."""

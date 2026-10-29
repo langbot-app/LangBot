@@ -19,30 +19,20 @@ from .....agent.runner.errors import (
 )
 
 
-def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> quart.Response:
+def debug_stream_response(router, context, agent_uuid: str, payload: dict) -> quart.Response:
     async def stream():
         queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=32)
 
-        async def on_result(result: dict) -> None:
-            await queue.put({'kind': 'result', 'data': result})
-
         async def execute() -> None:
-            application = getattr(service, 'ap', None)
-            persistence_mgr = getattr(application, 'persistence_mgr', None)
-            tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
-            scope = tenant_scope(context.workspace_uuid) if callable(tenant_scope) else contextlib.nullcontext()
+            application = router.ap
             try:
-                # The streamed body is emitted after the request handler returned,
-                # so the request's tenant scope has already closed: carry the
-                # trusted Workspace identity into the deferred execution.
-                async with scope:
-                    result = await service.debug_agent(
-                        context,
-                        agent_uuid,
-                        payload,
-                        on_result=on_result,
+                async with contextlib.aclosing(
+                    router.stream_application(
+                        'agent.debug.stream', context, {'agent_uuid': agent_uuid, 'payload': payload}
                     )
-                await queue.put({'kind': 'completed', 'data': result})
+                ) as frames:
+                    async for frame in frames:
+                        await queue.put(frame)
             except Exception as exc:
                 if isinstance(exc, RunnerExecutionError):
                     code, message = exc.error_code or 'runner_execution_failed', exc.message

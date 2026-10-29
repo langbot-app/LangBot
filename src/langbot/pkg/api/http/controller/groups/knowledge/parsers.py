@@ -20,5 +20,5 @@ class ParsersRouterGroup(group.RouterGroup):
             Optional query parameter `mime_type` to filter parsers by supported MIME type.
             """
             mime_type = quart.request.args.get('mime_type')
-            parsers = await self.ap.knowledge_service.list_parsers(request_context, mime_type)
+            parsers = await self.call_application('knowledge.parser.list', request_context, {'mime_type': mime_type})
             return self.success(data={'parsers': parsers})

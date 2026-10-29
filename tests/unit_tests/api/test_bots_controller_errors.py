@@ -45,6 +45,11 @@ async def _create_test_client(bot_service: SimpleNamespace):
         apikey_service=SimpleNamespace(authenticate_api_key=AsyncMock(return_value=None)),
         workspace_collaboration_service=SimpleNamespace(resolve_account_workspace=AsyncMock(return_value=access)),
     )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        ap, SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1)
+    )
     BotsRouterGroup = import_module('langbot.pkg.api.http.controller.groups.platform.bots').BotsRouterGroup
     group = BotsRouterGroup(ap, app)
     await group.initialize()
@@ -98,6 +103,24 @@ async def test_invalid_request_body_is_actionable():
     response = await client.put('/api/v1/platform/bots/bot-1', json=[], headers={'Authorization': 'Bearer token'})
     assert response.status_code == 400
     service.update_bot.assert_not_awaited()
+
+
+@pytest.mark.parametrize('body', [{}, {'event_type': None}, {'event_type': ''}])
+async def test_dry_run_invalid_event_remains_a_successful_diagnostic(body):
+    from langbot.pkg.api.http.service.bot import BotService
+
+    client = await _create_test_client(BotService(SimpleNamespace()))
+    response = await client.post(
+        '/api/v1/platform/bots/bot-1/event-routes/dry-run',
+        json=body,
+        headers={'Authorization': 'Bearer token'},
+    )
+
+    assert response.status_code == 200
+    result = (await response.get_json())['data']
+    assert result['matched'] is False
+    assert result['failure_code'] == 'invalid_event'
+    assert result['reason'] == 'event_type is required'
 
 
 async def test_runtime_error_redacts_persisted_secrets_on_partial_update():

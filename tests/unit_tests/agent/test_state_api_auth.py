@@ -60,9 +60,11 @@ class RuntimeConnectionHandler(HostRuntimeConnectionHandler):
 
 
 @pytest.fixture
-def session_registry():
+def session_registry(monkeypatch):
     """Create a fresh session registry for each test."""
-    return AgentRunSessionRegistry()
+    registry = AgentRunSessionRegistry()
+    monkeypatch.setattr('langbot.pkg.agent.runner.session_registry._global_registry', registry)
+    return registry
 
 
 @pytest.fixture
@@ -111,7 +113,7 @@ class TestStateAPIHandlerAuthorization:
             result = await state_get_handler({'scope': 'conversation', 'key': 'test_key'})
 
             assert result.code != 0
-            assert 'run_id is required' in result.message
+            assert 'requires a trusted run context' in result.message
 
     @pytest.mark.asyncio
     async def test_state_get_run_not_found_returns_error(self, session_registry, db_engine, persistent_store):
@@ -136,7 +138,7 @@ class TestStateAPIHandlerAuthorization:
             )
 
             assert result.code != 0
-            assert 'not found' in result.message.lower()
+            assert 'does not belong to this installation' in result.message.lower()
 
     @pytest.mark.asyncio
     async def test_state_get_uses_installation_identity_when_payload_omits_caller(
@@ -151,6 +153,7 @@ class TestStateAPIHandlerAuthorization:
 
         # Register session with plugin_identity
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_test_missing_identity',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -191,6 +194,7 @@ class TestStateAPIHandlerAuthorization:
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_test_mismatch',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -230,6 +234,7 @@ class TestStateAPIHandlerAuthorization:
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_test_disabled',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -268,6 +273,7 @@ class TestStateAPIHandlerAuthorization:
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_test_scope_disabled',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -310,6 +316,7 @@ class TestStateAPIHandlerAuthorization:
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_test_no_scope_key',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -353,6 +360,7 @@ class TestStateAPIFullFlowWithRealDB:
 
         # Register session
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_full_flow',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -474,6 +482,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
 
         # Register with explicit state_policy in the authorization snapshot
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_policy_top_level',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -522,6 +531,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
 
         # Register with explicit state_context in the authorization snapshot
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_context_top_level',
             runner_id='plugin:test/runner/default',
             query_id=1,
@@ -571,6 +581,7 @@ class TestResourcesDoesNotContainStateMetadata:
         resources = make_resources()
 
         await session_registry.register(
+            workspace_id='workspace-test',
             run_id='run_resources_clean',
             runner_id='plugin:test/runner/default',
             query_id=1,

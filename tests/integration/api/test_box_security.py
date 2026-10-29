@@ -50,6 +50,11 @@ async def box_security_api():
     application.box_service.get_recent_errors = Mock(return_value=[{'error': 'private error'}])
     application.box_service.managed_admission_required = False
 
+    from tests.utils.application_api import bind_application_api
+
+    application.workspace_service = SimpleNamespace()
+    application.workspace_service.get_execution_binding = AsyncMock(return_value=SimpleNamespace(instance_uuid='instance-a'))
+    bind_application_api(application, SimpleNamespace(instance_uuid='instance-a', workspace_uuid=WORKSPACE_UUID, placement_generation=1))
     quart_app = quart.Quart(__name__)
     router = BoxRouterGroup(application, quart_app)
     await router.initialize()

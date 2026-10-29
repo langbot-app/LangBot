@@ -903,6 +903,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=900,
@@ -939,6 +940,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=901,
@@ -1017,6 +1019,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=905,
@@ -1060,6 +1063,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1116,6 +1120,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1162,6 +1167,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=902,
@@ -1226,6 +1232,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1283,6 +1290,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1329,6 +1337,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=903,
@@ -1376,6 +1385,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1476,6 +1486,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1515,6 +1526,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=907,
@@ -1557,6 +1569,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1642,6 +1655,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1681,6 +1695,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1780,6 +1795,7 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
         ]
     )
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test/runner/default',
         query_id=None,
@@ -1836,6 +1852,7 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
     registry = get_session_registry()
     run_id = 'public-platform-' + mode
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1891,6 +1908,7 @@ async def test_embedding_api_rejects_model_outside_runner_grants():
     registry = get_session_registry()
     run_id = 'embedding-ungranted'
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1987,8 +2005,8 @@ async def test_knowledge_actions_enforce_run_grants_before_resource_access(knowl
             == {
                 'unselected': 'knowledge_base kb-unselected is not authorized for operation retrieve for this agent run',
                 'operation': 'knowledge_base kb-a is not authorized for operation retrieve for this agent run',
-                'expired': 'Run session expired not found or expired',
-                'plugin': 'Plugin identity mismatch: caller test-author/test-plugin is not authorized for run_id run-a',
+                'expired': 'Run does not belong to this installation Workspace',
+                'plugin': 'Run does not belong to this installation Workspace',
             }[denial]
         )
         assert not response.data
@@ -2014,9 +2032,9 @@ async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledg
         {'run_id': 'run-b', 'kb_id': 'kb-b', 'query_text': 'hello', 'workspace_uuid': 'workspace-b'}
     )
     assert response.code != 0
-    assert response.message == 'Knowledge base kb-b not found'
+    assert response.message == 'Run does not belong to this installation Workspace'
     assert not response.data
-    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'kb-b')
+    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
     host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
 
 

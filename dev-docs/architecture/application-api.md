@@ -2,9 +2,10 @@
 
 The application package provides a callable business boundary inside Core. A
 consumer supplies a trusted identity and operation arguments, then receives a
-validated result or a stable application error. HTTP, MCP, the management
-assistant and `lbctl` retain their existing entrypoints in this change; their
-adoption of this boundary belongs in separate changes.
+validated result or a stable application error. Workspace HTTP routes, MCP tools
+and management-assistant tools invoke this boundary. Their external paths,
+response projections and authentication remain owned by each transport; `lbctl`
+continues to use the same HTTP interface.
 
 ## Workspace operations
 
@@ -109,10 +110,20 @@ messages remain with their owning boundaries. Composite HTTP response layouts
 (such as a combined monitoring page) are consumer projections of these
 operations. This does not add new platform APIs or new instance-level powers.
 
-Existing routes do not call the new application dispatcher. No SDK protocol or `lbctl` command is
-changed by this foundation.
+Workspace management consumers call the application dispatcher explicitly. HTTP
+keeps its established business-error responses and rich request audit; the
+application dispatcher does not duplicate that audit. Background assistant tools
+record their own operations after the initiating HTTP request has finished.
+
+Runtime business actions invoke `ExecutionAPI` before reaching the secured Host
+action table. The transport separates trusted caller/run identity from business
+arguments and preserves SDK response frames, structured errors and cancellation.
+Internal handshake and stream-control messages retain their own boundary. No SDK
+wire protocol or `lbctl` command changes are required.
 
 Consumer adoption should verify the same operation through each selected
 transport, including denied access, missing resources, invalid inputs,
-cancellation and secret handling. The existing Core smoke exercises current
-consumers; it does not by itself prove a new consumer integration.
+cancellation and secret handling. The Core smoke exercises the HTTP and Runtime
+protocols. Direct application tests also verify validation, isolation and business
+effects; consumer regression tests retain the established HTTP/MCP response and
+streaming contracts.

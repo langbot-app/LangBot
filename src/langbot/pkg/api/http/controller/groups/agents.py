@@ -27,10 +27,10 @@ class AgentsRouterGroup(group.RouterGroup):
         async def processor_runs(agent_uuid: str, request_context: RequestContext):
             try:
                 cursor = quart.request.args.get('before_id')
-                result = await self.ap.agent_service.get_processor_runs(
+                result = await self.call_application(
+                    'agent.runs.list',
                     request_context,
-                    agent_uuid,
-                    before_id=int(cursor) if cursor else None,
+                    {'processor_id': agent_uuid, 'before_id': int(cursor) if cursor else None},
                 )
                 return self.success(data=result)
             except ValueError as exc:
@@ -45,11 +45,10 @@ class AgentsRouterGroup(group.RouterGroup):
         async def processor_run_events(agent_uuid: str, run_id: str, request_context: RequestContext):
             try:
                 cursor = quart.request.args.get('after_sequence')
-                result = await self.ap.agent_service.get_processor_run_events(
+                result = await self.call_application(
+                    'agent.runs.events',
                     request_context,
-                    agent_uuid,
-                    run_id,
-                    after_sequence=int(cursor) if cursor else None,
+                    {'processor_id': agent_uuid, 'run_id': run_id, 'after_sequence': int(cursor) if cursor else None},
                 )
                 return self.success(data=result)
             except ValueError as exc:
@@ -65,7 +64,7 @@ class AgentsRouterGroup(group.RouterGroup):
             payload = await quart.request.get_json()
             if not isinstance(payload, dict):
                 return self.http_status(400, -1, 'Debug payload must be an object')
-            return debug_stream_response(self.ap.agent_service, request_context, agent_uuid, payload)
+            return debug_stream_response(self, request_context, agent_uuid, payload)
 
         @self.route(
             '',
@@ -79,10 +78,8 @@ class AgentsRouterGroup(group.RouterGroup):
                 sort_order = quart.request.args.get('sort_order', 'DESC')
                 return self.success(
                     data={
-                        'agents': await self.ap.agent_service.get_agents(
-                            request_context,
-                            sort_by,
-                            sort_order,
+                        'agents': await self.call_application(
+                            'agent.list', request_context, {'sort_by': sort_by, 'sort_order': sort_order}
                         )
                     }
                 )
@@ -90,7 +87,7 @@ class AgentsRouterGroup(group.RouterGroup):
             json_data = await quart.request.json
             require_permission(request_context, Permission.RESOURCE_MANAGE)
             try:
-                created = await self.ap.agent_service.create_agent(request_context, json_data)
+                created = await self.call_application('agent.create', request_context, {'agent_data': json_data})
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data=created)
@@ -102,7 +99,7 @@ class AgentsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            return self.success(data=await self.ap.agent_service.get_agent_metadata(request_context))
+            return self.success(data=await self.call_application('agent.metadata', request_context, {}))
 
         @self.route(
             '/<agent_uuid>/debug',
@@ -113,10 +110,8 @@ class AgentsRouterGroup(group.RouterGroup):
         async def _(agent_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                result = await self.ap.agent_service.debug_agent(
-                    request_context,
-                    agent_uuid,
-                    json_data or {},
+                result = await self.call_application(
+                    'agent.debug', request_context, {'agent_uuid': agent_uuid, 'payload': json_data or {}}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -160,7 +155,7 @@ class AgentsRouterGroup(group.RouterGroup):
         )
         async def _(agent_uuid: str, request_context: RequestContext) -> str:
             if quart.request.method == 'GET':
-                agent = await self.ap.agent_service.get_agent(request_context, agent_uuid)
+                agent = await self.call_application('agent.get', request_context, {'agent_uuid': agent_uuid})
                 if agent is None:
                     return self.http_status(404, -1, 'agent not found')
                 return self.success(data={'agent': agent})
@@ -169,11 +164,13 @@ class AgentsRouterGroup(group.RouterGroup):
                 require_permission(request_context, Permission.RESOURCE_MANAGE)
                 json_data = await quart.request.json
                 try:
-                    await self.ap.agent_service.update_agent(request_context, agent_uuid, json_data)
+                    await self.call_application(
+                        'agent.update', request_context, {'agent_uuid': agent_uuid, 'agent_data': json_data}
+                    )
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
                 return self.success()
 
             require_permission(request_context, Permission.RESOURCE_MANAGE)
-            await self.ap.agent_service.delete_agent(request_context, agent_uuid)
+            await self.call_application('agent.delete', request_context, {'agent_uuid': agent_uuid})
             return self.success()

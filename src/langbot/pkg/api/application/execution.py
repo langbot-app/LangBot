@@ -2,7 +2,7 @@
 
 Installation contexts are capabilities supplied by trusted Host code, never by a
 request body. A run context cannot fall back to legacy plugin-wide privileges.
-The existing runtime consumers are deliberately not routed through this facade.
+The Runtime protocol adapts its trusted envelope to this boundary.
 """
 
 from __future__ import annotations
@@ -35,6 +35,8 @@ class Output(BaseModel):
 
 
 def _input(name: str, **fields: Any) -> type[Input]:
+    if 'query_id' in fields:
+        fields['query_uuid'] = (Text | None, None)
     return create_model(name, __base__=Input, **fields)
 
 
@@ -228,6 +230,7 @@ EXECUTION_OPERATIONS = (
             tool_name=(Text, ...),
             parameters=(Object, {}),
             tool_parameters=(Object | None, None),
+            query_id=(QueryID | None, None),
         ),
         ToolOutput,
         'plugin_or_run',
@@ -632,8 +635,9 @@ def _fail(code: str, message: str, status: int = 400) -> None:
 class ExecutionAPI:
     """Invoke Host APIs with trusted installation/run capabilities, without a transport."""
 
-    def __init__(self, ap: Any):
+    def __init__(self, ap: Any, *, handler: Any = None):
         self.ap = ap
+        self._handler = handler
 
     def operations(self) -> tuple[ExecutionOperation, ...]:
         return EXECUTION_OPERATIONS
@@ -671,8 +675,8 @@ class ExecutionAPI:
                 if 'tool_parameters' in data:
                     _fail('invalid_input', 'Supply either parameters or tool_parameters')
                 data['tool_parameters'] = data.pop('parameters')
-        handler = getattr(getattr(self.ap, 'plugin_connector', None), 'handler', None)
-        if handler is None or operation.action not in handler.actions:
+        handler = self._handler or getattr(getattr(self.ap, 'plugin_connector', None), 'handler', None)
+        if handler is None or operation.action not in handler._execution_actions:
             _fail('application_error', 'The execution Host does not provide this operation', 503)
         try:
             handler.validate_inbound_action_context(operation.action, context.binding)
@@ -687,7 +691,7 @@ class ExecutionAPI:
                 except (TypeError, ValueError):
                     _fail('permission_denied', 'Installation binding is invalid or stale', 403)
                 if context.run_id is not None:
-                    if 'query_id' in data:
+                    if 'query_id' in data or 'query_uuid' in data:
                         _fail('invalid_input', 'A run context supplies its own query identity')
                     from ...agent.runner.session_registry import get_session_registry
                     from ...plugin.agent_run_support import _load_persistent_agent_run_session
@@ -702,7 +706,7 @@ class ExecutionAPI:
                     ):
                         _fail('permission_denied', 'Run does not belong to this installation Workspace', 403)
                     data['run_id'] = context.run_id
-                yield operation, handler.actions[operation.action], data
+                yield operation, handler._execution_actions[operation.action], data
         finally:
             handler._current_action_context.reset(token)
 

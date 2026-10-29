@@ -48,18 +48,38 @@ async def test_plugin_reads_mask_secrets_and_config_write_restores_persisted_val
     assert (await ops.get_plugin(ap, CONTEXT, key))['plugin']['plugin_config']['apiKey'] == '***'
     assert raw['plugin_config']['apiKey'] == 'runtime-secret'
     assert (await ops.get_config(ap, CONTEXT, key))['config']['nested']['token'] == '***'
-    await ops.update_config(
+    result = await ops.update_config(
         ap,
         CONTEXT,
         ops.ConfigInput(
             author='a', plugin_name='b', config={'apiKey': '***', 'nested': {'token': '***'}, 'enabled': True}
         ),
     )
+    assert result == {'changes': [{'field': 'enabled', 'before': False, 'after': True}]}
     assert ap.plugin_connector.set_plugin_config.await_args.args == (
         'a',
         'b',
         {'apiKey': 'stored-secret', 'nested': {'token': 'nested-secret'}, 'enabled': True},
     )
+    changed = await ops.update_config(
+        ap,
+        CONTEXT,
+        ops.ConfigInput(
+            author='a',
+            plugin_name='b',
+            config={
+                'apiKey': 'replacement-secret',
+                'nested': {'token': 'changed-secret', 'mode': 'new'},
+                'enabled': False,
+            },
+        ),
+    )
+    assert {item['field'] for item in changed['changes']} == {'nested'}
+    assert all(
+        value not in str(changed)
+        for value in ('stored-secret', 'nested-secret', 'replacement-secret', 'changed-secret')
+    )
+    assert 'new' in str(changed)
     with pytest.raises(ValueError, match='no existing value'):
         await ops.update_config(ap, CONTEXT, ops.ConfigInput(author='a', plugin_name='b', config={'password': '***'}))
 

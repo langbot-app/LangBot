@@ -39,6 +39,9 @@ async def test_extensions_route_hides_runtime_bound_to_another_workspace():
         skill_service=SimpleNamespace(list_skills=AsyncMock(return_value=[])),
     )
     quart_app = quart.Quart(__name__)
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=2))
     router = ExtensionsRouterGroup(ap, quart_app)
     await router.initialize()
 
@@ -81,6 +84,9 @@ async def test_extensions_route_redacts_plugin_secrets_without_mutating_runtime_
         skill_service=SimpleNamespace(list_skills=AsyncMock(return_value=[])),
     )
     quart_app = quart.Quart(__name__)
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=2))
     router = ExtensionsRouterGroup(ap, quart_app)
     await router.initialize()
 
@@ -131,6 +137,9 @@ async def test_extensions_parallel_reads_open_explicit_child_task_scopes():
     ap.mcp_service = SimpleNamespace(get_mcp_servers=AsyncMock(side_effect=list_mcp_servers))
     ap.skill_service = SimpleNamespace(list_skills=AsyncMock(return_value=[]))
     quart_app = quart.Quart(__name__)
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=2))
     router = ExtensionsRouterGroup(ap, quart_app)
     await router.initialize()
 

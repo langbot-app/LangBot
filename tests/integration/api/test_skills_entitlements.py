@@ -33,6 +33,12 @@ async def skills_api():
         return_value=[{'name': 'docs-only', 'description': 'No execution required'}]
     )
 
+    from tests.utils.application_api import bind_application_api
+
+    application.workspace_service = None
+    bind_application_api(
+        application, SimpleNamespace(instance_uuid='instance-a', workspace_uuid=WORKSPACE_UUID, placement_generation=1)
+    )
     quart_app = quart.Quart(__name__)
     router = SkillsRouterGroup(application, quart_app)
     await router.initialize()

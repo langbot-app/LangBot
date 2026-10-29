@@ -316,10 +316,17 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             if session_type not in ['person', 'group']:
                 return self.http_status(400, -1, 'session_type must be person or group')
 
-            websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
-            if websocket_adapter is None:
+            try:
+                messages = await self.call_application(
+                    'pipeline.chat.history',
+                    request_context,
+                    {
+                        'pipeline_uuid': pipeline_uuid,
+                        'session_type': session_type,
+                    },
+                )
+            except FileNotFoundError:
                 return self.http_status(404, -1, 'Pipeline not found')
-            messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type)
             return self.success(data={'messages': messages})
 
         @self.route(
@@ -336,10 +343,17 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             if session_type not in ['person', 'group']:
                 return self.http_status(400, -1, 'session_type must be person or group')
 
-            websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
-            if websocket_adapter is None:
+            try:
+                await self.call_application(
+                    'pipeline.chat.reset',
+                    request_context,
+                    {
+                        'pipeline_uuid': pipeline_uuid,
+                        'session_type': session_type,
+                    },
+                )
+            except FileNotFoundError:
                 return self.http_status(404, -1, 'Pipeline not found')
-            websocket_adapter.reset_session(pipeline_uuid, session_type)
             return self.success(data={'message': 'Session reset successfully'})
 
         @self.route(
@@ -349,30 +363,13 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             permission=Permission.RUNTIME_OPERATE,
         )
         async def get_connections(pipeline_uuid: str, request_context: RequestContext) -> str:
-            if await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid) is None:
+            try:
+                result = await self.call_application(
+                    'pipeline.chat.connections', request_context, {'pipeline_uuid': pipeline_uuid}
+                )
+            except FileNotFoundError:
                 return self.http_status(404, -1, 'Pipeline not found')
-
-            scope = WebSocketScope.from_context(request_context)
-            stats = ws_connection_manager.get_stats(scope=scope)
-            connections = await ws_connection_manager.get_connections_by_pipeline(
-                pipeline_uuid,
-                scope=scope,
-            )
-            return self.success(
-                data={
-                    'stats': stats,
-                    'connections': [
-                        {
-                            'connection_id': connection.connection_id,
-                            'session_type': connection.session_type,
-                            'created_at': connection.created_at.isoformat(),
-                            'last_active': connection.last_active.isoformat(),
-                            'is_active': connection.is_active,
-                        }
-                        for connection in connections
-                    ],
-                }
-            )
+            return self.success(data=result)
 
         @self.route(
             '/broadcast',
@@ -381,24 +378,21 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             permission=Permission.RUNTIME_OPERATE,
         )
         async def broadcast_message(pipeline_uuid: str, request_context: RequestContext) -> str:
-            if await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid) is None:
-                return self.http_status(404, -1, 'Pipeline not found')
-
             data = await quart.request.get_json()
             message = data.get('message')
             if not message:
                 return self.http_status(400, -1, 'message is required')
-
-            broadcast_data = {
-                'type': 'broadcast',
-                'message': message,
-                'timestamp': datetime.datetime.now().isoformat(),
-            }
-            await ws_connection_manager.broadcast_to_pipeline(
-                pipeline_uuid,
-                broadcast_data,
-                scope=WebSocketScope.from_context(request_context),
-            )
+            try:
+                await self.call_application(
+                    'pipeline.chat.broadcast',
+                    request_context,
+                    {
+                        'pipeline_uuid': pipeline_uuid,
+                        'message': message,
+                    },
+                )
+            except FileNotFoundError:
+                return self.http_status(404, -1, 'Pipeline not found')
             return self.success(data={'message': 'Broadcast sent successfully'})
 
     async def _handle_receive(

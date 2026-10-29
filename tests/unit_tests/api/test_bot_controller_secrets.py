@@ -39,7 +39,7 @@ async def create_client(*, role: str):
             bot['adapter_config'] = SECRET_CONFIG
         return [bot]
 
-    async def get_runtime_bot_info(_context, _bot_uuid, *, include_secret=False):
+    async def get_runtime_bot_info(_context, bot_uuid, *, include_secret=False):
         bot = {'uuid': 'bot-test', 'name': 'Test Bot'}
         if include_secret:
             bot['adapter_config'] = SECRET_CONFIG
@@ -65,6 +65,12 @@ async def create_client(*, role: str):
         ),
         workspace_collaboration_service=SimpleNamespace(resolve_account_workspace=AsyncMock(return_value=access)),
         bot_service=bot_service,
+    )
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(
+        application,
+        SimpleNamespace(instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1),
     )
     router = BotsRouterGroup(application, quart_app)
     await router.initialize()

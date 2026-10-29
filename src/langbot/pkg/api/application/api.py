@@ -168,6 +168,10 @@ class ApplicationAPI:
 
     async def _record(self, spec, context, observed_at, payload=None, *, outcome='ok', status=200, started=False):
         from ..context import PrincipalContext, WorkspaceContext
+        from .transport import transport_records_audit
+
+        if transport_records_audit.get():
+            return
 
         if not (
             isinstance(context, RequestContext)

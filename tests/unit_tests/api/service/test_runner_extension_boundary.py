@@ -9,8 +9,10 @@ import sqlalchemy as sa
 
 from langbot.pkg.api.http.service.pipeline import PipelineService
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 from tests.unit_tests.api.service.test_pipeline_migration import env, context, RID  # noqa: F401
+from tests.utils.application_api import bind_application_api
 
 
 @pytest.mark.asyncio
@@ -27,6 +29,7 @@ async def test_http_and_mcp_share_real_persistence_without_expanding_extensions(
     env.ap.pipeline_mgr.load_pipeline = AsyncMock()
     env.ap.pipeline_mgr.remove_pipeline = AsyncMock()
     env.ap.pipeline_service = PipelineService(env.ap)
+    bind_application_api(env.ap, context())
     app = Quart(__name__)
     routes = PipelinesRouterGroup(env.ap, app)
     monkeypatch.setattr(routes, '_authenticate_api_key', AsyncMock(return_value=context()))
@@ -43,6 +46,7 @@ async def test_http_and_mcp_share_real_persistence_without_expanding_extensions(
     }
     prefs = {'enable_all_plugins': False, 'plugins': [], 'enable_all_mcp_servers': False, 'mcp_servers': []}
     async with env.engine.begin() as conn:
+        await conn.run_sync(lambda connection: WorkspaceMetadata.__table__.create(connection, checkfirst=True))
         await conn.execute(
             sa.update(LegacyPipeline)
             .where(LegacyPipeline.uuid == 'one')

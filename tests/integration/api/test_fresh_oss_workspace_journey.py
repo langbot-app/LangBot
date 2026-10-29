@@ -77,6 +77,9 @@ async def test_fresh_oss_workspace_http_journey_uses_real_sqlite_persistence(
             application.workspace_service,
         )
         application.user_service = UserService(application)
+        from langbot.pkg.api.application import ApplicationAPI
+
+        application.application_api = ApplicationAPI(application)
 
         quart_app = Quart(__name__)
         await UserRouterGroup(application, quart_app).initialize()

@@ -16,7 +16,9 @@ class LLMModelsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/_/starred', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_starred(request_context: RequestContext) -> str:
-            return self.success(data={'uuid': await self.ap.llm_model_service.get_starred_model(request_context)})
+            return self.success(
+                data={'uuid': await self.call_application('model.llm.starred.get', request_context, {})}
+            )
 
         @self.route('/_/starred', methods=['PUT'], permission=Permission.PROVIDER_SECRET_MANAGE)
         async def set_starred(request_context: RequestContext) -> str:
@@ -25,14 +27,16 @@ class LLMModelsRouterGroup(group.RouterGroup):
             if model_uuid is not None and not isinstance(model_uuid, str):
                 return self.http_status(400, -1, 'uuid must be a string or null')
             try:
-                await self.ap.llm_model_service.set_starred_model(request_context, model_uuid)
+                await self.call_application('model.llm.starred.set', request_context, {'model_uuid': model_uuid})
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data={})
 
         @self.route('/_/default', methods=['GET'], permission=Permission.RESOURCE_MANAGE)
         async def get_default(request_context: RequestContext) -> str:
-            return self.success(data={'uuid': await self.ap.llm_model_service.get_default_model(request_context)})
+            return self.success(
+                data={'uuid': await self.call_application('model.llm.default.get', request_context, {})}
+            )
 
         @self.route(
             '',
@@ -49,15 +53,14 @@ class LLMModelsRouterGroup(group.RouterGroup):
             if error:
                 return self.http_status(400, -1, error)
             if provider_uuid:
-                models = await self.ap.llm_model_service.get_llm_models_by_provider(
+                models = await self.call_application(
+                    'model.llm.list_by_provider',
                     request_context,
-                    provider_uuid,
-                    include_secret=include_secret,
+                    {'provider_uuid': provider_uuid, 'include_secret': include_secret},
                 )
             else:
-                models = await self.ap.llm_model_service.get_llm_models(
-                    request_context,
-                    include_secret=include_secret,
+                models = await self.call_application(
+                    'model.llm.list', request_context, {'include_secret': include_secret}
                 )
             return self.success(data={'models': models})
 
@@ -69,9 +72,8 @@ class LLMModelsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                model_uuid = await self.ap.llm_model_service.create_llm_model(
-                    request_context,
-                    await quart.request.json,
+                model_uuid = await self.call_application(
+                    'model.llm.create', request_context, {'model_data': await quart.request.json}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -90,10 +92,8 @@ class LLMModelsRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            model = await self.ap.llm_model_service.get_llm_model(
-                request_context,
-                model_uuid,
-                include_secret=include_secret,
+            model = await self.call_application(
+                'model.llm.get', request_context, {'model_uuid': model_uuid, 'include_secret': include_secret}
             )
             if model is None:
                 return self.http_status(404, -1, 'model not found')
@@ -108,14 +108,12 @@ class LLMModelsRouterGroup(group.RouterGroup):
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                previous = await self.ap.llm_model_service.get_llm_model(request_context, model_uuid)
+                previous = await self.call_application('model.llm.get', request_context, {'model_uuid': model_uuid})
             except Exception:
                 previous = None
             try:
-                await self.ap.llm_model_service.update_llm_model(
-                    request_context,
-                    model_uuid,
-                    json_data,
+                await self.call_application(
+                    'model.llm.update', request_context, {'model_uuid': model_uuid, 'model_data': json_data}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -137,7 +135,7 @@ class LLMModelsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.llm_model_service.delete_llm_model(request_context, model_uuid)
+            await self.call_application('model.llm.delete', request_context, {'model_uuid': model_uuid})
             return self.success()
 
         @self.route(
@@ -148,10 +146,10 @@ class LLMModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.llm_model_service.test_llm_model(
+                await self.call_application(
+                    'model.llm.test',
                     request_context,
-                    model_uuid,
-                    await quart.request.json,
+                    {'model_uuid': model_uuid, 'model_data': await quart.request.json},
                 )
             except provider_errors.RequesterError as exc:
                 return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
@@ -176,15 +174,14 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
             if error:
                 return self.http_status(400, -1, error)
             if provider_uuid:
-                models = await self.ap.embedding_models_service.get_embedding_models_by_provider(
+                models = await self.call_application(
+                    'model.embedding.list_by_provider',
                     request_context,
-                    provider_uuid,
-                    include_secret=include_secret,
+                    {'provider_uuid': provider_uuid, 'include_secret': include_secret},
                 )
             else:
-                models = await self.ap.embedding_models_service.get_embedding_models(
-                    request_context,
-                    include_secret=include_secret,
+                models = await self.call_application(
+                    'model.embedding.list', request_context, {'include_secret': include_secret}
                 )
             return self.success(data={'models': models})
 
@@ -196,9 +193,8 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                model_uuid = await self.ap.embedding_models_service.create_embedding_model(
-                    request_context,
-                    await quart.request.json,
+                model_uuid = await self.call_application(
+                    'model.embedding.create', request_context, {'model_data': await quart.request.json}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -217,10 +213,8 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            model = await self.ap.embedding_models_service.get_embedding_model(
-                request_context,
-                model_uuid,
-                include_secret=include_secret,
+            model = await self.call_application(
+                'model.embedding.get', request_context, {'model_uuid': model_uuid, 'include_secret': include_secret}
             )
             if model is None:
                 return self.http_status(404, -1, 'model not found')
@@ -234,10 +228,10 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.embedding_models_service.update_embedding_model(
+                await self.call_application(
+                    'model.embedding.update',
                     request_context,
-                    model_uuid,
-                    await quart.request.json,
+                    {'model_uuid': model_uuid, 'model_data': await quart.request.json},
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -250,7 +244,7 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.embedding_models_service.delete_embedding_model(request_context, model_uuid)
+            await self.call_application('model.embedding.delete', request_context, {'model_uuid': model_uuid})
             return self.success()
 
         @self.route(
@@ -261,10 +255,10 @@ class EmbeddingModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.embedding_models_service.test_embedding_model(
+                await self.call_application(
+                    'model.embedding.test',
                     request_context,
-                    model_uuid,
-                    await quart.request.json,
+                    {'model_uuid': model_uuid, 'model_data': await quart.request.json},
                 )
             except provider_errors.RequesterError as exc:
                 return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
@@ -289,15 +283,14 @@ class RerankModelsRouterGroup(group.RouterGroup):
             if error:
                 return self.http_status(400, -1, error)
             if provider_uuid:
-                models = await self.ap.rerank_models_service.get_rerank_models_by_provider(
+                models = await self.call_application(
+                    'model.rerank.list_by_provider',
                     request_context,
-                    provider_uuid,
-                    include_secret=include_secret,
+                    {'provider_uuid': provider_uuid, 'include_secret': include_secret},
                 )
             else:
-                models = await self.ap.rerank_models_service.get_rerank_models(
-                    request_context,
-                    include_secret=include_secret,
+                models = await self.call_application(
+                    'model.rerank.list', request_context, {'include_secret': include_secret}
                 )
             return self.success(data={'models': models})
 
@@ -309,9 +302,8 @@ class RerankModelsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                model_uuid = await self.ap.rerank_models_service.create_rerank_model(
-                    request_context,
-                    await quart.request.json,
+                model_uuid = await self.call_application(
+                    'model.rerank.create', request_context, {'model_data': await quart.request.json}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -330,10 +322,8 @@ class RerankModelsRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            model = await self.ap.rerank_models_service.get_rerank_model(
-                request_context,
-                model_uuid,
-                include_secret=include_secret,
+            model = await self.call_application(
+                'model.rerank.get', request_context, {'model_uuid': model_uuid, 'include_secret': include_secret}
             )
             if model is None:
                 return self.http_status(404, -1, 'model not found')
@@ -347,10 +337,10 @@ class RerankModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.rerank_models_service.update_rerank_model(
+                await self.call_application(
+                    'model.rerank.update',
                     request_context,
-                    model_uuid,
-                    await quart.request.json,
+                    {'model_uuid': model_uuid, 'model_data': await quart.request.json},
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -363,7 +353,7 @@ class RerankModelsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.rerank_models_service.delete_rerank_model(request_context, model_uuid)
+            await self.call_application('model.rerank.delete', request_context, {'model_uuid': model_uuid})
             return self.success()
 
         @self.route(
@@ -374,10 +364,10 @@ class RerankModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.rerank_models_service.test_rerank_model(
+                await self.call_application(
+                    'model.rerank.test',
                     request_context,
-                    model_uuid,
-                    await quart.request.json,
+                    {'model_uuid': model_uuid, 'model_data': await quart.request.json},
                 )
             except provider_errors.RequesterError as exc:
                 return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))

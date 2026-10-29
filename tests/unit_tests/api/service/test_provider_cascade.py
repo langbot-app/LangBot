@@ -297,7 +297,10 @@ async def route_app(deletion):
             ),
         )
     )
-    ap.provider_service = SimpleNamespace(delete_provider=AsyncMock())
+    ap.provider_service = SimpleNamespace(delete_provider=AsyncMock(return_value=None))
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(ap, SimpleNamespace(instance_uuid='instance', workspace_uuid='a', placement_generation=1))
     app = quart.Quart(__name__)
     await ModelProvidersRouterGroup(ap, app).initialize()
     return app.test_client(), ap.provider_service.delete_provider, membership
@@ -316,8 +319,7 @@ async def test_route_passes_explicit_cascade_and_trusted_workspace(route_app, qu
     assert response.status_code == 200
     assert delete.await_count == 1
     assert delete.await_args.args[0].workspace_uuid == 'a'
-    assert delete.await_args.args[1] == 'target'
-    assert delete.await_args.kwargs == ({} if expected is None else {'cascade': expected})
+    assert delete.await_args.kwargs == {'provider_uuid': 'target', 'cascade': False if expected is None else expected}
 
 
 @pytest.mark.parametrize(

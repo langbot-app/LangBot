@@ -30,8 +30,11 @@ async def test_manual_routes_user_token_permissions_and_strict_request():
         WorkspaceContext('workspace', 'membership', 'viewer', permissions_for_role('viewer')),
     )
     router._resolve_account_context = AsyncMock(return_value=viewer)
+    from tests.utils.application_api import bind_application_api
+
+    bind_application_api(router.ap, viewer)
     await router.initialize()
-    router.service = NS(
+    router.ap._application_pipeline_migration_service = NS(
         preview=AsyncMock(return_value={'items': [], 'total': 0}), execute=AsyncMock(return_value={'task_id': 1})
     )
     client = app.test_client()
@@ -41,7 +44,7 @@ async def test_manual_routes_user_token_permissions_and_strict_request():
     headers = {'Authorization': 'Bearer synthetic'}
     assert (await client.get(base + '/preview', headers=headers)).status_code == 200
     assert (await client.post(base + '/execute', headers=headers, json={})).status_code == 403
-    router.service.execute.assert_not_awaited()
+    router.ap._application_pipeline_migration_service.execute.assert_not_awaited()
     manager = RequestContext(
         'instance',
         1,
@@ -51,10 +54,10 @@ async def test_manual_routes_user_token_permissions_and_strict_request():
         WorkspaceContext('workspace', 'membership', 'developer', permissions_for_role('developer')),
     )
     router._resolve_account_context.return_value = manager
-    router.service.execute.side_effect = MigrationError('confirmation_required', 400)
+    router.ap._application_pipeline_migration_service.execute.side_effect = MigrationError('confirmation_required', 400)
     response = await client.post(base + '/execute', headers=headers, json={'confirmed': 'true'})
     assert response.status_code == 400
     assert 'confirmation_required' in await response.get_data(as_text=True)
-    router.service.execute.side_effect = None
+    router.ap._application_pipeline_migration_service.execute.side_effect = None
     response = await client.post(base + '/execute', headers=headers, json={'confirmed': True, 'items': []})
     assert (await response.get_json())['data']['task_id'] == 1

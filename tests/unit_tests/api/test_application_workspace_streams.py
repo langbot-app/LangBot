@@ -13,9 +13,7 @@ from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 from langbot.pkg.api.application.service_operations import TurnInput, _assistant_service
 from langbot.pkg.api.application.workspace_streams import AgentDebugInput, agent_debug, assistant_turn
 from langbot.pkg.api.http.service.assistant import AssistantError
-from tests.unit_tests.api.test_management_assistant import context
-
-pytest_plugins = ['tests.unit_tests.api.test_management_assistant']
+from tests.unit_tests.api.test_management_assistant import assistant, context  # noqa: F401
 
 
 def scoped_app(debug):
@@ -90,7 +88,7 @@ async def test_debug_stream_applies_backpressure_and_close_cancels_producer():
 
 
 @pytest.mark.asyncio
-async def test_assistant_stream_disconnect_preserves_run_and_bounded_queue(assistant):
+async def test_assistant_stream_disconnect_preserves_run_and_bounded_queue(assistant):  # noqa: F811
     _, ap, provider = assistant
     service = _assistant_service(ap)
     release = asyncio.Event()
