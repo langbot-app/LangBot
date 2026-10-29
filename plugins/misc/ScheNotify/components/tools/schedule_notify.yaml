@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: schedule_notify
+  label:
+    en_US: Schedule Notification
+    zh_Hans: 计划通知
+  description:
+    en_US: 'Schedule a notification at a specific time'
+    zh_Hans: '在指定时间计划一个通知提醒'
+spec:
+  parameters:
+    type: object
+    properties:
+      time_str:
+        type: string
+        description: 'Time string in format "%Y-%m-%d %H:%M:%S", e.g. "2024-12-25 18:30:00". MUST call get_current_time_str first to get the current time before scheduling.'
+      message:
+        type: string
+        description: 'The notification message content to remind the user'
+    required:
+      - time_str
+      - message
+  llm_prompt: 'Schedule a notification at a specific time. IMPORTANT: You MUST call get_current_time_str first to get the latest current time before calling this function.'
+execution:
+  python:
+    path: schedule_notify.py
+    attr: ScheduleNotify

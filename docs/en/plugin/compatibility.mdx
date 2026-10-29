@@ -1,0 +1,17 @@
+---
+title: "System Compatibility"
+---
+
+LangBot's plugin system utilizes mechanisms such as `Asyncio` and `Subprocess`, which work well on Unix-like systems (such as Linux, macOS), but have some issues on Windows, preventing plugins from running properly.
+
+Python's asynchronous event loop on Windows defaults to using `ProactorEventLoop`, but this event loop lacks support for Stdio, while LangBot in non-Docker environments relies on Stdio to communicate with Plugin Runtime, and Plugin Runtime also depends on Stdio to communicate with plugins.
+
+If we switch to using `SelectorEventLoop`, it would prevent Plugin Runtime and plugins from starting properly, as `SelectorEventLoop` does not support `Subprocess`.
+
+For detailed information about these issues, please refer to: [Python Official Documentation](https://docs.python.org/3.13/library/asyncio-platforms.html)
+
+## Solution
+
+Unlike the tight coupling between subprocess management and Stdio communication on Unix-like systems, LangBot and the Plugin Runtime automatically switch to a hybrid subprocess + WebSocket communication strategy on Windows. LangBot still launches the Plugin Runtime via a subprocess, but communicates with it over WebSocket; similarly, the Plugin Runtime starts each installed plugin via subprocesses while communicating with them through WebSocket.
+
+This behavior is automatically selected based on the OS, so no manual configuration is required.

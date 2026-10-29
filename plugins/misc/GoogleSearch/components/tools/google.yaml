@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: google
+  label:
+    en_US: Google
+    zh_Hans: Google
+  description:
+    en_US: 'Search for google'
+    zh_Hans: '搜索谷歌'
+spec:
+  parameters:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 'The query to search for'
+    required:
+      - query
+  llm_prompt: 'Search for google'
+execution:
+  python:
+    path: google.py
+    attr: Google

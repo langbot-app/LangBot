@@ -1,0 +1,106 @@
+---
+title: "Webhook"
+---
+
+Webhookを使用すると、ボットメッセージイベントを外部サービスに送信して処理できます。
+
+## Webhookの設定
+
+1. LangBot WebUIで、サイドバーの「API統合」をクリックします
+2. 「Webhooks」タブに切り替えます
+3. 「+」をクリックして新しいWebhookを作成します
+4. 以下を入力します:
+   - **Name**: Webhook識別子
+   - **URL**: イベントを受信するターゲットURL
+   - **Description**: オプション
+   - **Status**: 有効または無効
+
+## イベント形式
+
+### 個人メッセージ (bot.person_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.person_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "Message content"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+### グループメッセージ (bot.group_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.group_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "group": {
+      "id": "group-id",
+      "name": "Group Name"
+    },
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "Message content"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+## レスポンス形式
+
+WebhookサービスはJSONを返す必要があります:
+
+```json
+{
+  "status": "ok",
+  "skip_pipeline": false
+}
+```
+
+### パラメーター
+
+- **status**: 処理ステータス(「ok」を推奨)
+- **skip_pipeline**: LangBotパイプライン処理をスキップするかどうか
+  - `true`: メッセージはパイプラインで続行されません
+  - `false`: メッセージは通常どおり続行されます
+
+<Tip>
+`skip_pipeline`を使用すると、メッセージ処理を完全に引き継ぐことができます。`true`の場合、メッセージはWebhookサービスによってのみ処理され、LangBotのAI機能はトリガーされません。
+</Tip>
+
+## 統合例
+
+### Dify Workflow
+
+[dify-plugin-langbot-trigger](https://github.com/langbot-app/dify-plugin-langbot-trigger)プラグインを使用して、LangBotのWebhookイベントを受信し、Difyでワークフローを作成できます。
+
+## 注意事項
+
+- Webhook URLはアクセス可能である必要があります
+- リクエストタイムアウト: 15秒
+- 失敗したリクエストは通常の処理に影響しません
+- 複数のWebhookは並行して実行されます
+- `skip_pipeline: true`を返すWebhookがある場合、パイプライン処理はスキップされます

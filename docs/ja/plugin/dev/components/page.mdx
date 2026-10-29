@@ -1,0 +1,255 @@
+---
+title: "コンポーネント：ページ"
+---
+
+Pageコンポーネントを使用すると、プラグインはLangBot WebUIのサイドバーにカスタムビジュアルページを登録できます。ページはiframeサンドボックス内で実行され、Page SDKを介してホストと通信し、プラグインのバックエンドAPIを呼び出すことができます。
+
+## ユースケース
+
+- **管理パネル**：プラグインに視覚的な設定やデータ管理インターフェースを提供（例：FAQ管理、分析ダッシュボード）
+- **データ表示**：ランタイムの統計データ、ログ、チャートなどを表示
+- **インタラクティブツール**：フォーム、エディタなどの対話式インターフェースを提供
+
+<img width="600" src="/images/zh/plugin/dev/components/plugin-page-demo.png" />
+
+## ページコンポーネントの追加
+
+プラグインディレクトリでコマンドを実行します：
+
+```bash
+lbp comp Page
+```
+
+ページ名を入力すると、`components/pages/`ディレクトリにページファイルが生成されます：
+
+```bash
+├── components
+│   └── pages
+│       └── dashboard
+│           ├── dashboard.yaml   # ページマニフェスト
+│           ├── dashboard.py     # バックエンドハンドラー
+│           ├── index.html       # ページエントリポイント
+│           └── i18n             # 翻訳ファイル（オプション）
+│               ├── en_US.json
+│               └── ja_JP.json
+```
+
+`manifest.yaml`にもコンポーネント検出設定が追加されます：
+
+```yaml
+spec:
+  components:
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 2
+```
+
+## マニフェストファイル：ページ
+
+```yaml
+apiVersion: v1  # 変更しないでください
+kind: Page  # 変更しないでください
+metadata:
+  name: dashboard  # プラグイン内で一意のページID
+  label:
+    en_US: Dashboard  # WebUIサイドバーに表示される名前、多言語対応
+    ja_JP: ダッシュボード
+spec:
+  path: index.html  # HTMLエントリファイル（このYAMLファイルからの相対パス）
+execution:
+  python:
+    path: dashboard.py  # バックエンドハンドラーファイル
+    attr: DashboardPage  # ハンドラークラス名
+```
+
+## バックエンド処理
+
+Pageコンポーネントのバックエンドハンドラーは`Page`基底クラスを継承し、`handle_api`メソッドを実装してフロントエンドページからのAPIリクエストを処理します。
+
+```python
+from langbot_plugin.api.definition.components.page import Page, PageRequest, PageResponse
+
+
+class DashboardPage(Page):
+
+    async def handle_api(self, request: PageRequest) -> PageResponse:
+        # request.endpoint: APIエンドポイントパス（例：'/stats'）
+        # request.method:   HTTPメソッド（GET、POST、PUT、DELETE）
+        # request.body:     リクエストボディ（解析済みJSON、またはNone）
+
+        if request.endpoint == '/stats' and request.method == 'GET':
+            # Host storage から現在の installation のデータを読む
+            entries = await self.load_entries_for_current_installation()
+            return PageResponse.ok({'total': len(entries)})
+
+        return PageResponse.fail(f'不明なエンドポイント: {request.endpoint}')
+```
+
+### PageRequestフィールド
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `endpoint` | `str` | APIエンドポイントパス（例：`'/entries'`） |
+| `method` | `str` | HTTPメソッド（`GET`、`POST`、`PUT`、`DELETE`） |
+| `body` | `Any` | リクエストボディ（解析済みJSON、または`None`） |
+
+### PageResponseの構築
+
+| メソッド | 説明 |
+|---------|------|
+| `PageResponse.ok(data)` | 成功レスポンス。`data`はJSON変換可能な任意の値 |
+| `PageResponse.fail(error)` | エラーレスポンス。`error`はエラーメッセージ文字列 |
+
+## フロントエンドページ開発
+
+HTMLファイルにPage SDKを読み込んで、プラグインバックエンドと通信します：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      background: var(--langbot-bg, #ffffff);
+      color: var(--langbot-text, #0a0a0a);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+  <h1 data-i18n="title">ダッシュボード</h1>
+  <p id="stats"></p>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    langbot.onReady(async function(ctx) {
+      // バックエンドAPIを呼び出す
+      var data = await langbot.api('/stats', null, 'GET');
+      document.getElementById('stats').textContent = '合計: ' + data.total;
+    });
+  </script>
+</body>
+</html>
+```
+
+### Page SDK API
+
+| メソッド | 説明 |
+|---------|------|
+| `langbot.onReady(callback)` | SDK準備完了時に呼ばれる。`callback`は`ctx`（`theme`と`language`を含む）を受け取る |
+| `langbot.api(endpoint, body?, method?)` | プラグインの`handle_api`を呼び出す。Promiseを返す |
+| `langbot.t(key, fallback?)` | 翻訳文字列を取得 |
+| `langbot.onThemeChange(callback)` | テーマ変更時のコールバック |
+| `langbot.onLanguageChange(callback)` | 言語変更時のコールバック |
+| `langbot.applyI18n()` | `data-i18n`翻訳を手動で再適用 |
+
+### ダークモード
+
+SDKはページにCSSカスタムプロパティを自動設定します。直接使用できます：
+
+| CSS変数 | 用途 |
+|---------|------|
+| `--langbot-bg` | ページ背景色 |
+| `--langbot-bg-card` | カード背景色 |
+| `--langbot-text` | メインテキスト色 |
+| `--langbot-text-muted` | サブテキスト色 |
+| `--langbot-border` | ボーダー色 |
+| `--langbot-accent` | アクセント色 |
+
+### ページi18n
+
+ページディレクトリ内に`i18n/`ディレクトリを作成し、JSON翻訳ファイルを配置します：
+
+```
+pages/dashboard/
+├── index.html
+└── i18n/
+    ├── en_US.json
+    └── ja_JP.json
+```
+
+翻訳ファイルはフラットなJSONキーバリューペアです：
+
+```json
+{
+  "title": "ダッシュボード",
+  "totalEntries": "エントリ数"
+}
+```
+
+HTML要素に`data-i18n`属性を追加すると、SDKが自動的にテキストを翻訳します：
+
+```html
+<h1 data-i18n="title">Dashboard</h1>
+```
+
+## 完全な例：FAQ管理ページ
+
+FAQエントリのCRUD操作を実装した完全なPageコンポーネントの例です。
+
+**バックエンドハンドラー**（`components/pages/manager/manager.py`）：
+
+```python
+from langbot_plugin.api.definition.components.page import Page, PageRequest, PageResponse
+
+
+class ManagerPage(Page):
+
+    async def handle_api(self, request: PageRequest) -> PageResponse:
+        if request.endpoint == '/entries' and request.method == 'GET':
+            entries = await self.load_entries_for_current_installation()
+            return PageResponse.ok({'entries': entries})
+
+        if request.endpoint == '/entries' and request.method == 'POST':
+            question = (request.body or {}).get('question', '').strip()
+            answer = (request.body or {}).get('answer', '').strip()
+            if not question or not answer:
+                return PageResponse.fail('質問と回答は必須です')
+            entry = {'question': question, 'answer': answer}
+            await self.save_entry_for_current_installation(entry)
+            return PageResponse.ok({'entry': entry})
+
+        if request.endpoint == '/entries' and request.method == 'DELETE':
+            entry_id = (request.body or {}).get('id', '')
+            if await self.delete_entry_for_current_installation(entry_id):
+                return PageResponse.ok({'deleted': entry_id})
+            return PageResponse.fail('エントリが見つかりません')
+
+        return PageResponse.fail(f'不明: {request.method} {request.endpoint}')
+```
+
+**フロントエンドページ**（`components/pages/manager/index.html`）では`langbot.api()`でバックエンドを呼び出します：
+
+```javascript
+// エントリを読み込む
+var data = await langbot.api('/entries', null, 'GET');
+
+// エントリを追加
+await langbot.api('/entries', { question: '...', answer: '...' }, 'POST');
+
+// エントリを削除
+await langbot.api('/entries', { id: '...' }, 'DELETE');
+```
+
+完全なサンプルコードは[FAQManagerプラグイン](https://github.com/langbot-app/LangBot/tree/master/plugins/misc/FAQManager)を参照してください。
+
+## 1 つの installation、複数の用途
+
+同じ Page は**複数のページリクエスト**から呼び出されます（同じ installation の別々のリクエスト、別々の Workspace）：
+
+- 前回のリクエストのデータをインスタンスに残さないでください。エンドポイント、メソッド、body、現在の installation の情報は、毎回現在の `PageRequest` / binding から取得します。
+- ページのデータは常に installation スコープの Host ストレージに置いてください。`self.plugin` はプロセスレベルの共有オブジェクトであり、テナントデータを保存できません。
+- 別々の Workspace のリクエストは同じ Page インスタンスを共有するため、インスタンスフィールドの使用が交錯します。リクエストをまたいで保持するデータは Host ストレージに置いてください。
+- installation 単位でプロセス内キャッシュを保持する場合は、`on_installation_revoked(binding)` で解放してください。
+
+完全な仕様は[認証プラグインと共有実行](/ja/plugin/certified-plugins)を参照してください。
+
+## 注意事項
+
+- ページは`sandbox="allow-scripts allow-forms"`のiframe内で実行され、ポップアップを開いたり親ページをナビゲートすることはできません
+- 認証 Page のテナントデータは installation-scoped Host storage に保存します。`self.plugin` はプロセス全体で共有されるため、テナントのエントリを保持してはいけません。上記 helper 名は説明用です。現在の SDK Host storage API を使用してください。
+- `PageResponse.ok()`と`PageResponse.fail()`を使用してレスポンスを構築し、一貫したフォーマットを確保してください
+- Page SDKの`<script>`タグは、`langbot`オブジェクトを使用するコードの前に配置する必要があります

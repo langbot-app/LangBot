@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: LongTermMemory
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LongTermMemory
+  version: 0.2.7
+  description:
+    en_US: Long-term memory plugin for LangBot. Dual-layer architecture - L1 
+      core profile (system prompt) + L2 episodic memory (RAG via vectorDB).
+    zh_Hans: LangBot 长期记忆插件。双层架构 - L1 核心画像（system prompt）+ L2 情景记忆（向量检索）。
+    zh_Hant: 長期記憶插件，為對話提供跨會話的長期記憶能力。
+    ja_JP: 長期記憶プラグイン。セッションを超えた長期記憶機能を会話に提供します。
+    vi_VN: Plugin bộ nhớ dài hạn, cung cấp khả năng ghi nhớ dài hạn xuyên phiên 
+      cho hội thoại.
+    th_TH: ปลั๊กอินความจำระยะยาว ให้ความสามารถในการจำข้ามเซสชันสำหรับการสนทนา
+    es_ES: Plugin de memoria a largo plazo que proporciona capacidad de memoria 
+      persistente entre sesiones para las conversaciones.
+  label:
+    en_US: LongTermMemory
+    zh_Hans: 长期记忆
+    zh_Hant: LongTermMemory
+    ja_JP: LongTermMemory
+    vi_VN: LongTermMemory
+    th_TH: LongTermMemory
+    es_ES: LongTermMemory
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: max_profile_traits
+    type: integer
+    label:
+      en_US: Max Profile Traits
+      zh_Hans: 画像特征上限
+    description:
+      en_US: Maximum number of traits in user profile.
+      zh_Hans: 用户画像中的最大特征条数。
+    default: 20
+  - name: max_profile_preferences
+    type: integer
+    label:
+      en_US: Max Profile Preferences
+      zh_Hans: 画像偏好上限
+    description:
+      en_US: Maximum number of preferences in user profile.
+      zh_Hans: 用户画像中的最大偏好条数。
+    default: 10
+  components:
+    KnowledgeEngine:
+      fromDirs:
+      - path: components/knowledge_engine/
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+    Tool:
+      fromDirs:
+      - path: components/tools/
+    Command:
+      fromDirs:
+      - path: components/commands/
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 2
+execution:
+  python:
+    path: main.py
+    attr: LongTermMemoryPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

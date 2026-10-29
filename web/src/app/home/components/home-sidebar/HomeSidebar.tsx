@@ -688,11 +688,14 @@ function NavItems({
         // Shared entity list renderer used by both popover and collapsible
         const renderEntityList = (inPopover: boolean) => {
           const sortedItems = isExtensionsCategory
-            ? [...items].sort((a, b) =>
-                a.name.localeCompare(b.name, undefined, {
+            ? [...items].sort((a, b) => {
+                const aDebug = Boolean(a.debug);
+                const bDebug = Boolean(b.debug);
+                if (aDebug !== bDebug) return aDebug ? -1 : 1;
+                return a.name.localeCompare(b.name, undefined, {
                   sensitivity: 'base',
-                }),
-              )
+                });
+              })
             : sortByRecent(items);
           const isExpanded = expandedLists[section]?.[categoryId] ?? false;
           const maxItems = inPopover ? 10 : MAX_VISIBLE_ITEMS;
@@ -833,6 +836,9 @@ function NavItems({
                       {t('bots.legacyAdapterBadge')}
                     </span>
                   )}
+                  {item.debug && (
+                    <Bug className="size-3.5 shrink-0 !text-orange-500 dark:!text-orange-400 ml-auto" />
+                  )}
                 </button>
               );
             }
@@ -924,7 +930,7 @@ function NavItems({
                           </span>
                         )}
                         {item.debug && (
-                          <Bug className="size-3.5 shrink-0 text-orange-400" />
+                          <Bug className="size-3.5 shrink-0 !text-orange-500 dark:!text-orange-400" />
                         )}
                       </a>
                     </SidebarMenuSubButton>

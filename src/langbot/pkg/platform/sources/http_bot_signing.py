@@ -7,7 +7,7 @@ A dependency-free, symmetric HMAC-SHA256 scheme used in *both* directions:
 
 Inbound requests are signed by the caller and verified here; outbound
 callbacks are signed here and verified by the caller. The scheme is trivial to
-reproduce in any language (see docs/platforms/http-bot.md for JS/curl).
+reproduce in any language (see dev-docs/platforms/http-bot.md for JS/curl).
 """
 
 from __future__ import annotations

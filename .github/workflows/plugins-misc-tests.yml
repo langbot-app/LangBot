@@ -1,0 +1,67 @@
+name: Plugins / Misc plugin tests
+
+on:
+  push:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/misc/**"
+      - ".github/workflows/plugins-misc-tests.yml"
+  pull_request:
+    paths:
+      - "plugins/pytest.ini"
+      - "plugins/misc/**"
+      - ".github/workflows/plugins-misc-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+
+      # Each misc plugin imports its own modules through sys.path tricks, so every
+      # suite runs in its own interpreter and its own environment; requirements.txt
+      # is the per-plugin dependency declaration (manifests do not carry them).
+      - name: Run every misc plugin suite in isolation
+        run: |
+          set -uo pipefail
+          status=0
+          ran=0
+          for plugin in misc/*/; do
+            plugin="${plugin%/}"
+            name="$(basename "$plugin")"
+            if [ ! -d "$plugin/tests" ]; then
+              echo "::notice::$name has no tests/ directory; skipped"
+              continue
+            fi
+            ran=$((ran + 1))
+            env_dir="$RUNNER_TEMP/venv-$name"
+            echo "=== $name ==="
+            uv venv "$env_dir" --python 3.11 >/dev/null
+            python_bin="$env_dir/bin/python"
+            install_args=(--python "$python_bin"
+              'https://files.pythonhosted.org/packages/f2/c7/c870377771cbe27e047b19778b5f249b15efef52409358901af94d13e6c0/langbot_plugin-0.7.4-py3-none-any.whl#sha256=596ecd776c13efa6f6cfe178463dc4a967653238548c9569195cdbb5aa47506e'
+              pytest pytest-asyncio)
+            if [ -s "$plugin/requirements.txt" ]; then
+              install_args+=(-r "$plugin/requirements.txt")
+            fi
+            uv pip install "${install_args[@]}" >/dev/null
+            "$python_bin" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"'
+            if ! (cd "$plugin" && "$python_bin" -m pytest tests -q -p no:cacheprovider); then
+              echo "::error::$name test suite failed"
+              status=1
+            fi
+          done
+          echo "Ran $ran misc suites"
+          exit $status

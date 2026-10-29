@@ -8,12 +8,15 @@ import shutil
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 import yaml
 
-from regression_job import Job, main
+from regression_job import Job, load_profile, main
+from regression_scenarios import ExecutionWindow
+from regression_suite import Suite
 from test_regression_suite import FAKE_CLI, profile
 
 
@@ -89,6 +92,36 @@ class ControlledJob(Job):
 
 
 class JobTests(unittest.TestCase):
+    def test_published_resolution_failure_is_preparation_failure_without_deployment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = ControlledJob({}, profile(), root / 'profile.json', root / 'run', 'unused')
+            with patch('regression_job.prepare_published_plugins', side_effect=RuntimeError('release unavailable')):
+                result = job.run()
+            self.assertFalse(result['passed'])
+            self.assertFalse(result['completed'])
+            self.assertEqual(result['phase'], 'plugins')
+            self.assertEqual(result['errors'], ['release unavailable'])
+            self.assertEqual(job.calls, [])
+
+    def test_job_defaults_to_published_plugins_and_keeps_explicit_profile_mode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            suite = profile()
+            suite['plugins'] = [{'source': 'local', 'file': 'developer.zip'}]
+            (root / 'suite.json').write_text(json.dumps(suite))
+            path = root / 'job.json'
+            manifest = {'version': 1, 'suite': 'suite.json', 'deployment': {'version': 'v4.11.0'}}
+            path.write_text(json.dumps(manifest))
+            self.assertEqual(load_profile(path)[1]['plugins'], [])
+            manifest['plugin_mode'] = 'profile'
+            path.write_text(json.dumps(manifest))
+            self.assertEqual(load_profile(path)[1]['plugins'], suite['plugins'])
+            manifest['plugin_manifest'] = 'previous/manifest.json'
+            path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'requires published'):
+                load_profile(path)
+
     def test_lifecycle_success_and_partial_install_recovery(self):
         class Health(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -108,8 +141,13 @@ class JobTests(unittest.TestCase):
                 cli = root / 'lbctl-test'
                 cli.write_text(f'#!{sys.executable}\n' + FAKE_CLI)
                 cli.chmod(0o700)
-                manifest = {'lbctl': str(cli), 'deployment': {'version': 'v4.11.0', 'port': 15351}}
+                manifest = {
+                    'lbctl': str(cli),
+                    'deployment': {'version': 'v4.11.0', 'port': 15351},
+                    'plugin_mode': 'profile',
+                }
                 suite = profile()
+                suite['coverage_suite'] = 'smoke'
                 suite['resources'] = [{'id': 'chat', 'kind': 'pipeline', 'body': {'name': 'QA', 'config': {'ai': {}}}}]
                 suite['cases'][0].update(args=['pipeline', 'run', '${chat}'], expect='TEST_OK')
                 suite['phases'][0].update(duration_seconds=0.5, rps=4, workers=2)
@@ -117,6 +155,7 @@ class JobTests(unittest.TestCase):
                 job = ControlledJob(manifest, suite, root / 'profile.json', root / 'success', health)
                 result = job.run()
                 self.assertTrue(result['passed'], result)
+                self.assertTrue((job.output / 'suite/coverage.json').exists())
                 self.assertEqual(result['phase'], 'cleaned')
                 self.assertFalse((job.deploy / 'data').exists())
                 self.assertFalse((job.private / 'api-key').exists())
@@ -140,6 +179,100 @@ class JobTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def test_shared_finish_cleans_owned_resources_before_environment_teardown(self):
+        for failure in ('prepare', 'finish-error', 'finish-raises'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                current = profile()
+                current.pop('phases')
+                current.update(
+                    smoke={'ledger_db': 'unused.db'},
+                    cleanup='always',
+                    execution={'total_seconds': 1, 'drain_seconds': 0.1, 'cooldown_seconds': 0.01},
+                )
+                job = Job({'cleanup': 'always'}, current, root / 'profile.json', root / 'job')
+                events, visible = [], ['owned']
+
+                def prepare():
+                    destination = job.output / 'suite'
+                    destination.mkdir()
+                    suite = job.suite = Suite(current, root / 'profile.json', destination)
+                    suite.variables['workspace_uuid'] = 'workspace'
+                    suite.owned = [{'kind': 'provider', 'uuid': 'owned'}]
+                    suite.journal()
+
+                    def call(args, body=None):
+                        if args == ['whoami']:
+                            return {'workspace_uuid': 'workspace'}
+                        if args == ['provider', 'delete', 'owned', '--yes']:
+                            events.append('delete-owned')
+                            visible.remove('owned')
+                            return {}
+                        if args == ['provider', 'list']:
+                            return {'providers': [{'uuid': item} for item in visible]}
+                        raise AssertionError(args)
+
+                    suite.call = call
+                    suite.run = lambda: {'errors': [], 'phases': []}
+                    suite.execution = ExecutionWindow(suite)
+                    suite.execution.start()
+                    if failure == 'prepare':
+                        raise RuntimeError('prepare failed after creating resource')
+                    finish = suite.finish
+
+                    def failing_finish(summary):
+                        if failure == 'finish-error':
+                            suite.execution.errors.append('health failed during execution')
+                        finish(summary)
+                        if failure == 'finish-raises':
+                            raise TypeError('finalization defect')
+
+                    suite.finish = failing_finish
+                    return suite
+
+                with (
+                    patch.object(job, 'prepare', side_effect=prepare),
+                    patch.object(job, 'collect', side_effect=lambda: events.append('collect')),
+                    patch.object(job, 'cleanup', side_effect=lambda: events.append('teardown')),
+                    patch('regression_traffic.read_endpoint_snapshot', return_value={'http.ok': 1}),
+                ):
+                    result = job.run()
+                self.assertFalse(result['passed'])
+                self.assertFalse(result['suite']['passed'])
+                self.assertEqual(result['suite']['outcome'], 'FAIL')
+                self.assertFalse(job.suite.execution.thread.is_alive())
+                self.assertEqual(events, ['delete-owned', 'collect', 'teardown'])
+                self.assertEqual(json.loads((job.output / 'suite/owned.json').read_text())['resources'], [])
+                self.assertIn('cleanup', [phase['stage'] for phase in result['suite']['execution']['phases']])
+                self.assertEqual(result['errors'], result['suite']['errors'])
+                self.assertEqual(result['completed'], failure != 'prepare')
+
+    def test_finished_state_save_failure_does_not_skip_collection_or_cleanup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job = Job({'cleanup': 'always'}, profile(), root / 'profile.json', root / 'job')
+            suite = SimpleNamespace(run=lambda: {'errors': []}, finish=lambda summary: None)
+            events = []
+            save = job.save
+
+            def failing_save():
+                if job.state['phase'] == 'finished':
+                    raise OSError('state disk unavailable')
+                save()
+
+            with (
+                patch.object(job, 'prepare', return_value=suite),
+                patch.object(job, 'save', side_effect=failing_save),
+                patch.object(job, 'collect', side_effect=lambda: events.append('collect')),
+                patch.object(job, 'cleanup', side_effect=lambda: events.append('cleanup')),
+            ):
+                result = job.run()
+            self.assertEqual(events, ['collect', 'cleanup'])
+            self.assertTrue(result['completed'])
+            self.assertFalse(result['passed'])
+            self.assertEqual(result['errors'], ['state persistence: state disk unavailable'])
+            self.assertEqual(json.loads((job.output / 'summary.json').read_text()), result)
 
     def test_cleanup_refuses_changed_deployment(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -1,7 +1,7 @@
 """E2E coverage for the official Local Agent runner with fake Host resources.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
-load the pinned official ``langbot-plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
+load the in-tree official ``plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
 that must cross Host run-scoped APIs without calling any external provider.
 """
 

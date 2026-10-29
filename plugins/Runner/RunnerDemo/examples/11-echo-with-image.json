@@ -1,0 +1,20 @@
+{
+  "event_type": "message.received",
+  "data": {
+    "sender": {
+      "id": "demo-alice",
+      "nickname": "Alice"
+    },
+    "chat_id": "demo-alice",
+    "message_chain": [
+      {
+        "type": "Plain",
+        "text": "/demo echo 你好 Runner!"
+      },
+      {
+        "type": "Image",
+        "url": "https://example.com/demo.png"
+      }
+    ]
+  }
+}

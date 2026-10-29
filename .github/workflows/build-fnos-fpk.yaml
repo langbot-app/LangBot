@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build-fnos-fpk:
+    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') && !startsWith(github.ref, 'refs/tags/plugins/') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

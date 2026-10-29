@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangRAG Observability</title>
+  <style>
+    :root {
+      --bg: var(--langbot-bg, #f7f7f4);
+      --surface: var(--langbot-bg-card, #ffffff);
+      --surface-2: #f0f2ed;
+      --surface-3: #e5e8e0;
+      --text: var(--langbot-text, #171813);
+      --muted: var(--langbot-text-muted, #687064);
+      --border: var(--langbot-border, #d8ddd3);
+      --accent: #237568;
+      --accent-strong: #145b49;
+      --amber: #9a6a13;
+      --red: #b13a32;
+      --green: #24794e;
+      --blue: #3466a6;
+      --shadow: 0 8px 24px rgba(22, 28, 20, 0.08);
+      color-scheme: light;
+    }
+
+    html.dark {
+      --bg: var(--langbot-bg, #0a0a0a);
+      --surface: var(--langbot-bg-card, #171717);
+      --surface-2: #20231f;
+      --surface-3: #252923;
+      --text: var(--langbot-text, #fafafa);
+      --muted: var(--langbot-text-muted, #a1a1aa);
+      --border: var(--langbot-border, #30332f);
+      --accent: #55b59b;
+      --accent-strong: #8bd8bf;
+      --amber: #d39b34;
+      --red: #e0645c;
+      --green: #6cc48e;
+      --blue: #7aa7e8;
+      --shadow: none;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    button, select { font: inherit; }
+
+    .shell {
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+
+    .titleline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.15;
+      font-weight: 720;
+    }
+
+    .timestamp {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn, .select {
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      background: var(--surface);
+      padding: 0 11px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+
+    .btn:hover, .select:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+    .btn.danger { color: var(--red); }
+    .btn:disabled { cursor: progress; opacity: 0.62; }
+
+    .statusline {
+      min-height: 18px;
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .statusline.error { color: var(--red); }
+
+    .health-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .health-card, .alerts-card, .metric, .panel {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .health-card {
+      padding: 14px;
+      min-height: 118px;
+    }
+
+    .health-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .health-title {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-weight: 740;
+      letter-spacing: 0.05em;
+    }
+
+    .health-value {
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 780;
+      text-transform: uppercase;
+    }
+
+    .health-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .alerts-card {
+      padding: 14px;
+      min-height: 118px;
+    }
+
+    .alert-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .alert-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(136px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      margin: 0 0 14px;
+      padding: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .tab {
+      height: 34px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .tab:hover { color: var(--text); background: var(--surface-2); }
+    .tab.active {
+      color: var(--accent-strong);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    }
+
+    .tab-count {
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--muted) 13%, transparent);
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 720;
+    }
+
+    .tab.active .tab-count {
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      color: var(--accent-strong);
+    }
+
+    .metric {
+      padding: 11px 12px;
+      min-height: 84px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric .sub {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .tab-panel[hidden] { display: none; }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      min-width: 0;
+      padding: 12px;
+    }
+
+    .panel.no-pad { padding: 0; }
+
+    .panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+
+    .panel-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 10px;
+      flex-wrap: wrap;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search {
+      width: min(420px, 100%);
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pager.compact { margin-top: 0; }
+
+    .pager .btn {
+      height: 28px;
+      box-shadow: none;
+      padding: 0 9px;
+    }
+
+    .pager .btn:disabled { cursor: default; }
+
+    .pager-meta {
+      padding: 0 3px;
+      min-width: 160px;
+      text-align: center;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 740;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .panel-count {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      min-width: 800px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    th {
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    td { font-variant-numeric: tabular-nums; }
+
+    .mono {
+      font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .muted { color: var(--muted); }
+
+    .wrap {
+      white-space: normal;
+      min-width: 220px;
+      max-width: 520px;
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 18px;
+      text-transform: uppercase;
+      background: color-mix(in srgb, var(--muted) 14%, transparent);
+      color: var(--muted);
+    }
+
+    .badge.ok {
+      background: color-mix(in srgb, var(--green) 16%, transparent);
+      color: var(--green);
+    }
+
+    .badge.fail, .badge.critical {
+      background: color-mix(in srgb, var(--red) 16%, transparent);
+      color: var(--red);
+    }
+
+    .badge.warn, .badge.warning {
+      background: color-mix(in srgb, var(--amber) 18%, transparent);
+      color: var(--amber);
+    }
+
+    .badge.info {
+      background: color-mix(in srgb, var(--blue) 16%, transparent);
+      color: var(--blue);
+    }
+
+    details.trace {
+      min-width: 240px;
+    }
+
+    details.trace summary {
+      cursor: pointer;
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .span-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .span-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) 76px;
+      gap: 8px;
+      color: var(--muted);
+    }
+
+    .empty {
+      padding: 18px 12px;
+      color: var(--muted);
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--surface) 70%, transparent);
+    }
+
+    .bars {
+      display: grid;
+      gap: 9px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr) 92px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar-label {
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bar-track {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--surface-3);
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .bar-value {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .export-box { margin-top: 0; }
+
+    .export-box textarea {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    @media (max-width: 1100px) {
+      .summary { grid-template-columns: repeat(2, minmax(136px, 1fr)); }
+      .split, .health-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      .shell { padding: 12px; }
+      .topbar { grid-template-columns: 1fr; }
+      .toolbar { justify-content: flex-start; }
+      .summary { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 92px minmax(0, 1fr) 74px; }
+      .panel-tools { align-items: stretch; }
+      .panel-actions { justify-content: flex-start; }
+      .pager { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="titleline">
+        <h1 data-i18n="title">LangRAG Observability</h1>
+        <span id="generated-at" class="timestamp" data-i18n="snapshot.none">No snapshot</span>
+      </div>
+      <div class="toolbar">
+        <select id="window-select" class="select" aria-label="Window">
+          <option value="1m">1m</option>
+          <option value="5m" selected>5m</option>
+          <option value="1h">1h</option>
+        </select>
+        <button id="refresh" class="btn primary" type="button" data-i18n="actions.refresh">Refresh</button>
+        <button id="metrics" class="btn" type="button" data-i18n="actions.metrics">Metrics</button>
+        <button id="export" class="btn" type="button" data-i18n="actions.export">Export JSON</button>
+        <button id="clear" class="btn danger" type="button" data-i18n="actions.clear">Clear</button>
+      </div>
+    </header>
+
+    <p id="status" class="statusline"></p>
+
+    <section class="health-row">
+      <article class="health-card">
+        <div class="health-head">
+          <p class="health-title" data-i18n="health.title">Health</p>
+          <span id="health-badge" class="badge ok">OK</span>
+        </div>
+        <div id="health-value" class="health-value">OK</div>
+        <div class="health-meta">
+          <span><span data-i18n="health.instance">Instance</span>: <span id="instance-id" class="mono">-</span></span>
+          <span><span data-i18n="health.uptime">Uptime</span>: <span id="uptime">-</span></span>
+          <span><span data-i18n="health.persistence">Persistence</span>: <span id="persistence">-</span></span>
+          <span><span data-i18n="health.history">History</span>: <span id="history">-</span></span>
+        </div>
+      </article>
+      <article class="alerts-card">
+        <div class="panel-head">
+          <h2 data-i18n="alerts.title">Alerts</h2>
+          <span id="alert-count" class="panel-count">0</span>
+        </div>
+        <div id="alerts" class="alert-list"></div>
+      </article>
+    </section>
+
+    <section id="summary" class="summary" aria-label="Summary"></section>
+
+    <nav class="tabs" role="tablist" aria-label="Observability sections">
+      <button id="tab-overview" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab="overview">
+        <span data-i18n="tabs.overview">Overview</span>
+      </button>
+      <button id="tab-retrieval" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-retrieval" data-tab="retrieval">
+        <span data-i18n="tabs.retrieval">Retrieval</span>
+        <span id="tab-count-retrieval" class="tab-count">0</span>
+      </button>
+      <button id="tab-ingest" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ingest" data-tab="ingest">
+        <span data-i18n="tabs.ingest">Ingest</span>
+        <span id="tab-count-ingest" class="tab-count">0</span>
+      </button>
+      <button id="tab-errors" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-errors" data-tab="errors">
+        <span data-i18n="tabs.errors">Errors</span>
+        <span id="tab-count-errors" class="tab-count">0</span>
+      </button>
+      <button id="tab-export" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-export" data-tab="export">
+        <span data-i18n="tabs.export">Export</span>
+      </button>
+    </nav>
+
+    <section class="grid">
+      <section id="panel-overview" class="tab-panel active" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
+        <div class="split">
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.window">Window Metrics</h2>
+              <span id="window-label" class="panel-count">5m</span>
+            </div>
+            <div id="window-table"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.quality">Retrieval Quality</h2>
+              <span id="quality-count" class="panel-count">0</span>
+            </div>
+            <div id="quality-bars" class="bars"></div>
+          </article>
+        </div>
+
+        <div class="split">
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.latency">Latency Percentiles</h2>
+              <span class="panel-count">p50 / p95 / p99</span>
+            </div>
+            <div id="latency-table"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.stages">Stage Breakdown</h2>
+              <span id="stage-count" class="panel-count">0</span>
+            </div>
+            <div id="stage-bars" class="bars"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="panel-ingest" class="tab-panel" role="tabpanel" aria-labelledby="tab-ingest" data-panel="ingest" hidden>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentIngest">Recent Ingest</h2>
+            <span id="ingest-count" class="panel-count">0 events</span>
+          </div>
+          <div id="ingest-table"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentDeletes">Recent Deletes</h2>
+            <span id="delete-count" class="panel-count">0 events</span>
+          </div>
+          <div id="delete-table"></div>
+        </article>
+      </section>
+
+      <section id="panel-retrieval" class="tab-panel" role="tabpanel" aria-labelledby="tab-retrieval" data-panel="retrieval" hidden>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentRetrieval">Recent Retrieval</h2>
+            <span id="retrieval-count" class="panel-count">0 events</span>
+          </div>
+          <div class="panel-tools">
+            <input id="retrieval-filter" class="search" type="search" data-i18n-placeholder="filters.retrieval" placeholder="Filter by trace, hash, search type">
+            <div class="panel-actions">
+              <select id="page-size" class="select" aria-label="Rows per page">
+                <option value="10">10 / page</option>
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+              </select>
+              <div id="retrieval-pager-top" class="pager compact"></div>
+            </div>
+          </div>
+          <div id="retrieval-table"></div>
+          <div id="retrieval-pager-bottom" class="pager"></div>
+        </article>
+      </section>
+
+      <section id="panel-errors" class="tab-panel" role="tabpanel" aria-labelledby="tab-errors" data-panel="errors" hidden>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentErrors">Recent Errors</h2>
+            <span id="error-count" class="panel-count">0 events</span>
+          </div>
+          <div id="error-table"></div>
+        </article>
+      </section>
+
+      <section id="panel-export" class="tab-panel" role="tabpanel" aria-labelledby="tab-export" data-panel="export" hidden>
+        <article class="panel export-box" id="export-box">
+          <div class="panel-head">
+            <h2 id="export-title" data-i18n="export.json">JSON Snapshot</h2>
+            <span id="export-size" class="panel-count"></span>
+          </div>
+          <textarea id="export-body" class="mono" readonly></textarea>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js" crossorigin="anonymous"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      var state = {
+        loading: false,
+        snapshot: null,
+        windowKey: "5m",
+        tab: "overview",
+        retrievalPage: 1,
+        pageSize: 25,
+        retrievalFilter: "",
+        exportMode: null,
+        status: null
+      };
+
+      var els = {
+        generatedAt: document.getElementById("generated-at"),
+        status: document.getElementById("status"),
+        summary: document.getElementById("summary"),
+        refresh: document.getElementById("refresh"),
+        metrics: document.getElementById("metrics"),
+        export: document.getElementById("export"),
+        clear: document.getElementById("clear"),
+        windowSelect: document.getElementById("window-select"),
+        windowLabel: document.getElementById("window-label"),
+        healthBadge: document.getElementById("health-badge"),
+        healthValue: document.getElementById("health-value"),
+        instanceId: document.getElementById("instance-id"),
+        uptime: document.getElementById("uptime"),
+        persistence: document.getElementById("persistence"),
+        history: document.getElementById("history"),
+        alerts: document.getElementById("alerts"),
+        alertCount: document.getElementById("alert-count"),
+        windowTable: document.getElementById("window-table"),
+        qualityCount: document.getElementById("quality-count"),
+        qualityBars: document.getElementById("quality-bars"),
+        latencyTable: document.getElementById("latency-table"),
+        stageBars: document.getElementById("stage-bars"),
+        stageCount: document.getElementById("stage-count"),
+        ingest: document.getElementById("ingest-table"),
+        retrieval: document.getElementById("retrieval-table"),
+        delete: document.getElementById("delete-table"),
+        errors: document.getElementById("error-table"),
+        ingestCount: document.getElementById("ingest-count"),
+        retrievalCount: document.getElementById("retrieval-count"),
+        deleteCount: document.getElementById("delete-count"),
+        errorCount: document.getElementById("error-count"),
+        exportBox: document.getElementById("export-box"),
+        exportTitle: document.getElementById("export-title"),
+        exportSize: document.getElementById("export-size"),
+        exportBody: document.getElementById("export-body"),
+        retrievalFilter: document.getElementById("retrieval-filter"),
+        retrievalPagerTop: document.getElementById("retrieval-pager-top"),
+        retrievalPagerBottom: document.getElementById("retrieval-pager-bottom"),
+        pageSize: document.getElementById("page-size"),
+        tabRetrievalCount: document.getElementById("tab-count-retrieval"),
+        tabIngestCount: document.getElementById("tab-count-ingest"),
+        tabErrorCount: document.getElementById("tab-count-errors")
+      };
+
+      function t(key, fallback) {
+        return window.langbot && langbot.t ? langbot.t(key, fallback || key) : (fallback || key);
+      }
+
+      function text(value, fallback) {
+        if (value === null || value === undefined || value === "") return fallback || "-";
+        return String(value);
+      }
+
+      function num(value) {
+        if (typeof value !== "number") value = Number(value || 0);
+        if (!Number.isFinite(value)) value = 0;
+        return value.toLocaleString();
+      }
+
+      function pct(value) {
+        value = Number(value || 0);
+        if (!Number.isFinite(value)) value = 0;
+        return (value * 100).toLocaleString(undefined, { maximumFractionDigits: 1 }) + "%";
+      }
+
+      function ms(value) {
+        if (value === null || value === undefined) return "-";
+        return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " ms";
+      }
+
+      function seconds(value) {
+        value = Number(value || 0);
+        if (value >= 3600) return Math.floor(value / 3600) + " h " + Math.floor((value % 3600) / 60) + " m";
+        if (value >= 60) return Math.floor(value / 60) + " m " + Math.floor(value % 60) + " s";
+        return Math.floor(value) + " s";
+      }
+
+      function shortTime(value) {
+        if (!value) return "-";
+        var parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      function escapeHtml(value) {
+        return text(value).replace(/[&<>"']/g, function (char) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char];
+        });
+      }
+
+      function statusBadge(status) {
+        var raw = text(status, "unknown").toLowerCase();
+        var cls = raw === "completed" || raw === "success" || raw === "ok" ? "ok" :
+          raw === "failed" || raw === "error" || raw === "critical" ? "fail" :
+          raw === "warning" ? "warn" : "info";
+        return "<span class=\"badge " + cls + "\">" + escapeHtml(t("status." + raw, raw)) + "</span>";
+      }
+
+      function severityBadge(severity) {
+        var raw = text(severity, "info").toLowerCase();
+        return "<span class=\"badge " + raw + "\">" + escapeHtml(t("severity." + raw, raw)) + "</span>";
+      }
+
+      function setBusy(busy) {
+        state.loading = busy;
+        [els.refresh, els.clear, els.metrics, els.export].forEach(function (el) { el.disabled = busy; });
+      }
+
+      function applyStatus() {
+        var status = state.status || {};
+        var message = status.key ? t(status.key, status.fallback) : status.message;
+        els.status.textContent = message || "";
+        els.status.className = status.isError ? "statusline error" : "statusline";
+      }
+
+      function setStatus(message, isError, key, fallback) {
+        state.status = {
+          message: message || "",
+          isError: Boolean(isError),
+          key: key || null,
+          fallback: fallback || message || ""
+        };
+        applyStatus();
+      }
+
+      function setStatusKey(key, fallback, isError) {
+        setStatus(t(key, fallback), isError, key, fallback);
+      }
+
+      function eventCountLabel(items) {
+        var count = (items || []).length;
+        return count + " " + (count === 1 ? t("labels.event", "event") : t("labels.events", "events"));
+      }
+
+      function setActiveTab(tab) {
+        state.tab = tab;
+        document.querySelectorAll(".tab").forEach(function (el) {
+          var active = el.getAttribute("data-tab") === tab;
+          el.classList.toggle("active", active);
+          el.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelectorAll(".tab-panel").forEach(function (el) {
+          var active = el.getAttribute("data-panel") === tab;
+          el.classList.toggle("active", active);
+          el.hidden = !active;
+        });
+        if (tab === "export" && !state.exportMode) {
+          state.exportMode = "json";
+          els.exportTitle.textContent = t("export.json", "JSON Snapshot");
+          els.exportBody.value = state.snapshot ? JSON.stringify(state.snapshot, null, 2) : "";
+          renderExportHeader();
+        }
+      }
+
+      function metric(label, value, sub) {
+        return [
+          "<div class=\"metric\">",
+          "<div class=\"label\">", escapeHtml(label), "</div>",
+          "<div class=\"value\">", escapeHtml(value), "</div>",
+          "<div class=\"sub\">", escapeHtml(sub || ""), "</div>",
+          "</div>"
+        ].join("");
+      }
+
+      function renderTable(target, columns, rows) {
+        if (!rows || rows.length === 0) {
+          target.innerHTML = "<div class=\"empty\">" + escapeHtml(t("empty.noEvents", "No events")) + "</div>";
+          return;
+        }
+        var head = columns.map(function (column) {
+          return "<th>" + escapeHtml(column.label) + "</th>";
+        }).join("");
+        var body = rows.map(function (row) {
+          var cells = columns.map(function (column) {
+            var value = column.render(row);
+            return "<td" + (column.className ? " class=\"" + column.className + "\"" : "") + ">" + value + "</td>";
+          }).join("");
+          return "<tr>" + cells + "</tr>";
+        }).join("");
+        target.innerHTML = "<div class=\"table-wrap\"><table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+      }
+
+      function renderPagedTable(target, pagers, columns, rows, page, pageSize, onPage) {
+        var total = (rows || []).length;
+        var pages = Math.max(1, Math.ceil(total / pageSize));
+        page = Math.min(Math.max(1, page), pages);
+        renderTable(target, columns, (rows || []).slice((page - 1) * pageSize, page * pageSize));
+        if (!total) {
+          pagers.forEach(function (pager) { pager.innerHTML = ""; });
+          return page;
+        }
+        var pagerHtml = [
+          "<button class=\"btn\" type=\"button\" data-page=\"", page - 1, "\" aria-label=\"", escapeHtml(t("pagination.previous", "Previous page")), "\"", page <= 1 ? " disabled" : "", ">‹</button>",
+          "<span class=\"pager-meta\">", escapeHtml(((page - 1) * pageSize + 1) + "-" + Math.min(total, page * pageSize) + " / " + total + " · " + t("pagination.page", "Page") + " " + page + "/" + pages), "</span>",
+          "<button class=\"btn\" type=\"button\" data-page=\"", page + 1, "\" aria-label=\"", escapeHtml(t("pagination.next", "Next page")), "\"", page >= pages ? " disabled" : "", ">›</button>"
+        ].join("");
+        pagers.forEach(function (pager) {
+          pager.innerHTML = pagerHtml;
+          pager.querySelectorAll("button[data-page]").forEach(function (button) {
+            button.addEventListener("click", function () { onPage(Number(button.getAttribute("data-page"))); });
+          });
+        });
+        return page;
+      }
+
+      function renderBars(target, rows) {
+        if (!rows || rows.length === 0) {
+          target.innerHTML = "<div class=\"empty\">" + escapeHtml(t("empty.noData", "No data")) + "</div>";
+          return;
+        }
+        var max = rows.reduce(function (acc, row) { return Math.max(acc, Number(row.value || 0)); }, 0) || 1;
+        target.innerHTML = rows.map(function (row) {
+          var width = Math.max(2, Math.min(100, Number(row.value || 0) / max * 100));
+          return [
+            "<div class=\"bar-row\">",
+            "<div class=\"bar-label\" title=\"", escapeHtml(row.label), "\">", escapeHtml(row.label), "</div>",
+            "<div class=\"bar-track\"><div class=\"bar-fill\" style=\"width:", width.toFixed(2), "%\"></div></div>",
+            "<div class=\"bar-value\">", escapeHtml(row.display), "</div>",
+            "</div>"
+          ].join("");
+        }).join("");
+      }
+
+      function operationLabel(operation) {
+        return t("operation." + operation, operation);
+      }
+
+      function traceDetails(row) {
+        var spans = row.trace_spans || [];
+        if (!spans.length) return escapeHtml(row.trace_id);
+        return [
+          "<details class=\"trace\"><summary class=\"mono\">", escapeHtml(row.trace_id), "</summary>",
+          "<div class=\"span-list\">",
+          spans.map(function (span) {
+            return [
+              "<div class=\"span-row\"><span>", escapeHtml(t("stage." + span.name, span.name)), "</span>",
+              "<span>", escapeHtml(ms(span.duration_ms)), "</span></div>"
+            ].join("");
+          }).join(""),
+          "</div></details>"
+        ].join("");
+      }
+
+      function renderHealth(snapshot) {
+        var health = snapshot.health || "ok";
+        els.healthBadge.className = "badge " + (health === "ok" ? "ok" : health === "critical" ? "critical" : "warning");
+        els.healthBadge.textContent = t("status." + health, health);
+        els.healthValue.textContent = t("status." + health, health);
+        els.instanceId.textContent = text(snapshot.instance_id);
+        els.uptime.textContent = seconds(snapshot.uptime_seconds);
+        var persistence = snapshot.persistence || {};
+        els.persistence.textContent = persistence.enabled ? t("labels.enabled", "enabled") : t("labels.disabled", "disabled");
+        els.history.textContent = num(persistence.history_events || 0);
+
+        var alerts = snapshot.alerts || [];
+        els.alertCount.textContent = num(alerts.length);
+        if (!alerts.length) {
+          els.alerts.innerHTML = "<div class=\"empty\">" + escapeHtml(t("alerts.none", "No active alerts")) + "</div>";
+          return;
+        }
+        els.alerts.innerHTML = alerts.map(function (alert) {
+          return [
+            "<div class=\"alert-item\">",
+            severityBadge(alert.severity),
+            "<div><div class=\"mono\">", escapeHtml(alert.code), "</div>",
+            "<div class=\"muted wrap\">", escapeHtml(alert.message), "</div></div>",
+            "</div>"
+          ].join("");
+        }).join("");
+      }
+
+      function renderSummary(snapshot) {
+        var counters = snapshot.counters || {};
+        var latency = snapshot.latency || {};
+        var quality = (snapshot.quality || {}).retrieval || {};
+        function count(key) { return Number(counters[key] || 0); }
+        els.summary.innerHTML = [
+          metric(t("metrics.ingests", "Ingests"), num(count("ingest.total")), num(count("ingest.chunks_created")) + " " + t("labels.chunks", "chunks")),
+          metric(t("metrics.retrievals", "Retrievals"), num(count("retrieval.total")), pct(quality.zero_result_rate || 0) + " " + t("metrics.zeroResults", "zero results")),
+          metric(t("metrics.errors", "Errors"), num((snapshot.recent || {}).errors ? snapshot.recent.errors.length : 0), num(count("ingest.failed") + count("retrieval.failed") + count("delete.failed") + count("embedding_batch.failed")) + " " + t("metrics.failedOps", "failed ops")),
+          metric(t("metrics.retrievalP95", "Retrieval p95"), ms((latency.retrieval || {}).p95), "p99 " + ms((latency.retrieval || {}).p99)),
+          metric(t("metrics.topKFill", "Top-K Fill"), pct(quality.top_k_fill_rate || 0), pct(quality.reference_coverage_rate || 0) + " " + t("metrics.references", "references"))
+        ].join("");
+      }
+
+      function renderWindow(snapshot) {
+        var windows = snapshot.windows || {};
+        var rows = [];
+        var selected = windows[state.windowKey] || {};
+        els.windowLabel.textContent = state.windowKey;
+        ["ingest", "retrieval", "embedding_batch", "delete", "all"].forEach(function (operation) {
+          var stats = selected[operation] || {};
+          rows.push({
+            operation: operation,
+            events: stats.events || 0,
+            rate: stats.rate_per_min || 0,
+            errorRate: stats.error_rate || 0,
+            zeroRate: stats.zero_result_rate || 0,
+            p95: ((stats.duration_ms || {}).p95 || 0),
+            p99: ((stats.duration_ms || {}).p99 || 0)
+          });
+        });
+        renderTable(els.windowTable, [
+          { label: t("table.operation", "Operation"), render: function (row) { return escapeHtml(operationLabel(row.operation)); } },
+          { label: t("table.events", "Events"), render: function (row) { return escapeHtml(num(row.events)); } },
+          { label: t("table.rate", "Rate/min"), render: function (row) { return escapeHtml(num(row.rate)); } },
+          { label: t("table.errorRate", "Error Rate"), render: function (row) { return escapeHtml(pct(row.errorRate)); } },
+          { label: t("table.zeroRate", "Zero Rate"), render: function (row) { return row.operation === "retrieval" ? escapeHtml(pct(row.zeroRate)) : "-"; } },
+          { label: "p95", render: function (row) { return escapeHtml(ms(row.p95)); } },
+          { label: "p99", render: function (row) { return escapeHtml(ms(row.p99)); } }
+        ], rows);
+      }
+
+      function renderQuality(snapshot) {
+        var quality = ((snapshot.quality || {}).retrieval || {});
+        els.qualityCount.textContent = num(quality.evaluated || 0);
+        renderBars(els.qualityBars, [
+          { label: t("quality.zeroResults", "Zero results"), value: quality.zero_result_rate || 0, display: pct(quality.zero_result_rate || 0) },
+          { label: t("quality.topKFill", "Top-K fill"), value: quality.top_k_fill_rate || 0, display: pct(quality.top_k_fill_rate || 0) },
+          { label: t("quality.referenceCoverage", "Reference coverage"), value: quality.reference_coverage_rate || 0, display: pct(quality.reference_coverage_rate || 0) },
+          { label: t("quality.rerank", "Rerank usage"), value: quality.rerank_rate || 0, display: pct(quality.rerank_rate || 0) },
+          { label: t("quality.filtered", "Filtered queries"), value: quality.filtered_rate || 0, display: pct(quality.filtered_rate || 0) }
+        ]);
+      }
+
+      function renderLatency(snapshot) {
+        var latency = snapshot.latency || {};
+        var rows = Object.keys(latency).filter(function (key) { return key !== "unknown"; }).map(function (operation) {
+          return { operation: operation, stats: latency[operation] || {} };
+        });
+        renderTable(els.latencyTable, [
+          { label: t("table.operation", "Operation"), render: function (row) { return escapeHtml(operationLabel(row.operation)); } },
+          { label: t("table.count", "Count"), render: function (row) { return escapeHtml(num(row.stats.count || 0)); } },
+          { label: t("table.avg", "Avg"), render: function (row) { return escapeHtml(ms(row.stats.avg)); } },
+          { label: "p50", render: function (row) { return escapeHtml(ms(row.stats.p50)); } },
+          { label: "p95", render: function (row) { return escapeHtml(ms(row.stats.p95)); } },
+          { label: "p99", render: function (row) { return escapeHtml(ms(row.stats.p99)); } },
+          { label: t("table.max", "Max"), render: function (row) { return escapeHtml(ms(row.stats.max)); } }
+        ], rows);
+      }
+
+      function renderStages(snapshot) {
+        var latency = snapshot.latency || {};
+        var rows = [];
+        Object.keys(latency).forEach(function (operation) {
+          var stages = latency[operation].stages_ms || {};
+          Object.keys(stages).forEach(function (stage) {
+            rows.push({
+              label: operationLabel(operation) + " / " + t("stage." + stage, stage),
+              value: (stages[stage] || {}).p95 || 0,
+              display: ms((stages[stage] || {}).p95 || 0)
+            });
+          });
+        });
+        rows.sort(function (a, b) { return b.value - a.value; });
+        els.stageCount.textContent = num(rows.length);
+        renderBars(els.stageBars, rows.slice(0, 12));
+      }
+
+      function renderRecent(snapshot) {
+        var recent = snapshot.recent || {};
+        var ingest = recent.ingest || [];
+        var retrieval = recent.retrieval || [];
+        var deletes = recent.delete || [];
+        var errors = recent.errors || [];
+        var filter = state.retrievalFilter.trim().toLowerCase();
+        var filteredRetrieval = retrieval.filter(function (row) {
+          if (!filter) return true;
+          return [
+            row.trace_id,
+            row.collection_id,
+            row.collection_id_hash,
+            row.knowledge_base_id_hash,
+            row.query_hash,
+            row.search_type,
+            row.status,
+            row.error,
+            JSON.stringify(row.retrieval_settings || {})
+          ].join(" ").toLowerCase().indexOf(filter) !== -1;
+        });
+
+        els.ingestCount.textContent = eventCountLabel(ingest);
+        els.retrievalCount.textContent = eventCountLabel(filteredRetrieval) + (filter ? " / " + retrieval.length : "");
+        els.deleteCount.textContent = eventCountLabel(deletes);
+        els.errorCount.textContent = eventCountLabel(errors);
+        els.tabIngestCount.textContent = num(ingest.length + deletes.length);
+        els.tabRetrievalCount.textContent = num(retrieval.length);
+        els.tabErrorCount.textContent = num(errors.length);
+
+        renderTable(els.ingest, [
+          { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
+          { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
+          { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
+          { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
+          { label: t("table.parser", "Parser"), render: function (row) { return escapeHtml(row.parser_source); } },
+          { label: t("table.index", "Index"), render: function (row) { return escapeHtml(row.index_type); } },
+          { label: t("table.chunks", "Chunks"), render: function (row) { return escapeHtml(row.chunks_created); } },
+          { label: t("table.sections", "Sections"), render: function (row) { return escapeHtml(row.sections_count); } },
+          { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
+          { label: t("table.error", "Error"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
+        ], ingest);
+
+        state.retrievalPage = renderPagedTable(els.retrieval, [els.retrievalPagerTop, els.retrievalPagerBottom], [
+          { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
+          { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
+          { label: t("table.trace", "Trace"), render: traceDetails },
+          { label: t("table.queryHash", "Query Hash"), className: "mono", render: function (row) { return escapeHtml(row.query_hash); } },
+          { label: t("table.search", "Search"), render: function (row) { return escapeHtml(row.search_type); } },
+          { label: t("table.raw", "Raw"), render: function (row) { return escapeHtml(row.raw_count); } },
+          { label: t("table.returned", "Returned"), render: function (row) { return escapeHtml(row.result_count); } },
+          { label: t("table.references", "Refs"), render: function (row) { return escapeHtml(row.reference_count); } },
+          { label: t("table.rerank", "Rerank"), render: function (row) { return escapeHtml(row.reranked === true ? t("labels.yes", "yes") : row.reranked === false ? t("labels.no", "no") : "-"); } },
+          { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
+          { label: t("table.error", "Error"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
+        ], filteredRetrieval, state.retrievalPage, state.pageSize, function (page) {
+          state.retrievalPage = page;
+          renderRecent(state.snapshot);
+        });
+
+        renderTable(els.delete, [
+          { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
+          { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
+          { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
+          { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
+          { label: t("table.collection", "Collection"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.collection_id_hash); } },
+          { label: t("table.deleted", "Deleted"), render: function (row) { return escapeHtml(row.deleted === true ? t("labels.yes", "yes") : row.deleted === false ? t("labels.no", "no") : "-"); } },
+          { label: t("table.vectors", "Vectors"), render: function (row) { return escapeHtml(row.vectors_deleted); } },
+          { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
+          { label: t("table.error", "Error"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
+        ], deletes);
+
+        renderTable(els.errors, [
+          { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
+          { label: t("table.operation", "Operation"), render: function (row) { return escapeHtml(operationLabel(row.operation)); } },
+          { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
+          { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
+          { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
+          { label: t("table.query", "Query"), className: "mono", render: function (row) { return escapeHtml(row.query_hash); } },
+          { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
+          { label: t("table.message", "Message"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
+        ], errors);
+      }
+
+      function renderSnapshot(snapshot) {
+        state.snapshot = snapshot;
+        els.generatedAt.textContent = t("snapshot.label", "Snapshot") + " " + shortTime(snapshot.generated_at);
+        renderHealth(snapshot);
+        renderSummary(snapshot);
+        renderWindow(snapshot);
+        renderQuality(snapshot);
+        renderLatency(snapshot);
+        renderStages(snapshot);
+        renderRecent(snapshot);
+      }
+
+      function renderExportHeader() {
+        if (!state.exportMode) return;
+        var titleKey = state.exportMode === "metrics" ? "export.metrics" : "export.json";
+        var fallback = state.exportMode === "metrics" ? "Prometheus Metrics" : "JSON Snapshot";
+        els.exportTitle.textContent = t(titleKey, fallback);
+        els.exportSize.textContent = num((els.exportBody.value || "").length) + " " + t("labels.bytes", "bytes");
+      }
+
+      function refreshPlaceholders() {
+        els.retrievalFilter.placeholder = t("filters.retrieval", "Filter by trace, hash, search type");
+      }
+
+      async function loadSnapshot() {
+        if (state.loading) return;
+        setBusy(true);
+        setStatusKey("statusText.refreshing", "Refreshing...", false);
+        try {
+          var snapshot = await langbot.api("/snapshot", null, "GET");
+          renderSnapshot(snapshot);
+          setStatusKey("statusText.ready", "Ready", false);
+        } catch (err) {
+          if (err && err.message) {
+            setStatus(err.message, true);
+          } else {
+            setStatusKey("statusText.refreshFailed", "Refresh failed", true);
+          }
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function clearSnapshot() {
+        if (state.loading) return;
+        setBusy(true);
+        setStatusKey("statusText.clearing", "Clearing...", false);
+        try {
+          var snapshot = await langbot.api("/clear", {}, "POST");
+          renderSnapshot(snapshot);
+          setStatusKey("statusText.cleared", "Cleared", false);
+        } catch (err) {
+          if (err && err.message) {
+            setStatus(err.message, true);
+          } else {
+            setStatusKey("statusText.clearFailed", "Clear failed", true);
+          }
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function showMetrics() {
+        if (state.loading) return;
+        setBusy(true);
+        try {
+          var payload = await langbot.api("/metrics", null, "GET");
+          setActiveTab("export");
+          state.exportMode = "metrics";
+          els.exportBody.value = payload.body || "";
+          renderExportHeader();
+          setStatusKey("statusText.metricsReady", "Metrics ready", false);
+        } catch (err) {
+          if (err && err.message) {
+            setStatus(err.message, true);
+          } else {
+            setStatusKey("statusText.metricsFailed", "Metrics export failed", true);
+          }
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function showExport() {
+        if (!state.snapshot) return;
+        var body = JSON.stringify(state.snapshot, null, 2);
+        setActiveTab("export");
+        state.exportMode = "json";
+        els.exportBody.value = body;
+        renderExportHeader();
+        setStatusKey("statusText.exportReady", "JSON export ready", false);
+      }
+
+      els.refresh.addEventListener("click", loadSnapshot);
+      els.clear.addEventListener("click", clearSnapshot);
+      els.metrics.addEventListener("click", showMetrics);
+      els.export.addEventListener("click", showExport);
+      els.windowSelect.addEventListener("change", function (event) {
+        state.windowKey = event.target.value;
+        if (state.snapshot) renderWindow(state.snapshot);
+      });
+      els.retrievalFilter.addEventListener("input", function (event) {
+        state.retrievalFilter = event.target.value;
+        state.retrievalPage = 1;
+        if (state.snapshot) renderRecent(state.snapshot);
+      });
+      els.pageSize.addEventListener("change", function (event) {
+        state.pageSize = Number(event.target.value) || 25;
+        state.retrievalPage = 1;
+        if (state.snapshot) renderRecent(state.snapshot);
+      });
+      document.querySelectorAll(".tab").forEach(function (button) {
+        button.addEventListener("click", function () {
+          setActiveTab(button.getAttribute("data-tab"));
+        });
+        button.addEventListener("keydown", function (event) {
+          var keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+          if (keys.indexOf(event.key) === -1) return;
+          event.preventDefault();
+          var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+          var index = tabs.indexOf(button);
+          if (event.key === "Home") index = 0;
+          if (event.key === "End") index = tabs.length - 1;
+          if (event.key === "ArrowLeft") index = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === "ArrowRight") index = (index + 1) % tabs.length;
+          tabs[index].focus();
+          setActiveTab(tabs[index].getAttribute("data-tab"));
+        });
+      });
+
+      langbot.onLanguageChange(function () {
+        refreshPlaceholders();
+        if (state.snapshot) renderSnapshot(state.snapshot);
+        renderExportHeader();
+        applyStatus();
+      });
+      langbot.onReady(function () {
+        refreshPlaceholders();
+        loadSnapshot();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="title">Memory Console</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: var(--langbot-bg, #f6f7f9);
+      --surface: var(--langbot-bg-card, #ffffff);
+      --surface-soft: #f8fafc;
+      --text: var(--langbot-text, #111827);
+      --muted: var(--langbot-text-muted, #64748b);
+      --border: var(--langbot-border, #dbe2ea);
+      --accent: var(--langbot-accent, #2563eb);
+      --accent-soft: rgba(37, 99, 235, .09);
+      --ok: #047857;
+      --warn: #b45309;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+    button.danger {
+      color: var(--danger);
+      border-color: #efb4b4;
+      background: #fff7f7;
+    }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    input, select, textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 7px 9px;
+      outline: none;
+    }
+    textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+    h1 {
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    h2 { font-size: 16px; }
+    h3 { font-size: 14px; }
+    pre {
+      margin: 0;
+      max-height: 420px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .shell {
+      width: min(1240px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 22px 0 36px;
+    }
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+    }
+    .muted { color: var(--muted); }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1.15fr repeat(3, minmax(0, .75fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric, .surface {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .metric { padding: 13px; }
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric-value {
+      margin-top: 6px;
+      font-size: 23px;
+      font-weight: 720;
+      line-height: 1;
+    }
+    .status-row, .actions, .tags, .item-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-row { margin-top: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      padding: 2px 8px;
+      font-size: 12px;
+    }
+    .pill.ok {
+      color: var(--ok);
+      border-color: #a7dfc4;
+      background: #ecfdf5;
+    }
+    .pill.warn {
+      color: var(--warn);
+      border-color: #f1c27d;
+      background: #fff7ed;
+    }
+    .pill.danger {
+      color: var(--danger);
+      border-color: #efb4b4;
+      background: #fff7f7;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .side-stack, .content-stack, .list {
+      display: grid;
+      gap: 12px;
+    }
+    .surface { padding: 14px; }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .field { margin-bottom: 10px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .scope-card {
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+      overflow-wrap: anywhere;
+    }
+    .scope-key {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      padding: 0 0 8px;
+      margin-bottom: 14px;
+      overflow-x: auto;
+    }
+    .tab.active {
+      color: #fff;
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) 150px 110px;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+    .toolbar.compact {
+      grid-template-columns: 170px 110px auto;
+    }
+    .notice, .empty, .item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 12px;
+    }
+    .empty, .notice { color: var(--muted); }
+    .error {
+      color: var(--danger);
+      border-color: #fecaca;
+      background: #fff7f7;
+    }
+    .item {
+      display: grid;
+      gap: 8px;
+      background: var(--surface);
+    }
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .item-title {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 650;
+    }
+    .item-content { overflow-wrap: anywhere; }
+    .raw {
+      display: none;
+      margin-top: 12px;
+    }
+    .raw.open { display: block; }
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    @media (max-width: 980px) {
+      .metrics, .layout, .grid-2, .toolbar, .toolbar.compact {
+        grid-template-columns: 1fr;
+      }
+      .topbar { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <h1 data-i18n="title">Memory Console</h1>
+        <div class="subtitle" data-i18n="consoleSubtitle">Manage profiles, episodic memories, and maintenance records.</div>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" class="primary" data-i18n="refresh">Refresh</button>
+      </div>
+    </header>
+
+    <section class="metrics">
+      <div class="metric">
+        <div class="metric-label" data-i18n="systemStatus">System Status</div>
+        <div class="status-row">
+          <span id="kbStatus" class="pill warn">-</span>
+          <span id="scopeStatus" class="pill warn">-</span>
+        </div>
+      </div>
+      <div class="metric">
+        <div class="metric-label" data-i18n="memorySpaces">Memory Spaces</div>
+        <div id="scopeCount" class="metric-value">-</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label" data-i18n="profiles">Profiles</div>
+        <div id="profileCount" class="metric-value">-</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label" data-i18n="speakers">Speakers</div>
+        <div id="speakerProfileCount" class="metric-value">-</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <aside class="side-stack">
+        <div class="surface">
+          <div class="section-head">
+            <h2 data-i18n="memorySpace">Memory Space</h2>
+          </div>
+          <div class="field">
+            <label for="scopeSelect" data-i18n="knownScope">Known space</label>
+            <select id="scopeSelect"></select>
+          </div>
+          <div class="field">
+            <label for="speakerSelect" data-i18n="speaker">Speaker</label>
+            <select id="speakerSelect"></select>
+          </div>
+          <div class="scope-card">
+            <span class="scope-key">scope_key</span>
+            <div id="scopePreview">-</div>
+            <span class="scope-key" style="margin-top: 8px;">user_key</span>
+            <div id="userPreview">-</div>
+          </div>
+          <div class="actions" style="margin-top: 12px;">
+            <button id="loadProfileBtn" class="primary" data-i18n="loadProfiles">Load Profiles</button>
+          </div>
+        </div>
+
+        <div class="surface">
+          <div class="section-head">
+            <h2 data-i18n="knowledgeBase">Knowledge Base</h2>
+          </div>
+          <div class="field">
+            <label for="kbSelect" data-i18n="memoryKb">Memory KB</label>
+            <select id="kbSelect"></select>
+          </div>
+          <div id="kbDetail" class="muted">-</div>
+        </div>
+
+        <div class="surface">
+          <div class="section-head">
+            <h2 data-i18n="advancedLocation">Advanced</h2>
+            <button id="toggleRawBtn" data-i18n="toggleRaw">Raw</button>
+          </div>
+          <div class="field">
+            <label for="botUuid">bot_uuid</label>
+            <input id="botUuid" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="sessionName">session_name</label>
+            <input id="sessionName" autocomplete="off" placeholder="group_123">
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="isolation">isolation</label>
+              <select id="isolation">
+                <option value="session">session</option>
+                <option value="bot">bot</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="deriveBtn" data-i18n="derive">Derive</button>
+            </div>
+          </div>
+          <div class="raw" id="rawFields">
+            <div class="field">
+              <label for="scopeKey">scope_key</label>
+              <input id="scopeKey" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="userKey">user_key</label>
+              <input id="userKey" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="senderId">sender_id</label>
+              <input id="senderId" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="collectionId">collection_id</label>
+              <input id="collectionId" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="embeddingModel">embedding_model_uuid</label>
+              <input id="embeddingModel" autocomplete="off">
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="surface">
+        <div class="tabs">
+          <button class="tab active" data-tab="profiles" data-i18n="profiles">Profiles</button>
+          <button class="tab" data-tab="episodes" data-i18n="episodes">Episodes</button>
+          <button class="tab" data-tab="injection" data-i18n="injection">Injection</button>
+          <button class="tab" data-tab="audit" data-i18n="audit">Audit</button>
+          <button class="tab" data-tab="exports" data-i18n="exports">Export</button>
+          <button class="tab" data-tab="diagnostics" data-i18n="diagnostics">Diagnostics</button>
+        </div>
+
+        <section id="profilesTab" class="tab-panel">
+          <div id="profileOutput" class="content-stack"></div>
+        </section>
+
+        <section id="episodesTab" class="tab-panel" style="display:none;">
+          <div class="toolbar">
+            <div class="field">
+              <label for="episodeQuery" data-i18n="query">Query</label>
+              <textarea id="episodeQuery"></textarea>
+            </div>
+            <div class="field">
+              <label for="episodeStatus" data-i18n="status">Status</label>
+              <select id="episodeStatus">
+                <option value="active" data-i18n="statusActive">Active</option>
+                <option value="superseded" data-i18n="statusSuperseded">Superseded</option>
+                <option value="archived" data-i18n="statusArchived">Archived</option>
+                <option value="deleted" data-i18n="statusDeleted">Deleted</option>
+                <option value="all" data-i18n="statusAll">All</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="pageNo" data-i18n="page">Page</label>
+              <input id="pageNo" type="number" min="1" value="1">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="source">source</label>
+              <input id="source" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="importanceMin">importance_min</label>
+              <input id="importanceMin" type="number" min="1" max="5">
+            </div>
+          </div>
+          <div class="actions" style="margin-bottom: 12px;">
+            <button id="listEpisodesBtn" data-i18n="listEpisodes">List</button>
+            <button id="searchEpisodesBtn" class="primary" data-i18n="searchEpisodes">Search</button>
+          </div>
+          <div id="episodesOutput" class="list"></div>
+          <div id="episodesPager" class="pager" style="display:none;">
+            <button id="episodesPrev" data-i18n="prev">Prev</button>
+            <span id="episodesPageInfo" class="muted"></span>
+            <button id="episodesNext" data-i18n="next">Next</button>
+          </div>
+        </section>
+
+        <section id="injectionTab" class="tab-panel" style="display:none;">
+          <div class="actions" style="margin-bottom: 12px;">
+            <button id="loadInjectionBtn" class="primary" data-i18n="loadInjection">Load Last Injection</button>
+            <span class="muted" data-i18n="injectionHint">What memory the bot actually injected on the latest turn for this space.</span>
+          </div>
+          <div id="injectionOutput" class="content-stack"></div>
+        </section>
+
+        <section id="auditTab" class="tab-panel" style="display:none;">
+          <div class="toolbar compact">
+            <div class="field">
+              <label for="auditPage" data-i18n="page">Page</label>
+              <input id="auditPage" type="number" min="1" value="1">
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="loadAuditBtn" class="primary" data-i18n="loadAudit">Load Audit</button>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="exportAuditBtn" data-i18n="exportAudit">Export Audit</button>
+            </div>
+          </div>
+          <div id="auditOutput" class="list"></div>
+          <div id="auditPager" class="pager" style="display:none;">
+            <button id="auditPrev" data-i18n="prev">Prev</button>
+            <span id="auditPageInfo" class="muted"></span>
+            <button id="auditNext" data-i18n="next">Next</button>
+          </div>
+        </section>
+
+        <section id="exportsTab" class="tab-panel" style="display:none;">
+          <div class="toolbar compact">
+            <div class="field">
+              <label for="exportStatus" data-i18n="episodeExportStatus">Episode status</label>
+              <select id="exportStatus">
+                <option value="active" data-i18n="statusActive">Active</option>
+                <option value="all" data-i18n="statusAll">All</option>
+                <option value="superseded" data-i18n="statusSuperseded">Superseded</option>
+                <option value="archived" data-i18n="statusArchived">Archived</option>
+                <option value="deleted" data-i18n="statusDeleted">Deleted</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="exportProfilesBtn" data-i18n="exportProfiles">Export Profiles</button>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="exportEpisodesBtn" class="primary" data-i18n="exportEpisodes">Export Episodes</button>
+            </div>
+          </div>
+          <div class="notice"><pre id="exportOutput"></pre></div>
+        </section>
+
+        <section id="diagnosticsTab" class="tab-panel" style="display:none;">
+          <div class="actions" style="margin-bottom: 12px;">
+            <button id="runHealthBtn" class="primary" data-i18n="runHealth">Run Health Check</button>
+            <span id="healthSummary" class="pill">-</span>
+          </div>
+          <div id="healthOutput" class="list"></div>
+          <div class="actions" style="margin-top: 16px; margin-bottom: 12px;">
+            <button id="clearFenceBtn" data-i18n="clearFence">Clear Fence</button>
+            <span id="fenceSummary" class="pill">-</span>
+            <span class="muted" data-i18n="fenceHint">An ambiguous Host write fences its memory space until it is reconciled.</span>
+          </div>
+          <div id="fenceOutput" class="list"></div>
+          <div class="section-head" style="margin-top: 16px;">
+            <h3 data-i18n="rawSummary">Raw summary</h3>
+          </div>
+          <div class="notice"><pre id="diagnosticsOutput"></pre></div>
+        </section>
+      </main>
+    </section>
+  </div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const EPISODE_STATUSES = ['active', 'superseded', 'archived', 'deleted'];
+    let summary = null;
+    let lastEpisodeMode = 'list';
+
+    const text = {
+      empty: 'No data',
+      noScope: 'No memory space selected.',
+      noKb: 'No memory knowledge base is configured.',
+      deriveFirst: 'Choose a known memory space or derive one from session_name.',
+      queryRequired: 'Enter a search query.',
+      delete: 'Delete',
+      archive: 'Archive',
+      restore: 'Restore',
+      confirmDelete: 'Permanently delete this episode?',
+      kbReady: 'KB configured',
+      kbMissing: 'KB missing',
+      scopeReady: 'Space selected',
+      scopeMissing: 'No space',
+      allSpeakers: 'Session profile',
+      noEmbedding: 'embedding_model_uuid is required.',
+      total: 'total',
+      copiedJson: 'JSON exported below.',
+      healthRunning: 'Running health check...',
+      noInjection: 'No injection has been recorded for this space yet.',
+      injectionLoading: 'Loading last injection...',
+      injectedYes: 'Injected into prompt',
+      injectedNo: 'Nothing injected',
+      clearFence: 'Clear Fence',
+      fenceHint: 'An ambiguous Host write fences its memory space until it is reconciled.',
+      fenceCleared: 'Fence cleared for the selected memory space.',
+      fenceRequired: 'Select a memory space or knowledge base first.',
+      noFences: 'No fenced space',
+      fencedSpaces: 'fenced',
+      pageInfo: 'Page {page} / {pages}',
+    };
+
+    function syncText() {
+      Object.keys(text).forEach((key) => {
+        text[key] = langbot.t(key, text[key]);
+      });
+    }
+    function value(id) { return $(id).value.trim(); }
+    function setValue(id, next) { $(id).value = next || ''; }
+    function numeric(id, fallback) {
+      const parsed = Number.parseInt($(id).value, 10);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    function escapeHtml(raw) {
+      return String(raw == null ? '' : raw)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+    function readableError(err) {
+      if (!err) return 'Unknown error';
+      if (typeof err === 'string') return err;
+      if (err.message && err.message !== '[object Object]') return err.message;
+      try { return JSON.stringify(err, null, 2); } catch (_) { return String(err); }
+    }
+    function renderNotice(target, message, isError) {
+      target.innerHTML = '<div class="' + (isError ? 'notice error' : 'empty') + '">' + escapeHtml(message) + '</div>';
+    }
+    function renderError(target, err) { renderNotice(target, readableError(err), true); }
+    async function api(endpoint, body, method) {
+      return langbot.api(endpoint, body || null, method || 'POST');
+    }
+
+    function renderPager(pagerId, infoId, data, reload) {
+      const pager = $(pagerId);
+      const total = Number(data.total);
+      const pageSize = Number(data.page_size) || 10;
+      const page = Number(data.page) || 1;
+      if (!Number.isFinite(total) || total < 0) {
+        pager.style.display = 'none';
+        return;
+      }
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      pager.style.display = pages > 1 ? 'flex' : 'none';
+      $(infoId).textContent = text.pageInfo.replace('{page}', page).replace('{pages}', pages)
+        + ' · ' + total + ' ' + text.total;
+      const prev = pager.querySelector('button:first-child');
+      const next = pager.querySelector('button:last-child');
+      prev.disabled = page <= 1;
+      next.disabled = page >= pages;
+      prev.onclick = () => { if (page > 1) reload(page - 1); };
+      next.onclick = () => { if (page < pages) reload(page + 1); };
+    }
+
+    function statusClassOf(status) {
+      if (status === 'OK') return 'ok';
+      if (status === 'ERROR') return 'danger';
+      return 'warn';
+    }
+
+    function selectedScope() {
+      return {
+        scopeKey: value('scopeKey'),
+        userKey: value('userKey'),
+        senderId: value('senderId'),
+      };
+    }
+    function selectedKb() {
+      return {
+        collectionId: value('collectionId'),
+        embeddingModel: value('embeddingModel'),
+      };
+    }
+    function statusList(id) {
+      const selected = value(id);
+      if (selected === 'all') return EPISODE_STATUSES.slice();
+      return selected ? [selected] : ['active'];
+    }
+    function requireScope(target) {
+      const scope = selectedScope();
+      if (!scope.scopeKey || !scope.userKey) {
+        renderNotice(target, text.deriveFirst, true);
+        return null;
+      }
+      return scope;
+    }
+    function requireKb(target, needEmbedding) {
+      const kb = selectedKb();
+      if (!kb.collectionId) {
+        renderNotice(target, text.noKb, true);
+        return null;
+      }
+      if (needEmbedding && !kb.embeddingModel) {
+        renderNotice(target, text.noEmbedding, true);
+        return null;
+      }
+      return kb;
+    }
+    function setStatus(el, ok, label) {
+      el.textContent = label;
+      el.classList.toggle('ok', ok);
+      el.classList.toggle('warn', !ok);
+    }
+
+    function renderSummary(data) {
+      summary = data;
+      const kbEntries = data.kb_entries || [];
+      const scopes = data.scopes || [];
+      $('scopeCount').textContent = scopes.length;
+      $('profileCount').textContent = data.profile_key_count;
+      $('speakerProfileCount').textContent = data.speaker_profile_count;
+      setStatus($('kbStatus'), kbEntries.length > 0, kbEntries.length > 0 ? text.kbReady : text.kbMissing);
+      setStatus($('scopeStatus'), scopes.length > 0, scopes.length > 0 ? text.scopeReady : text.scopeMissing);
+      renderKb(kbEntries);
+      renderScopeOptions(scopes);
+      renderFences(data.fences || []);
+      $('diagnosticsOutput').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function renderFences(fences) {
+      const pill = $('fenceSummary');
+      if (!fences.length) {
+        pill.className = 'pill ok';
+        pill.textContent = text.noFences;
+        $('fenceOutput').innerHTML = '';
+        return;
+      }
+      pill.className = 'pill danger';
+      pill.textContent = fences.length + ' ' + text.fencedSpaces;
+      $('fenceOutput').innerHTML = fences.map((fence) => (
+        '<article class="item"><div class="item-head">'
+        + '<div class="item-title">' + escapeHtml(fence.scope || 'installation') + '</div>'
+        + '</div><div class="item-content">' + escapeHtml(fence.reason || '') + '</div></article>'
+      )).join('');
+    }
+
+    async function clearFence() {
+      const target = $('fenceOutput');
+      const scope = selectedScope();
+      const kb = selectedKb();
+      const body = {};
+      if (scope.scopeKey) body.scope_key = scope.scopeKey;
+      if (kb.collectionId) body.collection_id = kb.collectionId;
+      if (!body.scope_key && !body.collection_id) {
+        renderNotice(target, text.fenceRequired, true);
+        return;
+      }
+      $('clearFenceBtn').disabled = true;
+      try {
+        const data = await api('/fences/clear', body);
+        // The refreshed summary re-renders the fence list, so re-state the
+        // acknowledgment after it.
+        await refresh();
+        renderNotice(target, text.fenceCleared + ' ' + (data.cleared || []).join(', '), false);
+      } catch (err) {
+        renderError(target, err);
+      } finally {
+        $('clearFenceBtn').disabled = false;
+      }
+    }
+
+    function renderKb(entries) {
+      const select = $('kbSelect');
+      const current = value('collectionId');
+      select.innerHTML = entries.length
+        ? entries.map((kb, index) => '<option value="' + index + '">' + escapeHtml(kb.id) + '</option>').join('')
+        : '<option value="">' + text.noKb + '</option>';
+      if (!entries.length) {
+        setValue('collectionId', '');
+        setValue('embeddingModel', '');
+        $('kbDetail').textContent = text.noKb;
+        return;
+      }
+      const selectedIndex = Math.max(0, entries.findIndex((kb) => kb.id === current));
+      select.value = String(selectedIndex);
+      applyKb(entries[selectedIndex]);
+    }
+
+    function applyKb(kb) {
+      if (!kb) return;
+      setValue('collectionId', kb.id || '');
+      setValue('embeddingModel', kb.embedding_model_uuid || '');
+      setValue('isolation', kb.isolation || 'session');
+      $('kbDetail').innerHTML = '<span class="pill ok">' + escapeHtml(kb.isolation || 'session') + '</span> '
+        + escapeHtml(kb.embedding_model_uuid || '-');
+    }
+
+    function renderScopeOptions(scopes) {
+      const scopeSelect = $('scopeSelect');
+      const currentScope = value('scopeKey');
+      scopeSelect.innerHTML = scopes.length
+        ? scopes.map((scope, index) => '<option value="' + index + '">' + escapeHtml(scope.scope_key) + '</option>').join('')
+        : '<option value="">' + text.noScope + '</option>';
+      if (scopes.length) {
+        const selectedIndex = Math.max(0, scopes.findIndex((scope) => scope.scope_key === currentScope));
+        scopeSelect.value = String(selectedIndex);
+        applyScope(scopes[selectedIndex]);
+      } else {
+        if (!currentScope) {
+          setValue('scopeKey', '');
+          setValue('userKey', '');
+          setValue('senderId', '');
+        }
+        updateScopePreview();
+        renderNotice($('profileOutput'), text.deriveFirst, false);
+      }
+    }
+
+    function applyScope(scope) {
+      setValue('scopeKey', scope.scope_key || '');
+      setValue('userKey', scope.user_key || scope.scope_key || '');
+      const speakerSelect = $('speakerSelect');
+      const speakers = scope.speaker_ids || [];
+      speakerSelect.innerHTML = '<option value="">' + text.allSpeakers + '</option>'
+        + speakers.map((speaker) => '<option value="' + escapeHtml(speaker) + '">' + escapeHtml(speaker) + '</option>').join('');
+      setValue('senderId', speakerSelect.value || '');
+      updateScopePreview();
+    }
+
+    function updateScopePreview() {
+      $('scopePreview').textContent = value('scopeKey') || '-';
+      $('userPreview').textContent = value('userKey') || '-';
+    }
+
+    async function refresh() {
+      $('refreshBtn').disabled = true;
+      try {
+        renderSummary(await langbot.api('/summary', null, 'GET'));
+      } catch (err) {
+        renderError($('profileOutput'), err);
+      } finally {
+        $('refreshBtn').disabled = false;
+      }
+    }
+
+    async function deriveScope() {
+      try {
+        const result = await api('/derive-scope', {
+          bot_uuid: value('botUuid'),
+          session_name: value('sessionName'),
+          isolation: value('isolation'),
+        });
+        setValue('scopeKey', result.session_key);
+        setValue('userKey', result.user_key);
+        updateScopePreview();
+        await loadProfile();
+      } catch (err) {
+        renderError($('profileOutput'), err);
+      }
+    }
+
+    function profilePanel(title, profile) {
+      const lines = [];
+      if (profile && profile.name) lines.push(['Name', profile.name]);
+      if (profile && profile.traits && profile.traits.length) lines.push(['Traits', profile.traits.join(', ')]);
+      if (profile && profile.preferences && profile.preferences.length) lines.push(['Preferences', profile.preferences.join(', ')]);
+      if (profile && profile.notes) lines.push(['Notes', profile.notes]);
+      if (profile && profile.updated_at) lines.push(['Updated', profile.updated_at]);
+      return '<div class="item"><h3>' + escapeHtml(langbot.t(title, title)) + '</h3>'
+        + (lines.length ? lines.map(([k, v]) => '<div><span class="muted">' + escapeHtml(langbot.t(k, k)) + ':</span> ' + escapeHtml(v) + '</div>').join('') : '<div class="muted">' + text.empty + '</div>')
+        + '</div>';
+    }
+
+    async function loadProfile() {
+      const target = $('profileOutput');
+      const scope = requireScope(target);
+      if (!scope) return;
+      try {
+        const data = await api('/profile', {
+          scope_key: scope.scopeKey,
+          sender_id: scope.senderId,
+        });
+        target.innerHTML = profilePanel('Session Profile', data.session_profile)
+          + profilePanel('Speaker Profile', data.speaker_profile);
+      } catch (err) {
+        renderError(target, err);
+      }
+    }
+
+    function renderEpisodes(target, data, mode) {
+      const episodes = data.episodes || [];
+      if (!episodes.length) {
+        renderNotice(target, text.empty, false);
+        return;
+      }
+      const total = data.total == null || data.total < 0 ? '' : '<span class="pill">' + escapeHtml(data.total) + ' ' + text.total + '</span>';
+      target.innerHTML = total + episodes.map((ep) => {
+        const tags = (ep.tags || []).filter(Boolean).map((tag) => '<span class="pill">' + escapeHtml(tag) + '</span>').join('');
+        const status = ep.status || 'active';
+        const statusClass = status === 'active' ? 'ok' : (status === 'archived' || status === 'superseded' ? 'warn' : 'danger');
+        const canRestore = status !== 'active';
+        const statusAction = canRestore
+          ? '<button data-status="active" data-episode="' + escapeHtml(ep.id || '') + '">' + text.restore + '</button>'
+          : '<button data-status="archived" data-episode="' + escapeHtml(ep.id || '') + '">' + text.archive + '</button>';
+        return '<article class="item">'
+          + '<div class="item-head"><div class="item-title">' + escapeHtml(ep.id || '-') + '</div><span class="muted">' + escapeHtml(ep.timestamp || '-') + '</span></div>'
+          + '<div class="item-content">' + escapeHtml(ep.content || '') + '</div>'
+          + '<div class="tags">'
+          + '<span class="pill ' + statusClass + '">' + escapeHtml(status) + '</span>'
+          + '<span class="pill">importance ' + escapeHtml(ep.importance || 2) + '</span>'
+          + (ep.sender_name ? '<span class="pill">' + escapeHtml(ep.sender_name) + '</span>' : '')
+          + (ep.sender_id ? '<span class="pill">' + escapeHtml(ep.sender_id) + '</span>' : '')
+          + (ep.source ? '<span class="pill">' + escapeHtml(ep.source) + '</span>' : '')
+          + tags
+          + '</div>'
+          + '<div class="item-actions">' + statusAction
+          + '<button class="danger" data-delete="' + escapeHtml(ep.id || '') + '">' + text.delete + '</button></div>'
+          + '</article>';
+      }).join('');
+      target.querySelectorAll('[data-status]').forEach((button) => {
+        button.addEventListener('click', () => setEpisodeStatus(button.getAttribute('data-episode'), button.getAttribute('data-status')));
+      });
+      target.querySelectorAll('[data-delete]').forEach((button) => {
+        button.addEventListener('click', () => deleteEpisode(button.getAttribute('data-delete')));
+      });
+      lastEpisodeMode = mode;
+    }
+
+    async function reloadEpisodes() {
+      if (lastEpisodeMode === 'search') await searchEpisodes();
+      else await listEpisodes();
+    }
+
+    async function listEpisodes(page) {
+      const target = $('episodesOutput');
+      const kb = requireKb(target, false);
+      const scope = requireScope(target);
+      if (!kb || !scope) return;
+      if (Number.isFinite(page) && page >= 1) setValue('pageNo', String(page));
+      try {
+        const data = await api('/episodes/list', {
+          collection_id: kb.collectionId,
+          user_key: scope.userKey,
+          page: numeric('pageNo', 1),
+          page_size: 10,
+          statuses: statusList('episodeStatus'),
+        });
+        renderEpisodes(target, data, 'list');
+        renderPager('episodesPager', 'episodesPageInfo', data, listEpisodes);
+      } catch (err) {
+        renderError(target, err);
+        $('episodesPager').style.display = 'none';
+      }
+    }
+
+    async function searchEpisodes() {
+      const target = $('episodesOutput');
+      const kb = requireKb(target, true);
+      const scope = requireScope(target);
+      if (!kb || !scope) return;
+      if (!value('episodeQuery')) {
+        renderNotice(target, text.queryRequired, true);
+        return;
+      }
+      try {
+        const importanceRaw = $('importanceMin').value;
+        const data = await api('/episodes/search', {
+          collection_id: kb.collectionId,
+          embedding_model_uuid: kb.embeddingModel,
+          user_key: scope.userKey,
+          query: value('episodeQuery'),
+          top_k: 10,
+          sender_id: scope.senderId,
+          source: value('source'),
+          importance_min: importanceRaw ? Number.parseInt(importanceRaw, 10) : null,
+          statuses: statusList('episodeStatus'),
+        });
+        renderEpisodes(target, data, 'search');
+        $('episodesPager').style.display = 'none';
+      } catch (err) {
+        renderError(target, err);
+        $('episodesPager').style.display = 'none';
+      }
+    }
+
+    async function setEpisodeStatus(episodeId, status) {
+      const target = $('episodesOutput');
+      const kb = requireKb(target, true);
+      const scope = requireScope(target);
+      if (!episodeId || !kb || !scope) return;
+      try {
+        await api('/episodes/status', {
+          collection_id: kb.collectionId,
+          embedding_model_uuid: kb.embeddingModel,
+          scope_key: scope.scopeKey,
+          user_key: scope.userKey,
+          episode_id: episodeId,
+          status,
+        });
+        await reloadEpisodes();
+      } catch (err) {
+        renderError(target, err);
+      }
+    }
+
+    async function deleteEpisode(episodeId) {
+      const target = $('episodesOutput');
+      if (!episodeId || !window.confirm(text.confirmDelete)) return;
+      const kb = requireKb(target, false);
+      const scope = requireScope(target);
+      if (!kb || !scope) return;
+      try {
+        await api('/episodes/delete', {
+          collection_id: kb.collectionId,
+          scope_key: scope.scopeKey,
+          user_key: scope.userKey,
+          episode_id: episodeId,
+        });
+        await reloadEpisodes();
+      } catch (err) {
+        renderError(target, err);
+      }
+    }
+
+    function renderAudit(data) {
+      const target = $('auditOutput');
+      const entries = data.entries || [];
+      if (!entries.length) {
+        renderNotice(target, text.empty, false);
+        return;
+      }
+      const total = data.total == null ? '' : '<span class="pill">' + escapeHtml(data.total) + ' ' + text.total + '</span>';
+      target.innerHTML = total + entries.map((entry) => (
+        '<article class="item">'
+        + '<div class="item-head"><div class="item-title">' + escapeHtml(entry.operation || '-') + '</div><span class="muted">' + escapeHtml(entry.timestamp || '-') + '</span></div>'
+        + '<div class="item-content">' + escapeHtml(entry.summary || '') + '</div>'
+        + '<div class="tags">'
+        + '<span class="pill">' + escapeHtml(entry.target_type || '-') + '</span>'
+        + '<span class="pill">' + escapeHtml(entry.target_id || '-') + '</span>'
+        + (entry.sender_name ? '<span class="pill">' + escapeHtml(entry.sender_name) + '</span>' : '')
+        + '</div>'
+        + '</article>'
+      )).join('');
+    }
+
+    async function loadAudit(page) {
+      const target = $('auditOutput');
+      const scope = requireScope(target);
+      if (!scope) return;
+      if (Number.isFinite(page) && page >= 1) setValue('auditPage', String(page));
+      try {
+        const data = await api('/audit/list', {
+          scope_key: scope.scopeKey,
+          page: numeric('auditPage', 1),
+          page_size: 10,
+        });
+        renderAudit(data);
+        renderPager('auditPager', 'auditPageInfo', data, loadAudit);
+      } catch (err) {
+        renderError(target, err);
+        $('auditPager').style.display = 'none';
+      }
+    }
+
+    async function exportProfiles() {
+      const target = $('exportOutput');
+      const scope = selectedScope();
+      if (!scope.scopeKey) {
+        target.textContent = text.deriveFirst;
+        return;
+      }
+      try {
+        target.textContent = JSON.stringify(await api('/export-profiles', {
+          scope_key: scope.scopeKey,
+          user_key: scope.userKey,
+        }), null, 2);
+      } catch (err) {
+        target.textContent = readableError(err);
+      }
+    }
+
+    async function exportEpisodes() {
+      const target = $('exportOutput');
+      const kb = selectedKb();
+      const scope = selectedScope();
+      if (!kb.collectionId) {
+        target.textContent = text.noKb;
+        return;
+      }
+      if (!scope.scopeKey || !scope.userKey) {
+        target.textContent = text.deriveFirst;
+        return;
+      }
+      try {
+        target.textContent = JSON.stringify(await api('/episodes/export', {
+          collection_id: kb.collectionId,
+          scope_key: scope.scopeKey,
+          user_key: scope.userKey,
+          statuses: statusList('exportStatus'),
+        }), null, 2);
+      } catch (err) {
+        target.textContent = readableError(err);
+      }
+    }
+
+    async function exportAudit() {
+      const target = $('exportOutput');
+      const scope = selectedScope();
+      if (!scope.scopeKey) {
+        target.textContent = text.deriveFirst;
+        return;
+      }
+      try {
+        target.textContent = JSON.stringify(await api('/audit/export', {
+          scope_key: scope.scopeKey,
+          user_key: scope.userKey,
+        }), null, 2);
+      } catch (err) {
+        target.textContent = readableError(err);
+      }
+    }
+
+    async function runHealth() {
+      const target = $('healthOutput');
+      const kb = requireKb(target, false);
+      if (!kb) return;
+      $('runHealthBtn').disabled = true;
+      const summaryPill = $('healthSummary');
+      summaryPill.className = 'pill warn';
+      summaryPill.textContent = text.healthRunning;
+      renderNotice(target, text.healthRunning, false);
+      try {
+        const data = await api('/health', {
+          collection_id: kb.collectionId,
+          embedding_model_uuid: kb.embeddingModel,
+        });
+        renderHealth(data);
+      } catch (err) {
+        summaryPill.className = 'pill danger';
+        summaryPill.textContent = 'ERROR';
+        renderError(target, err);
+      } finally {
+        $('runHealthBtn').disabled = false;
+      }
+    }
+
+    function renderHealth(data) {
+      const status = data.status || 'WARN';
+      const summaryPill = $('healthSummary');
+      summaryPill.className = 'pill ' + statusClassOf(status);
+      summaryPill.textContent = status;
+      const checks = data.checks || [];
+      const note = data.note ? '<div class="notice">' + escapeHtml(data.note) + '</div>' : '';
+      $('healthOutput').innerHTML = note + checks.map((check) => (
+        '<article class="item"><div class="item-head">'
+        + '<div class="item-title">' + escapeHtml(check.id || '-') + '</div>'
+        + '<span class="pill ' + statusClassOf(check.status) + '">' + escapeHtml(check.status || '-') + '</span>'
+        + '</div><div class="item-content">' + escapeHtml(check.detail || '') + '</div></article>'
+      )).join('');
+    }
+
+    function profileLines(profile) {
+      const lines = [];
+      if (profile && profile.name) lines.push(['Name', profile.name]);
+      if (profile && profile.traits && profile.traits.length) lines.push(['Traits', profile.traits.join(', ')]);
+      if (profile && profile.preferences && profile.preferences.length) lines.push(['Preferences', profile.preferences.join(', ')]);
+      if (profile && profile.notes) lines.push(['Notes', profile.notes]);
+      if (profile && profile.updated_at) lines.push(['Updated', profile.updated_at]);
+      return lines.length
+        ? lines.map(([k, v]) => '<div><span class="muted">' + escapeHtml(langbot.t(k, k)) + ':</span> ' + escapeHtml(v) + '</div>').join('')
+        : '<div class="muted">' + text.empty + '</div>';
+    }
+
+    function renderInjection(snapshot) {
+      const target = $('injectionOutput');
+      if (!snapshot) {
+        renderNotice(target, text.noInjection, false);
+        return;
+      }
+      const injected = snapshot.injected;
+      const speaker = snapshot.speaker || {};
+      const episodes = snapshot.episodes || [];
+      const meta = [
+        '<span class="pill ' + (injected ? 'ok' : 'warn') + '">' + (injected ? text.injectedYes : text.injectedNo) + '</span>',
+        '<span class="pill">' + escapeHtml(snapshot.recorded_at || '-') + '</span>',
+        '<span class="pill">' + escapeHtml(snapshot.block_count || 0) + ' blocks</span>',
+        '<span class="pill">' + escapeHtml(snapshot.episode_count || 0) + ' episodes</span>',
+        '<span class="pill">' + escapeHtml(snapshot.injection_chars || 0) + ' chars</span>',
+        (speaker.name || speaker.id ? '<span class="pill">' + escapeHtml(speaker.name || speaker.id) + '</span>' : ''),
+      ].join('');
+      const episodesHtml = episodes.length
+        ? episodes.map((ep) => '<div class="item-content">• ' + escapeHtml(ep.content || '') + '</div>').join('')
+        : '<div class="muted">' + text.empty + '</div>';
+      target.innerHTML =
+        '<div class="item"><div class="tags">' + meta + '</div></div>'
+        + '<div class="item"><h3>' + escapeHtml(langbot.t('Session Profile', 'Session Profile')) + '</h3>' + profileLines(snapshot.session_profile) + '</div>'
+        + '<div class="item"><h3>' + escapeHtml(langbot.t('Speaker Profile', 'Speaker Profile')) + '</h3>' + profileLines(snapshot.speaker_profile) + '</div>'
+        + '<div class="item"><h3>' + escapeHtml(langbot.t('injectedEpisodes', 'Recalled Episodes')) + '</h3>' + episodesHtml + '</div>';
+    }
+
+    async function loadInjection() {
+      const target = $('injectionOutput');
+      const scope = requireScope(target);
+      if (!scope) return;
+      renderNotice(target, text.injectionLoading, false);
+      try {
+        const data = await api('/injection', { scope_key: scope.scopeKey });
+        renderInjection(data.snapshot);
+      } catch (err) {
+        renderError(target, err);
+      }
+    }
+
+    function bindTabs() {
+      document.querySelectorAll('.tab').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((tab) => tab.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach((panel) => panel.style.display = 'none');
+          button.classList.add('active');
+          $(button.dataset.tab + 'Tab').style.display = '';
+        });
+      });
+    }
+
+    langbot.onReady(async function () {
+      bindTabs();
+      syncText();
+      $('refreshBtn').addEventListener('click', refresh);
+      $('deriveBtn').addEventListener('click', deriveScope);
+      $('loadProfileBtn').addEventListener('click', loadProfile);
+      $('listEpisodesBtn').addEventListener('click', listEpisodes);
+      $('searchEpisodesBtn').addEventListener('click', searchEpisodes);
+      $('loadAuditBtn').addEventListener('click', loadAudit);
+      $('runHealthBtn').addEventListener('click', runHealth);
+      $('clearFenceBtn').addEventListener('click', clearFence);
+      $('loadInjectionBtn').addEventListener('click', loadInjection);
+      $('exportProfilesBtn').addEventListener('click', exportProfiles);
+      $('exportEpisodesBtn').addEventListener('click', exportEpisodes);
+      $('exportAuditBtn').addEventListener('click', exportAudit);
+      $('toggleRawBtn').addEventListener('click', () => $('rawFields').classList.toggle('open'));
+      $('scopeSelect').addEventListener('change', () => {
+        const scopes = (summary && summary.scopes) || [];
+        const selected = scopes[Number.parseInt($('scopeSelect').value, 10)];
+        if (selected) {
+          applyScope(selected);
+          loadProfile();
+        }
+      });
+      $('speakerSelect').addEventListener('change', () => {
+        setValue('senderId', $('speakerSelect').value);
+        updateScopePreview();
+        loadProfile();
+      });
+      $('kbSelect').addEventListener('change', () => {
+        const entries = (summary && summary.kb_entries) || [];
+        const selected = entries[Number.parseInt($('kbSelect').value, 10)];
+        if (selected) applyKb(selected);
+      });
+      ['scopeKey', 'userKey', 'senderId'].forEach((id) => {
+        $(id).addEventListener('input', updateScopePreview);
+      });
+      await refresh();
+      await loadProfile();
+      langbot.applyI18n();
+    });
+  </script>
+</body>
+</html>

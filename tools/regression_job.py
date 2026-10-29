@@ -17,6 +17,7 @@ import urllib.request
 import yaml
 
 from regression_suite import Suite, number, resolve, validate
+from regression_plugins import install_plugins, prepare_published_plugins
 from regression_traffic import owned_box_containers
 
 
@@ -34,8 +35,30 @@ def load_profile(path):
     profile = json.loads(path.read_text())
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('job profile version must be 1')
-    if profile.keys() - {'version', 'lbctl', 'suite', 'deployment', 'vars', 'cleanup', 'purge_data', 'mock_image'}:
+    if profile.keys() - {
+        'version',
+        'lbctl',
+        'suite',
+        'deployment',
+        'vars',
+        'cleanup',
+        'purge_data',
+        'mock_image',
+        'plugin_mode',
+        'plugin_manifest',
+    }:
         raise ValueError('unknown job profile field')
+    if profile.get('plugin_mode', 'published') not in ('published', 'profile'):
+        raise ValueError('plugin_mode must be published/profile')
+    if 'plugin_manifest' in profile:
+        if profile.get('plugin_mode', 'published') != 'published':
+            raise ValueError('plugin_manifest requires published plugin_mode')
+        if not isinstance(profile['plugin_manifest'], str) or not profile['plugin_manifest']:
+            raise ValueError('plugin_manifest must name a prior published manifest')
+        manifest_path = Path(profile['plugin_manifest']).expanduser()
+        if not manifest_path.is_absolute():
+            manifest_path = path.parent / manifest_path
+        profile['plugin_manifest'] = str(manifest_path.resolve())
     deployment = profile.get('deployment', {})
     if not isinstance(deployment, dict) or deployment.keys() - {'version', 'port'}:
         raise ValueError('deployment accepts version and port')
@@ -52,6 +75,8 @@ def load_profile(path):
     suite_path = Path(profile['suite']).expanduser()
     suite_path = suite_path if suite_path.is_absolute() else path.parent / suite_path
     suite = json.loads(suite_path.read_text())
+    if profile.get('plugin_mode', 'published') == 'published':
+        suite['plugins'] = []
     suite.setdefault('vars', {}).update(profile.get('vars', {}))
     suite['vars'].update(
         mock_base_url='http://regression_mock:18080/v1', embedding_base_url='http://regression_mock:18080/v1'
@@ -77,6 +102,7 @@ class Job:
         self.env = {**os.environ, 'XDG_CONFIG_HOME': str(self.private / 'config')}
         self.cli = [profile.get('lbctl', 'lbctl'), '--config', str(self.cli_config), '-o', 'json']
         self.redactions = []
+        self.suite = None
         self.state = {'job_id': secrets.token_hex(8), 'record': None, 'bound': False, 'phase': 'created'}
 
     def redact(self, value):
@@ -198,6 +224,12 @@ class Job:
         raise RuntimeError(f'readiness deadline exceeded: {url}')
 
     def prepare(self):
+        published = None
+        if self.profile.get('plugin_mode', 'published') == 'published':
+            self.state['phase'] = 'plugins'
+            self.save()
+            published = prepare_published_plugins(self.output / 'plugins', self.profile.get('plugin_manifest'))
+            self.suite_profile['plugins'] = []
         variables = {
             **self.suite_profile.get('vars', {}),
             'profile_dir': str(self.suite_path.parent),
@@ -308,16 +340,34 @@ class Job:
             if 'mock_records' in profile['smoke']:
                 profile['smoke']['mock_records'] = str(self.output / 'mock' / 'requests.jsonl')
             profile['smoke']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
+        if 'verification' in profile:
+            profile['verification']['ledger_db'] = str(Path(self.state['record']['data_dir']) / 'langbot.db')
         profile['cli'] = {'executable': self.cli[0], 'config': str(self.cli_config)}
         profile['observe'] = {'health': health, 'pids': {}, 'containers': list(containers.values())}
         for service, container in containers.items():
             pid = int(self.checked(['docker', 'inspect', '--format', '{{.State.Pid}}', container]).strip())
-            profile['observe']['pids'][service] = pid
+            name = (
+                {'langbot': 'core', 'langbot_plugin_runtime': 'runtime', 'langbot_box': 'box'}.get(service, service)
+                if profile.get('verification') or profile.get('execution')
+                else service
+            )
+            profile['observe']['pids'][name] = pid
+        profile['observe']['box_data_root'] = str(Path(self.state['record']['data_dir']) / 'box')
         destination = self.output / 'suite'
         destination.mkdir(mode=0o700)
-        suite = Suite(profile, self.suite_path, destination, env=self.env)
+        suite = self.suite = Suite(profile, self.suite_path, destination, env=self.env)
         self.redactions.extend(suite.secrets)
+        if published is not None:
+            self.state['phase'] = 'plugins'
+            self.save()
+            install_plugins(suite.call, self.output / 'plugins', published)
+            self.state['phase'] = 'resources'
+            self.save()
         suite.write('profile.json', profile)
+        if 'smoke' not in profile:
+            from regression_analysis import workload_contract
+
+            suite.write('workload.json', workload_contract(profile, self.suite_path))
         suite.prepare()
         if 'smoke' in profile:
             return suite
@@ -329,7 +379,6 @@ class Job:
             data = suite.call(case['args'], case.get('body'))
             if case['expect'] not in json.dumps(data, ensure_ascii=False):
                 raise RuntimeError(f'warmup oracle failed: {case["name"]}')
-        profile['observe']['box_data_root'] = str(Path(self.state['record']['data_dir']) / 'box')
         suite.write('profile.json', profile)
         return suite
 
@@ -388,15 +437,11 @@ class Job:
         self.save()
         result = {'errors': [], 'completed': False}
         try:
-            suite = self.prepare()
+            suite = self.suite = self.prepare()
             self.state['phase'] = 'traffic'
             self.save()
             summary = suite.run()
-            summary['passed'] = not summary['errors']
-            suite.write('summary.json', summary)
             result.update(completed=True, suite=summary, errors=list(summary['errors']))
-            self.state['phase'] = 'finished'
-            self.save()
         except KeyboardInterrupt:
             result['errors'].append('Job interrupted; in-flight outcomes may be unknown')
         except (RuntimeError, ValueError, OSError, KeyError, subprocess.TimeoutExpired) as exc:
@@ -404,6 +449,20 @@ class Job:
         finally:
             if not result['completed'] and not result['errors']:
                 result['errors'].append('Job aborted before completion')
+            if self.suite is not None:
+                summary = result.setdefault('suite', {'phases': [], 'errors': list(result['errors'])})
+                try:
+                    self.suite.finish(summary)
+                except (Exception, KeyboardInterrupt) as exc:
+                    summary['errors'].append(f'suite finalization: {type(exc).__name__}: ' + self.redact(str(exc)))
+                    summary.update(passed=False, outcome='FAIL')
+                result['errors'] = list(dict.fromkeys([*result['errors'], *summary['errors']]))
+            if result['completed']:
+                self.state['phase'] = 'finished'
+                try:
+                    self.save()
+                except OSError as exc:
+                    result['errors'].append('state persistence: ' + self.redact(str(exc)))
             try:
                 self.collect()
             except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:

@@ -33,12 +33,12 @@ Do not let platform-native event or message shapes leak into LangBot's common pa
 
 ## Start Here
 
-1. Read the EBA design docs in `LangBot/docs/event-based-agents/`.
+1. Read the EBA design docs in `LangBot/dev-docs/event-based-agents/`.
 2. Read the architecture-level acceptance checklist before writing or validating code:
-   - `LangBot/docs/event-based-agents/adapters/acceptance-checklist.md`
+   - `LangBot/dev-docs/event-based-agents/adapters/acceptance-checklist.md`
 3. Read the current reference adapter before writing code. Prefer Telegram first:
    - `LangBot/src/langbot/pkg/platform/adapters/telegram/`
-   - `LangBot/docs/event-based-agents/adapters/telegram.md`
+   - `LangBot/dev-docs/event-based-agents/adapters/telegram.md`
 4. Read the legacy source adapter for the target platform:
    - `LangBot/src/langbot/pkg/platform/sources/<platform>.py`
    - `LangBot/src/langbot/pkg/platform/sources/<platform>.yaml`
@@ -244,7 +244,7 @@ The SDK must support `plugin.call_platform_api(bot_uuid, action, params)` for pl
 
 ## Required EBA Acceptance Coverage
 
-Before marking an adapter migrated, fill out an adapter record against `LangBot/docs/event-based-agents/adapters/acceptance-checklist.md`.
+Before marking an adapter migrated, fill out an adapter record against `LangBot/dev-docs/event-based-agents/adapters/acceptance-checklist.md`.
 
 At minimum, the record must cover these categories:
 
@@ -274,7 +274,7 @@ Do not declare an event or API in the manifest unless it has an implementation p
 
 ## Documentation Record
 
-Add or update `LangBot/docs/event-based-agents/adapters/<platform>.md` in the same style as Telegram:
+Add or update `LangBot/dev-docs/event-based-agents/adapters/<platform>.md` in the same style as Telegram:
 
 - Status and adapter directory.
 - Configuration table matching manifest fields.

@@ -140,6 +140,39 @@ class MockAgentRunOrchestrator:
         return 'plugin:langbot-team/LocalAgent/default'
 
 
+class SteeringRunnerNotFoundOrchestrator(MockAgentRunOrchestrator):
+    async def try_claim_steering_from_query(self, query):
+        raise RunnerNotFoundError('plugin:langbot-team/LocalAgent/default')
+
+
+class SteeringClaimedOrchestrator(MockAgentRunOrchestrator):
+    def __init__(self):
+        super().__init__()
+        self.run_called = False
+
+    async def try_claim_steering_from_query(self, query):
+        return True
+
+    async def run_from_query(self, query):
+        self.run_called = True
+        if False:
+            yield None
+
+
+class SteeringUnexpectedErrorOrchestrator(MockAgentRunOrchestrator):
+    async def try_claim_steering_from_query(self, query):
+        raise RuntimeError('steering lookup failed')
+
+
+class PersistentRunnerGapOrchestrator(SteeringRunnerNotFoundOrchestrator):
+    """Steering and the normal run both miss the Runner (a lasting gap)."""
+
+    async def run_from_query(self, query):
+        raise RunnerNotFoundError('plugin:langbot-team/LocalAgent/default')
+        if False:
+            yield None
+
+
 class MockApplication:
     """Mock Application for testing."""
 
@@ -440,6 +473,141 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.INTERRUPT
         assert 'not found' in results[0].user_notice
+
+    @pytest.mark.asyncio
+    async def test_runner_not_found_during_steering_falls_back_to_normal_run(self):
+        """A transient registry miss during steering must not drop the message."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+
+        orchestrator = SteeringRunnerNotFoundOrchestrator(
+            chunks=[MagicMock(content='ok', tool_calls=[], is_final=True)]
+        )
+        mock_ap = MockApplication(orchestrator=orchestrator)
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        handler = ChatMessageHandler(mock_ap)
+        query = MockQuery()
+
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(
+                result_type=kwargs.get('result_type'),
+                user_notice=kwargs.get('user_notice'),
+            )
+
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+            results = [result async for result in handler.handle(query)]
+
+        assert results
+        assert all(result.result_type != entities.ResultType.INTERRUPT for result in results)
+        mock_ap.logger.warning.assert_any_call(
+            'Skipping steering for query %s because Runner %s is not registered',
+            query.query_id,
+            'plugin:langbot-team/LocalAgent/default',
+        )
+
+    @pytest.mark.asyncio
+    async def test_runner_missing_for_steering_and_run_reports_runner_not_found(self):
+        """A lasting gap still fails: the fallback buys one retry, not recovery."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+
+        orchestrator = PersistentRunnerGapOrchestrator()
+        mock_ap = MockApplication(orchestrator=orchestrator)
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        handler = ChatMessageHandler(mock_ap)
+        query = MockQuery()
+
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(
+                result_type=kwargs.get('result_type'),
+                user_notice=kwargs.get('user_notice'),
+            )
+
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+            results = [result async for result in handler.handle(query)]
+
+        assert len(results) == 1
+        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert 'not found' in results[0].user_notice
+
+    @pytest.mark.asyncio
+    async def test_successful_steering_interrupts_normal_run(self):
+        """A claimed steering message must not start a duplicate runner turn."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+
+        orchestrator = SteeringClaimedOrchestrator()
+        mock_ap = MockApplication(orchestrator=orchestrator)
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        handler = ChatMessageHandler(mock_ap)
+        query = MockQuery()
+
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(result_type=kwargs.get('result_type'))
+
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+            results = [result async for result in handler.handle(query)]
+
+        assert len(results) == 1
+        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert orchestrator.run_called is False
+
+    @pytest.mark.asyncio
+    async def test_unexpected_steering_error_uses_normal_error_handling(self):
+        """Unexpected steering failures must not be silently swallowed."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+
+        orchestrator = SteeringUnexpectedErrorOrchestrator()
+        mock_ap = MockApplication(orchestrator=orchestrator)
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        handler = ChatMessageHandler(mock_ap)
+        query = MockQuery()
+
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(
+                result_type=kwargs.get('result_type'),
+                user_notice=kwargs.get('user_notice'),
+            )
+
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+            results = [result async for result in handler.handle(query)]
+
+        assert len(results) == 1
+        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert 'Request failed' in results[0].user_notice
 
     @pytest.mark.asyncio
     async def test_runner_not_authorized_error(self):

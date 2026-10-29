@@ -78,6 +78,12 @@ def validate(profile):
         'cleanup',
         'thresholds',
         'smoke',
+        'verification',
+        'resource_limits',
+        'coverage_suite',
+        'execution',
+        'performance_mode',
+        'scenario_groups',
     }
     if extra := profile.keys() - allowed:
         raise ValueError(f'unknown profile fields: {sorted(extra)}')
@@ -89,6 +95,32 @@ def validate(profile):
             not isinstance(profile[field], list) or any(not isinstance(item, dict) for item in profile[field])
         ):
             raise ValueError(f'{field} must be an array of objects')
+    if 'coverage_suite' in profile and not re.fullmatch(r'[a-z][a-z0-9_-]*', str(profile['coverage_suite'])):
+        raise ValueError('coverage_suite must be a stable suite identifier')
+    if profile.get('performance_mode', 'gate') not in {'gate', 'observe'}:
+        raise ValueError('performance_mode must be gate or observe')
+    if 'scenario_groups' in profile:
+        from regression_local_cases import GROUPS
+
+        groups = profile['scenario_groups']
+        if (
+            not isinstance(groups, list)
+            or any(not isinstance(name, str) or name not in GROUPS for name in groups)
+            or len(groups) != len(set(groups))
+        ):
+            raise ValueError('scenario_groups must contain unique supported local groups')
+    execution = profile.get('execution')
+    if execution is not None:
+        if (
+            'smoke' not in profile
+            or not isinstance(execution, dict)
+            or set(execution) != {'total_seconds', 'drain_seconds', 'cooldown_seconds'}
+        ):
+            raise ValueError('execution requires finite smoke cases and total_seconds/drain_seconds/cooldown_seconds')
+        for key, value in execution.items():
+            number(value, f'execution.{key}', minimum=0.001)
+        if execution['drain_seconds'] + execution['cooldown_seconds'] >= execution['total_seconds']:
+            raise ValueError('execution reserves must leave time for required cases')
     cli = profile.get('cli', {})
     if not isinstance(cli, dict) or cli.keys() - {'config', 'executable'}:
         raise ValueError('cli accepts config and executable')
@@ -138,6 +170,18 @@ def validate(profile):
             if item['kind'] != 'knowledge-base' or not document.get('file') or not document.get('parser_plugin_id'):
                 raise ValueError(f'{name}: documents need file and parser_plugin_id on a knowledge-base')
             resolve(document, variables)
+    verification = profile.get('verification')
+    if verification is not None:
+        if (
+            'smoke' in profile
+            or not isinstance(verification, dict)
+            or verification.keys() - {'ledger_db', 'timeout_seconds'}
+        ):
+            raise ValueError('verification is a load-only ledger configuration')
+        if not isinstance(verification.get('ledger_db'), str) or not verification['ledger_db']:
+            raise ValueError('verification.ledger_db is required')
+        resolve(verification, variables)
+        number(verification.get('timeout_seconds', 5), 'verification timeout', minimum=0.001)
     cases = profile.get('cases')
     if not isinstance(cases, list) or not cases:
         raise ValueError('cases must be a non-empty array')
@@ -157,6 +201,9 @@ def validate(profile):
             'fields',
             'forbid',
             'reject_group',
+            'http_probe',
+            'reset_group',
+            'scenario',
         }:
             raise ValueError('unknown case field')
         if not isinstance(case.get('name'), str) or not case['name'] or case['name'] in names:
@@ -164,7 +211,10 @@ def validate(profile):
         names.add(case['name'])
         if 'stage' in case and (not isinstance(case['stage'], str) or not case['stage']):
             raise ValueError('case stage must be a non-empty string')
-        if any(key in case for key in ('mock_requests', 'fields', 'forbid', 'reject_group')) and 'smoke' not in profile:
+        if (
+            any(key in case for key in ('mock_requests', 'reject_group', 'http_probe', 'reset_group'))
+            and 'smoke' not in profile
+        ):
             raise ValueError('extended case checks require smoke mode')
         if 'fields' in case and (not isinstance(case['fields'], dict) or not case['fields']):
             raise ValueError('fields must be a non-empty mapping of dotted paths to exact values')
@@ -192,11 +242,51 @@ def validate(profile):
                 number(request['status'], 'mock request status', minimum=100, integer=True)
         if 'reject_group' in case and (
             'http_group' not in case
-            or case['reject_group'] not in ('missing_signature', 'bad_signature')
+            or case['reject_group']
+            not in (
+                'missing_signature',
+                'bad_signature',
+                'expired_signature',
+                'future_signature',
+                'bad_timestamp',
+                'tampered_body',
+                'invalid_json',
+                'invalid_object',
+                'missing_session',
+                'invalid_message',
+            )
             or any(key in case for key in ('box_exec', 'attachment', 'mock_requests'))
         ):
             raise ValueError('reject_group must name a signature rejection on an HTTP group case')
-        if 'http_group' in case:
+        if 'reset_group' in case and (
+            case['reset_group'] is not True or 'http_group' not in case or 'reject_group' in case
+        ):
+            raise ValueError('reset_group requires an accepted group case')
+        if 'scenario' in case:
+            from regression_local_cases import modules
+
+            handlers = modules()
+            if (
+                'smoke' not in profile
+                or not isinstance(case['scenario'], str)
+                or not any(
+                    case['scenario'] in module.CASE_NAMES and name in profile.get('scenario_groups', [])
+                    for name, module in handlers.items()
+                )
+                or any(key in case for key in ('args', 'body', 'http_probe', 'http_group', 'box_exec', 'attachment'))
+            ):
+                raise ValueError('scenario must name a supported finite local case without another request mode')
+        elif 'http_probe' in case:
+            probe = case['http_probe']
+            if (
+                not isinstance(probe, dict)
+                or set(probe) != {'url', 'auth'}
+                or probe['auth'] not in ('missing', 'invalid')
+                or not resolve(probe['url'], variables).startswith(('http://', 'https://'))
+                or any(key in case for key in ('args', 'body', 'http_group', 'box_exec', 'attachment'))
+            ):
+                raise ValueError('http_probe requires url/auth without CLI or group inputs')
+        elif 'http_group' in case:
             settings = case['http_group']
             if (
                 'args' in case
@@ -237,14 +327,14 @@ def validate(profile):
             number(check['count'], 'box_exec.count', minimum=1, integer=True)
             if any(not isinstance(check[k], str) or not check[k] for k in ('backend', 'stdout')):
                 raise ValueError('box_exec backend/stdout must be non-empty strings')
-            if 'smoke' not in profile:
-                raise ValueError('box_exec checks require smoke mode')
+            if 'smoke' not in profile and verification is None:
+                raise ValueError('box_exec requires smoke or load verification')
             if 'http_group' not in case and case.get('args', [])[:2] != ['pipeline', 'run']:
                 raise ValueError('box_exec requires a Pipeline or group case')
         if 'attachment' in case:
             check = case['attachment']
             if (
-                'smoke' not in profile
+                ('smoke' not in profile and verification is None)
                 or case.get('args', [])[:2] != ['pipeline', 'run']
                 or not isinstance(check, dict)
                 or set(check) != {'name', 'text'}
@@ -329,6 +419,12 @@ def validate(profile):
         if name not in {case['name'] for case in cases}:
             raise ValueError(f'unknown case in max_p95_seconds: {name}')
         number(value, 'max_p95_seconds', minimum=0.001)
+    if 'resource_limits' in profile:
+        if 'smoke' in profile and execution is None:
+            raise ValueError('resource_limits requires measured load and cooldown phases')
+        from regression_analysis import validate_resource_limits
+
+        validate_resource_limits(profile['resource_limits'])
     observed = resolve(profile.get('observe', {}), variables)
     if not isinstance(observed, dict) or observed.keys() - {
         'health',
@@ -352,6 +448,29 @@ def validate(profile):
             raise ValueError(f'observe.{field} must be an object')
     for pid in observed.get('pids', {}).values():
         number(pid, 'PID', minimum=1, integer=True)
+    if profile.get('resource_limits'):
+        if profile['resource_limits'].get('containers') and not (
+            observed.get('containers') or observed.get('box_data_root')
+        ):
+            raise ValueError('Container budgets require container names or a Box data root')
+        configured = set(observed.get('pids', {})) | set(observed.get('pid_files', {}))
+        if set(profile['resource_limits']['targets']) - configured:
+            raise ValueError('Resource limit targets must have configured PIDs or PID files')
+        if execution:
+            limits = profile['resource_limits']
+            if (
+                execution['cooldown_seconds'] < limits['window_seconds']
+                or execution['total_seconds'] - execution['drain_seconds'] - execution['cooldown_seconds']
+                < limits['warmup_seconds'] + limits['window_seconds']
+            ):
+                raise ValueError('execution must cover resource warmup, stable window and cooldown')
+        for phase in phases:
+            limits = profile['resource_limits']
+            if (
+                phase['duration_seconds'] < limits['warmup_seconds'] + limits['window_seconds']
+                or phase.get('cooldown_seconds', 0) < limits['window_seconds']
+            ):
+                raise ValueError('Phase must cover the configured warmup, resource window and cooldown')
     if not isinstance(observed.get('containers', []), list) or any(
         not isinstance(item, str) or not item for item in observed.get('containers', [])
     ):
@@ -376,6 +495,7 @@ class Suite:
         ]
         self.owned = []
         self.connection = {}
+        self.execution = None
         self.env = dict(os.environ if env is None else env)
         if any('http_group' in case for case in profile['cases']):
             self.variables['group_secret'] = secrets.token_urlsafe(32)
@@ -383,6 +503,9 @@ class Suite:
         self.secrets = [
             value for key, value in self.env.items() if ('API_KEY' in key or key == 'LANGBOT_QA_GROUP_SECRET') and value
         ]
+
+    def timeout(self, maximum):
+        return self.execution.timeout(maximum) if self.execution else maximum
 
     def path(self, value):
         path = Path(resolve(value, self.variables)).expanduser()
@@ -398,12 +521,35 @@ class Suite:
         path.chmod(0o600)
         return str(path)
 
+    def finish(self, result):
+        policy = self.profile.get('cleanup', 'on-success')
+        if policy == 'always' or (policy == 'on-success' and not result['errors']):
+            if (self.output / 'owned.json').exists():
+                try:
+                    result['errors'].extend(self.cleanup())
+                except (RuntimeError, ValueError, OSError, KeyError) as exc:
+                    result['errors'].append(f'cleanup failed: {exc}')
+        if self.execution:
+            self.execution.finish(result)
+        if self.profile.get('coverage_suite'):
+            from regression_coverage import write_report
+
+            coverage = write_report([self.output], self.output)
+            result['errors'].extend(coverage['evidence_errors'])
+            result.setdefault('incomplete', []).extend(coverage['evidence_errors'])
+        result['passed'] = not result['errors']
+        if result['errors']:
+            result['outcome'] = 'FAIL' if set(result['errors']) - set(result.get('incomplete', [])) else 'INCOMPLETE'
+        else:
+            result['outcome'] = 'PASS'
+        self.write('summary.json', result)
+
     def call(self, args, body=None, *, defer_bot_readback=False):
         command = [*self.cli, *args]
         if body is not None:
             command += ['--file', self.write('request.json', body)]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=360, env=self.env)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout(360), env=self.env)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError('lbctl timed out; outcome unknown, no automatic retry') from exc
         if result.returncode:
@@ -439,7 +585,7 @@ class Suite:
         )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
-            with opener.open(request, timeout=30) as response:
+            with opener.open(request, timeout=self.timeout(30)) as response:
                 payload = json.load(response)
         except (urllib.error.URLError, OSError) as exc:
             raise RuntimeError('Bot readback request failed; the creation was not retried') from exc
@@ -456,14 +602,15 @@ class Suite:
         self.write('owned.json', {'workspace_uuid': self.variables['workspace_uuid'], 'resources': self.owned})
 
     def prepare(self):
-        if 'smoke' in self.profile and not Path(self.path(self.profile['smoke']['ledger_db'])).is_file():
-            raise ValueError('smoke.ledger_db must be an existing target Core SQLite database')
+        verification = self.profile.get('smoke') or self.profile.get('verification')
+        if verification and not Path(self.path(verification['ledger_db'])).is_file():
+            raise ValueError('ledger_db must be an existing target Core SQLite database')
         identity = self.call(['whoami'])
         self.variables['workspace_uuid'] = identity['workspace_uuid']
         self.journal()
         for plugin in self.profile.get('plugins', []):
             self.call(['plugin', 'install', plugin['source'], '--file', self.path(plugin['file']), '--wait'])
-        if 'smoke' in self.profile:
+        if 'smoke' in self.profile or 'verification' in self.profile:
             capabilities = self.call(['capabilities'])
             plugins = self.call(['plugin', 'list'])
             ready = {
@@ -471,10 +618,15 @@ class Suite:
                 for item in plugins['plugins']
                 if item.get('enabled') and item.get('status') == 'initialized'
             }
-            missing = set(self.profile['smoke'].get('required_plugins', [])) - ready
+            missing = set(self.profile.get('smoke', {}).get('required_plugins', [])) - ready
             self.write('environment.json', {'identity': identity, 'capabilities': capabilities, 'plugins': plugins})
             if missing:
                 raise RuntimeError(f'Required plugins are not initialized: {sorted(missing)}')
+        if self.profile.get('execution'):
+            from regression_scenarios import ExecutionWindow
+
+            self.execution = ExecutionWindow(self)
+            self.execution.start()
         for item in self.profile.get('resources', []):
             kind = item['kind']
             body = resolve(item['body'], self.variables)
@@ -540,6 +692,8 @@ class Suite:
                 self.write('warmup.json', warmups)
 
     def cleanup(self):
+        if self.execution:
+            self.execution.mark('cleanup')
         saved = json.loads((self.output / 'owned.json').read_text())
         identity = self.call(['whoami'])
         if saved['workspace_uuid'] != identity['workspace_uuid']:
@@ -557,7 +711,7 @@ class Suite:
             else:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
-        if 'smoke' in self.profile:
+        if 'smoke' in self.profile or 'verification' in self.profile:
             from regression_smoke import verify_cleanup
 
             try:
@@ -577,7 +731,22 @@ class Suite:
             if 'body' in case:
                 case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
             cases.extend(
-                [{key: case[key] for key in ('name', 'args', 'expect', 'http_group') if key in case}]
+                [
+                    {
+                        key: case[key]
+                        for key in (
+                            'name',
+                            'args',
+                            'expect',
+                            'http_group',
+                            'box_exec',
+                            'attachment',
+                            'fields',
+                            'forbid',
+                        )
+                        if key in case
+                    }
+                ]
                 * case.get('weight', 1)
             )
         cases_path = self.write('cases.json', cases)
@@ -593,6 +762,15 @@ class Suite:
             observe_args += ['--container', container]
         if observed.get('box_data_root'):
             observe_args += ['--box-data-root', self.path(observed['box_data_root'])]
+        if verification := self.profile.get('verification'):
+            observe_args += [
+                '--ledger-db',
+                self.path(verification['ledger_db']),
+                '--workspace',
+                self.variables['workspace_uuid'],
+                '--verification-timeout',
+                str(verification.get('timeout_seconds', 5)),
+            ]
         results = []
         errors = []
         for phase in self.profile['phases']:
@@ -629,10 +807,23 @@ class Suite:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
             summary = json.loads((destination / 'summary.json').read_text())
             summary['name'] = phase['name']
-            summary['achieved_rps'] = summary['requests'] / summary['load_elapsed_seconds']
+            summary['achieved_rps'] = (
+                summary.get(
+                    'successful_requests', sum(row.get('status', {}).get('ok', 0) for row in summary['cases'].values())
+                )
+                / summary['load_elapsed_seconds']
+            )
             results.append(summary)
+            if self.profile.get('resource_limits'):
+                from regression_analysis import resource_verdict
+
+                summary['resources'] = resource_verdict(destination, self.profile['resource_limits'])
+                errors.extend(f'{phase["name"]}: {error}' for error in summary['resources']['errors'])
             if result.returncode:
                 errors.append(f'{phase["name"]}: business or health/resource checks failed')
+            summary['performance_mode'] = self.profile.get('performance_mode', 'gate')
+            if summary['performance_mode'] == 'observe':
+                continue
             thresholds = self.profile.get('thresholds', {})
             if summary['achieved_rps'] < phase['rps'] * thresholds.get('min_rps_ratio', 0):
                 errors.append(f'{phase["name"]}: achieved RPS below configured threshold')
@@ -684,6 +875,10 @@ def main():
             return
         args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
         suite.write('profile.json', profile)
+        if 'smoke' not in profile:
+            from regression_analysis import workload_contract
+
+            suite.write('workload.json', workload_contract(profile, args.profile))
         result = {'phases': [], 'errors': []}
         completed = False
         try:
@@ -697,15 +892,7 @@ def main():
         finally:
             if not completed and not result['errors']:
                 result['errors'].append('Run aborted before completion; inspect logs and retained resources.')
-            policy = profile.get('cleanup', 'on-success')
-            if policy == 'always' or (policy == 'on-success' and not result['errors']):
-                if (args.output / 'owned.json').exists():
-                    try:
-                        result['errors'].extend(suite.cleanup())
-                    except (RuntimeError, ValueError, OSError, KeyError) as exc:
-                        result['errors'].append(f'cleanup failed: {exc}')
-            result['passed'] = not result['errors']
-            suite.write('summary.json', result)
+            suite.finish(result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result['passed']:
             raise SystemExit(1)

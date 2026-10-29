@@ -12,3 +12,15 @@ __pycache__
 web/.next
 web/node_modules
 web/.env
+
+# Documentation site dependencies and generated output
+docs/node_modules/
+docs/.next/
+docs/dist/
+docs/.fumapress/
+docs/.waku/
+docs/content/
+docs/public/
+
+plugins/
+**/*.lbpkg

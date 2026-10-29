@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: RAGFlowConnector
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/RAGFlowConnector
+  version: 0.2.5
+  description:
+    en_US: Retrieve knowledge from or store files into RAGFlow knowledge bases
+    zh_Hans: 从 RAGFlow 知识库中检索知识或存入文件
+    ja_JP: RAGFlowコネクタプラグイン。RAGFlowナレッジベース検索をLangBot Toolとして公開します。
+    zh_Hant: RAGFlow 連接器插件，將 RAGFlow 知識庫檢索暴露為 LangBot Tool。
+    vi_VN: Plugin kết nối RAGFlow, cung cấp khả năng truy xuất cơ sở tri thức 
+      RAGFlow dưới dạng LangBot Tool.
+    th_TH: ปลั๊กอินเชื่อมต่อ RAGFlow เปิดการค้นหาฐานความรู้ RAGFlow เป็น LangBot
+      Tool
+    es_ES: Plugin conector RAGFlow que expone la búsqueda de la base de 
+      conocimientos RAGFlow como una herramienta LangBot Tool.
+  label:
+    en_US: RAGFlowKnowledgeBase
+    zh_Hans: RAGFlow 知识库
+    ja_JP: RAGFlow 知識ベース
+    zh_Hant: RAGFlowKnowledgeBase
+    vi_VN: RAGFlowKnowledgeBase
+    th_TH: RAGFlowKnowledgeBase
+    es_ES: RAGFlowKnowledgeBase
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    KnowledgeEngine:
+      fromFiles:
+      - components/knowledge_engine/ragflow.yaml
+execution:
+  python:
+    path: main.py
+    attr: RAGFlowConnector
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -1,0 +1,3 @@
+langbot-plugin
+beautifulsoup4
+PyYaml

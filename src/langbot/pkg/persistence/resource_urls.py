@@ -148,7 +148,10 @@ def uninstall(engine):
         sa.event.remove(engine, 'before_cursor_execute', normalize_parameters)
     engine.dialect._langbot_resource_urls = False
     engine.clear_compiled_cache()
-    engine._langbot_resource_aliases.clear()
+    # A migration process may uninstall an engine that never ran install().
+    aliases = getattr(engine, '_langbot_resource_aliases', None)
+    if aliases is not None:
+        aliases.clear()
 
 
 def normalize_parameters(connection, cursor, statement, parameters, context, executemany):

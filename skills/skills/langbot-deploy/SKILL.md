@@ -100,7 +100,7 @@ api:
 ```
 
 This key authenticates both the HTTP API and the MCP server (`/mcp`) without a
-login session. See `langbot-mcp-ops` for using it, and `docs/API_KEY_AUTH.md`.
+login session. See `langbot-mcp-ops` for using it, and `dev-docs/API_KEY_AUTH.md`.
 
 ## Pitfalls
 

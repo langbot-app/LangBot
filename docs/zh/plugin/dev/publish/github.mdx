@@ -1,0 +1,40 @@
+---
+title: "通过 GitHub 分发插件"
+---
+
+您可以将您的插件上传至 GitHub ，为仓库创建 Release 并上传 `.lbpkg` 文件，其他用户即可在 LangBot 上安装。
+
+## 打包插件
+
+在插件目录下执行命令：
+
+```bash
+lbp build
+```
+
+这将生成一个 `.lbpkg` 文件在`dist`目录。
+
+## 创建 Release
+
+请将该插件上传 GitHub，并前往插件仓库的 Release 页面，点击创建 Release，并上传刚刚打包的`.lbpkg`文件。
+
+<img width="600" src="/images/zh/plugin/dev/dist/github_release.png" />
+
+## 自动创建 Release（GitHub Actions）
+
+自 `lbp init` 创建的插件已内置一个 GitHub Actions 工作流（`.github/workflows/release.yml`），无需手动打包和上传。
+
+将插件仓库推送到 GitHub 后，每当您修改 `manifest.yaml` 中的 `version` 字段并推送到 `main` 或 `master` 分支时，该工作流会自动：
+
+1. 安装 `lbp` CLI 并执行 `lbp build` 打包插件；
+2. 以 `v<version>` 为标签创建一个 GitHub Release，并上传生成的 `.lbpkg` 文件。
+
+若对应版本号的 Release 已存在，则工作流会跳过，不会重复发布。您也可以在仓库的 Actions 页面手动触发（`workflow_dispatch`）。
+
+<Info title="">
+该工作流依赖仓库默认的 `GITHUB_TOKEN`，并需要 `contents: write` 权限（模板已声明）。请确保仓库的 Actions 已启用，且 `manifest.yaml` 中的 `metadata.author`、`metadata.name`、`metadata.version` 字段填写正确——Release 名称与产物文件名均由这些字段拼接而成（`<author>-<name>-<version>.lbpkg`）。
+</Info>
+
+## 安装插件
+
+请在 LangBot 的插件管理页面，点击右上角即可选择 GitHub 安装方式。

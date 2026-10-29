@@ -1,0 +1,63 @@
+---
+title: "Discord"
+description: "用 LangBot 搭建 Discord AI 机器人，几分钟内将 GPT、Claude、Gemini、DeepSeek 与 Dify 接入 Discord 服务器。"
+icon: "/images/platforms/discord.svg"
+---
+
+## 创建应用和机器人
+
+在 [Discord 开发者门户](https://discord.com/developers/applications)中选择 **New Application（新 APP）**。应用名称不要包含 `Discord`，否则门户会拒绝创建。按页面提示完成条款确认和人机验证。
+
+1. 在 **General Information（基本信息）** 复制 **Application ID**。它也是 LangBot 所需的 **客户端 ID**，不是服务器 ID 或频道 ID。
+2. 打开 **Bot（机器人）**，点击 **Reset Token（重置令牌）** 并完成验证。令牌只显示一次；将它填写到 LangBot，不要放进截图、代码或公开消息。重置后，旧令牌立即失效，需要同步更新 LangBot。
+3. 在 **Privileged Gateway Intents** 开启 **Server Members Intent** 和 **Message Content Intent**，点击 **Save Changes**。新版适配器会请求这两项；**Presence Intent 不需要开启**。
+
+## 连接 LangBot
+
+创建机器人，选择新版 **Discord** 适配器（`discord-omni`），填写客户端 ID 和令牌并保存。
+
+接着配置事件处理：
+
+- **Pipeline**：添加“回复收到的消息”规则，将 `message.received` 绑定到已配置模型的流水线。在机器人的事件路由中设置**触发条件**，按消息文本、会话类型或消息元素筛选。显式事件路由会跳过 Pipeline 内的群响应规则；无条件路由会处理每条收到的消息。“@某人”元素条件匹配提及消息，并不限定被提及者是机器人。
+- **Agent**：将事件绑定到 Agent。明确要求 Agent 使用事件回复工具发送消息；单纯生成一段文本不等于已发送。只选择验收或业务实际需要的工具。
+- **插件处理器**：在机器人页面单独添加已有插件处理器配置。它按插件声明的事件独立接收事件，可与 Pipeline 或 Agent 同时运行。
+
+需要执行代码或生成文件时，为运行器启用可用的 Box 沙箱。不要为了发送附件而启用无关的 MCP 服务器；未配置凭据的外部工具会造成额外失败。
+
+启用机器人，查看日志中的 `Discord adapter running as ...`。这说明网关已登录，还需要在 Discord 实际发送消息确认路由和回复正常。
+
+## 邀请到测试服务器
+
+在开发者门户的 **OAuth2 → URL Generator** 选择 `bot`，选择 **Guild Install（服务器安装）**。普通消息、图片和文件测试可使用以下权限：
+
+- View Channels（查看频道）
+- Send Messages（发送消息）
+- Embed Links（嵌入链接）
+- Attach Files（添加附件）
+- Read Message History（阅读消息历史）
+- Add Reactions（添加反应）
+
+复制生成的链接，在浏览器中打开，选定自己的测试服务器后授权。不需要授予 Administrator；成员管理、子区等功能再按需增加权限。频道自身的权限覆盖也必须允许机器人访问和发送消息。
+
+## 检查实际收发
+
+先在服务器频道发送一条符合触发条件的消息，再从机器人的资料卡打开私信。分别检查普通回复、逐步更新的流式回复、图片和文本文件输入，以及返回的真实附件。文件名或下载路径出现在文字中不能代替附件送达。
+
+Discord 单条消息有长度限制，长流式输出需要分段送达。检查最后一段和结束标记，不能仅凭 LangBot 运行日志的“成功”判断内容完整。图片理解需要视觉模型；文件处理需要运行器具备相应工具与沙箱能力。
+
+新版适配器还提供消息编辑、删除、添加/移除表情、成员加入/离开、机器人加入/离开服务器，以及平台特定事件。Pipeline 仅处理消息；其他事件应交给 Agent 或对应插件。平台特定事件中的交互提交来自 LangBot 发出的交互组件，不代表任意 Discord 事件都会透传。
+
+消息事件的 `chat_id` 是频道 ID，`group.id` 是服务器 ID。发送到频道时使用频道 ID，查询或管理服务器成员时使用服务器 ID；两者不能互换。
+
+成员加入/离开事件没有来源频道，回复会发送到服务器配置的 **系统消息频道**。请在 Discord 服务器设置中配置该频道，并授予机器人查看频道、发送消息权限；未配置系统消息频道时，回复会明确失败。成员离开回调无法区分主动退群和被踢，不要将 `is_kicked` 作为可靠的管理判断依据。
+
+![Discord 实际投递：插件原样回传上传的图片和文本文件，随后 Pipeline 私聊回复成功。](/images/zh/deploy/bots/discord/attachment-roundtrip.jpg)
+
+## 排查问题
+
+- **无法登录网关**：核对最新 Token，并确认两个必需 Intent 已开启且保存；浏览器登录成功不代表机器人 Token 正确。
+- **在线但不回复**：核对启用状态、事件路由、处理器模型、群响应规则和频道权限。独立插件订阅与主路由分开检查。
+- **附件失败**：同时检查 Discord 的附件权限、运行器日志、Box 状态和附件下载网络；图片 CDN 可达性与网关连接是两回事。
+- **网络受限**：LangBot 所在环境必须能够连接 Discord 网关、API 和附件 CDN。按部署环境配置网络代理。
+- **文档截图**：不要截取令牌显示页或真实用户的私人消息。
+- **旧会话突然出现附件 404**：Discord 附件链接会过期，历史图片也可能让后续纯文本请求失败。重新上传附件，并使用会话上下文重置；安装 EssentialCommands 时可发送 `!reset`（命令前缀以实例配置为准）。重置上下文不删除监控记录。

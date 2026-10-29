@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: powercontext
+  label:
+    en_US: PowerContext
+    zh_Hans: PowerContext
+  description:
+    en_US: Inspect PowerContext health and manage the current Scope binding.
+    zh_Hans: 检查 PowerContext 状态并管理当前 Scope 绑定。
+spec:
+execution:
+  python:
+    path: powercontext.py
+    attr: PowerContext

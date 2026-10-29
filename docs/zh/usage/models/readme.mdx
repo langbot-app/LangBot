@@ -1,0 +1,86 @@
+---
+title: "模型 (Models)"
+description: "在 LangBot 中配置大模型供应商：OpenAI GPT、Anthropic Claude、Google Gemini、DeepSeek、通义千问、Ollama 及 OpenAI 兼容模型。"
+---
+
+## LangBot Models
+
+LangBot Models 是 LangBot 官方提供的模型服务。当您使用 LangBot Space 账户初始化本地实例时，可用模型将被自动添加到您的实例中，无需进行任何配置。您将会获得一定的免费额度用于快速上手。
+
+<img src="/images/zh/deploy/models/langbot_models.png" alt="langbot_models" />
+
+具体可用模型，请查看[LangBot Space](https://space.langbot.app/models)。
+
+## 自定义模型
+
+您也可以添加其他来源的模型。LangBot 采用 **供应商（Provider）+ 模型（Model）** 的两层架构：
+
+- **供应商**：定义 API 地址（Base URL）和 API 密钥。同一供应商下的所有模型共享这些配置。
+- **模型**：关联到一个供应商，指定具体的模型名称和能力。
+
+```
+供应商 (OpenAI)
+├── Base URL: https://api.openai.com/v1
+├── API Keys: [sk-xxx]
+├── LLM 模型: gpt-4o
+├── LLM 模型: gpt-4o-mini
+├── 向量模型: text-embedding-3-small
+└── 重排序模型: rerank-v3.5
+```
+
+<Tip>
+同一供应商下可以添加多个模型，它们会自动继承供应商的 API 地址和密钥，无需重复填写。
+</Tip>
+
+### 对话模型 (LLM Model)
+
+对话模型将被流水线用于处理消息，您配置的第一个模型将被设置为默认流水线的模型。
+
+![arch](/images/zh/deploy/models/arch.png)
+
+可以添加多个模型，然后在流水线中选择具体使用什么模型。
+
+<img width="400px" src="/images/zh/deploy/models/model_config.png" alt="model_config" />
+
+填入 `模型名称`、选择 `模型供应商`（或新建供应商并填入 `请求 URL` 和 `API Key`），然后提交即可。
+
+模型能力方面，请根据具体模型特性来选择：
+
+- **视觉能力**：启用后才能识别图片
+- **工具使用能力**（function calling / tool use）：启用后 LLM 才能在对话中调用工具
+
+<Note>
+**只要想使用来自 MCP 服务器、沙箱内置工具（`exec`/`read`/`write`/`edit`/`glob`/`grep`）、Skills 的能力，都必须为模型启用工具使用能力。** 否则即使流水线绑定了这些扩展，Agent 也不会调用任何工具。
+
+模型本身需要支持 function calling 才能勾选。不确定时请查阅模型供应商的文档。
+</Note>
+
+### 嵌入模型 (Embedding Model)
+
+嵌入模型将被用于计算消息的向量，若您需要使用知识库，请配置此模型。
+
+<img width="400px" src="/images/zh/deploy/models/embedding_model.png" alt="embedding_model" />
+
+填入 `模型名称`、选择 `模型供应商`，然后提交即可。之后请在知识库中配置使用此模型。
+
+### 使用 seekdb 内置嵌入模型（需要可选依赖）
+该模型无需填写请求参数。源码部署使用 `uv sync --extra seekdb`，包管理器部署使用 `uvx --from 'langbot[seekdb]@latest' langbot`；官方 Docker/Kubernetes 镜像已包含 SeekDB 依赖。原生部署的平台支持取决于 `pylibseekdb` wheel。
+- 在”嵌入模型”页面选择「seekdb-内置」；
+- 点击「保存」即可立即使用；
+- 后续在知识库中选择该模型即可生效。
+
+### 使用 Chroma 内置嵌入模型（零配置）
+系统已集成 Chroma 提供的内置嵌入模型（all-MiniLM-L6-v2），无需填写任何参数。
+- 在”嵌入模型”页面选择「chroma-内置」；
+- 点击「保存」即可立即使用；
+- 后续在知识库中选择该模型即可生效。
+
+### 重排序模型 (Rerank Model)
+
+重排序模型用于对 RAG 检索结果进行重新评分排序，显著提升知识库回答的精准度。当知识库返回多个候选文档时，重排序模型会使用 cross-encoder 对每个文档与查询的相关性进行精确打分，筛选出最相关的内容。
+
+填入 `模型名称`、选择 `模型供应商`，然后提交即可。之后请在流水线的”AI 能力”配置中选择此模型。
+
+<Tip>
+重排序模型是可选的。不配置时，知识库检索结果将按向量相似度排序直接使用。配置后，检索结果会经过重排序模型重新打分，只保留最相关的 Top-K 条结果。
+</Tip>

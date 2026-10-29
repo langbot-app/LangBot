@@ -1,0 +1,272 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Codex
+    zh_Hans: Codex
+  description:
+    en_US: Run Codex CLI app-server as a LangBot Runner.
+    zh_Hans: 将 Codex CLI app-server 作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: location
+      label:
+        en_US: Runtime Location
+        zh_Hans: 运行位置
+      type: select
+      required: true
+      default: local
+      options:
+        - name: local
+          label:
+            en_US: Local
+            zh_Hans: 本机
+        - name: remote-ssh
+          label:
+            en_US: Remote SSH
+            zh_Hans: 远程 SSH
+        - name: daemon
+          label:
+            en_US: User Daemon
+            zh_Hans: 用户侧 Daemon
+    - name: workspace
+      label:
+        en_US: Workspace
+        zh_Hans: 工作目录
+      type: string
+      required: false
+      default: ''
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show command, timeout, session, and LangBot bridge tuning controls.
+        zh_Hans: 显示命令、超时、会话和 LangBot 桥接调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: command
+      label:
+        en_US: Codex Command
+        zh_Hans: Codex 命令
+      type: string
+      required: false
+      default: codex
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: args-json
+      label:
+        en_US: Extra Arguments JSON
+        zh_Hans: 附加参数 JSON
+      type: string
+      required: false
+      default: '[]'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: env-json
+      label:
+        en_US: Environment JSON
+        zh_Hans: 环境变量 JSON
+      type: string
+      required: false
+      default: '{}'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: ssh-target
+      label:
+        en_US: SSH Target
+        zh_Hans: SSH 目标
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: ssh-port
+      label:
+        en_US: SSH Port
+        zh_Hans: SSH 端口
+      type: integer
+      required: false
+      default: 22
+      show_if:
+        field: location
+        operator: eq
+        value: remote-ssh
+    - name: daemon-id
+      label:
+        en_US: Daemon ID
+        zh_Hans: Daemon ID
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: location
+        operator: eq
+        value: daemon
+    - name: timeout
+      label:
+        en_US: Timeout Seconds
+        zh_Hans: 超时秒数
+      type: integer
+      required: false
+      default: 1800
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: streaming
+      label:
+        en_US: Streaming
+        zh_Hans: 流式输出
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: reuse-session
+      label:
+        en_US: Reuse Session
+        zh_Hans: 复用会话
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: approval-policy
+      label:
+        en_US: Approval Policy
+        zh_Hans: 审批策略
+      type: select
+      required: false
+      default: never
+      options:
+        - name: on-request
+          label:
+            en_US: On Request
+            zh_Hans: 按需审批
+        - name: untrusted
+          label:
+            en_US: Untrusted Commands
+            zh_Hans: 未受信任命令审批
+        - name: never
+          label:
+            en_US: Never Ask
+            zh_Hans: 从不询问
+        - name: inherit
+          label:
+            en_US: Inherit Codex Config
+            zh_Hans: 继承 Codex 配置
+    - name: sandbox-mode
+      label:
+        en_US: Sandbox Mode
+        zh_Hans: 沙箱模式
+      type: select
+      required: false
+      default: danger-full-access
+      options:
+        - name: inherit
+          label:
+            en_US: Inherit Codex Config
+            zh_Hans: 继承 Codex 配置
+        - name: read-only
+          label:
+            en_US: Read Only
+            zh_Hans: 只读
+        - name: workspace-write
+          label:
+            en_US: Workspace Write
+            zh_Hans: 工作区可写
+        - name: danger-full-access
+          label:
+            en_US: Full Access
+            zh_Hans: 完全访问
+    - name: knowledge-bases
+      label:
+        en_US: Knowledge Bases
+        zh_Hans: 知识库
+      type: knowledge-base-multi-selector
+      required: false
+      default: []
+    - name: langbot-assets-enabled
+      label:
+        en_US: Enable LangBot Tools and Knowledge
+        zh_Hans: 启用 LangBot 工具和知识库
+      type: boolean
+      required: false
+      default: true
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: mcp-bridge-transport
+      label:
+        en_US: MCP Bridge Transport
+        zh_Hans: MCP Bridge 传输
+      type: select
+      required: false
+      default: auto
+      options:
+        - name: auto
+          label:
+            en_US: Auto
+            zh_Hans: 自动
+        - name: stdio
+          label:
+            en_US: Stdio
+            zh_Hans: Stdio
+        - name: http
+          label:
+            en_US: HTTP
+            zh_Hans: HTTP
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: mcp-servers-json
+      label:
+        en_US: Extra MCP Servers JSON
+        zh_Hans: 额外 MCP Servers JSON
+      type: string
+      required: false
+      default: '[]'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: true
+    knowledge_retrieval: true
+    multimodal_input: false
+    interrupt: false
+    steering: true
+    interactions: true
+  permissions:
+    tools:
+      - detail
+      - call
+    knowledge_bases:
+      - retrieve
+    history:
+      - page
+    interactions:
+      - request
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

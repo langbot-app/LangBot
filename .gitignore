@@ -4,8 +4,7 @@ __pycache__/
 database.db
 langbot.log
 /banlist.py
-/plugins/
-!/plugins/__init__.py
+*.lbpkg
 /revcfg.py
 prompts/
 logs/
@@ -71,3 +70,6 @@ packaging/fnos/app/desktop/images/
 packaging/fnos/*.fpk
 
 r.ps1
+
+*.log
+*.pid

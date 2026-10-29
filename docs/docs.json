@@ -1,0 +1,1486 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "LangBot",
+  "colors": {
+    "primary": "#4692dd",
+    "light": "#4692dd",
+    "dark": "#4692dd"
+  },
+  "fontFamily": "Noto Sans SC",
+  "logo": {
+    "light": "/logo/langbot-logo-0.5x.png",
+    "dark": "/logo/langbot-logo-0.5x.png",
+    "href": "https://langbot.app"
+  },
+  "favicon": "/favicon.ico",
+  "description": "Production-grade No-code AI Bot Platform. Connect DeepSeek, Dify, GPT-4 & Claude to WeChat, Discord, Telegram, Slack, Lark & DingTalk in 5 minutes.",
+  "seo": {
+    "indexing": "all",
+    "metatags": {
+      "og:site_name": "LangBot Docs",
+      "twitter:card": "summary_large_image",
+      "og:image": "https://langbot.app/docs/images/social/docs-v3.png",
+      "og:image:width": "1200",
+      "og:image:height": "630",
+      "og:image:type": "image/png",
+      "og:image:alt": "LangBot Docs — Build. Connect. Extend.",
+      "twitter:image": "https://langbot.app/docs/images/social/docs-v3.png",
+      "twitter:image:alt": "LangBot Docs — Build. Connect. Extend."
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Cloud",
+        "href": "https://space.langbot.app/cloud?language=en",
+        "icon": "cloud"
+      },
+      {
+        "label": "Extensions",
+        "href": "https://space.langbot.app/market?language=en",
+        "icon": "blocks"
+      },
+      {
+        "label": "Blog",
+        "href": "https://langbot.app/en/blog",
+        "icon": "newspaper"
+      },
+      {
+        "label": "Roadmap",
+        "href": "https://langbot.app/en/roadmap",
+        "icon": "map"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "GitHub",
+      "href": "https://github.com/langbot-app/LangBot",
+      "icon": "github"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/langbot-app/LangBot"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/en/usage/sandbox/backend",
+      "destination": "/en/usage/sandbox/config"
+    },
+    {
+      "source": "/en/usage/sandbox/profiles",
+      "destination": "/en/usage/sandbox/config"
+    },
+    {
+      "source": "/zh/usage/sandbox/backend",
+      "destination": "/zh/usage/sandbox/config"
+    },
+    {
+      "source": "/zh/usage/sandbox/profiles",
+      "destination": "/zh/usage/sandbox/config"
+    },
+    {
+      "source": "/ja/usage/sandbox/backend",
+      "destination": "/ja/usage/sandbox/config"
+    },
+    {
+      "source": "/ja/usage/sandbox/profiles",
+      "destination": "/ja/usage/sandbox/config"
+    },
+    {
+      "source": "/en/usage/skills/skill-format",
+      "destination": "/en/usage/skills/readme"
+    },
+    {
+      "source": "/en/usage/skills/tools-api",
+      "destination": "/en/usage/skills/readme"
+    },
+    {
+      "source": "/zh/usage/skills/skill-format",
+      "destination": "/zh/usage/skills/readme"
+    },
+    {
+      "source": "/zh/usage/skills/tools-api",
+      "destination": "/zh/usage/skills/readme"
+    },
+    {
+      "source": "/ja/usage/skills/skill-format",
+      "destination": "/ja/usage/skills/readme"
+    },
+    {
+      "source": "/ja/usage/skills/tools-api",
+      "destination": "/ja/usage/skills/readme"
+    },
+    {
+      "source": "/en/deploy/platforms/:slug*",
+      "destination": "/en/usage/platforms/:slug*"
+    },
+    {
+      "source": "/zh/deploy/platforms/:slug*",
+      "destination": "/zh/usage/platforms/:slug*"
+    },
+    {
+      "source": "/ja/deploy/platforms/:slug*",
+      "destination": "/ja/usage/platforms/:slug*"
+    },
+    {
+      "source": "/en/deploy/models/:slug*",
+      "destination": "/en/usage/models/:slug*"
+    },
+    {
+      "source": "/zh/deploy/models/:slug*",
+      "destination": "/zh/usage/models/:slug*"
+    },
+    {
+      "source": "/ja/deploy/models/:slug*",
+      "destination": "/ja/usage/models/:slug*"
+    },
+    {
+      "source": "/en/deploy/pipelines/:slug*",
+      "destination": "/en/usage/pipelines/:slug*"
+    },
+    {
+      "source": "/zh/deploy/pipelines/:slug*",
+      "destination": "/zh/usage/pipelines/:slug*"
+    },
+    {
+      "source": "/ja/deploy/pipelines/:slug*",
+      "destination": "/ja/usage/pipelines/:slug*"
+    },
+    {
+      "source": "/en/deploy/knowledge/:slug*",
+      "destination": "/en/usage/knowledge/:slug*"
+    },
+    {
+      "source": "/zh/deploy/knowledge/:slug*",
+      "destination": "/zh/usage/knowledge/:slug*"
+    },
+    {
+      "source": "/ja/deploy/knowledge/:slug*",
+      "destination": "/ja/usage/knowledge/:slug*"
+    },
+    {
+      "source": "/en/deploy/mcp/:slug*",
+      "destination": "/en/usage/mcp/:slug*"
+    },
+    {
+      "source": "/zh/deploy/mcp/:slug*",
+      "destination": "/zh/usage/mcp/:slug*"
+    },
+    {
+      "source": "/ja/deploy/mcp/:slug*",
+      "destination": "/ja/usage/mcp/:slug*"
+    },
+    {
+      "source": "/insight/:slug*",
+      "destination": "/en/insight/:slug*"
+    },
+    {
+      "source": "/plugin/:slug*",
+      "destination": "/en/plugin/:slug*"
+    },
+    {
+      "source": "/deploy/:slug*",
+      "destination": "/en/deploy/:slug*"
+    },
+    {
+      "source": "/workshop/:slug*",
+      "destination": "/en/workshop/:slug*"
+    },
+    {
+      "source": "/develop/:slug*",
+      "destination": "/en/develop/:slug*"
+    },
+    {
+      "source": "/usage/:slug*",
+      "destination": "/en/usage/:slug*"
+    },
+    {
+      "source": "/config/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/webui/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/posts/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/session/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/pipeline/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/i18n/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/development/:slug*",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/api/v1/:slug*",
+      "destination": "/en/api-reference/:slug*"
+    },
+    {
+      "source": "/README_EN",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/ws",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/app",
+      "destination": "/en/insight/guide"
+    },
+    {
+      "source": "/en/api-reference/system/获取系统信息",
+      "destination": "/en/api-reference/system/get-system-information",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/model-providers/获取所有供应商",
+      "destination": "/en/api-reference/model-providers/list-all-model-providers",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/model-providers/创建供应商",
+      "destination": "/en/api-reference/model-providers/create-a-model-provider",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/model-providers/获取单个供应商",
+      "destination": "/en/api-reference/model-providers/get-a-model-provider",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/model-providers/更新供应商",
+      "destination": "/en/api-reference/model-providers/update-a-model-provider",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/model-providers/删除供应商",
+      "destination": "/en/api-reference/model-providers/delete-a-model-provider",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/获取所有-llm-模型",
+      "destination": "/en/api-reference/llm-models/list-all-llm-models",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/创建-llm-模型",
+      "destination": "/en/api-reference/llm-models/create-an-llm-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/获取单个-llm-模型",
+      "destination": "/en/api-reference/llm-models/get-an-llm-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/更新-llm-模型",
+      "destination": "/en/api-reference/llm-models/update-an-llm-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/删除-llm-模型",
+      "destination": "/en/api-reference/llm-models/delete-an-llm-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/llm-models/测试-llm-模型",
+      "destination": "/en/api-reference/llm-models/test-an-llm-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/获取所有向量模型",
+      "destination": "/en/api-reference/embedding-models/list-all-embedding-models",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/创建向量模型",
+      "destination": "/en/api-reference/embedding-models/create-an-embedding-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/获取单个向量模型",
+      "destination": "/en/api-reference/embedding-models/get-an-embedding-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/更新向量模型",
+      "destination": "/en/api-reference/embedding-models/update-an-embedding-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/删除向量模型",
+      "destination": "/en/api-reference/embedding-models/delete-an-embedding-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/embedding-models/测试向量模型",
+      "destination": "/en/api-reference/embedding-models/test-an-embedding-model",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/获取所有机器人",
+      "destination": "/en/api-reference/bots/list-all-bots",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/创建机器人",
+      "destination": "/en/api-reference/bots/create-a-bot",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/获取单个机器人",
+      "destination": "/en/api-reference/bots/get-a-bot",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/更新机器人",
+      "destination": "/en/api-reference/bots/update-a-bot",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/删除机器人",
+      "destination": "/en/api-reference/bots/delete-a-bot",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/获取机器人事件日志",
+      "destination": "/en/api-reference/bots/get-bot-event-logs",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/bots/通过机器人发送消息",
+      "destination": "/en/api-reference/bots/send-a-message-through-a-bot",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/获取所有流水线",
+      "destination": "/en/api-reference/pipelines/list-all-pipelines",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/创建流水线",
+      "destination": "/en/api-reference/pipelines/create-a-pipeline",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/获取流水线元数据",
+      "destination": "/en/api-reference/pipelines/get-pipeline-metadata",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/获取单个流水线",
+      "destination": "/en/api-reference/pipelines/get-a-pipeline",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/更新流水线",
+      "destination": "/en/api-reference/pipelines/update-a-pipeline",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/删除流水线",
+      "destination": "/en/api-reference/pipelines/delete-a-pipeline",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/复制流水线",
+      "destination": "/en/api-reference/pipelines/copy-a-pipeline",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/获取流水线扩展配置",
+      "destination": "/en/api-reference/pipelines/get-pipeline-extension-configuration",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/pipelines/更新流水线扩展配置",
+      "destination": "/en/api-reference/pipelines/update-pipeline-extension-configuration",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/获取所有知识库",
+      "destination": "/en/api-reference/knowledge-bases/list-all-knowledge-bases",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/创建知识库",
+      "destination": "/en/api-reference/knowledge-bases/create-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/获取单个知识库",
+      "destination": "/en/api-reference/knowledge-bases/get-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/更新知识库",
+      "destination": "/en/api-reference/knowledge-bases/update-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/删除知识库",
+      "destination": "/en/api-reference/knowledge-bases/delete-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/获取知识库文件列表",
+      "destination": "/en/api-reference/knowledge-bases/list-knowledge-base-files",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/将文件存入知识库",
+      "destination": "/en/api-reference/knowledge-bases/add-a-file-to-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/从知识库删除文件",
+      "destination": "/en/api-reference/knowledge-bases/remove-a-file-from-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-bases/检索知识库",
+      "destination": "/en/api-reference/knowledge-bases/retrieve-from-a-knowledge-base",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-engines/获取可用知识引擎列表",
+      "destination": "/en/api-reference/knowledge-engines/list-available-knowledge-engines",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-engines/获取知识引擎创建配置模式",
+      "destination": "/en/api-reference/knowledge-engines/get-the-knowledge-engine-creation-schema",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/knowledge-engines/获取知识引擎检索配置模式",
+      "destination": "/en/api-reference/knowledge-engines/get-the-knowledge-engine-retrieval-schema",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/parsers/获取可用解析器列表",
+      "destination": "/en/api-reference/parsers/list-available-parsers",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/files/上传图片",
+      "destination": "/en/api-reference/files/upload-an-image",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/files/上传文档",
+      "destination": "/en/api-reference/files/upload-a-document",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/获取已安装插件列表",
+      "destination": "/en/api-reference/plugins/list-installed-plugins",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/获取插件详情",
+      "destination": "/en/api-reference/plugins/get-plugin-details",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/删除插件",
+      "destination": "/en/api-reference/plugins/delete-a-plugin",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/升级插件",
+      "destination": "/en/api-reference/plugins/upgrade-a-plugin",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/获取插件配置",
+      "destination": "/en/api-reference/plugins/get-plugin-configuration",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/更新插件配置",
+      "destination": "/en/api-reference/plugins/update-plugin-configuration",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/从-marketplace-安装插件",
+      "destination": "/en/api-reference/plugins/install-a-plugin-from-marketplace",
+      "permanent": true
+    },
+    {
+      "source": "/en/api-reference/plugins/从-github-安装插件",
+      "destination": "/en/api-reference/plugins/install-a-plugin-from-github",
+      "permanent": true
+    }
+  ],
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Quick Start",
+                "pages": [
+                  "en/insight/guide",
+                  "en/insight/troubleshooting",
+                  "en/insight/features",
+                  "en/insight/community",
+                  "en/insight/data-collection-policy"
+                ]
+              },
+              {
+                "group": "Installation",
+                "pages": [
+                  "en/deploy/langbot/package",
+                  "en/deploy/langbot/docker",
+                  "en/deploy/langbot/kubernetes",
+                  "en/deploy/langbot/one-click/1panel",
+                  "en/deploy/langbot/one-click/bt",
+                  "en/deploy/langbot/manual",
+                  "en/deploy/settings",
+                  "en/deploy/update",
+                  "en/deploy/command"
+                ]
+              },
+              {
+                "group": "Configure Bots",
+                "pages": [
+                  "en/usage/platforms/readme",
+                  "en/usage/platforms/discord",
+                  "en/usage/platforms/telegram",
+                  "en/usage/platforms/slack",
+                  "en/usage/platforms/mattermost",
+                  "en/usage/platforms/line",
+                  "en/usage/platforms/webpage",
+                  "en/usage/platforms/http-bot",
+                  "en/usage/platforms/kook",
+                  "en/usage/platforms/lark",
+                  "en/usage/platforms/dingtalk",
+                  "en/usage/platforms/wxoa",
+                  {
+                    "group": "QQ (OneBot v11)",
+                    "pages": [
+                      "en/usage/platforms/qq/aiocqhttp/napcat",
+                      "en/usage/platforms/qq/aiocqhttp/lagrange",
+                      "en/usage/platforms/qq/aiocqhttp/llonebot"
+                    ],
+                    "icon": "/images/platforms/qq.svg"
+                  },
+                  {
+                    "group": "Satori (QQ & Multi-Platform)",
+                    "pages": [
+                      "en/usage/platforms/satori/llonebot"
+                    ],
+                    "icon": "robot"
+                  },
+                  {
+                    "group": "QQ Official Bot",
+                    "pages": [
+                      "en/usage/platforms/qq/official_webhook"
+                    ],
+                    "icon": "/images/platforms/qq.svg"
+                  },
+                  {
+                    "group": "WeCom (Enterprise WeChat)",
+                    "pages": [
+                      "en/usage/platforms/wecom/wecom",
+                      "en/usage/platforms/wecom/wecomcs",
+                      "en/usage/platforms/wecom/wecombot"
+                    ],
+                    "icon": "/images/platforms/wecom.svg"
+                  },
+                  {
+                    "group": "WeChat",
+                    "pages": [
+                      "en/usage/platforms/wechat/weixin"
+                    ],
+                    "icon": "/images/platforms/wechat.svg"
+                  }
+                ]
+              },
+              {
+                "group": "AI Configuration",
+                "pages": [
+                  "en/usage/models/readme",
+                  "en/usage/pipelines/readme",
+                  {
+                    "group": "Agent Platforms",
+                    "pages": [
+                      "en/usage/pipelines/dify",
+                      "en/usage/pipelines/n8n",
+                      "en/usage/pipelines/langflow",
+                      "en/usage/pipelines/coze",
+                      "en/usage/pipelines/weknora",
+                      "en/usage/pipelines/deerflow"
+                    ]
+                  },
+                  "en/usage/knowledge/readme",
+                  "en/usage/mcp/readme",
+                  {
+                    "group": "Sandbox",
+                    "pages": [
+                      "en/usage/sandbox/readme",
+                      "en/usage/sandbox/runtime-relationships",
+                      "en/usage/sandbox/config"
+                    ]
+                  },
+                  "en/usage/skills/readme"
+                ]
+              },
+              {
+                "group": "Advanced Operations",
+                "pages": [
+                  "en/workshop/production/proxy-and-ssl",
+                  "en/workshop/network-details",
+                  "en/workshop/mcp-details",
+                  "en/insight/platform-features",
+                  {
+                    "group": "Third-Party Model Providers",
+                    "pages": [
+                      "en/workshop/newapi-integration",
+                      "en/workshop/ppio-integration",
+                      "en/workshop/302ai-integration"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Using Plugins",
+                "pages": [
+                  "en/plugin/plugin-intro",
+                  "en/plugin/compatibility"
+                ]
+              },
+              {
+                "group": "Enterprise support",
+                "pages": [
+                  "en/enterprise/overview",
+                  "en/enterprise/service-scope",
+                  "en/enterprise/submit-ticket",
+                  "en/enterprise/procurement"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Developers",
+            "groups": [
+              {
+                "group": "Plugin Development",
+                "pages": [
+                  "en/plugin/dev/tutor",
+                  "en/plugin/dev/basic-info",
+                  "en/plugin/dev/directory-structure",
+                  {
+                    "group": "Component Development",
+                    "pages": [
+                      "en/plugin/dev/components/add",
+                      "en/plugin/dev/components/runner",
+                      "en/plugin/dev/components/event-listener",
+                      "en/plugin/dev/components/command",
+                      "en/plugin/dev/components/tool",
+                      "en/plugin/dev/components/knowledge-engine",
+                      "en/plugin/dev/components/parser",
+                      "en/plugin/dev/components/page"
+                    ]
+                  },
+                  "en/plugin/dev/style",
+                  "en/plugin/certified-plugins",
+                  {
+                    "group": "Publish Plugin",
+                    "pages": [
+                      "en/plugin/dev/publish/market",
+                      "en/plugin/dev/publish/github"
+                    ]
+                  },
+                  "en/plugin/dev/migration"
+                ]
+              },
+              {
+                "group": "Plugin SDK API",
+                "pages": [
+                  "en/plugin/dev/apis/agent-run",
+                  "en/plugin/dev/apis/common",
+                  "en/plugin/dev/apis/llm-requests",
+                  "en/plugin/dev/apis/platform",
+                  "en/plugin/dev/apis/pipeline-events",
+                  "en/plugin/dev/apis/messages",
+                  "en/plugin/dev/apis/tech-details"
+                ]
+              },
+              {
+                "group": "Core Development",
+                "pages": [
+                  "en/develop/agent-context",
+                  "en/develop/dev-config",
+                  "en/develop/plugin-runtime",
+                  "en/develop/comp-arch",
+                  "en/workshop/impl-platform-adapter"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Articles",
+            "groups": [
+              {
+                "group": "Browse",
+                "pages": [
+                  "en/articles/index"
+                ]
+              },
+              {
+                "group": "Product Updates",
+                "pages": [
+                  "en/articles/langbot-v411-event-driven-agents",
+                  "en/articles/langbot-cloud-multi-user-workspaces"
+                ]
+              },
+              {
+                "group": "Engineering",
+                "pages": [
+                  "en/articles/langbot-v4100-sandbox-skills",
+                  "en/articles/langbot-v490-rag-plugin-architecture",
+                  "en/articles/langbot-plugin-system-deep-dive"
+                ]
+              },
+              {
+                "group": "Tutorials & Integrations",
+                "pages": [
+                  "en/articles/dify-langbot-github-release-briefing",
+                  "en/articles/dify-langbot-support-triage",
+                  "en/articles/dify-langbot-writing-assistant",
+                  "en/articles/langtars-remote-pc-control-dify-n8n",
+                  "en/articles/connect-deepseek-to-wechat",
+                  "en/articles/deploy-ai-bot-in-5-minutes",
+                  "en/articles/dify-agent-discord-telegram-slack",
+                  "en/articles/langflow-drag-and-drop-ai-bot",
+                  "en/articles/n8n-multi-platform-ai-chatbot",
+                  "en/articles/dify-langbot-rag-knowledge-base"
+                ]
+              },
+              {
+                "group": "Announcements",
+                "pages": [
+                  "en/articles/welcome"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Service API",
+                "pages": [
+                  "en/tags/readme",
+                  "en/tags/webhook"
+                ]
+              },
+              {
+                "group": "HTTP API Reference",
+                "openapi": {
+                  "source": "openapi/service-api-en.json",
+                  "directory": "en/api-reference"
+                }
+              }
+            ]
+          }
+        ],
+        "navbar": {
+          "links": [
+            {
+              "label": "Cloud",
+              "href": "https://space.langbot.app/cloud?language=en",
+              "icon": "cloud"
+            },
+            {
+              "label": "Extensions",
+              "href": "https://space.langbot.app/market?language=en",
+              "icon": "blocks"
+            },
+            {
+              "label": "Blog",
+              "href": "https://langbot.app/en/blog",
+              "icon": "newspaper"
+            },
+            {
+              "label": "Roadmap",
+              "href": "https://langbot.app/en/roadmap",
+              "icon": "map"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "GitHub",
+            "href": "https://github.com/langbot-app/LangBot",
+            "icon": "github"
+          }
+        }
+      },
+      {
+        "language": "cn",
+        "tabs": [
+          {
+            "tab": "指南",
+            "groups": [
+              {
+                "group": "快速开始",
+                "pages": [
+                  "zh/insight/guide",
+                  "zh/insight/troubleshooting",
+                  "zh/insight/features",
+                  "zh/insight/community",
+                  "zh/insight/data-collection-policy"
+                ]
+              },
+              {
+                "group": "安装部署",
+                "pages": [
+                  "zh/deploy/langbot/package",
+                  "zh/deploy/langbot/docker",
+                  "zh/deploy/langbot/kubernetes",
+                  "zh/deploy/langbot/one-click/1panel",
+                  "zh/deploy/langbot/one-click/bt",
+                  "zh/deploy/langbot/manual",
+                  "zh/deploy/settings",
+                  "zh/deploy/update",
+                  "zh/deploy/command"
+                ]
+              },
+              {
+                "group": "配置机器人",
+                "pages": [
+                  "zh/usage/platforms/readme",
+                  {
+                    "group": "企业微信",
+                    "icon": "/images/platforms/wecom.svg",
+                    "pages": [
+                      "zh/usage/platforms/wecom/wecom",
+                      "zh/usage/platforms/wecom/wecomcs",
+                      "zh/usage/platforms/wecom/wecombot"
+                    ]
+                  },
+                  {
+                    "group": "微信",
+                    "icon": "/images/platforms/wechat.svg",
+                    "pages": [
+                      "zh/usage/platforms/wechat/weixin",
+                      "zh/usage/platforms/wechat/wechatpad"
+                    ]
+                  },
+                  {
+                    "group": "QQ 官方机器人",
+                    "icon": "/images/platforms/qq.svg",
+                    "pages": [
+                      "zh/usage/platforms/qq/official_webhook",
+                      "zh/usage/platforms/qq/official"
+                    ]
+                  },
+                  {
+                    "group": "QQ (OneBot v11)",
+                    "icon": "/images/platforms/qq.svg",
+                    "pages": [
+                      "zh/usage/platforms/qq/aiocqhttp/napcat",
+                      "zh/usage/platforms/qq/aiocqhttp/lagrange",
+                      "zh/usage/platforms/qq/aiocqhttp/llonebot"
+                    ]
+                  },
+                  "zh/usage/platforms/lark",
+                  "zh/usage/platforms/dingtalk",
+                  "zh/usage/platforms/wxoa",
+                  "zh/usage/platforms/kook",
+                  {
+                    "group": "Satori (QQ 等多平台)",
+                    "icon": "robot",
+                    "pages": [
+                      "zh/usage/platforms/satori/llonebot"
+                    ]
+                  },
+                  "zh/usage/platforms/discord",
+                  "zh/usage/platforms/telegram",
+                  "zh/usage/platforms/slack",
+                  "zh/usage/platforms/mattermost",
+                  "zh/usage/platforms/line",
+                  "zh/usage/platforms/webpage",
+                  "zh/usage/platforms/http-bot"
+                ]
+              },
+              {
+                "group": "配置 AI 能力",
+                "pages": [
+                  "zh/usage/models/readme",
+                  "zh/usage/pipelines/readme",
+                  {
+                    "group": "Agent 平台",
+                    "pages": [
+                      "zh/usage/pipelines/dify",
+                      "zh/usage/pipelines/n8n",
+                      "zh/usage/pipelines/langflow",
+                      "zh/usage/pipelines/tbox",
+                      "zh/usage/pipelines/coze",
+                      "zh/usage/pipelines/weknora",
+                      "zh/usage/pipelines/deerflow"
+                    ]
+                  },
+                  "zh/usage/knowledge/readme",
+                  "zh/usage/mcp/readme",
+                  {
+                    "group": "沙箱",
+                    "pages": [
+                      "zh/usage/sandbox/readme",
+                      "zh/usage/sandbox/runtime-relationships",
+                      "zh/usage/sandbox/config"
+                    ]
+                  },
+                  "zh/usage/skills/readme"
+                ]
+              },
+              {
+                "group": "进阶运维",
+                "pages": [
+                  "zh/workshop/production/proxy-and-ssl",
+                  "zh/workshop/network-details",
+                  "zh/workshop/mcp-details",
+                  "zh/insight/platform-features",
+                  {
+                    "group": "第三方模型接入",
+                    "pages": [
+                      "zh/workshop/newapi-integration",
+                      "zh/workshop/shengsuanyun-integration",
+                      "zh/workshop/tokenpony-integration",
+                      "zh/workshop/ppio-integration",
+                      "zh/workshop/302ai-integration"
+                    ]
+                  },
+                  {
+                    "group": "规模使用",
+                    "hidden": true,
+                    "pages": [
+                      "zh/tob/index",
+                      "zh/tob/platform",
+                      "zh/tob/provider",
+                      "zh/tob/contact"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "插件使用",
+                "pages": [
+                  "zh/plugin/plugin-intro",
+                  "zh/plugin/compatibility"
+                ]
+              },
+              {
+                "group": "企业支持",
+                "pages": [
+                  "zh/enterprise/overview",
+                  "zh/enterprise/service-scope",
+                  "zh/enterprise/submit-ticket",
+                  "zh/enterprise/procurement"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "开发者",
+            "groups": [
+              {
+                "group": "插件开发",
+                "pages": [
+                  "zh/plugin/dev/tutor",
+                  "zh/plugin/dev/basic-info",
+                  "zh/plugin/dev/directory-structure",
+                  {
+                    "group": "组件开发",
+                    "pages": [
+                      "zh/plugin/dev/components/add",
+                      "zh/plugin/dev/components/runner",
+                      "zh/plugin/dev/components/event-listener",
+                      "zh/plugin/dev/components/command",
+                      "zh/plugin/dev/components/tool",
+                      "zh/plugin/dev/components/knowledge-engine",
+                      "zh/plugin/dev/components/parser",
+                      "zh/plugin/dev/components/page"
+                    ]
+                  },
+                  "zh/plugin/dev/style",
+                  "zh/plugin/certified-plugins",
+                  {
+                    "group": "发布插件",
+                    "pages": [
+                      "zh/plugin/dev/publish/market",
+                      "zh/plugin/dev/publish/github"
+                    ]
+                  },
+                  "zh/plugin/dev/migration"
+                ]
+              },
+              {
+                "group": "插件 SDK API",
+                "pages": [
+                  "zh/plugin/dev/apis/agent-run",
+                  "zh/plugin/dev/apis/common",
+                  "zh/plugin/dev/apis/llm-requests",
+                  "zh/plugin/dev/apis/platform",
+                  "zh/plugin/dev/apis/pipeline-events",
+                  "zh/plugin/dev/apis/messages",
+                  "zh/plugin/dev/apis/tech-details"
+                ]
+              },
+              {
+                "group": "核心开发",
+                "pages": [
+                  "zh/develop/agent-context",
+                  "zh/develop/dev-config",
+                  "zh/develop/plugin-runtime",
+                  "zh/develop/comp-arch",
+                  "zh/workshop/impl-platform-adapter",
+                  {
+                    "group": "Discord 适配器",
+                    "pages": [
+                      "zh/develop/adapter/discord/README",
+                      "zh/develop/adapter/discord/quick_start",
+                      "zh/develop/adapter/discord/design",
+                      "zh/develop/adapter/discord/api_reference",
+                      "zh/develop/adapter/discord/troubleshooting"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "文章",
+            "groups": [
+              {
+                "group": "浏览",
+                "pages": [
+                  "zh/articles/index"
+                ]
+              },
+              {
+                "group": "产品动态",
+                "pages": [
+                  "zh/articles/langbot-v411-event-driven-agents",
+                  "zh/articles/langbot-cloud-multi-user-workspaces"
+                ]
+              },
+              {
+                "group": "技术解析",
+                "pages": [
+                  "zh/articles/langbot-v4100-sandbox-skills",
+                  "zh/articles/langbot-v490-rag-plugin-architecture",
+                  "zh/articles/langbot-plugin-system-deep-dive"
+                ]
+              },
+              {
+                "group": "教程与集成",
+                "pages": [
+                  "zh/articles/dify-langbot-github-release-briefing",
+                  "zh/articles/dify-langbot-support-triage",
+                  "zh/articles/dify-langbot-writing-assistant",
+                  "zh/articles/langtars-remote-pc-control-dify-n8n",
+                  "zh/articles/connect-deepseek-to-wechat",
+                  "zh/articles/deploy-ai-bot-in-5-minutes",
+                  "zh/articles/dify-agent-discord-telegram-slack",
+                  "zh/articles/langflow-drag-and-drop-ai-bot",
+                  "zh/articles/n8n-multi-platform-ai-chatbot",
+                  "zh/articles/dify-langbot-rag-knowledge-base",
+                  "zh/articles/langbot-telegram-sandbox-agent",
+                  "zh/articles/langbot-wechat-official-account",
+                  "zh/articles/langbot-wecom-customer-service-knowledge-base"
+                ]
+              },
+              {
+                "group": "公告",
+                "pages": [
+                  "zh/articles/welcome"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API 参考",
+            "groups": [
+              {
+                "group": "Service API",
+                "pages": [
+                  "zh/tags/readme",
+                  "zh/tags/webhook"
+                ]
+              },
+              {
+                "group": "HTTP API Reference",
+                "openapi": {
+                  "source": "openapi/service-api-zh.json",
+                  "directory": "zh/api-reference"
+                }
+              }
+            ]
+          }
+        ],
+        "navbar": {
+          "links": [
+            {
+              "label": "云服务",
+              "href": "https://space.langbot.app/cloud?language=zh",
+              "icon": "cloud"
+            },
+            {
+              "label": "扩展",
+              "href": "https://space.langbot.app/market?language=zh",
+              "icon": "blocks"
+            },
+            {
+              "label": "博客",
+              "href": "https://langbot.app/zh/blog",
+              "icon": "newspaper"
+            },
+            {
+              "label": "路线图",
+              "href": "https://langbot.app/zh/roadmap",
+              "icon": "map"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "GitHub",
+            "href": "https://github.com/langbot-app/LangBot",
+            "icon": "github"
+          }
+        }
+      },
+      {
+        "language": "jp",
+        "tabs": [
+          {
+            "tab": "ガイド",
+            "groups": [
+              {
+                "group": "クイックスタート",
+                "pages": [
+                  "ja/insight/guide",
+                  "ja/insight/troubleshooting",
+                  "ja/insight/features",
+                  "ja/insight/community",
+                  "ja/insight/data-collection-policy"
+                ]
+              },
+              {
+                "group": "インストール",
+                "pages": [
+                  "ja/deploy/langbot/package",
+                  "ja/deploy/langbot/docker",
+                  "ja/deploy/langbot/kubernetes",
+                  "ja/deploy/langbot/one-click/1panel",
+                  "ja/deploy/langbot/one-click/bt",
+                  "ja/deploy/langbot/manual",
+                  "ja/deploy/settings",
+                  "ja/deploy/update",
+                  "ja/deploy/command"
+                ]
+              },
+              {
+                "group": "ボットを設定",
+                "pages": [
+                  "ja/usage/platforms/readme",
+                  "ja/usage/platforms/discord",
+                  "ja/usage/platforms/telegram",
+                  "ja/usage/platforms/slack",
+                  "ja/usage/platforms/mattermost",
+                  "ja/usage/platforms/line",
+                  "ja/usage/platforms/webpage",
+                  "ja/usage/platforms/http-bot",
+                  "ja/usage/platforms/kook",
+                  "ja/usage/platforms/lark",
+                  "ja/usage/platforms/dingtalk",
+                  "ja/usage/platforms/wxoa",
+                  {
+                    "group": "QQ (OneBot v11)",
+                    "pages": [
+                      "ja/usage/platforms/qq/aiocqhttp/napcat",
+                      "ja/usage/platforms/qq/aiocqhttp/lagrange",
+                      "ja/usage/platforms/qq/aiocqhttp/llonebot"
+                    ],
+                    "icon": "/images/platforms/qq.svg"
+                  },
+                  {
+                    "group": "Satori（QQ等マルチプラットフォーム）",
+                    "pages": [
+                      "ja/usage/platforms/satori/llonebot"
+                    ],
+                    "icon": "robot"
+                  },
+                  {
+                    "group": "QQ 公式ボット",
+                    "pages": [
+                      "ja/usage/platforms/qq/official_webhook"
+                    ],
+                    "icon": "/images/platforms/qq.svg"
+                  },
+                  {
+                    "group": "WeCom（企業微信）",
+                    "pages": [
+                      "ja/usage/platforms/wecom/wecom",
+                      "ja/usage/platforms/wecom/wecomcs",
+                      "ja/usage/platforms/wecom/wecombot"
+                    ],
+                    "icon": "/images/platforms/wecom.svg"
+                  },
+                  {
+                    "group": "WeChat",
+                    "pages": [
+                      "ja/usage/platforms/wechat/weixin"
+                    ],
+                    "icon": "/images/platforms/wechat.svg"
+                  }
+                ]
+              },
+              {
+                "group": "AI 設定",
+                "pages": [
+                  "ja/usage/models/readme",
+                  "ja/usage/pipelines/readme",
+                  {
+                    "group": "Agent プラットフォーム",
+                    "pages": [
+                      "ja/usage/pipelines/dify",
+                      "ja/usage/pipelines/n8n",
+                      "ja/usage/pipelines/langflow",
+                      "ja/usage/pipelines/coze",
+                      "ja/usage/pipelines/weknora",
+                      "ja/usage/pipelines/deerflow"
+                    ]
+                  },
+                  "ja/usage/knowledge/readme",
+                  "ja/usage/mcp/readme",
+                  {
+                    "group": "サンドボックス",
+                    "pages": [
+                      "ja/usage/sandbox/readme",
+                      "ja/usage/sandbox/runtime-relationships",
+                      "ja/usage/sandbox/config"
+                    ]
+                  },
+                  "ja/usage/skills/readme"
+                ]
+              },
+              {
+                "group": "運用ガイド",
+                "pages": [
+                  "ja/workshop/production/proxy-and-ssl",
+                  "ja/workshop/network-details",
+                  "ja/workshop/mcp-details",
+                  "ja/insight/platform-features",
+                  {
+                    "group": "サードパーティモデル接続",
+                    "pages": [
+                      "ja/workshop/newapi-integration",
+                      "ja/workshop/ppio-integration",
+                      "ja/workshop/302ai-integration"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "プラグインの利用",
+                "pages": [
+                  "ja/plugin/plugin-intro",
+                  "ja/plugin/compatibility"
+                ]
+              },
+              {
+                "group": "企業サポート",
+                "pages": [
+                  "ja/enterprise/overview",
+                  "ja/enterprise/service-scope",
+                  "ja/enterprise/submit-ticket",
+                  "ja/enterprise/procurement"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "開発者",
+            "groups": [
+              {
+                "group": "プラグイン開発",
+                "pages": [
+                  "ja/plugin/dev/tutor",
+                  "ja/plugin/dev/basic-info",
+                  "ja/plugin/dev/directory-structure",
+                  {
+                    "group": "コンポーネント開発",
+                    "pages": [
+                      "ja/plugin/dev/components/add",
+                      "ja/plugin/dev/components/runner",
+                      "ja/plugin/dev/components/event-listener",
+                      "ja/plugin/dev/components/command",
+                      "ja/plugin/dev/components/tool",
+                      "ja/plugin/dev/components/knowledge-engine",
+                      "ja/plugin/dev/components/parser",
+                      "ja/plugin/dev/components/page"
+                    ]
+                  },
+                  "ja/plugin/dev/style",
+                  "ja/plugin/certified-plugins",
+                  {
+                    "group": "プラグインを配布",
+                    "pages": [
+                      "ja/plugin/dev/publish/market",
+                      "ja/plugin/dev/publish/github"
+                    ]
+                  },
+                  "ja/plugin/dev/migration"
+                ]
+              },
+              {
+                "group": "プラグイン SDK API",
+                "pages": [
+                  "ja/plugin/dev/apis/agent-run",
+                  "ja/plugin/dev/apis/common",
+                  "ja/plugin/dev/apis/llm-requests",
+                  "ja/plugin/dev/apis/platform",
+                  "ja/plugin/dev/apis/pipeline-events",
+                  "ja/plugin/dev/apis/messages",
+                  "ja/plugin/dev/apis/tech-details"
+                ]
+              },
+              {
+                "group": "コア開発",
+                "pages": [
+                  "ja/develop/agent-context",
+                  "ja/develop/dev-config",
+                  "ja/develop/plugin-runtime",
+                  "ja/develop/comp-arch",
+                  "ja/workshop/impl-platform-adapter"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "記事",
+            "groups": [
+              {
+                "group": "一覧",
+                "pages": [
+                  "ja/articles/index"
+                ]
+              },
+              {
+                "group": "製品アップデート",
+                "pages": [
+                  "ja/articles/langbot-v411-event-driven-agents",
+                  "ja/articles/langbot-cloud-multi-user-workspaces"
+                ]
+              },
+              {
+                "group": "エンジニアリング",
+                "pages": [
+                  "ja/articles/langbot-v4100-sandbox-skills",
+                  "ja/articles/langbot-v490-rag-plugin-architecture",
+                  "ja/articles/langbot-plugin-system-deep-dive"
+                ]
+              },
+              {
+                "group": "チュートリアルと連携",
+                "pages": [
+                  "ja/articles/dify-langbot-github-release-briefing",
+                  "ja/articles/dify-langbot-support-triage",
+                  "ja/articles/dify-langbot-writing-assistant",
+                  "ja/articles/langtars-remote-pc-control-dify-n8n",
+                  "ja/articles/connect-deepseek-to-wechat",
+                  "ja/articles/deploy-ai-bot-in-5-minutes",
+                  "ja/articles/dify-agent-discord-telegram-slack",
+                  "ja/articles/langflow-drag-and-drop-ai-bot",
+                  "ja/articles/n8n-multi-platform-ai-chatbot",
+                  "ja/articles/dify-langbot-rag-knowledge-base"
+                ]
+              },
+              {
+                "group": "お知らせ",
+                "pages": [
+                  "ja/articles/welcome"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API リファレンス",
+            "groups": [
+              {
+                "group": "Service API",
+                "pages": [
+                  "ja/tags/readme",
+                  "ja/tags/webhook"
+                ]
+              },
+              {
+                "group": "HTTP API Reference",
+                "openapi": {
+                  "source": "openapi/service-api-ja.json",
+                  "directory": "ja/api-reference"
+                }
+              }
+            ]
+          }
+        ],
+        "navbar": {
+          "links": [
+            {
+              "label": "クラウド",
+              "href": "https://space.langbot.app/cloud?language=ja",
+              "icon": "cloud"
+            },
+            {
+              "label": "拡張機能",
+              "href": "https://space.langbot.app/market?language=ja",
+              "icon": "blocks"
+            },
+            {
+              "label": "ブログ",
+              "href": "https://langbot.app/ja/blog",
+              "icon": "newspaper"
+            },
+            {
+              "label": "ロードマップ",
+              "href": "https://langbot.app/ja/roadmap",
+              "icon": "map"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "GitHub",
+            "href": "https://github.com/langbot-app/LangBot",
+            "icon": "github"
+          }
+        }
+      }
+    ]
+  },
+  "fonts": {
+    "family": "Source Sans Pro"
+  },
+  "metadata": {
+    "google-site-verification": "LBNmWbXCAXdoqrbwg5Gep-xzQ7u7lJHSdpR49N3Ttgg"
+  }
+}

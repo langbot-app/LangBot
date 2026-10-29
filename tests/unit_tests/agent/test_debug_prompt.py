@@ -105,7 +105,10 @@ class PromptPullConnector:
         handler = RuntimeConnectionHandler(None, None, self.ap)
         handler.register_installation_binding(binding, plugin_author=plugin_author, plugin_name=plugin_name)
 
-        async def call_action(action, data, timeout):
+        async def call_action(action, data, timeout, *, cancel_peer_on_cancel=False):
+            # The 0.7.19 SDK adapter always forwards cancel_peer_on_cancel to the
+            # runtime handler; this double stands in for that handler.
+            assert cancel_peer_on_cancel is False
             assert action == PluginToRuntimeAction.GET_PROMPT
             token = handler._current_action_context.set(binding)
             try:

@@ -1,0 +1,66 @@
+---
+title: "LangBot で DeerFlow を使用する"
+description: "DeerFlow を LangBot と組み合わせ、AI ボットの会話パイプラインを構築。"
+---
+
+[DeerFlow](https://github.com/bytedance/deer-flow) は、ByteDance がオープンソース化した大規模言語モデル（LLM）ベースの AI エージェントフレームワークであり、深度研究、情報検索、マルチエージェントの協調オーケストレーションに焦点を当てています。  
+フレームワークは LangGraph 上に構築され、設定可能なワークフローエンジンを採用し、計画モード、サブエージェントの並行処理、思考連鎖などの高度な機能をサポートしています。深度情報収集と構造化分析が必要なシナリオに適しています。
+
+現在の統合は DeerFlow **2.0 `main` ブランチ**を対象としています。DeerFlow 公式は元の Deep Research フレームワークを `main-1.x` ブランチに移管して継続的にメンテナンスしています。そのため、バージョン 2.0 を使用している場合は、`main` ブランチの公式ドキュメントとバックエンド API を参照してください。
+
+LangBot は現在、DeerFlow を `AI 機能` ランナーとして会話パイプラインに接続し、深度研究とエージェントオーケストレーション機能を提供します。
+
+## DeerFlow のデプロイ
+
+[DeerFlow 公式ドキュメント](https://github.com/bytedance/deer-flow) に従って、サービスのインストール、設定、起動を完了してください：
+
+- [DeerFlow GitHub リポジトリ](https://github.com/bytedance/deer-flow)
+- [DeerFlow ウェブサイト](https://deerflow.tech/)
+- [DeerFlow 設定ドキュメント](https://github.com/bytedance/deer-flow/blob/main/backend/docs/CONFIGURATION.md)
+
+デプロイ完了後、DeerFlow が正常に起動していることを確認し、ゲートウェイアドレスをメモしてください。デフォルトでは、DeerFlow のゲートウェイアドレスは `http://127.0.0.1:2026` です。
+
+<Info title="ネットワーク設定のヒント">
+
+- `API ベース URL` は `http://` または `https://` で始まる必要があります。
+- LangBot と DeerFlow が同じホストにデプロイされ、どちらも Docker を使用してデプロイされている場合、次の記事を参照してください：[ネットワーク設定の詳細](/ja/workshop/network-details.html#langbot-およびメッセージプラットフォームが-docker-コンテナで実行されている場合)。DeerFlow を起動する際に、コンテナを `langbot-network` に追加し、LangBot 設定の `API ベース URL` をコンテナ相互接続アドレス（例：`http://deerflow-app:2026`）に設定してください。
+- 異なるホストやコンテナにデプロイされている場合は、`127.0.0.1` を DeerFlow が実際にアクセス可能な社内アドレス、ホスト名、またはドメインに置き換えてください。
+
+</Info>
+
+## LangBot の設定
+
+LangBot WebUI ページを開き、新しいパイプラインを追加するか、既存のパイプラインで `AI 機能` 設定ページに切り替えます。
+
+![deerflow](/images/zh/deploy/pipelines/deerflow/creat_langbot_pipeline.png)
+
+1. `ランナー` で `DeerFlow API` を選択します。
+2. ランナーの設定項目に以下を入力します：
+   - `API ベース URL`：DeerFlow サービスの API ゲートウェイアドレス、デフォルト `http://127.0.0.1:2026`。
+   - `API キー`：オプション。DeerFlow ゲートウェイが Bearer Token 認証を使用している場合、ここに入力できます。
+   - `Assistant ID`：DeerFlow 2.0 LangGraph の `assistant_id` に対応、デフォルト `lead_agent`。
+   - `モデル名オーバーライド`：オプション。DeerFlow 側に設定されたデフォルトモデルを上書きするために使用します。DeerFlow にモデルが設定されている場合は空白のままにできます。
+   - `思考モードを有効化`：有効にすると、DeerFlow は思考連鎖コンテンツを返し、推論プロセスの表示に使用できます。
+   - `計画モードを有効化`：DeerFlow 2.0 ランタイムパラメータ `config.configurable.is_plan_mode` に対応。有効にすると、エージェントは実行前に研究計画を立てます。
+   - `サブエージェントを有効化`：DeerFlow 2.0 ランタイムパラメータ `config.configurable.subagent_enabled` に対応。有効にすると、エージェントがサブエージェントをディスパッチしてタスクを並行処理できるようになります。
+   - `サブエージェント最大同時実行数`：DeerFlow 2.0 ランタイムパラメータ `config.configurable.max_concurrent_subagents` に対応。サブエージェントが有効な場合のみ有効、デフォルト `3`。
+   - `再帰深度上限`：LangGraph の `recursion_limit` に対応。ワークフローの最大再帰深度を制御、デフォルト `1000`。
+3. `保存` をクリックして設定を完了します。
+
+<Info title="設定の推奨事項">
+
+- DeerFlow 側で対応する機能が有効になっている場合にのみ、`計画モード` または `サブエージェント` 関連オプションを有効にすることをお勧めします。そうでない場合、期待される効果が得られない可能性があります。
+- LangBot は DeerFlow 2.0 が推奨する `config.configurable` ランタイムパラメータを送信すると同時に、上位の最新バージョンとの連携を容易にするために後方互換性の旧フィールドを保持します。
+
+</Info>
+
+完了後、パイプラインで DeerFlow を使用して深度研究とインテリジェント Q&A を完了できます。
+
+## よくある質問
+
+- **保存に失敗するか、呼び出しでエラー**：`API キー` と `API ベース URL` が正しいか確認し、DeerFlow サービスが正常に起動していることを確認してください。
+- **期待されるコンテンツが返されない**：`Assistant ID` が DeerFlow で実際に使用可能なアシスタントと一致しているか確認してください。
+- **`DeerFlow API` を選択できない**：現在の LangBot バージョンがこのランナーをサポートしているか確認してください。サポートされていない場合は、DeerFlow ランナーを含むバージョンにアップグレードしてください。
+- **DeerFlow 設定項目の意味**：ランタイムパラメータと機能に関する DeerFlow 公式ドキュメントを参照するか、DeerFlow コミュニティに推奨設定を相談してください。
+
+パイプラインの一般的な設定の詳細については、[会話パイプライン設定の変更](/ja/usage/pipelines/readme) を参照してください。

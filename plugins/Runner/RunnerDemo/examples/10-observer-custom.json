@@ -1,0 +1,10 @@
+{
+  "event_type": "platform.specific",
+  "data": {
+    "action": "demo.audit",
+    "data": {
+      "topic": "release",
+      "version": "4.11"
+    }
+  }
+}

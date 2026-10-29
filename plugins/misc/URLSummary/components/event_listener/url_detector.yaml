@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: url_detector
+  label:
+    en_US: URL Detector
+    zh_Hans: 链接检测器
+spec:
+execution:
+  python:
+    path: url_detector.py
+    attr: URLDetector

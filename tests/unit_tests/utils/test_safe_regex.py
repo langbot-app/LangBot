@@ -75,11 +75,14 @@ async def test_bundled_sensitive_words_fit_within_pattern_limit():
 @pytest.mark.asyncio
 async def test_mask_patterns_honors_explicit_pattern_count_cap():
     patterns = ['a'] * (safe_regex.MAX_PATTERN_COUNT + 6)
+    # The wall-clock deadline is not what this test asserts, and 262 pattern
+    # compilations do not fit the 50ms default on a loaded CI runner.
     found, masked = await safe_regex.mask_patterns(
         patterns,
         'hello',
         mask='*',
         mask_word='',
+        timeout_seconds=30.0,
         max_pattern_count=len(patterns),
     )
     assert found is False

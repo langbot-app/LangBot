@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: sche
+  label:
+    en_US: List Scheduled Notifications
+    zh_Hans: 列出计划的通知
+  description:
+    en_US: 'List all scheduled notifications for the current session'
+    zh_Hans: '列出当前会话的所有计划通知'
+spec:
+execution:
+  python:
+    path: sche.py
+    attr: ScheCommand

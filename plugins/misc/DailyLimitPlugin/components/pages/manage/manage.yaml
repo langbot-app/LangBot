@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: manage
+  label:
+    en_US: Daily Limit
+    zh_Hans: 每日限制
+    ja_JP: 日次制限
+spec:
+  path: index.html
+execution:
+  python:
+    path: manage.py
+    attr: ManagePage

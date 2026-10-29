@@ -1,0 +1,112 @@
+---
+title: "MCP 服务器"
+description: "为 LangBot 接入 MCP（Model Context Protocol）服务器，用外部工具与数据源扩展 AI 机器人能力。"
+---
+
+LangBot 支持调用来自 MCP 服务器的工具。添加 MCP 后，启用了工具使用能力的内置 Agent 即可在对话中调用这些工具。
+
+<Info title="MCP 支持本地（stdio）和远程两种模式。">
+  首选从 [LangBot Space](https://space.langbot.app) 安装：已上架的 MCP 服务器配置好、开箱即用。
+
+  也可以从 [ModelScope](https://modelscope.cn/mcp)、[mcp.so](https://mcp.so)、[composio.dev](https://composio.dev/toolkits) 等渠道获取，再按下文手动添加。
+</Info>
+
+## 两种运行模式
+
+| 模式 | 适合场景 | 备注 |
+|------|----------|------|
+| 远程 (`mode: "remote"`) | 远程 MCP 服务，粘贴 URL 即可 | LangBot 直接连接远程 URL，自动探测传输协议（先试 Streamable HTTP，失败回退 SSE），无需手动选 |
+| 本地 / stdio (`mode: "stdio"`) | 本地命令启动的 MCP Server | 仅在 Box Runtime 可用时支持 |
+
+<Note>
+旧版本曾把远程模式拆成 `http`（Streamable HTTP）和 `sse` 两项；现已合并为单一的 `remote`，传输协议由后端自动探测。数据库里存量的 `http` / `sse` 记录会在升级时自动归一为 `remote`，连接参数（URL、请求头、超时）保持不变。
+</Note>
+
+<Note>
+MCP 工具需要流水线使用**内置 Agent**，并选择**已开启工具使用能力**的模型——见[模型](../models/readme)。Dify、n8n、Langflow、Coze 等外部运行器使用各自平台的工具机制。
+</Note>
+
+## 安装 MCP 服务器
+
+### 从 LangBot Space（首选）
+
+[LangBot Space](https://space.langbot.app) 是 LangBot 的官方市场，已上架多种 MCP 服务器。在 WebUI 的 `插件管理` → `MCP 管理` 页面浏览并一键安装，URL、命令、运行模式等参数由市场提供，无需手动填写。
+
+适合大多数场景；接入未上架的服务再走下面的方式。
+
+### 手动添加
+
+进入 `插件管理` → `MCP 管理`：
+
+<img width="1000px" src="/images/zh/deploy/mcp/mcp02.png" alt="MCP 管理页面" />
+
+点击右上角 `添加` → `添加 MCP 服务器`，选择**本地（stdio）**或**远程**模式：远程只需粘贴 URL，本地填写启动命令。点 `测试` 验证连通，点 `提交` 保存：
+
+<img width="400px" src="/images/zh/deploy/mcp/mcp03.png" alt="新建 MCP 服务器" />
+
+保存后点击卡片上的开关连接 MCP，点击卡片可查看详情：
+
+<img width="400px" src="/images/zh/deploy/mcp/mcp05.png" alt="MCP 服务器详情" />
+
+## 在流水线启用
+
+MCP 服务器添加后，还要在流水线扩展配置里决定 Agent 能看到哪些：
+
+- 开启"启用所有 MCP Server"，或
+- 只绑定指定 MCP Server
+
+未绑定的 MCP 工具不会进入该流水线的工具列表。
+
+## stdio MCP 高级配置
+
+stdio MCP 由 Box Runtime 托管，连接前 LangBot 会：
+
+1. 创建或复用共享的 MCP Box session
+2. 如果能从命令推断本地项目路径，把项目 staging 到工作区
+3. 项目含 `requirements.txt` / `pyproject.toml` / `setup.py` / `setup.cfg` 时先安装依赖
+4. 通过 WebSocket relay 接 MCP 进程的 stdin/stdout
+
+需要细化挂载、网络、超时等行为时，可在 MCP 配置的 `extra_args` 里加 `box` 覆盖项：
+
+```json
+{
+  "mode": "stdio",
+  "extra_args": {
+    "command": "python",
+    "args": ["server.py"],
+    "env": {},
+    "box": {
+      "host_path": "/path/to/mcp-project",
+      "network": "on",
+      "host_path_mode": "ro",
+      "startup_timeout_sec": 120,
+      "image": "python:3.11-slim"
+    }
+  }
+}
+```
+
+常用字段：
+
+| 字段 | 说明 |
+|------|------|
+| `host_path` | MCP 项目在宿主机上的目录。需在 `box.local.allowed_mount_roots` 允许范围内 |
+| `network` | 是否允许网络（依赖安装常用） |
+| `host_path_mode` | 准备 `host_path` 时的访问模式，默认 `ro`；stdio MCP 通常会先 staging 到工作区 |
+| `startup_timeout_sec` | Box 准备和依赖安装超时，默认 120 秒；连接等待会额外预留约 30 秒 |
+| `image` | Docker 后端使用的运行镜像 |
+| `memory_mb` | 覆盖该服务的内存上限（MB）；优先级高于全局 `box.default_memory_mb` |
+
+<Warning>
+stdio MCP 在 Box 中运行，依赖安装和进程启动受 sandbox profile、网络权限、资源限制和挂载白名单影响。
+</Warning>
+
+## 常见问题
+
+| 现象 | 检查项 |
+|------|--------|
+| MCP 连接失败 | URL、命令、参数、环境变量是否正确 |
+| stdio MCP 一直连接中 | Box Runtime 是否可用，`startup_timeout_sec` 是否过短 |
+| 依赖安装失败 | sandbox 是否允许网络，依赖文件是否正确 |
+| 本地文件无法访问 | `host_path` 是否存在，是否在 `allowed_mount_roots` 内 |
+| Agent 看不到 MCP 工具 | 流水线是否使用内置 Agent、模型是否启用工具使用能力、MCP 是否在流水线中绑定 |

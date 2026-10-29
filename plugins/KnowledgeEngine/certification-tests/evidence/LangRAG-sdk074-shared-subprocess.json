@@ -1,0 +1,125 @@
+{
+  "plugin": "LangRAG",
+  "sdk": "0.7.4",
+  "worker_pid": 764391,
+  "same_worker_two_workspace_slots": true,
+  "slot_configs_distinct": true,
+  "successful_representative_invocation": true,
+  "host_actions": [
+    [
+      "A",
+      "embed"
+    ],
+    [
+      "A",
+      "upsert"
+    ],
+    [
+      "A",
+      "keys"
+    ],
+    [
+      "A",
+      "set"
+    ],
+    [
+      "A",
+      "keys"
+    ],
+    [
+      "A",
+      "get"
+    ],
+    [
+      "A",
+      "set"
+    ],
+    [
+      "B",
+      "embed"
+    ],
+    [
+      "B",
+      "upsert"
+    ],
+    [
+      "B",
+      "keys"
+    ],
+    [
+      "B",
+      "set"
+    ],
+    [
+      "B",
+      "keys"
+    ],
+    [
+      "B",
+      "get"
+    ],
+    [
+      "B",
+      "set"
+    ],
+    [
+      "A",
+      "embed"
+    ],
+    [
+      "A",
+      "search"
+    ],
+    [
+      "A",
+      "keys"
+    ],
+    [
+      "A",
+      "get"
+    ],
+    [
+      "A",
+      "set"
+    ],
+    [
+      "B",
+      "embed"
+    ],
+    [
+      "B",
+      "search"
+    ],
+    [
+      "B",
+      "keys"
+    ],
+    [
+      "B",
+      "get"
+    ],
+    [
+      "B",
+      "set"
+    ],
+    [
+      "A",
+      "keys"
+    ],
+    [
+      "A",
+      "get"
+    ],
+    [
+      "B",
+      "keys"
+    ],
+    [
+      "B",
+      "get"
+    ]
+  ],
+  "scope": "real SDK child RPC, local Host fixture; no production/upstream/sandbox proof",
+  "object_identity_assertion": "asserted inside child; parent checks child stderr before success",
+  "manifest_override_for_probe": false
+}

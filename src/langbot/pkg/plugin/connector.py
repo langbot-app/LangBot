@@ -1121,13 +1121,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 # a managed runtime and authenticate its WebSocket controller.
                 self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
                 control_headers = self._control_headers(allow_generate=True)
+                control_port, debug_port = self._managed_runtime_ports()
                 await self._start_runtime_subprocess(
                     '-m',
                     'langbot_plugin.cli.__init__',
                     'rt',
+                    '--ws-control-port',
+                    str(control_port),
+                    '--ws-debug-port',
+                    str(debug_port),
                     env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
                 )
-                ws_url = 'ws://localhost:5400/control/ws'
+                ws_url = f'ws://localhost:{control_port}/control/ws'
 
                 async def connection_failed(
                     ctrl: ws_client_controller.WebSocketClientController,
@@ -1145,9 +1150,17 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 task_coro = self.ctrl.run(new_connection_callback)
             else:
                 self.ap.logger.info('use stdio to connect to plugin runtime')
+                _, debug_port = self._managed_runtime_ports()
                 self.ctrl = stdio_client_controller.StdioClientController(
                     command=sys.executable,
-                    args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                    args=[
+                        '-m',
+                        'langbot_plugin.cli.__init__',
+                        'rt',
+                        '-s',
+                        '--ws-debug-port',
+                        str(debug_port),
+                    ],
                     env=os.environ.copy(),
                     capture_stderr=False,
                 )
@@ -1236,13 +1249,42 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         await self._close_managed_subprocess()
 
     @staticmethod
+    def _runtime_port_from_url(url: str, *, default: int) -> int:
+        """Extract a TCP port from a WebSocket/HTTP URL, falling back to *default*."""
+        try:
+            parsed = urlparse(url if '://' in url else f'//{url}')
+            return parsed.port or default
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
     def _runtime_debug_port_from_url(debug_url: str) -> int:
         """Extract the local plugin runtime debug port from its display URL."""
-        try:
-            parsed = urlparse(debug_url if '://' in debug_url else f'//{debug_url}')
-            return parsed.port or 5401
-        except (TypeError, ValueError):
-            return 5401
+        return PluginRuntimeConnector._runtime_port_from_url(debug_url, default=5401)
+
+    @staticmethod
+    def _runtime_control_port_from_url(control_url: str) -> int:
+        """Extract the local plugin runtime control port from its WebSocket URL."""
+        return PluginRuntimeConnector._runtime_port_from_url(control_url, default=5400)
+
+    def _managed_runtime_ports(self) -> tuple[int, int]:
+        """Resolve control/debug ports for a Core-managed Runtime subprocess.
+
+        Docker/standalone deployments keep listening on their own configured
+        ports; this helper only affects the stdio and Windows launch paths,
+        where LangBot starts Runtime itself. The debug port follows
+        ``plugin.display_plugin_debug_url`` so a second Core instance can avoid
+        ``Address already in use`` on the default 5401 without editing CLI
+        flags by hand. The control port follows ``plugin.runtime_ws_url`` for
+        the Windows WebSocket path.
+        """
+        plugin_config = self.ap.instance_config.data.get('plugin') or {}
+        control_url = plugin_config.get('runtime_ws_url') or 'ws://localhost:5400/control/ws'
+        debug_url = plugin_config.get('display_plugin_debug_url') or 'ws://localhost:5401/plugin/debug/ws'
+        return (
+            self._runtime_control_port_from_url(str(control_url)),
+            self._runtime_debug_port_from_url(str(debug_url)),
+        )
 
     async def initialize_plugins(self):
         pass
@@ -2243,6 +2285,64 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         return plugins
 
+    async def _debug_plugin_binding(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> InstallationBinding | None:
+        """Locate a debug-connected (non-installed) plugin in this Workspace.
+
+        Debug plugins are not persisted as settings, so they are only reachable
+        through the OSS compatibility bridge binding. Returns ``None`` when the
+        identity is not present on that bridge, so the caller can distinguish a
+        genuinely unknown plugin from a permission error.
+        """
+
+        if self.runtime_profile != 'oss_dev':
+            return None
+        execution_context = await self._current_execution_context()
+        runtime_handler = self._runtime_handler()
+        binding = self._legacy_oss_bridge_binding(execution_context)
+        with runtime_handler.installation_scope(binding):
+            info = await runtime_handler.get_plugin_info(author, plugin_name)
+        if not isinstance(info, dict) or not info.get('manifest'):
+            return None
+        return binding
+
+    async def _plugin_operation_binding(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> InstallationBinding:
+        """Resolve the binding that owns a plugin, installed or debug-connected."""
+
+        try:
+            return await self._target_binding(author, plugin_name, require_enabled=False)
+        except ValueError as exc:
+            if str(exc) == f'Plugin {author}/{plugin_name} is not installed in this Workspace':
+                binding = await self._debug_plugin_binding(author, plugin_name)
+                if binding is not None:
+                    return binding
+            raise
+
+    async def get_debug_plugin_info(
+        self,
+        author: str,
+        plugin_name: str,
+    ) -> dict[str, Any] | None:
+        """Return a debug-connected plugin's info without touching installs.
+
+        This is an additive read used only by the "upload to Space" surface; the
+        installed-plugin lookup in :meth:`get_plugin_info` is left unchanged.
+        """
+
+        binding = await self._debug_plugin_binding(author, plugin_name)
+        if binding is None:
+            return None
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_info(author, plugin_name)
+
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any] | None:
         runtime_handler = self._runtime_handler()
         try:
@@ -2354,6 +2454,52 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return {}
         return await self._runtime_handler().get_debug_info(execution_context)
+
+    async def get_plugin_package(
+        self,
+        author: str,
+        plugin_name: str,
+        *,
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a ``.lbpkg`` from a debug plugin's live source tree.
+
+        Only debug plugins can be packaged: an installed plugin's on-disk
+        directory is an extracted artifact, not the developer's source tree.
+        """
+        runtime_handler = self._runtime_handler()
+        binding = await self._plugin_operation_binding(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_package(
+                author,
+                plugin_name,
+                manifest_overrides=manifest_overrides,
+            )
+
+    async def git_sync_plugin(
+        self,
+        author: str,
+        plugin_name: str,
+        *,
+        repo_url: str = '',
+        token: str = '',
+        branch: str = '',
+        commit_message: str = '',
+        manifest_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Commit and push a debug plugin's working directory to GitHub."""
+        runtime_handler = self._runtime_handler()
+        binding = await self._plugin_operation_binding(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.git_sync_plugin(
+                author,
+                plugin_name,
+                repo_url=repo_url,
+                token=token,
+                branch=branch,
+                commit_message=commit_message,
+                manifest_overrides=manifest_overrides,
+            )
 
     async def emit_event(
         self,

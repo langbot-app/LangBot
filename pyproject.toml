@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.2"
+version = "4.11.4"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.18",
+    "langbot-plugin==0.7.19",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -130,6 +130,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-data = { "langbot" = ["templates/**", "pkg/i18n/locales/*.json", "pkg/provider/modelmgr/requesters/*", "pkg/platform/sources/*", "pkg/platform/adapters/**", "web/dist/**", "pkg/persistence/alembic/**"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["langbot", "langbot.*"]
 
 [dependency-groups]
 dev = [

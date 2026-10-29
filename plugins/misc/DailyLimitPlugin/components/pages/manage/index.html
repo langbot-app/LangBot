@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Limit</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--langbot-bg, #fff);
+      color: var(--langbot-text, #0a0a0a);
+      padding: 24px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 8px; }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .subtitle { font-size: 13px; color: var(--langbot-text-muted, #71717a); margin-bottom: 20px; }
+
+    .card {
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 12px;
+      padding: 18px; margin-bottom: 20px; background: var(--langbot-bg-card, #f8fafc);
+    }
+    .card-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; font-weight: 500; color: var(--langbot-text-muted, #71717a); }
+    .field input[type=number], .field input[type=text], .field select {
+      padding: 8px 10px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 8px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a);
+      font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--langbot-accent, #2563eb); }
+    .switch-row { display: flex; align-items: center; gap: 10px; }
+    .hint { font-size: 11px; color: var(--langbot-text-muted, #a1a1aa); margin-top: 2px; }
+
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--langbot-accent, #2563eb); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-ghost {
+      background: none; color: var(--langbot-text-muted, #71717a);
+      border: 1px solid var(--langbot-border, #e4e4e7); padding: 5px 10px; font-size: 12px;
+    }
+    .btn-ghost:hover { color: var(--langbot-text, #0a0a0a); }
+    .settings-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+    /* Table */
+    .table-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    .search { flex: 1; min-width: 160px; max-width: 320px; padding: 7px 11px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 8px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a); font-size: 13px; outline: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-weight: 600; color: var(--langbot-text-muted, #71717a); padding: 8px 10px;
+      border-bottom: 1px solid var(--langbot-border, #e4e4e7); font-size: 12px; }
+    td { padding: 9px 10px; border-bottom: 1px solid var(--langbot-border, #f1f1f3); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .session-label { font-weight: 500; word-break: break-all; }
+    .usage { font-variant-numeric: tabular-nums; }
+    .bar { height: 5px; border-radius: 3px; background: var(--langbot-border, #e4e4e7); margin-top: 5px; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: var(--langbot-accent, #2563eb); }
+    .bar.full > span { background: #ef4444; }
+    .lim-input { width: 78px; padding: 5px 8px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 6px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a); font-size: 13px; outline: none; }
+    .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--langbot-border, #e4e4e7);
+      color: var(--langbot-text-muted, #71717a); margin-left: 6px; }
+    .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .empty { text-align: center; padding: 40px 20px; color: var(--langbot-text-muted, #71717a); font-size: 14px; }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--langbot-text, #0a0a0a); color: var(--langbot-bg, #fff);
+      padding: 9px 18px; border-radius: 8px; font-size: 13px; opacity: 0;
+      pointer-events: none; transition: opacity 0.2s; z-index: 50;
+    }
+    .toast.show { opacity: 0.95; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 data-i18n="title">Daily Conversation Limit</h1>
+    <span class="badge" id="todayBadge"></span>
+  </div>
+  <div class="subtitle" data-i18n="subtitle">Manage per-session limits, defaults for new sessions, and reset usage.</div>
+
+  <!-- Settings / new-session defaults -->
+  <div class="card">
+    <div class="card-title" data-i18n="settingsTitle">Global Settings &amp; New-Session Default</div>
+    <div class="grid">
+      <div class="field">
+        <label data-i18n="defaultLimit">Daily limit for new sessions</label>
+        <input type="number" id="defaultLimit" min="0">
+        <span class="hint" data-i18n="defaultLimitHint">0 = unlimited. Applies to sessions without an override.</span>
+      </div>
+      <div class="field">
+        <label data-i18n="tzOffset">Reset timezone (UTC offset)</label>
+        <input type="number" id="tzOffset" min="-12" max="14">
+        <span class="hint" data-i18n="tzOffsetHint">e.g. 8 = UTC+8, 9 = UTC+9, -5 = US Eastern.</span>
+      </div>
+      <div class="field">
+        <label data-i18n="resetHour">Reset hour (0-23)</label>
+        <input type="number" id="resetHour" min="0" max="23">
+        <span class="hint" data-i18n="resetHourHint">Hour of day when counters reset.</span>
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label data-i18n="limitMessage">Limit-reached message</label>
+        <input type="text" id="limitMessage">
+      </div>
+      <div class="field">
+        <label data-i18n="silentMode">Silent mode</label>
+        <div class="switch-row">
+          <input type="checkbox" id="silentMode" style="width:18px;height:18px;">
+          <span class="hint" data-i18n="silentModeHint">Drop over-limit messages with no reply.</span>
+        </div>
+      </div>
+    </div>
+    <div class="settings-actions">
+      <button class="btn btn-primary" id="saveSettings" data-i18n="save">Save settings</button>
+    </div>
+  </div>
+
+  <!-- Sessions -->
+  <div class="card">
+    <div class="table-head">
+      <div class="card-title" style="margin:0;">
+        <span data-i18n="sessionsTitle">Sessions</span>
+        <span class="badge" id="sessCount"></span>
+      </div>
+      <input type="text" class="search" id="search" data-i18n="searchPlaceholder" data-i18n-attr="placeholder" placeholder="Search sessions...">
+      <button class="btn btn-ghost" id="resetAll" data-i18n="resetAll">Reset all</button>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    var state = { settings: {}, sessions: [], today: '' };
+    var searchQuery = '';
+
+    function el(tag, className) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      return node;
+    }
+
+    function textEl(tag, className, text) {
+      var node = el(tag, className);
+      node.textContent = text == null ? '' : String(text);
+      return node;
+    }
+
+    function actionButton(label, className, handler) {
+      var button = textEl('button', className, label);
+      button.addEventListener('click', handler);
+      return button;
+    }
+
+    function toast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+    }
+
+    function applyState(s) {
+      state = s || state;
+      var st = state.settings || {};
+      document.getElementById('defaultLimit').value = st.default_limit != null ? st.default_limit : 50;
+      document.getElementById('tzOffset').value = st.tz_offset != null ? st.tz_offset : 8;
+      document.getElementById('resetHour').value = st.reset_hour != null ? st.reset_hour : 0;
+      document.getElementById('limitMessage').value = st.limit_message || '';
+      document.getElementById('silentMode').checked = !!st.silent_mode;
+      document.getElementById('todayBadge').textContent = langbot.t('today', 'Today') + ': ' + (state.today || '');
+      renderTable();
+    }
+
+    function renderTable() {
+      var wrap = document.getElementById('tableWrap');
+      var rows = state.sessions || [];
+      if (searchQuery) {
+        var q = searchQuery.toLowerCase();
+        rows = rows.filter(function(r){ return (r.label || '').toLowerCase().indexOf(q) !== -1 || (r.id || '').toLowerCase().indexOf(q) !== -1; });
+      }
+      document.getElementById('sessCount').textContent = (state.sessions || []).length;
+
+      // Session ids and labels reach the DOM as node text, element properties or
+      // event-listener closures only. They are never concatenated into markup, so
+      // an id containing quotes cannot close an attribute or a JS string.
+      wrap.replaceChildren();
+      if (rows.length === 0) {
+        wrap.appendChild(textEl('div', 'empty', langbot.t('empty', 'No sessions tracked yet. Counters appear after users chat.')));
+        return;
+      }
+
+      wrap.appendChild(buildTable(rows));
+    }
+
+    function buildTable(rows) {
+      var table = document.createElement('table');
+      var head = document.createElement('thead');
+      var headRow = document.createElement('tr');
+      headRow.appendChild(textEl('th', null, langbot.t('colSession', 'Session')));
+      headRow.appendChild(textEl('th', null, langbot.t('colUsage', 'Usage today')));
+      headRow.appendChild(textEl('th', null, langbot.t('colLimit', 'Limit')));
+      var actionsHead = textEl('th', null, langbot.t('colActions', 'Actions'));
+      actionsHead.style.textAlign = 'right';
+      headRow.appendChild(actionsHead);
+      head.appendChild(headRow);
+      table.appendChild(head);
+
+      var body = document.createElement('tbody');
+      for (var i = 0; i < rows.length; i++) {
+        body.appendChild(buildRow(rows[i]));
+      }
+      table.appendChild(body);
+      return table;
+    }
+
+    function buildRow(r) {
+      var eff = r.effective_limit;
+      var unlimited = !eff || eff <= 0;
+      var pct = unlimited ? 0 : Math.min(100, Math.round((r.count / eff) * 100));
+      var full = !unlimited && r.count >= eff;
+      var usageText = unlimited ? (r.count + ' / ∞') : (r.count + ' / ' + eff);
+
+      var row = document.createElement('tr');
+
+      var sessionCell = document.createElement('td');
+      sessionCell.appendChild(textEl('div', 'session-label', r.label));
+      sessionCell.appendChild(textEl('div', 'hint', r.last_active || ''));
+      row.appendChild(sessionCell);
+
+      var usageCell = el('td', 'usage');
+      usageCell.appendChild(document.createTextNode(usageText));
+      var bar = el('div', 'bar' + (full ? ' full' : ''));
+      var fill = document.createElement('span');
+      fill.style.width = pct + '%';
+      bar.appendChild(fill);
+      usageCell.appendChild(bar);
+      row.appendChild(usageCell);
+
+      var limitCell = document.createElement('td');
+      var input = document.createElement('input');
+      input.className = 'lim-input';
+      input.type = 'number';
+      input.min = '0';
+      input.value = r.limit == null ? '' : r.limit;
+      input.placeholder = st_default();
+      input.addEventListener('change', function() { setLimit(r.id, input.value); });
+      limitCell.appendChild(input);
+      limitCell.appendChild(document.createTextNode(' '));
+      limitCell.appendChild(overrideBadge(r.limit));
+      row.appendChild(limitCell);
+
+      var actionsCell = document.createElement('td');
+      var actions = el('div', 'row-actions');
+      actions.appendChild(actionButton(langbot.t('reset', 'Reset'), 'btn btn-ghost', function() { resetOne(r.id); }));
+      var remove = actionButton(langbot.t('remove', 'Remove'), 'btn btn-ghost', function() { removeOne(r.id); });
+      remove.style.color = '#ef4444';
+      remove.style.borderColor = '#fca5a5';
+      actions.appendChild(remove);
+      actionsCell.appendChild(actions);
+      row.appendChild(actionsCell);
+
+      return row;
+    }
+
+    function overrideBadge(limit) {
+      var badge = textEl('span', 'badge', langbot.t(limit == null ? 'default' : 'override', limit == null ? 'default' : 'override'));
+      if (limit != null) {
+        badge.style.background = '#dbeafe';
+        badge.style.color = '#2563eb';
+      }
+      return badge;
+    }
+
+    function st_default() {
+      var d = (state.settings || {}).default_limit;
+      return (d != null ? d : 50);
+    }
+
+    async function refresh() {
+      var data = await langbot.api('/state', null, 'GET');
+      applyState(data);
+    }
+
+    document.getElementById('saveSettings').addEventListener('click', async function() {
+      var patch = {
+        default_limit: parseInt(document.getElementById('defaultLimit').value, 10) || 0,
+        tz_offset: parseInt(document.getElementById('tzOffset').value, 10) || 0,
+        reset_hour: parseInt(document.getElementById('resetHour').value, 10) || 0,
+        limit_message: document.getElementById('limitMessage').value,
+        silent_mode: document.getElementById('silentMode').checked,
+      };
+      var data = await langbot.api('/settings', patch, 'PUT');
+      applyState(data);
+      toast(langbot.t('savedSettings', 'Settings saved'));
+    });
+
+    document.getElementById('search').addEventListener('input', function(e) {
+      searchQuery = e.target.value;
+      renderTable();
+    });
+
+    document.getElementById('resetAll').addEventListener('click', async function() {
+      if (!confirm(langbot.t('confirmResetAll', 'Reset usage counters for ALL sessions?'))) return;
+      var data = await langbot.api('/reset-all', {}, 'POST');
+      applyState(data);
+      toast(langbot.t('resetAllDone', 'All counters reset'));
+    });
+
+    window.setLimit = async function(id, value) {
+      var v = value === '' ? null : (parseInt(value, 10));
+      if (v !== null && (isNaN(v) || v < 0)) { toast(langbot.t('invalidLimit', 'Invalid limit')); return; }
+      var data = await langbot.api('/session', { id: id, limit: v }, 'PUT');
+      applyState(data);
+      toast(langbot.t('limitUpdated', 'Limit updated'));
+    };
+
+    window.resetOne = async function(id) {
+      var data = await langbot.api('/reset', { id: id }, 'POST');
+      applyState(data);
+      toast(langbot.t('resetDone', 'Counter reset'));
+    };
+
+    window.removeOne = async function(id) {
+      if (!confirm(langbot.t('confirmRemove', 'Stop tracking this session?'))) return;
+      var data = await langbot.api('/session', { id: id }, 'DELETE');
+      applyState(data);
+      toast(langbot.t('removed', 'Session removed'));
+    };
+
+    langbot.onReady(function() { refresh(); });
+    langbot.onLanguageChange(function() { renderTable(); });
+  </script>
+</body>
+</html>

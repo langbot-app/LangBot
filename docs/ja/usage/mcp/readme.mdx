@@ -1,0 +1,111 @@
+---
+title: "MCP サーバー"
+description: "MCP（Model Context Protocol）サーバーを LangBot に接続し、外部ツールやデータソースで AI ボットを拡張。"
+---
+
+LangBot は MCP サーバー由来のツールを利用できます。MCP サーバーを追加すれば、ツール使用を有効にしたモデルを持つ組み込み Agent が会話中にそのツールを呼び出せます。
+
+<Info title="MCP はローカル（stdio）とリモートの 2 モードに対応しています。">
+  まずは [LangBot Space](https://space.langbot.app) からのインストールを推奨します。掲載されている MCP サーバーは設定済みで、そのまま使えます。
+
+  [ModelScope](https://modelscope.cn/mcp)、[mcp.so](https://mcp.so)、[composio.dev](https://composio.dev/toolkits) から入手して、後述の手動追加で登録することも可能です。
+</Info>
+
+## 2 つの通信モード
+
+| モード | 適した場面 | 備考 |
+|------|----------|------|
+| リモート (`mode: "remote"`) | リモート MCP サービス。URL を貼り付けるだけ | LangBot がリモート URL に直接接続し、トランスポート（まず Streamable HTTP を試行し、失敗時は SSE にフォールバック）を自動検出します。手動選択は不要 |
+| ローカル / stdio (`mode: "stdio"`) | ローカルコマンドで起動する MCP サーバー | Box Runtime が利用可能なときのみサポート |
+
+<Note>
+以前のバージョンではリモートモードを `http`（Streamable HTTP）と `sse` の 2 つに分けていましたが、現在は単一の `remote` に統合され、トランスポートはバックエンドが自動検出します。データベース内の既存 `http` / `sse` レコードはアップグレード時に `remote` へ正規化され、接続パラメータ（URL、ヘッダー、タイムアウト）はそのまま保持されます。
+</Note>
+
+<Note>
+MCP ツールを使うには、パイプラインで**組み込み Agent** を選択し、**ツール使用が有効化されたモデル**を使用する必要があります。[モデル](../models/readme)を参照。Dify、n8n、Langflow、Coze などの外部 Runner は各プラットフォームのツール機構を使います。
+</Note>
+
+## MCP サーバーをインストール
+
+### LangBot Space から（推奨）
+
+[LangBot Space](https://space.langbot.app) は LangBot 公式のマーケットプレイスで、設定済みの MCP サーバーが多数掲載されています。WebUI の `プラグイン管理` → `MCP 管理` から閲覧して 1 クリックでインストールでき、URL、コマンド、モードなどのパラメータはマーケット側が提供するため、手動入力は不要です。
+
+ほとんどのケースはこれで十分です。掲載されていないサービスを利用する場合は、下記の手動追加を使ってください。
+
+### 手動で追加
+
+`プラグイン管理` → `MCP 管理` を開きます：
+
+<img width="1000px" src="/images/zh/deploy/mcp/mcp02.png" alt="MCP 管理ページ" />
+
+右上の `追加` → `MCP サーバーを追加` をクリック。**ローカル（stdio）**または**リモート**モードを選びます。リモートは URL を貼り付けるだけ、ローカルは起動コマンドを入力します。`テスト` で接続を確認、`送信` で保存します：
+
+<img width="400px" src="/images/zh/deploy/mcp/mcp03.png" alt="MCP サーバー作成" />
+
+保存後、カードのスイッチをオンにして接続します。カードをクリックすると詳細を確認できます：
+
+<img width="400px" src="/images/zh/deploy/mcp/mcp05.png" alt="MCP サーバー詳細" />
+
+## パイプラインで有効化
+
+MCP サーバーを追加したあと、パイプライン拡張設定で Agent から見える MCP を決めます：
+
+- 「すべての MCP サーバーを有効化」をオン、または
+- 指定した MCP サーバーのみをバインド
+
+バインドしていない MCP のツールはそのパイプラインのツール一覧に入りません。
+
+## 高度な設定：stdio MCP
+
+stdio MCP は Box Runtime によってホストされます。接続前に LangBot は以下を行います：
+
+1. 共有の MCP Box session を作成または再利用
+2. コマンドからローカルプロジェクトのパスを推測できれば、プロジェクトをワークスペースに staging
+3. プロジェクトに `requirements.txt`、`pyproject.toml`、`setup.py`、`setup.cfg` がある場合は依存をインストール
+4. WebSocket relay 経由で MCP プロセスの stdin/stdout に接続
+
+マウント、ネットワーク、タイムアウトを細かく調整したい場合、MCP 設定の `extra_args` に `box` オーバーライドを追加できます：
+
+```json
+{
+  "mode": "stdio",
+  "extra_args": {
+    "command": "python",
+    "args": ["server.py"],
+    "env": {},
+    "box": {
+      "host_path": "/path/to/mcp-project",
+      "network": "on",
+      "host_path_mode": "ro",
+      "startup_timeout_sec": 120,
+      "image": "python:3.11-slim"
+    }
+  }
+}
+```
+
+主なフィールド：
+
+| フィールド | 説明 |
+|------|------|
+| `host_path` | ホスト上の MCP プロジェクトディレクトリ。`box.local.allowed_mount_roots` の許可範囲内である必要があります |
+| `network` | ネットワークを許可するか（依存インストールでよく使う） |
+| `host_path_mode` | `host_path` を staging するときのアクセスモード。デフォルトは `ro`。stdio MCP は通常ワークスペースに staging されます |
+| `startup_timeout_sec` | Box 準備と依存インストールのタイムアウト、デフォルト 120 秒。接続待ちで約 30 秒追加されます |
+| `image` | Docker バックエンドで使用するランタイムイメージ |
+
+<Warning>
+stdio MCP は Box 内で実行されます。依存インストールとプロセス起動は sandbox profile、ネットワーク権限、リソース制限、マウント許可リストの影響を受けます。
+</Warning>
+
+## よくある問題
+
+| 症状 | 確認項目 |
+|------|--------|
+| MCP の接続に失敗 | URL、コマンド、引数、環境変数が正しいか |
+| stdio MCP が接続中のまま | Box Runtime の状態、`startup_timeout_sec` が短すぎないか |
+| 依存インストールに失敗 | sandbox がネットワークを許可しているか、依存ファイルが正しいか |
+| ローカルファイルにアクセスできない | `host_path` が存在し、`allowed_mount_roots` 内にあるか |
+| Agent が MCP ツールを認識しない | パイプラインで組み込み Agent を使っているか、モデルでツール使用を有効にしているか、MCP がパイプラインにバインドされているか |

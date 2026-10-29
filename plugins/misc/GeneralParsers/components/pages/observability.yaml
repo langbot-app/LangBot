@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: observability
+  label:
+    en_US: Parser Observability
+    zh_Hans: 解析器观测
+  description:
+    en_US: In-memory operational telemetry for GeneralParsers
+    zh_Hans: GeneralParsers 的内存运行观测数据
+spec:
+  path: observability.html
+execution:
+  python:
+    path: observability.py
+    attr: ParserObservabilityPage

@@ -165,5 +165,235 @@
         "content": "LANGBOT_OTHER_RAG_OK"
       }
     ]
+  },
+  "mock-daily-tool-recovery": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf EXPECTED_RECOVERY_ERROR >&2; exit 7"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "EXPECTED_RECOVERY_ERROR",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf RECOVERY_OK"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "RECOVERY_OK",
+        "content": "LANGBOT_TOOL_RECOVERY_OK"
+      }
+    ]
+  },
+  "mock-daily-tool-timeout-recovery": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "rm -f /tmp/langbot-timeout-leak; sleep 3; printf LEAK > /tmp/langbot-timeout-leak",
+              "timeout_sec": 1
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "timed_out",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "sleep 3; test ! -e /tmp/langbot-timeout-leak && printf TIMEOUT_RECOVERY_OK"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "TIMEOUT_RECOVERY_OK",
+        "content": "LANGBOT_TOOL_TIMEOUT_RECOVERY_OK"
+      }
+    ]
+  },
+  "mock-daily-empty-rag-chat": {
+    "steps": [
+      {
+        "forbid_prompt": [
+          "aurora-parser-rag-9137",
+          "cedar-isolation-4826"
+        ],
+        "content": "LANGBOT_EMPTY_RAG_CHAT_OK"
+      }
+    ]
+  },
+  "mock-stream-disconnect": {
+    "disconnect_after_chunks": 2,
+    "steps": [
+      {
+        "content": "LANGBOT_STREAM_OK"
+      }
+    ]
+  },
+  "mock-stream-stall": {
+    "stall_after_chunks": 2,
+    "stall_seconds": 2,
+    "steps": [
+      {
+        "content": "LANGBOT_STREAM_OK"
+      }
+    ]
+  },
+  "mock-recover-503": {
+    "status": 503,
+    "recover_after": 1,
+    "steps": [
+      {
+        "content": "LANGBOT_RECOVERY_OK"
+      }
+    ]
+  },
+  "mock-recover-stream-disconnect": {
+    "disconnect_after_chunks": 2,
+    "recover_after": 1,
+    "steps": [
+      {
+        "content": "LANGBOT_STREAM_RECOVERY_OK"
+      }
+    ]
+  },
+  "mock-embedding-429": {
+    "kind": "embedding",
+    "status": 429
+  },
+  "mock-embedding-503": {
+    "kind": "embedding",
+    "status": 503
+  },
+  "mock-embedding-timeout": {
+    "kind": "embedding",
+    "delay_seconds": 2
+  },
+  "mock-embedding-wrong-count": {
+    "kind": "embedding",
+    "embedding_fault": "count"
+  },
+  "mock-embedding-wrong-dimension": {
+    "kind": "embedding",
+    "embedding_fault": "dimension"
+  },
+  "mock-embedding-recover-503": {
+    "kind": "embedding",
+    "status": 503,
+    "recover_after": 1
+  },
+  "mock-local-interrupt": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "test ! -e /workspace/langbot-{mock_scope}-ready && test ! -e /workspace/langbot-{mock_scope}-leak && printf SETUP_READY > /workspace/langbot-{mock_scope}-ready && cat /workspace/langbot-{mock_scope}-ready"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SETUP_READY",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "sleep 8; printf LATE_SIDE_EFFECT > /workspace/langbot-{mock_scope}-leak",
+              "timeout_sec": 20
+            }
+          }
+        ]
+      },
+      {
+        "content": "UNEXPECTED_INTERRUPT_COMPLETION"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-interrupt-check": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "sleep 9; if test ! -f /workspace/langbot-{mock_scope}-ready; then printf INTERRUPT_SETUP_MISSING; exit 41; fi; if test -e /workspace/langbot-{mock_scope}-leak; then printf INTERRUPT_LATE_SIDE_EFFECT; exit 42; fi; rm /workspace/langbot-{mock_scope}-ready && printf INTERRUPT_CLEANUP_OK",
+              "timeout_sec": 15
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "INTERRUPT_CLEANUP_OK",
+        "content": "INTERRUPT_CLEANUP_OK"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-retry-side-effect": {
+    "status": 503,
+    "recover_after": 1,
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "printf 'once\\n' >> /tmp/langbot-{mock_scope}-effects; printf SIDE_EFFECT_WRITTEN"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SIDE_EFFECT_WRITTEN",
+        "tool_calls": [
+          {
+            "name": "exec",
+            "arguments": {
+              "command": "test \"$(wc -l < /tmp/langbot-{mock_scope}-effects)\" -eq 1 && rm /tmp/langbot-{mock_scope}-effects && printf SIDE_EFFECT_ONCE"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "SIDE_EFFECT_ONCE",
+        "content": "MODEL_RETRY_SIDE_EFFECT_ONCE"
+      }
+    ],
+    "substitute_mock_scope": true
+  },
+  "mock-local-path-escape": {
+    "steps": [
+      {
+        "tool_calls": [
+          {
+            "name": "read",
+            "arguments": {
+              "path": "/workspace/../../etc/passwd"
+            }
+          }
+        ]
+      },
+      {
+        "expect_tool_output": "Path escapes the workspace boundary",
+        "content": "PATH_ESCAPE_REJECTED"
+      }
+    ]
   }
 }

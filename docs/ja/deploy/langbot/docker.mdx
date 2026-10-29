@@ -1,0 +1,61 @@
+---
+title: "Dockerデプロイ"
+description: "Windows、Linux、macOS で Docker Compose を使って LangBot を起動します。"
+---
+
+## 1. 環境を準備する
+
+- Git をインストールします。
+- **Windows / macOS**：Docker Desktop をインストールして起動します。
+- **Linux**：Docker と Docker Compose をインストールします。
+
+## 2. プロジェクトをダウンロードする
+
+書き込み権限のある通常のディレクトリを選んでください。Linux では `/root` や `/etc` などのシステムディレクトリを避け、`/opt` 配下を推奨します。これにより、安全規則によるサンドボックス機能の拒否を避けられます。
+
+プロジェクトを保存したいディレクトリでターミナルを開き（Windows では PowerShell を使用できます）、1 行ずつ実行します：
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+```
+
+### 中国本土：起動前にミラーへ変更する（任意）
+
+Docker Hub からのダウンロードが遅い場合は、先に `LangBot/docker/docker-compose.yaml` を編集し、すべての `rockchin/langbot:latest` を次の値に置き換えてください：
+
+```text
+docker.langbot.app/langbot-public/rockchin/langbot:latest
+```
+
+保存してから起動してください。ほかの設定変更は不要です。
+
+## 3. LangBot を起動する
+
+<Note>
+  サーバーに設置する場合は、管理画面とランタイムのポートをファイアウォールで制限し、信頼できる接続元だけを許可してください。
+</Note>
+
+同じターミナルで実行します：
+
+```bash
+docker compose --profile all up -d
+```
+
+初回はコンテナイメージをダウンロードします。Windows / macOS では Docker Desktop を起動したままにしてください。
+
+## 4. 管理画面を開く
+
+- **ローカルにインストールした場合**：`http://localhost:5300` を開きます。
+- **サーバーにインストールした場合**：`http://サーバーのIP:5300` を開きます。ファイアウォールで自分の端末からこのポートへのアクセスを許可してください。
+
+画面の案内に従って初期設定を完了し、[モデル](/ja/usage/models/readme)と[ボット](/ja/usage/platforms/readme)を追加してください。
+
+## Beta 版（任意）
+
+上記の安定版の代わりに Beta を試す場合は、[dev/4.11.x の Compose ファイル](https://raw.githubusercontent.com/langbot-app/LangBot/dev/4.11.x/docker/docker-compose.yaml)を別の書き込み可能なディレクトリに `compose.yaml` として保存します。**すべての** `rockchin/langbot` イメージを手動で `rockchin/langbot:beta` に変更してください。対象は Core（`langbot`）、プラグインランタイム（`langbot_plugin_runtime`）、Box（`langbot_box` がある場合）です。`beta` タグは Beta リリースごとに更新されます。そのディレクトリで次を実行して起動・更新します：
+
+```bash
+docker compose --profile all pull
+docker compose --profile all up -d
+```

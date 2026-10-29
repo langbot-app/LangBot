@@ -78,6 +78,9 @@ class Metadata(pydantic.BaseModel):
     repository: typing.Optional[str] = None
     """仓库"""
 
+    license: typing.Optional[str] = None
+    """开源协议（SPDX 标识符，如 MIT / Apache-2.0）"""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 

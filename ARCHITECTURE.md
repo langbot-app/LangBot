@@ -22,6 +22,7 @@ At runtime, one LangBot process owns:
 LangBot is not a single-repo system.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
+- `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
 - `langbot-plugin-sdk/` is published as `langbot-plugin` and pinned in `LangBot/pyproject.toml`. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
@@ -162,7 +163,7 @@ In this repo:
 - `pkg/plugin/handler.py` exposes LangBot actions to the runtime and calls runtime actions for plugin operations.
 - `pkg/provider/tools/loaders/plugin.py` exposes plugin Tool components to LLM runners.
 - Pipeline handlers emit SDK events such as normal-message events and prompt-processing events.
-- [Certified plugin policy](docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
+- [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
 In `langbot-plugin-sdk`:
 
@@ -188,8 +189,8 @@ the run. Output export requires explicit normalized absolute sandbox file paths 
 opaque handles scoped to that run. The selected files are validated as one batch
 before registration; successful export removes only those files, and cleanup
 failure is a warning with accepted handles retained. Writing an outbox file alone
-does not deliver it. Core and LocalAgent currently pin SDK PR #180's exact commit
-until a release includes the selected-path API.
+does not deliver it. Core and Plugin Runtime must provide the selected-path API;
+LocalAgent CI verifies this contract against the latest stable published SDK.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
@@ -201,7 +202,7 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
-- [Outbox export failures](docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
+- [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
@@ -345,3 +346,7 @@ When one of these changes, update the others if the behavior or contract changed
 - Prefer small, explicit agent surfaces over exposing every internal API.
 - Treat cross-repo contracts with the SDK as public interfaces.
 - Test behavior at the narrowest useful layer first, then add integration/e2e coverage for runtime or platform changes.
+
+## Documentation repositories
+
+The public documentation site lives in `docs/` and is built with Node.js 24 and Fumapress. Internal design and review notes live in `dev-docs/`. The landing site keeps its `docs` submodule path but tracks LangBot `master`, building from the nested `docs/` directory. The old `langbot-app/langbot-docs` repository can be archived; publication never writes to it. See `dev-docs/DOCS_MIGRATION.md` for publication and cutover details.

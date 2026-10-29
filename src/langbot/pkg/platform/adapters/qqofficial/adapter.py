@@ -154,7 +154,13 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
         raw = await self._send_content_list(
-            str(target_type), str(target_id), await QQOfficialMessageConverter.yiri2target(message)
+            str(target_type),
+            str(target_id),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(str(target_type)),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
         )
         return platform_events.MessageResult(raw={'results': raw})
 
@@ -171,7 +177,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         raw = await self._send_content_list(
             target_type,
             target_id,
-            await QQOfficialMessageConverter.yiri2target(message),
+            await QQOfficialMessageConverter.yiri2target(
+                message,
+                self._normalize_target_type(target_type),
+                use_markdown=self.config.get('enable-markdown-rendering', False),
+            ),
             msg_id=source.d_id,
         )
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
@@ -192,7 +202,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         *,
         msg_id: typing.Optional[str] = None,
         event_id: typing.Optional[str] = None,
-        msg_seq: int = 1,
+        msg_seq: typing.Optional[int] = None,
     ) -> typing.Any:
         """Send a text reply using the configured C2C/group render mode."""
         use_markdown = self.config.get('enable-markdown-rendering', False)
@@ -455,7 +465,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     def _reply_target(event: QQOfficialEvent) -> tuple[str, str]:
         if event.t == 'C2C_MESSAGE_CREATE':
             return 'person', event.user_openid
-        if event.t == 'GROUP_AT_MESSAGE_CREATE':
+        if event.t in {'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'}:
             return 'group', event.group_openid
         if event.t == 'AT_MESSAGE_CREATE':
             return 'channel', event.channel_id

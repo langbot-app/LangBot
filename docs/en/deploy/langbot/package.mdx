@@ -1,0 +1,41 @@
+---
+title: "Deploy with Package Manager"
+description: "Deploy LangBot with a package manager (uv/uvx). Quick install for the open-source LLM chatbot platform."
+---
+
+<Info>
+Supports Windows, Linux, Mac OS, etc. Recommended for testing environments and personal use scenarios; production-level environments please use [Docker Deployment](/en/deploy/langbot/docker.html).
+</Info>
+
+LangBot is packaged and released to PyPI. Please install [uv](https://docs.astral.sh/uv/getting-started/installation/), and then run the following command in an empty directory:
+
+```bash
+uvx langbot@latest
+```
+
+This will set the current directory as the working directory, and you can access `http://localhost:5300` to start using it.
+
+## Beta releases (optional)
+
+To try Beta 3 instead, use the command below. `--prerelease=allow` also permits prereleases of dependencies; `--refresh` refreshes cached package data.
+
+```bash
+uvx --prerelease=allow --refresh langbot==4.11.0b3
+```
+
+## Optional SeekDB support
+
+The default installation uses Chroma and does not include the SeekDB Python
+SDK or native components. Install the `seekdb` extra only when you want to use
+SeekDB as the vector store or use its built-in embedding model:
+
+```bash
+uvx --from 'langbot[seekdb]@latest' langbot
+```
+
+SeekDB embedded mode also requires a compatible `pylibseekdb` wheel. Apple
+Silicon currently requires macOS 15 or later; follow
+[oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324) for the
+macOS 14 ARM64 support plan. Because of the current `pyseekdb` package
+metadata, the extra also fails to resolve on macOS 14 ARM64 for server-only
+use. These platform limits do not affect LangBot when SeekDB is not installed.

@@ -1,0 +1,17 @@
+---
+title: "システム互換性"
+---
+
+LangBotのプラグインシステムは、`Asyncio`や`Subprocess`などのメカニズムを利用しています。これらはUnix系システム(LinuxやmacOSなど)では正常に動作しますが、Windowsではいくつかの問題があり、プラグインが正常に動作しない場合があります。
+
+PythonのWindowsでの非同期イベントループはデフォルトで`ProactorEventLoop`を使用しますが、このイベントループはStdioのサポートが不足しています。一方、LangBotは非Docker環境においてStdioを使用してPlugin Runtimeと通信し、Plugin Runtimeもプラグインとの通信にStdioを使用します。
+
+`SelectorEventLoop`に切り替えた場合、`SelectorEventLoop`は`Subprocess`をサポートしていないため、Plugin Runtimeとプラグインが正常に起動できなくなります。
+
+これらの問題の詳細については、次を参照してください: [Python公式ドキュメント](https://docs.python.org/3.13/library/asyncio-platforms.html)
+
+## 解決策
+
+Unix系システムにおけるサブプロセス管理とStdio通信の密結合とは異なり、LangBotとPlugin RuntimeはWindows上で自動的にハイブリッドなサブプロセス + WebSocket通信戦略に切り替わります。LangBotは引き続きサブプロセスを介してPlugin Runtimeを起動しますが、WebSocketで通信します。同様に、Plugin Runtimeは各インストール済みプラグインをサブプロセスで起動しながら、WebSocketを通じて通信します。
+
+この動作はOSに基づいて自動的に選択されるため、手動での設定は不要です。

@@ -10,6 +10,7 @@ import sqlalchemy
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.agent.runner.interaction_store import (
+    _epoch_to_datetime,
     DuplicateInteractionError,
     InteractionAlreadySubmittedError,
     InteractionExpiredError,
@@ -22,6 +23,21 @@ from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 
 
 UTC = datetime.timezone.utc
+
+
+@pytest.mark.parametrize('scale', [1, 1000])
+def test_epoch_to_datetime_accepts_seconds_and_milliseconds(scale):
+    assert _epoch_to_datetime(1_790_000_000.125 * scale) == datetime.datetime.fromtimestamp(1_790_000_000.125, UTC)
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -float('inf'), 10**400, 'invalid', []])
+def test_epoch_to_datetime_reports_invalid_timestamp(value):
+    with pytest.raises(ValueError, match='expires_at must be a valid epoch timestamp'):
+        _epoch_to_datetime(value)
+
+
+def test_epoch_to_datetime_preserves_absent_expiry():
+    assert _epoch_to_datetime(None) is None
 
 
 @pytest.fixture
@@ -70,6 +86,14 @@ async def _create(store: InteractionStore, **overrides):
     }
     values.update(overrides)
     return await store.create_request(**values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('scale', [1, 1000])
+async def test_create_request_persists_normalized_expiry(store, scale):
+    expires_at = int((datetime.datetime.now(UTC) + datetime.timedelta(minutes=5)).timestamp())
+    record, _token = await _create(store, expires_at=expires_at * scale)
+    assert record['expires_at'] == expires_at
 
 
 @pytest.mark.asyncio

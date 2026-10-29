@@ -1,0 +1,78 @@
+---
+title: "Data Collection Policy"
+description: "Optional telemetry, execution chains, collected data and opt-out controls"
+---
+
+LangBot sends product telemetry to the LangBot Space service configured by `space.url` (by default `https://space.langbot.app`) to understand usage and improve reliability. **Telemetry is enabled by default and can be disabled.** This page describes the current 4.11 execution telemetry protocol (`schema: 2`); older-version data is described separately below.
+
+## Execution telemetry
+
+An eligible execution consists of independent records sharing an `event_id`: one `execution_node` is generated when each workflow node completes, and one `execution_chain` when the execution closes. Core buffers records within a fixed limit and uploads them in background batches; Space reconstructs the execution chain. The current sender no longer uses legacy feature window counters or assembles a complete chain locally.
+
+**Platform events without a matching business route, or whose selected route is `discard` with no matching plugin subscription, report neither nodes nor a closure.** Disabled routes and event-type/filter mismatches are included; local logs and monitoring keep their existing behavior. A matching plugin event processor still makes an execution eligible when the primary route misses. Unmatched and discarded branches do not contribute telemetry.
+
+After a business route matches, unavailable targets, execution failures, timeouts and filtering inside a Pipeline remain reportable. Valid interaction callbacks resuming an original processor, WebUI/API debug runs and independent calls explicitly targeting a Pipeline also remain eligible; invalid callbacks do not independently qualify. Eligibility takes precedence over sampling and failure fallback, including in Cloud. This requires a Core upgrade and does not retroactively change older clients or historical records.
+
+| Data | Contents |
+|---|---|
+| Identity and environment | `instance_id`, `workspace_uuid`, `event_id`, version, edition, timestamp, debug flag and sampling information |
+| Execution nodes | Operation identifiers, processing mode, outcome, start/end times, parent/child relationships and sequence, routing target and Runner run identity for platform events, routing, Pipeline, Runner, platform API and tool calls |
+| Chain closure | Overall outcome, closure reason, duration, node count, nodes omitted by sampling, origin, model name, adapter, Runner and pipeline plugins |
+| Bound resources | Identifiers or names of plugins, MCP servers, knowledge bases, tools and their sources, skills, models and platform APIs granted to a Pipeline or Agent, plus selector fields, capabilities and permission flags; fields depend on the execution path |
+| Errors | Short error text with length limits and whitespace normalization, potentially including an exception class and message prefix |
+
+Bound resources describe what an execution was configured or authorized to use. **They do not establish that those resources were actually called, searched or consumed.** Routing targets use `type:uuid`, not user-defined rule names.
+
+Execution records do not intentionally collect message bodies, prompts, model replies, platform user/group IDs, tool/API arguments or results, credentials or complete exception tracebacks. **Truncating error text is not reliable redaction: exception prefixes and user-defined model, skill or resource names may still contain sensitive information.** Instance and Workspace identifiers may be associated with deployments or accounts; these records are neither anonymous nor guaranteed to contain no user content.
+
+### Sampling and debug runs
+
+The community edition controls execution reporting with `space.execution_trace`:
+
+| Mode | Behavior |
+|---|---|
+| `all` (default) | Records nodes and closure records for every eligible execution |
+| `sampled` | Makes one stable hash decision from the event identity at ingress; retains approximately `1/N` successful executions, where N is `space.execution_trace_sample` (default 20); every record of an execution shares the decision |
+| `failures` | Omits nodes for ordinary executions and reports a closure only for failure, cancellation, timeout or a recorded chain failure reason |
+| `off` | Disables node and closure records; no independent window counters continue, while Workspace heartbeats remain controlled by the main telemetry switch |
+
+If an execution excluded by `sampled` fails, its closure is still reported. Previously skipped nodes are not recovered, so a failure may have a summary without a complete chain. WebUI debug runs are retained in `all`, `sampled` and `failures` with a debug flag; neither `off` nor the main opt-out permits their upload.
+
+**Cloud always uses `all` while product telemetry is enabled**, so sampling successful executions does not distort activity counts. The instance operator can still disable the product telemetry described here with `space.disable_telemetry`.
+
+### Delivery and completeness
+
+Records are sent to `POST /api/v1/telemetry`. The default flush interval is 180 seconds, configurable through `space.telemetry_flush_seconds`. Each flush sends at most 128 records and the memory buffer holds at most 512. Records are removed only after an accepted send; failed sends are retried, and a full buffer drops the oldest records. Shutdown attempts to flush remaining records within a limited time.
+
+Network failures, timeouts and server errors do not fail business execution because telemetry failed; upload failure details are logged at DEBUG level. Sampling, buffer overflow, process exit or expired cross-task associations can leave incomplete chains. **Full reporting does not guarantee complete delivery.** A successful platform API response does not prove that a user read a message.
+
+## Heartbeats, surveys and older-version data
+
+Active Workspaces first send an `instance_heartbeat` about 30 seconds after startup. Ordinary deployments send daily thereafter; Cloud runtime refreshes every 5 minutes. Heartbeats include deployment platform, database/vector-database kinds, sandbox configuration and availability, adapter types and counts of resources such as bots, Pipelines, plugins, Agents, event processors, event bindings, MCP servers, knowledge bases and skills. They do not intentionally include resource contents or connection credentials.
+
+Optional in-app surveys send the survey ID, submitted answers, instance ID, version and completion/dismissal status. Survey answers are content voluntarily provided by users.
+
+Space remains compatible with older `query` and `feature_execution` data. Legacy query records may contain model names, feature counters, user-defined skill/MCP names and raw traceback text. The current execution-record restrictions neither sanitize historical data nor change uploads from older clients still running.
+
+## Storage and retention
+
+Data is stored by the configured Space service. Execution lists, chain details and summaries are restricted to authorized telemetry management users or service clients. Raw `execution_node`, `execution_chain` and legacy `feature_execution` records are periodically removed in bounded batches using a 30-day retention window; backlogs or service interruptions can delay deletion. This does not change retention for legacy query telemetry, heartbeats, surveys, accounts or service logs.
+
+Opting out stops future reporting but does not delete existing server records. For historical data requests, contact [hello@langbot.app](mailto:hello@langbot.app) or your Space administrator.
+
+## Disabling telemetry
+
+Set the following in the existing `space` section of `data/config.yaml`, preserve other settings, and restart LangBot:
+
+```yaml
+space:
+  disable_telemetry: true
+```
+
+This switch disables the product telemetry described on this page and survey fetching. Use an unquoted YAML boolean. To restore the default, set it to `false` and restart.
+
+If `SPACE__DISABLE_TELEMETRY` is set in your deployment, it overrides the file at startup; update or remove it too. Recreate containers when changing their environment. In Cloud, the instance operator controls this setting for every Workspace in the instance. It does not disable the bot or change privacy settings of messaging platforms, model providers or plugins.
+
+Cloud Plugin Runtime operational health reporting is separate from product telemetry. It is controlled by `plugin.runtime_ops.enabled` and is not disabled by `space.disable_telemetry`.
+
+See [System Settings](../deploy/settings).

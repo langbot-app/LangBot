@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ Manager</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--langbot-bg, #fff);
+      color: var(--langbot-text, #0a0a0a);
+      padding: 24px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .count { font-size: 13px; color: var(--langbot-text-muted, #71717a); }
+
+    /* Search */
+    .search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+    .search-bar input {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 8px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a);
+      font-size: 14px; outline: none; transition: border-color 0.15s;
+    }
+    .search-bar input:focus { border-color: var(--langbot-accent, #2563eb); }
+
+    /* Form */
+    .add-form {
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 10px;
+      padding: 16px; margin-bottom: 20px; background: var(--langbot-bg-card, #f8fafc);
+    }
+    .add-form .form-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+    .add-form input, .add-form textarea {
+      width: 100%; padding: 8px 12px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 8px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a);
+      font-size: 14px; font-family: inherit; outline: none; margin-bottom: 10px; transition: border-color 0.15s;
+    }
+    .add-form input:focus, .add-form textarea:focus { border-color: var(--langbot-accent, #2563eb); }
+    .add-form textarea { resize: vertical; min-height: 60px; }
+
+    /* Buttons */
+    .btn {
+      padding: 7px 16px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--langbot-accent, #2563eb); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-ghost {
+      background: none; color: var(--langbot-text-muted, #71717a); border: 1px solid var(--langbot-border, #e4e4e7);
+      padding: 5px 10px; font-size: 12px;
+    }
+    .btn-ghost:hover { color: var(--langbot-text, #0a0a0a); }
+
+    .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* Entry list */
+    .entry {
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 10px;
+      padding: 14px 16px; margin-bottom: 10px; background: var(--langbot-bg-card, #f8fafc);
+      transition: box-shadow 0.15s;
+    }
+    .entry:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .entry-q { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+    .entry-a { font-size: 13px; color: var(--langbot-text-muted, #71717a); white-space: pre-wrap; line-height: 1.5; }
+    .entry-actions { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
+
+    .empty {
+      text-align: center; padding: 40px 20px; color: var(--langbot-text-muted, #71717a);
+      font-size: 14px;
+    }
+
+    /* Edit mode */
+    .edit-form input, .edit-form textarea {
+      width: 100%; padding: 6px 10px; border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 6px; background: var(--langbot-bg, #fff); color: var(--langbot-text, #0a0a0a);
+      font-size: 13px; font-family: inherit; outline: none; margin-bottom: 6px;
+    }
+    .edit-form textarea { resize: vertical; min-height: 50px; }
+    .edit-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 data-i18n="title">FAQ Manager</h1>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" data-i18n="searchPlaceholder" data-i18n-attr="placeholder" placeholder="Search FAQ...">
+  </div>
+
+  <div class="add-form" id="addForm">
+    <div class="form-title" data-i18n="addNew">Add New Entry</div>
+    <input type="text" id="questionInput" data-i18n="questionPlaceholder" data-i18n-attr="placeholder" placeholder="Question">
+    <textarea id="answerInput" rows="3" data-i18n="answerPlaceholder" data-i18n-attr="placeholder" placeholder="Answer"></textarea>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="addBtn" data-i18n="add">Add</button>
+    </div>
+  </div>
+
+  <div id="list"></div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    var entries = [];
+    var searchQuery = '';
+    var editingId = null;
+
+    function renderList() {
+      var listEl = document.getElementById('list');
+      var filtered = entries;
+      if (searchQuery) {
+        var q = searchQuery.toLowerCase();
+        filtered = entries.filter(function(e) {
+          return e.question.toLowerCase().indexOf(q) !== -1 || e.answer.toLowerCase().indexOf(q) !== -1;
+        });
+      }
+
+      document.getElementById('count').textContent =
+        filtered.length + ' / ' + entries.length + ' ' + langbot.t('entries', 'entries');
+
+      // Entry fields reach the DOM as node text or as element properties only.
+      // They are never concatenated into markup, so a question cannot close an
+      // attribute or open a script/event-handler context.
+      listEl.replaceChildren();
+      if (filtered.length === 0) {
+        listEl.appendChild(el('div', 'empty', langbot.t('empty', 'No FAQ entries yet. Add one above.')));
+        return;
+      }
+
+      for (var i = 0; i < filtered.length; i++) {
+        var e = filtered[i];
+        listEl.appendChild(editingId === e.id ? editForm(e) : entryRow(e));
+      }
+    }
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = text;
+      return node;
+    }
+
+    function actionButton(label, className, handler) {
+      var button = el('button', className, label);
+      button.addEventListener('click', handler);
+      return button;
+    }
+
+    function entryRow(e) {
+      var row = el('div', 'entry');
+      row.appendChild(el('div', 'entry-q', 'Q: ' + e.question));
+      row.appendChild(el('div', 'entry-a', e.answer));
+      var actions = el('div', 'entry-actions');
+      actions.appendChild(actionButton(langbot.t('edit', 'Edit'), 'btn btn-ghost', function() {
+        startEdit(e.id);
+      }));
+      var remove = actionButton(langbot.t('delete', 'Delete'), 'btn btn-ghost', function() {
+        deleteEntry(e.id);
+      });
+      remove.style.color = '#ef4444';
+      remove.style.borderColor = '#fca5a5';
+      actions.appendChild(remove);
+      row.appendChild(actions);
+      return row;
+    }
+
+    function editForm(e) {
+      var box = el('div', 'entry edit-form');
+      var question = el('input');
+      question.type = 'text';
+      question.id = 'editQ';
+      question.value = e.question;
+      var answer = el('textarea');
+      answer.id = 'editA';
+      answer.rows = 3;
+      answer.value = e.answer;
+      var actions = el('div', 'edit-actions');
+      actions.appendChild(actionButton(langbot.t('cancel', 'Cancel'), 'btn btn-ghost', function() {
+        cancelEdit();
+      }));
+      actions.appendChild(actionButton(langbot.t('save', 'Save'), 'btn btn-primary', function() {
+        saveEdit(e.id);
+      }));
+      box.appendChild(question);
+      box.appendChild(answer);
+      box.appendChild(actions);
+      return box;
+    }
+
+    async function loadEntries() {
+      var data = await langbot.api('/entries', null, 'GET');
+      entries = (data && data.entries) || [];
+      renderList();
+    }
+
+    document.getElementById('addBtn').addEventListener('click', async function() {
+      var q = document.getElementById('questionInput').value.trim();
+      var a = document.getElementById('answerInput').value.trim();
+      if (!q || !a) return;
+      await langbot.api('/entries', { question: q, answer: a }, 'POST');
+      document.getElementById('questionInput').value = '';
+      document.getElementById('answerInput').value = '';
+      await loadEntries();
+    });
+
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+      searchQuery = e.target.value;
+      renderList();
+    });
+
+    window.startEdit = function(id) {
+      editingId = id;
+      renderList();
+    };
+
+    window.cancelEdit = function() {
+      editingId = null;
+      renderList();
+    };
+
+    window.saveEdit = async function(id) {
+      var q = document.getElementById('editQ').value.trim();
+      var a = document.getElementById('editA').value.trim();
+      if (!q || !a) return;
+      await langbot.api('/entries', { id: id, question: q, answer: a }, 'PUT');
+      editingId = null;
+      await loadEntries();
+    };
+
+    window.deleteEntry = async function(id) {
+      await langbot.api('/entries', { id: id }, 'DELETE');
+      await loadEntries();
+    };
+
+    langbot.onReady(function() {
+      loadEntries();
+    });
+  </script>
+</body>
+</html>

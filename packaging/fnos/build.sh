@@ -48,6 +48,8 @@ mkdir -p "${FPK_DIR}/app/langbot"
 cd "${SRC_ROOT}"
 rsync -a \
     --exclude='.git' \
+    --exclude='/plugins/' \
+    --exclude='*.lbpkg' \
     --exclude='.venv' \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
@@ -66,6 +68,7 @@ rsync -a \
     --exclude='kubernetes.yaml' \
     --exclude='.github/' \
     --exclude='docs/' \
+    --exclude='dev-docs/' \
     --exclude='examples/' \
     --exclude='res/' \
     ./ "${FPK_DIR}/app/langbot/"

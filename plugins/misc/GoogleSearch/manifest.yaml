@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: GoogleSearch
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GoogleSearch
+  version: 0.1.7
+  description:
+    en_US: Search A tool for performing a Google SERP search and extracting snippets
+      and webpages.Input should be a search query.
+    zh_Hans: 一个用于执行 Google SERP 搜索并提取片段和网页的工具。输入应该是一个搜索查询。
+    zh_Hant: Google 搜尋插件，將 Google 自訂搜尋暴露為 LangBot Tool。
+    ja_JP: Google検索プラグイン。Googleカスタム検索をLangBot Toolとして公開します。
+    vi_VN: Plugin tìm kiếm Google, cung cấp tìm kiếm tùy chỉnh Google dưới dạng LangBot
+      Tool.
+    th_TH: ปลั๊กอินค้นหา Google เปิด Google Custom Search เป็น LangBot Tool
+    es_ES: Plugin de búsqueda Google que expone la búsqueda personalizada de Google
+      como una herramienta LangBot Tool.
+  label:
+    en_US: GoogleSearch
+    zh_Hans: GoogleSearch
+    zh_Hant: GoogleSearch
+    ja_JP: GoogleSearch
+    vi_VN: GoogleSearch
+    th_TH: GoogleSearch
+    es_ES: GoogleSearch
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: api_key
+    type: string
+    label:
+      en_US: API key from SERP API
+      zh_Hans: SERP API 的 API 密钥
+    description:
+      en_US: API key from SERP API, you can get it from https://serpapi.com/manage-api-key
+      zh_Hans: SERP API 的 API 密钥，可以在 https://serpapi.com/manage-api-key 获取
+    required: true
+    default: ''
+  components:
+    Tool:
+      fromDirs:
+      - path: components/tools/
+execution:
+  python:
+    path: main.py
+    attr: GoogleSearch
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

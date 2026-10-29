@@ -372,6 +372,17 @@ class TestMCPServiceGetMCPServers:
 class TestMCPServiceCreateMCPServer:
     """Tests for create_mcp_server method."""
 
+    @pytest.mark.parametrize('mode_fields', [{}, {'mode': None}, {'mode': ''}, {'mode': 'invalid'}, {'mode': []}])
+    @pytest.mark.parametrize('enabled', [False, True])
+    async def test_create_invalid_mode_does_not_persist(self, mode_fields, enabled):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = _service(ap)
+
+        with pytest.raises(ValueError, match='MCP server mode must be one of'):
+            await service.create_mcp_server(_CONTEXT, {'name': 'invalid', 'enable': enabled, **mode_fields})
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
     async def test_create_stdio_rejected_by_independent_instance_gate(self):
         ap = SimpleNamespace(
             instance_config=SimpleNamespace(
@@ -417,11 +428,12 @@ class TestMCPServiceCreateMCPServer:
 
         # Execute & Verify - 2 plugins + new server would exceed limit
         with pytest.raises(ValueError, match='Maximum number of extensions'):
-            await service.create_mcp_server(_CONTEXT, {'name': 'New Server'})
+            await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'mode': 'remote'})
         assert all(not call.args[0].is_insert for call in ap.persistence_mgr.execute_async.await_args_list)
         ap.tool_mgr.mcp_tool_loader.get_session.assert_not_called()
 
-    async def test_create_mcp_server_no_limit(self):
+    @pytest.mark.parametrize('mode', ['stdio', 'remote', 'sse', 'http'])
+    async def test_create_mcp_server_no_limit(self, mode):
         """Creates MCP server without limit when max_extensions=-1."""
         # Setup
         ap = SimpleNamespace()
@@ -443,7 +455,7 @@ class TestMCPServiceCreateMCPServer:
         service = _service(ap)
 
         # Execute
-        server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server'})
+        server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'mode': mode})
 
         # Verify
         assert server_uuid is not None
@@ -452,6 +464,7 @@ class TestMCPServiceCreateMCPServer:
         assert values['uuid'] == server_uuid
         assert values['workspace_uuid'] == _CONTEXT.workspace_uuid
         assert values['name'] == 'New Server'
+        assert values['mode'] == mode
 
     async def test_create_mcp_server_duplicate_name_raises(self):
         """Rejects duplicate MCP server names."""
@@ -470,7 +483,7 @@ class TestMCPServiceCreateMCPServer:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='MCP server already exists: Existing Server'):
-            await service.create_mcp_server(_CONTEXT, {'name': 'Existing Server'})
+            await service.create_mcp_server(_CONTEXT, {'name': 'Existing Server', 'mode': 'remote'})
 
     async def test_create_mcp_server_loads_server(self):
         """Loads server into tool_mgr when enabled."""
@@ -506,7 +519,7 @@ class TestMCPServiceCreateMCPServer:
         service = _service(ap)
 
         # Execute
-        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
+        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True, 'mode': 'remote'})
 
         # Verify - host_mcp_server was called
         values = _write_statement(ap, 'insert').compile().params
@@ -553,7 +566,7 @@ class TestMCPServiceCreateMCPServer:
         )
         service = _service(ap)
 
-        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
+        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True, 'mode': 'remote'})
         await asyncio.sleep(0)
         assert observed == []
 
@@ -588,7 +601,9 @@ class TestMCPServiceCreateMCPServer:
         service = _service(ap)
 
         # Execute with enable=False
-        server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': False})
+        server_uuid = await service.create_mcp_server(
+            _CONTEXT, {'name': 'New Server', 'enable': False, 'mode': 'remote'}
+        )
 
         # Verify the persisted flag and the configuration passed to the loader
         assert uuid.UUID(server_uuid).version == 4
@@ -654,6 +669,35 @@ class TestMCPServiceGetMCPServerByName:
 
 class TestMCPServiceUpdateMCPServer:
     """Tests for update_mcp_server method."""
+
+    @pytest.mark.parametrize('mode', [None, '', 'invalid', [], {}])
+    @pytest.mark.parametrize('enabled', [False, True])
+    async def test_update_invalid_mode_preserves_existing_configuration(self, mode, enabled):
+        previous = {'uuid': 'test-uuid', 'name': 'Server', 'mode': 'remote', 'enable': enabled}
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = _service(ap)
+        service._get_mcp_server_by_uuid_raw = AsyncMock(return_value=previous)
+        snapshot = copy.deepcopy(previous)
+
+        with pytest.raises(ValueError, match='MCP server mode must be one of'):
+            await service.update_mcp_server(_CONTEXT, 'test-uuid', {'mode': mode})
+
+        assert previous == snapshot
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize('mode', ['stdio', 'remote', 'sse', 'http'])
+    async def test_update_supported_modes_on_disabled_server(self, mode):
+        previous = {'uuid': 'test-uuid', 'name': 'Server', 'mode': 'remote', 'enable': False}
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=_create_mock_result())),
+            tool_mgr=SimpleNamespace(mcp_tool_loader=None),
+        )
+        service = _service(ap)
+        service._get_mcp_server_by_uuid_raw = AsyncMock(return_value=previous)
+
+        await service.update_mcp_server(_CONTEXT, 'test-uuid', {'mode': mode})
+
+        assert _write_statement(ap, 'update').compile().params['mode'] == mode
 
     async def test_update_mcp_server_disable_enabled_server(self):
         """Removes server when disabling previously enabled server."""

@@ -3,18 +3,13 @@ from __future__ import annotations
 import asyncio
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.platform.sources.http_bot import HttpBotAdapter
 from langbot.pkg.platform.sources import http_bot as http_bot_module
-
-
-def _session(key):
-    session = SimpleNamespace()
-    session._langbot_session_key = key
-    return session
 
 
 def _adapter(app, execution_context) -> HttpBotAdapter:
@@ -27,38 +22,28 @@ def _adapter(app, execution_context) -> HttpBotAdapter:
         sync_waiters={},
         inbound_tasks=set(),
     )
-    object.__setattr__(adapter, 'ap', app)
+    assert hasattr(adapter, 'ap')  # BotManager only injects declared application fields.
+    adapter.ap = app
     return adapter
 
 
 @pytest.mark.asyncio
-async def test_http_bot_reset_removes_only_exact_execution_scope():
+@pytest.mark.parametrize('launcher_type', ['person', 'group'])
+async def test_http_bot_reset_uses_trusted_scope_and_persistent_context_service(launcher_type):
     context = ExecutionContext(
-        instance_uuid='instance-a',
-        workspace_uuid='workspace-a',
-        placement_generation=3,
-        bot_uuid='bot-a',
+        instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=3, bot_uuid='bot-a'
     )
-    target_key = ('instance-a', 'workspace-a', 3, 'bot-a', 'person', 'shared-session')
-    retained_keys = [
-        ('instance-b', 'workspace-a', 3, 'bot-a', 'person', 'shared-session'),
-        ('instance-a', 'workspace-b', 3, 'bot-a', 'person', 'shared-session'),
-        ('instance-a', 'workspace-a', 4, 'bot-a', 'person', 'shared-session'),
-        ('instance-a', 'workspace-a', 3, 'bot-b', 'person', 'shared-session'),
-        ('instance-a', 'workspace-a', 3, 'bot-a', 'group', 'shared-session'),
-        ('instance-a', 'workspace-a', 3, 'bot-a', 'person', 'other-session'),
-    ]
-    sessions = [_session(target_key), *[_session(key) for key in retained_keys], SimpleNamespace()]
-    app = SimpleNamespace(sess_mgr=SimpleNamespace(session_list=sessions))
+    reset = AsyncMock(return_value={'reset': True})
+    app = SimpleNamespace(monitoring_service=SimpleNamespace(reset_session_context=reset))
     adapter = _adapter(app, context)
 
-    removed = await adapter._reset_session('person', 'shared-session')
-
-    assert removed is True
-    assert [getattr(session, '_langbot_session_key', None) for session in app.sess_mgr.session_list] == [
-        *retained_keys,
-        None,
-    ]
+    assert await adapter._reset_session(launcher_type, 'shared-session') is True
+    reset.assert_awaited_once_with(context, 'bot-a', f'{launcher_type}_shared-session')
+    reset.side_effect = LookupError('Session not found')
+    assert await adapter._reset_session(launcher_type, 'missing') is False
+    reset.side_effect = RuntimeError('Session is processing a task')
+    with pytest.raises(RuntimeError, match='processing'):
+        await adapter._reset_session(launcher_type, 'busy')
 
 
 @pytest.mark.asyncio

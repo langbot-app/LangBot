@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: RockChinQ
+  name: GitHubKit
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GitHubKit
+  version: 0.2.2
+  description:
+    en_US: 'GitHub integration for your IM: query repos / issues / PRs / releases / users, search, and subscribe chats to repository event push (commits, PRs, issues, releases, stars) via background polling.'
+    zh_Hans: 'IM 里的 GitHub 工具箱:查询仓库/Issue/PR/Release/用户、搜索,并可订阅仓库事件推送(提交、PR、Issue、Release、Star),后台轮询自动播报到当前会话。'
+  label:
+    en_US: GitHubKit
+    zh_Hans: GitHub 工具箱
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: language
+      type: select
+      label:
+        en_US: 'Language'
+        zh_Hans: '语言'
+      description:
+        en_US: 'Language for all bot messages and event-push notifications.'
+        zh_Hans: '机器人所有提示语与事件推送的语言。'
+      options:
+        - name: en_US
+          label:
+            en_US: English
+            zh_Hans: 英文
+        - name: zh_Hans
+          label:
+            en_US: Chinese
+            zh_Hans: 简体中文
+      default: zh_Hans
+    - name: github_token
+      type: string
+      label:
+        en_US: 'GitHub Token'
+        zh_Hans: 'GitHub 令牌'
+      description:
+        en_US: 'GitHub personal access token (classic or fine-grained). Strongly recommended: raises the API rate limit from 60/hr to 5000/hr (required for event push polling) and enables private repos.'
+        zh_Hans: 'GitHub 个人访问令牌。强烈建议填写：把 API 速率从 60/小时 提升到 5000/小时（事件推送轮询必需），并可访问私有仓库。'
+      default: ''
+    - name: poll_interval
+      type: int
+      label:
+        en_US: 'Event poll interval (seconds)'
+        zh_Hans: '事件轮询间隔（秒）'
+      description:
+        en_US: 'How often to poll watched repositories for new events. Minimum 60. GitHub caches the events feed ~60s, so lower values do not help.'
+        zh_Hans: '多久轮询一次已订阅仓库的新事件。最小 60 秒（GitHub 事件流约缓存 60 秒，更小无意义）。'
+      default: 120
+    - name: max_events_per_push
+      type: int
+      label:
+        en_US: 'Max events per push'
+        zh_Hans: '单次推送最大事件数'
+      description:
+        en_US: 'Cap on how many new events are pushed at once per repo (avoids flooding after downtime).'
+        zh_Hans: '每个仓库单次最多推送多少条新事件（避免停机后刷屏）。'
+      default: 5
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: GitHubKitPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -136,3 +136,27 @@ async def test_user_id_wildcard(mock_app, sample_query):
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
     assert result.result_type == entities.ResultType.CONTINUE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['whitelist', 'blacklist'])
+@pytest.mark.parametrize('launcher_type', [provider_session.LauncherTypes.PERSON, provider_session.LauncherTypes.GROUP])
+@pytest.mark.parametrize('id_type', [int, str])
+@pytest.mark.parametrize('matching_field', ['sender_id', 'launcher_id', None])
+async def test_user_id_wildcard_normalizes_ids(mock_app, sample_query, mode, launcher_type, id_type, matching_field):
+    """Wildcard IDs match numeric platform IDs without allowing unrelated users."""
+    bansess, entities = get_modules()
+    sample_query.launcher_type = launcher_type
+    sample_query.launcher_id = id_type(11111)
+    sample_query.sender_id = id_type(22222)
+    if matching_field is not None:
+        setattr(sample_query, matching_field, id_type(67890))
+    sample_query.pipeline_config = {'trigger': {'access-control': {'mode': mode, mode: ['*_67890']}}}
+
+    stage = bansess.BanSessionCheckStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+    result = await stage.process(sample_query, 'BanSessionCheckStage')
+
+    should_continue = (matching_field is not None) if mode == 'whitelist' else (matching_field is None)
+    expected = entities.ResultType.CONTINUE if should_continue else entities.ResultType.INTERRUPT
+    assert result.result_type == expected

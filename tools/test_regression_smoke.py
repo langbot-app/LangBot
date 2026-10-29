@@ -8,6 +8,8 @@ import sqlite3
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from regression_smoke import (
     UnresolvedRun,
@@ -17,6 +19,7 @@ from regression_smoke import (
     check_run,
     completed_run,
     verify_cleanup,
+    reset_group,
 )
 from regression_suite import validate
 
@@ -36,6 +39,16 @@ class SmokeOracleTest(unittest.TestCase):
 
     def run_row(self, workspace='workspace', after=0):
         return completed_run(self.db, workspace, 'conversation', after, 0)
+
+    def test_received_reset_error_is_a_failed_contract_not_unknown_transport(self):
+        case = {'http_group': {'url': 'http://localhost/bots/test/sync', 'secret_env': 'SECRET'}}
+        with patch('regression_smoke.urllib.request.build_opener') as build:
+            build.return_value.open.side_effect = HTTPError('reset', 500, 'error', {}, None)
+            with self.assertRaisesRegex(ValueError, 'Reset returned HTTP 500'):
+                reset_group(case, 'group', {'SECRET': 'test'})
+            build.return_value.open.side_effect = TimeoutError('transport')
+            with self.assertRaises(TimeoutError):
+                reset_group(case, 'group', {'SECRET': 'test'})
 
     def test_terminal_status_and_event_are_both_required(self):
         self.assertTrue(check_run(self.db, self.run_row(), {})['terminal_event'])

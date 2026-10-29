@@ -1,0 +1,99 @@
+{
+  "id": "local_retrieval_v1",
+  "description": "Baseline offline retrieval experiments using deterministic local embedding, vector search, and fake LLM adapters.",
+  "metrics": {
+    "k_values": [1, 3, 5]
+  },
+  "experiments": [
+    {
+      "name": "chunk_vector",
+      "description": "Flat chunk index with vector retrieval.",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 180,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "vector",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_full_text",
+      "description": "Flat chunk index with keyword/full-text retrieval.",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 180,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "full_text",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_hybrid",
+      "description": "Flat chunk index with hybrid retrieval.",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 180,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "hybrid",
+        "vector_weight": 0.65,
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "parent_child_vector",
+      "description": "Parent-child index with vector retrieval.",
+      "creation_settings": {
+        "index_type": "parent_child",
+        "parent_chunk_size": 260,
+        "child_chunk_size": 90,
+        "overlap": 20
+      },
+      "retrieval_settings": {
+        "search_type": "vector",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "qa_vector",
+      "description": "QA index with deterministic local Q&A generation and vector retrieval.",
+      "creation_settings": {
+        "index_type": "qa",
+        "chunk_size": 180,
+        "overlap": 30,
+        "qa_llm_model_uuid": "local-fake-llm",
+        "questions_per_chunk": 1
+      },
+      "retrieval_settings": {
+        "search_type": "vector",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_multi_query_hybrid",
+      "description": "Flat chunk index with deterministic multi-query rewrite and hybrid retrieval.",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 180,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "hybrid",
+        "vector_weight": 0.65,
+        "top_k": 5,
+        "query_rewrite": "multi_query",
+        "rewrite_llm_model_uuid": "local-fake-llm"
+      }
+    }
+  ]
+}

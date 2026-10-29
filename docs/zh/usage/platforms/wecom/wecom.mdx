@@ -1,0 +1,84 @@
+---
+title: "企业微信"
+description: "将企业微信接入 LangBot，为企业消息部署大模型 AI 机器人。"
+---
+
+部署企业微信机器人接入 LangBot 。
+
+<Info title="- 此种接入方式为企业内部自建应用，是在企业内部使用的，若需要对外接待，请查看[企业微信客服接入方案](wecomcs)。">
+- 企业微信回调地址需要公网IP和域名，推荐您先参照[配置 HTTP 反向代理](/zh/workshop/production/proxy-and-ssl)来配置 LangBot 回调地址。
+
+</Info>
+<Tip>
+**没有公网服务器？** [LangBot Cloud](https://space.langbot.app/cloud) 自带域名和 HTTPS，无需自行配置反向代理，开箱即用企业微信。
+</Tip>
+
+## 记录企业ID
+
+打开[企业微信管理后台](https://work.weixin.qq.com/)，点击`我的企业`，记录下最下面的`企业ID`。
+
+![Corp ID](/images/zh/deploy/bots/wecom/wecom/03-corp-id.png)
+
+## 创建机器人
+
+点击` 应用管理 `,` 自建 `,` 创建应用`
+
+![App Management](/images/zh/deploy/bots/wecom/wecom/01-wecom-apps.png)
+
+填写机器人基本信息：
+
+![Create Application](/images/zh/deploy/bots/wecom/wecom/02-create-app.png)
+
+查看并记录机器人密钥（Secret）：
+
+![Bot Secret](/images/zh/deploy/bots/wecom/wecom/04-bot-secret.png)
+
+从企业微信客户端根据提示获取。
+
+## 开启通讯录同步权限
+
+<Info title="- 此配置项是为了实现 LangBot 的群发消息，具体代码位于libs/wecom_api/api.py 。">
+- 目前 LangBot 仍在开发，所以未实现此配置项的相关功能。
+- 此配置项可以填写入随机字符，**不能为空**。
+</Info>
+
+点击`安全与管理`,`管理工具`,`通讯录同步`；先配置可信IP，添加部署 LangBot 的服务器IP。
+
+点击`查看secret`，记录下来，这是 contacts_secret（通讯录同步 secret）。
+
+![Contact Sync Secret](/images/zh/deploy/bots/wecom/wecom/08-contact-secret.png)
+
+## 在 LangBot 新建机器人
+
+在 LangBot 机器人页面，点击`创建机器人`，填入名称，选择`企业微信`，此步骤只需要填入 企业ID 和 机器人密钥，以及通讯录同步 secret。
+
+![Create WeCom Bot](/images/zh/deploy/bots/wecom/wecom/05-fill-in-corpid-secret.png)
+
+点击提交，跳转到机器人编辑页面，点击启用；此时即可看到 Webhook 回调地址，复制下来：
+
+![Webhook Callback Address](/images/zh/deploy/bots/wecom/wecom/06-webhook-callback-address.png)
+
+## 设置回调地址
+
+回到企业微信的机器人管理页面，点击`接收消息`，`设置API接收`，将 LangBot 的 Webhook 回调地址填入`URL`中：
+
+![Set API Receiver](/images/zh/deploy/bots/wecom/wecom/07-set-api-receiver.png)
+
+点击 Token 和 EncodingAESKey 的`随机获取`，并记录下来，**保持此页开启**。返回到 LangBot 的企微机器人配置页面，将 Token 和 EncodingAESKey 填入，点击保存。
+
+![Save WeCom Bot](/images/zh/deploy/bots/wecom/wecom/09-save-wecom-bot.png)
+
+再回到**刚刚填写 Webhook 回调地址的页面**，点击保存即可配置完成；如果出现**请求URL失败**，请再三检查你的配置项填写是否正确。
+
+## 配置应用的企业可信 IP
+
+回到该应用到管理页，在下方找到`企业可信 IP`，添加部署 LangBot 的服务器IP。
+
+![Corp Trusted IP](/images/zh/deploy/bots/wecom/wecom/10-corp-trusted-ip.png)
+
+点击保存即可。
+
+## 常见问题
+
+Q：企微上找不到机器人对话框？
+A：可以到企微管理页面上该应用的详情页，点击`功能`->`发送消息`->`发消息`，选择自己账号，发送消息，即可在自己的对话框中看到机器人。

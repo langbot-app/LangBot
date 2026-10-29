@@ -2,6 +2,9 @@ name: Build Dev Image
 
 on:
   push:
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugins-*.yml"
   workflow_dispatch:
 
 jobs:

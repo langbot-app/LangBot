@@ -1,0 +1,148 @@
+---
+title: "プラグイン開発チュートリアル"
+---
+
+<Info>
+メッセージ受信やメンバー参加などを処理するプラグインを作る場合は、基本環境を準備した後、[イベントプロセッサーのチュートリアル](/ja/plugin/dev/components/runner)に進んでください。
+</Info>
+
+## アーキテクチャの基礎
+
+バージョン4.0では、高セキュリティで柔軟性の高い本番環境グレードのプラグインシステムを導入し、開発者に豊富なAPIと使いやすいサポートツールを提供しています。
+
+<img width="600" src="/images/zh/plugin/dev/plugin_system_arch.png" />
+
+Plugin Runtimeは、プラグインのライフサイクルを管理し、LangBotとプラグイン間の相互作用を調整するために使用されます。`stdio`と`websocket`の2つの動作モードがあります。LangBotがユーザーによって直接起動される場合(コンテナ内で実行されていない場合)、`stdio`モードを使用します。これは個人ユーザーや軽量環境で一般的です。LangBotがコンテナ内で実行される場合、`websocket`モードを使用します。これは本番環境専用に設計されています。
+
+Plugin Runtimeは、インストールされた各プラグインを自動的に起動し、stdioを通じて相互作用します。プラグイン開発シナリオでは、開発者は`lbp`コマンドラインツールを使用してプラグインを起動し、WebSocketを介して実行中のRuntimeに接続してデバッグできます。
+
+### プラグイン構造
+
+プラグインのディレクトリ構造は次のようになります:
+
+```bash
+➜  HelloPlugin > tree
+.
+├── assets
+│   └── icon.svg  # プラグインアイコン、プラグインマーケットプレイスページに表示
+├── components  # プラグインコンポーネントディレクトリ、さまざまなコンポーネントコードとマニフェストファイルを保存
+│   ├── __init__.py
+│   ├── commands
+│   │   ├── __init__.py
+│   │   ├── info.py
+│   │   └── info.yaml
+│   ├── event_listener
+│   │   ├── __init__.py
+│   │   ├── default.py
+│   │   └── default.yaml
+│   └── tools
+│       ├── __init__.py
+│       ├── get_weather_alerts.py
+│       └── get_weather_alerts.yaml
+├── main.py  # プラグインメインプログラム、プラグインライフサイクルをリッスン
+├── manifest.yaml  # プラグインマニフェストファイル、プラグインメタデータを記述
+├── README.md  # プラグインドキュメントファイル、プラグイン機能と使用方法を記述、プラグインマーケットプレイスページに表示
+├── readme
+│   └── README_zh_Hans.md  # 簡体字中国語ドキュメント、多言語ドキュメント用
+├── requirements.txt  # プラグイン依存関係ファイル
+└── .github
+    └── workflows
+        └── release.yml  # GitHub Actions ワークフロー、バージョン変更をプッシュすると自動的にビルドして Release を公開
+```
+
+main.pyのプラグインクラスは各プラグインの共通コードで、プラグイン起動時に初期化され、コンテキスト情報(設定など)が渡されます。ここでプラグインの初期化とシャットダウンロジックを実装できます。プラグインクラスは`langbot_plugin.api.definition.plugin.BasePlugin`を継承し、[LangBotグローバルAPI](/en/plugin/dev/apis/common)を提供します。
+
+各コンポーネントはプラグインのコア機能モジュールであり、必要に応じて[追加および削除](/en/plugin/dev/components/add)できます。異なるコンポーネントは異なる状況で呼び出され、後でプラグイン機能を簡単に拡張できます。各コンポーネントは`langbot_plugin.api.definition.components`パッケージ下のさまざまなコンポーネント基底クラスから直接継承し、`plugin: BasePlugin`オブジェクトを含み、プラグインのAPIを直接呼び出すことができます。
+
+<Info title="">
+- 詳細なAPIドキュメントについては、[APIリファレンス](/en/plugin/dev/apis/common)を参照してください。
+
+このチュートリアルを続けて読んで、プラグイン開発プロセスを理解してください。
+</Info>
+
+## AI 支援開発
+
+- [skills-LangBotplugin](https://github.com/TyperBody/skills-LangBotplugin) - コミュニティメンバー [@TyperBody](https://github.com/TyperBody) が提供する Skills、AI を使ってプラグインを迅速に開発できます、ぜひお試しください
+    - *langbotplugin* このSkillはプラグインの自動生成ツールを提供します
+    - *langbotplugindebug* このSkillはプラグインのデバッグツールを提供します
+
+## CLIのインストール
+
+Python 3.10以上がインストールされており、[uvパッケージマネージャー](https://docs.astral.sh/uv/)がインストールされていることを確認してください。
+
+任意の空のディレクトリで次のコマンドを実行して、LangBot CLIとSDKをインストールします:
+
+```bash
+pip install -U langbot_plugin
+```
+
+## プラグインディレクトリの初期化
+
+プラグイン名が`HelloPlugin`であると仮定して、任意のディレクトリに`HelloPlugin`ディレクトリを作成し、そのディレクトリに入り、コマンドを実行してプラグインを初期化します:
+
+```bash
+lbp init
+```
+
+プロンプトに従って`Author`、`Description`などの情報を入力します。
+
+<Info title="">
+`lbp init HelloPlugin`コマンドを使用して、サブディレクトリ`HelloPlugin`でプラグインを初期化することもできます。
+<img width="600" src="/images/zh/plugin/dev/create_plugin.png" />
+</Info>
+
+この操作により、プラグインの初期ファイルが生成されます。お気に入りのエディターで`HelloPlugin`ディレクトリを開き、プラグインコードの記述を開始できます。
+
+<Info title="">
+`lbp`コマンドで「command not found」エラーが発生した場合、`PATH`環境変数が適切に設定されていない可能性があります。
+`lbp`コマンドの代わりに`python -m langbot_plugin.cli.__init__`を使用できます。
+
+例えば:
+
+```bash
+python -m langbot_plugin.cli.__init__ init HelloPlugin
+cd HelloPlugin
+```
+</Info>
+
+## デバッグモードの開始
+
+まずLangBotをデプロイして起動し、Plugin Runtimeが実行されてポート`5401`をリッスンしていることを確認する必要があります。
+
+<Info title="Runtimeには2つの起動モードがあります:">
+
+- `Stdio`モード: 起動パラメータ`--standalone-runtime`なしでソースコードを使用してLangBotを起動すると、LangBotは自動的にPlugin Runtimeをサブプロセスとして起動し、`stdio`(標準入出力ストリーム)を通じてPlugin Runtimeと通信します。この場合、RuntimeはLangBotルートディレクトリの`data/plugins`ディレクトリからプラグインをロードし、LangBotホストのポート`5401`をデバッグポートとしてリッスンします。
+
+- `WebSocket`モード:
+    - 本番環境: 公式の`docker-compose.yaml`を使用してLangBotを起動すると、Plugin Runtimeは別のコンテナで実行され、起動パラメータ`--standalone-runtime`のためにLangBotはWebSocketモードでPlugin Runtimeと通信します。Runtimeコンテナの5401ポートはデフォルトでホストの5401ポートにマッピングされます。
+    - 開発環境: 起動パラメータ`--standalone-runtime`を使用してソースコードでLangBotを起動すると、LangBotは`data/config.yaml`で設定された`plugin.runtime_ws_url`アドレス(ポートは通常5400)に従って既に起動されているPlugin Runtimeに接続します。スタンドアロンのPlugin Runtimeを自分で起動する必要があります。[Plugin Runtimeの開発](/en/develop/plugin-runtime)を参照してください。
+
+`stdio`または`websocket`モードのいずれの場合でも、Plugin Runtimeはそのホストのポート`5401`をプラグインデバッグ接続のデバッグポートとしてリッスンします。
+
+プラグインを開発する際は、[開発設定](/en/develop/dev-config)方法に従ってLangBotを起動することをお勧めします。これによりPlugin RuntimeがStdioモードで起動され、プラグイン開発が容易になります。
+</Info>
+
+`.env.example` を `.env` にコピーします。LangBot WebUI の **拡張機能 → デバッグ情報** を開き、現在の Workspace のデバッグ URL とデバッグキーを `DEBUG_RUNTIME_WS_URL` と `PLUGIN_DEBUG_KEY` に設定します。キーは Workspace ごとに異なり、2 時間ごとにローテーションするため、期限切れ後は再度コピーしてください。
+
+```bash
+cp .env.example .env
+```
+
+プラグインデバッグを開始すると、プラグインの出力が表示されます:
+
+```bash
+lbp run
+```
+
+<img width="600" src="/images/zh/plugin/dev/launch_debug_plugin.png" />
+
+そして、LangBotのWebUIでこのプラグインがロードされたことを確認できます。
+
+<img width="600" src="/images/zh/plugin/dev/debug_plugin_loaded.png" />
+
+## 次のステップ
+
+このチュートリアルでは、プラグイン機能を段階的に完成させる方法を案内します。
+
+- プラグイン情報の変更: プラグインは基本的なプラグイン情報で作成されました。[プラグイン情報を完成させて](/en/plugin/dev/basic-info)ください。
+- コンポーネントの追加: プラグインコンポーネントはプラグインのコア機能ユニットです。必要に応じて[コンポーネントを追加](/en/plugin/dev/components/add)できます。

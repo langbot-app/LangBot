@@ -1,0 +1,43 @@
+name: Core packaging boundary
+
+on:
+  push:
+    paths: ['plugins/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
+  pull_request:
+    paths: ['plugins/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: Check repository release boundaries
+        run: |
+          uv run --no-project --with pyyaml python plugins/scripts/test_repository.py
+      - name: Build Core sdist and wheel without installing Core dependencies
+        run: |
+          uv build
+          python scripts/check_core_artifacts.py dist/*.whl dist/*.tar.gz
+      - name: Verify Git export excludes plugin sources
+        run: |
+          git archive --format=tar --output="$RUNNER_TEMP/core-source.tar" HEAD
+          python scripts/check_core_artifacts.py "$RUNNER_TEMP/core-source.tar"
+      - name: Verify the production Docker context exclusion
+        run: |
+          docker build --file - --tag langbot-packaging-boundary . <<'DOCKERFILE'
+          FROM scratch
+          COPY . /app
+          DOCKERFILE
+          docker save langbot-packaging-boundary -o "$RUNNER_TEMP/core-context.tar"
+          python scripts/check_core_artifacts.py --docker-archive "$RUNNER_TEMP/core-context.tar"

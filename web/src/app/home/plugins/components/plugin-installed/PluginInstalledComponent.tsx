@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import ExtensionCardComponent from './ExtensionCardComponent';
+import PluginSpaceUploadDialog from './PluginSpaceUploadDialog';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -61,6 +62,19 @@ export const FilterOptions = [
   },
 ];
 
+function sortExtensionsWithDebugFirst(
+  items: ExtensionCardVO[],
+): ExtensionCardVO[] {
+  return [...items].sort((a, b) => {
+    const aDebug = Boolean(a.debug);
+    const bDebug = Boolean(b.debug);
+    if (aDebug !== bDebug) return aDebug ? -1 : 1;
+    return (a.label || a.name).localeCompare(b.label || b.name, undefined, {
+      sensitivity: 'base',
+    });
+  });
+}
+
 interface PluginInstalledComponentProps {
   filterType: FilterType;
   groupByType: boolean;
@@ -87,6 +101,8 @@ const PluginInstalledComponent = forwardRef<
   const [targetExtension, setTargetExtension] =
     useState<ExtensionCardVO | null>(null);
   const [deleteData, setDeleteData] = useState<boolean>(false);
+  const [spaceUploadTarget, setSpaceUploadTarget] =
+    useState<ExtensionCardVO | null>(null);
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
@@ -204,7 +220,7 @@ const PluginInstalledComponent = forwardRef<
         }
       }
 
-      setExtensionList(extensions);
+      setExtensionList(sortExtensionsWithDebugFirst(extensions));
     } catch (error) {
       console.error('Failed to fetch extension list:', error);
       if (!silent) setExtensionList([]);
@@ -326,13 +342,15 @@ const PluginInstalledComponent = forwardRef<
   // Match the query against the fields a user can actually see on the card
   // (label / name / author) plus the description, case-insensitively.
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredExtensions = extensionList.filter((ext) => {
-    if (filterType !== 'all' && ext.type !== filterType) return false;
-    if (!normalizedQuery) return true;
-    return [ext.label, ext.name, ext.author, ext.description].some((field) =>
-      (field || '').toLowerCase().includes(normalizedQuery),
-    );
-  });
+  const filteredExtensions = sortExtensionsWithDebugFirst(
+    extensionList.filter((ext) => {
+      if (filterType !== 'all' && ext.type !== filterType) return false;
+      if (!normalizedQuery) return true;
+      return [ext.label, ext.name, ext.author, ext.description].some((field) =>
+        (field || '').toLowerCase().includes(normalizedQuery),
+      );
+    }),
+  );
 
   const clearSearch = () => {
     onClearSearch?.();
@@ -344,7 +362,9 @@ const PluginInstalledComponent = forwardRef<
     .map((type) => ({
       type,
       labelKey: FilterOptions.find((o) => o.value === type)!.labelKey,
-      items: filteredExtensions.filter((ext) => ext.type === type),
+      items: sortExtensionsWithDebugFirst(
+        filteredExtensions.filter((ext) => ext.type === type),
+      ),
     }))
     .filter((g) => g.items.length > 0);
 
@@ -532,6 +552,7 @@ const PluginInstalledComponent = forwardRef<
                           ? () => handleExtensionUpdate(vo)
                           : undefined
                       }
+                      onUploadToSpace={() => setSpaceUploadTarget(vo)}
                     />
                   </div>
                 ))}
@@ -553,11 +574,27 @@ const PluginInstalledComponent = forwardRef<
                       ? () => handleExtensionUpdate(vo)
                       : undefined
                   }
+                  onUploadToSpace={() => setSpaceUploadTarget(vo)}
                 />
               </div>
             );
           })}
         </div>
+      )}
+
+      {spaceUploadTarget && (
+        <PluginSpaceUploadDialog
+          author={spaceUploadTarget.author}
+          name={spaceUploadTarget.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSpaceUploadTarget(null);
+          }}
+          onUploaded={() => {
+            getExtensionList(true);
+            refreshPlugins();
+          }}
+        />
       )}
     </>
   );

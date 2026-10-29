@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: RockChinQ
+  name: MCBotPlugin
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/MCBotPlugin
+  version: 0.1.2
+  description:
+    en_US: Bind a Minecraft server to your chat group, query live server status
+      and online players, and track per-player playtime. Migrated to the new LangBot
+      plugin SDK.
+    zh_Hans: 为 Minecraft 服务器群提供服务：将服务器绑定到群、查询服务器实时状态与在线玩家、统计玩家在线时长。已迁移至新版 LangBot 插件 SDK。
+    zh_Hant: 為 Minecraft 伺服器群提供服務：將伺服器綁定到群、查詢伺服器即時狀態與線上玩家、統計玩家線上時長。
+    ja_JP: Minecraft サーバーをチャットグループにバインドし、サーバーの稼働状況やオンラインプレイヤーの確認、プレイヤーごとのプレイ時間の集計を提供します。
+    vi_VN: Liên kết máy chủ Minecraft với nhóm chat, truy vấn trạng thái máy chủ và
+      người chơi trực tuyến, thống kê thời gian chơi của từng người.
+    th_TH: ผูกเซิร์ฟเวอร์ Minecraft เข้ากับกลุ่มแชท ตรวจสอบสถานะเซิร์ฟเวอร์และผู้เล่นออนไลน์
+      และสถิติเวลาเล่นของผู้เล่นแต่ละคน
+    es_ES: Vincula un servidor de Minecraft a tu grupo de chat, consulta el estado
+      del servidor y los jugadores conectados, y registra el tiempo de juego por jugador.
+    ru_RU: Привязка сервера Minecraft к чат-группе, запрос состояния сервера и онлайн-игроков,
+      учёт игрового времени каждого игрока.
+  label:
+    en_US: MCBotPlugin
+    zh_Hans: Minecraft 服务器助手
+    zh_Hant: Minecraft 伺服器助手
+    ja_JP: MCBotPlugin
+    vi_VN: MCBotPlugin
+    es_ES: MCBotPlugin
+    th_TH: MCBotPlugin
+    ru_RU: Помощник сервера Minecraft
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: track_interval
+    type: int
+    label:
+      en_US: Playtime Tracking Interval (seconds)
+      zh_Hans: 在线时长采样间隔（秒）
+    description:
+      en_US: How often (in seconds) to ping bound servers and record online players
+        for playtime statistics. Default 60.
+      zh_Hans: 后台轮询绑定服务器并记录在线玩家以统计时长的间隔（秒）。默认 60。
+    required: false
+    default: 60
+  - name: ping_timeout
+    type: int
+    label:
+      en_US: Ping Timeout (seconds)
+      zh_Hans: Ping 超时时间（秒）
+    description:
+      en_US: Timeout in seconds when pinging a Minecraft server. Default 10.
+      zh_Hans: Ping Minecraft 服务器时的超时时间（秒）。默认 10。
+    required: false
+    default: 10
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: MCBotPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

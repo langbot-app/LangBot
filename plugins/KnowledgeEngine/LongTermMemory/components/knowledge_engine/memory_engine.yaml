@@ -1,0 +1,203 @@
+apiVersion: v1
+kind: KnowledgeEngine
+metadata:
+  name: long_term_memory
+  label:
+    en_US: LongTermMemory
+    zh_Hans: 长期记忆
+  description:
+    en_US: 'Long-term memory for LangBot. Configure embedding model and isolation mode here. Supports memory import via JSON files.'
+    zh_Hans: 'LangBot 长期记忆。在此配置嵌入模型和隔离模式，支持通过 JSON 文件导入记忆。'
+
+spec:
+  creation_schema:
+    - name: embedding_model_uuid
+      label:
+        en_US: Embedding Model
+        zh_Hans: 嵌入模型
+      description:
+        en_US: Embedding model used for semantic search.
+        zh_Hans: 用于语义检索的嵌入模型。
+      type: embedding-model-selector
+      required: true
+      default: ''
+
+    - name: isolation
+      label:
+        en_US: Isolation Mode
+        zh_Hans: 隔离模式
+      description:
+        en_US: 'session: each group/chat has independent memory. bot: all sessions share memory.'
+        zh_Hans: 'session：每个群/会话独立记忆。bot：所有会话共享记忆。'
+      type: select
+      options:
+        - name: session
+          label:
+            en_US: Session
+            zh_Hans: 会话隔离
+        - name: bot
+          label:
+            en_US: Bot
+            zh_Hans: 全局共享
+      default: session
+
+    - name: recency_half_life_days
+      label:
+        en_US: Recency Half-Life Days
+        zh_Hans: 时效半衰期天数
+      description:
+        en_US: Controls how quickly older episodic memories lose ranking weight during automatic recall.
+        zh_Hans: 控制自动召回时旧情景记忆的时效衰减速度。
+      type: integer
+      required: false
+      default: 30
+
+    - name: auto_recall_top_k
+      label:
+        en_US: Auto Recall Top K
+        zh_Hans: 自动召回条数
+      description:
+        en_US: Number of episodic memories injected automatically before model invocation.
+        zh_Hans: 模型调用前自动注入的情景记忆条数。
+      type: integer
+      required: false
+      default: 3
+
+    - name: retrieval_strategy
+      label:
+        en_US: Retrieval Strategy
+        zh_Hans: 检索策略
+      description:
+        en_US: "auto tries hybrid search first and falls back to vector search. Use vector for maximum backend compatibility."
+        zh_Hans: "auto 会优先尝试混合检索，失败时回退向量检索。vector 兼容性最好。"
+      type: select
+      options:
+        - name: auto
+          label:
+            en_US: Auto
+            zh_Hans: 自动
+        - name: vector
+          label:
+            en_US: Vector
+            zh_Hans: 向量
+        - name: hybrid
+          label:
+            en_US: Hybrid
+            zh_Hans: 混合
+      required: false
+      default: auto
+
+    - name: vector_weight
+      label:
+        en_US: Vector Weight
+        zh_Hans: 向量权重
+      description:
+        en_US: Vector similarity weight used by hybrid search.
+        zh_Hans: 混合检索中的向量相似度权重。
+      type: number
+      required: false
+      default: 0.7
+
+    - name: exact_match_boost
+      label:
+        en_US: Exact Match Boost
+        zh_Hans: 精确匹配增强
+      description:
+        en_US: Boost exact matches on episode IDs, sender identity, tags, and content snippets.
+        zh_Hans: 对 episode ID、说话人、标签和内容片段的精确匹配进行增强。
+      type: boolean
+      required: false
+      default: true
+
+    - name: consolidation_enabled
+      label:
+        en_US: Enable Consolidation Run
+        zh_Hans: 启用记忆整理执行
+      description:
+        en_US: Allows !memory consolidate run to archive scoped candidates and write a summary. Preview is always available.
+        zh_Hans: 允许 !memory consolidate run 归档当前范围候选并写入摘要。预览始终可用。
+      type: boolean
+      required: false
+      default: false
+
+    - name: consolidation_min_age_days
+      label:
+        en_US: Consolidation Min Age Days
+        zh_Hans: 记忆整理最小天数
+      description:
+        en_US: Active low-importance memories must be at least this old before consolidation can propose archiving them.
+        zh_Hans: 低重要度活跃记忆至少达到该天数后，整理流程才会建议归档。
+      type: integer
+      required: false
+      default: 7
+
+    - name: consolidation_max_candidates
+      label:
+        en_US: Consolidation Max Candidates
+        zh_Hans: 记忆整理候选上限
+      description:
+        en_US: Maximum number of scoped episodes considered in one consolidation preview or run.
+        zh_Hans: 单次整理预览或执行最多处理的当前范围情景记忆数量。
+      type: integer
+      required: false
+      default: 20
+
+    - name: consolidation_apply_profile_updates
+      label:
+        en_US: Apply Profile Updates During Consolidation
+        zh_Hans: 整理时更新画像
+      description:
+        en_US: Reserved for future profile-update proposals. Keep disabled unless explicitly supported.
+        zh_Hans: 预留给未来画像更新建议。除非明确支持，否则保持关闭。
+      type: boolean
+      required: false
+      default: false
+
+    - name: candidate_extraction_enabled
+      label:
+        en_US: Enable Memory Candidate Extraction
+        zh_Hans: 启用记忆候选提取
+      description:
+        en_US: Extract reviewable memory candidates after normal responses. Disabled by default to avoid memory pollution.
+        zh_Hans: 在普通回复后提取可审核的记忆候选。默认关闭以避免污染记忆。
+      type: boolean
+      required: false
+      default: false
+
+    - name: candidate_auto_apply
+      label:
+        en_US: Auto Apply Memory Candidates
+        zh_Hans: 自动应用记忆候选
+      description:
+        en_US: Automatically accept extracted candidates. Keep disabled unless you accept the risk of memory pollution.
+        zh_Hans: 自动接受提取出的候选。除非能接受记忆污染风险，否则保持关闭。
+      type: boolean
+      required: false
+      default: false
+
+    - name: candidate_max_per_turn
+      label:
+        en_US: Max Candidates Per Turn
+        zh_Hans: 单轮候选上限
+      description:
+        en_US: Maximum number of memory candidates created from one response turn.
+        zh_Hans: 单次回复最多创建的记忆候选数量。
+      type: integer
+      required: false
+      default: 3
+
+  retrieval_schema:
+    - name: top_k
+      label:
+        en_US: Top K
+        zh_Hans: 返回条数
+      description:
+        en_US: Number of results to return.
+        zh_Hans: 检索返回的结果数量。
+      type: integer
+      default: 5
+
+execution:
+  python:
+    path: memory_engine.py
+    attr: LongTermMemoryEngine

@@ -272,9 +272,7 @@ async def test_qqofficial_message_converter_maps_common_components_to_send_paylo
         )
     )
 
-    assert {'type': 'text', 'content': 'hi'} in payload
-    assert {'type': 'text', 'content': '@Alice'} in payload
-    assert {'type': 'text', 'content': '@all'} in payload
+    assert {'type': 'text', 'content': 'hi<qqbot-at-user id="user-1" />@all'} in payload
     assert any(item['type'] == 'image' and item['url'] == 'https://example.test/a.png' for item in payload)
     assert any(item['type'] == 'voice' and item['base64'].startswith('data:audio') for item in payload)
     assert any(item['type'] == 'file' and item['name'] == 'a.txt' for item in payload)

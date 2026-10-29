@@ -228,7 +228,13 @@ export function SidebarDataProvider({
           pluginMap.set(compositeKey, item);
         }
       }
-      setPlugins(Array.from(pluginMap.values()));
+      const pluginItems = Array.from(pluginMap.values()).sort((a, b) => {
+        const aDebug = Boolean(a.debug);
+        const bDebug = Boolean(b.debug);
+        if (aDebug !== bDebug) return aDebug ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      setPlugins(pluginItems);
 
       // Extract plugin pages from spec.pages (deduplicate by id)
       const pages: PluginPageItem[] = [];
