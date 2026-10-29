@@ -402,7 +402,12 @@ class InteractionManager:
         except pydantic.ValidationError:
             return
 
-    async def acknowledge_submission(self, record: dict[str, typing.Any], adapter: typing.Any) -> None:
+    async def acknowledge_submission(
+        self,
+        record: dict[str, typing.Any],
+        adapter: typing.Any,
+        callback_context: dict[str, typing.Any] | None = None,
+    ) -> None:
         """Best-effort transition of submitted controls into a read-only state."""
         delivery_result = record.get('delivery_result')
         if not isinstance(delivery_result, dict) or not self._supports_platform_api(
@@ -416,6 +421,7 @@ class InteractionManager:
                     'request': record.get('request') or {},
                     'submission': record.get('submission') or {},
                     'update_target': delivery_result,
+                    **({'callback_context': callback_context} if callback_context else {}),
                 },
             )
             if isinstance(delivery_result, dict):

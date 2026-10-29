@@ -375,6 +375,103 @@ class InteractionStore:
                 raise InteractionNotFoundError('Interaction disappeared after submission')
             return self._to_dict(refreshed)
 
+    async def consume_text_reply(
+        self,
+        *,
+        workspace_id: str,
+        bot_id: str,
+        conversation_id: str,
+        actor_id: str,
+        binding_id: str,
+        runner_id: str,
+        processor_id: str,
+        text: str,
+        message_id: str,
+        message_time: int | float | None = None,
+    ) -> dict[str, typing.Any] | None:
+        """Consume the latest scoped, plain-text form waiting for this user."""
+        answer = text.strip()
+        if (
+            not answer
+            or len(answer) > 20000
+            or not all(
+                (workspace_id, bot_id, conversation_id, actor_id, binding_id, runner_id, processor_id, message_id)
+            )
+        ):
+            return None
+        now = _utc_now()
+        source_marker = 'text-reply:' + _token_hash(message_id)
+        scope = (
+            AgentInteraction.workspace_id == workspace_id,
+            AgentInteraction.bot_id == bot_id,
+            AgentInteraction.conversation_id == conversation_id,
+            AgentInteraction.actor_id == actor_id,
+            AgentInteraction.binding_id == binding_id,
+            AgentInteraction.runner_id == runner_id,
+            AgentInteraction.processor_type == 'agent',
+            AgentInteraction.processor_id == processor_id,
+        )
+        async with self._session_factory() as session:
+            duplicate = await session.execute(
+                sqlalchemy.select(AgentInteraction.id)
+                .where(
+                    *scope,
+                    AgentInteraction.status == 'submitted',
+                    AgentInteraction.status_reason == source_marker,
+                )
+                .limit(1)
+            )
+            if duplicate.scalar_one_or_none() is not None:
+                return {'duplicate_text_reply': True}
+            result = await session.execute(
+                sqlalchemy.select(AgentInteraction)
+                .where(*scope)
+                .order_by(AgentInteraction.created_at.desc(), AgentInteraction.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None or row.status != 'pending' or (row.expires_at and _as_utc(row.expires_at) <= now):
+                return None
+            if message_time is not None and float(message_time) < _as_utc(row.created_at).timestamp() - 1:
+                return None
+            delivery = _json_loads(row.delivery_result_json, None)
+            request = _json_loads(row.request_json, {})
+            fields = request.get('fields') if isinstance(request, dict) else None
+            if not (isinstance(delivery, dict) and delivery.get('ok') is True and delivery.get('rich') is False):
+                return None
+            if not (
+                isinstance(fields, list)
+                and len(fields) == 1
+                and isinstance(fields[0], dict)
+                and fields[0].get('type') in {'text', 'textarea'}
+                and fields[0].get('id')
+                and not request.get('actions')
+            ):
+                return None
+            submission = {
+                'interaction_id': row.interaction_id,
+                'action_id': None,
+                'values': {fields[0]['id']: answer},
+                'submitted_at': int(now.timestamp()),
+            }
+            updated = await session.execute(
+                sqlalchemy.update(AgentInteraction)
+                .where(AgentInteraction.id == row.id, AgentInteraction.status == 'pending')
+                .values(
+                    status='submitted',
+                    status_reason=source_marker,
+                    submitted_at=_db_datetime(now),
+                    submission_json=_json_dumps(submission),
+                    updated_at=_db_datetime(now),
+                )
+            )
+            if updated.rowcount != 1:
+                await session.rollback()
+                return None
+            await session.commit()
+            refreshed = await session.get(AgentInteraction, row.id)
+            return self._to_dict(refreshed)
+
     async def mark_delivery_failed(self, run_id: str, interaction_id: str, reason: str) -> bool:
         """Mark an undelivered pending interaction terminal."""
         now = _utc_now()

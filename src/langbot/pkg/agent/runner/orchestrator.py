@@ -539,6 +539,16 @@ class AgentRunOrchestrator:
                                 auto_reply_deferred = False
                                 explicit_reply_text = None
 
+                        if auto_reply_enabled and result_type == 'run.completed' and auto_reply_stream_open:
+                            await reply_streams.apply(
+                                ReplyStreamRequest(
+                                    stream_id=auto_reply_stream_id,
+                                    operation='finish',
+                                    text=auto_reply_stream_text,
+                                )
+                            )
+                            auto_reply_stream_open = False
+
                         if result is not None:
                             yield result
 

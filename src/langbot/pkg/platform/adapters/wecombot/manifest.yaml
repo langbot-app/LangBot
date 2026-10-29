@@ -191,6 +191,7 @@ spec:
       - get_group_member_list
       - call_platform_api
       - interaction.request
+      - interaction.acknowledge
 
   platform_specific_apis:
     - action: is_websocket_mode

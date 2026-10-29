@@ -1271,7 +1271,10 @@ class TestQueryEntrySessionQueryId:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('event_type', ['message.received', 'interaction.submitted'])
-async def test_direct_agent_streams_output_to_the_originating_platform(clean_agent_state, event_type):
+@pytest.mark.parametrize('completed_message', [False, True])
+async def test_direct_agent_streams_output_to_the_originating_platform(
+    clean_agent_state, event_type, completed_message
+):
     from langbot.pkg.agent.runner.host_models import (
         AgentBinding,
         AgentEventEnvelope,
@@ -1283,25 +1286,27 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
     from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
     from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 
-    connector = FakePluginConnector(
-        results=[
-            {
-                'type': 'message.delta',
-                'data': {
-                    'chunk': {
-                        'role': 'assistant',
-                        'content': 'hello',
-                        'all_content': 'hello',
-                    }
-                },
+    runner_results = [
+        {
+            'type': 'message.delta',
+            'data': {
+                'chunk': {
+                    'role': 'assistant',
+                    'content': 'hello',
+                    'all_content': 'hello',
+                }
             },
+        },
+    ]
+    if completed_message:
+        runner_results.append(
             {
                 'type': 'message.completed',
                 'data': {'message': {'role': 'assistant', 'content': 'hello world'}},
-            },
-            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
-        ]
-    )
+            }
+        )
+    runner_results.append({'type': 'run.completed', 'data': {'finish_reason': 'stop'}})
+    connector = FakePluginConnector(results=runner_results)
     ap = FakeApplication(connector, clean_agent_state)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
     adapter = types.SimpleNamespace(
@@ -1358,11 +1363,13 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
         )
     ]
 
-    assert [item.content for item in results] == ['hello', 'hello world']
+    assert [item.content for item in results] == (['hello', 'hello world'] if completed_message else ['hello'])
     if event_type == 'message.received':
         adapter.create_message_card.assert_awaited_once()
         chunks = adapter.reply_message_chunk.await_args_list
-        assert [call.kwargs['bot_message'].all_content for call in chunks] == ['hello', 'hello world']
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == (
+            ['hello', 'hello world'] if completed_message else ['hello', 'hello']
+        )
         assert [call.kwargs['is_final'] for call in chunks] == [False, True]
         adapter.reply_message.assert_not_awaited()
         adapter.send_message.assert_not_awaited()
@@ -1371,7 +1378,7 @@ async def test_direct_agent_streams_output_to_the_originating_platform(clean_age
         adapter.reply_message_chunk.assert_not_awaited()
         adapter.reply_message.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
-        assert adapter.send_message.await_args.args[2][0].text == 'hello world'
+        assert adapter.send_message.await_args.args[2][0].text == ('hello world' if completed_message else 'hello')
 
 
 @pytest.mark.asyncio

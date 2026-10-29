@@ -18,6 +18,7 @@ from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEvent
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
 from langbot.pkg.platform.adapters.wecombot.platform_api import PLATFORM_API_MAP
 from langbot.pkg.platform.adapters.wecombot.interaction import (
+    acknowledge_interaction,
     interaction_delivery_capabilities,
     interaction_event_from_native,
     send_interaction,
@@ -123,7 +124,7 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'call_platform_api',
         ]
         if not self.config.get('enable-webhook', False) and hasattr(self.bot, 'send_template_card'):
-            apis.append('interaction.request')
+            apis.extend(['interaction.request', 'interaction.acknowledge'])
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
@@ -174,6 +175,9 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         if list(self._iter_media_components(items)):
             raise NotSupportedError('send_message:media requires an originating message callback')
         raw = await self.bot.send_message(str(target_id), content)
+        if not isinstance(raw, dict) or raw.get('errcode', 0) != 0:
+            detail = raw.get('errmsg', raw.get('errcode')) if isinstance(raw, dict) else 'no acknowledgement'
+            raise RuntimeError(f'WeCom message delivery failed: {detail}')
         return platform_events.MessageResult(raw={'result': raw})
 
     async def reply_to_event(
@@ -222,8 +226,8 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         if not self.config.get('enable-webhook', False) and event.get('req_id'):
             if content:
                 finished = await self.bot.push_stream_chunk(event.message_id, content, is_final=True)
-                if not finished:
-                    raw = await self.bot.reply_text(event.get('req_id'), content)
+                if not finished and content.strip(' \t\r\n\u200b\u200c\u200d\ufeff'):
+                    raw = await self.bot.send_message(str(event.get('chatid') or event.get('userid') or ''), content)
             for item in self._iter_media_components(items):
                 await self._send_media(self.bot, event.get('req_id'), item)
         else:
@@ -248,8 +252,14 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
         content = format_stream_text(self._join_text_components(items))
         success = await self.bot.push_stream_chunk(event.message_id, content, is_final=is_final)
-        if not success and is_final and not self.config.get('enable-webhook', False) and event.get('req_id'):
-            await self.bot.reply_text(event.get('req_id'), content)
+        if (
+            not success
+            and is_final
+            and content.strip(' \t\r\n\u200b\u200c\u200d\ufeff')
+            and not self.config.get('enable-webhook', False)
+            and event.get('req_id')
+        ):
+            await self.bot.send_message(str(event.get('chatid') or event.get('userid') or ''), content)
         if is_final:
             if not self.config.get('enable-webhook', False) and event.get('req_id'):
                 for item in self._iter_media_components(items):
@@ -261,9 +271,29 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
     async def is_stream_output_supported(self) -> bool:
         return self.config.get('enable-stream-reply', True)
 
+    async def begin_interaction_stream(self, source_message_id: str, target: dict) -> bool:
+        if self.config.get('enable-webhook', False):
+            return False
+        started = self.bot.begin_interaction_stream(
+            source_message_id,
+            str(target.get('target_type') or ''),
+            str(target.get('target_id') or ''),
+        )
+        if not started:
+            await self.logger.warning('WeCom interaction stream context unavailable; buffering final reply')
+        return started
+
+    async def reply_interaction_stream_chunk(self, *, source_message_id: str, content: str, is_final: bool) -> None:
+        from .stream_text import format_stream_text
+
+        if not await self.bot.push_interaction_stream_chunk(source_message_id, format_stream_text(content), is_final):
+            raise RuntimeError('WeCom rejected the new interaction reply stream')
+
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
         if action == 'interaction.request' and 'interaction.request' in self.get_supported_apis():
             return await send_interaction(self, params)
+        if action == 'interaction.acknowledge' and 'interaction.acknowledge' in self.get_supported_apis():
+            return await acknowledge_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

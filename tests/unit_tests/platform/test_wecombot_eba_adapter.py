@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import yaml
@@ -48,8 +48,12 @@ class DummyWecomBotWsClient:
         self.send_message = AsyncMock(return_value={'ok': True})
         self.reply_text = AsyncMock(return_value={'reply': True})
         self.push_stream_chunk = AsyncMock(return_value=True)
+        self.finish_stream_for_interaction = AsyncMock(return_value=True)
+        self.begin_interaction_stream = Mock(return_value=True)
+        self.push_interaction_stream_chunk = AsyncMock(return_value=True)
         self.set_message = AsyncMock(return_value={'set': True})
         self.send_template_card = AsyncMock(return_value={'sent': True})
+        self.update_template_card = AsyncMock(return_value={'errcode': 0})
 
     def on_message(self, msg_type: str):
         def decorator(func):
@@ -107,6 +111,30 @@ def make_adapter(enable_webhook: bool = False) -> WecomBotAdapter:
         patch('langbot.pkg.platform.adapters.wecombot.adapter.WecomBotClient', DummyWecomBotClient),
     ):
         return WecomBotAdapter(config, DummyLogger())
+
+
+@pytest.mark.asyncio
+async def test_interaction_card_finishes_original_loading_stream():
+    adapter = make_adapter()
+    await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'request': {'title': 'Continue', 'actions': [{'id': 'ok', 'label': 'OK'}]},
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+            'callback_token': 'token-1',
+        },
+    )
+    adapter.bot.finish_stream_for_interaction.assert_awaited_once_with('original-1')
+
+
+@pytest.mark.asyncio
+async def test_interaction_reply_uses_new_wecom_stream():
+    adapter = make_adapter()
+    target = {'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'}
+    assert await adapter.begin_interaction_stream('original-1', target)
+    adapter.bot.begin_interaction_stream.assert_called_once_with('original-1', 'person', 'user-1')
+    await adapter.reply_interaction_stream_chunk(source_message_id='original-1', content='part', is_final=False)
+    adapter.bot.push_interaction_stream_chunk.assert_awaited_once_with('original-1', 'part', False)
 
 
 def wecombot_event(**overrides) -> WecomBotEvent:
@@ -216,6 +244,7 @@ async def test_wecombot_select_card_submits_native_dropdown_value():
         'eventtype': 'template_card_event',
         'template_card_event': {
             'card_type': 'multiple_interaction',
+            'task_id': result['task_id'],
             'event_key': card['submit_button']['key'],
             'selected_items': {
                 'selected_item': [
@@ -226,6 +255,8 @@ async def test_wecombot_select_card_submits_native_dropdown_value():
     }
     event = interaction_event_from_native(native)
     assert event.data['callback_token'] == 'callback-token'
+    assert event.data['callback_req_id'] == 'req-1'
+    assert event.data['callback_task_id'] == result['task_id']
     resolved = InteractionManager._resolve_submission_refs(
         {'interaction_id': request['interaction_id'], 'request': request}, event.data
     )
@@ -236,6 +267,70 @@ async def test_wecombot_select_card_submits_native_dropdown_value():
     await adapter._handle_interaction_event(native)
     listener.assert_awaited_once()
     assert listener.await_args.args[0].data['option_ref'] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['button', 'select'])
+async def test_wecombot_acknowledges_submitted_card(kind):
+    adapter = make_adapter()
+    request = {'title': 'Choose', 'actions': [{'id': 'yes', 'label': 'Yes'}, {'id': 'no', 'label': 'No'}]}
+    submission = {'action_id': 'no', 'values': {}}
+    if kind == 'select':
+        request = {
+            'title': 'Choose',
+            'actions': [],
+            'fields': [
+                {
+                    'id': 'choice',
+                    'type': 'select',
+                    'label': 'Choice',
+                    'options': [{'value': 'a', 'label': 'A'}, {'value': 'b', 'label': 'B'}],
+                }
+            ],
+        }
+        submission = {'action_id': None, 'values': {'choice': 'b'}}
+    delivered = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'token-1',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': request,
+        },
+    )
+
+    result = await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'request': request,
+            'submission': submission,
+            'update_target': delivered,
+            'callback_context': {'req_id': 'callback-req', 'task_id': delivered['task_id']},
+        },
+    )
+
+    assert result['updated'] is True
+    req_id, card = adapter.bot.update_template_card.await_args.args
+    assert req_id == 'callback-req'
+    assert card['task_id'] == delivered['task_id']
+    if kind == 'select':
+        assert card['select_list'][0]['selected_id'] == 'opt_2'
+        assert card['select_list'][0]['disable'] is True
+        assert card['submit_button']['key'] == 'submitted'
+    else:
+        assert card['button_list'][1]['replace_text'].endswith('No')
+        assert all(button['key'] == 'submitted' for button in card['button_list'])
+
+    with pytest.raises(ValueError, match='does not match'):
+        await adapter.call_platform_api(
+            'interaction.acknowledge',
+            {
+                'request': request,
+                'submission': submission,
+                'update_target': delivered,
+                'callback_context': {'req_id': 'callback-req', 'task_id': 'another-card'},
+            },
+        )
+    assert adapter.bot.update_template_card.await_count == 1
 
 
 def test_wecombot_select_rejects_more_than_ten_options():
@@ -473,6 +568,29 @@ async def test_wecombot_send_reply_feedback_and_platform_api_use_underlying_clie
     await adapter._handle_feedback(feedback_id='fb-1', feedback_type=1, inaccurate_reasons=[1, 2], session=None)
     assert isinstance(feedback_calls[0], platform_events.FeedbackReceivedEvent)
     assert feedback_calls[0].inaccurate_reasons == ['1', '2']
+
+
+@pytest.mark.asyncio
+async def test_wecombot_expired_stream_falls_back_to_proactive_reply():
+    adapter = make_adapter()
+    adapter.bot.push_stream_chunk.return_value = False
+    source_event = await WecomBotEventConverter().target2yiri(wecombot_event())
+    message = platform_message.MessageChain([platform_message.Plain(text='late answer')])
+
+    await adapter.reply_message_chunk(source_event, None, message, is_final=True)
+
+    adapter.bot.send_message.assert_awaited_once_with('user-1', 'late answer')
+    adapter.bot.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_wecombot_send_message_rejects_failed_ack():
+    adapter = make_adapter()
+    adapter.bot.send_message.return_value = {'errcode': 400, 'errmsg': 'invalid message'}
+    with pytest.raises(RuntimeError, match='invalid message'):
+        await adapter.send_message(
+            'person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hello')])
+        )
 
 
 @pytest.mark.asyncio

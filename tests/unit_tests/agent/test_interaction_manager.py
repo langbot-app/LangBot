@@ -191,6 +191,63 @@ async def test_structured_delivery_uses_frozen_target_and_persists_request(store
 
 
 @pytest.mark.asyncio
+async def test_text_reply_consumes_latest_scoped_plain_form_once(store):
+    async def create(interaction_id, *, field_type='textarea', rich=False):
+        await store.create_request(
+            interaction_id=interaction_id,
+            run_id=f'run-{interaction_id}',
+            binding_id='binding-1',
+            runner_id='runner-1',
+            processor_type='agent',
+            processor_id='agent-1',
+            request={
+                'fields': [{'id': 'question', 'type': field_type}],
+                'actions': [],
+            },
+            delivery_target={'target_type': 'person', 'target_id': 'user-1'},
+            workspace_id='workspace-1',
+            bot_id='bot-1',
+            conversation_id='person_user-1',
+            actor_id='user-1',
+            expires_at=time.time() + 600,
+        )
+        await store.record_delivery_success(f'run-{interaction_id}', interaction_id, {'ok': True, 'rich': rich})
+
+    async def reply(**overrides):
+        scope = dict(
+            workspace_id='workspace-1',
+            bot_id='bot-1',
+            conversation_id='person_user-1',
+            actor_id='user-1',
+            binding_id='binding-1',
+            runner_id='runner-1',
+            processor_id='agent-1',
+            text='  answer  ',
+            message_id='message-1',
+        )
+        scope.update(overrides)
+        return await store.consume_text_reply(**scope)
+
+    await create('old')
+    await create('new')
+    assert await reply(actor_id='user-2') is None
+    assert await reply(conversation_id='person_user-2') is None
+    assert await reply(workspace_id='workspace-2') is None
+    assert await reply(text='   ') is None
+    submitted = await reply()
+    assert submitted['interaction_id'] == 'new'
+    assert submitted['submission']['values'] == {'question': 'answer'}
+    assert (await reply())['duplicate_text_reply'] is True
+    assert await reply(message_id='message-2') is None
+    assert (await store.get_request('run-old', 'old'))['status'] == 'pending'
+
+    await create('rich', rich=True)
+    assert await reply(message_id='message-3') is None
+    await create('select', field_type='select')
+    assert await reply(message_id='message-4') is None
+
+
+@pytest.mark.asyncio
 async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store, event):
     adapter = FakeAdapter(supports_interactions=True)
     manager = InteractionManager(SimpleNamespace(), store=store)

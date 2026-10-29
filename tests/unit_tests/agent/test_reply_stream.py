@@ -142,6 +142,97 @@ async def test_target_streaming_adapter_updates_card_without_source_message():
     await session.close()
 
 
+async def test_interaction_callback_buffers_one_final_message_after_card_update():
+    event = SimpleNamespace(
+        event_type='interaction.submitted',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1'},
+        ),
+    )
+    source = events.PlatformSpecificEvent(
+        type='platform.specific',
+        adapter_name='wecombot-omni',
+        action='interaction.submitted',
+        data={'callback_req_id': 'callback-1'},
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
+    await session.close()
+
+
+async def test_interaction_reply_is_sent_after_card_as_new_message():
+    event = SimpleNamespace(
+        event_type='interaction.submitted',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+        ),
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source=None)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
+    await session.close()
+
+
+@pytest.mark.parametrize('stream_fails', [False, True])
+async def test_interaction_uses_new_stream_with_buffered_fallback(stream_fails):
+    event = SimpleNamespace(
+        event_type='interaction.submitted',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+        ),
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        begin_interaction_stream=AsyncMock(return_value=True),
+        reply_interaction_stream_chunk=AsyncMock(side_effect=RuntimeError('invalid req_id') if stream_fails else None),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter)
+    key = uuid4()
+    await session.apply(request(key, text='part'))
+    result = await session.apply(request(key, 'finish', 'part done'))
+
+    adapter.begin_interaction_stream.assert_awaited_once_with('original-1', event.delivery.reply_target)
+    if stream_fails:
+        assert result['delivery'] == 'buffered'
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[2][0].text == 'part done'
+    else:
+        assert result['delivery'] == 'streaming'
+        assert [call.kwargs['content'] for call in adapter.reply_interaction_stream_chunk.await_args_list] == [
+            'part',
+            'part done',
+        ]
+        assert adapter.reply_interaction_stream_chunk.await_args.kwargs['is_final'] is True
+        adapter.send_message.assert_not_awaited()
+    await session.close()
+
+
 @pytest.mark.parametrize('native', [True, False])
 @pytest.mark.parametrize('error', [RuntimeError, asyncio.CancelledError])
 async def test_exception_finalizes_visible_card_without_sending_buffered_partial(native, error):

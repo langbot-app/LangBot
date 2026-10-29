@@ -1304,6 +1304,58 @@ class RuntimeBot:
 
         try:
             with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
+                if (
+                    target_type == 'agent'
+                    and isinstance(event, platform_events.MessageReceivedEvent)
+                    and event.adapter_name == 'wecombot-omni'
+                    and event.message_chain
+                    and all(
+                        isinstance(
+                            component,
+                            (
+                                platform_message.Source,
+                                platform_message.Plain,
+                                platform_message.At,
+                                platform_message.AtAll,
+                            ),
+                        )
+                        for component in event.message_chain
+                    )
+                ):
+                    answer = ''.join(
+                        component.text
+                        for component in event.message_chain
+                        if isinstance(component, platform_message.Plain)
+                    )
+                    record = await self.ap.agent_run_orchestrator.interaction_manager.store.consume_text_reply(
+                        workspace_id=self.execution_context.workspace_uuid,
+                        bot_id=self.bot_entity.uuid,
+                        conversation_id=envelope.conversation_id or '',
+                        actor_id=envelope.actor.actor_id if envelope.actor else '',
+                        binding_id=binding.binding_id,
+                        runner_id=binding.runner_id,
+                        processor_id=target_uuid,
+                        text=answer,
+                        message_id=str(event.message_id or self._extract_message_id(event.message_chain)),
+                        message_time=event.timestamp,
+                    )
+                    if record is not None:
+                        if not record.get('duplicate_text_reply'):
+                            await self._resume_agent_interaction(
+                                record,
+                                event,
+                                adapter,
+                                envelope.actor.actor_id if envelope.actor else None,
+                                execution_id,
+                            )
+                        return await self._record_event_route_trace(
+                            event_type=event_type,
+                            status='delivered',
+                            binding=event_binding,
+                            target_type=target_type,
+                            target_uuid=target_uuid,
+                            text=f'Event {event_type} handled text interaction reply',
+                        )
                 from .processing_indicator import processing_indicator
 
                 reply_type, reply_id = (None, None)
@@ -1535,7 +1587,15 @@ class RuntimeBot:
         # Only a validated callback resolving an original processor is eligible.
         # Admit before acknowledgement and target lookup to preserve failures.
         trace_mod.admit()
-        await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
+        callback_context = None
+        if getattr(event, 'adapter_name', None) == 'wecombot-omni':
+            callback_context = {
+                'req_id': data.get('callback_req_id'),
+                'task_id': data.get('callback_task_id'),
+            }
+        await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(
+            record, adapter, callback_context
+        )
 
         if record['processor_type'] == 'agent':
             await self._resume_agent_interaction(record, event, adapter, actor_id, execution_id)
@@ -1615,7 +1675,7 @@ class RuntimeBot:
     async def _resume_agent_interaction(
         self,
         record: dict[str, typing.Any],
-        event: platform_events.PlatformSpecificEvent,
+        event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         actor_id: str | None,
         execution_id: str | None = None,
@@ -1639,9 +1699,13 @@ class RuntimeBot:
         binding.binding_id = record['binding_id']
 
         submission = record['submission']
+        event_data = getattr(event, 'data', None)
+        values = (submission or {}).get('values') or {}
+        text_answer = next(iter(values.values()), None) if len(values) == 1 else None
         display_text = str(
             (submission or {}).get('action_id')
-            or (event.data if isinstance(event.data, dict) else {}).get('display_text')
+            or (event_data if isinstance(event_data, dict) else {}).get('display_text')
+            or text_answer
             or 'submitted'
         )
         input_data: dict[str, typing.Any] = {

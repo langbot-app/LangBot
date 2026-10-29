@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID, uuid4
@@ -10,6 +12,9 @@ from uuid import UUID, uuid4
 import pydantic
 from langbot_plugin.api.entities.builtin.platform import events, message
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReplyStreamRequest(pydantic.BaseModel):
@@ -26,6 +31,8 @@ class _Reply:
     text: str = ''
     started: bool = False
     native: bool = False
+    interaction_origin: str = ''
+    last_sent_at: float = 0.0
     final_attempted: bool = False
     sequence: int = 0
     status: str = 'open'
@@ -41,6 +48,11 @@ class ReplyStreamSession:
         if not isinstance(self.source, events.MessageEvent):
             self.source = None
         self.target = dict(event.delivery.reply_target or {})
+        self.interaction_origin = (
+            str(self.target.get('message_id') or '')
+            if getattr(event, 'event_type', None) == 'interaction.submitted'
+            else ''
+        )
         self.mock = (
             event.delivery.surface == 'webui' and (event.delivery.platform_capabilities or {}).get('debug_mock') is True
         )
@@ -91,12 +103,24 @@ class ReplyStreamSession:
                         and callable(getattr(self.adapter, 'create_message_card_for_target', None))
                         and callable(getattr(self.adapter, 'reply_message_chunk_for_target', None))
                     )
+                    interaction_streaming = (
+                        self.source is None
+                        and bool(self.interaction_origin)
+                        and callable(getattr(self.adapter, 'begin_interaction_stream', None))
+                        and callable(getattr(self.adapter, 'reply_interaction_stream_chunk', None))
+                    )
                     reply.native = (
-                        self.source is not None or target_streaming
+                        self.source is not None or target_streaming or interaction_streaming
                     ) and await self.adapter.is_stream_output_supported()
                     if reply.native:
                         if self.source is not None:
                             await self.adapter.create_message_card(reply.delivery_id, self.source)
+                        elif interaction_streaming:
+                            reply.native = await self.adapter.begin_interaction_stream(
+                                self.interaction_origin, self.target
+                            )
+                            if reply.native:
+                                reply.interaction_origin = self.interaction_origin
                         else:
                             target_type, target_id = self.target.get('target_type'), self.target.get('target_id')
                             if not target_type or not target_id:
@@ -105,8 +129,30 @@ class ReplyStreamSession:
                                 reply.delivery_id, str(target_type), str(target_id)
                             )
                 if reply.started and reply.native:
-                    await self._update_native(key, reply, final=request.operation != 'update')
-                elif request.operation == 'finish' and reply.text and not self.mock:
+                    should_refresh = (
+                        request.operation != 'update'
+                        or not reply.interaction_origin
+                        or reply.sequence == 0
+                        or time.monotonic() - reply.last_sent_at >= 0.5
+                    )
+                    if should_refresh:
+                        try:
+                            await self._update_native(key, reply, final=request.operation != 'update')
+                            reply.last_sent_at = time.monotonic()
+                        except Exception:
+                            if not reply.interaction_origin:
+                                raise
+                            logger.warning(
+                                'WeCom interaction stream failed; sending the final reply proactively', exc_info=True
+                            )
+                            reply.native = False
+                if (
+                    reply.started
+                    and not reply.native
+                    and request.operation == 'finish'
+                    and reply.text
+                    and not self.mock
+                ):
                     if self.source is not None:
                         await self.adapter.reply_message(
                             message_source=self.source, message=self._message(reply.text), quote_origin=False
@@ -152,6 +198,12 @@ class ReplyStreamSession:
                 bot_message=chunk,
                 message=self._message(reply.text),
                 quote_origin=False,
+                is_final=final,
+            )
+        elif reply.interaction_origin:
+            await self.adapter.reply_interaction_stream_chunk(
+                source_message_id=reply.interaction_origin,
+                content=reply.text,
                 is_final=final,
             )
         else:

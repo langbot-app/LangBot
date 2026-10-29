@@ -590,6 +590,21 @@ class TestInteractionResumeRouting:
         )
 
     @pytest.mark.asyncio
+    async def test_wecom_callback_passes_native_card_update_context(self):
+        record = self._record('pipeline')
+        bot = self._make_bot(record)
+        adapter = SimpleNamespace()
+        event = self._event()
+        event.adapter_name = 'wecombot-omni'
+        event.data.update({'callback_req_id': 'callback-req', 'callback_task_id': 'task-1'})
+
+        await bot._handle_interaction_submission(event, adapter)
+
+        bot.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission.assert_awaited_once_with(
+            record, adapter, {'req_id': 'callback-req', 'task_id': 'task-1'}
+        )
+
+    @pytest.mark.asyncio
     async def test_callback_forwards_compact_platform_references(self):
         bot = self._make_bot(self._record('pipeline'))
         adapter = SimpleNamespace()
@@ -675,6 +690,27 @@ class TestInteractionResumeRouting:
         assert envelope.delivery.supports_streaming is False
         assert binding.delivery_policy.enable_reply is True
         adapter.send_message.assert_not_awaited()
+
+        from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+        text_record = self._record('agent')
+        text_record['submission'] = {
+            'interaction_id': 'form-1',
+            'action_id': None,
+            'values': {'name': 'My question'},
+            'submitted_at': 1235,
+        }
+        text_event = events.MessageReceivedEvent(
+            timestamp=1235,
+            message_id='message-2',
+            message_chain=message.MessageChain([message.Plain(text='My question')]),
+            sender=entities.User(id='user-1'),
+            chat_type=entities.ChatType.GROUP,
+            chat_id='chat-1',
+        )
+        await bot._resume_agent_interaction(text_record, text_event, adapter, 'user-1')
+        assert captured[1][0].input.text == 'My question'
+        assert captured[1][0].input.interaction.values == {'name': 'My question'}
 
     def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):
         """An empty config runner stays unconfigured even if component_ref is stale."""
@@ -780,6 +816,53 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
     assert envelope.data['type'] == 'group.member_joined'
     assert 'source_platform_object' not in envelope.data
     bot.ap.plugin_connector.emit_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_wecom_plain_reply_resumes_pending_agent_interaction():
+    from datetime import datetime
+
+    from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+    bot = TestEventRouteTrace._make_bot(
+        [{'id': 'binding-1', 'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': 'agent-1'}]
+    )
+    run = Mock()
+    consume = AsyncMock(return_value={'interaction_id': 'form-1'})
+    bot.ap = SimpleNamespace(
+        agent_service=SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'agent-1',
+                    'kind': 'agent',
+                    'supported_event_patterns': ['message.received'],
+                    'config': {'runner': {'id': 'runner-1'}, 'runner_config': {'runner-1': {}}},
+                }
+            )
+        ),
+        agent_run_orchestrator=SimpleNamespace(
+            run=run, interaction_manager=SimpleNamespace(store=SimpleNamespace(consume_text_reply=consume))
+        ),
+    )
+    bot._resume_agent_interaction = AsyncMock()
+    event = events.MessageReceivedEvent(
+        adapter_name='wecombot-omni',
+        message_id='message-1',
+        message_chain=message.MessageChain(
+            [message.Source(id='message-1', time=datetime.now()), message.Plain(text='answer')]
+        ),
+        sender=entities.User(id='user-1'),
+        chat_type=entities.ChatType.PRIVATE,
+        chat_id='user-1',
+    )
+
+    result = await bot._dispatch_eba_event_to_processor(event, SimpleNamespace(get_supported_apis=lambda: []))
+
+    assert result['status'] == 'delivered'
+    assert consume.await_args.kwargs['text'] == 'answer'
+    assert consume.await_args.kwargs['conversation_id'] == 'person_user-1'
+    bot._resume_agent_interaction.assert_awaited_once()
+    run.assert_not_called()
 
 
 @pytest.mark.asyncio

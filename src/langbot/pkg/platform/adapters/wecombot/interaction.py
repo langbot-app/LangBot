@@ -7,7 +7,7 @@ import time
 import typing
 import uuid
 
-from langbot.libs.wecom_ai_bot_api.api import extract_template_card_event_payload
+from langbot.libs.wecom_ai_bot_api.api import extract_template_card_action, extract_template_card_event_payload
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
@@ -126,7 +126,59 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     if not isinstance(raw, dict) or raw.get('errcode', 0) != 0:
         detail = raw.get('errmsg', raw.get('errcode')) if isinstance(raw, dict) else 'no acknowledgement'
         raise RuntimeError(f'WeCom template card delivery failed: {detail}')
-    return {'ok': True, 'message_id': None, 'rich': True, 'raw': raw}
+    source_message_id = str(reply_target.get('message_id') or '')
+    if source_message_id and hasattr(adapter.bot, 'finish_stream_for_interaction'):
+        await adapter.bot.finish_stream_for_interaction(source_message_id)
+    return {
+        'ok': True,
+        'message_id': None,
+        'rich': True,
+        'task_id': card['template_card']['task_id'],
+        'raw': raw,
+    }
+
+
+async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    request = params.get('request')
+    submission = params.get('submission')
+    target = params.get('update_target')
+    callback = params.get('callback_context')
+    if not all(isinstance(value, dict) for value in (request, submission, target, callback)):
+        raise ValueError('interaction.acknowledge requires request, submission, update_target, and callback_context')
+    task_id = str(callback.get('task_id') or '')
+    req_id = str(callback.get('req_id') or '')
+    if not req_id or not task_id or task_id != target.get('task_id') or target.get('rich') is not True:
+        raise ValueError('WeCom interaction callback does not match the delivered card')
+
+    card = build_interaction_card(request, 'submitted')
+    if card is None:
+        raise ValueError('WeCom interaction has no card to update')
+    updated = card['template_card']
+    updated['task_id'] = task_id
+    action_id = submission.get('action_id')
+    if updated['card_type'] == 'button_interaction':
+        for index, action in enumerate((request.get('actions') or [])[:6]):
+            updated['button_list'][index]['key'] = 'submitted'
+            if isinstance(action, dict) and action.get('id') == action_id:
+                button = updated['button_list'][index]
+                button['text'] = f'✓ {button["text"]}'
+                button['replace_text'] = button['text']
+                break
+    else:
+        field = request['fields'][0]
+        selected = (submission.get('values') or {}).get(field['id'])
+        for index, option in enumerate(field.get('options') or []):
+            if option.get('value') == selected:
+                updated['select_list'][0]['selected_id'] = f'opt_{index + 1}'
+                break
+        updated['select_list'][0]['disable'] = True
+        updated['submit_button']['text'] = '✓ Submitted'
+        updated['submit_button']['key'] = 'submitted'
+    raw = await adapter.bot.update_template_card(req_id, updated)
+    if not isinstance(raw, dict) or raw.get('errcode', 0) != 0:
+        detail = raw.get('errmsg', raw.get('errcode')) if isinstance(raw, dict) else 'no acknowledgement'
+        raise RuntimeError(f'WeCom template card update failed: {detail}')
+    return {**target, 'updated': True, 'raw': raw}
 
 
 def _template_card_event(event: WecomBotEvent) -> dict[str, typing.Any]:
@@ -227,6 +279,7 @@ def interaction_event_from_native(
     if not callback_key.startswith('lbi:'):
         return None
     parsed = parse_callback_key(callback_key)
+    task_id, _, _ = extract_template_card_action(_template_card_event(event))
     if parsed.pop('select_submit', False):
         parsed['field_ref'] = 0
         parsed['option_ref'] = _selected_option_ref(_template_card_event(event))
@@ -242,6 +295,8 @@ def interaction_event_from_native(
             'target_type': target_type,
             'target_id': target_id,
             'display_text': 'submitted',
+            'callback_req_id': str(event.get('req_id') or ''),
+            'callback_task_id': task_id,
         },
         timestamp=time.time(),
         source_platform_object=event,

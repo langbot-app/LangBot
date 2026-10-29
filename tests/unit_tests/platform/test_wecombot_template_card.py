@@ -1,13 +1,9 @@
-import sys
+import time
 import types
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-
-logger_module = types.ModuleType('langbot.pkg.platform.logger')
-logger_module.EventLogger = object
-sys.modules.setdefault('langbot.pkg.platform.logger', logger_module)
 
 from langbot.libs.wecom_ai_bot_api.api import (  # noqa: E402
     WecomBotClient,
@@ -45,7 +41,7 @@ def test_webhook_dispatch_tasks_are_bounded():
 
 
 @pytest.mark.asyncio
-async def test_ws_initial_stream_frame_precedes_pipeline_dispatch(monkeypatch):
+async def test_ws_message_waits_for_real_content_before_creating_stream(monkeypatch):
     from langbot.libs.wecom_ai_bot_api import ws_client as ws_client_module
 
     order = []
@@ -61,9 +57,7 @@ async def test_ws_initial_stream_frame_precedes_pipeline_dispatch(monkeypatch):
         return {'msgid': 'msg-1', 'type': 'single', 'userid': 'user-1'}
 
     async def reply_stream(*args, **kwargs):
-        del args, kwargs
-        order.append('initial-frame')
-        return {}
+        raise AssertionError('An empty stream must not be created')
 
     async def dispatch_event(event):
         del event
@@ -76,11 +70,126 @@ async def test_ws_initial_stream_frame_precedes_pipeline_dispatch(monkeypatch):
 
     await client._handle_message_callback({'headers': {'req_id': 'req-1'}, 'body': {}})
 
-    assert order == ['initial-frame', 'pipeline-dispatch']
+    assert order == ['pipeline-dispatch']
+    assert client._stream_sessions['msg-1']['stream_started'] is False
 
 
 @pytest.mark.asyncio
-async def test_ws_initial_stream_failure_still_dispatches_message(monkeypatch):
+async def test_ws_interaction_releases_unused_stream_without_visible_message():
+    client = WecomBotWsClient('bot-id', 'secret', object())
+    client._stream_ids['msg-1'] = 'req-1|stream-1'
+    client._stream_sessions['msg-1'] = {'user_id': 'user-1'}
+    sent = []
+
+    async def reply_stream(req_id, stream_id, content, finish=False):
+        sent.append((req_id, stream_id, content, finish))
+        return {'errcode': 0}
+
+    client.reply_stream = reply_stream
+    assert await client.finish_stream_for_interaction('msg-1')
+    assert sent == []
+    assert 'msg-1' not in client._stream_ids
+    assert 'msg-1' not in client._stream_sessions
+
+
+@pytest.mark.asyncio
+async def test_ws_interaction_starts_a_new_stream_after_card():
+    client = WecomBotWsClient('bot-id', 'secret', types.SimpleNamespace(info=AsyncMock()))
+    client._stream_ids['msg-1'] = 'req-1|old-stream'
+    client._stream_sessions['msg-1'] = {
+        'req_id': 'req-1',
+        'user_id': 'user-1',
+        'chat_id': '',
+        'created_at': time.monotonic(),
+        'stream_started': False,
+    }
+    sent = []
+
+    async def reply_stream(req_id, stream_id, content, finish=False, feedback_id=''):
+        sent.append((req_id, stream_id, content, finish))
+        return {'errcode': 0}
+
+    client.reply_stream = reply_stream
+    assert await client.finish_stream_for_interaction('msg-1')
+    assert sent == []
+    assert client.begin_interaction_stream('msg-1', 'person', 'user-1')
+    assert not client.begin_interaction_stream('msg-1', 'person', 'user-1')
+    assert await client.push_interaction_stream_chunk('msg-1', 'part', False)
+    assert await client.push_interaction_stream_chunk('msg-1', 'part done', True)
+    assert [item[2:] for item in sent] == [('part', False), ('part done', True)]
+    assert sent[0][0] == sent[1][0] == 'req-1'
+    assert sent[0][1] == sent[1][1]
+    assert sent[0][1] != 'old-stream'
+
+
+def test_ws_interaction_stream_checks_target_and_expiry():
+    client = WecomBotWsClient('bot-id', 'secret', object())
+    client._interaction_stream_origins['msg-1'] = {
+        'req_id': 'req-1',
+        'user_id': 'user-1',
+        'chat_id': 'group-1',
+        'created_at': time.monotonic(),
+    }
+    assert not client.begin_interaction_stream('msg-1', 'person', 'other-user')
+    assert not client.begin_interaction_stream('msg-1', 'group', 'other-group')
+    client._interaction_stream_origins['msg-1']['created_at'] -= 571
+    assert not client.begin_interaction_stream('msg-1', 'person', 'user-1')
+    assert 'msg-1' not in client._interaction_stream_origins
+
+
+@pytest.mark.asyncio
+async def test_ws_interaction_preserves_existing_stream_text_when_finishing():
+    client = WecomBotWsClient('bot-id', 'secret', object())
+    client._stream_ids['msg-1'] = 'req-1|stream-1'
+    client._stream_sessions['msg-1'] = {'stream_started': True}
+    client._stream_last_content['msg-1'] = 'Earlier answer'
+    sent = []
+
+    async def reply_stream(req_id, stream_id, content, finish=False):
+        sent.append((content, finish))
+        return {'errcode': 0}
+
+    client.reply_stream = reply_stream
+    assert await client.finish_stream_for_interaction('msg-1')
+    assert sent == [('Earlier answer', True)]
+
+
+@pytest.mark.asyncio
+async def test_ws_interaction_finish_failure_keeps_stream_state():
+    logger = types.SimpleNamespace(warning=AsyncMock())
+    client = WecomBotWsClient('bot-id', 'secret', logger)
+    client._stream_ids['msg-1'] = 'req-1|stream-1'
+    client._stream_sessions['msg-1'] = {'stream_started': True}
+
+    async def reject(*args, **kwargs):
+        raise ConnectionError('disconnected')
+
+    client.reply_stream = reject
+    assert not await client.finish_stream_for_interaction('msg-1')
+    assert client._stream_ids['msg-1'] == 'req-1|stream-1'
+
+
+@pytest.mark.asyncio
+async def test_ws_rejected_stream_refresh_does_not_complete_session():
+    logger = types.SimpleNamespace(error=Mock())
+    client = WecomBotWsClient('bot-id', 'secret', logger)
+    client._stream_ids['msg-1'] = 'req-1|stream-1'
+    client._stream_sessions['msg-1'] = {'user_id': 'user-1'}
+
+    async def reject(*args, **kwargs):
+        return {'errcode': 400, 'errmsg': 'invalid req_id'}
+
+    async def record_error(message):
+        assert 'invalid req_id' in message
+
+    client.reply_stream = reject
+    logger.error = record_error
+    assert not await client.push_stream_chunk('msg-1', 'answer', is_final=True)
+    assert 'msg-1' in client._stream_ids
+
+
+@pytest.mark.asyncio
+async def test_ws_stream_starts_with_first_real_content(monkeypatch):
     from langbot.libs.wecom_ai_bot_api import ws_client as ws_client_module
 
     dispatched = []
@@ -105,9 +214,11 @@ async def test_ws_initial_stream_failure_still_dispatches_message(monkeypatch):
         del args, kwargs
         return {'msgid': 'msg-1', 'type': 'single', 'userid': 'user-1'}
 
-    async def reply_stream(*args, **kwargs):
-        del args, kwargs
-        raise ConnectionError('simulated reply failure')
+    sent = []
+
+    async def reply_stream(req_id, stream_id, content, finish=False, feedback_id=''):
+        sent.append((req_id, content, finish))
+        return {'errcode': 0}
 
     async def dispatch_event(event):
         dispatched.append(event)
@@ -118,10 +229,17 @@ async def test_ws_initial_stream_failure_still_dispatches_message(monkeypatch):
     client._dispatch_event = dispatch_event
 
     await client._handle_message_callback({'headers': {'req_id': 'req-1'}, 'body': {}})
+    assert sent == []
+    assert await client.push_stream_chunk('msg-1', 'hello')
 
     assert len(dispatched) == 1
-    assert len(logger.warnings) == 1
-    assert 'simulated reply failure' in logger.warnings[0]
+    assert sent == [('req-1', 'hello', False)]
+    assert client._stream_sessions['msg-1']['stream_started'] is True
+    assert logger.warnings == []
+
+    assert await client.push_stream_chunk('msg-1', 'hello', is_final=True)
+    assert 'msg-1' not in client._stream_ids
+    assert client.begin_interaction_stream('msg-1', 'person', 'user-1')
 
 
 def test_extract_template_card_action_supports_nested_button_key():
