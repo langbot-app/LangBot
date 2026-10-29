@@ -486,7 +486,7 @@ uv run --no-sync python tools/regression_ci.py --suite daily --restart-services 
 `--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
 expanded profile once under a 300-second guard. `--suite endurance` retains the
 separate ten-minute load profile under a 900-second guard; its CI entry point also
-reports throughput/P95 without applying their thresholds. All four modes use
+reports throughput/P95 without applying their thresholds. All suites use
 published plugins when `--plugins` is omitted. Both workflows explicitly select
 `--plugins plugins` so source changes are tested in the same PR. Daily additionally
 selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
@@ -498,9 +498,17 @@ bind their own extensions to avoid changing unrelated prompts/tools. The suite a
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
 
-## Local API contract job
+## Daily API contract job
 
-Run on the same disposable Linux/Docker host used by `regression_ci.py`:
+`daily-endurance.yml` runs API contracts alongside the 30-minute endurance job
+on separate runners, at the existing daily schedule and on manual dispatch.
+The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
+a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
+including preparation, and is not a required PR check. Its summary and separate
+`daily-api-<run_id>-<attempt>` artifact retain failures, order, coverage and cleanup
+evidence for 30 days.
+
+To replay locally on a disposable Linux/Docker host, pass the recorded seed:
 
 ```sh
 uv run --no-sync python tools/regression_ci.py --suite api --api-seed 20261028 \
@@ -527,9 +535,8 @@ Inspect `gate/gate.json` for the verdict, seed and exact case order;
 `gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
 `gate/suite/coverage.json` for observed route templates and behavior contracts.
 An HTTP route hit includes rejected requests and is not proof of all behavior
-behind that route. The job intentionally fails on invalid MCP modes accepted
-and persisted by Core; fixing that product validation should make the existing
-negative case pass without changing its expected result.
+behind that route. Invalid MCP modes must return HTTP 400 and leave the original
+configuration unchanged. Any failed contract or cleanup makes the job fail.
 
 ## Sustained regression and baseline comparison
 
