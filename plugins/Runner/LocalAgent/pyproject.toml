@@ -1,11 +1,11 @@
 [project]
 name = "langbot-local-agent"
-version = "0.2.3"
+version = "0.2.4"
 description = "Built-in agent with model fallback, tools, and knowledge retrieval"
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "pydantic>=2.0.0",
-    "langbot-plugin>=0.7.18",
+    "langbot-plugin>=0.7.16,<0.8",
 ]
 
 [project.optional-dependencies]
