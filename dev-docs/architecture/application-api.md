@@ -101,8 +101,9 @@ consumer's context from escaping into another consumer's task.
 
 ## Scope and adoption
 
-This is the full **existing Workspace and execution business capability**
-foundation. Instance administration, account login/bootstrap, public ingress,
+This foundation covers the Workspace and execution business capabilities listed
+in its explicit catalogs. Plugin publishing to Space and Git synchronization
+remain in their existing HTTP routes. Instance administration, account login/bootstrap, public ingress,
 OAuth callbacks, transport assets and internal Runtime handshake/chunk/ping
 messages remain with their owning boundaries. Composite HTTP response layouts
 (such as a combined monitoring page) are consumer projections of these

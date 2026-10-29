@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 import httpx
 import sqlalchemy
+from langbot_plugin.entities.io.errors import ActionCallError
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 from pydantic import Field
 
@@ -232,13 +233,15 @@ async def icon(ap, context, payload):
     await _fence(ap, context)
     try:
         result = await ap.plugin_connector.get_plugin_icon(payload.author, payload.plugin_name)
-    except ValueError as exc:
-        if 'is not installed in this workspace' in str(exc).lower():
+    except (ValueError, ActionCallError) as exc:
+        if isinstance(exc, ActionCallError) or 'is not installed in this workspace' in str(exc).lower():
             raise WorkspaceNotFoundError('Icon not found') from exc
         raise
+    if not result or not result.get('plugin_icon_base64'):
+        raise WorkspaceNotFoundError('Icon not found')
     return {
         'content': await asyncio.to_thread(base64.b64decode, result['plugin_icon_base64']),
-        'mime_type': result['mime_type'],
+        'mime_type': result.get('mime_type', 'image/svg+xml'),
     }
 
 
@@ -247,7 +250,10 @@ async def asset(ap, context, payload):
     path = normalize_plugin_asset_path(payload.filepath)
     if path is None:
         raise WorkspaceNotFoundError('Asset not found')
-    result = await ap.plugin_connector.get_plugin_assets(payload.author, payload.plugin_name, path)
+    try:
+        result = await ap.plugin_connector.get_plugin_assets(payload.author, payload.plugin_name, path)
+    except (ValueError, ActionCallError) as exc:
+        raise WorkspaceNotFoundError('Asset not found') from exc
     if not result.get('asset_base64'):
         raise WorkspaceNotFoundError('Asset not found')
     return {

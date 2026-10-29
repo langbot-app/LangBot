@@ -7,9 +7,11 @@ from unittest.mock import AsyncMock, Mock
 from zipfile import ZipFile
 
 import pytest
+from langbot_plugin.entities.io.errors import ActionCallError
 from pydantic import TypeAdapter, ValidationError
 
 from langbot.pkg.api.application import plugin_operations as ops
+from langbot.pkg.api.application.errors import error_from_exception
 from langbot.pkg.api.context import ExecutionContext
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError, WorkspaceNotFoundError
 
@@ -114,6 +116,42 @@ async def test_asset_path_rejects_escape_before_runtime_read_and_returns_exact_b
     result = await ops.asset(ap, CONTEXT, ops.AssetInput(author='a', plugin_name='b', filepath='image.png'))
     assert result == {'content': b'\x00\xff\n', 'mime_type': 'image/png'}
     assert ap.plugin_connector.get_plugin_assets.await_args.args == ('a', 'b', 'assets/image.png')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['icon', 'asset'])
+@pytest.mark.parametrize(
+    'error', [ActionCallError('Plugin asset unavailable'), ValueError('Plugin a/b is not installed in this Workspace')]
+)
+async def test_missing_plugin_media_maps_to_not_found(operation, error):
+    ap = app()
+    ap.plugin_connector.get_plugin_icon = AsyncMock(side_effect=error)
+    ap.plugin_connector.get_plugin_assets = AsyncMock(side_effect=error)
+    payload = ops.AssetInput(author='a', plugin_name='b', filepath='image.png')
+    with pytest.raises(WorkspaceNotFoundError) as failure:
+        await getattr(ops, operation)(ap, CONTEXT, payload)
+    result = error_from_exception(failure.value)
+    assert (result.code, result.status_code) == ('resource_not_found', 404)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result', [None, {}, {'plugin_icon_base64': ''}])
+async def test_empty_plugin_icon_is_not_found(result):
+    ap = app()
+    ap.plugin_connector.get_plugin_icon = AsyncMock(return_value=result)
+    with pytest.raises(WorkspaceNotFoundError):
+        await ops.icon(ap, CONTEXT, ops.PluginInput(author='a', plugin_name='b'))
+
+
+@pytest.mark.asyncio
+async def test_plugin_icon_defaults_to_svg_and_preserves_other_validation_errors():
+    ap = app()
+    ap.plugin_connector.get_plugin_icon = AsyncMock(return_value={'plugin_icon_base64': 'PHN2Zy8+'})
+    payload = ops.PluginInput(author='a', plugin_name='b')
+    assert await ops.icon(ap, CONTEXT, payload) == {'content': b'<svg/>', 'mime_type': 'image/svg+xml'}
+    ap.plugin_connector.get_plugin_icon.side_effect = ValueError('Invalid plugin identity')
+    with pytest.raises(ValueError, match='Invalid plugin identity'):
+        await ops.icon(ap, CONTEXT, payload)
 
 
 @pytest.mark.asyncio
