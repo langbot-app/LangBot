@@ -92,7 +92,13 @@ class ListSessions(Command):
                 marker = " ★" if item["session_id"] == current_id else ""
                 updated = item["updated_at"].replace("T", " ").replace("Z", "")[:16]
                 lines.append(f"{index}. {updated}  {item['title']}{marker}")
-            lines.append(_text(self, "\n使用 !switch <序号> 切换，!new 新建，!delete 删除当前会话。", "\nUse !switch <number>, !new, or !delete."))
+            lines.append(
+                _text(
+                    self,
+                    "\n使用 !switch <序号> 切换，!new 新建，!delete 删除当前会话。",
+                    "\nUse !switch <number>, !new, or !delete.",
+                )
+            )
             yield CommandReturn(text="\n".join(lines))
 
 
@@ -104,11 +110,15 @@ class SwitchSession(Command):
         async def _(self: SwitchSession, context: ExecuteContext) -> AsyncGenerator[CommandReturn, None]:
             reference = context.crt_params[0] if context.crt_params else ""
             if not reference:
-                yield CommandReturn(text=_text(self, "用法：!switch <序号或 ses_xxx>", "Usage: !switch <number or ses_xxx>"))
+                yield CommandReturn(
+                    text=_text(self, "用法：!switch <序号或 ses_xxx>", "Usage: !switch <number or ses_xxx>")
+                )
                 return
             conversation_id, control, _current = await _conversation_state(self, context)
             if not control:
-                yield CommandReturn(text=_text(self, "请先发送一条普通消息初始化会话。", "Send one normal message first."))
+                yield CommandReturn(
+                    text=_text(self, "请先发送一条普通消息初始化会话。", "Send one normal message first.")
+                )
                 return
             try:
                 result = await run_daemon_control(
@@ -124,7 +134,9 @@ class SwitchSession(Command):
             await write_json(self.plugin, storage_key("list", conversation_id), sessions)
             target = resolve_session_target(reference, sessions)
             if not target:
-                yield CommandReturn(text=_text(self, "找不到指定会话，请先使用 !list。", "Session not found. Run !list first."))
+                yield CommandReturn(
+                    text=_text(self, "找不到指定会话，请先使用 !list。", "Session not found. Run !list first.")
+                )
                 return
             await write_json(self.plugin, storage_key("selected", conversation_id), {"session_id": target})
             await context.create_new_conversation()
@@ -140,7 +152,11 @@ class DeleteSession(Command):
             conversation_id, control, current = await _conversation_state(self, context)
             session_id = str(current.get("session_id") or "").strip()
             if not session_id:
-                yield CommandReturn(text=_text(self, "当前没有可删除的 OpenCode 会话。", "There is no current OpenCode session to delete."))
+                yield CommandReturn(
+                    text=_text(
+                        self, "当前没有可删除的 OpenCode 会话。", "There is no current OpenCode session to delete."
+                    )
+                )
                 return
             try:
                 await run_daemon_control(
@@ -150,13 +166,25 @@ class DeleteSession(Command):
                     session_id=session_id,
                 )
             except Exception as exc:
-                yield CommandReturn(text=_text(self, f"删除会话失败，当前绑定未清理：{exc}", f"Delete failed; current binding was preserved: {exc}"))
+                yield CommandReturn(
+                    text=_text(
+                        self,
+                        f"删除会话失败，当前绑定未清理：{exc}",
+                        f"Delete failed; current binding was preserved: {exc}",
+                    )
+                )
                 return
             await delete_value(self.plugin, storage_key("selected", conversation_id))
             await delete_value(self.plugin, storage_key("last", conversation_id))
             await delete_value(self.plugin, storage_key("list", conversation_id))
             await context.create_new_conversation()
-            yield CommandReturn(text=_text(self, f"✅ 已删除当前 OpenCode 会话：{session_id}", f"✅ Deleted current OpenCode session: {session_id}"))
+            yield CommandReturn(
+                text=_text(
+                    self,
+                    f"✅ 已删除当前 OpenCode 会话：{session_id}",
+                    f"✅ Deleted current OpenCode session: {session_id}",
+                )
+            )
 
 
 class StopRun(Command):
@@ -167,6 +195,12 @@ class StopRun(Command):
         async def _(self: StopRun, context: ExecuteContext) -> AsyncGenerator[CommandReturn, None]:
             run_id = await context.get_query_var("_acp_stop_run_id")
             if run_id:
-                yield CommandReturn(text=_text(self, "⏹️ 已停止当前任务，OpenCode 会话已保留。", "⏹️ The active task was stopped. The OpenCode session was preserved."))
+                yield CommandReturn(
+                    text=_text(
+                        self,
+                        "⏹️ 已停止当前任务，OpenCode 会话已保留。",
+                        "⏹️ The active task was stopped. The OpenCode session was preserved.",
+                    )
+                )
             else:
                 yield CommandReturn(text=_text(self, "当前没有正在执行的任务。", "There is no active task."))

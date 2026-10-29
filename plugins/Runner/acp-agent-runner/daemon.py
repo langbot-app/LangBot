@@ -149,9 +149,7 @@ class RunnerDaemon(AgentRuntimeDaemonClient):
             args=command_args[1:],
             cwd=str(config.get("workspace") or os.getcwd()),
             env={},
-            unset_env=(
-                CLAUDE_ENV_VARS_TO_UNSET if str(config.get("provider") or "custom") == "claude-code" else ()
-            ),
+            unset_env=(CLAUDE_ENV_VARS_TO_UNSET if str(config.get("provider") or "custom") == "claude-code" else ()),
             permission_decision=str(config.get("permission_decision") or "allow_once"),
             startup_timeout=float(config.get("startup_timeout") or 30.0),
         )
