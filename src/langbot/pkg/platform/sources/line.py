@@ -18,7 +18,15 @@ from ...utils import bounded_executor
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage, ImageMessage
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    PushMessageRequest,
+    ReplyMessageRequest,
+    TextMessage,
+    ImageMessage,
+)
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -223,7 +231,27 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        content_list = await self.message_converter.yiri2target(message, self.api_client)
+
+        for content in content_list:
+            if content['type'] == 'text':
+                await asyncio.to_thread(
+                    self.bot.push_message_with_http_info,
+                    PushMessageRequest(
+                        to=target_id,
+                        messages=[TextMessage(text=content['content'])],
+                    ),
+                )
+            elif content['type'] == 'image':
+                # LINE ImageMessage requires original_content_url and preview_image_url
+                image_url = content['image']
+                await asyncio.to_thread(
+                    self.bot.push_message_with_http_info,
+                    PushMessageRequest(
+                        to=target_id,
+                        messages=[ImageMessage(original_content_url=image_url, preview_image_url=image_url)],
+                    ),
+                )
 
     async def reply_message(
         self,
@@ -306,11 +334,23 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 )
                 return quart.Response('Invalid signature', status=400)
 
-            # 处理事件
+            # 处理事件（P1 熱修復：背景任務脫鉤，webhook 立即 ACK，agent run 不受請求生命週期取消）
             if events and len(events) > 0:
                 lb_event = await self.event_converter.target2yiri(events[0], self.api_client)
                 if lb_event.__class__ in self.listeners:
-                    await self.listeners[lb_event.__class__](lb_event, self)
+                    listener = self.listeners[lb_event.__class__]
+
+                    async def _run_background_event():
+                        try:
+                            await listener(lb_event, self)
+                        except Exception:
+                            await self.logger.error(f'Error in LINE background event task: {traceback.format_exc()}')
+
+                    task = asyncio.create_task(_run_background_event())
+                    if not hasattr(self, '_background_tasks'):
+                        self._background_tasks = set()
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
 
             return {'code': 200, 'message': 'ok'}
         except Exception:
