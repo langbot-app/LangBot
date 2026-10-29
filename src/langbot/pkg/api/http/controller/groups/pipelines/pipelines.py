@@ -8,7 +8,6 @@ from ......operation_trace import service as settings_service
 from ......workspace.errors import WorkspaceNotFoundError
 from ... import group
 from ......pipeline.extension_preferences import (
-    normalize_extension_preferences,
     validate_extension_preferences,
 )
 
@@ -92,24 +91,13 @@ class PipelinesRouterGroup(group.RouterGroup):
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
                 try:
-                    previous = await self.call_application(
-                        'pipeline.get', request_context, {'pipeline_uuid': pipeline_uuid}
-                    )
-                except Exception:
-                    previous = None
-                try:
                     await self.call_application(
                         'pipeline.update', request_context, {'pipeline_uuid': pipeline_uuid, 'pipeline_data': json_data}
                     )
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
-                changes = settings_service.changed_fields(
-                    previous if isinstance(previous, dict) else {},
-                    json_data if isinstance(json_data, dict) else {},
-                    ignore=('uuid', 'created_at', 'updated_at'),
-                )
+                changes = quart.g.operation_log_changes
                 rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
-                quart.g.operation_log_changes = changes
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
@@ -155,41 +143,6 @@ class PipelinesRouterGroup(group.RouterGroup):
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
             quart.g.operation_log_resource_id = pipeline_uuid
             json_data = await quart.request.json
-            # Capture "what was bound before" so the trace answers "what changed
-            # into what": without this the log could only say an extension was
-            # configured, never which binding was added or removed.
-            try:
-                previous = await self.call_application(
-                    'pipeline.get', request_context, {'pipeline_uuid': pipeline_uuid}
-                )
-            except Exception:
-                previous = None
-            # The request uses ``bound_*`` keys while the stored preferences use
-            # the canonical names, so both sides are normalized before diffing.
-            requested = {
-                canonical: json_data[field]
-                for field, canonical in {
-                    'bound_plugins': 'plugins',
-                    'bound_mcp_servers': 'mcp_servers',
-                    'bound_skills': 'skills',
-                    'bound_mcp_resources': 'mcp_resources',
-                    'enable_all_plugins': 'enable_all_plugins',
-                    'enable_all_mcp_servers': 'enable_all_mcp_servers',
-                    'enable_all_skills': 'enable_all_skills',
-                    'mcp_resource_agent_read_enabled': 'mcp_resource_agent_read_enabled',
-                }.items()
-                if field in json_data
-            }
-            if isinstance(previous, dict):
-                current = {
-                    **normalize_extension_preferences(previous.get('extensions_preferences')),
-                    **requested,
-                }
-            else:
-                current = requested
-            changes = settings_service.changed_fields(current, requested)
-            if changes:
-                quart.g.operation_log_changes = changes
             try:
                 validate_extension_preferences(
                     {

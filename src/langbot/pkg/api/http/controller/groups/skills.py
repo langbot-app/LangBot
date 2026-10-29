@@ -72,10 +72,6 @@ class SkillsRouterGroup(group.RouterGroup):
             if quart.request.method == 'PUT':
                 data = await quart.request.json
                 try:
-                    previous = await self.call_application('skill.get', request_context, {'skill_name': skill_name})
-                except ValueError:
-                    previous = None
-                try:
                     skill = await self.call_application(
                         'skill.update', request_context, {'skill_name': skill_name, 'data': data}
                     )
@@ -84,13 +80,8 @@ class SkillsRouterGroup(group.RouterGroup):
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
 
-                changes = settings_service.changed_fields(
-                    previous if isinstance(previous, dict) else {},
-                    data if isinstance(data, dict) else {},
-                    ignore=('files', 'package_root', 'created_at', 'updated_at'),
-                )
+                changes = quart.g.operation_log_changes
                 rule = settings_service.ACTION_RULES_BY_ACTION.get('skill_view')
-                quart.g.operation_log_changes = changes
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
                 return self.success(data={'skill': skill})

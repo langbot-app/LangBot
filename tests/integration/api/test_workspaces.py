@@ -1095,3 +1095,35 @@ async def test_migrated_workspace_mutations_record_one_rich_audit_each(workspace
     assert exported.status_code == 200
     assert 'text/csv' in exported.content_type
     assert 'member_role_update' in await exported.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('failure,expected_status', [('invalid_input', 400), ('invalid_output', 500)])
+async def test_application_failure_audit_matches_http_status(workspace_api, monkeypatch, failure, expected_status):
+    from langbot.pkg.operation_trace import service as tracing
+    from langbot.pkg.entity.persistence.operation_log import WorkspaceOperationLog
+
+    application, client, engine, token = workspace_api
+    monkeypatch.setattr(tracing, '_global_enabled', False)
+    service = application.workspace_settings_service = tracing.WorkspaceSettingsService(application)
+    current = await client.get('/api/v1/workspaces/current', headers=_auth(token))
+    workspace_uuid = (await current.get_json())['data']['workspace']['uuid']
+    await service.set_operation_level(workspace_uuid, tracing.OPERATION_LEVEL_READ, dedupe_window_seconds=0)
+    headers = {**_auth(token), 'X-Request-Id': failure}
+    if failure == 'invalid_input':
+        response = await client.put('/api/v1/system/wizard/progress', headers=headers, json={'step': 'invalid'})
+        assert (await response.get_json())['msg'] == 'Invalid fields: step'
+    else:
+        application.space_service = SimpleNamespace(get_recommended_chat_model=AsyncMock(return_value=[]))
+        response = await client.get('/api/v1/system/wizard/recommended-model', headers=headers)
+        assert (await response.get_json())['code'] == 'internal_error'
+    assert response.status_code == expected_status
+    await service.flush_pending()
+    async with engine.connect() as connection:
+        rows = (
+            await connection.execute(
+                sqlalchemy.select(WorkspaceOperationLog).where(WorkspaceOperationLog.request_id == failure)
+            )
+        ).all()
+    assert len(rows) == 1
+    assert rows[0].status_code == expected_status
+    assert rows[0].outcome == 'error'

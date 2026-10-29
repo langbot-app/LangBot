@@ -120,16 +120,12 @@ class AssistantRouterGroup(group.RouterGroup):
 
 async def assistant_stream_response(source):
     """Keep the run alive after disconnect; only an explicit stop cancels it."""
-    # Resolve startup failures before sending HTTP headers.
-    first = await anext(source)
+    # Consume the admission frame so startup errors remain HTTP errors without waiting for a model.
+    await anext(source)
 
     async def stream():
         async with aclosing(source):
-            frame = first
             while True:
-                yield json.dumps(frame, ensure_ascii=False) + '\n'
-                if frame['kind'] in {'completed', 'error'}:
-                    return
                 pending = asyncio.create_task(anext(source))
                 try:
                     while not (await asyncio.wait({pending}, timeout=15))[0]:
@@ -141,6 +137,9 @@ async def assistant_stream_response(source):
                 finally:
                     pending.cancel()
                     await asyncio.gather(pending, return_exceptions=True)
+                yield json.dumps(frame, ensure_ascii=False) + '\n'
+                if frame['kind'] in {'completed', 'error'}:
+                    return
 
     response = quart.Response(stream(), content_type='application/x-ndjson; charset=utf-8')
     response.timeout = None

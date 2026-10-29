@@ -76,22 +76,11 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             quart.g.operation_log_resource_id = knowledge_base_uuid
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
-                try:
-                    previous = await self.call_application(
-                        'knowledge.base.get', request_context, {'kb_uuid': knowledge_base_uuid, 'include_secret': True}
-                    )
-                except Exception:
-                    previous = None
                 await self.call_application(
                     'knowledge.base.update', request_context, {'kb_uuid': knowledge_base_uuid, 'kb_data': json_data}
                 )
-                changes = settings_service.changed_fields(
-                    previous if isinstance(previous, dict) else {},
-                    json_data if isinstance(json_data, dict) else {},
-                    ignore=('uuid', 'created_at', 'updated_at'),
-                )
+                changes = quart.g.operation_log_changes
                 rule = settings_service.ACTION_RULES_BY_ACTION.get('knowledge_base_update')
-                quart.g.operation_log_changes = changes
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
                 return self.success(data={'uuid': knowledge_base_uuid})

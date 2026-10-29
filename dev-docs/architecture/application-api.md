@@ -71,7 +71,10 @@ that execution failed or was rolled back.
 Streaming scopes live in isolated producer tasks with bounded queues. Closing
 an Agent debug stream cancels its execution. Management-assistant streaming
 retains its existing detached-run behavior; use the explicit stop operation to
-cancel an assistant run. Consumers should close partially consumed iterators
+cancel an assistant run. `assistant.stream` first emits
+`{"kind": "started", "data": {"conversation_id": "..."}}` after admission and
+before resolving a model. HTTP consumes this frame internally, returns headers
+immediately, and keeps its existing business frames and 15-second heartbeats. Consumers should close partially consumed iterators
 with `contextlib.aclosing`.
 
 ## Execution-context operations

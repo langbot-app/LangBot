@@ -108,22 +108,13 @@ class LLMModelsRouterGroup(group.RouterGroup):
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                previous = await self.call_application('model.llm.get', request_context, {'model_uuid': model_uuid})
-            except Exception:
-                previous = None
-            try:
                 await self.call_application(
                     'model.llm.update', request_context, {'model_uuid': model_uuid, 'model_data': json_data}
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
-            changes = settings_service.changed_fields(
-                previous if isinstance(previous, dict) else {},
-                json_data if isinstance(json_data, dict) else {},
-                ignore=('uuid', 'created_at', 'updated_at'),
-            )
+            changes = quart.g.operation_log_changes
             rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
-            quart.g.operation_log_changes = changes
             if rule is not None and changes:
                 quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             return self.success()

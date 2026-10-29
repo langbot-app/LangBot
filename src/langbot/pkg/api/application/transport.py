@@ -7,6 +7,7 @@ from .contracts import ApplicationAPIException
 
 # HTTP already records the request's route, resource and before/after changes.
 transport_records_audit = ContextVar('transport_records_application_audit', default=False)
+application_audit_details = ContextVar('application_audit_details', default=None)
 
 
 class ApplicationInputError(ValueError):

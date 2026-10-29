@@ -88,12 +88,18 @@ class RouterGroup(abc.ABC):
         self.quart_app = quart_app
 
     async def call_application(self, operation_id, context, payload):
-        from ...application.transport import invoke_application, transport_records_audit
+        from ...application.transport import application_audit_details, invoke_application, transport_records_audit
 
         token = transport_records_audit.set(True)
+        details = {}
+        details_token = application_audit_details.set(details)
         try:
-            return await invoke_application(self.ap, operation_id, context, payload)
+            result = await invoke_application(self.ap, operation_id, context, payload)
+            if 'changes' in details:
+                quart.g.operation_log_changes = details['changes']
+            return result
         finally:
+            application_audit_details.reset(details_token)
             transport_records_audit.reset(token)
 
     async def stream_application(self, operation_id, context, payload):

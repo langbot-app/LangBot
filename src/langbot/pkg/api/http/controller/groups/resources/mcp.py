@@ -60,9 +60,6 @@ class MCPRouterGroup(group.RouterGroup):
         )
         async def _(server_name: str, request_context: RequestContext) -> str:
             server_name = unquote(server_name)
-            server_data = await self.call_application('mcp.server.get', request_context, {'server_name': server_name})
-            if server_data is None:
-                return self.http_status(404, -1, 'Server not found')
             # Name the MCP server in the trace, and for an update record which
             # fields actually moved so the card answers "what changed" rather
             # than only "the MCP config was touched".
@@ -70,24 +67,26 @@ class MCPRouterGroup(group.RouterGroup):
             if quart.request.method == 'PUT':
                 data = await quart.request.json
                 try:
-                    await self.call_application(
-                        'mcp.server.update', request_context, {'server_uuid': server_data['uuid'], 'server_data': data}
+                    result = await self.call_application(
+                        'mcp.server.update_by_name', request_context, {'server_name': server_name, 'server_data': data}
                     )
                 except MCPStdioDisabledError as exc:
                     return self.http_status(403, exc.code, str(exc))
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
-                changes = settings_service.changed_fields(
-                    server_data,
-                    data if isinstance(data, dict) else {},
-                    ignore=('uuid',),
-                )
+                if result is None:
+                    return self.http_status(404, -1, 'Server not found')
+                changes = result['changes']
                 rule = settings_service.ACTION_RULES_BY_ACTION.get('mcp_config')
                 quart.g.operation_log_changes = changes
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
-                await self.call_application('mcp.server.delete', request_context, {'server_uuid': server_data['uuid']})
+                result = await self.call_application(
+                    'mcp.server.delete_by_name', request_context, {'server_name': server_name}
+                )
+                if result is None:
+                    return self.http_status(404, -1, 'Server not found')
             return self.success()
 
         @self.route(

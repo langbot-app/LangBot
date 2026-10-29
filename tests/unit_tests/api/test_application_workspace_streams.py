@@ -105,6 +105,7 @@ async def test_assistant_stream_disconnect_preserves_run_and_bounded_queue(assis
     conversation_id = (await service.create(ctx))['uuid']
     stream = await assistant_turn(ap, ctx, TurnInput(conversation_id=conversation_id, revision=0, text='Hi'))
     try:
+        assert await anext(stream) == {'kind': 'started', 'data': {'conversation_id': conversation_id}}
         while (await asyncio.wait_for(anext(stream), 2))['kind'] != 'text':
             pass
         task = service._runs[conversation_id]['task']

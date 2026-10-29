@@ -583,3 +583,69 @@ async def test_background_assistant_tools_keep_their_audit_after_http_dispatch(a
     assert record['route'] == 'pipeline.create'
     assert record['outcome'] == 'ok'
     assert (await service.get(ctx, cid))['status'] == 'ready'
+
+
+@pytest.mark.asyncio
+async def test_http_stream_headers_and_heartbeats_do_not_wait_for_model_resolution(assistant):
+    import json
+    from quart import Quart
+    from quart.testing.connections import TestHTTPConnection
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+    from langbot.pkg.api.http.controller.groups.assistant import AssistantRouterGroup
+
+    service, ap, provider = assistant
+    blocked, release, headers_ready = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def recommend(*args):
+        blocked.set()
+        await release.wait()
+        return {'uuid': 'model'}
+
+    async def model_stream(**kwargs):
+        yield MessageChunk(role='assistant', content='Finished', is_final=True)
+
+    ap.space_service.get_recommended_assistant_model.side_effect = recommend
+    provider.invoke_llm_stream = model_stream
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    app = Quart(__name__)
+    router = AssistantRouterGroup(ap, app)
+    router._authenticate_support_admin = AsyncMock(return_value=None)
+    router._authenticate_account = AsyncMock(return_value=(SimpleNamespace(uuid='alice'), 'alice@example.invalid'))
+    router._resolve_account_context = AsyncMock(return_value=ctx)
+    await router.initialize()
+
+    class Connection(TestHTTPConnection):
+        async def _asgi_send(self, message):
+            await super()._asgi_send(message)
+            if message['type'] == 'http.response.start':
+                headers_ready.set()
+
+    client = app.test_client()
+    client.http_connection_class = Connection
+    async with client.request(
+        f'/api/v1/assistant/conversations/{cid}/turn/stream',
+        method='POST',
+        headers={'Authorization': 'Bearer synthetic-test', 'Content-Type': 'application/json'},
+    ) as connection:
+        try:
+            await connection.send(json.dumps({'revision': 0, 'text': 'Hi'}).encode())
+            await connection.send_complete()
+            await asyncio.wait_for(headers_ready.wait(), 1)
+            await asyncio.wait_for(blocked.wait(), 1)
+            assert connection.status_code == 200
+            for _ in range(2):
+                assert await asyncio.wait_for(connection.receive(), 16) == b'\n'
+                assert not release.is_set()
+                assert not service._runs[cid]['task'].done()
+            release.set()
+            frames = []
+            while not any(frame['kind'] == 'completed' for frame in frames):
+                chunk = await asyncio.wait_for(connection.receive(), 2)
+                frames.extend(json.loads(line) for line in chunk.decode().splitlines() if line.strip())
+            assert all(frame['kind'] != 'started' for frame in frames)
+            assert frames[-1]['data']['messages'][-1]['content'] == 'Finished'
+        finally:
+            release.set()
+            for run in list(service._runs.values()):
+                await asyncio.wait_for(run['task'], 2)

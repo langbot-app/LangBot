@@ -170,12 +170,6 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         async def _(provider_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             try:
-                previous = await self.call_application(
-                    'provider.get', request_context, {'provider_uuid': provider_uuid, 'include_secret': True}
-                )
-            except Exception:
-                previous = None
-            try:
                 await self.call_application(
                     'provider.update', request_context, {'provider_uuid': provider_uuid, 'provider_data': json_data}
                 )
@@ -183,13 +177,8 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, str(exc))
             # Record which provider was reconfigured and which fields moved;
             # credential-looking keys are redacted by ``changed_fields``.
-            changes = settings_service.changed_fields(
-                previous if isinstance(previous, dict) else {},
-                json_data if isinstance(json_data, dict) else {},
-                ignore=('uuid', 'created_at', 'updated_at', 'llm_count', 'embedding_count', 'rerank_count'),
-            )
+            changes = quart.g.operation_log_changes
             rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
-            quart.g.operation_log_changes = changes
             if rule is not None and changes:
                 quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             return self.success()
