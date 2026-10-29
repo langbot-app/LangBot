@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import types
 from importlib import import_module
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -239,6 +239,59 @@ async def test_cancelled_lane_finalizes_the_originating_stream():
     assert call['is_final'] is True
     assert call['bot_message'].is_final is True
     assert call['bot_message'].content == 'Task was cancelled'
+
+
+async def test_cancelled_lane_finalizes_non_streaming_response():
+    pipelinemgr, _execution = get_modules()
+    counters, ap = build_counters()
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=False),
+        reply_message=AsyncMock(),
+    )
+    query = build_query(
+        adapter=adapter,
+        message_event=object(),
+        pipeline_config={'output': {'misc': {'quote-origin': False}}},
+    )
+    lane = build_lane(pipelinemgr, ap)
+
+    async def cancelled(_query):
+        raise asyncio.CancelledError
+
+    lane._process_query = cancelled
+
+    await lane.process_query(query)
+    await stop_counters(counters)
+
+    adapter.reply_message.assert_awaited_once()
+    assert adapter.reply_message.await_args.kwargs['quote_origin'] is False
+
+
+async def test_cancelled_lane_logs_finalization_failure():
+    pipelinemgr, _execution = get_modules()
+    counters, ap = build_counters()
+    ap.logger = types.SimpleNamespace(warning=Mock())
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(side_effect=RuntimeError('delivery failed')),
+    )
+    query = build_query(
+        adapter=adapter,
+        message_event=object(),
+        pipeline_config={'output': {'misc': {'quote-origin': False}}},
+    )
+    lane = build_lane(pipelinemgr, ap)
+
+    async def cancelled(_query):
+        raise asyncio.CancelledError
+
+    lane._process_query = cancelled
+
+    await lane.process_query(query)
+    await stop_counters(counters)
+
+    ap.logger.warning.assert_called_once()
+    assert ap.logger.warning.call_args.args[0] == 'Failed to finalize cancelled platform response: %s'
+    assert isinstance(ap.logger.warning.call_args.args[1], RuntimeError)
 
 
 async def test_lane_node_nests_under_the_platform_route_that_called_it():

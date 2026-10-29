@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import types
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
@@ -407,6 +407,7 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert context['context']['available_apis']['run_claim'] is False
     assert context['context']['available_apis']['run_renew_claim'] is False
     assert context['context']['available_apis']['run_release_claim'] is False
+
     assert context['context']['available_apis']['runtime_register'] is False
     assert context['context']['available_apis']['runtime_heartbeat'] is False
     assert context['context']['available_apis']['runtime_list'] is False
@@ -430,6 +431,93 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert session_during_run['authorization']['authorized_ids']['tool'] == {'langbot/test-tool/search'}
     assert session_during_run['authorization']['authorized_ids']['skill'] == {'demo'}
     assert await get_session_registry().get(context['run_id']) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_rejects_non_message_event(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(event_type='timer', conversation_id='conv'),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+
+    assert await orchestrator.cancel_active_from_query(make_query()) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_returns_none_without_active_run(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='conv',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id=None,
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(return_value=None),
+        cancel_task=AsyncMock(),
+    )
+
+    assert await orchestrator.cancel_active_from_query(make_query()) is None
+    orchestrator._session_registry.cancel_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_records_and_cancels_run(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='conv',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id='thread',
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=['langbot-team/LocalAgent'],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(return_value='run-active'),
+        cancel_task=AsyncMock(return_value=True),
+    )
+    store = types.SimpleNamespace(request_cancel=AsyncMock())
+
+    with patch('langbot.pkg.agent.runner.run_ledger_store.RunLedgerStore', return_value=store):
+        result = await orchestrator.cancel_active_from_query(make_query())
+
+    assert result == 'run-active'
+    store.request_cancel.assert_awaited_once_with(
+        run_id='run-active',
+        status_reason='cancelled by stop command',
+    )
+    orchestrator._session_registry.cancel_task.assert_awaited_once_with('run-active')
 
 
 @pytest.mark.asyncio
