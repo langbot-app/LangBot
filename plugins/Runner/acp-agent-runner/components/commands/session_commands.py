@@ -193,7 +193,8 @@ class StopRun(Command):
 
         @self.subcommand(name="", help="Stop the active run", usage="stop")
         async def _(self: StopRun, context: ExecuteContext) -> AsyncGenerator[CommandReturn, None]:
-            run_id = await context.get_query_var("_acp_stop_run_id")
+            query_vars = await context.get_query_vars()
+            run_id = query_vars.get("_acp_stop_run_id")
             if run_id:
                 yield CommandReturn(
                     text=_text(
