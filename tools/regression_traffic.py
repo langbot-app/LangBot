@@ -28,23 +28,54 @@ def percentile(values, fraction):
     return sorted(values)[max(0, math.ceil(len(values) * fraction) - 1)] if values else None
 
 
+def missing_containers(error, candidates):
+    messages = {
+        prefix + container: container
+        for container in candidates
+        for prefix in ('Error: No such object: ', 'Error response from daemon: No such container: ')
+    }
+    lines = [line.strip() for line in error.splitlines() if line.strip()]
+    return {messages[line] for line in lines} if lines and all(line in messages for line in lines) else set()
+
+
 def owned_box_containers(data_root, checked=None):
     """Discover sandboxes mounted below one run's data root, including newly created groups."""
     if checked is None:
 
         def checked(command):
-            return subprocess.check_output(command, text=True, timeout=10)
+            return subprocess.check_output(command, text=True, stderr=subprocess.PIPE, timeout=10)
 
     candidates = checked(['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}']).split()
     if not candidates:
         return []
     root = Path(data_root).resolve()
-    descriptions = checked(['docker', 'inspect', '--format', '{{json .}}', *candidates])
     owned = []
-    for line in descriptions.splitlines():
-        if not line:
+    for container in candidates:
+        try:
+            description = checked(['docker', 'inspect', '--format', '{{json .}}', container])
+        except subprocess.CalledProcessError as exc:
+            if (
+                exc.returncode != 1
+                or (exc.output or '').strip()
+                or not missing_containers(exc.stderr or '', {container})
+            ):
+                raise
+            continue  # A sandbox may expire between discovery and inspection.
+        except RuntimeError as exc:
+            if not missing_containers(str(exc), {container}):
+                raise
             continue
-        entry = json.loads(line)
+        entry = json.loads(description)
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get('Id'), str)
+            or not entry['Id'].startswith(container)
+            or not isinstance(entry.get('Mounts'), list)
+            or any(
+                not isinstance(mount, dict) or not isinstance(mount.get('Source', ''), str) for mount in entry['Mounts']
+            )
+        ):
+            raise ValueError(f'Malformed container inspection: {container}')
         if any(
             Path(mount['Source']).resolve().is_relative_to(root) for mount in entry['Mounts'] if mount.get('Source')
         ):
@@ -70,9 +101,10 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
 
     result = stats(containers)
     observation = {}
-    if result.returncode and data_root:
+    missing = missing_containers(result.stderr, containers) if result.returncode == 1 else set()
+    if missing and data_root:
         current = selected()
-        if containers - current:
+        if missing <= containers - current:
             observation['container_churn'] = {
                 'removed': sorted(containers - current),
                 'added': sorted(current - containers),
