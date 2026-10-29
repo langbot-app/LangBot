@@ -14,7 +14,9 @@ from langbot.pkg.pipeline.pool import QueryPool
 
 def make_app():
     app = SimpleNamespace()
-    app.instance_config = SimpleNamespace(data={'concurrency': {'pipeline': 10}})
+    app.instance_config = SimpleNamespace(
+        data={'concurrency': {'pipeline': 10}, 'command': {'enable': True, 'prefix': ['!', '！']}}
+    )
     app.logger = MagicMock()
     app.pipeline_mgr = SimpleNamespace()
     app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock()
@@ -22,6 +24,7 @@ def make_app():
     app.sess_mgr.get_session = AsyncMock(return_value=SimpleNamespace())
     app.agent_run_orchestrator = SimpleNamespace()
     app.agent_run_orchestrator.try_claim_steering_from_query = AsyncMock()
+    app.agent_run_orchestrator.cancel_active_from_query = AsyncMock()
     return app
 
 
@@ -79,6 +82,39 @@ async def test_try_claim_steering_sets_pipeline_context_before_claiming():
     assert query.pipeline_config is pipeline.pipeline_entity.config
     assert query.variables['_pipeline_bound_plugins'] == ['test/runner']
     app.agent_run_orchestrator.try_claim_steering_from_query.assert_awaited_once_with(query)
+
+
+@pytest.mark.asyncio
+async def test_busy_command_is_not_claimed_as_steering():
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    query = make_query(3, 'pipeline-003')
+    query.message_chain = MessageChain([Plain(text='!list')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_stop_requests_active_run_cancellation():
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-stop'
+    query = make_query(4, 'pipeline-004')
+    query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(query)
+    assert query.variables['_acp_stop_run_id'] == 'run-stop'
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
