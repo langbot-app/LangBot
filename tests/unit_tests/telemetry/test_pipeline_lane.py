@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import types
 from importlib import import_module
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -209,6 +210,35 @@ async def test_lane_step_owns_the_apis_and_runner_it_calls():
     assert shapes[3][3] == lane_node
     # The lane step is recorded last and nests under the synthetic event node.
     assert shapes[4] == ('pipeline', 'run', lane_node, event_node)
+
+
+async def test_cancelled_lane_finalizes_the_originating_stream():
+    pipelinemgr, _execution = get_modules()
+    counters, ap = build_counters()
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+    )
+    query = build_query(
+        adapter=adapter,
+        message_event=object(),
+        pipeline_config={'output': {'misc': {'quote-origin': True}}},
+    )
+    lane = build_lane(pipelinemgr, ap)
+
+    async def cancelled(_query):
+        raise asyncio.CancelledError
+
+    lane._process_query = cancelled
+
+    await lane.process_query(query)
+    await stop_counters(counters)
+
+    adapter.reply_message_chunk.assert_awaited_once()
+    call = adapter.reply_message_chunk.await_args.kwargs
+    assert call['is_final'] is True
+    assert call['bot_message'].is_final is True
+    assert call['bot_message'].content == 'Task was cancelled'
 
 
 async def test_lane_node_nests_under_the_platform_route_that_called_it():
