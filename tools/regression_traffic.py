@@ -102,11 +102,14 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
     result = stats(containers)
     observation = {}
     missing = missing_containers(result.stderr, containers) if result.returncode == 1 else set()
-    if missing and data_root:
+    # Docker 26 can close the stats stream with EOF when a sampled sandbox is deleted.
+    eof = result.returncode == 1 and result.stderr.strip() == 'EOF' and not result.stdout.strip()
+    if (missing or eof) and data_root:
         current = selected()
-        if missing <= containers - current:
+        removed = containers - current
+        if removed and (eof or missing <= removed):
             observation['container_churn'] = {
-                'removed': sorted(containers - current),
+                'removed': sorted(removed),
                 'added': sorted(current - containers),
                 'first_error': result.stderr.strip(),
             }
