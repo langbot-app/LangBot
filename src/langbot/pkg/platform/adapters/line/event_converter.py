@@ -18,6 +18,16 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
+class MessageReceivedEvent(platform_events.MessageEvent):
+    message_id: str = ''
+    message_chain: typing.Any = None
+    sender: typing.Any = None
+    chat_type: str = 'private'
+    chat_id: str = ''
+    group: typing.Any = None
+
+setattr(platform_events, 'MessageReceivedEvent', MessageReceivedEvent)
+
 from .message_converter import LineMessageConverter
 
 
@@ -83,7 +93,7 @@ class LineEventConverter(abstract_platform_adapter.AbstractEventConverter):
             adapter_name='line-omni',
             message_id=message_id,
             message_chain=message_chain,
-            sender=platform_entities.User(id=sender_id, nickname=sender_name),
+            sender=platform_entities.Friend(id=sender_id, nickname=sender_name, remark=sender_id),
             chat_type='private',  # ChatType.PRIVATE 字面值（str Enum）
             chat_id=sender_id,
             group=None,

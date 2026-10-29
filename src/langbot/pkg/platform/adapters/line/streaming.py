@@ -6,7 +6,7 @@ streaming.py — LINE Streaming WebSocket 流式模組。
 blueprint §3.1／§407／§418 明示：LINE 端 streaming（WebSocket 長連、版本協議 v2、
 SDK 保活重連）未實測、全部 ⚠️ 提案，需依 LINE Developers 官方文件 + line-bot-sdk 實測後方可定案。
 
-本檔據 blueprint §4.2「native handler 入口」骨架 + AbstractPlatformAdapter 流式選類（§82
+本檔據 blueprint §4.2「native handler 入口」骨架 + AbstractMessagePlatformAdapter 流式選類（§82
 `reply_message_chunk`／`is_stream_output_supported`）產出**骨架**，
 明確標註 SDK Streaming WebSocket 調用約定實測待確認（§9/§23 禁捏造未定案線程）。
 
@@ -89,7 +89,7 @@ class LineStreamOutput:
     """Streaming Chunk 打字機流式推送骨架（②d）。
 
     据 blueprint §82 `reply_message_chunk`／`is_stream_output_supported` 流式選類 +
-    AbstractPlatformAdapter 流式契约。
+    AbstractMessagePlatformAdapter 流式契约。
     ⚠️ SDK 流式發送端點／chunk 形態 待實測確認。
     """
 

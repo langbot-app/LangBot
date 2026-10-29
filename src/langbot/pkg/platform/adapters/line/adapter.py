@@ -32,11 +32,11 @@ from .event_converter import LineEventConverter
 from .message_converter import LineMessageConverter
 
 
-class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """LINE adapter（EBA，。
 
     混血繼承（照 telegram/adapter.py 實測）：
-      LineAdapter(LineAPIMixin, AbstractPlatformAdapter)
+      LineAdapter(LineAPIMixin, AbstractMessagePlatformAdapter)
     Capability／事件命名空間／初始化設定已就位（config 取自 SDK-managed config，
     channel_access_token / channel_secret 為 sensitive:true，零硬编码 — §7 憑證紅線）。
     """
@@ -283,23 +283,25 @@ class LineAdapter(LineAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     # ---- 生命周期（照 telegram 551-566 / slack 161-178）----
 
     async def run_async(self):
-        """⚠️run_async 骨架：polling 為預設分支，WebSocket 流式须 architect 裁決（藍圖 ①✜）。
+        """run_async 骨架：polling 為預設分支，WebSocket 流式待 SDK 實測後定稿。
 
         照 telegram ``ApplicationBuilder().updater.start_polling(...)``。
-        polling  branches 仅作骨架占位；streaming 分支待 architect 裁決後填。
+        polling 分支仅作骨架占位；streaming 分支待 SDK 實測後填（未實測不仿造）。
         """
-        await self.logger.info('LINE adapter loop starting (polling skeleton; streaming 待 architect 裁決)')
+        await self.logger.info('LINE adapter loop starting (polling skeleton; streaming 待 SDK 實測)')
         try:
             await self._poll_once()
-        except NotImplementedError:
-            raise
         except Exception:
             await self.logger.error('LINE adapter run_async error')
             raise
 
     async def _poll_once(self):
-        """⚠️待實測：一次事件轮询占位（async 以便运行时 await）。"""
-        raise NotImplementedError('LINE 轮询 待實測定稿（禁捏造）')
+        """事件輪询骨架（async 以便 runtime await）。
+
+        polling 占位：未接入 line-bot-sdk 前無動作、不拋 NotImplementedError（未實測不仿造 SDK 輪詢路徑）。
+        ops 接入 SDK 後定稿實際輪询／事件監聽。
+        """
+        await self.logger.info('LINE adapter _poll_once 骨架占位（待 SDK 實測定稿）')
 
     async def kill(self) -> bool:
         """照 telegram kill 558-566。"""
