@@ -378,6 +378,62 @@
      "area": "retrieval", "kind": "blackbox", "priority": "P1",
      "description": "An empty knowledge base allows chat without injecting other knowledge fixtures",
      "bindings": [{"profile": "scenarios", "case": "empty_rag_chat", "checks": ["response"]}]
+    },
+    {"id": "api.model_llm",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "llm model and provider CRUD preserve bindings, secrets and children on rejected deletion",
+     "bindings": [{"profile": "api", "case": "fixed_api_llm", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}, {"profile": "api", "case": "shuffled_api_llm", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}]
+    },
+    {"id": "api.model_embedding",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "embedding model and provider CRUD preserve bindings, secrets and children on rejected deletion",
+     "bindings": [{"profile": "api", "case": "fixed_api_embedding", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}, {"profile": "api", "case": "shuffled_api_embedding", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}]
+    },
+    {"id": "api.model_rerank",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "rerank model and provider CRUD preserve bindings, secrets and children on rejected deletion",
+     "bindings": [{"profile": "api", "case": "fixed_api_rerank", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}, {"profile": "api", "case": "shuffled_api_rerank", "checks": ["api_chain", "provider_identity", "provider_redacted", "provider_update", "model_identity", "model_list", "model_update", "rejected_delete_preserves_model", "model_deleted_from_list"]}]
+    },
+    {"id": "api.pipeline",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "Pipeline CRUD and extension updates preserve state after invalid bindings and run inputs",
+     "bindings": [{"profile": "api", "case": "fixed_api_pipeline", "checks": ["api_chain", "pipeline_identity", "pipeline_list", "pipeline_update", "extension_readback", "rejected_extension_enable_all_plugins", "rejected_extension_bound_skills", "rejected_extension_bound_plugins", "invalid_run_preserves_config"]}, {"profile": "api", "case": "shuffled_api_pipeline", "checks": ["api_chain", "pipeline_identity", "pipeline_list", "pipeline_update", "extension_readback", "rejected_extension_enable_all_plugins", "rejected_extension_bound_skills", "rejected_extension_bound_plugins", "invalid_run_preserves_config"]}]
+    },
+    {"id": "api.credentials",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "Read-only and revoked keys cannot write or read protected resources; secrets are returned only once",
+     "bindings": [{"profile": "api", "case": "fixed_api_credentials", "checks": ["api_chain", "invalid_key_not_created", "key_metadata_redacted", "readonly_denial_preserves_state", "revoked_readback"]}, {"profile": "api", "case": "shuffled_api_credentials", "checks": ["api_chain", "invalid_key_not_created", "key_metadata_redacted", "readonly_denial_preserves_state", "revoked_readback"]}]
+    },
+    {"id": "api.skills",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "Skill publication and UTF-8 files retain revision and content after stale writes",
+     "bindings": [{"profile": "api", "case": "fixed_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_preserved", "skill_deleted"]}, {"profile": "api", "case": "shuffled_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_preserved", "skill_deleted"]}]
+    },
+    {"id": "api.mcp_crud",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "Disabled MCP configurations retain identity and state across CRUD and duplicate requests",
+     "bindings": [{"profile": "api", "case": "fixed_api_mcp", "checks": ["mcp_created_disabled", "mcp_listed", "mcp_updated_disabled", "mcp_update_idempotent", "mcp_duplicate_preserved", "cleanup_server"]}, {"profile": "api", "case": "shuffled_api_mcp", "checks": ["mcp_created_disabled", "mcp_listed", "mcp_updated_disabled", "mcp_update_idempotent", "mcp_duplicate_preserved", "cleanup_server"]}]
+    },
+    {"id": "api.mcp_validation",
+     "area": "api",
+     "kind": "blackbox",
+     "priority": "P1",
+     "description": "Invalid MCP transport is rejected without changing stored configuration",
+     "bindings": [{"profile": "api", "case": "fixed_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}, {"profile": "api", "case": "shuffled_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}]
     }
   ]
 }

@@ -486,7 +486,7 @@ uv run --no-sync python tools/regression_ci.py --suite daily --restart-services 
 `--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
 expanded profile once under a 300-second guard. `--suite endurance` retains the
 separate ten-minute load profile under a 900-second guard; its CI entry point also
-reports throughput/P95 without applying their thresholds. All four modes use
+reports throughput/P95 without applying their thresholds. All suites use
 published plugins when `--plugins` is omitted. Both workflows explicitly select
 `--plugins plugins` so source changes are tested in the same PR. Daily additionally
 selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
@@ -497,6 +497,46 @@ Existing conversation Pipelines allow only the base plugins; plugin-specific cas
 bind their own extensions to avoid changing unrelated prompts/tools. The suite attempts owned API cleanup
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
+
+## Daily API contract job
+
+`daily-endurance.yml` runs API contracts alongside the 30-minute endurance job
+on separate runners, at the existing daily schedule and on manual dispatch.
+The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
+a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
+including preparation, and is not a required PR check. Its summary and separate
+`daily-api-<run_id>-<attempt>` artifact retain failures, order, coverage and cleanup
+evidence for 30 days.
+
+To replay locally on a disposable Linux/Docker host, pass the recorded seed:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite api --api-seed 20261028 \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
+```
+
+This separate suite executes seven independent operation chains once in fixed
+order, then once in seed-shuffled order (14 case rows). Operations within each
+chain retain their create/read/update/delete dependencies. Reuse the seed to
+replay chain ordering; resource names and credentials remain unique. Preparation
+is outside the 600-second execution guard; a completed run ends immediately.
+The default PR smoke and daily scenario groups do not include these cases.
+
+The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
+validation, API key permissions/revocation, Skill files and revision conflicts,
+and disabled MCP configuration. Checks require matching HTTP/business status,
+read back stored state, and reject unexpected mutation after invalid requests.
+Resources carry unique ownership markers and are deleted in `finally`; API keys
+are revoked. Cleanup errors remain failures. MCP fixtures stay disabled and use
+loopback addresses. This job does not exercise external MCP servers, real model
+inference, concurrent API mutations, or cross-Workspace isolation.
+
+Inspect `gate/gate.json` for the verdict, seed and exact case order;
+`gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
+`gate/suite/coverage.json` for observed route templates and behavior contracts.
+An HTTP route hit includes rejected requests and is not proof of all behavior
+behind that route. Invalid MCP modes must return HTTP 400 and leave the original
+configuration unchanged. Any failed contract or cleanup makes the job fail.
 
 ## Sustained regression and baseline comparison
 

@@ -143,6 +143,53 @@ class DailySummaryTest(unittest.TestCase):
                 else:
                     self.assertNotIn('Daily regression: PASS', text)
 
+    def test_api_summary_keeps_preparation_and_outer_failures_visible(self):
+        workflow = Path(__file__).resolve().parents[1] / '.github/workflows/daily-endurance.yml'
+        steps = yaml.safe_load(workflow.read_text())['jobs']['api-contracts']['steps']
+        command = next(step['run'] for step in steps if step.get('name') == 'Publish API result')
+        suite = {'passed': True, 'requests': 14, 'status': {'passed': 14}, 'elapsed_seconds': 7.3}
+        for gate, actual_suite, expected in [
+            ({'passed': True, 'api_seed': 123}, suite, 'Daily API contracts: PASS'),
+            (
+                {'passed': False, 'infrastructure_error': 'plugin installation failed'},
+                None,
+                'plugin installation failed',
+            ),
+            ({'passed': False, 'timed_out': True}, suite, '600-second outer process guard'),
+            ({'passed': False, 'resource_errors': ['sampling failed']}, suite, 'sampling failed'),
+            ({'passed': False, 'coverage_errors': ['missing evidence']}, suite, 'missing evidence'),
+            ({'passed': False}, {'passed': False, 'errors': ['MCP mode persisted']}, 'MCP mode persisted'),
+            (None, None, 'Missing verdict'),
+        ]:
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                target = root / '.qa/api/gate/suite'
+                target.mkdir(parents=True)
+                if gate is not None:
+                    (target.parent / 'gate.json').write_text(json.dumps(gate))
+                if actual_suite is not None:
+                    (target / 'summary.json').write_text(json.dumps(actual_suite))
+                summary = root / 'summary.md'
+                subprocess.run(
+                    ['bash', '-e', '-c', command],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
+                        'GITHUB_STEP_SUMMARY': str(summary),
+                        'GITHUB_SHA': 'tested-core',
+                        'GITHUB_RUN_ID': '456',
+                    },
+                )
+                text = summary.read_text()
+                self.assertIn(expected, text)
+                self.assertIn('not reported', text)
+                self.assertIn('shuffle seed: `123`' if gate and gate.get('passed') else 'shuffle seed: `456`', text)
+                if not gate or not gate.get('passed'):
+                    self.assertNotIn('Daily API contracts: PASS', text)
+
     def test_core_summary_records_preparation_failure_and_selected_plugins(self):
         workflow = Path(__file__).resolve().parents[1] / '.github/workflows/core-smoke.yml'
         steps = yaml.safe_load(workflow.read_text())['jobs']['smoke']['steps']

@@ -14,7 +14,11 @@ GROUPS = {
     'resources': 'regression_resource_cases',
     'lifecycle': 'regression_lifecycle_cases',
     'plugins': 'regression_plugin_cases',
+    'api': 'regression_api_cases',
 }
+
+
+DEFAULT_GROUPS = ('faults', 'resources', 'lifecycle', 'plugins')
 
 
 class ScenarioUnavailable(RuntimeError):

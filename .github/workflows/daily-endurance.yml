@@ -158,3 +158,94 @@ jobs:
             .qa/daily/*.log
           if-no-files-found: warn
           retention-days: 30
+
+  api-contracts:
+    name: Daily API contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --dev --frozen
+      - name: Prepare CLI and sandbox image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .api-bin
+          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .api-bin \
+            --pattern lbctl_linux_amd64 --pattern checksums.txt
+          cd .api-bin
+          sha256sum --check --ignore-missing checksums.txt
+          chmod +x lbctl_linux_amd64
+          docker pull python:3.12-alpine
+      - name: Run API contracts
+        run: |
+          uv run --no-sync python tools/regression_ci.py \
+            --suite api --api-seed "$GITHUB_RUN_ID" \
+            --lbctl .api-bin/lbctl_linux_amd64 --plugins plugins --output .qa/api
+      - name: Publish API result
+        if: always()
+        run: |
+          python - <<'PY_SUMMARY'
+          import json, os
+          from pathlib import Path
+
+          root = Path('.qa/api')
+          def read(path):
+              source = root / path
+              return json.loads(source.read_text()) if source.exists() else {}
+
+          gate = read('gate/gate.json')
+          suite = read('gate/suite/summary.json')
+          coverage = read('gate/suite/coverage.json')
+          manifest = read('plugins/manifest.json')
+          passed = gate.get('passed') is True and suite.get('passed') is True
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write(f"Daily API contracts: {'PASS' if passed else 'FAIL / incomplete'}\n\n")
+              out.write(f"Core: `{os.environ['GITHUB_SHA']}`; shuffle seed: `{gate.get('api_seed', os.environ['GITHUB_RUN_ID'])}`.\n\n")
+              out.write('Fixed order followed by a seeded chain shuffle, with sequential operations inside each chain. The execution guard is 600 seconds; dependency and service preparation is separate. This job is not a required PR check.\n\n')
+              out.write(f"Cases: {suite.get('requests', 'not reported')}; statuses: {suite.get('status', 'not reported')}; suite execution: {suite.get('elapsed_seconds', 'not reported')}s.\n\n")
+              out.write(f"API behavior contracts: {coverage.get('areas', {}).get('api', 'not reported')}.\n\n")
+              out.write(f"Observed HTTP route templates (including preparation): {len(coverage['http_observations']['routes']) if 'http_observations' in coverage else 'not reported'}. A route hit does not establish all behavior behind it.\n\n")
+              for plugin in manifest.get('plugins', []):
+                  out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
+              errors = list(suite.get('errors', [])) + list(gate.get('resource_errors', [])) + list(gate.get('coverage_errors', []))
+              if gate.get('timed_out'):
+                  errors.append('API suite exceeded its 600-second outer process guard.')
+              if gate.get('infrastructure_error'):
+                  errors.append(gate['infrastructure_error'])
+              if not gate or not suite:
+                  errors.append('Missing verdict; inspect preparation and service logs.')
+              for error in errors:
+                  out.write(f"- {error}\n")
+          PY_SUMMARY
+      - name: Preserve API verdicts and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-api-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .qa/api/gate/gate.json
+            .qa/api/gate/resources.jsonl
+            .qa/api/gate/suite.log
+            .qa/api/gate/suite/summary.json
+            .qa/api/gate/suite/profile.json
+            .qa/api/gate/suite/cases.json
+            .qa/api/gate/suite/health.json
+            .qa/api/gate/suite/cleanup-checks.json
+            .qa/api/gate/suite/resource-case-*.json
+            .qa/api/gate/suite/coverage.json
+            .qa/api/gate/suite/coverage.md
+            .qa/api/plugins/manifest.json
+            .qa/api/plugins/*-build.log
+            .qa/api/*.log
+          if-no-files-found: warn
+          retention-days: 30
