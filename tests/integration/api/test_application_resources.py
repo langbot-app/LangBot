@@ -255,3 +255,107 @@ async def test_chat_management_uses_scoped_history_and_real_connection_queues(re
         == []
     )
     assert len(adapter.websocket_group_session.message_lists[pipeline]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extension', ['txt', 'zip'])
+async def test_knowledge_upload_returns_real_integer_task_id(resources, tmp_path, monkeypatch, extension):
+    import asyncio
+    import io
+    import zipfile
+
+    from langbot.pkg.api.context import ExecutionContext
+    from langbot.pkg.core.taskmgr import AsyncTaskManager
+    from langbot.pkg.entity.persistence.rag import File
+    from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState
+    from langbot.pkg.storage.mgr import StorageMgr
+    from langbot.pkg.storage.providers import localstorage
+
+    api, ap, engine = resources
+    workspace = '00000000-0000-0000-0000-00000000000a'
+    request = context(workspace)
+    execution = ExecutionContext.from_request(request)
+    kb_data = {
+        'uuid': 'ingestion-kb',
+        'workspace_uuid': workspace,
+        'name': 'Ingestion',
+        'knowledge_engine_plugin_id': 'test/engine',
+        'collection_id': 'ingestion-kb',
+        'creation_settings': {},
+        'retrieval_settings': {},
+        'initialized': True,
+    }
+    async with engine.begin() as connection:
+        await connection.execute(
+            sa.insert(Workspace).values(
+                uuid=workspace,
+                instance_uuid=request.instance_uuid,
+                name='Ingestion',
+                slug='ingestion',
+                source='cloud_projection',
+            )
+        )
+        await connection.execute(
+            sa.insert(WorkspaceExecutionState).values(
+                workspace_uuid=workspace, instance_uuid=request.instance_uuid, active_generation=1, source='cloud'
+            )
+        )
+        await connection.execute(sa.insert(KnowledgeBase).values(**kb_data))
+    ap.event_loop = asyncio.get_running_loop()
+    ap.task_mgr = AsyncTaskManager(ap)
+    monkeypatch.setattr(localstorage, 'LOCAL_STORAGE_PATH', str(tmp_path / 'uploads'))
+    ap.storage_mgr = StorageMgr(ap)
+    ap.storage_mgr.storage_provider = localstorage.LocalStorageProvider(ap)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def ingest(_plugin_id, _payload):
+        entered.set()
+        await release.wait()
+        return {'document_id': 'engine-document', 'status': 'completed'}
+
+    ap.plugin_connector = SimpleNamespace(
+        is_enable_plugin=True,
+        require_workspace_context=AsyncMock(side_effect=lambda scope: scope),
+        list_knowledge_engines=AsyncMock(
+            return_value=[{'plugin_id': 'test/engine', 'capabilities': ['doc_ingestion']}]
+        ),
+        call_rag_ingest=AsyncMock(side_effect=ingest),
+    )
+    await ap.rag_mgr.load_knowledge_base(execution, KnowledgeBase(**kb_data))
+    content = b'A document for ingestion.'
+    if extension == 'zip':
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as archive:
+            archive.writestr('document.txt', content)
+        content = buffer.getvalue()
+    upload = await ap.storage_mgr.save_scoped(
+        execution, owner_type='upload_document', owner='ingestion-test', key='document.' + extension, value=content
+    )
+    try:
+        task_id = await api.execute('knowledge.file.store', request, {'kb_uuid': kb_data['uuid'], 'file_id': upload})
+        assert type(task_id) is int
+        task = ap.task_mgr.get_task_by_id(
+            task_id, instance_uuid=request.instance_uuid, workspace_uuid=workspace, placement_generation=1
+        )
+        assert task is not None and task.kind == 'knowledge-operation'
+        await asyncio.wait_for(entered.wait(), 5)
+        async with engine.connect() as connection:
+            pending = (
+                (await connection.execute(sa.select(File).where(File.workspace_uuid == workspace))).mappings().one()
+            )
+        assert pending['kb_id'] == kb_data['uuid'] and pending['status'] == 'processing'
+        release.set()
+        await asyncio.wait_for(task.task, 5)
+        async with engine.connect() as connection:
+            stored = (await connection.execute(sa.select(File).where(File.uuid == pending['uuid']))).mappings().one()
+        assert stored['status'] == 'completed' and stored['engine_document_id'] == 'engine-document'
+        assert not await ap.storage_mgr.exists_scoped_object_key(
+            execution, upload, expected_owner_type='upload_document'
+        )
+    finally:
+        release.set()
+        tasks = [wrapper.task for wrapper in ap.task_mgr.get_all_tasks()]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -90,14 +90,14 @@ class TestStoreFile:
 
         def create_user_task(coro, **kwargs):
             coro.close()
-            return SimpleNamespace(id='task-1', kwargs=kwargs, task=Mock())
+            return SimpleNamespace(id=17, kwargs=kwargs, task=Mock())
 
         kb.ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
 
         object_key = _upload_key('documents/test.pdf')
         task_id = await kb.store_file(CONTEXT, object_key)
 
-        assert task_id == 'task-1'
+        assert task_id == 17
         kb.ap.storage_mgr.storage_provider.exists.assert_awaited_once_with(object_key)
         kb.ap.persistence_mgr.execute_async.assert_awaited_once()
         call_kwargs = kb.ap.task_mgr.create_user_task.call_args.kwargs
@@ -189,12 +189,12 @@ class TestStoreZipFile:
                 }
             )
         )
-        kb.store_file = AsyncMock(side_effect=['task-pdf', 'task-txt', 'task-md', 'task-html'])
+        kb.store_file = AsyncMock(side_effect=[17, 18, 19, 20])
 
         zip_key = _upload_key('archive.zip')
         task_id = await kb._store_zip_file(CONTEXT, zip_key, parser_plugin_id='parser/plugin')
 
-        assert task_id == 'task-pdf'
+        assert task_id == 17
         assert kb.ap.storage_mgr.storage_provider.save.await_count == 4
         saved_names = [call.args[0] for call in kb.ap.storage_mgr.storage_provider.save.await_args_list]
         assert {name.rsplit('.', 1)[-1] for name in saved_names} == {'pdf', 'txt', 'md', 'html'}
