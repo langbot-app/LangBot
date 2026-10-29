@@ -51,6 +51,37 @@ class TestSessionRegistryBasic:
         assert '_authorized_ids' not in result
 
     @pytest.mark.asyncio
+    async def test_cancel_task_stops_registered_run_owner(self):
+        """Cancel the task captured when the run session was registered."""
+
+        registry = AgentRunSessionRegistry()
+        registered = asyncio.Event()
+        blocker = asyncio.Event()
+
+        async def run_owner():
+            await registry.register(
+                run_id='run_cancel',
+                runner_id='plugin:test/my-runner/default',
+                query_id=1,
+                plugin_identity='test/my-runner',
+                resources=make_resources(),
+                conversation_id='person_1',
+                bot_id='bot_1',
+                workspace_id='workspace_1',
+            )
+            registered.set()
+            await blocker.wait()
+
+        task = asyncio.create_task(run_owner())
+        await registered.wait()
+
+        assert await registry.cancel_task('run_cancel') is True
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert await registry.cancel_task('run_cancel') is False
+        await registry.unregister('run_cancel')
+
+    @pytest.mark.asyncio
     async def test_register_keeps_host_execution_query_by_identity(self):
         """The runtime registry keeps the Host Query view in memory only."""
         registry = AgentRunSessionRegistry()
