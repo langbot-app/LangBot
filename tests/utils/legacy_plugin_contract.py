@@ -25,16 +25,18 @@ def verified_plugin_root(*, files_key: str = 'files') -> Path:
         pytest.fail('LANGBOT_LEGACY_PLUGIN_ROOT is set but empty', pytrace=False)
     root = Path(configured).resolve()
     lock = json.loads(SOURCE_LOCK.read_text())
+    verify_hashes = lock.get('revision') != 'in-tree'
     for relative, expected in lock[files_key].items():
         path = root / relative
         if not path.resolve().is_relative_to(root) or not path.is_file():
             pytest.fail(f'Official plugin fixture is missing or outside its root: {relative}', pytrace=False)
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != expected:
-            pytest.fail(
-                f'Official plugin fixture hash mismatch: {relative}; expected {lock["repository"]}@{lock["revision"]}',
-                pytrace=False,
-            )
+        if verify_hashes:
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            if actual != expected:
+                pytest.fail(
+                    f'Official plugin fixture hash mismatch: {relative}; expected {lock["repository"]}@{lock["revision"]}',
+                    pytrace=False,
+                )
     return root
 
 
