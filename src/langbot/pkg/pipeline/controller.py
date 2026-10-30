@@ -46,6 +46,7 @@ class Controller:
         """Offer follow-up input to an active Runner before it queues."""
 
         try:
+            original_query = query
             pipeline_uuid = query.pipeline_uuid
             if not pipeline_uuid:
                 return False
@@ -76,6 +77,22 @@ class Controller:
                 if result.result_type == ResultType.INTERRUPT:
                     return False
                 query = candidate
+            message_text = str(getattr(query, 'message_chain', '') or '').strip()
+            command_prefixes = self.ap.instance_config.data.get('command', {}).get('prefix', [])
+            for prefix in command_prefixes:
+                if not message_text.startswith(prefix):
+                    continue
+                command = message_text[len(prefix) :].strip().split(maxsplit=1)[0].lower()
+                if command == 'stop' and not query.variables.get('_acp_stop_attempted'):
+                    query.variables['_acp_stop_attempted'] = True
+                    original_query.variables['_acp_stop_attempted'] = True
+                    run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(query)
+                    if run_id:
+                        query.variables['_acp_stop_run_id'] = run_id
+                        original_query.variables['_acp_stop_run_id'] = run_id
+                # Commands must reach CommandHandler after the active run releases
+                # the session slot. They must never become Runner steering input.
+                return False
             return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
         except Exception as exc:
             self.ap.logger.warning(

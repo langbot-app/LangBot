@@ -580,6 +580,38 @@ class AgentRunOrchestrator:
         """Resolve runner ID for telemetry/logging without full execution."""
         return self.query_bridge.resolve_runner_id_for_telemetry(query)
 
+    async def cancel_active_from_query(self, query: pipeline_query.Query) -> str | None:
+        """Request cancellation and stop the active Runner task for this Query conversation."""
+
+        plan = self.query_bridge.build_plan(query)
+        event = plan.event
+        binding = plan.binding
+        if event.event_type != 'message.received' or not event.conversation_id:
+            return None
+        descriptor = await self.registry.get(
+            get_query_execution_context(query),
+            binding.runner_id,
+            plan.bound_plugins,
+        )
+        target_run_id = await self._session_registry.find_active_target(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+        )
+        if target_run_id is None:
+            return None
+        from .run_ledger_store import RunLedgerStore
+
+        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+        await store.request_cancel(
+            run_id=target_run_id,
+            status_reason='cancelled by stop command',
+        )
+        await self._session_registry.cancel_task(target_run_id)
+        return target_run_id
+
     async def try_claim_steering_from_query(
         self,
         query: pipeline_query.Query,

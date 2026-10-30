@@ -79,6 +79,7 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    task: asyncio.Task[typing.Any] | None
 
 
 class AgentRunSessionRegistry:
@@ -177,6 +178,7 @@ class AgentRunSessionRegistry:
                 'last_activity_at': now,
             },
             'steering_queue': [],
+            'task': asyncio.current_task(),
         }
 
         async with self._lock:
@@ -295,6 +297,48 @@ class AgentRunSessionRegistry:
 
             candidates.sort(key=lambda item: item[0])
             return candidates[0][1]
+
+    async def find_active_target(
+        self,
+        *,
+        conversation_id: str,
+        runner_id: str,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> str | None:
+        """Find the oldest active run for one conversation without requiring steering."""
+
+        async with self._lock:
+            candidates: list[tuple[int, str]] = []
+            for run_id, session in self._sessions.items():
+                authorization = session['authorization']
+                if session.get('runner_id') != runner_id:
+                    continue
+                if authorization.get('conversation_id') != conversation_id:
+                    continue
+                if authorization.get('bot_id') != bot_id:
+                    continue
+                if authorization.get('workspace_id') != workspace_id:
+                    continue
+                if authorization.get('thread_id') != thread_id:
+                    continue
+                candidates.append((session['status'].get('started_at', 0), run_id))
+            if not candidates:
+                return None
+            candidates.sort(key=lambda item: item[0])
+            return candidates[0][1]
+
+    async def cancel_task(self, run_id: str) -> bool:
+        """Cancel the Host task that owns one active run."""
+
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            task = session.get('task') if session else None
+            if task is None or task.done():
+                return False
+            task.cancel()
+            return True
 
     async def enqueue_steering(
         self,
