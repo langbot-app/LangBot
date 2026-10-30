@@ -1,16 +1,51 @@
-"""PLATFORM_API_MAP for LINE（EBA skeleton）。
+from __future__ import annotations
 
-对照 telegram/platform_api.py 與 slack/platform_api.py（逐 action 注册 callable）。
-当前为空骨架——待 LINE Messaging API 端點實測後逐一定稿。
-未實測的 action 一律先不注册，遵守 acceptance-checklist「未實測不声明」。
-"""
+import typing
 
-from typing import Callable
 
-PLATFORM_API_MAP: dict[str, Callable] = {
-    # "send_message": ...,      # ⚠️待實測
-    # "reply_message": ...,     # ⚠️待實測
-    # "get_user_info": ...,     # ⚠️待實測
-    # "get_group_info": ...,    # ⚠️待實測
-    # "get_group_member_list": ...  # ⚠️待實測
+async def get_bot_info(adapter, params: dict) -> dict:
+    import asyncio
+
+    info = await asyncio.to_thread(adapter.bot.get_bot_info)
+    return {
+        'user_id': info.user_id,
+        'basic_id': info.basic_id,
+        'display_name': info.display_name,
+        'chat_mode': info.chat_mode,
+    }
+
+
+async def get_profile(adapter, params: dict) -> dict:
+    user_id = str(params.get('user_id', ''))
+    if not user_id:
+        raise ValueError('get_profile requires user_id')
+    import asyncio
+
+    profile = await asyncio.to_thread(adapter.bot.get_profile, user_id)
+    return {
+        'user_id': profile.user_id,
+        'display_name': profile.display_name,
+        'picture_url': profile.picture_url or '',
+        'status_message': profile.status_message or '',
+    }
+
+
+async def get_group_summary(adapter, params: dict) -> dict:
+    group_id = str(params.get('group_id', ''))
+    if not group_id:
+        raise ValueError('get_group_summary requires group_id')
+    import asyncio
+
+    summary = await asyncio.to_thread(adapter.bot.get_group_summary, group_id)
+    return {
+        'group_id': summary.group_id,
+        'group_name': summary.group_name,
+        'picture_url': summary.picture_url or '',
+    }
+
+
+PLATFORM_API_MAP: dict[str, typing.Callable[[typing.Any, dict], typing.Awaitable[dict]]] = {
+    'get_bot_info': get_bot_info,
+    'get_profile': get_profile,
+    'get_group_summary': get_group_summary,
 }

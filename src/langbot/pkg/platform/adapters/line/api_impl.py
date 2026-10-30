@@ -1,25 +1,86 @@
-"""LineAPIMixin（EBA skeleton）。
-
-对照 slack api_impl.py 的 call_platform_api 透传模式。
-PLATFORM_API_MAP 由本 adapter 的 platform_api.py 提供；当前为空骨架（待填）。
-"""
-
 from __future__ import annotations
 
-from langbot.pkg.platform.adapters.line.platform_api import PLATFORM_API_MAP
+import typing
+
+from langbot.pkg.platform.adapters.line.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
+from langbot_plugin.api.entities.builtin.platform import events as platform_events
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
 class LineAPIMixin:
-    """LINE API 混血。透传 call_platform_api 至 PLATFORM_API_MAP。
+    """Optional universal APIs; LINE only exposes profile and group summaries."""
 
-    ⚠️ 映射表待 LINE Messaging API 端點實測後逐一定稿（action → callable）。
-    """
+    async def get_user_info(self, user_id: typing.Union[int, str]) -> platform_entities.User:
+        import asyncio
 
-    async def call_platform_api(self, action: str, **args):
-        """对照 slack call_platform_api（api_impl.py 31-82）：依 action 查 PLATFORM_API_MAP。"""
-        if action not in PLATFORM_API_MAP:
-            raise NotImplementedError(f'call_platform_api: unknown action {action!r}')
-        api = PLATFORM_API_MAP[action]
-        # 占位：未定稿的 action 暂以 NotImplementedError 阻斷，待實測後註冊真实 callable
-        result = await api(self, **args)
-        return result
+        profile = await asyncio.to_thread(self.bot.get_profile, str(user_id))
+        return platform_entities.User(
+            id=profile.user_id,
+            nickname=profile.display_name,
+            avatar_url=profile.picture_url or '',
+        )
+
+    async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
+        import asyncio
+
+        try:
+            summary = await asyncio.to_thread(self.bot.get_group_summary, str(group_id))
+        except Exception as exc:
+            raise NotSupportedError('get_group_info:group_not_found') from exc
+        return platform_entities.UserGroup(
+            id=summary.group_id,
+            name=summary.group_name,
+            avatar_url=summary.picture_url or '',
+        )
+
+    async def leave_group(self, group_id: typing.Union[int, str]) -> None:
+        import asyncio
+
+        await asyncio.to_thread(self.bot.leave_group, str(group_id))
+
+    async def get_group_member_list(
+        self,
+        group_id: typing.Union[int, str],
+    ) -> list[platform_entities.UserGroupMember]:
+        # LINE does not expose a group member listing API.
+        raise NotSupportedError('get_group_member_list')
+
+    async def get_group_list(self) -> list[platform_entities.UserGroup]:
+        raise NotSupportedError('get_group_list')
+
+    async def get_friend_list(self) -> list[platform_entities.User]:
+        raise NotSupportedError('get_friend_list')
+
+    async def edit_message(
+        self,
+        chat_type: str,
+        chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+        new_content: platform_message.MessageChain,
+    ) -> None:
+        raise NotSupportedError('edit_message')
+
+    async def delete_message(
+        self,
+        chat_type: str,
+        chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+    ) -> None:
+        raise NotSupportedError('delete_message')
+
+    async def forward_message(
+        self,
+        from_chat_type: str,
+        from_chat_id: typing.Union[int, str],
+        message_id: typing.Union[int, str],
+        to_chat_type: str,
+        to_chat_id: typing.Union[int, str],
+    ) -> platform_events.MessageResult:
+        raise NotSupportedError('forward_message')
+
+    async def upload_file(self, file_data: bytes, filename: str) -> str:
+        raise NotSupportedError('upload_file')
+
+    async def get_file_url(self, file_id: str) -> str:
+        raise NotSupportedError('get_file_url')

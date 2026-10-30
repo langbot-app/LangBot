@@ -1,16 +1,3 @@
-"""LineMessageConverter — LINE 訊息 payload ↔ EBA MessageChain。
-
-對照 slack message_converter.py（boxed 實測）的 MessageChain 元件建構／解析模式，
-以及 qqofficial message_converter.py 的 media payload 封裝模式。
-
-LINE SDK 訊息 payload 待實測；⚠️待實測的 SDK 存取與附件下載集中封裝於
-``_LINE_SDK``（僅此一處），其上方的 MessageChain 結構對照 boxed 契約
-（02-platform-api.md §6.1 通用元件）。
-
-注意：EBA 無 Video 通用元件（doc 6.1），故 LINE Video / Sticker 走
-``PlatformComponent`` 承載（禁捏造 Face 等價，藍圖 ⚠️）。
-"""
-
 from __future__ import annotations
 
 import base64
@@ -18,202 +5,154 @@ import datetime
 import typing
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
-from .errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from linebot.v3.messaging import ImageMessage, TextMessage
+from linebot.v3.webhooks import (
+    AudioMessageContent,
+    FileMessageContent,
+    ImageMessageContent,
+    LocationMessageContent,
+    MessageEvent,
+    StickerMessageContent,
+    TextMessageContent,
+    UserMentionee,
+    VideoMessageContent,
+)
+
+from langbot.pkg.platform.adapters.line.errors import NotSupportedError
+from langbot.pkg.platform.adapters.line.types import MAX_LINE_MEDIA_BYTES, MAX_TEXT_LENGTH
+
+# LINE stores inbound images as JPEG and the Blob API does not return the media type.
+IMAGE_MIME = 'image/jpeg'
 
 
-# 線外（boxed 無 LINE SDK）以占位封裝替換；實際 SDK 存取唯一換入點在此。
-class _LINE_SDK:
-    """⚠️待實測：LINE SDK 附件讀取／上傳封裝（SDK 存取唯一封裝點）。
-
-    對照 slack message_converter 的 media 下載模式。實際值由 ops 接入
-    linebot-sdk v3 後於本 class 的 staticmethod 內定稿；本檔不引用任何
-    LINE SDK 實際名稱（禁捏造）。base64 編碼以 stdlib 回退，避免直接依賴 SDK。
-    """
-
-    @staticmethod
-    async def download_b64(
-        message_id: str, content_provider: typing.Any, mime_hint: str = 'application/octet-stream'
-    ) -> typing.Tuple[str, str]:
-        """下載 LINE 附件 → 返回 ``(base64_data_uri, mime)``。
-
-        据 SDK 3.26.0 合约 §2.4：``MessagingApiBlobClient.download_b64(message_content_id)``
-        返回 base64 編碼位元組（ops 在 .84 CubeSandbox 實測確認）。据此封装附件下载
-        （据 content_provider 读取 bytes）；确切 API 参数（blob_client.download_b64
-        message_content_id）供 ops 在 worktree 实测确认（§9）。
-        """
-        if content_provider is None:
-            raise NotSupportedError('line:media_download')
-        try:
-            data = _read_provider_content(content_provider, message_id)  # ⚠️待實測
-            return (f'data:{mime_hint};base64,{_b64encode(data)}', mime_hint)
-        except NotSupportedError:
-            raise
-        except Exception:
-            raise NotSupportedError('line:media_download')
-
-    @staticmethod
-    async def upload_media(media_type: str, data: bytes, mime: str) -> str:
-        """上傳附件至 LINE 並返回引用 URL（push/reply 外發必需）。
-
-        ⚠️待實測：LINE uploadImage API + SDK 方法未定稿；未定稿時拋 NotSupportedError。
-        """
-        raise NotSupportedError(f'line:upload_{media_type}')
+def _validate_media(content: bytes) -> bytes:
+    """Reject inbound media above the LINE download cap."""
+    if len(content) > MAX_LINE_MEDIA_BYTES:
+        raise ValueError(f'LINE media exceeds the {MAX_LINE_MEDIA_BYTES}-byte limit')
+    return content
 
 
-# ---- 本地純 Python 輔助（不碰 SDK）----
-
-# 安全取得 MessageComponent 子類（doc 6.1 未列 Video/Sticker，用 getattr 防 AttributeError）
-_VIDEO_CLS = getattr(platform_message, 'Video', None)
-_STICKER_CLS = getattr(platform_message, 'Sticker', None)
+def _split_text(text: str) -> list[str]:
+    """Split a text body into LINE-sized chunks so long answers still send."""
+    return [text[index : index + MAX_TEXT_LENGTH] for index in range(0, len(text), MAX_TEXT_LENGTH)]
 
 
-def _b64encode(data: bytes) -> str:  # stdlib 回退（SDK 未定稿前）
-    return base64.b64encode(data).decode('ascii')
-
-
-def _read_provider_content(content_provider: typing.Any, message_id: str) -> bytes:  # ⚠️待實測
-    """⚠️待實測：自 SDK content_provider 讀取附件 bytes（線外以空回退防崩）。"""
-    handler = getattr(content_provider, 'get', None)
-    if callable(handler):
-        return handler(message_id)  # 期望返回 bytes
-    raise NotSupportedError('line:media_download')
-
-
-def _source_from_message(line_message: dict) -> platform_message.Source:
-    """LINE 訊息物件 → MessageChain.Source（首元件，含 id 與 timestamp）。"""
-    return platform_message.Source(
-        id=str(line_message.get('id', '')),
-        time=_parse_timestamp(line_message.get('timestamp')),
-    )
-
-
-def _parse_timestamp(raw: typing.Any) -> datetime.datetime:
+def _message_datetime(event: MessageEvent) -> datetime.datetime:
     try:
-        return datetime.datetime.fromtimestamp(float(raw) / 1000.0)  # LINE 時間戳為毫秒
-    except (TypeError, ValueError):
+        return datetime.datetime.fromtimestamp(float(event.timestamp) / 1000.0)
+    except (AttributeError, TypeError, ValueError):
         return datetime.datetime.now()
 
 
-def _image_payload(component: typing.Any, media_type: str) -> dict:
-    """EBA 媒體元件 → LINE payload（image|audio|video）。
-
-    ⚠️待實測：LINE push/reply 需 originalContentUrl（uploadImage API）；
-    僅有 URL 時填入，僅有 base64 時暂無法直接外發（uploadImage 未定稿）。
-    """
-    return {'type': media_type, 'originalContentUrl': getattr(component, 'url', '') or ''}
-
-
-def _file_payload(component: typing.Any) -> dict:
-    """EBA File 元件 → LINE payload。"""
-    return {'type': 'file', 'originalContentUrl': getattr(component, 'url', '') or ''}
-
-
-def _platform_component(component_type: str, data: dict) -> platform_message.PlatformComponent:
-    """平台專屬元件承載（Video / Sticker —— EBA 無對應通用元件）。"""
-    return platform_message.PlatformComponent(
-        platform='line',
-        component_type=component_type,
-        data=data,
+def _text_components(text: str, mention: typing.Any, bot_account_id: str) -> list[platform_message.MessageComponent]:
+    """Map LINE mention positions onto At components, as the legacy adapter does."""
+    if not mention or not mention.mentionees:
+        return [platform_message.Plain(text=text)] if text else []
+    components: list[platform_message.MessageComponent] = []
+    segments = sorted(
+        (mentionee.index, mentionee.index + mentionee.length, mentionee) for mentionee in mention.mentionees
     )
+    cursor = 0
+    for start, end, mentionee in segments:
+        if start < cursor:
+            start, end = cursor, min(end, len(text))
+        if start < cursor or end <= start or end > len(text):
+            continue
+        if start > cursor:
+            components.append(platform_message.Plain(text=text[cursor:start]))
+        token = text[start:end]
+        if isinstance(mentionee, UserMentionee):
+            target = bot_account_id if mentionee.is_self else (mentionee.user_id or token)
+        else:
+            target = token
+        components.append(platform_message.At(target=str(target), display=token.lstrip('@')))
+        cursor = end
+    if cursor < len(text):
+        components.append(platform_message.Plain(text=text[cursor:]))
+    return components
+
+
+async def _download_content(blob_api: typing.Any, message_id: str) -> bytes:
+    """Fetch inbound media through the LINE Blob API without blocking the event loop."""
+    import asyncio
+
+    if blob_api is None:
+        raise NotSupportedError('line:media_download')
+    return await asyncio.to_thread(blob_api.get_message_content, message_id)
 
 
 class LineMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
-    """LINE 訊息轉換器。
-
-    兩向：
-      - ``target2yiri``：LINE 原始訊息（dict）→ EBA MessageChain
-      - ``yiri2target``：EBA MessageChain → LINE 訊息陣列（push/reply body）
-    """
+    """Convert between LangBot message chains and LINE Messaging API messages."""
 
     @staticmethod
-    async def yiri2target(
-        message_chain: platform_message.MessageChain, *args: typing.Any, **kwargs: typing.Any
-    ) -> list[dict]:
-        """EBA MessageChain → LINE 訊息物件陣列（push/reply 共用 ``Message=`` 欄位）。
-
-        ⚠️待實測：媒體外發需 uploadImage URL（``_LINE_SDK.upload_media``）方能成信；
-        純文字 / At / AtAll / Quote 對照 boxed 直接生成。
-        """
-        messages: list[dict] = []
+    async def yiri2target(message_chain: platform_message.MessageChain) -> list[typing.Any]:
+        """Build the LINE message array for one push/reply request."""
+        messages: list[typing.Any] = []
         for component in message_chain:
             if isinstance(component, platform_message.Source):
-                continue  # Source 僅為元資訊，不隨 MESSAGE 外發
+                continue
             if isinstance(component, platform_message.Plain):
-                messages.append({'type': 'text', 'text': component.text})
+                messages.extend(TextMessage(text=chunk) for chunk in _split_text(component.text or ''))
             elif isinstance(component, platform_message.At):
-                messages.append({'type': 'text', 'text': f'<@{component.target}> '})
+                messages.append(TextMessage(text=f'@{component.display or component.target}'))
             elif isinstance(component, platform_message.AtAll):
-                messages.append({'type': 'text', 'text': '<@ALL> '})
+                messages.append(TextMessage(text='@All'))
             elif isinstance(component, platform_message.Image):
-                messages.append(_image_payload(component, 'image'))
-            elif isinstance(component, platform_message.Voice):
-                messages.append(_image_payload(component, 'audio'))
-            elif isinstance(component, platform_message.File):
-                messages.append(_file_payload(component))
-            elif _VIDEO_CLS is not None and isinstance(component, _VIDEO_CLS):
-                messages.append(_image_payload(component, 'video'))
-            elif _STICKER_CLS is not None and isinstance(component, _STICKER_CLS):
-                messages.append({'type': 'sticker', 'packageId': '', 'stickerId': ''})  # ⚠️待實測
+                url = component.url or ''
+                if not url:
+                    # LINE fetches outgoing images from a public URL; inline base64 is not supported.
+                    raise NotSupportedError('send_message:line_image_requires_public_url')
+                messages.append(ImageMessage(original_content_url=url, preview_image_url=url))
             elif isinstance(component, platform_message.Quote):
-                if component.id is not None:
-                    messages.append({'type': 'text', 'text': f'[Quote {component.id}]'})
+                if component.origin:
+                    messages.extend(await LineMessageConverter.yiri2target(component.origin))
             elif isinstance(component, platform_message.Forward):
-                # ⚠️待實測：LINE forward_message 依藍圖
-                raise NotSupportedError('line:forward_message')
+                for node in component.node_list:
+                    if node.message_chain:
+                        messages.extend(await LineMessageConverter.yiri2target(node.message_chain))
             elif isinstance(component, platform_message.Unknown):
-                messages.append({'type': 'text', 'text': component.text or str(component)})
+                if component.text:
+                    messages.extend(TextMessage(text=chunk) for chunk in _split_text(component.text))
             else:
-                raise NotSupportedError(f'line:unmappable_component:{type(component).__name__}')
+                raise NotSupportedError(f'send_message:line_unsupported_component:{type(component).__name__}')
         return messages
 
     @staticmethod
     async def target2yiri(
-        line_message: typing.Any,
-        config_secret: str = '',  # 保留參数位；本檔不使用（對齐 adapter 呼叫签名）
-        content_provider: typing.Any = None,  # ⚠️待實測：SDK WebhookContentProvider
+        event: MessageEvent,
+        blob_api: typing.Any = None,
+        bot_account_id: str = '',
     ) -> platform_message.MessageChain:
-        """LINE 原始訊息 → EBA MessageChain（收端核心）。
-
-        ``line_message`` 為归一化 dict（見 event_converter 的 ``_LINE_SDK`` 归一化）：
-        ``type`` = Text|Image|Video|Audio|Sticker|File；含 ``id``／``text`` 等欄。
-        """
-        if not isinstance(line_message, dict):
-            raise NotSupportedError(f'line:bad_message_type:{type(line_message).__name__}')
-        message_id = str(line_message.get('id', ''))
-        message_type = str(line_message.get('type', '')).lower()
-        components: list[platform_message.MessageComponent] = [_source_from_message(line_message)]
-
-        if message_type == 'text':
-            text = str(line_message.get('text', '') or '').strip()
-            if text:
-                components.append(platform_message.Plain(text=text))
-        elif message_type == 'image':
-            data_uri, _mime = await _LINE_SDK.download_b64(message_id, content_provider, 'image/jpeg')
-            components.append(platform_message.Image(base64=data_uri))
-        elif message_type == 'video':
-            components.append(_platform_component('video', {'message_id': message_id}))
-        elif message_type == 'audio':
-            data_uri, _mime = await _LINE_SDK.download_b64(message_id, content_provider, 'audio/3gpp')
-            components.append(platform_message.Voice(base64=data_uri))
-        elif message_type == 'sticker':
-            sticker = line_message.get('stickerId') or line_message.get('id', '')
-            components.append(_platform_component('sticker', {'sticker_id': sticker}))
-        elif message_type == 'file':
-            data_uri, mime = await _LINE_SDK.download_b64(message_id, content_provider, 'application/octet-stream')
+        """Build a LangBot message chain from a LINE message event."""
+        message = event.message
+        components: list[platform_message.MessageComponent] = [
+            platform_message.Source(
+                id=str(getattr(message, 'id', '') or event.webhook_event_id), time=_message_datetime(event)
+            )
+        ]
+        if isinstance(message, TextMessageContent):
+            components.extend(_text_components(message.text, getattr(message, 'mention', None), bot_account_id))
+        elif isinstance(message, ImageMessageContent):
+            encoded = base64.b64encode(_validate_media(await _download_content(blob_api, message.id))).decode('ascii')
+            components.append(platform_message.Image(base64=f'data:{IMAGE_MIME};base64,{encoded}'))
+        elif isinstance(message, AudioMessageContent):
+            encoded = base64.b64encode(_validate_media(await _download_content(blob_api, message.id))).decode('ascii')
+            components.append(platform_message.Voice(base64=encoded, length=int(getattr(message, 'duration', 0) or 0)))
+        elif isinstance(message, VideoMessageContent):
+            components.append(platform_message.Unknown(text='[video]'))
+        elif isinstance(message, StickerMessageContent):
+            components.append(platform_message.Unknown(text='[sticker]'))
+        elif isinstance(message, FileMessageContent):
+            components.append(platform_message.Unknown(text=f'[file] {getattr(message, "file_name", "")}'.strip()))
+        elif isinstance(message, LocationMessageContent):
             components.append(
-                platform_message.File(
-                    id=message_id,
-                    name=str(line_message.get('fileName', 'file')),
-                    size=0,  # ⚠️待實測：size 待附件實際字节
-                    base64=data_uri,
-                    mime=mime,
+                platform_message.Unknown(
+                    text=f'[location] {getattr(message, "title", "")} {getattr(message, "address", "")}'.strip()
                 )
             )
         else:
-            components.append(platform_message.Unknown(text=f'[unsupported LINE message type: {message_type}]'))
-
-        # 若僅剩 Source（無內容），補 Unknown 占位（對照 slack target2yiri 末行）
+            components.append(platform_message.Unknown(text=f'[unsupported line message: {type(message).__name__}]'))
         if len(components) == 1:
-            components.append(platform_message.Unknown(text=f'[empty LINE message: {message_type}]'))
+            components.append(platform_message.Unknown(text=f'[unsupported line message: {type(message).__name__}]'))
         return platform_message.MessageChain(components)
