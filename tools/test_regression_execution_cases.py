@@ -280,12 +280,21 @@ class ExecutionCasesTests(unittest.TestCase):
         try:
             self.assertEqual(cases._stream(self.suite, 'agent', 'scope', {})[-1]['kind'], 'completed')
             row = {}
+            checkpoints = []
             with (
                 patch.object(cases, '_running_box', return_value='box'),
                 patch.object(cases, '_sessions', return_value={'box': {'status': 'running'}}),
             ):
-                cancelled = cases._stream(self.suite, 'agent', 'scope', row, interrupt='cancel')
+                cancelled = cases._stream(
+                    self.suite,
+                    'agent',
+                    'scope',
+                    row,
+                    interrupt='cancel',
+                    before_cancel=lambda: checkpoints.append(row['box_session_id']),
+                )
             self.assertEqual(len(cancelled), 1)
+            self.assertEqual(checkpoints, ['box'])
             self.assertEqual(row['box_session_id'], 'box')
             frames.pop()
             with self.assertRaisesRegex(RuntimeError, 'outcome unknown'):

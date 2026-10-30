@@ -97,7 +97,7 @@ def _running_box(suite, session_id):
     return _poll(suite, read, 'The long exec never became active in its Box')
 
 
-def _stream(suite, agent, scope, row, *, interrupt=None, box_session_id=None, frame_key='frames'):
+def _stream(suite, agent, scope, row, *, interrupt=None, box_session_id=None, frame_key='frames', before_cancel=None):
     request = urllib.request.Request(
         endpoint(suite, f'/api/v1/agents/{agent}/debug/stream'),
         data=json.dumps({'text': f'Run the QA scenario LB_MOCK_SCOPE={scope}', 'conversation_id': scope}).encode(),
@@ -130,6 +130,8 @@ def _stream(suite, agent, scope, row, *, interrupt=None, box_session_id=None, fr
                     row['box_session_id'] = checked(row, 'exec_active', lambda: _running_box(suite, box_session_id))
                     row['box_before_interrupt'] = _sessions(suite).get(row['box_session_id'])
                     if interrupt == 'cancel':
+                        if before_cancel is not None:
+                            before_cancel()
                         break  # Closing this public debug stream cancels its run.
             if frame.get('kind') in {'completed', 'error'}:
                 return frames
@@ -225,7 +227,7 @@ def _cleanup(suite, agent, scope, row, expected):
         raise RuntimeError('; '.join(([str(original)] if original else []) + errors))
 
 
-def run_case(suite, case, row):
+def run_case(suite, case, row, *, before_cancel=None):
     scenario = case['scenario']
     require(scenario in CASE_NAMES, 'Unknown local execution scenario')
     scope = 'qa-fault-' + uuid4().hex
@@ -277,6 +279,7 @@ def run_case(suite, case, row):
             row,
             interrupt='cancel' if scenario == 'execution.cancel_cleanup' else 'timeout' if interrupt else None,
             box_session_id=box_session_id,
+            before_cancel=before_cancel,
         )
         row['frames'] = frames
         run, events = _terminal(suite, agent, scope, row, expected)

@@ -21,7 +21,17 @@ from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900, 'api': 600}
+SUITE_BUDGETS = {
+    'smoke': 60,
+    'scenarios': 300,
+    'daily': 1860,
+    'endurance': 900,
+    'api': 600,
+    'state': 300,
+    'isolation': 300,
+    'plugin-lifecycle': 600,
+    'cli': 180,
+}
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
@@ -34,12 +44,29 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
         profile = expanded_profile(groups)
     else:
         profile = json.loads(profile_path.read_text())
+    if name == 'state':
+        from regression_state import state_profile
+
+        profile = state_profile(profile)
     if name == 'api':
         from regression_api_cases import add_cases
 
         profile.update(resources=[], cases=[], coverage_suite='api')
         profile['vars']['api_seed'] = api_seed
         add_cases(profile)
+    if name == 'isolation':
+        from regression_isolation_cases import isolation_profile
+
+        profile = isolation_profile(profile)
+    if name == 'plugin-lifecycle':
+        from regression_plugin_lifecycle import add_cases
+
+        profile.update(resources=[], cases=[], coverage_suite='plugin-lifecycle')
+        add_cases(profile)
+    if name == 'cli':
+        from regression_cli_cases import configure
+
+        configure(profile)
     for resource in profile['resources']:
         if resource['kind'] == 'pipeline':
             resource['body'].setdefault(
@@ -161,11 +188,15 @@ def run(args):
         return {'service': name, 'old_pid': old_pid, 'new_pid': pids[name], 'old_exit_code': process.returncode}
 
     try:
-        packages = (
-            prepare_source_plugins(root / 'plugins', args.plugins, args.extra_plugins)
-            if args.plugins is not None
-            else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
-        )
+        if args.suite == 'plugin-lifecycle':
+            (root / 'plugins').mkdir()
+            packages = {'version': 1, 'selection': 'local-fixtures', 'plugins': []}
+        else:
+            packages = (
+                prepare_source_plugins(root / 'plugins', args.plugins, args.extra_plugins)
+                if args.plugins is not None
+                else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
+            )
         config_path = create_minimal_config(private, port=15301)
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
@@ -179,8 +210,8 @@ def run(args):
         groups = args.scenario_groups
         if groups is None:
             groups = list(DEFAULT_GROUPS) if args.suite in ('scenarios', 'daily') else []
-            if args.suite == 'api':
-                groups = ['api']
+            if args.suite in ('api', 'isolation', 'plugin-lifecycle', 'cli'):
+                groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
         profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups, args.api_seed)
@@ -309,21 +340,26 @@ def run(args):
                 )
         generated = private / f'{args.suite}.json'
         generated.write_text(json.dumps(profile, indent=2))
-        result = supervise(
-            [
-                sys.executable,
-                str(ROOT / 'tools/regression_suite.py'),
-                'run',
-                '--profile',
-                str(generated),
-                '--output',
-                str(root / 'gate/suite'),
-            ],
-            root / 'gate',
-            SUITE_BUDGETS[args.suite] - restart_elapsed,
-            pids,
-            env,
-        )
+        if args.suite == 'state':
+            from regression_state import run_state_checks
+
+            result = run_state_checks(profile, profile_path, root / 'gate/suite', env, restart_owned)
+        else:
+            result = supervise(
+                [
+                    sys.executable,
+                    str(ROOT / 'tools/regression_suite.py'),
+                    'run',
+                    '--profile',
+                    str(generated),
+                    '--output',
+                    str(root / 'gate/suite'),
+                ],
+                root / 'gate',
+                SUITE_BUDGETS[args.suite] - restart_elapsed,
+                pids,
+                env,
+            )
         evidence = [root / 'gate/suite']
         if restart_result is not None:
             evidence.append(root / 'restart-checks')

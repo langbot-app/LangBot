@@ -256,6 +256,28 @@
      "description": "Plugin upgrade failure preserves a usable installation",
      "bindings": []
     },
+    {"id": "plugins.upgrade_persistence",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "A local plugin update runs the new version with its existing config and stored data",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_upgrade", "checks": ["upgrade_v2_task", "v2_identity", "v2_unique", "v2_state", "plugin_cleanup"]}],
+     "routes": ["POST /api/v1/plugins/install/local", "GET /api/v1/plugins/<author>/<plugin_name>", "PUT /api/v1/plugins/<author>/<plugin_name>/config", "POST /api/v1/plugins/<author>/<plugin_name>/page-api"]
+    },
+    {"id": "plugins.package_rejection",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "Reinstalling a local package preserves state and an invalid archive fails without disrupting that installation",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_rejected_package", "checks": ["reinstall_v1_task", "after_reinstall_state", "invalid_archive_task", "after_invalid_archive_identity", "after_invalid_archive_state", "plugin_cleanup"]}]
+    },
+    {"id": "plugins.explicit_recovery",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "A failed plugin initialization reports failure and reinstalling a known good package restores persisted state and later upgrades",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_failed_activation", "checks": ["broken_v2_task", "broken_v2_error", "failed_generation_safe", "restore_v1_task", "restored_v1_state", "recovered_v3_task", "v3_state", "plugin_cleanup"]}]
+    },
+    {"id": "plugins.observed_worker_cleanup",
+     "area": "plugins", "kind": "graybox", "priority": "P1",
+     "description": "Uninstall removes each fixture from the API and stops its observed worker process identities",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_upgrade", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}, {"profile": "plugin-lifecycle", "case": "plugin_rejected_package", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}, {"profile": "plugin-lifecycle", "case": "plugin_failed_activation", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}],
+     "routes": ["DELETE /api/v1/plugins/<author>/<plugin_name>"]
+    },
     {"id": "agent.direct_execution",
      "area": "agent", "kind": "blackbox", "priority": "P1",
      "description": "Standalone Agent entrypoint completes through the public API",
@@ -434,6 +456,27 @@
      "priority": "P1",
      "description": "Invalid MCP transport is rejected without changing stored configuration",
      "bindings": [{"profile": "api", "case": "fixed_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}, {"profile": "api", "case": "shuffled_api_mcp", "checks": ["api_chain", "mcp_invalid_transport_preserved"]}]
-    }
+    },
+    {"id": "state.configuration_persistence",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Created and updated pipeline configuration survives owned Core and Runtime restarts",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_configuration", "after_runtime_configuration", "after_core_configuration", "updated_configuration", "persisted_update_configuration", "initial_runtime_process_replaced", "initial_core_process_replaced", "updated_core_process_replaced"]}]
+    },
+    {"id": "state.history_and_model_update",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Conversation history survives restarts and the same session uses the updated model",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_chat_history", "after_runtime_chat_history", "after_core_chat_history", "updated_chat_history", "persisted_update_chat_history"]}]
+    },
+    {"id": "state.knowledge_replacement",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Knowledge documents survive restarts; replacement preserves control content and deletion removes stale results",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_retrievable", "after_runtime_retrievable", "after_core_retrievable", "updated_retrievable", "updated_obsolete_absent", "persisted_update_retrievable", "persisted_update_obsolete_absent", "documents_deleted", "deleted_retrieval_empty"]}]
+    },
+    {"id": "isolation.same_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent sessions in one Pipeline retain their own request identity and prior history", "bindings": [{"profile": "isolation", "case": "isolation.same_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},
+    {"id": "isolation.cross_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent Pipelines retain their own model routing, Bot identity, and conversation history", "bindings": [{"profile": "isolation", "case": "isolation.cross_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},
+    {"id": "isolation.cancel_neighbor", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Cancelling an active tool run leaves a concurrent neighbor completed and no delayed tool side effect", "bindings": [{"profile": "isolation", "case": "isolation.cancel_neighbor", "checks": ["cancel_isolation", "neighbor_active_at_cancel", "cancellation_overlapped_neighbor", "neighbor_identity_once", "no_late_side_effect", "box_idle"]}]},
+    {"id": "cli.identity", "area": "cli", "kind": "blackbox", "priority": "P2", "description": "CLI resolves the intended Workspace and discovers capabilities without freezing presentation", "bindings": [{"profile": "cli", "case": "cli.identity", "checks": ["cli_chain", "workspace_identity", "capability_discovery"]}]},
+    {"id": "cli.pipeline_roundtrip", "area": "cli", "kind": "blackbox", "priority": "P2", "description": "CLI mutations preserve submitted and existing Pipeline state, with independent HTTP readback", "bindings": [{"profile": "cli", "case": "cli.pipeline_roundtrip", "checks": ["cli_chain", "create_identity", "cli_get", "cli_list", "create_state", "update_state"]}]},
+    {"id": "cli.invalid_credential", "area": "cli", "kind": "blackbox", "priority": "P2", "description": "CLI rejects invalid credentials with a nonzero exit and a diagnostic signal", "bindings": [{"profile": "cli", "case": "cli.invalid_credential", "checks": ["cli_chain", "credential_rejected", "error_signal"]}]}
   ]
 }

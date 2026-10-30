@@ -26,7 +26,7 @@ jobs:
       - name: Install the plugin build CLI independently of Core
         run: |
           uv venv "$RUNNER_TEMP/plugin-build"
-          uv pip install --python "$RUNNER_TEMP/plugin-build/bin/python" 'langbot-plugin==0.7.18' pyyaml
+          uv pip install --python "$RUNNER_TEMP/plugin-build/bin/python" 'langbot-plugin==0.7.19' pyyaml
           echo "$RUNNER_TEMP/plugin-build/bin" >> "$GITHUB_PATH"
       - name: Build selected plugin without publishing
         env:

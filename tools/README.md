@@ -291,6 +291,35 @@ quality. Run the Job plumbing checks on Linux with:
 uv run --no-sync python -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
+## Local plugin lifecycle
+
+Run the separate plugin lifecycle Job on a disposable Linux stack:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite plugin-lifecycle \
+  --lbctl /path/to/lbctl --output .qa/plugin-lifecycle-001
+```
+
+Its three chains install a dependency-free local Page fixture, store a Unicode
+marker and configure it, then exercise an update, a repeated installation and
+invalid archive, or an initialization failure followed by explicitly reinstalling
+a known good package and updating again. Assertions check completed task status,
+the executing version, retained configuration and plugin storage, and unique
+installation visibility. Cleanup verifies API removal and termination of observed
+worker PIDs, including their process start times. The 600-second budget is a cap;
+the Job stops when its finite cases finish.
+
+The current HTTP installation path does not promise automatic rollback after
+initialization failure. This Job verifies explicit recovery; the separate
+`plugins.upgrade_recovery` coverage obligation remains unclaimed. A failed
+generation must be absent or reject Page calls. If Core instead restores the old
+version automatically, that version must pass its full configuration, storage and
+Page oracle. It uses the
+existing runner's stack preparation and local HTTP uploads, installs only the
+bundled fixtures without Marketplace access, and is not included in smoke or daily
+by default. Cases, task outcomes, worker identities and cleanup journals are saved
+under `gate/suite/`.
+
 ## Finite core smoke
 
 Use [`regression_profiles/smoke.json`](regression_profiles/smoke.json) for a finite
@@ -498,6 +527,29 @@ bind their own extensions to avoid changing unrelated prompts/tools. The suite a
 even after failures. The CI owner then stops its service processes and removes
 its Box containers; a process guard timeout can interrupt API cleanup.
 
+## Durable state lifecycle job
+
+Run the finite state job on the same disposable Linux stack:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite state \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/state-001
+```
+
+The dependent chain creates a Pipeline, model bindings, HTTP Bot and isolated
+knowledge base. It verifies conversation history and exact document content
+through Runtime and Core restarts, changes the Pipeline model and replaces one
+document while retaining a control document, then repeats the readback after
+another Core restart. Deleting all documents must leave both file listings and
+retrieval empty; normal Suite cleanup checks the owned configuration resources.
+
+The business chain has a 270-second budget and a 30-second cleanup reserve;
+plugin installation and initial service startup are outside this budget.
+`gate/suite/cases.json` retains assertions, process replacement receipts, exact
+HTTP statuses and retrieved content. A missing phase or failed assertion fails
+the job. The job is opt-in and does not change Smoke or the daily schedule. It
+checks graceful process restart durability, not abrupt power loss or migrations.
+
 ## Daily API contract job
 
 `daily-endurance.yml` runs API contracts alongside the 30-minute endurance job
@@ -537,6 +589,54 @@ Inspect `gate/gate.json` for the verdict, seed and exact case order;
 An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
 configuration unchanged. Any failed contract or cleanup makes the job fail.
+
+## Concurrent isolation job
+
+Run this finite job on a disposable Linux/Docker host:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite isolation \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/isolation-001
+```
+
+It uses two concurrent requests in one Workspace. Three scenarios cover two
+sessions on one Pipeline, two sessions on different Pipelines/models, and
+cancelling an active Box tool while a neighboring conversation completes.
+The first two scenarios each make two turns per session, checking request tokens,
+previous-turn history, Bot identity, model routing and exact terminal results.
+The cancellation scenario reuses the delayed-side-effect check and requires the
+Box to become idle. Read-only ledger intervals must overlap; serialized execution
+cannot pass as a concurrency test. Every accepted request must match exactly one
+terminal run, and mock records must contain exactly the owned model calls.
+
+HTTP Bot `/sync` collects cumulative stream snapshots, so each text component
+must be a monotonic prefix of that request's expected reply and the last must be
+complete. The job cannot count final delivery frames on this lossy endpoint.
+The 300-second guard bounds execution after preparation; there are no throughput
+or latency thresholds. `gate/suite/cases.json` retains per-request evidence and
+`gate/gate.json` the overall verdict. The job is explicit and does not change
+default daily or PR smoke cases. It does not test cross-Workspace isolation or
+high concurrency.
+
+## CLI compatibility check
+
+Run on the same disposable Linux host:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite cli \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/cli-001
+```
+
+The finite job checks
+Workspace identity, capability discovery, Pipeline create/read/update/delete,
+and invalid credentials. It uses the supplied CLI binary and records its version;
+select the latest stable release when validating the evolving CLI.
+
+Assertions allow additional output fields and changes to human-readable wording.
+Workspace identity, created resource identity, actual backend state, cleanup and
+nonzero exit on authentication failure remain required. HTTP readback provides
+an independent oracle, so an exit code of zero alone cannot pass a mutation.
+The suite is opt-in and adds no daily schedule or PR gate.
 
 ## Sustained regression and baseline comparison
 
