@@ -13,6 +13,7 @@ OMNI_ADAPTER_NAMES = frozenset(
         'wecombot',
         'wecomcs',
         'officialaccount',
+        'line',
     }
 )
 

@@ -24,6 +24,7 @@ from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
 from .. import errors, reasoning, requester
+from . import minimax
 from ....utils import httpclient, image
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -213,6 +214,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         'bailian-chat-completions': 'qwen',
         'doubao-chat-completions': 'doubao',
         'mimo-chat-completions': 'mimo',
+        'minimax-chat-completions': 'minimax',
     }
 
     default_config: dict[str, typing.Any] = {
@@ -569,6 +571,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]
 
+        if family == 'minimax':
+            return minimax.reasoning_levels(normalized_name)
+
         if family == 'deepseek' and normalized_name.startswith('deepseek-'):
             if normalized_name.startswith('deepseek-v4-'):
                 return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
@@ -728,6 +733,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             raise errors.RequesterError(str(exc), code='invalid_policy') from exc
 
         family = self._reasoning_family(model.model_entity.name, model)
+        if family == 'minimax':
+            return minimax.reasoning_parameters(level)
         budget = config.get('budget_tokens')
         if budget is not None:
             if self._uses_openrouter_protocol():
@@ -837,6 +844,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
             provider_fields = msg_dict.get('provider_specific_fields')
+            replay_fields = minimax.take_replay_fields(provider_fields) if isinstance(provider_fields, dict) else {}
             if isinstance(provider_fields, dict):
                 # Stream completion metadata belongs to the response, never to
                 # replayed chat messages. Keep provider signatures for LiteLLM.
@@ -877,6 +885,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         msg_dict['provider_specific_fields'] = cleaned_provider_fields
                     else:
                         msg_dict.pop('provider_specific_fields', None)
+
+            if msg_dict.get('role') == 'assistant' and reasoning_family == 'minimax':
+                msg_dict.update(replay_fields)
 
             if isinstance(content, list):
                 converted_parts = []
@@ -1476,6 +1487,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 content = message_data.get('content', '')
                 reasoning_content = message_data.get('reasoning_content', None)
                 thinking_blocks = message_data.get('thinking_blocks')
+                if self._reasoning_family(model.model_entity.name, model) == 'minimax':
+                    message_data['provider_specific_fields'] = minimax.capture_content(message_data)
                 if reasoning_content or thinking_blocks:
                     provider_fields = dict(message_data.get('provider_specific_fields') or {})
                     if reasoning_content:
@@ -1520,6 +1533,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         reasoning_started = False
         reasoning_closed = False
         thinking_blocks_state: list[dict[str, typing.Any]] = []
+        keep_minimax_content = self._reasoning_family(model.model_entity.name, model) == 'minimax'
+        raw_content_parts: list[str] = []
         response = None
 
         async with self._client_args(args) as args:
@@ -1562,6 +1577,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     delta_content = delta.get('content') or ''
                     reasoning_content = delta.get('reasoning_content') or ''
                     provider_fields = dict(delta.get('provider_specific_fields') or {})
+                    if keep_minimax_content:
+                        if isinstance(delta.get('content'), str):
+                            raw_content_parts.append(delta['content'])
+                        if finish_reason and raw_content_parts:
+                            provider_fields[minimax.RAW_CONTENT_FIELD] = ''.join(raw_content_parts)
+                            raw_content_parts.clear()
                     if finish_reason:
                         # Preserve an explicit provider stop even when the final delta is empty.
                         provider_fields['finish_reason'] = finish_reason
@@ -1636,6 +1657,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
                     yield provider_message.MessageChunk(**chunk_data)
                     chunk_idx += 1
+
+                if raw_content_parts:
+                    yield provider_message.MessageChunk(
+                        role=role,
+                        is_final=True,
+                        provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
+                    )
 
                 if reasoning_started and not reasoning_closed:
                     yield provider_message.MessageChunk(
@@ -1882,8 +1910,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     # rather than /models. Providers whose configured base_url
                     # already ends in /v1 keep their original (working) URL.
                     response = await client.get(f'{base_url}/v1/models', headers=headers)
-                response.raise_for_status()
-                payload = await httpclient.parse_json_response(response)
+                if self._requester_name() == 'minimax-chat-completions' and response.status_code == 404:
+                    payload = {}
+                else:
+                    response.raise_for_status()
+                    payload = await httpclient.parse_json_response(response)
 
             models = []
             for item in payload.get('data', []):
@@ -1894,6 +1925,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 models.append(self._enrich_scanned_model(model_id, item))
 
             models.sort(key=lambda x: (x['type'] != 'llm', x['name'].lower()))
+
+            direct_minimax = self._requester_name() == 'minimax-chat-completions'
+            if direct_minimax or self._uses_openrouter_protocol():
+                models = minimax.arrange_catalog(models, direct=direct_minimax)
 
             return {'models': models}
 
