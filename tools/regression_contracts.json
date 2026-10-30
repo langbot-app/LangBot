@@ -256,6 +256,28 @@
      "description": "Plugin upgrade failure preserves a usable installation",
      "bindings": []
     },
+    {"id": "plugins.upgrade_persistence",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "A local plugin update runs the new version with its existing config and stored data",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_upgrade", "checks": ["upgrade_v2_task", "v2_identity", "v2_unique", "v2_state", "plugin_cleanup"]}],
+     "routes": ["POST /api/v1/plugins/install/local", "GET /api/v1/plugins/<author>/<plugin_name>", "PUT /api/v1/plugins/<author>/<plugin_name>/config", "POST /api/v1/plugins/<author>/<plugin_name>/page-api"]
+    },
+    {"id": "plugins.package_rejection",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "Reinstalling a local package preserves state and an invalid archive fails without disrupting that installation",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_rejected_package", "checks": ["reinstall_v1_task", "after_reinstall_state", "invalid_archive_task", "after_invalid_archive_identity", "after_invalid_archive_state", "plugin_cleanup"]}]
+    },
+    {"id": "plugins.explicit_recovery",
+     "area": "plugins", "kind": "blackbox", "priority": "P1",
+     "description": "A failed plugin initialization reports failure and reinstalling a known good package restores persisted state and later upgrades",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_failed_activation", "checks": ["broken_v2_task", "broken_v2_error", "failed_generation_safe", "restore_v1_task", "restored_v1_state", "recovered_v3_task", "v3_state", "plugin_cleanup"]}]
+    },
+    {"id": "plugins.observed_worker_cleanup",
+     "area": "plugins", "kind": "graybox", "priority": "P1",
+     "description": "Uninstall removes each fixture from the API and stops its observed worker process identities",
+     "bindings": [{"profile": "plugin-lifecycle", "case": "plugin_upgrade", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}, {"profile": "plugin-lifecycle", "case": "plugin_rejected_package", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}, {"profile": "plugin-lifecycle", "case": "plugin_failed_activation", "checks": ["uninstall_task", "uninstalled_from_list", "uninstalled_workers_stopped"]}],
+     "routes": ["DELETE /api/v1/plugins/<author>/<plugin_name>"]
+    },
     {"id": "agent.direct_execution",
      "area": "agent", "kind": "blackbox", "priority": "P1",
      "description": "Standalone Agent entrypoint completes through the public API",
