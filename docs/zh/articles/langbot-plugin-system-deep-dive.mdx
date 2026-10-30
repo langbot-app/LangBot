@@ -1,6 +1,6 @@
 ---
 title: "深入 LangBot 插件系统：进程隔离、事件驱动与组件化架构"
-description: "从源码层面深入剖析 LangBot 4.0 插件系统的架构设计——进程隔离通信、事件驱动钩子、组件化扩展模型，以及与 Dify/MCP 等系统的对比思考。"
+description: "从源码层面深入剖析 LangBot 插件系统（v4.3 起）的架构设计——进程隔离通信、事件驱动钩子、组件化扩展模型，以及与 Dify/MCP 等系统的对比思考。"
 ---
 
 本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/langbot-plugin-system-deep-dive).
@@ -9,7 +9,7 @@ description: "从源码层面深入剖析 LangBot 4.0 插件系统的架构设�
 
 ![LangBot Plugin System](/images/articles/source/images/covers/plugin-system.png)
 
-大多数聊天机器人框架的"插件系统"不过是一个 Python 模块的动态导入。LangBot 4.0 选择了一条更难但更正确的路——**每个插件运行在独立进程中**，通过结构化的 JSON-RPC 风格协议与宿主通信。
+大多数聊天机器人框架的"插件系统"不过是一个 Python 模块的动态导入。LangBot 自 v4.3 起选择了一条更难但更正确的路——**每个插件运行在独立进程中**，通过结构化的 JSON-RPC 风格协议与宿主通信。
 
 这篇文章将从源码出发，完整拆解这套系统的设计。
 

@@ -1,6 +1,6 @@
 ---
 title: "Deep Dive into the LangBot Plugin System: Process Isolation, Event-Driven Hooks, and Component Architecture"
-description: "A source-level deep dive into LangBot 4.0's plugin architecture — process-isolated communication, event-driven hooks, a component-based extension model, and comparisons with Dify and MCP."
+description: "A source-level deep dive into LangBot's plugin architecture (introduced in v4.3) — process-isolated communication, event-driven hooks, a component-based extension model, and comparisons with Dify and MCP."
 ---
 
 This article is synchronized from the LangBot Blog. [Read the canonical version](https://langbot.app/en/blog/langbot-plugin-system-deep-dive).
@@ -9,7 +9,7 @@ Published 2026-02-23 · Author: LangBot Team
 
 ![LangBot Plugin System](/images/articles/source/images/covers/plugin-system.png)
 
-Most chatbot frameworks call their "plugin system" a glorified dynamic import of Python modules. LangBot 4.0 takes a harder but more principled approach — **every plugin runs in its own process**, communicating with the host through a structured JSON-RPC-style protocol.
+Most chatbot frameworks call their "plugin system" a glorified dynamic import of Python modules. Since v4.3, LangBot takes a harder but more principled approach — **every plugin runs in its own process**, communicating with the host through a structured JSON-RPC-style protocol.
 
 This article dissects the system from source code, end to end.
 

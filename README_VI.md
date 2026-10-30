@@ -7,8 +7,8 @@
 
 <a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
-<h3>Nền tảng cấp sản xuất để xây dựng bot IM với AI agent.</h3>
-<h4>Xây dựng, gỡ lỗi và triển khai bot AI nhanh chóng trên Slack, Discord, Telegram, WeChat và nhiều nền tảng khác.</h4>
+<h3>Bot AI phục vụ cộng đồng, khách hàng và đội nhóm của bạn.</h3>
+<h4>Bắt đầu từ một kịch bản có sẵn hoặc kết nối ứng dụng Dify / n8n / Coze của bạn, và vận hành ổn định trên WeChat, QQ, Slack, Discord, Telegram và nhiều nền tảng khác.</h4>
 
 [English](README.md) / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / Tiếng Việt
 
@@ -33,7 +33,7 @@
 
 ## LangBot là gì?
 
-LangBot là một **nền tảng mã nguồn mở, cấp sản xuất** để xây dựng bot nhắn tin tức thời được hỗ trợ bởi AI. Nó kết nối các Mô hình Ngôn ngữ Lớn (LLM) với bất kỳ nền tảng chat nào, cho phép bạn tạo các agent thông minh có thể trò chuyện, thực hiện tác vụ và tích hợp với quy trình làm việc hiện có của bạn.
+LangBot là một **nền tảng bot IM mã nguồn mở** dành cho những bot phục vụ nhiều người: trò chuyện nhóm và cộng đồng, chăm sóc khách hàng trên WeChat và WeCom, trợ lý nội bộ trên Lark, DingTalk hoặc Slack. Bắt đầu từ một kịch bản có sẵn, hoặc mang ứng dụng AI bạn đã xây dựng trên Dify, n8n hay Coze vào nền tảng chat. Quản lý mọi nhóm và nền tảng từ một bảng điều khiển, có nhật ký khi xảy ra sự cố.
 
 <p align="center">
 <img src="res/dashboard-overview.png" alt="Bảng điều khiển quản lý web LangBot — giám sát thời gian thực khối lượng tin nhắn, lệnh gọi mô hình, tỷ lệ thành công và phiên hoạt động" width="720"/>
@@ -41,12 +41,12 @@ LangBot là một **nền tảng mã nguồn mở, cấp sản xuất** để x�
 
 ### Khả năng chính
 
+- **Một bot, mọi nhóm và nền tảng** — QQ, WeChat, WeCom, Lark, DingTalk, Discord, Telegram, Slack, LINE, KOOK và nhiều hơn nữa. Bot và pipeline riêng cho từng nhóm và kịch bản, quản lý tại một nơi.
+- **Thiết kế cho trò chuyện nhóm và chăm sóc khách hàng** — Quy tắc kích hoạt trong nhóm, cô lập phiên, giới hạn tốc độ, lọc từ nhạy cảm, chào mừng thành viên mới, xử lý lời mời kết bạn và chuyển sang nhân viên qua plugin.
 - **Hội thoại AI & Agent** — Đối thoại nhiều lượt, gọi công cụ, hỗ trợ đa phương thức, đầu ra streaming. RAG (cơ sở kiến thức) tích hợp sẵn với tích hợp sâu vào [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech), [Weknora](https://weknora.weixin.qq.com).
-- **Hỗ trợ đa nền tảng IM** — Một mã nguồn cho Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
-- **Sẵn sàng cho sản xuất** — Kiểm soát truy cập, giới hạn tốc độ, lọc từ nhạy cảm, giám sát toàn diện và xử lý ngoại lệ. Được doanh nghiệp tin dùng.
-- **Hệ sinh thái Plugin** — Hàng trăm plugin, kiến trúc hướng sự kiện, mở rộng thành phần, và hỗ trợ [giao thức MCP](https://modelcontextprotocol.io/).
+- **Vận hành ổn định, dễ khắc phục sự cố** — Kiểm soát truy cập, nhật ký thực thi đầy đủ, lịch sử gọi, xử lý ngoại lệ và xuất dữ liệu. Đang phục vụ nhiều môi trường sản xuất.
+- **Hệ sinh thái Plugin** — Hàng trăm plugin, máy chủ MCP và Skills, cài đặt một chạm từ marketplace. Kiến trúc hướng sự kiện và mở rộng thành phần.
 - **Bảng quản lý Web** — Cấu hình, quản lý và giám sát bot thông qua giao diện trình duyệt trực quan. Không cần chỉnh sửa YAML.
-- **Kiến trúc đa Pipeline** — Các bot khác nhau cho các kịch bản khác nhau, với giám sát toàn diện và xử lý ngoại lệ.
 
 [→ Tìm hiểu thêm về tất cả tính năng](https://langbot.app/docs/en/insight/features)
 
@@ -150,11 +150,11 @@ docker compose --profile all up -d
 ## Tại sao chọn LangBot?
 
 | Trường hợp sử dụng | LangBot giúp như thế nào |
-|----------|-------------------|
-| **Hỗ trợ khách hàng** | Triển khai agent AI trên Slack/Discord/Telegram để trả lời câu hỏi bằng cơ sở kiến thức của bạn |
-| **Công cụ nội bộ** | Kết nối quy trình n8n/Dify với WeCom/DingTalk để tự động hóa quy trình kinh doanh |
-| **Quản lý cộng đồng** | Quản lý nhóm QQ/Discord với tính năng lọc nội dung và tương tác được hỗ trợ bởi AI |
-| **Đa nền tảng** | Một bot, tất cả nền tảng. Quản lý từ một bảng điều khiển duy nhất |
+| --- | --- |
+| **Bot cộng đồng** | Trả lời câu hỏi, chào mừng thành viên mới và tương tác theo quy tắc của bạn trong nhóm QQ / Discord / Telegram, ghi nhớ ngữ cảnh của từng thành viên |
+| **Kênh riêng và chăm sóc khách hàng** | Tự động trả lời yêu cầu trên WeChat và dịch vụ khách hàng WeCom bằng cơ sở kiến thức của bạn, chuyển sang nhân viên khi cần |
+| **Đưa ứng dụng AI của bạn lên IM** | Kết nối ứng dụng Dify / n8n / Coze với bất kỳ nền tảng chat nào chỉ trong một bước, không cần viết mã tích hợp |
+| **Trợ lý cho đội nhóm** | Hỏi đáp kiến thức và tự động hóa quy trình trên Lark, DingTalk và WeCom, cả đội cùng quản lý |
 
 ---
 

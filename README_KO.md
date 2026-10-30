@@ -7,8 +7,8 @@
 
 <a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
-<h3>AI 에이전트 IM 봇 구축을 위한 프로덕션 등급 플랫폼.</h3>
-<h4>Slack, Discord, Telegram, WeChat 등에 AI 봇을 빠르게 구축, 디버그 및 배포.</h4>
+<h3>커뮤니티, 고객, 팀을 위해 일하는 AI 봇.</h3>
+<h4>준비된 시나리오로 시작하거나 Dify / n8n / Coze 앱을 연결해 WeChat, QQ, Slack, Discord, Telegram 등에서 안정적으로 운영하세요.</h4>
 
 [English](README.md) / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / 한국어 / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -33,7 +33,7 @@
 
 ## LangBot이란?
 
-LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈소스 프로덕션 등급 플랫폼**입니다. 대규모 언어 모델(LLM)을 모든 채팅 플랫폼에 연결하여 대화, 작업 실행, 기존 워크플로우와의 통합이 가능한 지능형 에이전트를 만들 수 있습니다.
+LangBot은 많은 사람을 상대하는 봇을 위한 **오픈소스 IM 봇 플랫폼**입니다. 그룹 채팅과 커뮤니티, WeChat·WeCom 고객 응대, Lark·DingTalk·Slack 사내 어시스턴트에 적합합니다. 준비된 시나리오로 시작하거나 Dify, n8n, Coze에서 이미 만든 AI 앱을 그대로 채팅 플랫폼에 연결할 수 있습니다. 모든 그룹과 플랫폼을 하나의 대시보드에서 관리하고, 문제가 생기면 로그로 추적할 수 있습니다.
 
 <p align="center">
 <img src="res/dashboard-overview.png" alt="LangBot 웹 관리 패널 대시보드 — 메시지 양, 모델 호출, 성공률, 활성 세션 실시간 모니터링" width="720"/>
@@ -41,12 +41,12 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 ### 핵심 기능
 
+- **하나의 봇으로 모든 그룹과 플랫폼을** — QQ, WeChat, WeCom, Lark, DingTalk, Discord, Telegram, Slack, LINE, KOOK 등. 그룹과 시나리오마다 다른 봇과 파이프라인을 한곳에서 관리.
+- **그룹 채팅과 고객 응대를 위한 설계** — 그룹 트리거 규칙, 세션 격리, 속도 제한, 민감어 필터링, 신규 멤버 환영, 친구 요청 처리, 플러그인을 통한 상담원 연결.
 - **AI 대화 및 에이전트** — 멀티턴 대화, 도구 호출, 멀티모달 지원, 스트리밍 출력. 내장 RAG(지식 베이스)와 [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech), [Weknora](https://weknora.weixin.qq.com) 심층 통합.
-- **유니버설 IM 플랫폼 지원** — 단일 코드베이스로 Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK 지원.
-- **프로덕션 레디** — 접근 제어, 속도 제한, 민감어 필터링, 종합 모니터링 및 예외 처리. 기업 환경에서 검증됨.
-- **플러그인 생태계** — 수백 개의 플러그인, 이벤트 기반 아키텍처, 컴포넌트 확장, [MCP 프로토콜](https://modelcontextprotocol.io/) 지원.
+- **안정적인 운영, 쉬운 문제 해결** — 접근 제어, 전체 실행 로그, 호출 기록, 예외 처리, 데이터 내보내기. 다수의 프로덕션 환경에서 운영 중.
+- **플러그인 생태계** — 수백 개의 플러그인, MCP 서버, Skills를 마켓플레이스에서 원클릭 설치. 이벤트 기반 아키텍처와 컴포넌트 확장.
 - **웹 관리 패널** — 직관적인 브라우저 인터페이스로 봇을 구성, 관리 및 모니터링. YAML 편집 불필요.
-- **멀티 파이프라인 아키텍처** — 다양한 시나리오에 맞는 다양한 봇 구성, 종합 모니터링 및 예외 처리.
 
 [→ 모든 기능 자세히 보기](https://langbot.app/docs/en/insight/features)
 
@@ -150,11 +150,11 @@ docker compose --profile all up -d
 ## 왜 LangBot인가?
 
 | 사용 사례 | LangBot 활용 방법 |
-|-----------|-------------------|
-| **고객 지원** | 지식 베이스를 활용하여 질문에 답변하는 AI 에이전트를 Slack/Discord/Telegram에 배포 |
-| **내부 도구** | n8n/Dify 워크플로우를 WeCom/DingTalk에 연결하여 비즈니스 프로세스 자동화 |
-| **커뮤니티 관리** | AI 기반 콘텐츠 필터링 및 상호작용으로 QQ/Discord 그룹 관리 |
-| **멀티 플랫폼** | 하나의 봇으로 모든 플랫폼 지원. 단일 대시보드에서 관리 |
+| --- | --- |
+| **커뮤니티 봇** | QQ / Discord / Telegram 그룹에서 질문에 답하고, 신규 멤버를 환영하며, 규칙에 따라 소통하고 멤버의 맥락을 기억 |
+| **프라이빗 채널 및 고객 응대** | WeChat과 WeCom 고객센터에서 지식 베이스로 문의에 자동 응답하고, 필요하면 상담원에게 연결 |
+| **기존 AI 앱을 메신저로** | Dify / n8n / Coze 앱을 원하는 채팅 플랫폼에 한 번에 연결, 연동 코드 불필요 |
+| **팀 어시스턴트** | Lark, DingTalk, WeCom에서 지식 Q&A와 업무 자동화를 팀이 함께 관리 |
 
 ---
 

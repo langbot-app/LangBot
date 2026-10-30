@@ -7,8 +7,8 @@
 
 <a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
-<h3>Plateforme de niveau production pour construire des bots de messagerie instantanée avec agents IA.</h3>
-<h4>Créez, déboguez et déployez rapidement des bots IA sur Slack, Discord, Telegram, WeChat et plus.</h4>
+<h3>Des bots IA au service de vos communautés, clients et équipes.</h3>
+<h4>Partez d'un scénario prêt à l'emploi ou connectez votre app Dify / n8n / Coze, et faites-la tourner de manière fiable sur WeChat, QQ, Slack, Discord, Telegram et plus.</h4>
 
 [English](README.md) / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / Français / [한국어](README_KO.md) / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -33,7 +33,7 @@
 
 ## Qu'est-ce que LangBot ?
 
-LangBot est une **plateforme open-source de niveau production** pour créer des bots de messagerie instantanée alimentés par l'IA. Elle connecte les grands modèles de langage (LLMs) à n'importe quelle plateforme de chat, vous permettant de créer des agents intelligents capables de converser, d'exécuter des tâches et de s'intégrer à vos workflows existants.
+LangBot est une **plateforme open-source de bots de messagerie** conçue pour les bots qui servent beaucoup de monde : discussions de groupe et communautés, relation client sur WeChat et WeCom, assistants internes sur Lark, DingTalk ou Slack. Partez d'un scénario prêt à l'emploi, ou apportez l'app IA que vous avez déjà construite sur Dify, n8n ou Coze. Gérez tous vos groupes et plateformes depuis un seul tableau de bord, avec des journaux quand quelque chose ne va pas.
 
 <p align="center">
 <img src="res/dashboard-overview.png" alt="Tableau de bord de gestion web LangBot — surveillance en temps réel du volume de messages, des appels de modèles, du taux de réussite et des sessions actives" width="720"/>
@@ -41,12 +41,12 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 
 ### Capacités Clés
 
+- **Un bot, tous les groupes et plateformes** — QQ, WeChat, WeCom, Lark, DingTalk, Discord, Telegram, Slack, LINE, KOOK et plus. Des bots et pipelines différents pour chaque groupe et scénario, gérés depuis un seul endroit.
+- **Conçu pour les groupes et le service client** — Règles de déclenchement en groupe, isolation des sessions, limitation de débit, filtrage de mots sensibles, accueil des nouveaux membres, gestion des demandes d'ami et transfert vers un humain via plugin.
 - **Conversations IA & Agents** — Dialogues multi-tours, appels d'outils, support multimodal, sortie en streaming. RAG (base de connaissances) intégré avec intégration profonde de [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech), [Weknora](https://weknora.weixin.qq.com).
-- **Support Universel des Plateformes de MI** — Un seul code pour Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
-- **Prêt pour la Production** — Contrôle d'accès, limitation de débit, filtrage de mots sensibles, surveillance complète et gestion des exceptions. Approuvé par les entreprises.
-- **Écosystème de Plugins** — Des centaines de plugins, architecture événementielle, extensions de composants, et support du [protocole MCP](https://modelcontextprotocol.io/).
+- **Fiable et facile à diagnostiquer** — Contrôle d'accès, journaux d'exécution complets, historique des appels, gestion des exceptions et export des données. Au service de nombreux environnements de production.
+- **Écosystème de Plugins** — Des centaines de plugins, serveurs MCP et Skills, installables en un clic depuis la marketplace. Architecture événementielle et extensions de composants.
 - **Panneau de Gestion Web** — Configurez, gérez et surveillez vos bots via une interface navigateur intuitive. Aucune édition de YAML requise.
-- **Architecture Multi-Pipeline** — Différents bots pour différents scénarios, avec surveillance complète et gestion des exceptions.
 
 [→ En savoir plus sur toutes les fonctionnalités](https://langbot.app/docs/en/insight/features)
 
@@ -150,11 +150,11 @@ docker compose --profile all up -d
 ## Pourquoi LangBot ?
 
 | Cas d'Usage | Comment LangBot Aide |
-|----------|-------------------|
-| **Support Client** | Déployez des agents IA sur Slack/Discord/Telegram qui répondent aux questions en utilisant votre base de connaissances |
-| **Outils Internes** | Connectez les workflows n8n/Dify à WeCom/DingTalk pour automatiser vos processus métier |
-| **Gestion de Communauté** | Modérez les groupes QQ/Discord avec un filtrage de contenu et des interactions alimentés par l'IA |
-| **Présence Multi-plateforme** | Un seul bot, toutes les plateformes. Gérez tout depuis un tableau de bord unique |
+| --- | --- |
+| **Bots de communauté** | Répondez aux questions, accueillez les nouveaux membres et interagissez selon vos règles dans les groupes QQ / Discord / Telegram, en gardant le contexte de chaque membre |
+| **Canaux privés et service client** | Répondez automatiquement aux demandes sur WeChat et le service client WeCom avec votre base de connaissances, avec transfert vers un humain si besoin |
+| **Votre app IA dans la messagerie** | Connectez vos apps Dify / n8n / Coze à n'importe quelle plateforme de chat en une étape, sans code d'intégration |
+| **Assistants d'équipe** | Q&R sur la base de connaissances et automatisation des processus dans Lark, DingTalk et WeCom, gérés en équipe |
 
 ---
 

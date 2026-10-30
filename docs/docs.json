@@ -14,7 +14,7 @@
     "href": "https://langbot.app"
   },
   "favicon": "/favicon.ico",
-  "description": "Production-grade No-code AI Bot Platform. Connect DeepSeek, Dify, GPT-4 & Claude to WeChat, Discord, Telegram, Slack, Lark & DingTalk in 5 minutes.",
+  "description": "Open-source AI bots for your communities, customers and teams. Connect DeepSeek, Dify, GPT & Claude to WeChat, QQ, Discord, Telegram, Slack, Lark & DingTalk in 5 minutes.",
   "seo": {
     "indexing": "all",
     "metatags": {

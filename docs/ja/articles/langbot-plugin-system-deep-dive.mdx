@@ -1,6 +1,6 @@
 ---
 title: "LangBot プラグインシステム詳解：プロセス分離・イベント駆動・コンポーネント設計"
-description: "A source-level deep dive into LangBot 4.0's plugin architecture — process-isolated communication, event-driven hooks, a component-based extension model, and comparisons with Dify and MCP."
+description: "A source-level deep dive into LangBot's plugin architecture (introduced in v4.3) — process-isolated communication, event-driven hooks, a component-based extension model, and comparisons with Dify and MCP."
 ---
 
 この記事は LangBot Blog から同期されています。 [Blog の原文を読む](https://langbot.app/en/blog/langbot-plugin-system-deep-dive).
@@ -11,7 +11,7 @@ description: "A source-level deep dive into LangBot 4.0's plugin architecture �
 
 ![LangBot Plugin System](/images/articles/source/images/covers/plugin-system.png)
 
-Most chatbot frameworks call their "plugin system" a glorified dynamic import of Python modules. LangBot 4.0 takes a harder but more principled approach — **every plugin runs in its own process**, communicating with the host through a structured JSON-RPC-style protocol.
+Most chatbot frameworks call their "plugin system" a glorified dynamic import of Python modules. Since v4.3, LangBot takes a harder but more principled approach — **every plugin runs in its own process**, communicating with the host through a structured JSON-RPC-style protocol.
 
 This article dissects the system from source code, end to end.
 

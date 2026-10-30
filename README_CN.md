@@ -7,8 +7,8 @@
 
 <a href="https://hellogithub.com/repository/langbot-app/LangBot" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=5ce8ae2aa4f74316bf393b57b952433c&claim_uid=gtmc6YWjMZkT21R" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
-<h3>生产级 AI 即时通信机器人开发平台。</h3>
-<h4>快速构建、调试和部署 AI 机器人到微信、QQ、飞书、Slack、Discord、Telegram 等平台。</h4>
+<h3>让 AI 机器人替你服务社群、客户和团队。</h3>
+<h4>用现成场景，或接入你的 Dify / n8n / Coze 应用，在 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram 等平台上稳定运行。</h4>
 
 [English](README.md) / 简体中文 / [繁體中文](README_TW.md) / [日本語](README_JP.md) / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -34,7 +34,7 @@
 
 ---
 
-LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时通信机器人。它将大语言模型（LLM）连接到各种聊天平台，帮助你创建能够对话、执行任务、并集成到现有工作流程中的智能 Agent。
+LangBot 是一个**开源的 IM 机器人平台**，专为“一个机器人服务很多人”的场景设计：QQ 群和社区、微信私域、企业微信客服、飞书 / 钉钉内部助手。你可以从现成的场景开始，也可以把已经在 Dify、n8n、Coze 上做好的 AI 应用直接接进聊天平台。多个群、多个平台在同一个面板里管理，出问题时有日志可查。
 
 <p align="center">
 <img src="res/dashboard-overview.png" alt="LangBot Web 管理面板仪表盘 — 实时监控消息量、模型调用、成功率与活跃会话" width="720"/>
@@ -42,12 +42,12 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ### 核心能力
 
+- **一个机器人，覆盖所有群和平台** — QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack、LINE、KOOK 等。不同的群和场景使用不同的机器人与流水线，统一管理。
+- **为群聊和客服设计** — 群内触发规则、会话隔离、限速、敏感词过滤、新成员欢迎、好友申请处理，并可通过插件转人工。
 - **AI 对话与 Agent** — 多轮对话、工具调用、多模态、流式输出。自带 RAG（知识库），深度集成 [Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org)、[Deerflow](https://deerflow.tech)、[Weknora](https://weknora.weixin.qq.com)等 LLMOps 平台。
-- **全平台支持** — 一套代码，覆盖 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack、LINE、KOOK 等平台。
-- **生产就绪** — 访问控制、限速、敏感词过滤、全面监控与异常处理，已被多家企业采用。
-- **插件生态** — 数百个插件，跨进程的事件驱动架构，组件扩展，适配 [MCP 协议](https://modelcontextprotocol.io/)。
+- **稳定运行，可排查** — 访问控制、全链路日志、调用记录、异常处理与数据导出，服务多个生产环境。
+- **插件生态** — 数百个插件、MCP 服务与 Skills，在扩展市场一键安装；事件驱动架构，支持组件扩展。
 - **Web 管理面板** — 通过浏览器直观地配置、管理和监控机器人，无需手动编辑配置文件。
-- **多流水线架构** — 不同机器人用于不同场景，具备全面的监控和异常处理能力。
 
 [→ 了解更多功能特性](https://langbot.app/docs/zh/insight/features)
 
@@ -169,11 +169,11 @@ docker compose --profile all up -d
 ## 为什么选择 LangBot？
 
 | 使用场景 | LangBot 如何帮助 |
-|----------|------------------|
-| **客户服务** | 将 AI Agent 部署到微信/企微/钉钉/飞书，基于知识库自动回答用户问题 |
-| **内部工具** | 将 n8n/Dify 工作流接入企微/钉钉，实现业务流程自动化 |
-| **社群运营** | 在 QQ/Discord 群中使用 AI 驱动的内容审核与智能互动 |
-| **多平台触达** | 一个机器人，覆盖所有平台。通过统一面板集中管理 |
+| --- | --- |
+| **社群机器人** | 在 QQ / Discord / Telegram 群里答疑、欢迎新人、按规则互动，并记住群成员的上下文 |
+| **私域与客服** | 在微信、企业微信客服里自动接待咨询，基于你的知识库回答，需要时转人工 |
+| **把已有 AI 应用接进 IM** | Dify / n8n / Coze 应用一步接入任意聊天平台，无需编写对接代码 |
+| **团队内部助手** | 在飞书、钉钉、企业微信里提供知识问答与流程自动化，团队共同管理 |
 
 ---
 

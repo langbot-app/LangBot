@@ -7,8 +7,8 @@
 
 <a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
-<h3>AIエージェント搭載IMボットを構築するための本番グレードプラットフォーム。</h3>
-<h4>Slack、Discord、Telegram、WeChat などに AI ボットを素早く構築、デバッグ、デプロイ。</h4>
+<h3>コミュニティ、顧客、チームに仕える AI ボットを。</h3>
+<h4>既製のシナリオから始めるか、Dify / n8n / Coze アプリを接続して、WeChat、QQ、Slack、Discord、Telegram などで安定して運用。</h4>
 
 [English](README.md) / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / 日本語 / [Español](README_ES.md) / [Français](README_FR.md) / [한국어](README_KO.md) / [Русский](README_RU.md) / [Tiếng Việt](README_VI.md)
 
@@ -33,7 +33,7 @@
 
 ## LangBot とは？
 
-LangBot は、AI搭載のインスタントメッセージングボットを構築するための**オープンソースの本番グレードプラットフォーム**です。大規模言語モデル（LLM）をあらゆるチャットプラットフォームに接続し、会話、タスク実行、既存のワークフローとの統合が可能なインテリジェントエージェントを作成できます。
+LangBot は、多くの人に仕えるボットのための**オープンソース IM ボットプラットフォーム**です。グループチャットやコミュニティ、WeChat・WeCom での顧客対応、Lark・DingTalk・Slack の社内アシスタントなどに対応します。既製のシナリオから始めることも、Dify・n8n・Coze で作った AI アプリをそのままチャットプラットフォームに接続することもできます。すべてのグループとプラットフォームを 1 つのダッシュボードで管理し、問題が起きたときはログで追跡できます。
 
 <p align="center">
 <img src="res/dashboard-overview.png" alt="LangBot Web 管理パネルのダッシュボード — メッセージ量、モデル呼び出し、成功率、アクティブセッションをリアルタイム監視" width="720"/>
@@ -41,12 +41,12 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 ### 主な機能
 
+- **1 つのボットで、すべてのグループとプラットフォームに** — QQ、WeChat、WeCom、Lark、DingTalk、Discord、Telegram、Slack、LINE、KOOK など。グループやシナリオごとに異なるボットとパイプラインを使い分け、一元管理。
+- **グループチャットとカスタマーサービスのために設計** — グループ内トリガールール、セッション分離、レート制限、センシティブワードフィルタリング、新メンバー歓迎、友達申請の処理、プラグインによる有人対応への切り替え。
 - **AI対話とエージェント** — マルチターン対話、ツール呼び出し、マルチモーダル対応、ストリーミング出力。RAG（ナレッジベース）を内蔵し、[Dify](https://dify.ai)、[Coze](https://coze.com)、[n8n](https://n8n.io)、[Langflow](https://langflow.org)、[Deerflow](https://deerflow.tech)、[Weknora](https://weknora.weixin.qq.com) と深く統合。
-- **ユニバーサルIMプラットフォーム対応** — 単一のコードベースで Discord、Telegram、Slack、LINE、QQ、WeChat、WeCom、Lark、DingTalk、KOOK に対応。
-- **本番環境対応** — アクセス制御、レート制限、センシティブワードフィルタリング、包括的な監視、例外処理を搭載。エンタープライズの信頼に応える品質。
-- **プラグインエコシステム** — 数百のプラグイン、イベント駆動アーキテクチャ、コンポーネント拡張、[MCPプロトコル](https://modelcontextprotocol.io/)対応。
+- **安定稼働、トラブルシュートも容易** — アクセス制御、完全な実行ログ、呼び出し記録、例外処理、データエクスポート。多くの本番環境で稼働中。
+- **プラグインエコシステム** — 数百のプラグイン、MCP サーバー、Skills をマーケットプレイスからワンクリックでインストール。イベント駆動アーキテクチャとコンポーネント拡張。
 - **Web管理パネル** — 直感的なブラウザインターフェースからボットの設定、管理、監視が可能。YAML編集は不要。
-- **マルチパイプラインアーキテクチャ** — 異なるシナリオに異なるボットを配置し、包括的な監視と例外処理を実現。
 
 [→ すべての機能について詳しく見る](https://langbot.app/docs/ja/insight/features)
 
@@ -150,11 +150,11 @@ docker compose --profile all up -d
 ## なぜ LangBot？
 
 | ユースケース | LangBot の活用方法 |
-|----------|-------------------|
-| **カスタマーサポート** | ナレッジベースを活用して質問に回答するAIエージェントをSlack/Discord/Telegramにデプロイ |
-| **社内ツール** | n8n/Difyのワークフローを WeCom/DingTalk に接続し、業務プロセスを自動化 |
-| **コミュニティ管理** | AI搭載のコンテンツフィルタリングとインタラクションでQQ/Discordグループをモデレーション |
-| **マルチプラットフォーム展開** | 1つのボットで全プラットフォームに対応。単一のダッシュボードから管理 |
+| --- | --- |
+| **コミュニティボット** | QQ / Discord / Telegram グループで質問に答え、新メンバーを歓迎し、ルールに沿って交流。メンバーの文脈も記憶 |
+| **プライベートドメインと顧客対応** | WeChat や WeCom カスタマーサービスでナレッジベースを使って自動応答し、必要に応じて有人対応へ切り替え |
+| **既存の AI アプリを IM へ** | Dify / n8n / Coze アプリを任意のチャットプラットフォームにワンステップで接続。連携コード不要 |
+| **チームアシスタント** | Lark、DingTalk、WeCom でのナレッジ Q&A と業務自動化を、チームで共同管理 |
 
 ---
 
