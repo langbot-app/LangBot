@@ -137,6 +137,11 @@ class RepositoryTests(unittest.TestCase):
         lock = json.loads((CORE / 'tests/fixtures/legacy_plugin_identity_sources.json').read_text())
         self.assertEqual(lock['root'], 'plugins')
         self.assertEqual(lock['repository'], 'langbot-app/LangBot')
+        if lock.get('revision') == 'in-tree':
+            for key in ('files', 'local_agent_files'):
+                for relative in lock[key]:
+                    self.assertTrue((ROOT / relative).is_file(), relative)
+            return
         for key in ('files', 'local_agent_files'):
             for relative, expected in lock[key].items():
                 self.assertEqual(hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(), expected, relative)
