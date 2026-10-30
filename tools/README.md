@@ -561,6 +561,34 @@ An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
 configuration unchanged. Any failed contract or cleanup makes the job fail.
 
+## Concurrent isolation job
+
+Run this finite job on a disposable Linux/Docker host:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite isolation \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/isolation-001
+```
+
+It uses two concurrent requests in one Workspace. Three scenarios cover two
+sessions on one Pipeline, two sessions on different Pipelines/models, and
+cancelling an active Box tool while a neighboring conversation completes.
+The first two scenarios each make two turns per session, checking request tokens,
+previous-turn history, Bot identity, model routing and exact terminal results.
+The cancellation scenario reuses the delayed-side-effect check and requires the
+Box to become idle. Read-only ledger intervals must overlap; serialized execution
+cannot pass as a concurrency test. Every accepted request must match exactly one
+terminal run, and mock records must contain exactly the owned model calls.
+
+HTTP Bot `/sync` collects cumulative stream snapshots, so each text component
+must be a monotonic prefix of that request's expected reply and the last must be
+complete. The job cannot count final delivery frames on this lossy endpoint.
+The 300-second guard bounds execution after preparation; there are no throughput
+or latency thresholds. `gate/suite/cases.json` retains per-request evidence and
+`gate/gate.json` the overall verdict. The job is explicit and does not change
+default daily or PR smoke cases. It does not test cross-Workspace isolation or
+high concurrency.
+
 ## Sustained regression and baseline comparison
 
 [`regression_profiles/endurance.json`](regression_profiles/endurance.json) runs

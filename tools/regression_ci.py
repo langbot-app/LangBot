@@ -21,7 +21,15 @@ from regression_suite import Suite
 from regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITE_BUDGETS = {'smoke': 60, 'scenarios': 300, 'daily': 1860, 'endurance': 900, 'api': 600, 'state': 300}
+SUITE_BUDGETS = {
+    'smoke': 60,
+    'scenarios': 300,
+    'daily': 1860,
+    'endurance': 900,
+    'api': 600,
+    'state': 300,
+    'isolation': 300,
+}
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
@@ -44,6 +52,10 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
         profile.update(resources=[], cases=[], coverage_suite='api')
         profile['vars']['api_seed'] = api_seed
         add_cases(profile)
+    if name == 'isolation':
+        from regression_isolation_cases import isolation_profile
+
+        profile = isolation_profile(profile)
     for resource in profile['resources']:
         if resource['kind'] == 'pipeline':
             resource['body'].setdefault(
@@ -183,8 +195,8 @@ def run(args):
         groups = args.scenario_groups
         if groups is None:
             groups = list(DEFAULT_GROUPS) if args.suite in ('scenarios', 'daily') else []
-            if args.suite == 'api':
-                groups = ['api']
+            if args.suite in ('api', 'isolation'):
+                groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
         profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups, args.api_seed)
