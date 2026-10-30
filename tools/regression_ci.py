@@ -29,6 +29,7 @@ SUITE_BUDGETS = {
     'api': 600,
     'state': 300,
     'isolation': 300,
+    'plugin-lifecycle': 600,
 }
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
@@ -56,6 +57,11 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
         from regression_isolation_cases import isolation_profile
 
         profile = isolation_profile(profile)
+    if name == 'plugin-lifecycle':
+        from regression_plugin_lifecycle import add_cases
+
+        profile.update(resources=[], cases=[], coverage_suite='plugin-lifecycle')
+        add_cases(profile)
     for resource in profile['resources']:
         if resource['kind'] == 'pipeline':
             resource['body'].setdefault(
@@ -177,11 +183,15 @@ def run(args):
         return {'service': name, 'old_pid': old_pid, 'new_pid': pids[name], 'old_exit_code': process.returncode}
 
     try:
-        packages = (
-            prepare_source_plugins(root / 'plugins', args.plugins, args.extra_plugins)
-            if args.plugins is not None
-            else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
-        )
+        if args.suite == 'plugin-lifecycle':
+            (root / 'plugins').mkdir()
+            packages = {'version': 1, 'selection': 'local-fixtures', 'plugins': []}
+        else:
+            packages = (
+                prepare_source_plugins(root / 'plugins', args.plugins, args.extra_plugins)
+                if args.plugins is not None
+                else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
+            )
         config_path = create_minimal_config(private, port=15301)
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
@@ -195,7 +205,7 @@ def run(args):
         groups = args.scenario_groups
         if groups is None:
             groups = list(DEFAULT_GROUPS) if args.suite in ('scenarios', 'daily') else []
-            if args.suite in ('api', 'isolation'):
+            if args.suite in ('api', 'isolation', 'plugin-lifecycle'):
                 groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')

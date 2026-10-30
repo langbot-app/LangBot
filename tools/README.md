@@ -291,6 +291,35 @@ quality. Run the Job plumbing checks on Linux with:
 uv run --no-sync python -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
+## Local plugin lifecycle
+
+Run the separate plugin lifecycle Job on a disposable Linux stack:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite plugin-lifecycle \
+  --lbctl /path/to/lbctl --output .qa/plugin-lifecycle-001
+```
+
+Its three chains install a dependency-free local Page fixture, store a Unicode
+marker and configure it, then exercise an update, a repeated installation and
+invalid archive, or an initialization failure followed by explicitly reinstalling
+a known good package and updating again. Assertions check completed task status,
+the executing version, retained configuration and plugin storage, and unique
+installation visibility. Cleanup verifies API removal and termination of observed
+worker PIDs, including their process start times. The 600-second budget is a cap;
+the Job stops when its finite cases finish.
+
+The current HTTP installation path does not promise automatic rollback after
+initialization failure. This Job verifies explicit recovery; the separate
+`plugins.upgrade_recovery` coverage obligation remains unclaimed. A failed
+generation must be absent or reject Page calls. If Core instead restores the old
+version automatically, that version must pass its full configuration, storage and
+Page oracle. It uses the
+existing runner's stack preparation and local HTTP uploads, installs only the
+bundled fixtures without Marketplace access, and is not included in smoke or daily
+by default. Cases, task outcomes, worker identities and cleanup journals are saved
+under `gate/suite/`.
+
 ## Finite core smoke
 
 Use [`regression_profiles/smoke.json`](regression_profiles/smoke.json) for a finite
