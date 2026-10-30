@@ -289,7 +289,7 @@ class Routes:
                 name = binding['profile']
                 if name not in profiles:
                     path = Path(__file__).with_name('regression_profiles') / f'{name}.json'
-                    if name in ('api', 'state', 'isolation', 'plugin-lifecycle'):
+                    if name in ('api', 'state', 'isolation', 'plugin-lifecycle', 'cli'):
                         from regression_ci import suite_profile
 
                         profile, _ = suite_profile(name, 'catalog-test')
