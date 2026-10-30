@@ -270,10 +270,10 @@ async def test_pipeline_receives_interactive_card_tool_for_supported_adapter(app
 
 
 @pytest.mark.asyncio
-async def test_event_processor_cannot_receive_interactive_card_tool(app):
+async def test_event_processor_receives_interactive_card_tool_with_reply_target(app):
     event = AgentEventEnvelope(
         event_id='event-processor-card',
-        event_type='message.received',
+        event_type='platform.member.joined',
         source='platform',
         bot_id='bot-1',
         input=AgentInput(text='hello'),
@@ -299,7 +299,20 @@ async def test_event_processor_cannot_receive_interactive_card_tool(app):
         descriptor=make_descriptor(capabilities={'tool_calling': True}),
     )
 
+    assert [tool['tool_name'] for tool in resources['tools']] == ['present_interactive_card']
+    assert resources['platform_capabilities']['authorized_tools'] == ['present_interactive_card']
+
+    event.delivery.reply_target = {}
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
+        event=event,
+        binding=binding,
+        descriptor=make_descriptor(capabilities={'tool_calling': True}),
+    )
     assert resources['tools'] == []
+    assert resources['platform_capabilities']['unavailable_tools'] == [
+        {'name': 'present_interactive_card', 'reason': 'event_target_unavailable'}
+    ]
 
 
 @pytest.mark.asyncio

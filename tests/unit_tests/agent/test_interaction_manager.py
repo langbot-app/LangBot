@@ -191,6 +191,55 @@ async def test_structured_delivery_uses_frozen_target_and_persists_request(store
 
 
 @pytest.mark.asyncio
+async def test_event_processor_structured_interaction_persists_resume_target(store, event):
+    adapter = FakeAdapter(supports_interactions=True)
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    binding = AgentBinding(
+        binding_id='event_processor:processor-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot-1'),
+        runner_id='plugin:test/ApprovalRunner/default',
+        delivery_policy=DeliveryPolicy(enable_interactions=True),
+        processor_type='event_processor',
+        processor_id='processor-1',
+    )
+
+    assert await manager.handle_result(
+        result_dict=_result(),
+        event=event,
+        binding=binding,
+        descriptor=_descriptor(),
+        run_id='event-processor-run-1',
+        adapter_context={'_delivery_adapter': adapter},
+    )
+
+    record = await store.get_request('event-processor-run-1', 'form-1')
+    assert record['processor_type'] == 'event_processor'
+    assert record['processor_id'] == 'processor-1'
+    assert record['binding_id'] == 'event_processor:processor-1'
+    assert adapter.actions[0][1]['reply_target'] == {'target_type': 'group', 'target_id': 'chat-1'}
+
+
+@pytest.mark.asyncio
+async def test_structured_interaction_requires_reply_target(store, event, binding):
+    adapter = FakeAdapter(supports_interactions=True)
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    event.delivery.reply_target = {}
+
+    with pytest.raises(RunnerProtocolError, match='no authorized reply target'):
+        await manager.handle_result(
+            result_dict=_result(),
+            event=event,
+            binding=binding,
+            descriptor=_descriptor(),
+            run_id='no-target-run',
+            adapter_context=_context(adapter),
+        )
+
+    assert await store.get_request('no-target-run', 'form-1') is None
+    assert adapter.actions == []
+
+
+@pytest.mark.asyncio
 async def test_text_reply_consumes_latest_scoped_plain_form_once(store):
     async def create(interaction_id, *, field_type='textarea', rich=False):
         await store.create_request(
@@ -248,7 +297,8 @@ async def test_text_reply_consumes_latest_scoped_plain_form_once(store):
 
 
 @pytest.mark.asyncio
-async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store, event):
+@pytest.mark.parametrize('processor_type', ['agent', 'event_processor'])
+async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store, event, processor_type):
     adapter = FakeAdapter(supports_interactions=True)
     manager = InteractionManager(SimpleNamespace(), store=store)
     event.delivery.interactions = InteractionDeliveryCapabilities(
@@ -262,7 +312,7 @@ async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store,
         'runner_id': 'plugin:test/CardAgent/default',
         'authorization': {
             'binding_id': 'agent-binding-1',
-            'processor_type': 'agent',
+            'processor_type': processor_type,
             'processor_id': 'agent-1',
             'interactions_enabled': True,
             'bot_id': 'bot-1',
@@ -300,7 +350,7 @@ async def test_agent_tool_card_uses_host_token_and_persists_resume_target(store,
     assert params['reply_target'] == {'target_type': 'group', 'target_id': 'chat-1'}
     record = await store.get_request('agent-run-1', 'card-host-generated')
     assert record is not None
-    assert record['processor_type'] == 'agent'
+    assert record['processor_type'] == processor_type
     assert record['processor_id'] == 'agent-1'
     assert record['binding_id'] == 'agent-binding-1'
     assert record['conversation_id'] == 'group_chat-1'

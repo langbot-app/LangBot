@@ -1,0 +1,21 @@
+apiVersion: langbot/v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: CardInteractionProbe
+  version: 0.1.0
+  repository: https://github.com/langbot-app/LangBot
+  label:
+    en_US: Card Interaction Probe
+  description:
+    en_US: Test event-processor card delivery and callback handling.
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+execution:
+  python:
+    path: main.py
+    attr: CardInteractionProbePlugin

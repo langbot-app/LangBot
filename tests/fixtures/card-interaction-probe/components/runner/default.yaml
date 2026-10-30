@@ -1,0 +1,24 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Card Interaction Probe
+  description:
+    en_US: Send a card from an event processor and echo its callback.
+spec:
+  usages: [event]
+  events:
+    - message.received
+    - interaction.submitted
+  config: []
+  capabilities:
+    tool_calling: true
+    interactions: true
+  permissions:
+    tools: [detail, call]
+    interactions: [request]
+execution:
+  python:
+    path: default.py
+    attr: CardInteractionProbe

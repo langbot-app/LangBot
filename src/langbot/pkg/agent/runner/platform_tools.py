@@ -114,7 +114,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             },
             ['title'],
         ),
-        ('message.*', 'interaction.submitted'),
+        ('*',),
         'reply_target',
     ),
     PlatformToolDefinition(

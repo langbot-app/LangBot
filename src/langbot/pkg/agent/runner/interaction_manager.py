@@ -135,6 +135,8 @@ class InteractionManager:
         reply_target = event.delivery.reply_target or {}
         target_type = reply_target.get('target_type')
         target_id = reply_target.get('target_id')
+        if not target_type or not target_id:
+            raise RunnerProtocolError(descriptor.id, 'interaction request has no authorized reply target')
         callback_conversation_id = f'{target_type}_{target_id}' if target_type and target_id else event.conversation_id
         update_target = await self._find_update_target(
             event=event,
@@ -219,7 +221,7 @@ class InteractionManager:
         if not isinstance(authorization, dict):
             raise ValueError('Interactive card run authorization is unavailable')
         processor_type = authorization.get('processor_type')
-        if processor_type not in {'agent', 'pipeline'}:
+        if processor_type not in {'agent', 'pipeline', 'event_processor'}:
             raise ValueError('Interactive card tools are unavailable for this processor type')
         if authorization.get('interactions_enabled') is not True:
             raise ValueError('Interactive cards are disabled for this processor binding')

@@ -901,7 +901,7 @@ class RuntimeBot:
                 enable_streaming=agent.get('kind') == 'agent' and event_type == 'message.received',
                 enable_reply=agent.get('kind') == 'agent'
                 and event_type in {'message.received', 'interaction.submitted'},
-                enable_interactions=agent.get('kind') != 'event_processor',
+                enable_interactions=True,
             ),
             agent_id=agent.get('uuid'),
             processor_type=agent.get('kind', 'agent'),
@@ -1580,7 +1580,7 @@ class RuntimeBot:
             # Platform retries and repeated clicks are successful no-ops. The
             # first callback remains the only turn allowed to resume execution.
             return
-        if record['processor_type'] not in {'agent', 'pipeline'}:
+        if record['processor_type'] not in {'agent', 'pipeline', 'event_processor'}:
             raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
         from ..telemetry import trace as trace_mod
 
@@ -1597,7 +1597,7 @@ class RuntimeBot:
             record, adapter, callback_context
         )
 
-        if record['processor_type'] == 'agent':
+        if record['processor_type'] in {'agent', 'event_processor'}:
             await self._resume_agent_interaction(record, event, adapter, actor_id, execution_id)
             return
 
@@ -1680,13 +1680,14 @@ class RuntimeBot:
         actor_id: str | None,
         execution_id: str | None = None,
     ) -> None:
-        """Resume the exact independent Agent that produced an interaction."""
+        """Resume the exact Agent or event processor that produced an interaction."""
         agent = await self.ap.agent_service.get_agent(
             self.execution_context,
             record['processor_id'],
         )
-        if not agent or agent.get('kind') != 'agent':
-            raise ValueError(f'Interaction target Agent is unavailable: {record["processor_id"]}')
+        processor_type = record['processor_type']
+        if not agent or agent.get('kind') != processor_type:
+            raise ValueError(f'Interaction target {processor_type} is unavailable: {record["processor_id"]}')
 
         binding = self._agent_product_to_binding(
             agent,
@@ -1695,7 +1696,7 @@ class RuntimeBot:
             self.bot_entity.uuid,
         )
         if binding is None or binding.runner_id != record['runner_id']:
-            raise ValueError('Interaction target Agent runner changed after the request was created')
+            raise ValueError(f'Interaction target {processor_type} runner changed after the request was created')
         binding.binding_id = record['binding_id']
 
         submission = record['submission']
@@ -1753,7 +1754,12 @@ class RuntimeBot:
             input=AgentInput.model_validate(input_data),
             delivery=DeliveryContext.model_validate(delivery_data),
             raw_ref=RawEventRef(ref_id=f'interaction:{record["id"]}', storage_key=None),
-            data={'interaction': submission},
+            data={
+                'type': 'platform.specific',
+                'action': 'interaction.submitted',
+                'data': {'interaction': submission},
+                'interaction': submission,
+            },
         )
 
         async for _ in self.ap.agent_run_orchestrator.run(

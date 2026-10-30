@@ -20,7 +20,7 @@ from ...persistence.pipeline_admission import lock_pipeline_admission
 
 UTC = datetime.timezone.utc
 INTERACTION_STATUSES = {'pending', 'submitted', 'expired', 'cancelled', 'delivery_failed'}
-PROCESSOR_TYPES = {'agent', 'pipeline'}
+PROCESSOR_TYPES = {'agent', 'pipeline', 'event_processor'}
 
 
 class InteractionStoreError(Exception):

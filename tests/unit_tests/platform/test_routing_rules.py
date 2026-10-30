@@ -644,6 +644,71 @@ class TestInteractionResumeRouting:
         bot.ap.msg_aggregator.add_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_event_processor_callback_targets_original_processor_and_runner(self):
+        captured = []
+
+        async def fake_run(envelope, binding, adapter_context=None):
+            captured.append((envelope, binding, adapter_context))
+            if False:
+                yield None
+
+        record = self._record('event_processor')
+        record['binding_id'] = 'event_processor:event_processor-1'
+        bot = self._make_bot(record)
+        bot.ap.agent_service = SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'event_processor-1',
+                    'kind': 'event_processor',
+                    'config': {
+                        'runner': {'id': record['runner_id']},
+                        'runner_config': {record['runner_id']: {}},
+                    },
+                }
+            )
+        )
+        bot.ap.agent_run_orchestrator.run = fake_run
+        adapter = SimpleNamespace(get_supported_apis=Mock(return_value=['interaction.request']))
+
+        await bot._handle_interaction_submission(self._event(), adapter)
+
+        envelope, binding, adapter_context = captured[0]
+        assert envelope.event_type == 'interaction.submitted'
+        assert envelope.input.interaction.values == {'name': 'Alice'}
+        assert envelope.data['type'] == 'platform.specific'
+        assert envelope.data['action'] == 'interaction.submitted'
+        from langbot_plugin.api.entities.builtin.platform.events import PlatformSpecificEvent, parse_eba_event
+
+        assert isinstance(parse_eba_event(envelope.data), PlatformSpecificEvent)
+        assert envelope.delivery.reply_target['target_id'] == 'chat-1'
+        assert binding.processor_type == 'event_processor'
+        assert binding.processor_id == 'event_processor-1'
+        assert binding.binding_id == record['binding_id']
+        assert binding.delivery_policy.enable_interactions is True
+        assert adapter_context['_execution_context'] is TEST_CONTEXT
+        bot.ap.msg_aggregator.add_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_event_processor_callback_rejects_changed_runner(self):
+        record = self._record('event_processor')
+        bot = self._make_bot(record)
+        bot.ap.agent_service = SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'event_processor-1',
+                    'kind': 'event_processor',
+                    'config': {
+                        'runner': {'id': 'plugin:test/Other/default'},
+                        'runner_config': {'plugin:test/Other/default': {}},
+                    },
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match='event_processor runner changed'):
+            await bot._handle_interaction_submission(self._event(), SimpleNamespace())
+
+    @pytest.mark.asyncio
     async def test_agent_callback_targets_original_agent_and_runner(self):
         import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
@@ -811,6 +876,8 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
     envelope, binding = calls[0]
     assert binding.binding_id == 'event_processor:processor-1'
     assert binding.processor_type == 'event_processor'
+    assert binding.delivery_policy.enable_interactions is True
+    assert 'present_interactive_card' in binding.resource_policy.allowed_platform_tool_names
     assert binding.runner_config == {'greeting': 'Hi'}
     assert envelope.data['member']['id'] == 'member-1'
     assert envelope.data['type'] == 'group.member_joined'
