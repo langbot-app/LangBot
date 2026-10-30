@@ -42,7 +42,7 @@ class LoadLedgerTests(unittest.TestCase):
         self.assertEqual(result['not_completed'], ['late'])
 
     def test_container_churn_recovers_once_but_other_collection_errors_fail(self):
-        failed = SimpleNamespace(returncode=1, stdout='', stderr='No such container: old')
+        failed = SimpleNamespace(returncode=1, stdout='', stderr='Error response from daemon: No such container: old')
         success = SimpleNamespace(returncode=0, stdout='{"MemUsage":"1MiB / 1GiB","PIDs":"1"}\n', stderr='')
         run = Mock(side_effect=[failed, success])
         result = sample_containers([], '/owned', run, Mock(side_effect=[['old', 'live'], ['live']]))
