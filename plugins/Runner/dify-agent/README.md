@@ -54,10 +54,11 @@ events, which are used only when no explicit answer was produced.
 
 ## Workflow Human Input
 
-When Dify emits `workflow_paused` with a `human_input_required` reason, the
-runner asks LangBot to deliver a structured interaction. A validated
-`interaction.submitted` event resumes Dify through
-`/form/human_input/{form_token}` and `/workflow/{workflow_run_id}/events`.
+When Dify emits `workflow_paused` with a `human_input_required` reason, or a
+direct `human_input_required` event, the runner asks LangBot to deliver a
+structured interaction. A validated `interaction.submitted` event resumes Dify
+through `/form/human_input/{form_token}`. The submission response may itself
+stream events; otherwise the runner reads `/workflow/{workflow_run_id}/events`.
 Workflows that pause again produce a new interaction and can be resumed again.
 Forms are emitted as atomic steps: the runner collects one field at a time and
 then emits the action buttons. This matches LangBot delivery adapters that

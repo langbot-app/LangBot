@@ -247,17 +247,68 @@ def _usage_from_payload(payload: typing.Any) -> dict[str, typing.Any] | None:
     return normalized or None
 
 
+def _mapping_value(mapping: typing.Any, *keys: str) -> typing.Any:
+    """Return a protocol value using explicit aliases with case-insensitive matching."""
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    lowered = {str(key).lower(): value for key, value in mapping.items()}
+    for key in keys:
+        if key.lower() in lowered:
+            return lowered[key.lower()]
+    return None
+
+
+def _protocol_name(value: typing.Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[-\s]+", "_", value.strip().lower())
+
+
+def _workflow_run_id(event: dict[str, typing.Any], fallback: str = "") -> str:
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    value = _mapping_value(data, "workflow_run_id", "workflowRunId")
+    if value in (None, ""):
+        value = _mapping_value(event, "workflow_run_id", "workflowRunId")
+    return str(value or fallback).strip()
+
+
+def _human_input_reason(event: dict[str, typing.Any]) -> dict[str, typing.Any] | None:
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    if _protocol_name(event.get("event")) == "human_input_required":
+        return data
+
+    raw_reasons = _mapping_value(data, "reasons", "pause_reasons", "pauseReasons")
+    if isinstance(raw_reasons, dict):
+        reasons = [raw_reasons]
+    elif isinstance(raw_reasons, list):
+        reasons = raw_reasons
+    else:
+        raw_reason = _mapping_value(data, "reason", "pause_reason", "pauseReason")
+        reasons = [raw_reason] if isinstance(raw_reason, dict) else []
+
+    for reason in reasons:
+        if not isinstance(reason, dict):
+            continue
+        reason_type = _mapping_value(reason, "TYPE", "type", "reason_type", "reasonType")
+        if _protocol_name(reason_type) == "human_input_required":
+            return reason
+    return None
+
+
 def _form_field_name(field: dict[str, typing.Any]) -> str:
     return str(
-        field.get("output_variable_name") or field.get("variable") or field.get("name") or field.get("id") or ""
+        _mapping_value(field, "output_variable_name", "outputVariableName", "variable", "name", "id") or ""
     ).strip()
 
 
 def _form_field_options(field: dict[str, typing.Any]) -> list[str]:
-    source = field.get("option_source")
-    raw_options = source.get("value") if isinstance(source, dict) else None
+    source = _mapping_value(field, "option_source", "optionSource")
+    raw_options = _mapping_value(source, "value") if isinstance(source, dict) else None
     if raw_options is None:
-        raw_options = field.get("options")
+        raw_options = _mapping_value(field, "options")
     if isinstance(raw_options, str):
         raw_options = [line.strip() for line in raw_options.splitlines() if line.strip()]
     if not isinstance(raw_options, list):
@@ -266,7 +317,7 @@ def _form_field_options(field: dict[str, typing.Any]) -> list[str]:
     options: list[str] = []
     for option in raw_options:
         if isinstance(option, dict):
-            value = option.get("value") or option.get("label") or option.get("name")
+            value = _mapping_value(option, "value", "label", "name")
         else:
             value = option
         if value is not None and str(value).strip():
@@ -275,9 +326,9 @@ def _form_field_options(field: dict[str, typing.Any]) -> list[str]:
 
 
 def _form_field_default(field: dict[str, typing.Any]) -> typing.Any:
-    default = field.get("default")
-    if isinstance(default, dict) and default.get("type") == "constant":
-        return default.get("value")
+    default = _mapping_value(field, "default", "default_value", "defaultValue")
+    if isinstance(default, dict) and _protocol_name(_mapping_value(default, "type")) == "constant":
+        return _mapping_value(default, "value")
     return default
 
 
@@ -725,7 +776,7 @@ class DefaultRunner(Runner):
         workflow_run_id: str,
         user: str,
     ) -> tuple[InteractionRequest, dict[str, typing.Any]]:
-        form_token = str(reason.get("form_token") or "").strip()
+        form_token = str(_mapping_value(reason, "form_token", "formToken") or "").strip()
         if not form_token or not workflow_run_id:
             raise DifyAPIError(
                 "Dify human-input event is missing continuation identifiers",
@@ -735,9 +786,10 @@ class DefaultRunner(Runner):
         interaction_id = f"dify-{uuid.uuid4().hex}"
         fields: list[InteractionField] = []
         field_map: dict[str, str] = {}
-        resolved_defaults = reason.get("resolved_default_values")
+        resolved_defaults = _mapping_value(reason, "resolved_default_values", "resolvedDefaultValues")
         default_inputs = dict(resolved_defaults) if isinstance(resolved_defaults, dict) else {}
-        raw_fields = reason.get("inputs") if isinstance(reason.get("inputs"), list) else []
+        reason_inputs = _mapping_value(reason, "inputs", "fields")
+        raw_fields = reason_inputs if isinstance(reason_inputs, list) else []
         for index, raw_field in enumerate(raw_fields):
             if not isinstance(raw_field, dict):
                 continue
@@ -746,7 +798,7 @@ class DefaultRunner(Runner):
                 continue
             field_id = f"field_{index + 1}"
             field_map[field_id] = provider_name
-            provider_type = str(raw_field.get("type") or "text").lower()
+            provider_type = _protocol_name(_mapping_value(raw_field, "type") or "text")
             field_type = {
                 "paragraph": "textarea",
                 "textarea": "textarea",
@@ -755,7 +807,7 @@ class DefaultRunner(Runner):
                 "checkbox": "boolean",
                 "boolean": "boolean",
                 "file": "file",
-                "file-list": "file",
+                "file_list": "file",
             }.get(provider_type, "text")
             option_values = _form_field_options(raw_field) if field_type == "select" else []
             if field_type == "select" and not option_values:
@@ -766,22 +818,23 @@ class DefaultRunner(Runner):
             fields.append(
                 InteractionField(
                     id=field_id,
-                    label=str(raw_field.get("label") or raw_field.get("title") or provider_name),
+                    label=str(_mapping_value(raw_field, "label", "title") or provider_name),
                     type=field_type,
-                    required=bool(raw_field.get("required", True)),
+                    required=_to_bool(_mapping_value(raw_field, "required", "is_required", "isRequired"), True),
                     options=[InteractionOption(value=value, label=value) for value in option_values],
-                    placeholder=raw_field.get("placeholder"),
+                    placeholder=_mapping_value(raw_field, "placeholder"),
                     default=default,
                 )
             )
 
         actions: list[InteractionAction] = []
         action_map: dict[str, str] = {}
-        raw_actions = reason.get("actions") if isinstance(reason.get("actions"), list) else []
+        reason_actions = _mapping_value(reason, "actions", "user_actions", "userActions")
+        raw_actions = reason_actions if isinstance(reason_actions, list) else []
         for index, raw_action in enumerate(raw_actions):
             if not isinstance(raw_action, dict):
                 continue
-            provider_action_id = str(raw_action.get("id") or "").strip()
+            provider_action_id = str(_mapping_value(raw_action, "id", "action_id", "actionId") or "").strip()
             if not provider_action_id:
                 continue
             action_id = f"action_{index + 1}"
@@ -789,15 +842,15 @@ class DefaultRunner(Runner):
             actions.append(
                 InteractionAction(
                     id=action_id,
-                    label=str(raw_action.get("title") or raw_action.get("label") or provider_action_id),
+                    label=str(_mapping_value(raw_action, "title", "label", "text") or provider_action_id),
                 )
             )
         if not actions:
             action_map["continue"] = ""
             actions.append(InteractionAction(id="continue", label="Continue", style="primary"))
 
-        node_title = str(reason.get("node_title") or "Human input required")
-        form_content = str(reason.get("form_content") or "")
+        node_title = str(_mapping_value(reason, "node_title", "nodeTitle", "title") or "Human input required")
+        form_content = str(_mapping_value(reason, "form_content", "formContent", "content") or "")
         provider_names = [field_map[field.id] for field in fields if field.id in field_map]
         provider_descriptions, action_description = _form_step_descriptions(form_content, provider_names)
         field_descriptions = {
@@ -846,13 +899,8 @@ class DefaultRunner(Runner):
         event: dict[str, typing.Any],
         user: str,
     ) -> RunnerResult | None:
-        data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        workflow_run_id = str(data.get("workflow_run_id") or "").strip()
-        reasons = data.get("reasons") if isinstance(data.get("reasons"), list) else []
-        reason = next(
-            (item for item in reasons if isinstance(item, dict) and item.get("TYPE") == "human_input_required"),
-            None,
-        )
+        workflow_run_id = _workflow_run_id(event)
+        reason = _human_input_reason(event)
         if reason is None:
             return None
         request, continuation = self._build_interaction_request(reason, workflow_run_id, user)
@@ -985,11 +1033,11 @@ class DefaultRunner(Runner):
                 "node_finished",
                 "workflow_finished",
                 "workflow_paused",
+                "human_input_required",
             }:
                 mode = "workflow"
             if event_type == "workflow_started":
-                data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                workflow_run_id = str(data.get("workflow_run_id") or workflow_run_id)
+                workflow_run_id = _workflow_run_id(event, workflow_run_id)
 
             if event_type == "error":
                 raise DifyAPIError(
@@ -1011,9 +1059,10 @@ class DefaultRunner(Runner):
                         has_response = True
                         yield RunnerResult.message_delta(ctx.run_id, MessageChunk(role="assistant", content=content))
 
-            elif mode == "workflow" and event_type == "workflow_paused":
+            elif mode == "workflow" and event_type in {"workflow_paused", "human_input_required"}:
                 data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                if workflow_run_id and not data.get("workflow_run_id"):
+                workflow_run_id = _workflow_run_id(event, workflow_run_id)
+                if workflow_run_id and not _workflow_run_id(event):
                     event = dict(event)
                     event["data"] = {**data, "workflow_run_id": workflow_run_id}
                 if pending_content:
@@ -1224,8 +1273,7 @@ class DefaultRunner(Runner):
             usage = _usage_from_payload(event) or usage
 
             if event_type == "workflow_started":
-                data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                workflow_run_id = str(data.get("workflow_run_id") or workflow_run_id)
+                workflow_run_id = _workflow_run_id(event, workflow_run_id)
 
             if event_type == "error":
                 raise DifyAPIError(
@@ -1267,9 +1315,10 @@ class DefaultRunner(Runner):
                             MessageChunk(role="assistant", content=content, is_final=True),
                         )
 
-            elif event_type == "workflow_paused":
+            elif event_type in {"workflow_paused", "human_input_required"}:
                 data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                if workflow_run_id and not data.get("workflow_run_id"):
+                workflow_run_id = _workflow_run_id(event, workflow_run_id)
+                if workflow_run_id and not _workflow_run_id(event):
                     event = dict(event)
                     event["data"] = {**data, "workflow_run_id": workflow_run_id}
                 if pending_content:
@@ -1403,7 +1452,10 @@ class DefaultRunner(Runner):
         await self._store_interaction_continuation(ctx, continuation)
 
         pending_content = ""
+        streamed_content = ""
+        text_event_count = 0
         has_response = False
+        final_response = False
         terminal = False
         usage: dict[str, typing.Any] | None = None
         async for event in client.workflow_submit(
@@ -1426,30 +1478,49 @@ class DefaultRunner(Runner):
                     if event_type != "text_chunk"
                     else str(event.get("data", {}).get("text") or "")
                 )
-                if len(pending_content) + len(chunk) > 1024 * 1024:
+                if event_type != "text_chunk" and pending_content and chunk.startswith(pending_content):
+                    next_content = chunk
+                else:
+                    next_content = pending_content + chunk
+                if len(next_content) > 1024 * 1024:
                     raise DifyAPIError("Dify response exceeds the runtime limit", code="dify.response_limit")
-                pending_content += chunk
+                pending_content = next_content
+                text_event_count += 1
+                if text_event_count % 8 == 0:
+                    content, _ = process_thinking_content(pending_content, remove_think)
+                    if content and content != streamed_content:
+                        streamed_content = content
+                        has_response = True
+                        yield RunnerResult.message_delta(
+                            ctx.run_id,
+                            MessageChunk(role="assistant", content=content, is_final=False),
+                        )
             elif event_type == "node_finished":
                 data = event.get("data", {})
                 if data.get("node_type") == "answer":
                     answer = extract_text_from_output(data.get("outputs", {}).get("answer"))
                     if answer:
                         content, _ = process_thinking_content(answer, remove_think)
-                        has_response = True
-                        yield RunnerResult.message_delta(
-                            ctx.run_id,
-                            MessageChunk(role="assistant", content=content, is_final=True),
-                        )
-            elif event_type == "workflow_paused":
+                        final_response = bool(content)
+                        if content and content != streamed_content:
+                            has_response = True
+                            streamed_content = content
+                            yield RunnerResult.message_delta(
+                                ctx.run_id,
+                                MessageChunk(role="assistant", content=content, is_final=True),
+                            )
+            elif event_type in {"workflow_paused", "human_input_required"}:
                 if pending_content:
                     content, _ = process_thinking_content(pending_content, remove_think)
-                    if content:
+                    if content and content != streamed_content:
+                        has_response = True
+                        streamed_content = content
                         yield RunnerResult.message_delta(
                             ctx.run_id,
                             MessageChunk(role="assistant", content=content, is_final=True),
                         )
                 data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                if not data.get("workflow_run_id"):
+                if not _workflow_run_id(event):
                     event = dict(event)
                     event["data"] = {
                         **data,
@@ -1475,26 +1546,29 @@ class DefaultRunner(Runner):
                 summary = extract_text_from_output(data.get("outputs", {}).get("summary", ""))
                 if summary:
                     content, _ = process_thinking_content(summary, remove_think)
-                    has_response = True
-                    yield RunnerResult.message_delta(
-                        ctx.run_id,
-                        MessageChunk(role="assistant", content=content, is_final=True),
-                    )
+                    final_response = bool(content)
+                    if content and content != streamed_content:
+                        has_response = True
+                        streamed_content = content
+                        yield RunnerResult.message_delta(
+                            ctx.run_id,
+                            MessageChunk(role="assistant", content=content, is_final=True),
+                        )
                 terminal = True
 
-        if pending_content and not has_response:
-            content, _ = process_thinking_content(pending_content, remove_think)
-            if content:
-                has_response = True
-                yield RunnerResult.message_delta(
-                    ctx.run_id,
-                    MessageChunk(role="assistant", content=content, is_final=True),
-                )
         if not terminal:
             raise DifyAPIError(
                 "Dify workflow resume ended before a terminal event",
                 code="dify.response_invalid",
             )
+        if pending_content and not final_response:
+            content, _ = process_thinking_content(pending_content, remove_think)
+            if content and content != streamed_content:
+                has_response = True
+                yield RunnerResult.message_delta(
+                    ctx.run_id,
+                    MessageChunk(role="assistant", content=content, is_final=True),
+                )
         if not has_response:
             raise DifyAPIError(
                 "Dify workflow returned no response after human input",

@@ -252,6 +252,87 @@ def test_dify_workflow_pause_requests_host_interaction_and_hides_provider_tokens
     assert all(_type(result) != "run.completed" for result in results)
 
 
+def test_dify_current_human_input_event_requests_host_interaction() -> None:
+    module = _load_runner_module("dify-agent")
+    runner = object.__new__(module.DefaultRunner)
+    storage = _FakePluginStorage()
+    runner.get_run_api = lambda ctx: storage
+
+    class FakeClient:
+        async def workflow_run(self, *, inputs, user, files):
+            yield {
+                "event": "human_input_required",
+                "workflow_run_id": "workflow-private",
+                "data": {
+                    "form_token": "form-private",
+                    "node_title": "Manual review",
+                    "form_content": "Choose a priority\n{{#$output.priority#}}",
+                    "inputs": [
+                        {
+                            "output_variable_name": "priority",
+                            "type": "select",
+                            "option_source": {"type": "constant", "value": ["high", "low"]},
+                        }
+                    ],
+                    "actions": [{"id": "approve-private", "title": "Approve"}],
+                },
+            }
+
+    results = asyncio.run(_collect_async(runner._run_workflow(_ctx(), FakeClient(), {}, "hello", "user_1", [], False)))
+
+    assert _type(results[-1]) == "action.requested"
+    assert all(_type(result) != "run.completed" for result in results)
+    request = results[-1].data["payload"]
+    assert request["title"] == "Manual review"
+    assert request["fields"][0]["options"][0]["value"] == "high"
+    assert "form-private" not in str(request)
+    assert "workflow-private" not in str(request)
+    continuation = json.loads(next(iter(storage.values.values())))
+    assert continuation["form_token"] == "form-private"
+    assert continuation["workflow_run_id"] == "workflow-private"
+
+
+def test_dify_pause_accepts_single_reason_and_camel_case_fields() -> None:
+    module = _load_runner_module("dify-agent")
+    runner = object.__new__(module.DefaultRunner)
+    storage = _FakePluginStorage()
+    runner.get_run_api = lambda ctx: storage
+    event = {
+        "event": "workflow_paused",
+        "data": {
+            "workflowRunId": "workflow-private",
+            "reason": {
+                "type": "human-input-required",
+                "formToken": "form-private",
+                "nodeTitle": "Manual review",
+                "formContent": "Choose a priority\n{{#$output.priority#}}",
+                "resolvedDefaultValues": {"priority": "low"},
+                "fields": [
+                    {
+                        "outputVariableName": "priority",
+                        "type": "select",
+                        "optionSource": {"type": "constant", "value": [{"label": "High", "value": "high"}]},
+                    }
+                ],
+                "userActions": [{"actionId": "approve-private", "label": "Approve"}],
+            },
+        },
+    }
+
+    result = asyncio.run(runner._interaction_result_for_pause(_ctx(), event, "user_1"))
+
+    assert result is not None
+    request = result.data["payload"]
+    assert request["title"] == "Manual review"
+    assert request["fields"][0]["default"] == "low"
+    assert request["fields"][0]["options"][0]["value"] == "high"
+    assert request["fields"][0]["options"][0]["label"] == "high"
+    continuation = json.loads(next(iter(storage.values.values())))
+    assert continuation["action_map"] == {"action_1": "approve-private"}
+    assert "form-private" not in str(request)
+    assert "workflow-private" not in str(request)
+
+
 def test_dify_interaction_resume_submits_mapped_values_and_clears_continuation() -> None:
     module = _load_runner_module("dify-agent")
     runner = object.__new__(module.DefaultRunner)
@@ -556,6 +637,77 @@ def test_dify_client_submits_form_then_streams_resumed_events(monkeypatch) -> No
         assert request.headers["authorization"] == "Bearer key"
     assert form_body.consumed and form_body.closed
     assert event_body.consumed and event_body.closed
+
+
+def test_dify_client_consumes_sse_returned_by_form_submission(monkeypatch) -> None:
+    module = _load_runner_module("dify-agent")
+    client_module = sys.modules["pkg.dify_client"]
+    real_async_client = httpx.AsyncClient
+    calls: list[httpx.Request] = []
+    expected_event = {"event": "workflow_finished", "data": {"outputs": {"summary": "done"}}}
+
+    def handle_request(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream; charset=utf-8"},
+            content=b"data: " + json.dumps(expected_event).encode() + b"\n\n",
+        )
+
+    transport = httpx.MockTransport(handle_request)
+    monkeypatch.setattr(
+        client_module.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_async_client(transport=transport, **kwargs),
+    )
+    client = module.AsyncDifyClient(api_key="key", base_url="https://dify.example/v1")
+
+    events = asyncio.run(
+        _collect_async(
+            client.workflow_submit(
+                form_token="form-token",
+                workflow_run_id="workflow-run",
+                inputs={"priority": "high"},
+                user="user-1",
+                action="approve",
+            )
+        )
+    )
+
+    assert events == [expected_event]
+    assert [(request.method, request.url.path) for request in calls] == [("POST", "/v1/form/human_input/form-token")]
+
+
+def test_dify_client_yields_submission_sse_before_stream_ends(monkeypatch) -> None:
+    module = _load_runner_module("dify-agent")
+    client_module = sys.modules["pkg.dify_client"]
+    real_async_client = httpx.AsyncClient
+    first_event = {"event": "text_chunk", "data": {"text": "ready"}}
+
+    class FirstEventStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"data: " + json.dumps(first_event).encode() + b"\n\n"
+            raise AssertionError("submission response was buffered before the first event")
+
+    def handle_request(request):
+        assert request.method == "POST"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=FirstEventStream())
+
+    monkeypatch.setattr(
+        client_module.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_async_client(transport=httpx.MockTransport(handle_request), **kwargs),
+    )
+    client = module.AsyncDifyClient(api_key="key", base_url="https://dify.example/v1")
+
+    async def read_first():
+        stream = client.workflow_submit("form-token", "workflow-run", {}, "user-1", "approve")
+        try:
+            return await anext(stream)
+        finally:
+            await stream.aclose()
+
+    assert asyncio.run(read_first()) == first_event
 
 
 def test_dify_text_image_upload_failure_is_input_error() -> None:
