@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: get_current_time_str
+  label:
+    en_US: Get Current Time
+    zh_Hans: 获取当前时间
+  description:
+    en_US: 'Get the current time as a string'
+    zh_Hans: '获取当前时间的字符串'
+spec:
+  parameters:
+    type: object
+    properties: {}
+    required: []
+  llm_prompt: 'Get the current time. Call this function before scheduling any notification to ensure you have the latest current time.'
+execution:
+  python:
+    path: get_current_time_str.py
+    attr: GetCurrentTimeStr

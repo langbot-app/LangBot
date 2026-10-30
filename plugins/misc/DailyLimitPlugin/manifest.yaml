@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: RockChinQ
+  name: DailyLimitPlugin
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/DailyLimitPlugin
+  version: 0.3.3
+  description:
+    en_US: 'Limit conversations per session per day, with a management page to view, configure and reset limits.'
+    zh_Hans: '按会话限制每天的对话次数，并提供可视化页面查看、配置和重置各会话的限制。'
+    ja_JP: 'セッションごとの1日の会話回数を制限し、制限の確認・設定・リセットができる管理ページを提供します。'
+  label:
+    en_US: Daily Limit
+    zh_Hans: 每日对话限制
+    ja_JP: 日次制限
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: daily_limit
+      type: integer
+      label:
+        en_US: Default Daily Limit Per Session
+        zh_Hans: 每个会话每天的对话次数上限（默认）
+        ja_JP: セッションあたりの1日の会話回数上限（既定）
+      description:
+        en_US: 'Default maximum conversations per session per day for new sessions. Set to 0 to disable. Can be overridden per session on the management page.'
+        zh_Hans: '新会话每天允许的最大对话次数。设为 0 则不限制。可在管理页面对单个会话单独设置。'
+        ja_JP: '新規セッションの1日あたりの最大会話回数。0で無制限。管理ページでセッションごとに上書き可能。'
+      default: 50
+      required: true
+    - name: limit_message
+      type: string
+      label:
+        en_US: Limit Reached Message
+        zh_Hans: 超出限制时的提示语
+        ja_JP: 制限到達時のメッセージ
+      description:
+        en_US: 'Message shown when a session exceeds the daily limit. Leave empty to use the default message.'
+        zh_Hans: '会话超出每日限制时显示的提示。留空则使用默认提示。'
+        ja_JP: 'セッションが日次制限を超えた場合に表示されるメッセージ。空の場合はデフォルト。'
+      default: '您今天的对话次数已达上限，请明天再来吧~'
+      required: false
+    - name: reset_timezone_offset
+      type: integer
+      label:
+        en_US: Reset Timezone Offset (hours)
+        zh_Hans: 重置时区偏移（小时）
+        ja_JP: リセットタイムゾーンオフセット（時間）
+      description:
+        en_US: 'UTC offset in hours for daily reset. E.g. 8 for UTC+8 (China/Singapore), 9 for UTC+9 (Japan/Korea), -5 for UTC-5 (US Eastern).'
+        zh_Hans: '每日重置使用的 UTC 偏移小时数。例如：8 表示东八区（中国），9 表示东九区（日本），-5 表示西五区（美东）。'
+        ja_JP: '日次リセットに使用するUTCオフセット（時間）。例：8はUTC+8（中国）、9はUTC+9（日本）、-5はUTC-5（米国東部）。'
+      default: 8
+      required: false
+    - name: reset_hour
+      type: integer
+      label:
+        en_US: Reset Hour (0-23)
+        zh_Hans: 重置时间点（0-23时）
+        ja_JP: リセット時刻（0〜23時）
+      description:
+        en_US: 'Hour of the day (in the configured timezone) when the daily counter resets. Default is 0 (midnight).'
+        zh_Hans: '每天重置计数器的时间点（按配置的时区）。默认为 0 点（午夜）。'
+        ja_JP: '日次カウンターがリセットされる時刻（設定タイムゾーン基準）。デフォルトは0時（深夜）。'
+      default: 0
+      required: false
+    - name: silent_mode
+      type: boolean
+      label:
+        en_US: Silent Mode
+        zh_Hans: 静默模式
+        ja_JP: サイレントモード
+      description:
+        en_US: 'When enabled, messages exceeding the limit will be silently discarded without any reply.'
+        zh_Hans: '开启后，超出限制的消息将被静默丢弃，不会回复任何提示。'
+        ja_JP: '有効にすると、制限を超えたメッセージは返信なしで静かに破棄されます。'
+      default: false
+      required: false
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 2
+execution:
+  python:
+    path: main.py
+    attr: DailyLimitPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -1,0 +1,55 @@
+---
+title: "aaPanelデプロイ"
+description: "aaPanel（宝塔パネル）で LangBot をワンクリックデプロイ。Web コントロールパネルから導入。"
+---
+
+[aaPanel](https://www.bt.cn/new/download.html?r=dk_LangBot)を使用してLangBotをワンクリックでデプロイします。
+
+<Warning title="- 追加のコンテナを必要としないDiscordやFeishuなどのメッセージプラットフォームを使用する予定がない場合、またはaaPanel上のDockerコンテナネットワーキングに精通していない場合は、aaPanelでのワンクリックデプロイは推奨されません。[Dockerデプロイ](/en/deploy/langbot/docker)の使用を検討してください。">
+- 既にaaPanelがインストールされている場合は、バージョン**9.2.0**以上に更新してください
+</Warning>
+
+
+## aaPanelのインストール
+
+> 推奨サーバーシステム(aaPanelより): Debian 12、Ubuntu 22など
+>
+> このドキュメントでは、パブリックIPv4アドレスを持つサーバーがあることを前提としています。パブリックIPのないホームマシンを使用している場合は、以下で言及する内部ネットワーク経由で関連ページにアクセスできます。
+
+[aaPanel](https://www.bt.cn/new/download.html?r=dk_LangBot)を開き、aaPanel公式が提供するLinuxパネルインストールスクリプトを使用し、お使いのシステムに基づいて対応するスクリプトを選択します。
+
+![aaPanelのインストール](/images/zh/deploy/langbot/one-click/bt_install_01.png)
+
+対応するスクリプトをコピーしてサーバーに貼り付けて実行します。
+
+## LangBotのインストール
+
+しばらく待つと、aaPanelのインストールが完了します。
+
+このようなメッセージが表示されますので、外部パネルアドレスをコピーしてブラウザで開きます。
+
+![aaPanelアクセスアドレス](/images/zh/deploy/langbot/one-click/bt_install_02.png)
+
+初めて開くと、`推奨インストールスイート`のポップアップが表示されます。閉じてスキップできます。
+
+次にサイドバーの`docker`をクリックします。初めての場合、DockerとDocker Composeサービスのインストールを求められます。プロンプトが表示されたら「今すぐインストール」をクリックするか、既にインストールされている場合は無視してください。
+
+次に`Docker -> アプリストア`に移動し、`LangBot`を検索し(大文字小文字に注意)、`インストール`をクリックし、デフォルト設定を使用します。
+
+少し待つと、`langbot_XXXX`という名前のコンテナが`実行中`として表示されます。
+
+![LangBotコンテナの作成](/images/zh/deploy/langbot/one-click/bt_langbot_01.png)
+
+上の画像の赤い円をクリックして実行ログを表示します。
+
+![LangBotコンテナログの表示](/images/zh/deploy/langbot/one-click/bt_langbot_02.png)
+
+WebUI設定ページ(ビジュアル設定ページ)の外部および内部アクセスパスが表示されます。パブリックアドレスをコピーします。例: `http://xxx.xxx.xxx.xxx:5300`(xxx.xxx.xxx.xxxはaaPanelのIP、5300はポート番号で、画像に示されているように異なる場合があります)。
+
+開いた後、管理者のメールアドレスとパスワードを入力し、初期化をクリックします。
+
+その後、ビジュアルインターフェースで設定を進めることができます。
+
+JSON設定ファイルを直接変更したい場合は、上の画像に示されているローカルマッピングディレクトリを参照できます。インストールディレクトリに移動すると、`data`フォルダは設定ファイルの保存に使用され、`plugins`フォルダはプラグイン関連ファイルに使用されます。
+
+次に、[メッセージプラットフォームの設定](/ja/usage/platforms/readme)ページを引き続きお読みください。

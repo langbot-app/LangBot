@@ -1,0 +1,86 @@
+[
+  {
+    "file": "01-member-joined.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 3,
+    "expected_replies": 1
+  },
+  {
+    "file": "02-member-left.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 1,
+    "expected_replies": 1
+  },
+  {
+    "file": "03-help.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 1,
+    "expected_replies": 1
+  },
+  {
+    "file": "04-profile.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 3,
+    "expected_replies": 1
+  },
+  {
+    "file": "05-slow.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 1,
+    "expected_replies": 1
+  },
+  {
+    "file": "06-failure.json",
+    "component": "community",
+    "expect_error": true,
+    "expected_actions": 0,
+    "expected_replies": 0
+  },
+  {
+    "file": "07-feedback.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 0,
+    "expected_replies": 0
+  },
+  {
+    "file": "08-reaction.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 0,
+    "expected_replies": 0
+  },
+  {
+    "file": "09-friend-request.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 0,
+    "expected_replies": 0
+  },
+  {
+    "file": "10-observer-custom.json",
+    "component": "observer",
+    "expect_error": false,
+    "expected_actions": 0,
+    "expected_replies": 0
+  },
+  {
+    "file": "11-echo-with-image.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 1,
+    "expected_replies": 1
+  },
+  {
+    "file": "12-ignored-message.json",
+    "component": "community",
+    "expect_error": false,
+    "expected_actions": 0,
+    "expected_replies": 0
+  }
+]

@@ -204,3 +204,5 @@ LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude C
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[文件原始碼](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

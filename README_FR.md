@@ -186,3 +186,5 @@ Merci à tous les [contributeurs](https://github.com/langbot-app/LangBot/graphs/
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[Sources de la documentation](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

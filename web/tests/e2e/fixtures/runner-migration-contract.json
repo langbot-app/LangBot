@@ -87,7 +87,7 @@
           "author": "langbot-team",
           "name": "LocalAgent",
           "version": "0.2.1",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/LocalAgent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent",
           "label": {
             "en_US": "Local Agent",
             "zh_Hans": "内置 Agent",
@@ -591,7 +591,7 @@
           "author": "langbot-team",
           "name": "DifyAgent",
           "version": "0.2.3",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dify-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent",
           "label": {
             "en_US": "Dify Agent",
             "zh_Hans": "Dify Agent",
@@ -963,7 +963,7 @@
           "author": "langbot-team",
           "name": "CozeAgent",
           "version": "0.2.0",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/coze-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent",
           "label": {
             "en_US": "Coze Agent",
             "zh_Hans": "扣子 Agent",
@@ -1276,7 +1276,7 @@
           "author": "langbot-team",
           "name": "DashScopeAgent",
           "version": "0.2.2",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/dashscope-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dashscope-agent",
           "label": {
             "en_US": "Dashscope Agent",
             "zh_Hans": "百炼 Agent",
@@ -1571,7 +1571,7 @@
           "author": "langbot-team",
           "name": "N8nAgent",
           "version": "0.2.0",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/n8n-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/n8n-agent",
           "label": {
             "en_US": "N8n Agent",
             "zh_Hans": "n8n 工作流 Agent",
@@ -2049,7 +2049,7 @@
           "author": "langbot-team",
           "name": "LangflowAgent",
           "version": "0.2.2",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/langflow-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/langflow-agent",
           "label": {
             "en_US": "Langflow Agent",
             "zh_Hans": "Langflow Agent",
@@ -2329,7 +2329,7 @@
           "author": "langbot-team",
           "name": "DeerFlowAgent",
           "version": "0.2.1",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/deerflow-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/deerflow-agent",
           "label": {
             "en_US": "DeerFlow Agent",
             "zh_Hans": "DeerFlow Agent",
@@ -2613,7 +2613,7 @@
           "author": "langbot-team",
           "name": "TboxAgent",
           "version": "0.2.1",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/tbox-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/tbox-agent",
           "label": {
             "en_US": "Tbox Agent",
             "zh_Hans": "百宝箱 Agent",
@@ -2783,7 +2783,7 @@
           "author": "langbot-team",
           "name": "WeKnoraAgent",
           "version": "0.2.1",
-          "repository": "https://github.com/langbot-app/langbot-plugins/tree/main/Runner/weknora-agent",
+          "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/weknora-agent",
           "label": {
             "en_US": "WeKnora Agent",
             "zh_Hans": "WeKnora Agent",

@@ -5,6 +5,20 @@ import pytest
 
 # These are behavior obligations, independent of file names and parametrization.
 REQUIRED_CONTRACTS = {
+    'session_summary': {
+        'reader_dependencies',
+        'reader_sql',
+        'reader_http',
+        'reader_scale',
+        'summary_accounting',
+        'summary_fact_equivalence',
+        'summary_snapshot',
+        'summary_atomicity',
+        'summary_backfill',
+        'summary_retention',
+        'summary_postgres',
+        'summary_schema',
+    },
     'postgres': {
         'admission_isolation',
         'rag_identity',

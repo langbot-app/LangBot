@@ -64,6 +64,11 @@ _FEEDBACK_CACHE_MAX = 4096
 _PENDING_FORM_MAX = 1024
 _PENDING_FORM_TTL_SECONDS = 1800
 _MAX_STREAM_CONTENT_CHARS = 200000
+# Minimum spacing between two intermediate stream frames. WeCom replaces the
+# whole bubble on every frame and every frame must carry the complete snapshot,
+# so forwarding each runner chunk re-uploads the growing answer again and
+# again. Final chunks bypass the throttle, so the reply still ends promptly.
+_STREAM_PUSH_MIN_INTERVAL = 0.3
 _MAX_CALLBACK_TASKS = 100
 _MAX_REPLY_WORKERS = 100
 _MAX_REPLY_QUEUE_SIZE = 100
@@ -135,6 +140,10 @@ class WecomBotWsClient:
         self._stream_ids: dict[str, str] = {}  # msg_id -> req_id|stream_id
         # Dedup: skip sending when content hasn't changed
         self._stream_last_content: dict[str, str] = {}  # msg_id -> last content sent
+        # Latest accepted snapshot, including frames skipped by the throttle.
+        self._stream_latest_content: dict[str, str] = {}
+        # Throttle: msg_id -> monotonic timestamp of the last frame sent
+        self._stream_last_push_at: dict[str, float] = {}
         # Preserve completion identity after removing active stream mappings.
         # A runner may emit both a final delta and a completed message snapshot.
         self._completed_stream_content: dict[str, str] = {}
@@ -173,6 +182,8 @@ class WecomBotWsClient:
             self._stream_sessions.pop(msg_id, None)
             self._stream_ids.pop(msg_id, None)
             self._stream_last_content.pop(msg_id, None)
+            self._stream_latest_content.pop(msg_id, None)
+            self._stream_last_push_at.pop(msg_id, None)
             task_id = self._task_id_by_msg.pop(msg_id, None)
             if task_id:
                 self._pending_forms_by_task.pop(task_id, None)
@@ -253,6 +264,8 @@ class WecomBotWsClient:
         self._callback_tasks.clear()
         self._stream_ids.clear()
         self._stream_last_content.clear()
+        self._stream_latest_content.clear()
+        self._stream_last_push_at.clear()
         self._stream_sessions.clear()
         self._feedback_sessions.clear()
         self._msg_feedback_ids.clear()
@@ -437,6 +450,8 @@ class WecomBotWsClient:
 
             self._stream_ids.pop(msg_id, None)
             self._stream_last_content.pop(msg_id, None)
+            self._stream_latest_content.pop(msg_id, None)
+            self._stream_last_push_at.pop(msg_id, None)
             self._stream_sessions.pop(msg_id, None)
             return True, stream_id, None
 
@@ -472,6 +487,8 @@ class WecomBotWsClient:
         # push_stream_chunk calls for this msg_id become no-ops.
         self._stream_ids.pop(msg_id, None)
         self._stream_last_content.pop(msg_id, None)
+        self._stream_latest_content.pop(msg_id, None)
+        self._stream_last_push_at.pop(msg_id, None)
         # Keep _stream_sessions so the button callback can still resolve
         # user/chat context; it gets cleaned up when the click fires.
 
@@ -680,9 +697,16 @@ class WecomBotWsClient:
             previous_content = self._stream_last_content.get(msg_id, '')
             # Pipeline delivery provides complete snapshots, including edits
             # that need not start with the previous text (e.g. reasoning tags).
-            next_content = content or previous_content
+            next_content = content or self._stream_latest_content.get(msg_id, previous_content)
             if len(next_content) > _MAX_STREAM_CONTENT_CHARS:
                 next_content = next_content[-_MAX_STREAM_CONTENT_CHARS:]
+
+            # Remember valid snapshots before deduplication: an edit can revert
+            # a throttled snapshot to the last sent text before an empty final.
+            import re as _re
+
+            if _re.sub(r'[\s\u200b\u200c\u200d\ufeff]', '', next_content):
+                self._stream_latest_content[msg_id] = next_content
 
             # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
             if not is_final and next_content == previous_content:
@@ -713,6 +737,21 @@ class WecomBotWsClient:
                 if not _re.sub(r'[\s\u200b\u200c\u200d\ufeff]', '', next_content):
                     return True
 
+            # Throttle intermediate frames. Every frame carries the complete
+            # snapshot, so dropping one loses nothing; the next frame already
+            # contains everything that was skipped. The final chunk is never
+            # throttled, so a reply always terminates promptly.
+            if not is_final:
+                now = time.monotonic()
+                last_push_at = self._stream_last_push_at.get(msg_id)
+                # A missing entry means "nothing sent yet", not "sent at 0.0":
+                # time.monotonic() has an arbitrary origin, so on a freshly
+                # booted host a raw reading can be smaller than the interval
+                # and the first frame of a message would be dropped.
+                if last_push_at is not None and now - last_push_at < _STREAM_PUSH_MIN_INTERVAL:
+                    return True
+                self._stream_last_push_at[msg_id] = now
+
             # Generate feedback_id for final chunk
             feedback_id = ''
             if is_final:
@@ -734,6 +773,8 @@ class WecomBotWsClient:
                 self._cap_mapping(self._completed_stream_content, _STREAM_CACHE_MAX)
                 self._stream_ids.pop(msg_id, None)
                 self._stream_last_content.pop(msg_id, None)
+                self._stream_latest_content.pop(msg_id, None)
+                self._stream_last_push_at.pop(msg_id, None)
                 self._stream_sessions.pop(msg_id, None)
             return True
         except Exception:

@@ -173,6 +173,17 @@ class BuildAppStage(stage.BootingStage):
             )
             await directory_projection_service.initialize()
             ap.directory_projection_service = directory_projection_service
+            # Startup continues for a while after the first snapshot: platform
+            # ports reconnect, knowledge bases and pipelines reload, and a cold
+            # shared Runtime restore may still be running. Workspace admission
+            # fails closed once the projection is older than its staleness
+            # window, so keep refreshing it from the moment the first snapshot
+            # is committed instead of after the rest of this stage.
+            ap.directory_projection_task = ap.task_mgr.create_task(
+                directory_projection_service.run(),
+                name='cloud-directory-projection',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
 
         workspace_policy = deployment.workspace_policy
         workspace_service_inst = workspace_service_module.WorkspaceService(
@@ -313,10 +324,10 @@ class BuildAppStage(stage.BootingStage):
         async def runtime_disconnect_callback(connector: plugin_connector.PluginRuntimeConnector) -> None:
             connector.schedule_reconnect()
 
-        if ap.directory_projection_service is not None:
-            # Keep the projection fresh while shared Runtime cold restore runs.
-            # BuildApp initializes the connector before Application.run() starts
-            # its long-lived tasks, so start the single refresh task here.
+        if ap.directory_projection_service is not None and getattr(ap, 'directory_projection_task', None) is None:
+            # Fallback for a deployment that reached this point without the
+            # startup task (see the projection start right after the first
+            # snapshot is committed).
             ap.directory_projection_task = ap.task_mgr.create_task(
                 ap.directory_projection_service.run(),
                 name='cloud-directory-projection',

@@ -40,9 +40,11 @@ class ExtensionsRouterGroup(group.RouterGroup):
                 return_exceptions=True,
             )
 
-            def _sort_key(item: dict) -> str:
+            def _sort_key(item: dict) -> tuple[int, str]:
+                is_debug = 0 if (item.get('type') == 'plugin' and item.get('plugin', {}).get('debug')) else 1
+                name = ''
                 if item['type'] == 'plugin':
-                    return (
+                    name = (
                         item['plugin']
                         .get('manifest', {})
                         .get('manifest', {})
@@ -50,11 +52,11 @@ class ExtensionsRouterGroup(group.RouterGroup):
                         .get('name', '')
                         .lower()
                     )
-                if item['type'] == 'mcp':
-                    return (item['server'].get('name') or '').lower()
-                if item['type'] == 'skill':
-                    return (item['skill'].get('display_name') or item['skill'].get('name') or '').lower()
-                return ''
+                elif item['type'] == 'mcp':
+                    name = (item['server'].get('name') or '').lower()
+                elif item['type'] == 'skill':
+                    name = (item['skill'].get('display_name') or item['skill'].get('name') or '').lower()
+                return (is_debug, name)
 
             extensions: list[dict] = []
             if isinstance(plugins, list):

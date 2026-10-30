@@ -96,7 +96,8 @@ class TestVectorDatabaseAbstractMethods:
         db = MinimalVectorDB()
         assert db.supported_search_types() == [SearchType.VECTOR]
 
-    def test_list_by_filter_default_implementation(self):
+    @pytest.mark.asyncio
+    async def test_list_by_filter_default_implementation(self):
         """list_by_filter has default implementation returning empty."""
 
         class MinimalVectorDB(VectorDatabase):
@@ -129,7 +130,5 @@ class TestVectorDatabaseAbstractMethods:
 
         db = MinimalVectorDB()
         # list_by_filter should return empty list and -1 for total
-        import asyncio
-
-        result = asyncio.run(db.list_by_filter('test_collection'))
+        result = await db.list_by_filter('test_collection')
         assert result == ([], -1)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..platform.image_urls import refresh_history_items
+
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.entities.io.actions.enums import (
@@ -88,6 +90,8 @@ def register(h):
                 **_run_scope_filters(session),
             )
 
+            scope = _run_scope_filters(session)
+            await refresh_history_items(h.ap, scope['workspace_id'], scope['bot_id'], items)
             return handler.ActionResponse.success(
                 data={
                     'items': items,
@@ -159,6 +163,8 @@ def register(h):
                 **_run_scope_filters(session),
             )
 
+            scope = _run_scope_filters(session)
+            await refresh_history_items(h.ap, scope['workspace_id'], scope['bot_id'], items)
             return handler.ActionResponse.success(
                 data={
                     'items': items,

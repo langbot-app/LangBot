@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: forget
+  label:
+    en_US: Forget
+    zh_Hans: 遗忘
+  description:
+    en_US: Delete a specific episodic memory by its ID.
+    zh_Hans: 通过 ID 删除一条特定的情景记忆。
+
+spec:
+  parameters:
+    type: object
+    properties:
+      episode_id:
+        type: string
+        description: The ID of the episode to delete.
+    required:
+      - episode_id
+
+  llm_prompt: |
+    Delete a specific episodic memory by its ID.
+    Use this tool when the user explicitly asks to forget or remove a specific memory.
+    The episode_id can be obtained from recall_memory search results or the !memory list / !memory search commands.
+
+    Only call this tool when the user clearly wants to delete a memory.
+    Do NOT proactively delete memories without user consent.
+
+    Parameters:
+    - episode_id (required): The ID of the episode to delete.
+
+execution:
+  python:
+    path: forget.py
+    attr: Forget

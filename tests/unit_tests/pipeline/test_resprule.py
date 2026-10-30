@@ -66,6 +66,20 @@ async def test_group_message_no_match(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
+async def test_random_response_draw_is_reused_across_queue_rechecks(sample_query, mock_app, monkeypatch):
+    from langbot.pkg.pipeline.resprule.rules.random import RandomRespRule
+    from unittest.mock import Mock
+
+    draw = Mock(side_effect=[0.9, 0.1])
+    monkeypatch.setattr('langbot.pkg.pipeline.resprule.rules.random.random.random', draw)
+    matcher = RandomRespRule(mock_app)
+    for _ in range(3):
+        result = await matcher.match('hello', sample_query.message_chain, {'random': 0.5}, sample_query)
+        assert result.matching is False
+    draw.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_group_message_match(mock_app, sample_query):
     """Test group message with matching rule"""
     resprule, entities, rule, rule_entities = get_modules()

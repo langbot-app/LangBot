@@ -130,15 +130,32 @@ class TestPasskeyProtectedEndpoints:
 
 
 class TestPasskeyReverseProxyScenarios:
+    """The RP ID and expected origin must come from server config, never the request.
+
+    WebAuthn's anti-phishing guarantee depends on values the *server* chose. If
+    the server trusts a JSON ``origin`` field, the ``Origin``/``Referer`` header,
+    or the ``Host`` header, then a sibling host under the same registrable domain
+    can obtain a valid assertion for a victim's credential.
+    """
+
+    @staticmethod
+    def _set_webui_url(fake_api_app, url: str) -> None:
+        config = getattr(fake_api_app.instance_config, 'data', None)
+        if not isinstance(config, dict):
+            config = {}
+            fake_api_app.instance_config.data = config
+        config.setdefault('api', {})['webui_url'] = url
+
     @pytest.mark.asyncio
-    async def test_auth_options_respects_custom_origin_body_behind_proxy(self, quart_test_client, fake_api_app):
+    async def test_auth_options_ignores_client_supplied_origin_body(self, quart_test_client, fake_api_app):
         fake_api_app.user_service.generate_passkey_authentication_options = AsyncMock(
-            return_value=({'challenge': 'test_chal', 'rpId': 'proxy.company.com'}, 'token_proxy')
+            return_value=({'challenge': 'test_chal', 'rpId': 'bot.langbot.app'}, 'token_cfg')
         )
+        self._set_webui_url(fake_api_app, 'https://bot.langbot.app')
 
         response = await quart_test_client.post(
             '/api/v1/user/passkey/auth/options',
-            json={'origin': 'https://proxy.company.com:8443'},
+            json={'origin': 'https://proxy.attacker.test:8443'},
             headers={'Host': '127.0.0.1:5300'},
         )
 
@@ -146,45 +163,67 @@ class TestPasskeyReverseProxyScenarios:
         data = await response.get_json()
         assert data['code'] == 0
         fake_api_app.user_service.generate_passkey_authentication_options.assert_awaited_once_with(
-            rp_id='proxy.company.com',
-            origin='https://proxy.company.com:8443',
+            rp_id='bot.langbot.app',
+            origin='https://bot.langbot.app',
             email=None,
         )
 
     @pytest.mark.asyncio
-    async def test_auth_options_falls_back_to_origin_header(self, quart_test_client, fake_api_app):
+    async def test_auth_options_ignores_origin_header(self, quart_test_client, fake_api_app):
         fake_api_app.user_service.generate_passkey_authentication_options = AsyncMock(
-            return_value=({'challenge': 'test_chal', 'rpId': 'bot.example.com'}, 'token_header')
+            return_value=({'challenge': 'test_chal', 'rpId': 'bot.langbot.app'}, 'token_hdr')
         )
+        self._set_webui_url(fake_api_app, 'https://bot.langbot.app')
 
         response = await quart_test_client.post(
             '/api/v1/user/passkey/auth/options',
             json={},
-            headers={'Origin': 'https://bot.example.com'},
+            headers={'Origin': 'https://evil.attacker.test'},
         )
+
+        assert response.status_code == 200
+        fake_api_app.user_service.generate_passkey_authentication_options.assert_awaited_once_with(
+            rp_id='bot.langbot.app',
+            origin='https://bot.langbot.app',
+            email=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_auth_options_ignores_referer_header(self, quart_test_client, fake_api_app):
+        fake_api_app.user_service.generate_passkey_authentication_options = AsyncMock(
+            return_value=({'challenge': 'test_chal', 'rpId': 'bot.langbot.app'}, 'token_ref')
+        )
+        self._set_webui_url(fake_api_app, 'https://bot.langbot.app')
+
+        response = await quart_test_client.post(
+            '/api/v1/user/passkey/auth/options',
+            json={},
+            headers={'Referer': 'https://evil.attacker.test:9000/login'},
+        )
+
+        assert response.status_code == 200
+        fake_api_app.user_service.generate_passkey_authentication_options.assert_awaited_once_with(
+            rp_id='bot.langbot.app',
+            origin='https://bot.langbot.app',
+            email=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_auth_options_falls_back_to_webhook_prefix(self, quart_test_client, fake_api_app):
+        fake_api_app.user_service.generate_passkey_authentication_options = AsyncMock(
+            return_value=({'challenge': 'test_chal', 'rpId': 'bot.example.com'}, 'token_prefix')
+        )
+        config = getattr(fake_api_app.instance_config, 'data', None)
+        if not isinstance(config, dict):
+            config = {}
+            fake_api_app.instance_config.data = config
+        config['api'] = {'webui_url': '', 'webhook_prefix': 'https://bot.example.com'}
+
+        response = await quart_test_client.post('/api/v1/user/passkey/auth/options', json={})
 
         assert response.status_code == 200
         fake_api_app.user_service.generate_passkey_authentication_options.assert_awaited_once_with(
             rp_id='bot.example.com',
             origin='https://bot.example.com',
-            email=None,
-        )
-
-    @pytest.mark.asyncio
-    async def test_auth_options_falls_back_to_referer_header(self, quart_test_client, fake_api_app):
-        fake_api_app.user_service.generate_passkey_authentication_options = AsyncMock(
-            return_value=({'challenge': 'test_chal', 'rpId': 'bot.example.com'}, 'token_referer')
-        )
-
-        response = await quart_test_client.post(
-            '/api/v1/user/passkey/auth/options',
-            json={},
-            headers={'Referer': 'https://bot.example.com:9000/login'},
-        )
-
-        assert response.status_code == 200
-        fake_api_app.user_service.generate_passkey_authentication_options.assert_awaited_once_with(
-            rp_id='bot.example.com',
-            origin='https://bot.example.com:9000',
             email=None,
         )

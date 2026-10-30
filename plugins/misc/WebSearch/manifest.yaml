@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: RockChinQ
+  name: WebSearch
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WebSearch
+  version: 0.1.10
+  description:
+    en_US: Tool for llm to search web
+    zh_Hans: 用于供 LLM 访问网页的工具
+    zh_Hant: 網路搜尋插件，提供多種搜尋引擎的網路搜尋功能作為 LangBot Tool。
+    ja_JP: Web検索プラグイン。複数の検索エンジンによるWeb検索機能をLangBot Toolとして提供します。
+    vi_VN: Plugin tìm kiếm web, cung cấp chức năng tìm kiếm web từ nhiều công cụ
+      tìm kiếm dưới dạng LangBot Tool.
+    th_TH: ปลั๊กอินค้นหาเว็บ ให้ฟังก์ชันค้นหาเว็บจากเครื่องมือค้นหาหลายตัวเป็น 
+      LangBot Tool
+    es_ES: Plugin de búsqueda web que proporciona funciones de búsqueda web con 
+      múltiples motores de búsqueda como herramienta LangBot Tool.
+  label:
+    en_US: WebSearch
+    zh_Hans: WebSearch
+    zh_Hant: WebSearch
+    ja_JP: WebSearch
+    vi_VN: WebSearch
+    th_TH: WebSearch
+    es_ES: WebSearch
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Tool:
+      fromDirs:
+      - path: components/tools/
+execution:
+  python:
+    path: main.py
+    attr: WebSearch
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

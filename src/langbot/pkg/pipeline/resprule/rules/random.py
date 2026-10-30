@@ -18,4 +18,7 @@ class RandomRespRule(rule_model.GroupRespondRule):
     ) -> entities.RuleJudgeResult:
         random_rate = rule_dict['random']
 
-        return entities.RuleJudgeResult(matching=random.random() < random_rate, replacement=message_chain)
+        key = '_group_response_random_draw'
+        if key not in query.variables:
+            query.variables[key] = random.random()
+        return entities.RuleJudgeResult(matching=query.variables[key] < random_rate, replacement=message_chain)

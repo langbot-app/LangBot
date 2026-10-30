@@ -100,7 +100,7 @@ const viVN = {
     retention: 'Lịch sử tin nhắn · {{count}} ngày',
     retentionLabel: 'Thời gian lưu tin nhắn',
     retentionHelp: 'Tin nhắn được tự động xóa sau thời gian này.',
-    credits: '{{count}} tín dụng mỗi tháng',
+    credits: '{{count}} tín dụng mô hình mỗi tháng',
     creditsLabel: 'Tín dụng hàng tháng',
     creditsHelp: 'Tín dụng được cấp mỗi tháng đăng ký, kể cả gói năm.',
     platforms: 'Hỗ trợ nền tảng phổ biến',
@@ -949,6 +949,8 @@ const viVN = {
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
+    autoCreatedPipeline:
+      'Đã tự động tạo pipeline và liên kết các sự kiện tin nhắn',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
@@ -1017,7 +1019,8 @@ const viVN = {
     commonScenarios: 'Tình huống phổ biến',
     dragEventRoute: 'Kéo tuyến {{index}}',
     behaviorReplyMessages: 'Trả lời tin nhắn',
-    behaviorReplyMessagesDescription: 'Gửi tin nhắn đến bộ xử lý.',
+    behaviorReplyMessagesDescription:
+      'Xử lý tin nhắn riêng và tin nhắn nhóm nhắc đến bot này.',
     behaviorWelcomeMembers: 'Chào mừng thành viên mới',
     behaviorWelcomeMembersDescription:
       'Chạy bộ xử lý khi có người tham gia nhóm.',
@@ -1235,6 +1238,9 @@ const viVN = {
       'Phải khớp mọi điều kiện để kích hoạt. Để trống để luôn kích hoạt.',
     conditionsEmpty: 'Không có điều kiện — luôn kích hoạt.',
     addFilter: 'Thêm điều kiện',
+    filterIsAtBot: 'Nhắc đến bot này',
+    mentionYes: 'Có',
+    mentionNo: 'Không',
     filterChatType: 'Loại phiên',
     filterChatId: 'ID phiên',
     filterMessageText: 'Nội dung tin nhắn',
@@ -1794,6 +1800,212 @@ const viVN = {
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
     uploadLocalPlugin: 'Tải lên Plugin cục bộ',
+    spaceUpload: {
+      menuAction: 'Tải lên chợ ứng dụng',
+      title: 'Tải plugin lên chợ ứng dụng',
+      description:
+        'Build plugin đang gỡ lỗi {{author}}/{{name}} và phát hành lên chợ ứng dụng.',
+      loadFailed: 'Không tải được thông tin tải lên của plugin',
+      spaceNotConnected:
+        'Workspace này chưa liên kết với tài khoản LangBot. Hãy liên kết trước khi tải lên.',
+      label: 'Tên',
+      version: 'Phiên bản',
+      pluginDescription: 'Mô tả',
+      repository: 'Kho lưu trữ',
+      repositoryPublicHint:
+        'Khi đồng bộ lên GitHub, kho chưa tồn tại sẽ được tạo và kho riêng tư hiện có sẽ được chuyển sang công khai.',
+      author: 'Tác giả',
+      authorHint:
+        'Khi phát hành sẽ dùng danh tính tác giả này trên chợ ứng dụng.',
+      license: 'Giấy phép',
+      licensePlaceholder: 'Chọn giấy phép',
+      licenseNone: 'Không chỉ định',
+      changelog: 'Nhật ký thay đổi',
+      syncGithub: 'Đồng bộ lên GitHub',
+      syncGithubHint:
+        'Commit và push thư mục làm việc của plugin. Mặc định dùng cấu hình git cục bộ; URL kho và token bên dưới có thể ghi đè. Nếu có token và kho GitHub chưa tồn tại, hệ thống sẽ tự tạo.',
+      repoUrl: 'URL kho (tùy chọn)',
+      repoUrlHint: 'Để trống để dùng origin git cục bộ.',
+      token: 'Token truy cập (tùy chọn)',
+      tokenPlaceholder: 'Chỉ dùng cho lần push này',
+      branch: 'Nhánh',
+      commitMessage: 'Thông điệp commit',
+      syncOnly: 'Chỉ đồng bộ lên GitHub',
+      gitSynced: 'Đã đồng bộ lên GitHub',
+      gitCommittedNoRemote:
+        'Đã commit cục bộ nhưng chưa cấu hình remote để push',
+      gitNothing: 'Không có thay đổi để đồng bộ',
+      gitFailed: 'Đồng bộ Git thất bại: ',
+      uploadSuccess: 'Đã tải plugin lên chợ ứng dụng',
+      reviewOnSpace: 'Gửi duyệt trên chợ ứng dụng',
+      uploadFailed: 'Tải plugin lên thất bại: ',
+      basicInfo: 'Thông tin cơ bản',
+      changeIcon: 'Đổi biểu tượng',
+      iconInvalidType: 'Vui lòng chọn một tệp hình ảnh',
+      iconTooLarge: 'Biểu tượng phải nhỏ hơn 10 MB',
+      labelRequired: 'Nhập tên bằng ít nhất một ngôn ngữ',
+      langEn: 'English',
+      langZhHans: 'Tiếng Trung giản thể',
+      langZhHant: 'Tiếng Trung phồn thể',
+      langJa: 'Tiếng Nhật',
+      langTh: 'Tiếng Thái',
+      langVi: 'Tiếng Việt',
+      langEs: 'Tiếng Tây Ban Nha',
+      uploadButton: 'Tải lên chợ ứng dụng',
+      notDebugHint:
+        'Chỉ có thể tải lên plugin đang kết nối gỡ lỗi. Hãy chạy `lbp run` để bắt đầu gỡ lỗi trước.',
+      stepInfo: 'Thông tin plugin',
+      stepSettings: 'Ghi chú phát hành',
+      stepConfirm: 'Xác nhận tải lên',
+      stepResult: 'Kết quả tải lên',
+      startUpload: 'Bắt đầu tải lên',
+      uploadingTitle: 'Đang tải lên chợ tiện ích...',
+      uploadingDesc:
+        'Đang đóng gói tệp plugin cục bộ, kiểm tra manifest và đồng bộ với LangBot Space...',
+      uploadSuccessTitle: 'Tải plugin lên thành công!',
+      uploadSuccessDesc:
+        'Plugin {{author}}/{{name}} (v{{version}}) đã được gửi tới LangBot Space.',
+      reviewNoticeTitle: 'Thông báo kiểm duyệt',
+      reviewNoticeDesc:
+        'Plugin đã vào hàng đợi kiểm duyệt. Sau khi được duyệt, plugin sẽ hiển thị công khai trên chợ tiện ích.',
+      viewInSpace: 'Xem trên chợ Space',
+      viewMyPlugins: 'Quản lý plugin của tôi',
+      finishAndClose: 'Xong',
+      retryUpload: 'Thử tải lên lại',
+      backToEdit: 'Quay lại chỉnh sửa',
+      manifestNotice:
+        'Thông tin dưới đây được đọc từ tệp manifest (manifest.yaml) chỉ để xác nhận. Nếu cần sửa đổi, vui lòng chỉnh sửa tệp manifest và khởi động lại gỡ lỗi.',
+      manifestSource: 'Đã xác nhận từ manifest',
+      nextStep: 'Tiếp theo',
+      prevStep: 'Quay lại',
+      nextToSettings: 'Tiếp theo: Ghi chú phát hành',
+      nextToConfirm: 'Tiếp theo: Xác nhận tải lên',
+      confirmAndUpload: 'Xác nhận tải lên Chợ Tiện ích mở rộng',
+      noDescription: 'Chưa có mô tả',
+      noRepository: 'Chưa chỉ định kho mã nguồn',
+      noLicense: 'Chưa chỉ định giấy phép',
+      changelogPlaceholder:
+        'Nhập ghi chú phát hành cho phiên bản này (ví dụ tính năng mới, sửa lỗi)...',
+      changelogHint:
+        'Nhật ký thay đổi sẽ hiển thị trong lịch sử phiên bản của Chợ Tiện ích mở rộng.',
+      reviewSummaryTitle: 'Kiểm tra trước khi phát hành',
+      reviewTargetMarket: 'Chợ mục tiêu',
+      reviewTargetMarketValue: 'Chợ Tiện ích mở rộng (LangBot Space)',
+      reviewAccountStatus: 'Trạng thái tài khoản',
+      reviewAccountConnected: 'Đã kết nối tài khoản LangBot',
+      reviewAccountNotConnected: 'Chưa kết nối tài khoản (tải lên sẽ thất bại)',
+      spaceNotConnectedTitle: 'Chưa liên kết tài khoản chợ',
+      bindSpaceButton: 'Liên kết tài khoản ngay',
+      bindRequiredToProceed: 'Vui lòng liên kết tài khoản để tiếp tục',
+      prerequisitesTitle: 'Yêu cầu tiên quyết để phát hành',
+      prerequisitesDescription:
+        'Trước khi tải plugin lên chợ tiện ích mở rộng, vui lòng đảm bảo đáp ứng các yêu cầu sau.',
+      req1Title: 'Yêu cầu 1: Liên kết tài khoản LangBot Space',
+      req1Desc:
+        'Cài đặt LangBot cục bộ phải được đăng nhập hoặc liên kết với LangBot Space.',
+      reqBound: 'Đã liên kết',
+      reqCompleted: 'Đã sẵn sàng',
+      req2Title: 'Yêu cầu 2: Tạo danh tính người sáng tạo trên Space',
+      req2Desc:
+        'Tài khoản LangBot phải có danh tính người sáng tạo và định danh phải khớp với tác giả plugin.',
+      req2WaitSpace: 'Vui lòng hoàn thành Yêu cầu 1 trước',
+      req2NoCreator: 'Tài khoản LangBot này chưa tạo danh tính người sáng tạo',
+      req2Mismatch: 'Định danh người sáng tạo không khớp',
+      req2MismatchDetail:
+        'Định danh Space của bạn là @{{creator}}, nhưng tác giả plugin là {{author}}.',
+      createCreatorButton: 'Đi đến tạo danh tính',
+      manageCreatorButton: 'Xem cài đặt người sáng tạo',
+      pendingReq: 'Đang chờ',
+      autoProceedTip:
+        'Khi hoàn thành tất cả các yêu cầu, quy trình tải lên sẽ tự động mở ra.',
+      refreshStatus: 'Làm mới trạng thái',
+      reviewGitSync: 'Đồng bộ GitHub',
+      reviewGitSyncEnabled: 'Đã bật (đẩy lên {{branch}})',
+      reviewGitSyncDisabled: 'Đã tắt',
+      reviewChangelog: 'Ghi chú phát hành',
+      reviewChangelogEmpty: '(Chưa nhập ghi chú phát hành)',
+      pluginIdentifier: 'Định danh plugin',
+      banners: {
+        guideTitle: 'Hướng dẫn thực hiện:',
+        disabledTooltip:
+          'Vui lòng làm theo hướng dẫn ở biểu ngữ phía trên trước khi tải lên',
+        bindButton: 'Kết nối tài khoản LangBot',
+        reauthButton: 'Xác thực lại tài khoản',
+        createCreatorButton: 'Mở hồ sơ người sáng tạo',
+        manageCreatorButton: 'Quản lý hồ sơ người sáng tạo',
+        viewMyPluginsButton: 'Xem plugin của tôi trên Space',
+        refreshButton: 'Làm mới trạng thái',
+        retryButton: 'Thử tải lên lại',
+        readyToUpload: {
+          title: 'Đã sẵn sàng xuất bản',
+          description:
+            'Tài khoản LangBot và hồ sơ người sáng tạo đã sẵn sàng. Vui lòng kiểm tra chi tiết bên dưới và xác nhận tải lên.',
+        },
+        notConnected: {
+          title: 'Chưa kết nối tài khoản LangBot Space',
+          description:
+            'Phiên bản cục bộ này chưa được kết nối với LangBot Space. Cần có tài khoản LangBot để xác minh danh tính và xuất bản plugin.',
+          guide:
+            'Vui lòng nhấp vào "Kết nối tài khoản LangBot" bên dưới để đăng nhập. Sau khi kết nối, bạn có thể xuất bản plugin.',
+        },
+        noCreator: {
+          title: 'Chưa tạo hồ sơ người sáng tạo trên Space',
+          description:
+            'Việc xuất bản plugin lên chợ ứng dụng yêu cầu hồ sơ người sáng tạo (Creator Profile) để hiển thị thông tin tác giả.',
+          guide:
+            'Vui lòng nhấp vào nút bên dưới để thiết lập slug, tiểu sử và ảnh đại diện trên Space. Sau đó quay lại và nhấp "Làm mới trạng thái".',
+        },
+        authorMismatch: {
+          title: 'Tác giả plugin không khớp với mã định danh người sáng tạo',
+          description:
+            'Tác giả trong tệp manifest là "{{author}}", nhưng mã định danh người sáng tạo trên Space là "@{{creator}}". Cả hai phải hoàn toàn khớp nhau.',
+          guide:
+            'Cách giải quyết:\n1. Cập nhật manifest.yaml và đặt metadata.author thành "{{creator}}";\n2. Hoặc chuyển sang tài khoản LangBot khớp với "{{author}}". Sau đó nhấp "Làm mới trạng thái".',
+        },
+        pendingReview: {
+          title: 'Đã có bản đệ trình đang chờ xem xét',
+          description:
+            'Bản đệ trình trước đó cho plugin này hiện đang chờ xem xét. Vui lòng đợi bản xem xét hoàn tất trước khi gửi phiên bản mới.',
+          guide:
+            'Vui lòng nhấp vào "Xem plugin của tôi trên Space" bên dưới để kiểm tra tiến trình xem xét.',
+        },
+        sessionExpired: {
+          title: 'Phiên xác thực Space đã hết hạn',
+          description:
+            'Mã truy cập Space đã hết hạn hoặc không hợp lệ. Xác thực thất bại.',
+          guide:
+            'Vui lòng nhấp vào "Xác thực lại tài khoản" bên dưới để đăng nhập lại và thử lại.',
+        },
+        validationFailed: {
+          title: 'Xác thực gói plugin thất bại',
+          description: 'Kiểm tra gói plugin thất bại: {{detail}}',
+          guide:
+            'Vui lòng kiểm tra các trường trong manifest.yaml, định dạng phiên bản SemVer và các tệp biểu tượng, README.',
+        },
+        genericError: {
+          title: 'Xuất bản plugin thất bại',
+          description: '{{detail}}',
+          guide:
+            'Vui lòng kiểm tra kết nối mạng hoặc thử lại sau. Nếu sự cố vẫn tiếp diễn, hãy liên hệ cộng đồng Space.',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'Vui lòng thiết lập hồ sơ người sáng tạo trên Space trước khi tải lên plugin',
+        authorMismatch:
+          'Tác giả plugin "{{author}}" không khớp với mã định danh người sáng tạo trên Space "@{slug}"',
+        pendingReview:
+          'Bạn đã có bản đệ trình plugin đang chờ xem xét. Vui lòng đợi hoàn tất',
+        sessionExpired:
+          'Phiên đăng nhập Space đã hết hạn. Vui lòng xác thực lại',
+        notConnected:
+          'Vui lòng kết nối tài khoản LangBot Space trước khi tải lên plugin',
+        packageFailed:
+          'Đóng gói plugin thất bại. Vui lòng kiểm tra mã nguồn và thư mục',
+        inspectFailed: 'Kiểm tra tệp khai báo plugin thất bại: {{detail}}',
+        certPrecheckFailed: 'Kiểm tra chứng nhận trước thất bại: {{detail}}',
+      },
+    },
     localPreview: {
       title: 'Xem trước gói plugin cục bộ',
       unpacking: 'Đang giải nén để xem trước gói...',
@@ -3738,6 +3950,16 @@ const viVN = {
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
     invalidPage: 'Trang plugin không hợp lệ',
+  },
+  cloud_banner: {
+    message:
+      'Bạn đang sử dụng LangBot Cloud, dịch vụ được quản lý. Nếu cần tài nguyên riêng và hạn mức cao hơn, hãy cân nhắc',
+    dedicated_link: 'LangBot Cloud (môi trường riêng)',
+    cta_dedicated: 'xem các gói môi trường riêng',
+    or: 'hoặc',
+    self_hosted_link: 'phiên bản mã nguồn mở tự lưu trữ',
+    period: '.',
+    dismiss: 'Đóng',
   },
 };
 export default viVN;

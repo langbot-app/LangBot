@@ -78,7 +78,40 @@ def _pop_owned_session(
 
 
 _MAX_ADAPTER_SESSIONS = 100
+# How often the credential-session sweeper enforces its TTL, independent of traffic.
+_CREDENTIAL_SWEEP_INTERVAL_SECONDS = 60
 _MAX_ADAPTER_SESSIONS_PER_WORKSPACE = 10
+
+
+def _scrub_credential_fields(session: dict) -> None:
+    """Overwrite credential fields before a session dict is dropped."""
+    for key in ('app_secret', 'client_secret', 'secret'):
+        if key in session:
+            session[key] = None
+
+
+def _sweep_credential_sessions(stores: 'list[tuple[dict, float]]') -> int:
+    """Evict sessions past their TTL and scrub the secrets they held.
+
+    Returns the number of evicted sessions. Each entry is ``(store, ttl)``; a
+    session is evicted when ``now - created_at > ttl``.
+    """
+    import time
+
+    now = time.time()
+    evicted = 0
+    for store, ttl in stores:
+        expired = [sid for sid, session in store.items() if now - session.get('created_at', 0) > ttl]
+        for sid in expired:
+            session = store.pop(sid, None)
+            if not session:
+                continue
+            task = session.get('task')
+            if task is not None and not task.done():
+                task.cancel()
+            _scrub_credential_fields(session)
+            evicted += 1
+    return evicted
 
 
 def _start_adapter_session_task(
@@ -1231,3 +1264,44 @@ class AdaptersRouterGroup(group.RouterGroup):
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
+
+        # ---- credential-session TTL enforcement ----
+        #
+        # Every store above holds a short-lived secret (app_secret,
+        # client_secret, bot secret) between the platform handshake and the
+        # caller persisting it. The per-route cleanups only run when another
+        # request arrives, so an abandoned flow would keep its secret in memory
+        # long past its validity window. This sweeper enforces the TTL on a
+        # timer instead, and scrubs the secret fields as it evicts.
+
+        def _credential_stores() -> list[tuple[dict, float]]:
+            return [
+                (_create_app_sessions, _SESSION_TTL),
+                (_dingtalk_sessions, _DINGTALK_SESSION_TTL),
+                (_wecombot_sessions, _WECOMBOT_SESSION_TTL),
+                (_qqofficial_sessions, _QQOFFICIAL_SESSION_TTL),
+            ]
+
+        def _sweep_now() -> int:
+            return _sweep_credential_sessions(_credential_stores())
+
+        async def _credential_session_sweeper() -> None:
+            """Enforce the session TTL on a timer, so it does not depend on traffic."""
+            import asyncio as _asyncio
+
+            while True:
+                await _asyncio.sleep(_CREDENTIAL_SWEEP_INTERVAL_SECONDS)
+                try:
+                    _sweep_now()
+                except Exception:  # pragma: no cover - a sweep must never kill the app
+                    _stdout_logger.exception('credential session sweep failed')
+
+        self._sweep_credential_sessions = _sweep_now
+        # Some embeddings (notably test harnesses) provide a task manager without
+        # create_task; the per-route cleanups still enforce the TTL there.
+        create_task = getattr(self.ap.task_mgr, 'create_task', None)
+        if callable(create_task):
+            create_task(
+                _credential_session_sweeper(),
+                name='platform-credential-session-sweeper',
+            )

@@ -852,18 +852,16 @@ test.describe('bot advanced flows', () => {
     await expect(saveButton).toBeDisabled();
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
-    await page
-      .getByRole('combobox')
-      .filter({ hasText: 'Select processor' })
-      .click();
-    await page.getByRole('option', { name: /Dirty state target/ }).click();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Dirty state target' }),
+    ).toHaveCount(2);
     await expect(saveButton).toBeEnabled();
     await save(page);
     await expect(saveButton).toBeDisabled();
     await page.reload();
     await expect(
       page.getByRole('combobox').filter({ hasText: 'Dirty state target' }),
-    ).toBeVisible();
+    ).toHaveCount(2);
   });
 
   test('shows validation error when bot name is empty', async ({ page }) => {
@@ -1587,9 +1585,10 @@ test.describe('cross-resource flows', () => {
     await page.getByRole('menuitem', { name: /^Welcome new members/ }).click();
 
     const routeCards = page.locator('[data-testid^="event-route-"]');
-    await expect(routeCards).toHaveCount(2);
+    await expect(routeCards).toHaveCount(3);
     await expect(routeCards.nth(0)).toContainText('Message received');
-    await expect(routeCards.nth(1)).toContainText('Member joined group');
+    await expect(routeCards.nth(1)).toContainText('Message received');
+    await expect(routeCards.nth(2)).toContainText('Member joined group');
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page
@@ -1607,14 +1606,14 @@ test.describe('cross-resource flows', () => {
     await eventSubmenu
       .getByRole('menuitem', { name: /^Message edited/ })
       .click();
-    await expect(routeCards).toHaveCount(3);
-    await expect(routeCards.nth(2)).toContainText('Message edited');
+    await expect(routeCards).toHaveCount(4);
+    await expect(routeCards.nth(3)).toContainText('Message edited');
 
-    const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
-    const secondCard = routeCards.nth(1);
-    await firstHandle.scrollIntoViewIfNeeded();
-    const handleBox = await firstHandle.boundingBox();
-    const targetBox = await secondCard.boundingBox();
+    const memberHandle = page.getByRole('button', { name: 'Drag route 3' });
+    const firstCard = routeCards.nth(0);
+    await memberHandle.scrollIntoViewIfNeeded();
+    const handleBox = await memberHandle.boundingBox();
+    const targetBox = await firstCard.boundingBox();
     expect(handleBox).not.toBeNull();
     expect(targetBox).not.toBeNull();
 
@@ -1645,7 +1644,8 @@ test.describe('cross-resource flows', () => {
     const savedRouteCards = page.locator('[data-testid^="event-route-"]');
     await expect(savedRouteCards.nth(0)).toContainText('Member joined group');
     await expect(savedRouteCards.nth(1)).toContainText('Message received');
-    await expect(savedRouteCards.nth(2)).toContainText('Message edited');
+    await expect(savedRouteCards.nth(2)).toContainText('Message received');
+    await expect(savedRouteCards.nth(3)).toContainText('Message edited');
   });
 
   test('creates a pipeline then binds it to a bot', async ({ page }) => {
@@ -1672,13 +1672,9 @@ test.describe('cross-resource flows', () => {
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
-    await page
-      .getByRole('combobox')
-      .filter({ hasText: 'Select processor' })
-      .click();
-
-    // Select the pipeline option
-    await page.getByRole('option', { name: /Production Pipeline/ }).click();
+    await expect(
+      page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
+    ).toHaveCount(2);
 
     // Save the bot
     await save(page);
@@ -1688,6 +1684,6 @@ test.describe('cross-resource flows', () => {
     // The pipeline name should appear in the select trigger (not in sidebar or options)
     await expect(
       page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
-    ).toBeVisible();
+    ).toHaveCount(2);
   });
 });

@@ -1,7 +1,5 @@
 # Docker Compose configuration for LangBot
 # For Kubernetes deployment, see kubernetes.yaml and the deployment guide at https://langbot.app/docs
-version: "3"
-
 services:
 
   langbot_plugin_runtime:
@@ -9,8 +7,17 @@ services:
     container_name: langbot_plugin_runtime
     volumes:
       - ./data/plugins:/app/data/plugins
+      # Persist the v4 plugin artifact cache, dependency environments, and
+      # per-installation data. Without this, recreating the container throws
+      # away every installed plugin's environment and private data while
+      # data/plugins survives.
+      - ./data/plugin-runtime:/app/data/plugin-runtime
     ports:
       - 5401:5401
+      # ACP Agent Runner daemon hub. With `daemon-enabled = true` in the plugin
+      # config, a user-side runner daemon behind NAT connects outward to
+      # ws://<langbot-public-host>:8766. Harmless when the hub is disabled.
+      - 8766:8766
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai

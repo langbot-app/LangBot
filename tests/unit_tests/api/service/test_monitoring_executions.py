@@ -81,6 +81,105 @@ async def test_event_properties_survive_detail_snapshot_fallback(engine, service
         assert items[1]['content'] == {'text': 'later'}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('napcat', [True, False])
+@pytest.mark.parametrize('source', ['agent', 'pipeline'])
+async def test_execution_details_refresh_existing_images_through_shared_catalog(engine, service, napcat, source):
+    import json
+    from unittest.mock import AsyncMock
+    import sqlalchemy as sa
+    from langbot.pkg.entity.persistence.event_log import EventLog
+    from langbot.pkg.entity.persistence.transcript import Transcript
+    from langbot.pkg.entity.persistence.resource_url import ResourceURL
+    from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+    old = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=existing&rkey=expired'
+    new = old.replace('expired', 'renewed')
+    chain = [{'type': 'Source', 'id': 42}, {'type': 'Image', 'image_id': 'pic.jpg', 'url': old}]
+    content = {'content': [{'type': 'image_url', 'image_url': {'url': old}}]}
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        await session.execute(
+            sa.update(persistence_agent_run.AgentRun)
+            .where(persistence_agent_run.AgentRun.run_id == 'run-done')
+            .values(conversation_id='session-1')
+        )
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-user')
+            .values(message_content=json.dumps(chain))
+        )
+        await session.execute(
+            sa.update(persistence_monitoring.MonitoringMessage)
+            .where(persistence_monitoring.MonitoringMessage.id == 'msg-assistant')
+            .values(message_content=json.dumps(chain), parent_message_id='msg-user')
+        )
+        session.add(
+            EventLog(
+                event_id='evt-1',
+                event_type='message.received',
+                source='platform',
+                workspace_id=WORKSPACE,
+                bot_id='bot-1',
+                input_json=json.dumps(content),
+                metadata_json=json.dumps({'input_event': {'message_chain': chain}}),
+            )
+        )
+        session.add(
+            Transcript(
+                transcript_id='image-output',
+                event_id='evt-1',
+                workspace_id=WORKSPACE,
+                bot_id='bot-1',
+                conversation_id='session-1',
+                role='assistant',
+                run_id='run-done',
+                seq=1,
+                content_json=json.dumps(content),
+                attachment_refs_json=json.dumps([chain[1]]),
+            )
+        )
+        await session.commit()
+
+    async with engine.begin() as db:
+        await db.execute(sa.update(ResourceURL).values(created_at=_dt(10)))
+
+    async def action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'NapCat.Onebot' if napcat else 'standard-peer'}
+        if napcat:
+            assert name == 'nc_get_rkey'
+            return [{'type': 20, 'time': 1, 'ttl': 10**12, 'rkey': 'renewed'}]
+        assert name == 'get_msg' and params == {'message_id': 42}
+        return {'message': [{'type': 'image', 'data': {'file': 'pic.jpg', 'url': new}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    bot = SimpleNamespace(
+        workspace_uuid=WORKSPACE,
+        enable=True,
+        bot_entity=SimpleNamespace(adapter='onebot-v11'),
+        adapter=SimpleNamespace(bot=SimpleNamespace(connection=peer)),
+    )
+    service.ap.platform_mgr = SimpleNamespace(resolve_public_bot=AsyncMock(return_value=bot))
+    identity = 'run-done' if source == 'agent' else 'msg-user'
+    detail = await service.get_execution_detail(WORKSPACE, source, identity)
+    for section in ('inputs', 'conversation'):
+        assert new in json.dumps(detail['pages'][section]['items'])
+        assert old not in json.dumps(detail['pages'][section]['items'])
+    if source == 'agent':
+        assert new in json.dumps(detail['pages']['outputs']['items'])
+    else:
+        assert new in json.dumps(detail['pages']['deliveries']['items'])
+    await service.get_execution_detail(WORKSPACE, source, identity, section='conversation')
+    assert peer.call_action.await_count == 2
+    async with engine.connect() as db:
+        assert new in (await db.execute(sa.select(EventLog.input_json))).scalar_one()
+        assert new in (await db.execute(sa.select(Transcript.content_json))).scalar_one()
+        raw = (await db.execute(sa.text('SELECT input_json FROM event_log'))).scalar_one()
+        assert 'langbot-resource://' in raw and old not in raw and new not in raw
+
+
 def test_event_content_preserves_conflicting_custom_input_fields():
     from langbot.pkg.api.http.service.monitoring_execution_details import event_content
 
@@ -401,6 +500,90 @@ async def test_overview_metrics_keep_message_rollup(engine, service):
     assert overview['llm_calls'] == 2
     assert overview['model_calls'] == 2
     assert overview['active_sessions'] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('filtered', [False, True])
+@pytest.mark.parametrize(
+    ('mode', 'statuses', 'expected'),
+    [
+        ('real', None, (3, 2, 1)),
+        ('debug', None, (0, 0, 0)),
+        ('all', ['completed'], (2, 1, 1)),
+        ('real', ['completed'], (2, 1, 1)),
+        ('real', ['failed'], (0, 0, 0)),
+        ('debug', ['completed'], (0, 0, 0)),
+    ],
+)
+async def test_overview_execution_filters_do_not_read_historical_payload_pages(
+    engine, service, mode, statuses, expected, filtered
+):
+    """Execution membership must read root and link metadata without accessing wide history rows."""
+    import re
+    import sqlalchemy as sa
+
+    await _seed(engine)
+    message = persistence_monitoring.MonitoringMessage
+    payload = 'historical payload ' * 65536
+    async with engine.begin() as connection:
+        await connection.execute(sa.update(message).values(message_content=payload, variables=payload))
+        await connection.execute(
+            sa.update(message).where(message.id == 'msg-assistant').values(parent_message_id='msg-user')
+        )
+        # Vary status selectivity so the planner cannot hide table reads behind a tiny fixture.
+        await connection.execute(
+            sa.insert(message),
+            [
+                dict(
+                    id=f'unlinked-{index}',
+                    workspace_uuid=WORKSPACE,
+                    timestamp=_dt(12),
+                    bot_id='bot-1',
+                    bot_name='Bot',
+                    pipeline_id='pipeline-1',
+                    pipeline_name='Pipeline',
+                    session_id='session-1',
+                    message_content='unlinked assistant output',
+                    role='assistant',
+                    status=('success', 'error', 'discarded', 'skipped', 'rejected', 'running', 'pending')[index % 7],
+                    level='info',
+                )
+                for index in range(64)
+            ],
+        )
+        await connection.exec_driver_sql('ANALYZE')
+
+    statements = []
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('SELECT'):
+            statements.append((statement, parameters))
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture)
+    try:
+        filters = (
+            dict(bot_ids=['bot-1'], pipeline_ids=['pipeline-1'], start_time=_dt(9), end_time=_dt(11))
+            if filtered
+            else {}
+        )
+        overview = await service.get_overview_metrics(WORKSPACE, execution_statuses=statuses, mode=mode, **filters)
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', capture)
+
+    assert (overview['total_messages'], overview['llm_calls'], overview['active_sessions']) == expected
+    checked_accesses = 0
+    async with engine.connect() as connection:
+        for sql, parameters in statements:
+            # Discover aliases from the executed SQL rather than pinning an alias or index name.
+            sources = {message.__tablename__, *re.findall(r'FROM monitoring_messages AS (\w+)', sql)}
+            plan = (await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + sql, parameters)).all()
+            accesses = [
+                row[3] for row in plan if row[3].split()[0] in {'SEARCH', 'SCAN'} and row[3].split()[1] in sources
+            ]
+            assert accesses, plan
+            assert all('COVERING INDEX' in access for access in accesses), plan
+            checked_accesses += len(accesses)
+    assert checked_accesses > 0
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,21 @@
+[Unit]
+Description=PowerContext Server for LangBot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/yhh/services/powercontext
+Environment=POWERCONTEXT_HOME=/home/yhh/.local/share/powercontext-langbot
+ExecStart=/home/yhh/services/powercontext/.venv/bin/python /home/yhh/services/powercontext/.venv/bin/powercontext server run --no-env-file --host 127.0.0.1 --port 18000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=768M
+TasksMax=128
+
+[Install]
+WantedBy=default.target

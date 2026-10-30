@@ -1,0 +1,89 @@
+{
+  "id": "hard_retrieval_v1",
+  "description": "Harder retrieval experiments over multi-hop, distractor-heavy Chinese benchmark data.",
+  "metrics": {
+    "k_values": [1, 3, 5]
+  },
+  "experiments": [
+    {
+      "name": "chunk_vector_hard",
+      "description": "Flat chunk index with vector retrieval.",
+      "parser_mode": "preparsed",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 220,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "vector",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_full_text_hard",
+      "description": "Flat chunk index with full-text retrieval.",
+      "parser_mode": "preparsed",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 220,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "full_text",
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_hybrid_hard",
+      "description": "Flat chunk index with hybrid retrieval.",
+      "parser_mode": "preparsed",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 220,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "hybrid",
+        "vector_weight": 0.65,
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "parent_child_hybrid_hard",
+      "description": "Parent-child index with hybrid retrieval.",
+      "parser_mode": "preparsed",
+      "creation_settings": {
+        "index_type": "parent_child",
+        "parent_chunk_size": 320,
+        "child_chunk_size": 110,
+        "overlap": 25
+      },
+      "retrieval_settings": {
+        "search_type": "hybrid",
+        "vector_weight": 0.65,
+        "top_k": 5,
+        "query_rewrite": "off"
+      }
+    },
+    {
+      "name": "chunk_multi_query_hard",
+      "description": "Flat chunk index with deterministic multi-query rewrite and hybrid retrieval.",
+      "parser_mode": "preparsed",
+      "creation_settings": {
+        "index_type": "chunk",
+        "chunk_size": 220,
+        "overlap": 30
+      },
+      "retrieval_settings": {
+        "search_type": "hybrid",
+        "vector_weight": 0.65,
+        "top_k": 5,
+        "query_rewrite": "multi_query",
+        "rewrite_llm_model_uuid": "local-fake-llm"
+      }
+    }
+  ]
+}

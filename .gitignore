@@ -4,8 +4,7 @@ __pycache__/
 database.db
 langbot.log
 /banlist.py
-/plugins/
-!/plugins/__init__.py
+*.lbpkg
 /revcfg.py
 prompts/
 logs/
@@ -32,6 +31,7 @@ bard.json
 !.pre-commit-config.yaml
 !components.yaml
 !/docker-compose.yaml
+docker/data
 data/labels/instance_id.json
 .DS_Store
 /data
@@ -71,3 +71,6 @@ packaging/fnos/app/desktop/images/
 packaging/fnos/*.fpk
 
 r.ps1
+
+*.log
+*.pid

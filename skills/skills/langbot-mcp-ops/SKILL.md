@@ -139,7 +139,7 @@ tools or authorized by a LangBot API key. Once connected, models are managed
 and selected through the normal provider/model workflow. A disconnected
 provider must be reauthorized; do not silently replace it with API-key billing.
 
-See [ChatGPT / Codex subscription](../../../docs/CODEX_SUBSCRIPTION.md) for setup,
+See [ChatGPT / Codex subscription](../../../dev-docs/CODEX_SUBSCRIPTION.md) for setup,
 usage limits, and the personal-account versus shared-service boundary.
 
 ## Provider deletion
@@ -180,6 +180,22 @@ state as well; it is not the same operation as disconnecting an account.
 - The global key is plaintext in config.yaml — only enable it on trusted/internal
   deployments and serve over HTTPS.
 
+## Default message routes
+
+`create_bot` without non-empty `event_bindings` adds two explicit message routes:
+private chat (`chat_type eq person`) and group chat (`chat_type eq group` plus
+`is_at_bot eq true`). Both use the Workspace's default Pipeline, or the first
+available Pipeline. If none exists, first-bot setup creates one with the full
+default config. Creating a Pipeline via `create_agent(kind="pipeline")` also uses
+that full default config. Configure an authorized model before testing replies.
+
+Explicit routes on create are preserved; `update_bot` never automatically
+replaces manual routes, including an intentionally empty list. The WebUI message
+template uses the same private/group conditions and preserves existing routes
+when applied repeatedly. Unmentioned group messages do not enter the Pipeline.
+An existing broad route can still match first; inspect route order and diagnostics
+before changing a member's configuration.
+
 ## Event processors
 
 Create a processor with `kind: "event_processor"` and basic information. Without
@@ -204,6 +220,15 @@ logs and action results. These times are not internal plugin profiling data.
 
 ## Unified execution monitoring
 
+Message record reads can renew temporary OneBot image URLs through the connected
+bot without downloading images. Persisted payloads reference a shared URL catalog;
+renewal overwrites its current URL so existing references read the new address. Explicitly identified
+NapCat connections reuse rkeys until their returned TTL expires (appid 1406 uses
+type 10; appid 1407 uses type 20). Other OneBot implementations use standard
+`get_msg` at most once per URL per 30 minutes when original message and image identities
+are available. Disconnected peers, missing origins, or unsupported APIs leave the
+stored URL unchanged; returned URLs are not permanent archival links.
+
 Use `get_inflight_executions` for a bounded current-workspace snapshot of active
 and recently started executions, including `progress_event`. Progress is a
 reported stage, not an estimated completion percentage. The UI uses the shared
@@ -224,10 +249,16 @@ Conversation history supplies context; historical messages without explicit
 links must not be asserted to belong to the selected execution. Events without
 a processor run use `source=event`. All lookups remain Workspace-scoped.
 
-Monitoring record filters accept `mode` (`all`, `real`, `debug`) and
+Monitoring record filters, except for `kind="sessions"`, accept `mode` (`all`, `real`, `debug`) and
 `execution_statuses` (normalized execution statuses). These select the owning
 execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
+
+Session lists support `bot_ids`, `pipeline_ids`, `start_time`, `end_time`,
+`user_query`, `is_active`, and pagination. For execution status or real/debug
+filters, use `get_monitoring_executions`; HTTP `/monitoring/sessions` rejects
+them. In HTTP `/monitoring/data`, `sessions` and `totalCount.sessions` use only
+bot/pipeline/time filters; execution filters apply to the other records.
 
 ### Workspace message language
 
@@ -269,16 +300,16 @@ milliseconds since invocation start; `first_event_ms` includes reasoning/control
 frames, while `first_content_ms` measures the first upstream content delta.
 `first_visible_chunk_ms` may contain displayed reasoning, not just answer text.
 Old records have no details. Do not equate total duration with provider TTFT.
-See `docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
+See `dev-docs/LLM_REQUEST_POLICY.md` for policy precedence and gateway header behavior.
 
 `get_llm_model` also exposes optional `reasoning_capabilities.budget_tokens`
 min/max bounds. Numeric thinking budgets use `reasoning_config.budget_tokens`
 with level `enabled`; do not combine budgets with effort levels or native thinking
 arguments. Existing Runner reasoning overrides take precedence. Prompt caching
 is opt-in through model/call `extra_args.prompt_caching`; use provider-specific
-modes documented in `docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
+modes documented in `dev-docs/LLM_REQUEST_POLICY.md`. Cache keys are routing hints,
 not evidence of hits; read the actual usage counters. `preparation_ms` measures
 request construction and `preparation_cache_hits` counts retry preparation reuse.
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
-initialization; it is not network TTFT. See `docs/LLM_LATENCY_BENCHMARK.md` for
+initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.

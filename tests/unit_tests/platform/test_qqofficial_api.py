@@ -194,14 +194,14 @@ async def test_qq_markdown_rendering_switches_c2c_and_group_text_replies():
         content='# Hello',
         msg_id='message-1',
         event_id=None,
-        msg_seq=1,
+        msg_seq=None,
     )
     adapter.bot.send_group_markdown_msg.assert_awaited_once_with(
         group_openid='group-1',
         content='* Hello',
         msg_id=None,
         event_id='event-1',
-        msg_seq=1,
+        msg_seq=None,
     )
     adapter.bot.send_private_text_msg.assert_not_awaited()
     adapter.bot.send_group_text_msg.assert_not_awaited()

@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: line-omni
+  label:
+    en_US: LINE
+    zh_Hans: LINE
+    zh_Hant: LINE
+  description:
+    en_US: LINE adapter with event-driven orchestration, receiving messages through the unified webhook.
+    zh_Hans: LINE 适配器，支持事件驱动编排，通过统一 Webhook 接收消息。
+    zh_Hant: LINE 適配器，支援事件驅動編排，透過統一 Webhook 接收訊息。
+  icon: line.png
+
+spec:
+  categories:
+    - popular
+    - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/line
+    en: https://langbot.app/docs/en/usage/platforms/line
+    ja: https://langbot.app/docs/ja/usage/platforms/line
+  config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL into the LINE Developers console webhook settings and enable "Use webhook".
+        zh_Hans: 将此地址填入 LINE Developers 控制台的 Webhook 设置，并启用「Use webhook」。
+        zh_Hant: 將此位址填入 LINE Developers 主控台的 Webhook 設定，並啟用「Use webhook」。
+      type: webhook-url
+      required: false
+      default: ""
+    - name: channel_access_token
+      label:
+        en_US: Channel Access Token
+        zh_Hans: 频道访问令牌
+        zh_Hant: 頻道存取權杖
+      description:
+        en_US: Long-lived channel access token used to send messages.
+        zh_Hans: 用于发送消息的长期频道访问令牌。
+        zh_Hant: 用於傳送訊息的長期頻道存取權杖。
+      type: string
+      required: true
+      default: ""
+    - name: channel_secret
+      label:
+        en_US: Channel Secret
+        zh_Hans: 频道密钥
+        zh_Hant: 頻道密鑰
+      description:
+        en_US: Channel secret used to verify the X-Line-Signature of incoming webhooks.
+        zh_Hans: 用于校验入站 Webhook 的 X-Line-Signature 的频道密钥。
+        zh_Hant: 用於校驗入站 Webhook 的 X-Line-Signature 的頻道密鑰。
+      type: string
+      required: true
+      default: ""
+
+  supported_events:
+    - message.received
+    - message.deleted
+    - group.member_joined
+    - group.member_left
+    - bot.invited_to_group
+    - bot.removed_from_group
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_user_info
+      - get_group_info
+      - leave_group
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_bot_info
+      description: { en_US: "Return the LINE Official Account profile", zh_Hans: "返回 LINE 官方账号资料" }
+    - action: get_profile
+      description: { en_US: "Call the LINE get profile API for a user", zh_Hans: "调用 LINE 用户资料接口" }
+    - action: get_group_summary
+      description: { en_US: "Call the LINE group summary API", zh_Hans: "调用 LINE 群组摘要接口" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: LineAdapter

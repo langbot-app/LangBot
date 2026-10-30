@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: RockChinQ
+  name: WordFSRS
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WordFSRS
+  version: 0.2.3
+  description:
+    en_US: 'Spaced-repetition vocabulary review in your IM, powered by the FSRS algorithm (the same memory model behind Maimemo / 墨墨背单词).'
+    zh_Hans: '在 IM 里背单词:基于 FSRS 间隔重复算法(墨墨背单词同款记忆模型),用 !word 命令添加卡片并按到期复习。'
+  label:
+    en_US: WordFSRS
+    zh_Hans: FSRS 背单词
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: language
+      type: select
+      label:
+        en_US: 'Language'
+        zh_Hans: '语言'
+      description:
+        en_US: 'Language for all bot messages.'
+        zh_Hans: '机器人所有提示语的语言。'
+      options:
+        - name: en_US
+          label:
+            en_US: English
+            zh_Hans: 英文
+        - name: zh_Hans
+          label:
+            en_US: Chinese
+            zh_Hans: 简体中文
+      default: zh_Hans
+    - name: daily_new_limit
+      type: int
+      label:
+        en_US: 'Daily new-card limit'
+        zh_Hans: '每日新卡上限'
+      description:
+        en_US: 'Maximum number of brand-new cards introduced per session per day. 0 = unlimited.'
+        zh_Hans: '每个会话每天最多引入的新卡数量。0 表示不限制。'
+      default: 20
+    - name: desired_retention
+      type: float
+      label:
+        en_US: 'Desired retention'
+        zh_Hans: '目标记忆保留率'
+      description:
+        en_US: 'FSRS target recall probability (0.7 - 0.97). Higher = more frequent reviews.'
+        zh_Hans: 'FSRS 目标回忆概率（0.7 - 0.97）。越高复习越频繁。'
+      default: 0.9
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: WordFSRSPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

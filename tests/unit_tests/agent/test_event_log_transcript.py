@@ -78,7 +78,8 @@ class TestEventLogStore:
         store = EventLogStore(mock_db_engine)
 
         mock_session = AsyncMock()
-        mock_session.add = MagicMock()
+        mock_db_engine.dialect.name = 'sqlite'
+        mock_session.execute.return_value = MagicMock(rowcount=1)
         mock_session.commit = AsyncMock()
 
         with patch.object(store, '_session_factory') as mock_factory:
@@ -98,8 +99,8 @@ class TestEventLogStore:
             )
 
             assert event_id == 'evt_1'
-            stored_event = mock_session.add.call_args.args[0]
-            assert stored_event.metadata_json is None
+            stored_event = mock_session.execute.call_args.args[0].compile().params
+            assert stored_event['metadata_json'] is None
 
     @pytest.mark.asyncio
     async def test_append_event_stores_metadata_json(self, mock_db_engine):
@@ -109,7 +110,8 @@ class TestEventLogStore:
         store = EventLogStore(mock_db_engine)
 
         mock_session = AsyncMock()
-        mock_session.add = MagicMock()
+        mock_db_engine.dialect.name = 'sqlite'
+        mock_session.execute.return_value = MagicMock(rowcount=1)
         mock_session.commit = AsyncMock()
 
         with patch.object(store, '_session_factory') as mock_factory:
@@ -130,9 +132,9 @@ class TestEventLogStore:
             )
 
             assert event_id == 'evt_steering'
-            stored_event = mock_session.add.call_args.args[0]
-            assert '"status": "queued"' in stored_event.metadata_json
-            assert '"claimed_by_run_id": "run_1"' in stored_event.metadata_json
+            stored_event = mock_session.execute.call_args.args[0].compile().params
+            assert '"status": "queued"' in stored_event['metadata_json']
+            assert '"claimed_by_run_id": "run_1"' in stored_event['metadata_json']
 
 
 class TestTranscriptStore:

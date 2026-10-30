@@ -1,0 +1,54 @@
+---
+title: "知识库 (Knowledge Base)"
+description: "在 LangBot 中构建 RAG 知识库，为 AI 机器人提供文档检索与基于知识的回答。"
+---
+
+LangBot 原生支持 RAG（Retrieval-Augmented Generation，即检索增强生成），您可以创建知识库，并将其与流水线绑定，流水线将根据知识库中的内容回答问题。
+
+知识库由 RAG 引擎插件驱动，不同的 RAG 引擎提供不同的索引和检索策略。您可以在[插件市场](https://space.langbot.app/market)中查找可用的 RAG 引擎插件。
+
+## 创建知识库
+
+在知识库页面，点击`创建知识库`按钮：
+
+1. 填写知识库名称
+2. 选择一个 RAG 引擎（由已安装的插件提供）
+3. 根据所选引擎的配置表单填写相关参数（如嵌入模型、分块大小等）
+4. 点击`创建`按钮
+
+<Info>
+不同的 RAG 引擎有不同的配置参数，具体取决于引擎的 `creation_schema` 定义。某些引擎可能需要先配置嵌入模型，请先阅读[配置模型](/zh/usage/models/readme)。
+</Info>
+
+如果所选 RAG 引擎支持文档上传（声明了 `DOC_INGESTION` 能力），创建后请到知识库的"文档"页面，上传文档，LangBot 将会在后台开始解析和索引。
+
+## 使用知识库
+
+请到流水线配置中，"AI 能力"页，选择`内置 Agent`作为运行器，并在下方选择您刚刚创建的知识库。
+
+<img width="400px" src="/images/zh/deploy/knowledge/use_local_agent.png" alt="use_kb" />
+
+<img width="400px" src="/images/zh/deploy/knowledge/use_kb.png" alt="use_kb" />
+
+### 配置重排序（可选）
+
+选择知识库后，您可以在下方配置**重排序模型**来提升检索质量：
+
+- **重排序模型**：选择已配置的 Rerank 模型（如未配置，请先到[模型配置](/zh/usage/models/readme)中添加）
+- **重排序保留数量（Top-K）**：重排序后保留的最相关结果数量，默认为 5
+
+<Tip>
+重排序模型是可选的。配置后，知识库检索返回的候选文档会经过重排序模型重新打分，只保留最相关的 Top-K 条，再交给大模型回答，显著减少无关信息干扰。
+</Tip>
+
+<Info>
+仅当运行器为`内置 Agent`时，才可以使用 LangBot 原生知识库，若要在使用其他运行器时使用知识库，请参考所使用的运行器对应产品的文档。
+</Info>
+
+现在即可在`对话调试`或流水线所绑定的机器人上使用知识库进行对话：
+
+<img width="400px" src="/images/zh/deploy/knowledge/use_kb_in_chat.png" alt="use_kb_in_chat" />
+
+## 开发自定义 RAG 引擎
+
+如果现有的知识引擎插件不能满足您的需求，您可以开发自己的知识引擎插件。请参阅[组件：知识引擎](/zh/plugin/dev/components/knowledge-engine)了解开发方式。

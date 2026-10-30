@@ -962,3 +962,42 @@ async def test_missing_marketplace_release_has_specific_migration_result(env):
     assert all(r['code'] == 'plugin_version_unavailable' for r in metadata['results'])
     assert metadata['installations'][0]['code'] == 'plugin_version_unavailable'
     assert 'private-token' not in str(metadata)
+
+
+@pytest.mark.parametrize(
+    'kind', ['connect', 'connect_timeout', 'read_timeout', 'write_timeout', 'pool_timeout', 'truncated', 'http', 'other']
+)
+def test_network_diagnostic_is_allowlisted_and_credential_free(kind):
+    import httpx
+    from langbot.pkg.api.http.service.pipeline_migration import MigrationInstallContext
+
+    request = httpx.Request('GET', 'https://secret-user:secret-password@example.invalid/package?token=private-token')
+    errors = {
+        'connect': httpx.ConnectError('private-token', request=request),
+        'connect_timeout': httpx.ConnectTimeout('private-token', request=request),
+        'read_timeout': httpx.ReadTimeout('private-token', request=request),
+        'write_timeout': httpx.WriteTimeout('private-token', request=request),
+        'pool_timeout': httpx.PoolTimeout('private-token', request=request),
+        'truncated': httpx.RemoteProtocolError('private-token', request=request),
+        'other': httpx.RequestError('private-token', request=request),
+        'http': httpx.HTTPStatusError(
+            'private-token', request=request, response=httpx.Response(503, request=request, text='private-token')
+        ),
+    }
+    ctx = MigrationInstallContext({'author': 'team', 'name': 'Runner', 'version': '1'})
+    ctx.record_network_failure(errors[kind])
+    expected = {
+        'connect': 'connect_error',
+        'connect_timeout': 'connect_timeout',
+        'read_timeout': 'read_timeout',
+        'write_timeout': 'write_timeout',
+        'pool_timeout': 'pool_timeout',
+        'truncated': 'incomplete_response',
+        'http': 'http_status',
+        'other': 'network_error',
+    }
+    assert ctx.progress['diagnostic']['kind'] == expected[kind]
+    assert ctx.progress['diagnostic'].get('http_status') == (503 if kind == 'http' else None)
+    assert 'private-token' not in str(ctx.progress)
+    assert 'secret-' not in str(ctx.progress)
+    assert set(ctx.progress['diagnostic']) == ({'kind', 'http_status'} if kind == 'http' else {'kind'})

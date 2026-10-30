@@ -1,6 +1,6 @@
 import sqlalchemy
 
-from ...persistence.media import MediaReferenceText
+from ...persistence.media import MediaReferenceText, MediaReferenceJSON
 from .base import Base
 
 
@@ -39,9 +39,35 @@ class MonitoringMessage(Base):
     parent_message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
 
     __table_args__ = (
-        sqlalchemy.Index('ix_monitoring_messages_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_messages_summary_event', 'workspace_uuid', 'bot_id', 'event_id', 'role'),
+        # Time-windowed aggregates must not fetch execution metadata past historical payloads.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_timestamp',
+            'workspace_uuid',
+            'timestamp',
+            'id',
+            'status',
+            'role',
+            'bot_id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+            'pipeline_id',
+        ),
         sqlalchemy.Index('ix_monitoring_messages_media_ttl', 'workspace_uuid', 'timestamp', 'id'),
         sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
+        # Execution membership must not traverse historical payload overflow pages.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_execution_filter',
+            'workspace_uuid',
+            'status',
+            'role',
+            'bot_id',
+            'id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+        ),
         sqlalchemy.Index(
             'ix_monitoring_messages_conversation_page', 'workspace_uuid', 'bot_id', 'session_id', 'timestamp', 'id'
         ),
@@ -81,7 +107,7 @@ class MonitoringLLMCall(Base):
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
-    details = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
+    details = sqlalchemy.Column(MediaReferenceJSON, nullable=True)
 
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_llm_calls_workspace_timestamp', 'workspace_uuid', 'timestamp'),
@@ -111,8 +137,8 @@ class MonitoringToolCall(Base):
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
-    arguments = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
-    result = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    arguments = sqlalchemy.Column(MediaReferenceText, nullable=True)
+    result = sqlalchemy.Column(MediaReferenceText, nullable=True)
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
 
     __table_args__ = (
@@ -144,10 +170,68 @@ class MonitoringSession(Base):
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
 
+    metadata_timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+    metadata_role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)
+    metadata_source_key = sqlalchemy.Column(sqlalchemy.String(512), nullable=True)
+    base_snapshot = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    source_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0, server_default='0')
+
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_sessions_workspace_activity', 'workspace_uuid', 'last_activity'),
         sqlalchemy.Index('ix_monitoring_sessions_workspace_active', 'workspace_uuid', 'is_active'),
+        sqlalchemy.Index('ix_monitoring_sessions_workspace_bot', 'workspace_uuid', 'bot_id', 'last_activity'),
     )
+
+
+class MonitoringSessionReceipt(Base):
+    """Retained message identities and replaceable, optionally detached event credits."""
+
+    __tablename__ = 'monitoring_session_receipts'
+
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36), sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'), primary_key=True
+    )
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    source_key = sqlalchemy.Column(sqlalchemy.String(512), primary_key=True)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    role = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)
+    covered = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, server_default='false')
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
+    candidate_snapshot = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    source_timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+
+    __table_args__ = (
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'bot_id', 'session_id'],
+            ['monitoring_sessions.workspace_uuid', 'monitoring_sessions.bot_id', 'monitoring_sessions.session_id'],
+            ondelete='CASCADE',
+        ),
+        sqlalchemy.Index('ix_session_receipts_session', 'workspace_uuid', 'bot_id', 'session_id'),
+        sqlalchemy.Index('ix_session_receipts_expiry', 'workspace_uuid', 'timestamp', 'bot_id', 'source_key'),
+    )
+
+
+# Only uncovered ingress needs a replaceable metadata candidate. C/BINARY order
+# agrees with UTF-8 source-key ordering in the projection on both databases.
+sqlalchemy.Index(
+    'ix_session_receipts_candidate',
+    MonitoringSessionReceipt.workspace_uuid,
+    MonitoringSessionReceipt.bot_id,
+    MonitoringSessionReceipt.session_id,
+    MonitoringSessionReceipt.source_timestamp.desc(),
+    MonitoringSessionReceipt.source_key.collate('C').desc(),
+    postgresql_where=MonitoringSessionReceipt.candidate_snapshot.is_not(None),
+).ddl_if(dialect='postgresql')
+sqlalchemy.Index(
+    'ix_session_receipts_candidate',
+    MonitoringSessionReceipt.workspace_uuid,
+    MonitoringSessionReceipt.bot_id,
+    MonitoringSessionReceipt.session_id,
+    MonitoringSessionReceipt.source_timestamp.desc(),
+    MonitoringSessionReceipt.source_key.collate('BINARY').desc(),
+    sqlite_where=MonitoringSessionReceipt.candidate_snapshot.is_not(None),
+).ddl_if(dialect='sqlite')
 
 
 class MonitoringError(Base):

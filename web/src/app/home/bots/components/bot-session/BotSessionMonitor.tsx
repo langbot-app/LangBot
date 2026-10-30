@@ -200,6 +200,8 @@ const BotSessionMonitor = forwardRef<
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const sessionRequestIdRef = useRef(0);
   const messageRequestIdRef = useRef(0);
+  const retriedImageMessagesRef = useRef(new Set<string>());
+  const imageRefreshRef = useRef<Promise<void> | null>(null);
   const { admins, reload: reloadAdmins } = useBotAdmins(botId);
   const [adminsDialogOpen, setAdminsDialogOpen] = useState(false);
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
@@ -399,6 +401,8 @@ const BotSessionMonitor = forwardRef<
   }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
 
   useEffect(() => {
+    retriedImageMessagesRef.current.clear();
+    imageRefreshRef.current = null;
     if (selectedSessionId) {
       loadMessages(selectedSessionId, messagePage);
     } else {
@@ -479,9 +483,41 @@ const BotSessionMonitor = forwardRef<
     return !msg.runner_name;
   }
 
+  const refreshFailedImage = (messageId: string) => {
+    if (!selectedSessionId || retriedImageMessagesRef.current.has(messageId))
+      return;
+    retriedImageMessagesRef.current.add(messageId);
+    if (imageRefreshRef.current) return;
+    const requestId = messageRequestIdRef.current;
+    const request = httpClient
+      .getSessionMessages(
+        selectedSessionId,
+        MESSAGE_PAGE_SIZE,
+        messagePage * MESSAGE_PAGE_SIZE,
+        botId,
+      )
+      .then((response) => {
+        if (requestId !== messageRequestIdRef.current) return;
+        setMessages(
+          (response.messages ?? []).sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          ),
+        );
+      })
+      .catch(() => {
+        /* Keep the failed image visible until the next manual refresh. */
+      })
+      .finally(() => {
+        if (imageRefreshRef.current === request) imageRefreshRef.current = null;
+      });
+    imageRefreshRef.current = request;
+  };
+
   const renderMessageComponent = (
     component: MessageChainComponent,
     index: number,
+    messageId: string,
   ) => {
     switch (component.type) {
       case 'Plain':
@@ -529,6 +565,8 @@ const BotSessionMonitor = forwardRef<
             <img
               src={imageUrl}
               alt="Image"
+              referrerPolicy="no-referrer"
+              onError={() => refreshFailedImage(messageId)}
               className="max-w-full max-h-52 rounded-lg"
             />
           </div>
@@ -564,7 +602,11 @@ const BotSessionMonitor = forwardRef<
           >
             <div className="text-sm">
               {quote.origin?.map((comp, idx) =>
-                renderMessageComponent(comp as MessageChainComponent, idx),
+                renderMessageComponent(
+                  comp as MessageChainComponent,
+                  idx,
+                  messageId,
+                ),
               )}
             </div>
           </div>
@@ -597,7 +639,7 @@ const BotSessionMonitor = forwardRef<
     return (
       <div className="whitespace-pre-wrap break-words">
         {chain.map((component, index) =>
-          renderMessageComponent(component, index),
+          renderMessageComponent(component, index, msg.id),
         )}
       </div>
     );

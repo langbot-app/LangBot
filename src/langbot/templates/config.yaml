@@ -77,6 +77,39 @@ cloud:
         # Signed control-plane envelope buffered by the closed adapter before
         # JSON/JWS verification (32 MiB; absolute maximum 64 MiB).
         max_response_bytes: 33554432
+    # Instance notice banner shown at the top of the Cloud WebUI. It is only
+    # rendered when this instance runs as a Cloud deployment, so self-hosted
+    # copies of this file never surface it. Every field is overridable through
+    # the environment (for example CLOUD__BANNER__ENABLED, and
+    # CLOUD__BANNER__CONTENT__ZH_HANS for one language of the copy).
+    banner:
+        # Master switch. False keeps the banner out of the UI entirely.
+        enabled: false
+        # Visual tone: info, warning, or maintenance.
+        level: info
+        # Let the reader hide the banner in the current browser session. A
+        # change of copy brings it back.
+        dismissible: true
+        # Append the "dedicated environment / self-hosting" links after the
+        # message. Turn off for a plain announcement.
+        show_links: true
+        # Inline link targets. Absolute http(s) URLs only; anything else falls
+        # back to these same defaults.
+        dedicated_url: 'https://space.langbot.app/cloud?environment=dedicated'
+        repository_url: 'https://github.com/langbot-app/LangBot'
+        # Optional per-language copy. A non-empty entry replaces the built-in
+        # message for that language; empty entries fall back to the built-in
+        # text. Keys use underscores because the environment override
+        # namespace cannot carry dashes. Plain text only, never markup.
+        content:
+            zh_Hans: ''
+            zh_Hant: ''
+            en_US: ''
+            ja_JP: ''
+            th_TH: ''
+            vi_VN: ''
+            es_ES: ''
+            ru_RU: ''
 proxy:
     http: ''
     https: ''
@@ -256,6 +289,9 @@ plugin:
     connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
+    # Console debug endpoint; its port is also passed to managed Runtime
+    # subprocesses (stdio / Windows) as --ws-debug-port so a second Core
+    # instance can listen elsewhere without Address already in use.
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
     certification:
         # Non-secret Ed25519 issuer key ring used to verify the SDK ZIP-comment
@@ -424,6 +460,11 @@ box:
             - './data/box'
             - '/tmp'
         workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+        # Extra environment variables injected into every Box exec payload.
+        # The agent-supplied per-call env overrides matching keys. Values must be strings.
+        # Every sandbox command, including untrusted agent commands, can read them;
+        # do not put secrets here. Loaded at startup; ignored in multi-workspace deployments.
+        env: {}
     # Default nsjail cgroup memory limit for each MCP stdio server process, in MB.
     # Node.js MCP servers (npx/bunx) need more memory than Python ones because V8
     # and WebAssembly modules (e.g. undici llhttp) reserve large virtual address

@@ -87,6 +87,7 @@ export function MessageContentRenderer({
           <span key={index} className="inline-block align-middle mx-1">
             <img
               src={imageUrl}
+              referrerPolicy="no-referrer"
               alt="Message attachment"
               className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border"
               onClick={(e) => {

@@ -364,6 +364,7 @@ class TestBotServiceCreateBot:
             return_value={'uuid': 'uuid-1', 'name': 'Bot 1', 'adapter': 'telegram'}
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute & Verify
@@ -409,6 +410,7 @@ class TestBotServiceCreateBot:
             return_value={'uuid': 'new-uuid', 'name': 'New Bot', 'adapter': 'telegram', 'enable': False}
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute
@@ -429,10 +431,12 @@ class TestBotServiceCreateBot:
             'name': 'New Bot',
             'adapter': 'telegram',
             'adapter_config': {},
-            'event_bindings': [],
             'plugin_processors': [],
         }
         assert {key: values.get(key) for key in expected} == expected
+        assert len(values['event_bindings']) == 2
+        assert all(b['target_uuid'] == 'default-pipeline' for b in values['event_bindings'])
+        assert values['event_bindings'][1]['filters'][-1] == {'field': 'is_at_bot', 'operator': 'eq', 'value': True}
         ap.platform_mgr.load_bot.assert_not_awaited()
 
     async def test_create_bot_scopes_insert_without_legacy_pipeline_fields(self):
@@ -467,6 +471,7 @@ class TestBotServiceCreateBot:
             }
         )
 
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
 
         # Execute
@@ -509,6 +514,7 @@ class TestBotServiceCreateBot:
         )
         ap.persistence_mgr = PersistenceManager(ap)
         ap.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
+        ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'default-pipeline'}]))
         service = BotService(ap)
         try:
             async with engine.begin() as connection:

@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parser Observability</title>
+  <style>
+    :root {
+      --bg: var(--langbot-bg, #f7f8f5);
+      --panel: var(--langbot-bg-card, #ffffff);
+      --panel-strong: #f0f3ea;
+      --text: var(--langbot-text, #18201b);
+      --muted: var(--langbot-text-muted, #69736b);
+      --border: var(--langbot-border, #d9ded2);
+      --accent: #256f5a;
+      --accent-strong: #17493c;
+      --warn: #b45309;
+      --danger: #b42318;
+      --ok: #28724f;
+      --shadow: 0 10px 28px rgba(24, 32, 27, 0.08);
+      color-scheme: light;
+    }
+
+    html.dark {
+      --bg: var(--langbot-bg, #0d1110);
+      --panel: var(--langbot-bg-card, #151b19);
+      --panel-strong: #1d2622;
+      --text: var(--langbot-text, #f2f5ee);
+      --muted: var(--langbot-text-muted, #a8b2aa);
+      --border: var(--langbot-border, #2b3631);
+      --accent: #63c7a4;
+      --accent-strong: #97e2c8;
+      --warn: #f1a33c;
+      --danger: #ff8f86;
+      --ok: #7bd7a8;
+      --shadow: none;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 72%, transparent), transparent 360px),
+        var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .shell {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 24px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .subtitle,
+    .timestamp,
+    .empty,
+    .status {
+      color: var(--muted);
+    }
+
+    .timestamp {
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 7px 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      box-shadow: var(--shadow);
+    }
+
+    .button:hover {
+      border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    }
+
+    .button:disabled {
+      cursor: wait;
+      opacity: 0.62;
+    }
+
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    html.dark .button.primary {
+      color: #07110d;
+    }
+
+    .button.danger {
+      color: var(--danger);
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      display: inline-block;
+      flex: 0 0 16px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 92px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric .value {
+      font-size: 27px;
+      font-weight: 780;
+      letter-spacing: 0;
+      margin-top: 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .metric .detail {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel + .panel {
+      margin-top: 16px;
+    }
+
+    .panel-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel-strong) 58%, transparent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 720;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 12px 14px 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .dist-row {
+      display: grid;
+      grid-template-columns: minmax(42px, 0.52fr) minmax(96px, 1fr) 48px;
+      gap: 10px;
+      align-items: center;
+      min-height: 26px;
+    }
+
+    .dist-key {
+      font-weight: 690;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bar {
+      height: 8px;
+      background: color-mix(in srgb, var(--border) 75%, transparent);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      border-radius: inherit;
+    }
+
+    .dist-count {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 880px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
+      vertical-align: top;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 720;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: color-mix(in srgb, var(--panel-strong) 42%, transparent);
+    }
+
+    tbody tr:hover td {
+      background: color-mix(in srgb, var(--panel-strong) 40%, transparent);
+    }
+
+    .filename {
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .error-text {
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--danger);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      min-height: 22px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 680;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--panel-strong) 48%, transparent);
+    }
+
+    .pill.ok {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 38%, var(--border));
+    }
+
+    .pill.fail {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
+    }
+
+    .pill.warn {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 38%, var(--border));
+    }
+
+    .empty {
+      min-height: 88px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel-strong) 30%, transparent);
+    }
+
+    .status {
+      min-height: 18px;
+      font-size: 12px;
+      text-align: right;
+    }
+
+    @media (max-width: 1180px) {
+      .summary {
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .shell {
+        padding: 14px;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+
+      .summary {
+        grid-template-columns: repeat(2, minmax(130px, 1fr));
+      }
+
+      h1 {
+        font-size: 21px;
+      }
+
+      .metric .value {
+        font-size: 23px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1 data-i18n="title">Parser Observability</h1>
+        <div class="subtitle" data-i18n="subtitle">GeneralParsers in-memory telemetry</div>
+        <div id="timestamp" class="timestamp" data-i18n="snapshot.none">Updated: never</div>
+      </div>
+      <div>
+        <div class="actions">
+          <button id="refreshBtn" class="button primary" type="button" title="Refresh telemetry" data-i18n-title="actions.refreshTitle">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20 6v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 18v-5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6.1 9A7 7 0 0 1 18.7 6.8L20 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M17.9 15A7 7 0 0 1 5.3 17.2L4 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span data-i18n="actions.refresh">Refresh</span>
+          </button>
+          <button id="clearBtn" class="button danger" type="button" title="Clear telemetry" data-i18n-title="actions.clearTitle">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M3 6h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M8 6V4h8v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6 6l1 15h10l1-15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span data-i18n="actions.clear">Clear</span>
+          </button>
+        </div>
+        <div id="status" class="status"></div>
+      </div>
+    </header>
+
+    <section id="summary" class="summary" aria-label="Summary metrics"></section>
+
+    <section class="grid">
+      <div>
+        <section class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="sections.extensions">Extension Distribution</h2>
+          </div>
+          <div class="panel-body">
+            <div id="extensions" class="stack"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="sections.vision">Vision</h2>
+          </div>
+          <div class="panel-body">
+            <div id="vision" class="stack"></div>
+          </div>
+        </section>
+      </div>
+
+      <div>
+        <section class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="sections.recentParses">Recent Parses</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="table.time">Time</th>
+                  <th data-i18n="table.file">File</th>
+                  <th data-i18n="table.ext">Ext</th>
+                  <th data-i18n="table.mime">MIME</th>
+                  <th data-i18n="table.duration">Duration</th>
+                  <th data-i18n="table.chars">Chars</th>
+                  <th data-i18n="table.sections">Sections</th>
+                  <th data-i18n="table.media">Media</th>
+                  <th data-i18n="table.status">Status</th>
+                </tr>
+              </thead>
+              <tbody id="recentParses"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title" data-i18n="sections.recentErrors">Recent Errors</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="table.time">Time</th>
+                  <th data-i18n="table.file">File</th>
+                  <th data-i18n="table.ext">Ext</th>
+                  <th data-i18n="table.duration">Duration</th>
+                  <th data-i18n="table.error">Error</th>
+                  <th data-i18n="table.visionFail">Vision Fail</th>
+                </tr>
+              </thead>
+              <tbody id="recentErrors"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var state = {
+        loading: false,
+        lastSnapshot: null,
+        status: null
+      };
+
+      var els = {
+        summary: document.getElementById('summary'),
+        extensions: document.getElementById('extensions'),
+        vision: document.getElementById('vision'),
+        recentParses: document.getElementById('recentParses'),
+        recentErrors: document.getElementById('recentErrors'),
+        timestamp: document.getElementById('timestamp'),
+        status: document.getElementById('status'),
+        refreshBtn: document.getElementById('refreshBtn'),
+        clearBtn: document.getElementById('clearBtn')
+      };
+
+      function t(key, fallback) {
+        return window.langbot && langbot.t ? langbot.t(key, fallback || key) : (fallback || key);
+      }
+
+      function applyStaticI18n() {
+        document.title = t('title', 'Parser Observability');
+        document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+          el.setAttribute('title', t(el.getAttribute('data-i18n-title'), el.getAttribute('title') || ''));
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+          return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+          }[char];
+        });
+      }
+
+      function number(value) {
+        return Number(value || 0).toLocaleString();
+      }
+
+      function ms(value) {
+        return Number(value || 0).toLocaleString(undefined, {
+          maximumFractionDigits: 1
+        }) + ' ms';
+      }
+
+      function shortTime(value) {
+        if (!value) return '';
+        var date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      }
+
+      function setLoading(loading) {
+        state.loading = loading;
+        els.refreshBtn.disabled = loading;
+        els.clearBtn.disabled = loading;
+      }
+
+      function setStatus(text, isError) {
+        state.status = {
+          text: text || '',
+          isError: Boolean(isError)
+        };
+        applyStatus();
+      }
+
+      function setStatusKey(key, fallback, isError) {
+        state.status = {
+          key: key,
+          fallback: fallback,
+          isError: Boolean(isError)
+        };
+        applyStatus();
+      }
+
+      function applyStatus() {
+        var status = state.status || {};
+        els.status.textContent = status.key ? t(status.key, status.fallback) : (status.text || '');
+        els.status.style.color = status.isError ? 'var(--danger)' : '';
+      }
+
+      function renderSummary(summary) {
+        var metrics = [
+          [
+            t('metrics.parses', 'Parses'),
+            number(summary.total_parses),
+            number(summary.successful_parses) + ' ' + t('labels.successful', 'successful')
+          ],
+          [
+            t('metrics.failures', 'Failures'),
+            number(summary.failed_parses),
+            summary.failure_rate + '% ' + t('metrics.failureRate', 'failure rate')
+          ],
+          [
+            t('metrics.avgDuration', 'Avg Duration'),
+            ms(summary.avg_duration_ms),
+            t('labels.max', 'max') + ' ' + ms(summary.max_duration_ms)
+          ],
+          [
+            t('metrics.textChars', 'Text Chars'),
+            number(summary.total_text_chars),
+            number(summary.avg_text_chars) + ' ' + t('labels.avg', 'avg')
+          ],
+          [
+            t('metrics.sections', 'Sections'),
+            number(summary.total_sections),
+            number(summary.avg_sections) + ' ' + t('labels.avg', 'avg')
+          ],
+          [
+            t('metrics.visionTasks', 'Vision Tasks'),
+            number(summary.vision_tasks_count),
+            number(summary.vision_failed_count) + ' ' + t('labels.failed', 'failed')
+          ]
+        ];
+
+        els.summary.innerHTML = metrics.map(function (metric) {
+          return '<article class="metric">' +
+            '<div class="label">' + escapeHtml(metric[0]) + '</div>' +
+            '<div class="value">' + escapeHtml(metric[1]) + '</div>' +
+            '<div class="detail">' + escapeHtml(metric[2]) + '</div>' +
+            '</article>';
+        }).join('');
+      }
+
+      function renderDistribution(rows) {
+        if (!rows || !rows.length) {
+          return '<div class="empty">' + escapeHtml(t('empty.noParseEvents', 'No parse events')) + '</div>';
+        }
+        return rows.map(function (row) {
+          var percent = Math.max(0, Math.min(100, Number(row.percent || 0)));
+          return '<div class="dist-row">' +
+            '<div class="dist-key" title="' + escapeHtml(row.key) + '">' + escapeHtml(row.key) + '</div>' +
+            '<div class="bar" aria-label="' + escapeHtml(row.key) + ' ' + percent + '%"><span style="width:' + percent + '%"></span></div>' +
+            '<div class="dist-count">' + number(row.count) + '</div>' +
+            '</div>';
+        }).join('');
+      }
+
+      function renderVision(counters) {
+        var rows = [
+          [t('vision.used', 'Used'), counters.vision_used],
+          [t('vision.tasks', 'Tasks'), counters.vision_tasks_count],
+          [t('vision.imagesDescribed', 'Images described'), counters.vision_images_described_count],
+          [t('vision.scannedPages', 'Scanned pages'), counters.vision_scanned_pages_count],
+          [t('vision.failures', 'Failures'), counters.vision_failed_count]
+        ];
+        els.vision.innerHTML = rows.map(function (row) {
+          return '<div class="dist-row">' +
+            '<div class="dist-key">' + escapeHtml(row[0]) + '</div>' +
+            '<div class="bar"><span style="width:' + (Number(row[1] || 0) > 0 ? 100 : 0) + '%"></span></div>' +
+            '<div class="dist-count">' + number(row[1]) + '</div>' +
+            '</div>';
+        }).join('');
+      }
+
+      function renderParses(rows) {
+        if (!rows || !rows.length) {
+          els.recentParses.innerHTML = '<tr><td colspan="9"><div class="empty">' +
+            escapeHtml(t('empty.noParseEvents', 'No parse events')) + '</div></td></tr>';
+          return;
+        }
+
+        els.recentParses.innerHTML = rows.map(function (row) {
+          var media = [];
+          if (row.has_tables) media.push(t('media.tables', 'tables'));
+          if (row.has_images) media.push(t('media.images', 'images'));
+          if (row.vision_used) media.push(t('media.vision', 'vision'));
+          return '<tr>' +
+            '<td>' + escapeHtml(shortTime(row.timestamp)) + '</td>' +
+            '<td class="filename" title="' + escapeHtml(row.filename) + '">' + escapeHtml(row.filename) + '</td>' +
+            '<td><span class="pill">' + escapeHtml(row.extension) + '</span></td>' +
+            '<td>' + escapeHtml(row.mime_type) + '</td>' +
+            '<td>' + escapeHtml(ms(row.duration_ms)) + '</td>' +
+            '<td>' + number(row.text_chars) + '</td>' +
+            '<td>' + number(row.sections_count) + '</td>' +
+            '<td>' + escapeHtml(media.join(', ') || '-') + '</td>' +
+            '<td><span class="pill ' + (row.parser_failed ? 'fail' : 'ok') + '">' +
+            escapeHtml(row.parser_failed ? t('status.failed', 'failed') : t('status.ok', 'ok')) + '</span></td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      function renderErrors(rows) {
+        if (!rows || !rows.length) {
+          els.recentErrors.innerHTML = '<tr><td colspan="6"><div class="empty">' +
+            escapeHtml(t('empty.noParserErrors', 'No parser errors')) + '</div></td></tr>';
+          return;
+        }
+
+        els.recentErrors.innerHTML = rows.map(function (row) {
+          return '<tr>' +
+            '<td>' + escapeHtml(shortTime(row.timestamp)) + '</td>' +
+            '<td class="filename" title="' + escapeHtml(row.filename) + '">' + escapeHtml(row.filename) + '</td>' +
+            '<td><span class="pill fail">' + escapeHtml(row.extension) + '</span></td>' +
+            '<td>' + escapeHtml(ms(row.duration_ms)) + '</td>' +
+            '<td class="error-text" title="' + escapeHtml(row.parse_error) + '">' + escapeHtml(row.parse_error || t('status.parserFailed', 'parser_failed')) + '</td>' +
+            '<td>' + number(row.vision_failed_count) + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      function render(snapshot) {
+        var summary = snapshot.summary || {};
+        applyStaticI18n();
+        renderSummary(summary);
+        els.extensions.innerHTML = renderDistribution(((snapshot.distributions || {}).extensions) || []);
+        renderVision(snapshot.counters || {});
+        renderParses(snapshot.recent_parses || []);
+        renderErrors(snapshot.recent_errors || []);
+        els.timestamp.textContent = t('snapshot.updated', 'Updated') + ': ' + (summary.updated_at || t('labels.never', 'never')) +
+          ' | ' + t('snapshot.started', 'Started') + ': ' + (summary.started_at || t('labels.na', 'n/a'));
+      }
+
+      async function refresh() {
+        if (state.loading) return;
+        setLoading(true);
+        setStatusKey('statusText.refreshing', 'Refreshing...', false);
+        try {
+          var snapshot = await langbot.api('/snapshot', null, 'GET');
+          state.lastSnapshot = snapshot;
+          render(snapshot || {});
+          setStatusKey('statusText.ready', 'Ready', false);
+        } catch (err) {
+          if (err && err.message) {
+            setStatus(err.message, true);
+          } else {
+            setStatusKey('statusText.refreshFailed', 'Refresh failed', true);
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      async function clearTelemetry() {
+        if (state.loading) return;
+        setLoading(true);
+        setStatusKey('statusText.clearing', 'Clearing...', false);
+        try {
+          var snapshot = await langbot.api('/clear', {}, 'POST');
+          state.lastSnapshot = snapshot;
+          render(snapshot || {});
+          setStatusKey('statusText.cleared', 'Cleared', false);
+        } catch (err) {
+          if (err && err.message) {
+            setStatus(err.message, true);
+          } else {
+            setStatusKey('statusText.clearFailed', 'Clear failed', true);
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      els.refreshBtn.addEventListener('click', refresh);
+      els.clearBtn.addEventListener('click', clearTelemetry);
+
+      langbot.onLanguageChange(function () {
+        applyStaticI18n();
+        applyStatus();
+        if (state.lastSnapshot) {
+          render(state.lastSnapshot);
+        }
+      });
+
+      langbot.onReady(function () {
+        applyStaticI18n();
+        refresh();
+      });
+
+      render({
+        summary: {},
+        counters: {},
+        distributions: { extensions: [] },
+        recent_parses: [],
+        recent_errors: []
+      });
+    })();
+  </script>
+</body>
+</html>

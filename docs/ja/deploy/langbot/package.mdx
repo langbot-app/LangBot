@@ -1,0 +1,34 @@
+---
+title: "パッケージマネージャーでのデプロイ"
+description: "パッケージマネージャ（uv/uvx）で LangBot をデプロイ。オープンソース LLM チャットボットを素早く導入。"
+---
+
+<Info>
+Windows、Linux、Mac OSなどをサポート。テスト環境および個人使用シナリオに推奨。本番レベルの環境では[Dockerデプロイ](/en/deploy/langbot/docker.html)を使用してください。
+</Info>
+
+LangBotはパッケージ化されてPyPIにリリースされています。[uv](https://docs.astral.sh/uv/getting-started/installation/)をインストールしてから、空のディレクトリで以下のコマンドを実行してください:
+
+```bash
+uvx langbot@latest
+```
+
+これにより現在のディレクトリが作業ディレクトリとして設定され、`http://localhost:5300`にアクセスして使用を開始できます。
+
+## Beta 版（任意）
+
+Beta 3 を試す場合は、代わりに次のコマンドを使います。`--prerelease=allow` は依存パッケージのプレリリースも許可し、`--refresh` はキャッシュされたパッケージ情報を更新します。
+
+```bash
+uvx --prerelease=allow --refresh langbot==4.11.0b3
+```
+
+## オプションの SeekDB サポート
+
+デフォルトのインストールでは Chroma を使用し、SeekDB の Python SDK とネイティブコンポーネントは含まれません。SeekDB をベクトルストアとして使用する場合、または組み込み埋め込みモデルを使用する場合だけ `seekdb` extra を指定します：
+
+```bash
+uvx --from 'langbot[seekdb]@latest' langbot
+```
+
+SeekDB の組み込みモードには、現在のプラットフォームに対応する `pylibseekdb` wheel も必要です。Apple Silicon では現在 macOS 15 以降が必要です。macOS 14 ARM64 の対応予定は [oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324) を参照してください。現在の `pyseekdb` package metadata のため、macOS 14 ARM64 ではサーバーモードだけを使う場合も extra を解決できません。SeekDB をインストールしない場合、この制限は LangBot に影響しません。

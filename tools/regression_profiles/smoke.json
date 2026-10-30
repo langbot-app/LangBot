@@ -1,0 +1,1645 @@
+{
+  "version": 1,
+  "cli": {
+    "executable": "lbctl",
+    "config": "./lbctl.yaml"
+  },
+  "vars": {
+    "plugin_dir": "/path/to/plugin-zips",
+    "mock_base_url": "http://127.0.0.1:18080/v1",
+    "embedding_base_url": "http://127.0.0.1:15410/v1",
+    "core_health": "http://127.0.0.1:5300/healthz",
+    "core_base_url": "http://127.0.0.1:5300",
+    "core_db": "/path/to/core/data/langbot.db",
+    "mock_records": "/path/to/dedicated-mock-requests.jsonl"
+  },
+  "plugins": [
+    {
+      "source": "local",
+      "file": "${plugin_dir}/LocalAgent.zip"
+    },
+    {
+      "source": "local",
+      "file": "${plugin_dir}/LangRAG.zip"
+    },
+    {
+      "source": "local",
+      "file": "${plugin_dir}/GeneralParsers.zip"
+    }
+  ],
+  "resources": [
+    {
+      "id": "mock_provider",
+      "kind": "provider",
+      "body": {
+        "name": "regression mock",
+        "requester": "openai-chat-completions",
+        "base_url": "${mock_base_url}",
+        "api_keys": [
+          "test-only"
+        ]
+      }
+    },
+    {
+      "id": "embedding_provider",
+      "kind": "provider",
+      "body": {
+        "name": "regression embedding",
+        "requester": "openai-chat-completions",
+        "base_url": "${embedding_base_url}",
+        "api_keys": [
+          "test-only"
+        ]
+      }
+    },
+    {
+      "id": "unicode_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-unicode",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "slow_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-slow-stream",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "error401_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-401",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "error429_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-429",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "error503_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-503",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "exec_error_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-exec-error",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "parallel_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-parallel-tools",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "unicode_export_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-export-unicode",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "other_rag_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-rag-other",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "chat_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-chat",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "box_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-box",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "export_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-smoke-export",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "rag_model",
+      "kind": "model",
+      "type": "llm",
+      "body": {
+        "name": "mock-rag",
+        "provider_uuid": "${mock_provider}",
+        "abilities": [
+          "func_call"
+        ],
+        "context_length": 8192,
+        "extra_args": {
+          "request_policy": {
+            "retries": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "embedding_model",
+      "kind": "model",
+      "type": "embedding",
+      "body": {
+        "name": "all-MiniLM-L6-v2",
+        "provider_uuid": "${embedding_provider}"
+      }
+    },
+    {
+      "id": "knowledge_base",
+      "kind": "knowledge-base",
+      "body": {
+        "name": "regression parser golden",
+        "knowledge_engine_plugin_id": "langbot-team/LangRAG",
+        "creation_settings": {
+          "embedding_model_uuid": "${embedding_model}",
+          "index_type": "chunk",
+          "chunk_size": 512,
+          "overlap": 50
+        },
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5,
+          "query_rewrite": "off",
+          "rerank": "off"
+        }
+      },
+      "documents": [
+        {
+          "file": "../../skills/skills/langbot-testing/fixtures/rag/parser-golden.html",
+          "parser_plugin_id": "langbot-team/GeneralParsers"
+        }
+      ]
+    },
+    {
+      "id": "other_knowledge_base",
+      "kind": "knowledge-base",
+      "body": {
+        "name": "smoke other knowledge base",
+        "knowledge_engine_plugin_id": "langbot-team/LangRAG",
+        "creation_settings": {
+          "embedding_model_uuid": "${embedding_model}",
+          "index_type": "chunk",
+          "chunk_size": 512,
+          "overlap": 50
+        },
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5,
+          "query_rewrite": "off",
+          "rerank": "off"
+        }
+      },
+      "documents": [
+        {
+          "file": "../fixtures/smoke-isolation.txt",
+          "parser_plugin_id": "langbot-team/GeneralParsers"
+        }
+      ]
+    },
+    {
+      "id": "empty_knowledge_base",
+      "kind": "knowledge-base",
+      "body": {
+        "name": "smoke empty knowledge base",
+        "knowledge_engine_plugin_id": "langbot-team/LangRAG",
+        "creation_settings": {
+          "embedding_model_uuid": "${embedding_model}",
+          "index_type": "chunk",
+          "chunk_size": 512,
+          "overlap": 50
+        },
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5,
+          "query_rewrite": "off",
+          "rerank": "off"
+        }
+      }
+    },
+    {
+      "id": "chat_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "regression chat",
+        "description": "Normal deterministic chat",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${chat_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "box_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "regression Box",
+        "description": "Real Box write and read",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${box_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": true,
+                "box-session-id-template": "{launcher_type}_{launcher_id}",
+                "timeout": 30,
+                "max-tool-iterations": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "rag_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "regression RAG",
+        "description": "Retrieved model input oracle",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${rag_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [
+                  "${knowledge_base}"
+                ],
+                "box-enabled": false,
+                "timeout": 30,
+                "retrieval-top-k": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "chat_bot",
+      "kind": "bot",
+      "body": {
+        "name": "regression group chat",
+        "description": "Synthetic signed group ingress",
+        "adapter": "http_bot",
+        "enable": true,
+        "adapter_config": {
+          "inbound_secret": "${group_secret}",
+          "signature_required": true,
+          "callback_url": "http://127.0.0.1:9/unused-sync-only",
+          "default_session_type": "group",
+          "callback_timeout": 20,
+          "callback_max_retries": 0
+        },
+        "event_bindings": [
+          {
+            "event_pattern": "message.received",
+            "target_type": "pipeline",
+            "target_uuid": "${chat_pipeline}",
+            "enabled": true,
+            "filters": []
+          }
+        ],
+        "plugin_processors": []
+      }
+    },
+    {
+      "id": "export_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke file export",
+        "description": "Explicit Box file delivery",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${export_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": true,
+                "box-session-id-template": "{launcher_type}_{launcher_id}",
+                "timeout": 30,
+                "max-tool-iterations": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "unicode_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke unicode",
+        "description": "Smoke unicode",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${unicode_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "slow_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke slow",
+        "description": "Smoke slow",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${slow_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "fallback401_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke fallback401",
+        "description": "Smoke fallback401",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${error401_model}",
+                  "fallbacks": [
+                    "${chat_model}"
+                  ]
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "fallback429_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke fallback429",
+        "description": "Smoke fallback429",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${error429_model}",
+                  "fallbacks": [
+                    "${chat_model}"
+                  ]
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "fallback503_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke fallback503",
+        "description": "Smoke fallback503",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${error503_model}",
+                  "fallbacks": [
+                    "${chat_model}"
+                  ]
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": false,
+                "timeout": 30,
+                "max-round": 20
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          },
+          "trigger": {
+            "group-respond-rules": {
+              "prefix": [
+                "ai "
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "exec_error_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke exec_error",
+        "description": "Smoke exec_error",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${exec_error_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": true,
+                "box-session-id-template": "{launcher_type}_{launcher_id}",
+                "timeout": 30,
+                "max-tool-iterations": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "parallel_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke parallel",
+        "description": "Smoke parallel",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${parallel_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": true,
+                "box-session-id-template": "{launcher_type}_{launcher_id}",
+                "timeout": 30,
+                "max-tool-iterations": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "unicode_export_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke unicode_export",
+        "description": "Smoke unicode_export",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${unicode_export_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [],
+                "box-enabled": true,
+                "box-session-id-template": "{launcher_type}_{launcher_id}",
+                "timeout": 30,
+                "max-tool-iterations": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "other_rag_pipeline",
+      "kind": "pipeline",
+      "body": {
+        "name": "smoke other_rag",
+        "description": "Smoke other_rag",
+        "config": {
+          "ai": {
+            "runner": {
+              "id": "plugin:langbot-team/LocalAgent/default",
+              "expire-time": 0
+            },
+            "runner_config": {
+              "plugin:langbot-team/LocalAgent/default": {
+                "model": {
+                  "primary": "${other_rag_model}",
+                  "fallbacks": []
+                },
+                "prompt": [
+                  {
+                    "role": "system",
+                    "content": "You are a QA regression assistant."
+                  }
+                ],
+                "knowledge-bases": [
+                  "${other_knowledge_base}"
+                ],
+                "box-enabled": false,
+                "timeout": 30,
+                "retrieval-top-k": 5
+              }
+            }
+          },
+          "safety": {
+            "rate-limit": {
+              "limitation": 10000
+            }
+          },
+          "output": {
+            "force-delay": {
+              "min": 0,
+              "max": 0
+            },
+            "misc": {
+              "at-sender": false,
+              "quote-origin": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "box_bot",
+      "kind": "bot",
+      "body": {
+        "name": "smoke group box",
+        "description": "Synthetic signed group ingress",
+        "adapter": "http_bot",
+        "enable": true,
+        "adapter_config": {
+          "inbound_secret": "${group_secret}",
+          "signature_required": true,
+          "callback_url": "http://127.0.0.1:9/unused-sync-only",
+          "default_session_type": "group",
+          "callback_timeout": 20,
+          "callback_max_retries": 0
+        },
+        "event_bindings": [
+          {
+            "event_pattern": "message.received",
+            "target_type": "pipeline",
+            "target_uuid": "${box_pipeline}",
+            "enabled": true,
+            "filters": []
+          }
+        ],
+        "plugin_processors": []
+      }
+    },
+    {
+      "id": "rag_bot",
+      "kind": "bot",
+      "body": {
+        "name": "smoke group rag",
+        "description": "Synthetic signed group ingress",
+        "adapter": "http_bot",
+        "enable": true,
+        "adapter_config": {
+          "inbound_secret": "${group_secret}",
+          "signature_required": true,
+          "callback_url": "http://127.0.0.1:9/unused-sync-only",
+          "default_session_type": "group",
+          "callback_timeout": 20,
+          "callback_max_retries": 0
+        },
+        "event_bindings": [
+          {
+            "event_pattern": "message.received",
+            "target_type": "pipeline",
+            "target_uuid": "${rag_pipeline}",
+            "enabled": true,
+            "filters": []
+          }
+        ],
+        "plugin_processors": []
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "identity",
+      "stage": "configuration",
+      "args": [
+        "whoami"
+      ],
+      "expect": "${workspace_uuid}"
+    },
+    {
+      "name": "plugins",
+      "stage": "configuration",
+      "args": [
+        "plugin",
+        "list"
+      ],
+      "expect": "LocalAgent"
+    },
+    {
+      "name": "provider_readback",
+      "stage": "configuration",
+      "args": [
+        "provider",
+        "get",
+        "${mock_provider}"
+      ],
+      "expect": "${mock_provider}"
+    },
+    {
+      "name": "model_readback",
+      "stage": "configuration",
+      "args": [
+        "model",
+        "get",
+        "${chat_model}",
+        "--type",
+        "llm"
+      ],
+      "expect": "mock-chat"
+    },
+    {
+      "name": "pipeline_readback",
+      "stage": "configuration",
+      "args": [
+        "pipeline",
+        "get",
+        "${box_pipeline}"
+      ],
+      "expect": "${box_model}"
+    },
+    {
+      "name": "kb_readback",
+      "stage": "configuration",
+      "args": [
+        "knowledge-base",
+        "get",
+        "${knowledge_base}"
+      ],
+      "expect": "${knowledge_base}",
+      "fields": {
+        "base.uuid": "${knowledge_base}",
+        "base.knowledge_engine_plugin_id": "langbot-team/LangRAG"
+      }
+    },
+    {
+      "name": "document_readback",
+      "stage": "configuration",
+      "args": [
+        "knowledge-base",
+        "file",
+        "list",
+        "${knowledge_base}"
+      ],
+      "expect": "html",
+      "fields": {
+        "files.0.status": "completed",
+        "files.0.kb_id": "${knowledge_base}",
+        "files.0.workspace_uuid": "${workspace_uuid}"
+      }
+    },
+    {
+      "name": "missing_signature",
+      "stage": "ingress",
+      "http_group": {
+        "url": "${core_base_url}/bots/${chat_bot}/sync",
+        "secret_env": "LANGBOT_QA_GROUP_SECRET",
+        "message": "ai What is the documented parser-rag sentinel?"
+      },
+      "reject_group": "missing_signature",
+      "expect": "40101",
+      "fields": {
+        "http_status": 401,
+        "code": 40101
+      }
+    },
+    {
+      "name": "bad_signature",
+      "stage": "ingress",
+      "http_group": {
+        "url": "${core_base_url}/bots/${chat_bot}/sync",
+        "secret_env": "LANGBOT_QA_GROUP_SECRET",
+        "message": "ai What is the documented parser-rag sentinel?"
+      },
+      "reject_group": "bad_signature",
+      "expect": "40101",
+      "fields": {
+        "http_status": 401,
+        "code": 40101
+      }
+    },
+    {
+      "name": "chat",
+      "args": [
+        "pipeline",
+        "run",
+        "${chat_pipeline}",
+        "--message",
+        "Run the normal QA scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_CHAT_OK",
+      "stage": "conversation"
+    },
+    {
+      "name": "unicode",
+      "stage": "conversation",
+      "args": [
+        "pipeline",
+        "run",
+        "${unicode_pipeline}",
+        "--message",
+        "请原样处理：你好，世界 🌍",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "你好，世界 🌍 LANGBOT_UNICODE_OK"
+    },
+    {
+      "name": "slow",
+      "stage": "model",
+      "args": [
+        "pipeline",
+        "run",
+        "${slow_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_SLOW_STREAM_OK",
+      "mock_requests": [
+        {
+          "model": "mock-slow-stream",
+          "status": 200,
+          "stream": true
+        }
+      ]
+    },
+    {
+      "name": "fallback401",
+      "stage": "model",
+      "args": [
+        "pipeline",
+        "run",
+        "${fallback401_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_CHAT_OK",
+      "mock_requests": [
+        {
+          "model": "mock-401",
+          "status": 401,
+          "stream": true
+        },
+        {
+          "model": "mock-chat",
+          "status": 200,
+          "stream": true
+        }
+      ]
+    },
+    {
+      "name": "fallback429",
+      "stage": "model",
+      "args": [
+        "pipeline",
+        "run",
+        "${fallback429_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_CHAT_OK",
+      "mock_requests": [
+        {
+          "model": "mock-429",
+          "status": 429,
+          "stream": true
+        },
+        {
+          "model": "mock-chat",
+          "status": 200,
+          "stream": true
+        }
+      ]
+    },
+    {
+      "name": "fallback503",
+      "stage": "model",
+      "args": [
+        "pipeline",
+        "run",
+        "${fallback503_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_CHAT_OK",
+      "mock_requests": [
+        {
+          "model": "mock-503",
+          "status": 503,
+          "stream": true
+        },
+        {
+          "model": "mock-chat",
+          "status": 200,
+          "stream": true
+        }
+      ]
+    },
+    {
+      "name": "exec_error",
+      "stage": "tools",
+      "args": [
+        "pipeline",
+        "run",
+        "${exec_error_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_EXEC_ERROR_HANDLED",
+      "box_exec": {
+        "count": 1,
+        "backend": "docker",
+        "stdout": "EXPECTED_STDOUT",
+        "stderr": "EXPECTED_STDERR",
+        "exit_code": 7
+      }
+    },
+    {
+      "name": "parallel",
+      "stage": "tools",
+      "args": [
+        "pipeline",
+        "run",
+        "${parallel_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_PARALLEL_TOOLS_OK",
+      "box_exec": {
+        "count": 2,
+        "backend": "docker",
+        "stdout": "PARALLEL_OK_"
+      }
+    },
+    {
+      "name": "unicode_export",
+      "stage": "delivery",
+      "args": [
+        "pipeline",
+        "run",
+        "${unicode_export_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_UNICODE_EXPORT_OK",
+      "box_exec": {
+        "count": 1,
+        "backend": "docker",
+        "stdout": "你好，文件 🌍"
+      },
+      "attachment": {
+        "name": "输出.txt",
+        "text": "你好，文件 🌍"
+      }
+    },
+    {
+      "name": "other_rag",
+      "stage": "retrieval",
+      "args": [
+        "pipeline",
+        "run",
+        "${other_rag_pipeline}",
+        "--message",
+        "Run the smoke scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_OTHER_RAG_OK"
+    },
+    {
+      "name": "box",
+      "args": [
+        "pipeline",
+        "run",
+        "${box_pipeline}",
+        "--message",
+        "Run the normal QA scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_BOX_OK",
+      "box_exec": {
+        "count": 2,
+        "backend": "docker",
+        "stdout": "LANGBOT_BOX_SENTINEL"
+      },
+      "stage": "tools"
+    },
+    {
+      "name": "box_export",
+      "args": [
+        "pipeline",
+        "run",
+        "${export_pipeline}",
+        "--message",
+        "Run the file export QA scenario",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_EXPORT_OK",
+      "box_exec": {
+        "count": 1,
+        "backend": "docker",
+        "stdout": "LANGBOT_EXPORT_SENTINEL"
+      },
+      "attachment": {
+        "name": "langbot-smoke-output.txt",
+        "text": "LANGBOT_EXPORT_SENTINEL"
+      },
+      "stage": "delivery"
+    },
+    {
+      "name": "rag_chat",
+      "args": [
+        "pipeline",
+        "run",
+        "${rag_pipeline}",
+        "--message",
+        "What is the documented parser-rag sentinel?",
+        "--timeout",
+        "90s"
+      ],
+      "expect": "LANGBOT_RAG_OK",
+      "stage": "retrieval"
+    },
+    {
+      "name": "rag_retrieve",
+      "args": [
+        "knowledge-base",
+        "retrieve",
+        "${knowledge_base}"
+      ],
+      "body": {
+        "query": "What is the parser-rag golden sentinel and parser-engine pair?",
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5
+        }
+      },
+      "expect": "aurora-parser-rag-9137",
+      "stage": "retrieval",
+      "fields": {
+        "results.0.metadata._langbot_knowledge_base_uuid": "${knowledge_base}"
+      },
+      "forbid": [
+        "cedar-isolation-4826"
+      ]
+    },
+    {
+      "name": "retrieve_other",
+      "args": [
+        "knowledge-base",
+        "retrieve",
+        "${other_knowledge_base}"
+      ],
+      "body": {
+        "query": "What is the parser-rag golden sentinel and parser-engine pair?",
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5
+        }
+      },
+      "expect": "cedar-isolation-4826",
+      "stage": "retrieval",
+      "fields": {
+        "results.0.metadata._langbot_knowledge_base_uuid": "${other_knowledge_base}"
+      },
+      "forbid": [
+        "aurora-parser-rag-9137"
+      ]
+    },
+    {
+      "name": "retrieve_empty",
+      "args": [
+        "knowledge-base",
+        "retrieve",
+        "${empty_knowledge_base}"
+      ],
+      "body": {
+        "query": "What is the parser-rag golden sentinel and parser-engine pair?",
+        "retrieval_settings": {
+          "search_type": "vector",
+          "top_k": 5
+        }
+      },
+      "expect": "results",
+      "stage": "retrieval",
+      "fields": {
+        "results": []
+      }
+    },
+    {
+      "name": "group_chat_history",
+      "http_group": {
+        "url": "${core_base_url}/bots/${chat_bot}/sync",
+        "secret_env": "LANGBOT_QA_GROUP_SECRET",
+        "message": "ai What is the documented parser-rag sentinel?"
+      },
+      "expect": "LANGBOT_CHAT_OK",
+      "stage": "conversation"
+    },
+    {
+      "name": "group_box_history",
+      "http_group": {
+        "url": "${core_base_url}/bots/${box_bot}/sync",
+        "secret_env": "LANGBOT_QA_GROUP_SECRET",
+        "message": "ai What is the documented parser-rag sentinel?"
+      },
+      "expect": "LANGBOT_BOX_OK",
+      "stage": "conversation",
+      "box_exec": {
+        "count": 2,
+        "backend": "docker",
+        "stdout": "LANGBOT_BOX_SENTINEL"
+      }
+    },
+    {
+      "name": "group_rag_history",
+      "http_group": {
+        "url": "${core_base_url}/bots/${rag_bot}/sync",
+        "secret_env": "LANGBOT_QA_GROUP_SECRET",
+        "message": "ai What is the documented parser-rag sentinel?"
+      },
+      "expect": "LANGBOT_RAG_OK",
+      "stage": "conversation"
+    }
+  ],
+  "observe": {
+    "health": {
+      "core": "${core_health}",
+      "mock": "http://127.0.0.1:18080/healthz",
+      "box": "http://127.0.0.1:5410/readyz"
+    },
+    "pids": {},
+    "pid_files": {},
+    "containers": []
+  },
+  "cleanup": "on-success",
+  "smoke": {
+    "ledger_db": "${core_db}",
+    "timeout_seconds": 30,
+    "group_turns": 3,
+    "groups_per_case": 2,
+    "required_plugins": [
+      "langbot-team/LocalAgent",
+      "langbot-team/LangRAG",
+      "langbot-team/GeneralParsers"
+    ],
+    "mock_records": "${mock_records}"
+  },
+  "coverage_suite": "smoke"
+}

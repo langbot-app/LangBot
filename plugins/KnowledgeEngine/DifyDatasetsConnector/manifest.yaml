@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: DifyDatasetsConnector
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/DifyDatasetsConnector
+  version: 0.2.2
+  description:
+    en_US: Retrieve knowledge from or store files into Dify knowledge bases
+    zh_Hans: 从 Dify 知识库中检索知识或向其中存入文件
+    ja_JP: Difyナレッジベースコネクタプラグイン。Difyのナレッジベース検索をLangBot Toolとして公開します。
+    zh_Hant: Dify 知識庫連接器插件，將 Dify 知識庫檢索暴露為 LangBot Tool。
+    vi_VN: Plugin kết nối cơ sở tri thức Dify, cung cấp khả năng truy xuất cơ sở tri
+      thức Dify dưới dạng LangBot Tool.
+    th_TH: ปลั๊กอินเชื่อมต่อฐานความรู้ Dify เปิดการค้นหาฐานความรู้ Dify เป็น LangBot
+      Tool
+    es_ES: Plugin conector de bases de conocimiento Dify, que expone la búsqueda de
+      conocimiento de Dify como una herramienta LangBot Tool.
+  label:
+    en_US: DifyKnowledgeBase
+    zh_Hans: Dify 知识库
+    ja_JP: Dify 知識ベース
+    zh_Hant: DifyKnowledgeBase
+    vi_VN: DifyKnowledgeBase
+    th_TH: DifyKnowledgeBase
+    es_ES: DifyKnowledgeBase
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    KnowledgeEngine:
+      fromFiles:
+      - components/knowledge_engine/dify.yaml
+execution:
+  python:
+    path: main.py
+    attr: DifyDatasetsConnector
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

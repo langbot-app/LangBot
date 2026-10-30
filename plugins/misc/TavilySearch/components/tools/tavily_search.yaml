@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: tavily_search
+  label:
+    en_US: Tavily Search
+    zh_Hans: Tavily 搜索
+  description:
+    en_US: 'A search engine tool built specifically for AI agents (LLMs), delivering real-time, accurate, and factual results at speed.'
+    zh_Hans: '专为人工智能代理 (LLM) 构建的搜索引擎工具，可快速提供实时、准确和真实的结果。'
+spec:
+  parameters:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 'The search query you want to execute with Tavily.'
+      search_depth:
+        type: string
+        description: 'The depth of the search. "basic" for standard search, "advanced" for more comprehensive results.'
+        enum: ['basic', 'advanced']
+        default: 'basic'
+      topic:
+        type: string
+        description: 'The category of the search. Options include "general", "news", or "finance".'
+        enum: ['general', 'news', 'finance']
+        default: 'general'
+      max_results:
+        type: integer
+        description: 'The maximum number of search results to return. Range is 1-20.'
+        minimum: 1
+        maximum: 20
+        default: 5
+      include_answer:
+        type: boolean
+        description: 'When set to true, includes a short answer to the original query in the response.'
+        default: false
+      include_images:
+        type: boolean
+        description: 'When set to true, includes a list of query-related images in the response.'
+        default: false
+      include_raw_content:
+        type: boolean
+        description: 'When set to true, includes the cleaned and parsed HTML content of each search result.'
+        default: false
+    required:
+      - query
+  llm_prompt: 'Search for information using Tavily search engine, which provides real-time, accurate, and factual results.'
+execution:
+  python:
+    path: tavily_search.py
+    attr: TavilySearchTool

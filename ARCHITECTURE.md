@@ -22,6 +22,7 @@ At runtime, one LangBot process owns:
 LangBot is not a single-repo system.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
+- `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
 - `langbot-plugin-sdk/` is published as `langbot-plugin` and pinned in `LangBot/pyproject.toml`. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
@@ -122,6 +123,7 @@ Platform code lives under `pkg/platform/`.
 - Bots store exclusive Agent/Pipeline routes in `event_bindings` and independent plugin subscriptions in `plugin_processors` (`processor_uuid`, `enabled`). Subscriptions resolve event patterns from the installed Runner and fan out alongside the primary route. Configuration, state, debug and run logs belong to the reusable processor instance.
 - `sources/` contains adapter implementations. Each adapter subclasses `langbot_plugin.api.definition.abstract.platform.adapter.AbstractMessagePlatformAdapter` from the SDK.
 - Platform entities such as `MessageChain`, `Image`, `At`, `Voice`, and events come from `langbot-plugin-sdk`, not from this repo.
+- `pkg/platform/image_urls.py` renews image references in authorized monitoring/history responses and before Host model attempts without downloading. The shared resource URL catalog persists renewed URLs behind stable references. OneBot connection-local state in `adapters/aiocqhttp/image_urls.py` identifies the implementation lazily and reuses NapCat credentials until their returned TTL expires. Other implementations use standard `get_msg` when the URL's creation or last successful check is at least 30 minutes old. URLs can be shared across Workspaces; bot ownership checks, credentials and original message identities remain scoped to their connection.
 
 The platform layer should translate between external platform APIs and LangBot's shared message/event model. It should not contain LLM-provider logic or pipeline business logic.
 
@@ -161,7 +163,7 @@ In this repo:
 - `pkg/plugin/handler.py` exposes LangBot actions to the runtime and calls runtime actions for plugin operations.
 - `pkg/provider/tools/loaders/plugin.py` exposes plugin Tool components to LLM runners.
 - Pipeline handlers emit SDK events such as normal-message events and prompt-processing events.
-- [Certified plugin policy](docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
+- [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
 In `langbot-plugin-sdk`:
 
@@ -187,8 +189,8 @@ the run. Output export requires explicit normalized absolute sandbox file paths 
 opaque handles scoped to that run. The selected files are validated as one batch
 before registration; successful export removes only those files, and cleanup
 failure is a warning with accepted handles retained. Writing an outbox file alone
-does not deliver it. Core and LocalAgent currently pin SDK PR #180's exact commit
-until a release includes the selected-path API.
+does not deliver it. Core and Plugin Runtime must provide the selected-path API;
+LocalAgent CI verifies this contract against the latest stable published SDK.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
@@ -200,7 +202,7 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
-- [Outbox export failures](docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
+- [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
@@ -272,8 +274,12 @@ Maintenance rule: when adding, removing, or changing an HTTP endpoint that shoul
 Persistence is centered on `pkg/persistence/mgr.py`.
 
 - SQLite is the default database; PostgreSQL is supported.
+- Every SQLite connection sets a 64 MiB `journal_size_limit`, including connections recreated after migration or pool disposal. SQLite's default automatic checkpoint policy and synchronous setting remain unchanged. The limit reduces retained WAL space when the WAL resets; it does not cap active transactions or WAL pinned by readers. Online maintenance does not periodically force checkpoints or truncate WAL files. Diagnose persistent excess growth by checking checkpoint progress and actual transaction lifetimes, then shorten the responsible transaction rather than forcing readers to finish.
+- After schema initialization and migration, every SQLite startup completes `wal_checkpoint(TRUNCATE)` before runtime setup and producers start. Lock waits allow up to 60 seconds; checkpoint I/O may take longer. An incomplete checkpoint fails startup without undoing successful migrations, and the next startup retries even at schema head. The connection busy timeout is restored afterward. PostgreSQL is unaffected.
+- SQLite files use incremental auto-vacuum. Migration `0042_sqlite_incremental_vacuum` converts existing files before producers start, with a verified backup and restoration on conversion failure when a full rebuild is required. Fresh files enable the format before creating tables. Monitoring cleanup reclaims free pages in independent adaptive batches (1–512 pages, starting at 8, targeting 25 ms), pausing 250 ms between batches and starting no new batches after a two-second round budget. Busy writers take priority. No full `VACUUM` or forced WAL checkpoint runs during online cleanup.
 - Models live under `pkg/entity/persistence/`.
 - `pkg/persistence/media.py::MediaReferenceText` validates bound conversation payloads on ORM/Core writes while preserving the existing TEXT schema and string API. It rejects recognized structured inline images: retained images go through `MediaCache.externalize_chain_dump()` before serialization, while metadata-only snapshots and transcripts use `redact_inline_images()`. Reads and comparisons preserve historical values for incremental cleanup. Runtime/adapter messages, arbitrary diagnostic text, and opaque strings are outside this contract.
+- `pkg/persistence/resource_urls.py` interns structured resource URL fields in retained messages, history and monitoring at the typed SQL boundary, in the source transaction. `MediaReferenceJSON` preserves native JSON monitoring details. Payloads store opaque references to the global `resource_urls` catalog; typed SQL reads and comparisons expand them to current URLs, preserving API shapes and source-record authorization. Configuration URLs and URLs in free text are excluded. Catalog lookups use only the primary-key and URL-hash unique indexes. Successful refreshes overwrite the current URL and persist the check time even when standard `get_msg` returns the same URL. Converging URLs retain only ID redirects, with no old URL. PostgreSQL row locks and SQLite's immediate write transaction serialize concurrent refreshes; SQLite holds its write lock during the upstream call. Bounded in-memory aliases let reused Runner payloads resolve old URLs without retaining those URLs in the database. Migration `0041_resource_urls` normalizes existing payloads using their source creation timestamps before producers start; downgrade expands references before dropping the catalog.
 - Timezone-less SQL `DateTime` columns store UTC-naive values on both backends. Normalize aware values with `pkg/persistence/datetime_utils.py::as_naive_utc` at the bind boundary, including deadlines, leases, event times, and query/retention cutoffs; do not merely strip an offset. Existing naive rows represent UTC. Restore UTC awareness for application comparisons and epoch serialization. Runner ledger/event/transcript stores follow this existing schema contract without a data migration or changes to journal/tenant authorization.
 - Fresh schemas are created from current metadata, then Alembic migrations run to head. LangBot 4.x does not upgrade 3.x databases.
 - New schema changes use Alembic under `pkg/persistence/alembic/versions/`; there is no legacy migration chain in 4.x.
@@ -281,6 +287,26 @@ Persistence is centered on `pkg/persistence/mgr.py`.
 Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Most long-lived managers read from `ap.instance_config.data`.
 
 Storage maintenance applies `storage.media_cache.retention_days` to both CAS files and historical inline images. Inline image expiry uses the owning record's creation time and preserves text, URLs, and record identity. It does not backfill CAS. `pkg/storage/inline_media_cleanup.py` processes one payload row at a time, with a per-table limit of 100 indexed candidates or 8 MiB of JSON characters per maintenance pass (one oversized row may exceed the latter limit). Run events lack a Workspace column, so their candidate cursor also advances past foreign or missing records; payloads are loaded only after checking Workspace ownership. Durable Workspace metadata cursors and timestamp/identity indexes keep completed history out of subsequent scans; newly written history must retain its actual creation timestamp. Updates and cursor advancement commit together. Invalid historical JSON is preserved. SQLite pages become reusable after payload removal; the database file is not automatically vacuumed by this task.
+
+### Conversation summary boundary
+
+`MonitoringService` delegates all interactive session lists to `SessionSummaryReader` in `pkg/persistence/`. The reader selects public columns from `monitoring_sessions` without history joins or repairs, keeping list cost independent of historical payload size. Sessions describe conversations, not executions; API filter semantics are documented in [LangBot MCP Operations](skills/skills/langbot-mcp-ops/SKILL.md#unified-execution-monitoring).
+
+`SessionSummaryWriter` updates summaries in the source write's Workspace transaction. Each distinct message record counts once, including assistant and failure records. A platform `message.received` event contributes only while no non-assistant message matches its event ID or legacy message ID. Replays add no credit; late links retire ingress credit once, including across group/topic sessions. Observed start/activity timestamps never shrink the session's time range. Live writes and offline initialization share the same source mapping.
+
+All display fields come from one source snapshot, including empty values. Missing names display the user ID instead of inheriting another record's name. Non-assistant sources outrank assistant sources, followed by timestamp and binary source-key order. Processor filters match the selected snapshot. Immutable message winners fold into `base_snapshot`; uncovered ingress retains a replaceable `candidate_snapshot` on its receipt. Covering or transferring ingress restores the remaining winner atomically, without reading history.
+
+Receipts and event anchors are Workspace-scoped and expire in bounded batches under history retention. Expiry preserves counters and seals any uncovered ingress snapshot into the base in the same transaction. Summaries are deleted only after their receipts are gone. Deduplication and late linking are guaranteed within this retention window.
+
+Migration `0040_session_summaries` marks historical Workspaces as pending. OSS startup automatically completes `SessionSummaryBackfill` before starting HTTP or message producers, then continues in the same process; no manual backfill or additional container restart is needed. Batches and progress commit together, so an interrupted startup resumes from its cursor. Initialization is bounded, never selects message bodies or variables, and preserves historical counts as a lower bound when source history has expired. Invalid or oversized required metadata stops startup for diagnosis. Fresh databases and completed initialization skip history scanning; pending source writes remain blocked. There is no request-time or background repair.
+
+Cloud runtimes retain the initialization gate because other instances may write concurrently. For Cloud deployment or manual maintenance, stop **all** writers, back up the database, apply the migration, and run the command below for each pending Workspace before starting services. Set the named environment variable to a `sqlite+aiosqlite` or `postgresql+asyncpg` database URL; SQLite must point to an existing file. The connection must have access to the migrated schema and Workspace.
+
+```bash
+uv run python -m langbot.pkg.persistence.session_summary_backfill \
+  --workspace WORKSPACE_UUID --writers-stopped \
+  --database-url-env LANGBOT_SUMMARY_DATABASE_URL
+```
 
 ## Frontend
 
@@ -320,3 +346,7 @@ When one of these changes, update the others if the behavior or contract changed
 - Prefer small, explicit agent surfaces over exposing every internal API.
 - Treat cross-repo contracts with the SDK as public interfaces.
 - Test behavior at the narrowest useful layer first, then add integration/e2e coverage for runtime or platform changes.
+
+## Documentation repositories
+
+The public documentation site lives in `docs/` and is built with Node.js 24 and Fumapress. Internal design and review notes live in `dev-docs/`. The landing site keeps its `docs` submodule path but tracks LangBot `master`, building from the nested `docs/` directory. The old `langbot-app/langbot-docs` repository can be archived; publication never writes to it. See `dev-docs/DOCS_MIGRATION.md` for publication and cutover details.

@@ -5,6 +5,7 @@ import sqlalchemy
 
 from .. import group
 from .....utils import constants
+from .....cloud.banner import resolve_cloud_banner
 from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
 from ...context import PrincipalType, RequestContext
@@ -58,6 +59,7 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'plugin.install.marketplace',
     'plugin.install.local',
     'plugin.upgrade',
+    'plugin.space_upload',
     'plugin.get',
     'plugin.list',
     'plugin.config.get',
@@ -219,11 +221,17 @@ class SystemRouterGroup(group.RouterGroup):
                     'edition': constants.edition,
                     'beta': is_beta,
                     'deployment_mode': 'cloud' if is_cloud else 'oss',
+                    # Cloud-only instance notice. None on OSS deployments so a
+                    # self-hosted copy of config.yaml can never surface it.
+                    'cloud_banner': resolve_cloud_banner(self.ap),
                     'enable_marketplace': self.ap.instance_config.data.get('plugin', {}).get(
                         'enable_marketplace', True
                     ),
                     'cloud_service_url': (
-                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app')
+                        self.ap.instance_config.data.get('space', {}).get(
+                            'web_url',
+                            self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app'),
+                        )
                     ),
                     'allow_modify_login_info': self.ap.instance_config.data.get('system', {}).get(
                         'allow_modify_login_info', True

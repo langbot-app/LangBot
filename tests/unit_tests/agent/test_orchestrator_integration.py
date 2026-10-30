@@ -593,14 +593,98 @@ async def test_orchestrator_stops_after_cancel_request(clean_agent_state):
 
     orchestrator.journal.append_run_result = append_and_cancel_once
 
-    messages = [message async for message in orchestrator.run_from_query(make_query())]
+    messages = []
+    with pytest.raises(RunnerExecutionError) as caught:
+        async for message in orchestrator.run_from_query(make_query()):
+            messages.append(message)
 
+    assert caught.value.error_code == 'cancelled'
     assert [message.content for message in messages] == ['first']
     run_id = plugin_connector.contexts[0]['run_id']
     run = await RunLedgerStore(db_engine).get_run(run_id)
     assert run is not None
     assert run['status'] == 'cancelled'
     assert run['status_reason'] == 'user stopped'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result_type', ['tool.call.started', 'run.failed', 'run.completed'])
+@pytest.mark.parametrize('locale', ['en_US', 'zh_Hans'])
+@pytest.mark.parametrize('admin_audit', [False, True])
+async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, result_type, locale, admin_audit):
+    """Cancellation must reach both observers and the journal regardless of event timing."""
+    from collections import OrderedDict
+
+    from langbot.pkg.i18n import t, language_scope
+
+    store = RunLedgerStore(clean_agent_state)
+    resumed = []
+
+    class CancellingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            context = kwargs['context']
+            self.contexts.append(context)
+            await store.request_cancel(run_id=context['run_id'], status_reason='cancel during export recovery')
+            data = {
+                'tool.call.started': {'tool_name': 'export_box_files', 'tool_call_id': 'export-2', 'parameters': {}},
+                'run.failed': {'code': 'cancelled', 'error': 'Runner cancellation diagnostic', 'retryable': False},
+                'run.completed': {'finish_reason': 'stop'},
+            }[result_type]
+            yield {'type': result_type, 'sequence': 7, 'data': data}
+            resumed.append(True)
+
+    connector = CancellingConnector()
+    ap = FakeApplication(connector, clean_agent_state)
+    ap._message_language_cache = OrderedDict({TEST_CONTEXT.workspace_uuid: (locale, float('inf'))})
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    observed = []
+
+    async def observe(result):
+        observed.append(result)
+        if admin_audit and result['type'] == 'tool.call.started':
+            await store.append_audit_event(run_id=connector.contexts[0]['run_id'], event_type='admin.run_cancel')
+
+    failure = None
+    # The trusted Workspace language must take precedence over the caller's language.
+    with language_scope('ja_JP'):
+        try:
+            async for _ in orchestrator.run(
+                plan.event,
+                plan.binding,
+                adapter_context={'_execution_context': TEST_CONTEXT, '_result_observer': observe},
+            ):
+                pass
+        except RunnerExecutionError as exc:
+            failure = exc
+
+    run_id = connector.contexts[0]['run_id']
+    run = await store.get_run(run_id)
+    events, *_ = await store.page_run_events(run_id=run_id, limit=10)
+    terminals = [event for event in observed if event['type'] in {'run.completed', 'run.failed'}]
+    assert len(terminals) == 1
+    assert [event['type'] for event in events if event['type'] != 'admin.run_cancel'] == [
+        event['type'] for event in observed
+    ]
+    if result_type == 'run.completed':
+        assert failure is None
+        assert run['status'] == 'completed'
+    else:
+        assert failure is not None and failure.error_code == 'cancelled'
+        assert run['status'] == 'cancelled'
+        assert terminals[0]['data']['code'] == 'cancelled'
+    if result_type == 'tool.call.started':
+        assert not resumed
+        assert run['status_reason'] == 'cancel during export recovery'
+        assert [event['sequence'] for event in events] == ([7, 8, 9] if admin_audit else [7, 8])
+        assert terminals[0]['sequence'] == events[-1]['sequence']
+        assert events[-1]['source'] == 'host'
+        assert terminals[0]['data']['error'] == t('Task was cancelled', locale=locale)
+    else:
+        assert len(events) == 1
+        assert events[0]['source'] == 'runner'
+        if result_type == 'run.failed':
+            assert terminals[0]['data']['error'] == 'Runner cancellation diagnostic'
 
 
 @pytest.mark.asyncio

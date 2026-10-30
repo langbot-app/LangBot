@@ -1,0 +1,19 @@
+---
+title: "Code Style Guide"
+---
+
+## Logging
+
+In plugins, please use the `logging` module to record logs, do not use `print` statements (this will cause logs to not be output in the container environment).
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)  # Import logging module at the beginning of any Python file and define logger object
+
+logger.info('This is an info message')  # Use logger.info to record info level logs
+logger.warning('This is a warning message')
+logger.error('This is an error message')
+```
+
+For Certified Plugins, raw process logs cannot be safely attributed to one Workspace and are operator-only. Runner code may use `RunnerContext.log()` for installation-scoped tenant-visible logs. Other component kinds do not yet have a generic tenant-visible logging API; their raw process logs are operator-only. Never emit tenant configuration, credentials or request data from module-global background work.

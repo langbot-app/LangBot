@@ -1,0 +1,31 @@
+---
+title: "机器人 (Bots)"
+description: "将 LangBot 接入各消息平台：Discord、Telegram、Slack、微信、QQ、飞书、钉钉、LINE 等。"
+---
+机器人用于从消息平台接收消息事件并调用流水线处理消息。
+
+![arch](/images/zh/deploy/bots/arch.png)
+
+
+| 平台 | 状态 | 备注  |教程 |
+| ------ | ---- | ---- | ---- |
+| OneBot v11 | ✅ | 使用普通的 QQ 号作为机器人，需要使用独立的协议端，支持 OneBot v11 | [NapCat](/zh/usage/platforms/qq/aiocqhttp/napcat) <br /> [Lagrange](/zh/usage/platforms/qq/aiocqhttp/lagrange) <br /> [LiteLoaderQQNT](/zh/usage/platforms/qq/aiocqhttp/llonebot) |
+| QQ 官方机器人 | ✅ | 接入 QQ 开放平台的机器人 API | [教程](/zh/usage/platforms/qq/official_webhook) |
+| 个人微信助手 | ✅ | 微信官方个人助手机器人 | [教程](/zh/usage/platforms/wechat/weixin) |
+| 企业微信 | ✅ | 企业内部机器人 | [教程](/zh/usage/platforms/wecom/wecom) |
+| 企业微信客服 | ✅ | 企业对外机器人 | [教程](/zh/usage/platforms/wecom/wecomcs) |
+| 企业微信智能机器人 | ✅ | 智能机器人 | [教程](/zh/usage/platforms/wecom/wecombot) |
+| 微信公众号 | ✅ | 微信公众平台机器人 | [教程](/zh/usage/platforms/wxoa) |
+| 飞书 | ✅ |  | [教程](/zh/usage/platforms/lark) |
+| 钉钉 | ✅ |  | [教程](/zh/usage/platforms/dingtalk) |
+| Discord | ✅ |  | [教程](/zh/usage/platforms/discord) |
+| Telegram | ✅ |  | [教程](/zh/usage/platforms/telegram) |
+| Slack | ✅ |  | [教程](/zh/usage/platforms/slack) |
+| Mattermost | ✅ | 适用于开源版、免费版、专业版、企业版 | [教程](/zh/usage/platforms/mattermost) |
+| LINE | ✅ |  | [教程](/zh/usage/platforms/line) |
+| KOOK | ✅ |  | [教程](/zh/usage/platforms/kook) |
+| 页面机器人 | ✅ | 将聊天组件嵌入网站 | [教程](/zh/usage/platforms/webpage) |
+
+<Tip>
+**不想折腾公网 IP 和域名？** 企业微信、微信公众号、QQ 官方机器人、飞书、钉钉、Slack、LINE 等平台需要配置 Webhook 回调地址，这意味着你需要公网服务器、域名和 HTTPS 证书。[LangBot Cloud](https://space.langbot.app/cloud) 自带域名解析和 HTTPS，注册即可直接使用，省去繁琐的网络配置。
+</Tip>

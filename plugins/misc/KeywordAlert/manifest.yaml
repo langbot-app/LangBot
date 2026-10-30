@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: KeywordAlert
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/KeywordAlert
+  version: 0.1.3
+  description:
+    en_US: 'Monitor group chat messages for keywords and send private alerts to admins.
+      Supports multiple groups and keyword lists.'
+    zh_Hans: '监控群聊消息中的关键词，私聊通知管理员。支持配置多个群和多个关键词。'
+    zh_Hant: 監控群組聊天訊息中的關鍵字並向管理員發送私人警報。支援多個群組和關鍵字清單。
+    ja_JP: キーワードに関するグループ チャット メッセージを監視し、管理者にプライベート アラートを送信します。複数のグループとキーワード 
+      リストをサポートします。
+    vi_VN: Theo dõi tin nhắn trò chuyện nhóm để tìm từ khóa và gửi thông báo 
+      riêng tư cho quản trị viên. Hỗ trợ nhiều nhóm và danh sách từ khóa.
+    th_TH: 
+      ตรวจสอบข้อความแชทกลุ่มเพื่อหาคำสำคัญและส่งการแจ้งเตือนส่วนตัวไปยังผู้ดูแลระบบ
+      รองรับหลายกลุ่มและรายการคำหลัก
+    es_ES: Supervise los mensajes de chat grupal en busca de palabras clave y 
+      envíe alertas privadas a los administradores. Admite múltiples grupos y 
+      listas de palabras clave.
+  label:
+    en_US: Keyword Alert
+    zh_Hans: 关键词监控
+    zh_Hant: Keyword Alert
+    ja_JP: Keyword Alert
+    vi_VN: Keyword Alert
+    th_TH: Keyword Alert
+    es_ES: Keyword Alert
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: keywords
+    type: string
+    label:
+      en_US: 'Keywords (comma-separated)'
+      zh_Hans: '关键词（逗号分隔）'
+    description:
+      en_US: 'Comma-separated keywords to monitor, e.g.: bug,urgent,help'
+      zh_Hans: '逗号分隔的关键词列表，例如：bug,紧急,求助'
+    required: true
+  - name: group_ids
+    type: string
+    label:
+      en_US: 'Group IDs (comma-separated, empty = all groups)'
+      zh_Hans: '群组 ID（逗号分隔，留空 = 所有群）'
+    description:
+      en_US: 'Only monitor these groups. Leave empty to monitor all groups.'
+      zh_Hans: '仅监控这些群。留空则监控所有群。'
+    required: false
+  - name: admin_id
+    type: string
+    label:
+      en_US: 'Admin Session ID'
+      zh_Hans: '管理员会话 ID'
+    description:
+      en_US: 'The user/session ID to receive alert notifications via private message'
+      zh_Hans: '接收告警私聊通知的用户/会话 ID'
+    required: true
+  - name: bot
+    type: bot-selector
+    label:
+      en_US: 'Alert Bot'
+      zh_Hans: '告警机器人'
+    description:
+      en_US: 'Select which bot sends the alert. If not set, the first available bot
+        will be used.'
+      zh_Hans: '选择发送告警的机器人。未设置时使用第一个可用的机器人。'
+    required: false
+  - name: case_sensitive
+    type: bool
+    label:
+      en_US: 'Case Sensitive'
+      zh_Hans: '区分大小写'
+    description:
+      en_US: 'Whether keyword matching is case sensitive (default: no)'
+      zh_Hans: '关键词匹配是否区分大小写（默认否）'
+    required: false
+    default: false
+  - name: cooldown_seconds
+    type: int
+    label:
+      en_US: 'Cooldown (seconds)'
+      zh_Hans: '冷却时间（秒）'
+    description:
+      en_US: 'Minimum interval between alerts for the same keyword in the same group
+        (default: 60)'
+      zh_Hans: '同群同关键词两次告警最短间隔秒数（默认 60）'
+    required: false
+    default: 60
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: KeywordAlert
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

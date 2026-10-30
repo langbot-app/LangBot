@@ -274,20 +274,3 @@ class SkillsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, str(exc))
             except Exception:
                 raise
-
-        @self.route(
-            '/scan',
-            methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.RESOURCE_MANAGE,
-        )
-        async def scan_skill_directory(request_context: RequestContext) -> quart.Response:
-            path = quart.request.args.get('path', '').strip()
-            if not path:
-                return self.http_status(400, -1, 'Missing required parameter: path')
-
-            try:
-                result = await self.ap.skill_service.scan_directory_async(request_context, path)
-                return self.success(data=result)
-            except ValueError as exc:
-                return self.http_status(400, -1, str(exc))

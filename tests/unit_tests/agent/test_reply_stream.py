@@ -63,7 +63,10 @@ def proxy_for(session, *, allowed=True, advertised=True):
         ),
     )
 
-    async def action(action, data, timeout):
+    async def action(action, data, timeout, *, cancel_peer_on_cancel=False):
+        # The 0.7.19 SDK adapter always forwards cancel_peer_on_cancel to the
+        # runtime handler; this double stands in for that handler.
+        assert cancel_peer_on_cancel is False
         assert action == PluginToRuntimeAction.REPLY_STREAM
         assert data['run_id'] == 'run-1'
         return {

@@ -1,0 +1,2 @@
+prune plugins
+global-exclude *.lbpkg

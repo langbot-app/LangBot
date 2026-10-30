@@ -153,4 +153,45 @@ async def test_reset_starts_new_external_runner_conversation(context_service):
     snapshot = await store.build_snapshot_from_event(event, binding, descriptor)
     generation = await get_reset_generation(engine, 'w', 'b', 'person_u')
     assert isinstance(generation, str) and generation and generation not in {'remote-old', 'person_u'}
-    assert snapshot['conversation']['external.conversation_id'] == generation
+    assert 'external.conversation_id' not in snapshot['conversation']
+
+
+@pytest.mark.asyncio
+async def test_signed_http_reset_uses_normal_adapter_wiring_and_clears_persisted_history(context_service):
+    import quart
+
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.platform.logger import EventLogger
+    from langbot.pkg.platform.sources.http_bot import HttpBotAdapter
+    from langbot.pkg.platform.sources import http_bot_signing as signing
+
+    service, engine = context_service
+    app = SimpleNamespace(monitoring_service=service)
+    context = ExecutionContext(instance_uuid='instance', workspace_uuid='w', placement_generation=1, bot_uuid='b')
+    adapter = HttpBotAdapter(
+        config={'inbound_secret': 'test-secret', 'signature_required': True},
+        logger=EventLogger('test', app, context, 'b'),
+    )
+    # Match BotManager's injection path; no synthetic attributes or model_construct.
+    assert hasattr(adapter, 'ap')
+    adapter.ap = app
+    adapter.set_bot_uuid('b')
+    store = TranscriptStore(engine)
+    for conversation in ('person_u', 'person_peer'):
+        await store.append_transcript(None, 'event', conversation, 'user', bot_id='b', workspace_id='w', content='old')
+    web = quart.Quart(__name__)
+    body = json.dumps({'session_id': 'u', 'session_type': 'person'}).encode()
+    timestamp, signature = signing.sign('test-secret', body)
+    async with web.test_request_context(
+        '/bots/b/reset',
+        method='POST',
+        data=body,
+        headers={signing.HEADER_TIMESTAMP: timestamp, signing.HEADER_SIGNATURE: signature},
+    ):
+        response, status = await adapter.handle_unified_webhook('b', 'reset', quart.request)
+        assert status == 200
+        assert (await response.get_json())['data'] == {'session_id': 'u', 'removed': True}
+    assert not (await store.page_transcript('person_u', bot_id='b', workspace_id='w'))[0]
+    assert (await store.page_transcript('person_peer', bot_id='b', workspace_id='w'))[0]
+    async with engine.connect() as conn:
+        assert (await conn.execute(sa.select(sa.func.count()).select_from(Transcript))).scalar() == 2

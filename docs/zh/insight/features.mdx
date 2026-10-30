@@ -1,0 +1,155 @@
+---
+title: "特性规格"
+description: "LangBot 是开源、生产级的 LLM 原生即时通信机器人开发平台，支持 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack 等全球主流平台，内置 Agent、RAG 知识库、MCP、技能（Skills）与代码沙箱，深度集成 Dify、Coze、n8n、Langflow 等 Agent 平台。"
+---
+
+LangBot 是一个**开源、生产级**的大语言模型（LLM）原生即时通信机器人开发平台。一套代码即可把 AI Agent 接入 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack 等全球主流平台，内置 **Agent、RAG 知识库、MCP、技能（Skills）、代码沙箱**，深度集成 Dify、Coze、n8n、Langflow 等 Agent 平台，并通过浏览器中的 Web 管理面板完成全部配置与监控——无需手写配置文件。
+
+<Tip>
+**不想自己部署？** 试试 [LangBot Cloud](https://space.langbot.app/cloud) —— 无需服务器，注册即可立即开始使用。
+</Tip>
+
+## 核心能力一览
+
+- **AI 对话与 Agent** —— 多轮对话、工具调用（Function Calling）、多模态（图片/语音/文件）、流式输出，开箱即用。
+- **RAG 知识库** —— 内置知识库引擎（向量检索 + Rerank 重排序），让机器人基于你的私有知识作答；并支持通过插件扩展，可无缝接入 RAGFlow、Dify、FastGPT 等外部知识库服务。
+- **全平台覆盖** —— 一套代码同时接入 QQ、微信、企业微信、飞书、钉钉、Discord、Telegram、Slack、LINE、KOOK、Matrix 等平台。
+- **深度集成 Agent 平台** —— 原生对接 Dify、Coze、n8n、Langflow、Deerflow、阿里云百炼、蚂蚁百宝箱等编排与工作流平台。
+- **技能（Skills）与代码沙箱** —— 按需激活的指令包，配合安全隔离的代码执行沙箱，让 Agent 真正"动手做事"。
+- **MCP 协议** —— 作为客户端接入 Model Context Protocol 工具生态，支持 Stdio 与 HTTP 两种传输方式。
+- **Web 管理面板** —— 在浏览器里可视化配置、管理、监控机器人，无需手动编辑配置文件。
+- **生产级插件系统** —— 数百个社区插件，基于跨进程、事件驱动架构，安全且可热插拔。
+- **多流水线架构** —— 一个实例运行多条流水线，不同机器人服务不同场景，具备访问控制、限速、敏感词过滤与全面监控。
+
+## 即时通信平台支持性
+
+LangBot 用统一的适配层覆盖全球主流即时通信平台，一次开发，多端触达。
+
+| 平台 | 状态 | 备注 |
+| --- | --- | --- |
+| QQ 个人号 | ✅ | 由支持 OneBot v11 协议的第三方应用端支持，覆盖私聊、群聊 |
+| QQ 官方机器人 | ✅ | 支持频道、私聊、群聊 |
+| 微信 | ✅ | 个人微信 |
+| 微信公众号 | ✅ |  |
+| 企业微信 | ✅ | 内部应用消息 |
+| 企微智能机器人 | ✅ | 支持流式输出 |
+| 企微对外客服 | ✅ |  |
+| 飞书 | ✅ | 支持流式输出 |
+| 钉钉 | ✅ | 支持流式输出 |
+| Discord | ✅ |  |
+| Telegram | ✅ | 支持流式输出 |
+| Slack | ✅ |  |
+| LINE | ✅ |  |
+| KOOK | ✅ |  |
+| Satori | ✅ | [Satori](https://satori.chat/zh-CN/introduction.html) 是通用聊天协议，理论上支持 QQ、Zulip、米游社等 15+ 平台 |
+| Matrix | ✅ | 通过桥接可触达 Signal、WhatsApp、Messenger、iMessage、Mattermost、Google Chat、IRC、XMPP、Zulip 等 |
+| Email（邮件） | ✅ | 以邮件作为对话通道 |
+| 网页机器人 | ✅ | 可嵌入网页的对话窗口 |
+| WhatsApp | 🚧 | 开发中（也可经 Matrix 桥接使用） |
+
+🚧：正在开发中
+
+各即时通信平台的细粒度功能支持性（收发图片、语音、文件、富文本、流式响应等）请查看[平台特性文档](/zh/insight/platform-features)。
+
+## 模型与 Agent 平台支持性
+
+LangBot 以 **LiteLLM 作为统一的模型请求后端**，因此除下表内置的供应商外，还可接入任意 OpenAI / Anthropic 接口格式或 LiteLLM 支持的模型。
+
+### 大模型与聚合 / GPU 平台
+
+| 供应商/服务 | 状态 | 备注 |
+| --- | --- | --- |
+| [OpenAI](https://platform.openai.com/) | ✅ | 可接入任何 OpenAI 接口格式模型 |
+| [Anthropic](https://www.anthropic.com/) | ✅ |  |
+| [DeepSeek](https://www.deepseek.com/) | ✅ |  |
+| [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
+| [xAI](https://x.ai/) | ✅ |  |
+| [Moonshot](https://www.moonshot.cn/) | ✅ |  |
+| [智谱AI](https://open.bigmodel.cn/) | ✅ |  |
+| [Mistral](https://mistral.ai/) | ✅ |  |
+| [Groq](https://groq.com/) | ✅ |  |
+| [OpenRouter](https://openrouter.ai/) | ✅ | 全球大模型聚合 |
+| [Ollama](https://ollama.com/) | ✅ | 本地大模型运行平台 |
+| [LMStudio](https://lmstudio.ai/) | ✅ | 本地大模型运行平台 |
+| [SiliconFlow](https://siliconflow.cn/) | ✅ | 大模型聚合平台 |
+| [阿里云百炼](https://bailian.console.aliyun.com/) | ✅ | 大模型聚合平台 / Agent 平台 |
+| [火山方舟](https://console.volcengine.com/ark) | ✅ | 大模型聚合平台 / Agent 平台 |
+| [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro) | ✅ | 大模型聚合平台 |
+| [GiteeAI](https://ai.gitee.com/) | ✅ | 大模型接口聚合平台 |
+| [胜算云](https://www.shengsuanyun.com/?from=CH_KYIPP758) | ✅ | 全球大模型都可调用（友情推荐） |
+| [优云智算](https://www.compshare.cn/?ytag=GPU_YY-gh_langbot) | ✅ | 大模型和 GPU 资源平台 |
+| [PPIO](https://ppio.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | ✅ | 大模型和 GPU 资源平台 |
+| [302.AI](https://share.302ai.cn/SuTG99) | ✅ | 大模型聚合平台 |
+| [接口 AI](https://jiekou.ai/) | ✅ | 大模型聚合平台 |
+| [小马算力](https://www.tokenpony.cn/453z1) | ✅ | 大模型聚合平台 |
+| [七牛云](https://www.qiniu.com/ai/agent) | ✅ | 大模型聚合平台 |
+
+### Agent 平台
+
+将已有的工作流或智能体直接接入即时通信平台，无需重写业务逻辑。
+
+| 平台 | 状态 | 备注 |
+| --- | --- | --- |
+| [Dify](https://dify.ai) | ✅ | Agent 平台 |
+| [Coze](https://coze.cn) | ✅ | 智能体编排平台 |
+| [n8n](https://n8n.io/) | ✅ | 工作流自动化平台 |
+| [Langflow](https://langflow.org/) | ✅ | 可视化编排平台 |
+| [Deerflow](https://deerflow.tech) | ✅ | 深度研究框架 |
+| [Weknora](https://weknora.weixin.qq.com) | ✅ | 微信知识库问答 |
+| [蚂蚁百宝箱 TBox](https://tbox.cn/) | ✅ | 智能体平台 |
+
+### Rerank 重排序模型
+
+| 供应商 | 状态 | 备注 |
+| --- | --- | --- |
+| [Cohere](https://cohere.com/) | ✅ | Rerank 模型 |
+| [Jina](https://jina.ai/) | ✅ | Rerank 模型 |
+| [Voyage AI](https://voyageai.com/) | ✅ | Rerank 模型 |
+
+## LLM 应用范式实现
+
+LangBot 把主流的 LLM 应用范式做成了开箱即用的能力，覆盖从"能聊天"到"能干活"的完整链路。
+
+| 应用范式 | 状态 | 说明 |
+| --- | --- | --- |
+| Agent | ✅ | 内置 Agent，支持工具调用、多轮推理、多模态与流式输出 |
+| RAG（知识库） | ✅ | 内置知识库引擎（默认 Chroma 向量库 + Rerank 重排序），并可经插件接入 RAGFlow、Dify、FastGPT 等外部知识库 |
+| MCP | ✅ | 作为 MCP 客户端接入工具生态，支持 Stdio 与 HTTP |
+| 技能（Skills） | ✅ | 按需激活的指令包，匹配时才拉入上下文，零额外开销 |
+| 代码沙箱（Sandbox） | ✅ | 安全隔离的代码执行环境，支持 Docker / nsjail / E2B 后端 |
+
+- **技能（Skills）**：把一段专业流程、模板或脚本封装为按需激活的指令包，用户描述匹配时 Agent 才把它拉进上下文，不污染 System Prompt。详见[技能文档](/zh/usage/skills/readme)。
+- **代码沙箱（Sandbox）**：为 Agent 提供安全隔离的代码执行能力，自动在 Docker / nsjail / E2B 后端中择优运行，是技能与原生工具的运行底座。详见[沙箱文档](/zh/usage/sandbox/readme)。
+
+## 系统扩展性
+
+LangBot 为二次开发与企业集成提供了完整的扩展面。
+
+- **HTTP Service API**：通过基于 API Key 鉴权的 HTTP 接口访问 LangBot 的各类实体，便于与现有系统集成。
+- **Outgoing Webhook**：将 LangBot 内部事件实时推送到外部系统，构建事件驱动的自动化。
+- **生产级插件系统**：基于跨进程通信与异步技术实现，支持多种组件扩展，安全、稳定、可热插拔；数百个社区插件可在[扩展市场](https://space.langbot.app)一键安装。
+- **Web 管理面板**：可视化完成机器人、模型、流水线、知识库、插件的全部配置与监控。
+
+## 部署方式
+
+LangBot 支持从一行命令到 Kubernetes 集群的多种部署方式：
+
+- **LangBot Cloud（推荐）**：[免部署、开箱即用的托管版本](https://space.langbot.app/cloud)。
+- **一键启动**：`uvx langbot`，随后访问 `http://localhost:5300`。
+- **Docker Compose**、**宝塔面板**、**Kubernetes**、**Zeabur / Railway 一键云部署**等。
+
+详见[部署文档](/zh/deploy/langbot/kubernetes)与[快速开始](/zh/insight/guide)。
+
+## 案例截图
+
+![LangBot 机器人配置页：在 Web 管理面板中将网页机器人绑定到流水线](/images/zh/insight/features/bot-page.png)
+
+![LangBot 模型配置：接入 OpenAI、Anthropic 等任意 OpenAI / Anthropic 接口格式的大模型](/images/zh/insight/features/create-model.png)
+
+![LangBot 流水线 AI 配置：选择内置 Agent 运行器与主模型](/images/zh/insight/features/edit-pipeline.png)
+
+![LangBot 扩展市场：一键安装数百个社区插件与 MCP 工具](/images/zh/insight/features/plugin-market.png)
+
+![LangBot 内置 Agent 调用代码沙箱：实时执行 Python 完成精确计算](/images/zh/insight/features/agent-sandbox.png)
+
+![LangBot Skill 技能驱动 Agent：按预设技能输出结构化结果](/images/zh/insight/features/agent-skill.png)

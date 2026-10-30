@@ -98,6 +98,21 @@ class MigrationInstallContext(TaskContext):
                 self.progress[key] = min(value, 100) if key == 'progress_percent' else value
         self.progress['updated_at'] = time.time()
 
+    def record_network_failure(self, exc: httpx.HTTPError):
+        kinds = (
+            (httpx.ConnectTimeout, 'connect_timeout'),
+            (httpx.ReadTimeout, 'read_timeout'),
+            (httpx.WriteTimeout, 'write_timeout'),
+            (httpx.PoolTimeout, 'pool_timeout'),
+            (httpx.ConnectError, 'connect_error'),
+            (httpx.RemoteProtocolError, 'incomplete_response'),
+            (httpx.HTTPStatusError, 'http_status'),
+        )
+        diagnostic = {'kind': next((name for cls, name in kinds if isinstance(exc, cls)), 'network_error')}
+        if isinstance(exc, httpx.HTTPStatusError):
+            diagnostic['http_status'] = exc.response.status_code
+        self.progress['diagnostic'] = diagnostic
+
     def finish(self, code=None):
         self.publish()
         self.progress.update(status='failed' if code else 'completed', code=code, finished_at=time.time())
@@ -562,15 +577,18 @@ class PipelineMigrationService:
                                     install_code = 'plugin_runtime_unavailable'
                                 except MarketplacePluginVersionNotFoundError:
                                     install_code = 'plugin_version_unavailable'
-                                except httpx.TimeoutException:
+                                except httpx.TimeoutException as exc:
+                                    install_context.record_network_failure(exc)
                                     install_code = 'plugin_download_timeout'
                                 except httpx.HTTPStatusError as exc:
+                                    install_context.record_network_failure(exc)
                                     install_code = (
                                         'plugin_version_unavailable'
                                         if exc.response.status_code == 404
                                         else 'plugin_marketplace_unavailable'
                                     )
-                                except httpx.RequestError:
+                                except httpx.RequestError as exc:
+                                    install_context.record_network_failure(exc)
                                     install_code = 'plugin_download_failed'
                                 except PluginInstallationFailedError as exc:
                                     install_code = {

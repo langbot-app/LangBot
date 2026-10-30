@@ -490,6 +490,7 @@ async def test_workspace_reads_do_not_wait_for_an_installation_apply():
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
     connector._wait_for_installed_plugin_ready = AsyncMock()
+    connector._load_workspace_settings = AsyncMock(return_value=[])
     connector._load_workspace_desired_states = AsyncMock(
         return_value=[
             PluginInstallationDesiredState(
@@ -880,3 +881,49 @@ async def test_marketplace_download_honors_migration_version_without_latest_look
                 SimpleNamespace(), 'langbot-team', 'LocalAgent', None, version=version
             )
     assert download.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_event_dispatch_reuses_reconciled_settings_and_refreshes_next_event():
+    from langbot_plugin.api.entities.events import PersonMessageReceived
+    from tests.factories import text_query
+
+    binding = execution_binding('workspace-a')
+    setting = plugin_setting('01', 'a' * 64)
+    settings = {'workspace-a': [setting]}
+    connector = shared_connector([[binding]], settings)
+    connector.handler = runtime_handler()
+    connector.handler.remove_plugin_installation = AsyncMock()
+    connector._apply_desired_state = AsyncMock()
+
+    async def emit(event_context, include_plugins=None):
+        return {'event_context': event_context, 'emitted_plugins': []}
+
+    connector.handler.emit_event = AsyncMock(side_effect=emit)
+    query = text_query('hello')
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1),
+    )
+    event = PersonMessageReceived(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        message_event=query.message_event,
+        message_chain=query.message_chain,
+    )
+
+    await connector.emit_event(event)
+    connector._load_workspace_settings.assert_awaited_once()
+    connector.handler.emit_event.assert_awaited_once()
+    first_scope = connector.handler.installation_scope.call_args.args[0]
+    assert first_scope.workspace_uuid == 'workspace-a'
+    assert first_scope.installation_uuid == setting.installation_uuid
+
+    setting.enabled = False
+    await connector.emit_event(event)
+    assert connector._load_workspace_settings.await_count == 2
+    connector.handler.emit_event.assert_awaited_once()
+    connector._apply_desired_state.assert_awaited()

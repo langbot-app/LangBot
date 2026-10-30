@@ -1,0 +1,184 @@
+---
+title: "How I Built a Multi-Platform AI Chatbot with n8n and LangBot"
+description: "How I Built a Multi-Platform AI Chatbot with n8n and LangBot"
+---
+
+This article is synchronized from the LangBot Blog. [Read the canonical version](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot).
+
+Published 2025-12-03 · Author: LangBot Team
+
+![How I Built a Multi-Platform AI Chatbot with n8n and LangBot](/images/articles/source/images/covers/n8n.png)
+
+Connecting n8n's visual workflow automation with LangBot's multi-platform bot framework creates a powerful, code-free way to deploy AI chatbots across QQ, WeChat, Discord, Telegram, Slack, and more. This tutorial shows you how to integrate these tools in minutes.
+
+## What You'll Need
+
+- Python 3.8+ installed
+- Node.js 18+ installed
+- npm or npx available
+- 15 minutes of your time
+
+## Deploy LangBot in 3 Commands
+
+LangBot is a production-ready bot framework that connects to multiple messaging platforms and AI services including Dify, FastGPT, Coze, OpenAI, Claude, and Gemini. Deploy it instantly:
+
+```bash
+cd your-workspace
+mkdir -p langbot-instance && cd langbot-instance
+uvx langbot@latest
+```
+
+On first launch, LangBot initializes automatically. Open `http://127.0.0.1:5300` in your browser.
+
+![LangBot initialization screen](/images/articles/external/70ee40a6d232-01-langbot-initialization.png)
+
+Register your admin account when prompted. You'll land on the dashboard where you can manage bots, models, pipelines, and integrations.
+
+![LangBot dashboard](/images/articles/external/4f1f5c28fbfc-03-langbot-dashboard.png)
+
+## Set Up n8n Workflow Automation
+
+n8n is an open-source automation platform with 400+ integrations and powerful AI capabilities. Launch it locally:
+
+```bash
+cd your-workspace
+mkdir -p n8n-data
+export N8N_USER_FOLDER=$(pwd)/n8n-data
+npx n8n
+```
+
+Visit `http://127.0.0.1:5678` and create your owner account.
+
+![n8n initial setup](/images/articles/external/12d0e04600c5-05-n8n-setup.png)
+
+## Build Your AI Workflow
+
+Create a new workflow in n8n. You'll need two essential nodes:
+
+![n8n workflow editor](/images/articles/external/e36d04ca4a5b-07-n8n-workflow-editor.png)
+
+### Add the Webhook Trigger
+
+Click "+" on the canvas and add a **Webhook** node. Configure it:
+
+- **HTTP Method**: POST
+- **Response Mode**: Streaming (enables real-time chat responses)
+- **Authentication**: None (adjust for production)
+
+![Webhook node configuration](/images/articles/external/03443176ae5c-08-n8n-webhook-node.png)
+
+### Add the AI Agent
+
+Press Tab, navigate to the "AI" category, and select **AI Agent**.
+
+**Configure the Chat Model**: Click "Chat Model" and choose "OpenAI Chat Model". Add your credentials:
+
+- **API Key**: Your OpenAI API key (or compatible service key)
+- **Base URL**: For OpenAI alternatives like Claude, Gemini, or local models, update to your provider's endpoint
+
+**Critical Step - Fix the Prompt Source**: By default, the AI Agent expects a Chat Trigger node, which won't work with webhooks. Here's how to fix it:
+
+1. Find "Source for Prompt (User Message)" in the AI Agent settings
+2. Change from "Connected Chat Trigger Node" to "Define below"
+3. Switch to "Expression" mode
+4. Enter: `{{ $json.body }}`
+
+This expression pulls the user's message from the webhook request body.
+
+![Configured webhook with AI Agent](/images/articles/external/621f3d526678-09-n8n-webhook-configured.png)
+
+### Activate and Get Your Webhook URL
+
+Save the workflow and toggle the activation switch (top-right). Switch to the "Production URL" tab and copy the webhook URL:
+
+```
+http://localhost:5678/webhook/{your-webhook-id}
+```
+
+## Connect LangBot to n8n
+
+Back in the LangBot dashboard, navigate to **Pipelines** and click the default "ChatPipeline".
+
+![LangBot pipelines page](/images/articles/external/ef2b2f83bd16-04-langbot-pipelines.png)
+
+Switch to the **AI** tab and select "n8n Workflow API" from the Runner dropdown. Configure:
+
+- **Webhook URL**: Paste your n8n production webhook URL
+- **Authentication Type**: None (match your n8n webhook settings)
+- **Timeout**: 120 seconds
+- **Output Key**: response
+
+Click **Save**.
+
+## Test It Out
+
+In the Pipeline editor, click "Debug Chat" on the left sidebar. Send a test message like "What is LangBot?"
+
+If everything works, you'll see LangBot send the message to n8n, where the AI Agent processes it and streams back a response.
+
+## Troubleshooting
+
+**Error: "Expected to find the prompt in an input field called 'chatInput'"**
+
+This means the AI Agent is still configured for a Chat Trigger node. Fix it:
+
+1. Open the AI Agent configuration
+2. Set "Source for Prompt (User Message)" to "Define below"
+3. Switch to Expression mode
+4. Enter: `{{ $json.body }}`
+
+**Test Your Webhook Directly**
+
+Verify the webhook works with curl:
+
+```bash
+curl -X POST http://localhost:5678/webhook/your-webhook-id \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Hello, can you introduce yourself?"}'
+```
+
+You should receive streaming JSON with the AI's response.
+
+## How the Integration Works
+
+Here's the complete flow:
+
+1. User sends a message via QQ, WeChat, Discord, Telegram, Slack, LINE, or any LangBot-supported platform
+2. LangBot's Pipeline receives the message and calls the n8n Workflow API
+3. n8n's Webhook node captures the request and passes it to the AI Agent
+4. The AI Agent uses OpenAI, Claude, Gemini, or your configured LLM to generate a response
+5. n8n streams the response back to LangBot
+6. LangBot delivers the response to the user on their original platform
+
+## Why This Combination Works
+
+**LangBot + n8n** unlocks powerful capabilities:
+
+1. **No-Code AI Logic**: Design conversation flows visually in n8n without touching code
+2. **Multi-Platform Reach**: Deploy the same AI across QQ, WeChat, Discord, Telegram, Slack, LINE, DingTalk, and Lark simultaneously
+3. **Flexible AI Models**: Swap between OpenAI GPT, Anthropic Claude, Google Gemini, Coze, Dify, local models, and more
+4. **Rich Integrations**: Connect n8n's 400+ integrations - databases, APIs, Notion, Airtable, Google Sheets, Slack, and beyond
+5. **Tool-Calling Agents**: AI Agent can trigger n8n tools like database queries, API calls, or custom functions
+6. **Workflow Extensions**: Add preprocessing, content moderation, logging, or custom business logic
+
+**Perfect For**:
+- Enterprise customer support bots
+- Knowledge base Q&A systems
+- Multi-platform community management
+- Task automation assistants
+- Unified chat interfaces for teams
+
+## Next Steps
+
+Extend your bot further:
+
+- Integrate Dify or FastGPT for advanced RAG (retrieval-augmented generation)
+- Add vector database nodes (Pinecone, Qdrant, Weaviate) for knowledge retrieval
+- Connect business APIs for real-time data
+- Implement conversation memory and context tracking
+- Add content filtering and moderation workflows
+- Use Langflow or Coze for additional AI orchestration
+
+This integration gives you the flexibility of code-based AI frameworks like LangChain with the simplicity of visual workflow builders - all while reaching users across every major messaging platform.
+
+Ready to deploy your multi-platform AI assistant? Start with LangBot and n8n today.

@@ -1,0 +1,2 @@
+langbot-plugin
+mcstatus>=11.1.1

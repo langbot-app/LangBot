@@ -1,12 +1,77 @@
 """Agent monitoring snapshots retain useful input without duplicating binary payloads."""
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.agent.runner import event_log_store
+from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
 from langbot.pkg.storage.media import MediaCache
+
+
+@pytest.mark.parametrize('scale', [1, 1000, 1_000_000])
+@pytest.mark.parametrize('seconds', [1_790_000_000, 1_790_000_000.125, -1_790_000_000, 10_000_000_000])
+def test_event_time_normalizes_current_epoch_units(scale, seconds):
+    assert AgentRunJournal._event_time_to_utc(seconds * scale) == datetime.datetime.fromtimestamp(
+        seconds, datetime.timezone.utc
+    )
+
+
+@pytest.mark.parametrize(
+    'value',
+    [None, True, False, 0, '1790000000', [], {}, float('nan'), float('inf'), -float('inf'), 10**400, -(10**400)],
+)
+def test_event_time_rejects_invalid_values_without_raising(value):
+    assert AgentRunJournal._event_time_to_utc(value) is None
+
+
+@pytest.fixture
+def event_log_writer(monkeypatch):
+    append_event = AsyncMock(return_value='event-log-id')
+    monkeypatch.setattr(event_log_store, 'EventLogStore', lambda engine: SimpleNamespace(append_event=append_event))
+    journal = AgentRunJournal(SimpleNamespace(persistence_mgr=SimpleNamespace(get_db_engine=lambda: None)))
+    return journal, append_event
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('scale', [1, 1000, 1_000_000])
+async def test_write_event_log_normalizes_timestamp(event_log_writer, scale):
+    journal, append_event = event_log_writer
+    event = AgentEventEnvelope(
+        event_id='event',
+        event_type='message.received',
+        source='platform',
+        event_time=1_790_000_000 * scale,
+        input={},
+        delivery={'surface': 'platform'},
+    )
+    assert await journal.write_event_log(event, None, 'run', 'runner') == 'event-log-id'
+    assert append_event.call_args.kwargs['event_time'] == datetime.datetime.fromtimestamp(
+        1_790_000_000, datetime.timezone.utc
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('scale', [1, 1000, 1_000_000])
+async def test_steering_dropped_audit_normalizes_timestamp(event_log_writer, scale):
+    journal, append_event = event_log_writer
+    await journal.write_steering_dropped_audits([{'event': {'event_time': 1_790_000_000 * scale}}], 'run', 'runner')
+    assert append_event.call_args.kwargs['event_type'] == 'steering.dropped'
+    assert append_event.call_args.kwargs['event_time'] == datetime.datetime.fromtimestamp(
+        1_790_000_000, datetime.timezone.utc
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('value', [None, 0, True, 'invalid', float('inf'), 10**400])
+async def test_invalid_steering_time_does_not_prevent_audit(event_log_writer, value):
+    journal, append_event = event_log_writer
+    await journal.write_steering_dropped_audits([{'event': {'event_time': value}}], 'run', 'runner')
+    append_event.assert_awaited_once()
+    assert append_event.call_args.kwargs['event_time'] is None
 
 
 @pytest.mark.asyncio

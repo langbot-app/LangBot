@@ -5,6 +5,7 @@ import uuid
 import datetime
 import functools
 import json
+from contextlib import asynccontextmanager
 import sqlalchemy
 from sqlalchemy.dialects import postgresql as postgresql_dialect
 from sqlalchemy.dialects import sqlite as sqlite_dialect
@@ -20,6 +21,12 @@ from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 from .monitoring_execution_details import ExecutionDetailsMixin
+from ....persistence.session_summary_contract import (
+    SessionListFilter,
+    SessionSummaryReader,
+)
+from ....persistence.session_summary_reader import SqlSessionSummaryReader, SUMMARY_FIELDS
+from ....persistence.session_summary_writer import SessionSummaryWriter, message_summary_change
 
 
 _DEFAULT_MONITORING_PAGE_ROWS = 1000
@@ -147,6 +154,28 @@ class MonitoringService(ExecutionDetailsMixin):
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+        self._session_list: SessionSummaryReader = SqlSessionSummaryReader(self._summary_session)
+
+    @asynccontextmanager
+    async def _summary_session(self, workspace: str):
+        """Join the owning Workspace transaction, including source writes."""
+        async with self.ap.persistence_mgr.tenant_uow(workspace) as uow:
+            yield uow.session
+
+    def _summary_writer(self):
+        return SessionSummaryWriter(self.ap.persistence_mgr.get_db_engine().dialect.name)
+
+    @asynccontextmanager
+    async def _summary_write_session(self, workspace: str):
+        from ....persistence.session_summary_backfill import require_initialized
+
+        async with self._summary_session(workspace) as session:
+            await require_initialized(session, workspace)
+            yield session
+
+    def _serialize_session(self, row):
+        values = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, row)
+        return {field: values[field] for field in SUMMARY_FIELDS}
 
     def _configured_query_limit(self, name: str, default: int, hard_max: int) -> int:
         config = (
@@ -293,6 +322,12 @@ class MonitoringService(ExecutionDetailsMixin):
 
         tables_and_columns: list[tuple[str, type, sqlalchemy.Column, sqlalchemy.Column]] = [
             (
+                'monitoring_session_receipts',
+                persistence_monitoring.MonitoringSessionReceipt,
+                persistence_monitoring.MonitoringSessionReceipt.timestamp,
+                persistence_monitoring.MonitoringSessionReceipt.source_key,
+            ),
+            (
                 'monitoring_messages',
                 persistence_monitoring.MonitoringMessage,
                 persistence_monitoring.MonitoringMessage.timestamp,
@@ -359,9 +394,9 @@ class MonitoringService(ExecutionDetailsMixin):
         else:
             deleted_counts = await delete_records()
 
-        if sum(deleted_counts.values()) > 0:
-            await self._release_sqlite_space()
+        from ....persistence.sqlite_reclamation import reclaim_free_pages
 
+        await reclaim_free_pages(self.ap.persistence_mgr.get_db_engine())
         return deleted_counts
 
     async def _delete_expired_in_batches(
@@ -375,15 +410,28 @@ class MonitoringService(ExecutionDetailsMixin):
         max_batches: int,
     ) -> int:
         workspace_uuid = self._require_write_context(context)
+        if model_cls is persistence_monitoring.MonitoringSessionReceipt:
+            return await self._expire_session_receipts(workspace_uuid, cutoff, batch_size, max_batches)
         deleted_total = 0
 
         for _batch_number in range(max_batches):
 
             async def delete_batch() -> tuple[int, int]:
                 key_columns = list(model_cls.__table__.primary_key.columns)
+                conditions = [model_cls.workspace_uuid == workspace_uuid, ts_column < cutoff]
+                if model_cls is persistence_monitoring.MonitoringSession:
+                    receipt = persistence_monitoring.MonitoringSessionReceipt
+                    conditions.append(
+                        ~sqlalchemy.exists().where(
+                            receipt.workspace_uuid == workspace_uuid,
+                            receipt.bot_id == model_cls.bot_id,
+                            receipt.session_id == model_cls.session_id,
+                        )
+                    )
                 select_result = await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.select(*key_columns)
-                    .where(model_cls.workspace_uuid == workspace_uuid, ts_column < cutoff)
+                    .where(*conditions)
+                    .order_by(ts_column, *key_columns)
                     .limit(batch_size)
                 )
                 pk_values = [tuple(row) for row in select_result.all()]
@@ -392,9 +440,8 @@ class MonitoringService(ExecutionDetailsMixin):
 
                 delete_result = await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.delete(model_cls).where(
-                        model_cls.workspace_uuid == workspace_uuid,
+                        *conditions,
                         sqlalchemy.tuple_(*key_columns).in_(pk_values),
-                        ts_column < cutoff,
                     )
                 )
                 return len(pk_values), int(delete_result.rowcount or 0)
@@ -414,15 +461,46 @@ class MonitoringService(ExecutionDetailsMixin):
 
         return deleted_total
 
-    async def _release_sqlite_space(self) -> None:
-        database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
-        if database_type != 'sqlite':
-            return
-
-        async with self.ap.persistence_mgr.get_db_engine().connect() as conn:
-            autocommit_conn = await conn.execution_options(isolation_level='AUTOCOMMIT')
-            await autocommit_conn.execute(sqlalchemy.text('PRAGMA wal_checkpoint(TRUNCATE)'))
-            await autocommit_conn.execute(sqlalchemy.text('VACUUM'))
+    async def _expire_session_receipts(self, workspace, cutoff, batch_size, max_batches):
+        receipt = persistence_monitoring.MonitoringSessionReceipt
+        expired = [receipt.workspace_uuid == workspace, receipt.timestamp < cutoff]
+        deleted = 0
+        for _ in range(max_batches):
+            async with self._summary_session(workspace) as session:
+                rows = (
+                    (
+                        await session.execute(
+                            sqlalchemy.select(receipt.bot_id, receipt.source_key)
+                            .where(*expired)
+                            .order_by(receipt.timestamp, receipt.bot_id, receipt.source_key)
+                            .limit(batch_size)
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                event_keys = [
+                    (row['bot_id'], row['source_key']) for row in rows if row['source_key'].startswith('event:')
+                ]
+                deleted += await self._summary_writer().expire_ingress(session, workspace, cutoff, event_keys)
+            # A message receipt can be locked by late linking, which next locks
+            # summaries. Never hold a message lock while sealing ingress.
+            message_keys = [
+                (row['bot_id'], row['source_key']) for row in rows if not row['source_key'].startswith('event:')
+            ]
+            if message_keys:
+                async with self._summary_session(workspace) as session:
+                    result = await session.execute(
+                        sqlalchemy.delete(receipt).where(
+                            *expired,
+                            ~receipt.source_key.startswith('event:'),
+                            sqlalchemy.tuple_(receipt.bot_id, receipt.source_key).in_(message_keys),
+                        )
+                    )
+                    deleted += result.rowcount
+            if len(rows) < batch_size:
+                break
+        return deleted
 
     def _serialize_tool_payload(self, payload: object, max_length: int = 20000) -> str | None:
         """Serialize tool arguments/results for monitoring storage."""
@@ -587,9 +665,12 @@ class MonitoringService(ExecutionDetailsMixin):
             'parent_message_id': parent_message_id,
         }
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_monitoring.MonitoringMessage).values(message_data)
-        )
+        async with self._summary_write_session(workspace_uuid) as session:
+            await session.execute(sqlalchemy.insert(persistence_monitoring.MonitoringMessage).values(message_data))
+            await self._summary_writer().apply_once(
+                session,
+                message_summary_change(workspace_uuid, message_data),
+            )
 
         return message_id
 
@@ -744,96 +825,6 @@ class MonitoringService(ExecutionDetailsMixin):
         )
 
         return call_id
-
-    @_workspace_transaction
-    async def record_session_start(
-        self,
-        context: ExecutionContext,
-        session_id: str,
-        bot_id: str,
-        bot_name: str,
-        pipeline_id: str,
-        pipeline_name: str,
-        platform: str | None = None,
-        user_id: str | int | None = None,
-        user_name: str | None = None,
-    ) -> None:
-        """Record a new session"""
-        workspace_uuid = self._require_write_context(context)
-        session_data = {
-            'workspace_uuid': workspace_uuid,
-            'session_id': session_id,
-            'bot_id': bot_id,
-            'bot_name': bot_name,
-            'pipeline_id': pipeline_id,
-            'pipeline_name': pipeline_name,
-            'message_count': 1,
-            'start_time': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-            'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-            'is_active': True,
-            'platform': platform,
-            'user_id': _normalize_user_id(user_id),
-            'user_name': user_name,
-        }
-
-        model = persistence_monitoring.MonitoringSession
-        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-        insert = postgresql_dialect.insert if dialect == 'postgresql' else sqlite_dialect.insert
-        statement = insert(model).values(session_data)
-        await self.ap.persistence_mgr.execute_async(
-            statement.on_conflict_do_update(
-                index_elements=['workspace_uuid', 'bot_id', 'session_id'],
-                set_={
-                    'message_count': model.message_count + 1,
-                    'last_activity': statement.excluded.last_activity,
-                    'pipeline_id': statement.excluded.pipeline_id,
-                    'pipeline_name': statement.excluded.pipeline_name,
-                },
-            )
-        )
-
-    @_workspace_transaction
-    async def update_session_activity(
-        self,
-        context: ExecutionContext,
-        session_id: str,
-        pipeline_id: str | None = None,
-        pipeline_name: str | None = None,
-        bot_id: str | None = None,
-    ) -> bool:
-        """Update session last activity time and increment message count.
-
-        Also updates pipeline info if the bot's pipeline has changed.
-
-        Returns:
-            True if session was found and updated, False if session doesn't exist.
-        """
-        workspace_uuid = self._require_write_context(context)
-        bot_id = bot_id if bot_id is not None else context.bot_uuid
-        if not bot_id:
-            raise ValueError('Session activity requires a bot_id')
-        update_values = {
-            'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
-            'message_count': persistence_monitoring.MonitoringSession.message_count + 1,
-        }
-
-        # Update pipeline info if provided (handles pipeline switch)
-        if pipeline_id is not None:
-            update_values['pipeline_id'] = pipeline_id
-        if pipeline_name is not None:
-            update_values['pipeline_name'] = pipeline_name
-
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_monitoring.MonitoringSession)
-            .where(
-                persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid,
-                persistence_monitoring.MonitoringSession.session_id == session_id,
-                persistence_monitoring.MonitoringSession.bot_id == bot_id,
-            )
-            .values(update_values)
-        )
-        # Check if any rows were updated
-        return result.rowcount > 0
 
     @_workspace_transaction
     async def record_error(
@@ -2050,15 +2041,15 @@ class MonitoringService(ExecutionDetailsMixin):
         limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         if bot_ids and session_ids and not pipeline_ids and not execution_statuses and mode == 'all':
-            source = self._session_message_source(workspace_uuid, bot_ids)
+            source = self._conversation_message_source(workspace_uuid, bot_ids)
             query = sqlalchemy.select(source).where(source.c.session_id.in_(session_ids))
             if start_time:
                 query = query.where(source.c.timestamp >= start_time)
             if end_time:
                 query = query.where(source.c.timestamp <= end_time)
-            return await self._session_projection_page(
+            return await self._conversation_projection_page(
                 workspace_uuid,
-                query.order_by(source.c.timestamp.desc(), source.c.id.desc()),
+                query.order_by(source.c.timestamp.desc(), source.c.id.desc(), source.c._source),
                 limit,
                 offset,
             )
@@ -2111,6 +2102,9 @@ class MonitoringService(ExecutionDetailsMixin):
             serialized_msg = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, msg)
             serialized.append(serialized_msg)
 
+        from ....platform.image_urls import refresh_message_rows
+
+        await refresh_message_rows(self.ap, workspace_uuid, serialized)
         return (serialized, total)
 
     async def get_llm_calls(
@@ -2311,7 +2305,7 @@ class MonitoringService(ExecutionDetailsMixin):
             raise ValueError('bot_id and session_id are required')
         workspace = require_workspace_uuid(context)
         execute = self.ap.persistence_mgr.execute_async
-        source = self._session_message_source(workspace, [bot_id])
+        source = self._conversation_message_source(workspace, [bot_id])
         exists = (
             await execute(
                 sqlalchemy.select(source.c.session_id)
@@ -2396,81 +2390,22 @@ class MonitoringService(ExecutionDetailsMixin):
         is_active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
-        execution_statuses: list[str] | None = None,
-        mode: str = 'all',
     ) -> tuple[list[dict], int]:
-        """Get sessions with filters"""
+        """Interactive lists may only read the materialized summary contract."""
+        workspace = require_workspace_uuid(context)
         limit, offset = self.normalize_page_window(limit, offset)
-        workspace_uuid = require_workspace_uuid(context)
-        if bot_ids and not pipeline_ids and not execution_statuses and mode == 'all':
-            return await self.get_bot_conversation_sessions(
-                workspace_uuid,
-                bot_ids,
-                start_time,
-                end_time,
-                user_query,
-                is_active,
-                limit,
-                offset,
-            )
-        conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
-
-        conditions.append(
-            self._monitoring_execution_condition(
-                persistence_monitoring.MonitoringSession, workspace_uuid, execution_statuses, mode
-            )
-        )
-        if bot_ids:
-            conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
-        if pipeline_ids:
-            conditions.append(
-                self._monitoring_processor_condition(
-                    persistence_monitoring.MonitoringSession, workspace_uuid, pipeline_ids
-                )
-            )
-        if start_time:
-            conditions.append(persistence_monitoring.MonitoringSession.last_activity >= start_time)
-        if end_time:
-            conditions.append(persistence_monitoring.MonitoringSession.last_activity <= end_time)
-        if user_query and user_query.strip():
-            user_pattern = f'%{user_query.strip()}%'
-            conditions.append(
-                sqlalchemy.or_(
-                    persistence_monitoring.MonitoringSession.user_id.ilike(user_pattern),
-                    persistence_monitoring.MonitoringSession.user_name.ilike(user_pattern),
-                )
-            )
-        if is_active is not None:
-            conditions.append(persistence_monitoring.MonitoringSession.is_active == is_active)
-
-        # Get total count
-        count_query = sqlalchemy.select(sqlalchemy.func.count(persistence_monitoring.MonitoringSession.session_id))
-        if conditions:
-            count_query = count_query.where(sqlalchemy.and_(*conditions))
-
-        count_result = await self.ap.persistence_mgr.execute_async(count_query)
-        total = count_result.scalar() or 0
-
-        # Get sessions
-        query = sqlalchemy.select(persistence_monitoring.MonitoringSession).order_by(
-            persistence_monitoring.MonitoringSession.last_activity.desc()
-        )
-        if conditions:
-            query = query.where(sqlalchemy.and_(*conditions))
-
-        query = query.limit(limit).offset(offset)
-
-        result = await self.ap.persistence_mgr.execute_async(query)
-        sessions_rows = result.all()
-
-        return (
-            [
-                self.ap.persistence_mgr.serialize_model(
-                    persistence_monitoring.MonitoringSession, row[0] if isinstance(row, tuple) else row
-                )
-                for row in sessions_rows
-            ],
-            total,
+        return await self._session_list.list_page(
+            workspace,
+            SessionListFilter(
+                bot_ids=tuple(bot_ids or ()),
+                pipeline_ids=tuple(pipeline_ids or ()),
+                start_time=start_time,
+                end_time=end_time,
+                user_query=user_query,
+                is_active=is_active,
+            ),
+            limit,
+            offset,
         )
 
     async def get_errors(
@@ -2728,7 +2663,7 @@ class MonitoringService(ExecutionDetailsMixin):
         return {
             'session_id': session_id,
             'found': True,
-            'session': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, session),
+            'session': self._serialize_session(session),
             'message_stats': {
                 'total': int(message_stats.total or 0),
                 'success': int(message_stats.success or 0),
@@ -2854,10 +2789,14 @@ class MonitoringService(ExecutionDetailsMixin):
         ]
         total_llm_calls = int(llm_stats.total_calls or 0)
 
+        from ....platform.image_urls import refresh_message_rows
+
+        serialized_message = self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message)
+        await refresh_message_rows(self.ap, workspace_uuid, [serialized_message])
         return {
             'message_id': message_id,
             'found': True,
-            'message': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message),
+            'message': serialized_message,
             'llm_calls': llm_calls,
             'llm_stats': {
                 'total_calls': total_llm_calls,

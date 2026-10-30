@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/langbot/**'
       - 'tests/**'
+      - 'plugins/Runner/**'
       - 'pyproject.toml'
       - 'pytest.ini'
       - 'uv.lock'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'src/langbot/**'
       - 'tests/**'
+      - 'plugins/Runner/**'
       - 'pyproject.toml'
       - 'pytest.ini'
       - 'uv.lock'
@@ -106,30 +108,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read official source pin
-        id: plugin-source
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          lock = json.loads(Path('tests/fixtures/legacy_plugin_identity_sources.json').read_text())
-          assert lock['repository'] == 'langbot-app/langbot-plugins'
-          assert re.fullmatch(r'[0-9a-f]{40}', lock['revision'])
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f"revision={lock['revision']}\n")
-          PY
-
-      - name: Checkout pinned official plugin sources
-        uses: actions/checkout@v4
-        with:
-          repository: langbot-app/langbot-plugins
-          ref: ${{ steps.plugin-source.outputs.revision }}
-          path: .contract-sources/langbot-plugins
-          persist-credentials: false
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -143,7 +121,7 @@ jobs:
 
       - name: Run required identity consumer contracts
         env:
-          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/.contract-sources/langbot-plugins
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
         run: |
           uv run --no-sync pytest --required-suite plugin_identity \
             -q --tb=short -rs --junitxml=plugin-identity-results.xml

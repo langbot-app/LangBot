@@ -6,6 +6,7 @@ without cluttering the main pipeline code.
 
 from __future__ import annotations
 
+import asyncio
 import traceback
 import typing
 import time
@@ -119,6 +120,25 @@ class MonitoringHelper:
     """Helper class for monitoring operations"""
 
     @staticmethod
+    async def finish_query(ap, query, message_id: str, status: str) -> None:
+        """Bound terminal writes and retry transient failures without blocking cleanup."""
+        if not message_id:
+            return
+        for attempt in range(3):
+            try:
+                async with asyncio.timeout(2):
+                    await ap.monitoring_service.update_message_status(
+                        get_query_execution_context(query),
+                        message_id=message_id,
+                        status=status,
+                        level='error' if status == 'error' else 'info',
+                    )
+                return
+            except Exception as exc:
+                ap.logger.warning(f'Terminal monitoring write failed (attempt {attempt + 1}): {exc}')
+        ap.logger.error(f'Unable to finish monitoring message {message_id}: {status}')
+
+    @staticmethod
     async def record_query_start(
         ap: app.Application,
         query: pipeline_query.Query,
@@ -130,7 +150,7 @@ class MonitoringHelper:
     ) -> str:
         """Record the start of query processing, returns message_id"""
         try:
-            # Check if session exists, if not, record session start
+            # Message persistence updates the summary in the same transaction.
             session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event
@@ -170,31 +190,6 @@ class MonitoringHelper:
                 runner_name=runner_name,
                 variables=None,  # Will be updated in record_query_success
             )
-
-            # Update session activity or create new session if it doesn't exist
-            # Always pass pipeline info to handle pipeline switches
-            session_updated = await ap.monitoring_service.update_session_activity(
-                get_query_execution_context(query),
-                session_id,
-                bot_id=bot_id,
-                pipeline_id=pipeline_id,
-                pipeline_name=pipeline_name,
-            )
-            if not session_updated:
-                # Session doesn't exist, create it
-                await ap.monitoring_service.record_session_start(
-                    get_query_execution_context(query),
-                    session_id=session_id,
-                    bot_id=bot_id,
-                    bot_name=bot_name,
-                    pipeline_id=pipeline_id,
-                    pipeline_name=pipeline_name,
-                    platform=query.launcher_type.value
-                    if hasattr(query.launcher_type, 'value')
-                    else str(query.launcher_type),
-                    user_id=query.sender_id,
-                    user_name=sender_name,
-                )
 
             return message_id
         except Exception as e:
@@ -308,6 +303,9 @@ class MonitoringHelper:
     ) -> str:
         """Record query processing error, returns message_id"""
         try:
+            original_message_id = (query.variables or {}).get('_monitoring_message_id')
+            if original_message_id:
+                await MonitoringHelper.finish_query(ap, query, original_message_id, 'error')
             session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
 
             # Get sender name from message event

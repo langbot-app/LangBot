@@ -17,6 +17,30 @@ _PLUGIN_METADATA_MAX_BYTES = 1024 * 1024
 _PLUGIN_REQUIREMENTS_MAX_ENTRIES = 1000
 
 
+def _normalize_archive_entry_name(filename: str) -> str:
+    """Return the archive entry name in portable form, or reject it.
+
+    The same rule set the SDK applies when it extracts an artifact
+    (``runtime/plugin/artifact.py``). Inspection must reject exactly what
+    extraction rejects: otherwise a package can pass inspection and then fail to
+    install, and the two layers can drift apart as either side changes.
+    """
+    if not filename or '\x00' in filename:
+        raise ValueError('Plugin archive contains an empty or NUL entry name')
+
+    portable = filename.replace('\\', '/')
+    parts = portable.split('/')
+    if portable.startswith('/') or any(part == '..' for part in parts):
+        raise ValueError(f'Plugin archive entry escapes the archive root: {filename}')
+    if len(parts[0]) >= 2 and parts[0][1] == ':':
+        raise ValueError(f'Plugin archive entry uses a drive letter: {filename}')
+
+    normalized = '/'.join(part for part in parts if part not in ('', '.'))
+    if not normalized:
+        raise ValueError(f'Plugin archive contains an empty entry path: {filename}')
+    return normalized
+
+
 class ArchiveCertificateState(str, Enum):
     """Syntactic certificate declaration state; this is not verification."""
 
@@ -108,9 +132,12 @@ def inspect_plugin_archive(file_bytes: bytes, *, require_manifest: bool = True) 
             total_uncompressed += member.file_size
             if total_uncompressed > _PLUGIN_ARCHIVE_MAX_TOTAL_BYTES:
                 raise ValueError('Plugin archive exceeds the uncompressed size limit')
-            normalized = member.filename.replace('\\', '/').strip('/')
+            normalized = _normalize_archive_entry_name(member.filename)
             names.append(member.filename)
-            files.setdefault(normalized.lower(), member)
+            key = normalized.lower()
+            if key in files:
+                raise ValueError(f'Plugin archive contains a duplicate entry: {member.filename}')
+            files[key] = member
 
         manifest_member = files.get('manifest.yaml') or files.get('manifest.yml')
         if manifest_member is None:

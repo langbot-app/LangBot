@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: query_knowledge
+  label:
+    en_US: QueryKnowledge
+    zh_Hans: 知识库查询
+  description:
+    en_US: 'Query knowledge bases configured for the current pipeline. Supports listing available KBs and retrieving documents.'
+    zh_Hans: '查询当前 pipeline 配置的知识库，支持列出可用知识库和检索文档。'
+spec:
+  parameters:
+    type: object
+    properties:
+      action:
+        type: string
+        enum:
+          - list
+          - query
+        description: 'Action to perform: "list" to list available knowledge bases, "query" to search a specific knowledge base.'
+      kb_id:
+        type: string
+        description: 'Single knowledge base UUID to query. Prefer this field when querying exactly one knowledge base. Do not send an empty kb_ids together with it.'
+      kb_ids:
+        type: array
+        items:
+          type: string
+        description: 'Multiple knowledge base UUIDs to query in parallel. Use this only when querying more than one knowledge base. Do not send this field as an empty array.'
+      query_text:
+        type: string
+        description: 'Search query text. Required when action is "query". Construct a clear, specific query for best retrieval results.'
+      top_k:
+        type: integer
+        description: 'Maximum number of merged results to return. Optional, default is 5. Only used when action is "query".'
+    required:
+      - action
+  llm_prompt: |
+    Search and retrieve information from knowledge bases. These knowledge bases are the **primary and authoritative source** of domain-specific information for this conversation. Your own training data may be outdated, incomplete, or inaccurate for questions that fall within the scope of these knowledge bases.
+
+    When to use this tool:
+    - **Always query** when the user asks about facts, policies, rules, procedures, product details, or any domain-specific topic — even if you think you already know the answer.
+    - **Always query** when you are not fully certain about the accuracy of your answer.
+    - **Prefer querying over guessing.** A retrieval miss is easy to recover from; a confident but wrong answer is not.
+    - You are the only channel for accessing these knowledge bases — no other automatic retrieval will happen. If you do not call this tool, the knowledge base content will not be available to you at all.
+
+    Usage:
+    1. First call with action="list" to see available knowledge bases and their descriptions.
+    2. Choose the most relevant knowledge base based on its name and description.
+    3. Call with action="query". Use kb_id when querying one knowledge base. Use kb_ids only when querying multiple knowledge bases in parallel.
+    4. Always provide a clear query_text. If results are insufficient, try rephrasing the query or searching different knowledge bases.
+
+    Tips:
+    - Always list knowledge bases first to know what's available.
+    - Craft specific, targeted queries for better retrieval results.
+    - For a single selected knowledge base, send kb_id only.
+    - Use kb_ids only when the answer may span multiple knowledge bases and you want one merged result set.
+    - Never send kb_ids as an empty array.
+    - You can call this tool multiple times with different queries or knowledge bases.
+execution:
+  python:
+    path: query_knowledge.py
+    attr: QueryKnowledge

@@ -1,0 +1,191 @@
+---
+title: "开发配置"
+---
+
+LangBot 分为前端和后端，前端使用 Vite + React Router + shadcn 开发，后端通过 Quart（Flask 的异步版本）开发。
+
+## 后端
+
+代码位于 `pkg` 目录下，由根目录的 `main.py` 文件引导启动。  
+
+安装依赖，我们使用 uv 管理依赖。
+
+```bash
+pip install uv
+uv sync --dev
+```
+
+启动后端
+
+```bash
+uv run main.py
+```
+
+此时配置文件会自动生成到 `data/config.yaml` 文件中。
+
+## 前端
+
+代码位于 `web` 目录下，需要安装 Node.js，[pnpm](https://pnpm.io/zh/installation)。
+
+复制 `.env.example` 到 `.env`。
+
+- linux环境使用
+
+```bash
+cp .env.example .env
+```
+
+- windows环境使用
+
+```bash
+copy .env.example .env
+```
+
+安装依赖并启动前端
+
+```bash
+pnpm install
+pnpm dev
+
+# 若未安装pnpm，也可以使用npm来解决依赖并启动
+npm install
+npm run dev
+```
+
+然后根据输出信息，访问`http://127.0.0.1:3000`查看独立启动的前端页面。
+
+<Info title="本地使用`pnpm dev`启动时，会携带`.env`中的环境变量`VITE_API_BASE_URL`，该变量会自动被前端使用，以确保前端可以访问到本地启动的后端的`5300`端口。">
+
+生产环境中，前端会被预编译成静态文件，由后端提供服务，前端会自动访问同域的后端地址。
+</Info>
+
+## 代码格式化
+
+仓库中包含 lint 和 format 检查工作流，您推送代码后将被自动检查。请配置 pre-commit 来在提交时在本地提前检查代码。
+
+```bash
+uv run pre-commit install
+```
+
+## API 文档
+
+我们在开发每个接口之前都会先在 APIFox 中编写接口文档，请查看 [API 文档](https://ok52vhsenr.apifox.cn/)。
+
+## 数据库迁移
+
+LangBot 使用 [Alembic](https://alembic.sqlalchemy.org/) 管理数据库迁移，同时支持 SQLite 和 PostgreSQL，无需针对不同数据库编写不同的迁移代码。
+
+### 迁移文件位置
+
+```
+src/langbot/pkg/persistence/alembic/versions/
+```
+
+### 创建新迁移
+
+推荐使用 **autogenerate** 自动生成迁移脚本，它会对比 ORM 模型和数据库 schema 的差异：
+
+```bash
+# 在项目根目录下运行（需要已有 data/config.yaml）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "描述你的变更"
+```
+
+生成的文件会出现在 `src/langbot/pkg/persistence/alembic/versions/` 目录下，请检查并编辑生成的脚本，确认变更无误后提交。
+
+<Info>
+autogenerate 能自动检测列的增删、表的增删、类型变更等。但对于**数据迁移**（如修改 JSON 字段的内容），需要手动在生成的脚本中添加代码。
+</Info>
+
+也可以手动创建迁移文件，遵循命名规范 `NNNN_description.py`：
+
+```python
+"""描述你的迁移
+
+Revision ID: 0003_add_bot_description
+Revises: 0002_sample
+Create Date: 2026-04-08
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0003_add_bot_description'
+down_revision = '0002_sample'  # 指向前一个迁移的 revision
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # Schema 变更（SQLite 和 PostgreSQL 通用）
+    op.add_column('bots', sa.Column('description', sa.String(512), server_default=''))
+
+
+def downgrade() -> None:
+    op.drop_column('bots', 'description')
+```
+
+### 迁移模式
+
+<AccordionGroup>
+<Accordion title="Schema 变更（增/删列、建表）">
+```python
+def upgrade() -> None:
+    # 添加列
+    op.add_column('table_name', sa.Column('new_col', sa.String(255), server_default=''))
+    
+    # 新建表
+    op.create_table(
+        'new_table',
+        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column('name', sa.String(255), nullable=False),
+    )
+```
+
+<Info>
+`env.py` 中设置了 `render_as_batch=True`，Alembic 会自动处理 SQLite 的 ALTER TABLE 限制（通过临时表重建），无需手动区分数据库类型。
+</Info>
+</Accordion>
+
+<Accordion title="数据迁移（读取并修改数据）">
+```python
+import json
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    rows = conn.execute(sa.text("SELECT uuid, config FROM pipelines")).fetchall()
+    for row in rows:
+        config = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+        config.setdefault('ai', {})['new_key'] = 'default_value'
+        conn.execute(
+            sa.text("UPDATE pipelines SET config = :cfg WHERE uuid = :uuid"),
+            {"cfg": json.dumps(config), "uuid": row[0]}
+        )
+```
+</Accordion>
+</AccordionGroup>
+
+### 运行机制
+
+迁移在 LangBot 启动时自动执行，无需手动运行命令：
+
+1. 首次启动时，自动 stamp 基线版本（标记现有数据库）
+2. 之后每次启动，自动执行所有未应用的迁移（`alembic upgrade head`）
+
+### CI 测试
+
+仓库中包含 `test-migrations.yml` 工作流，当 `persistence/` 相关文件变更时会自动在 SQLite 和 PostgreSQL 上测试迁移脚本。
+
+### CLI 工具
+
+```bash
+# 自动生成迁移脚本（对比 ORM 模型和数据库）
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "描述"
+
+# 升级数据库
+uv run python -m langbot.pkg.persistence.alembic_runner upgrade
+
+# 查看当前版本
+uv run python -m langbot.pkg.persistence.alembic_runner current
+
+# 标记版本（不执行迁移）
+uv run python -m langbot.pkg.persistence.alembic_runner stamp head
+```

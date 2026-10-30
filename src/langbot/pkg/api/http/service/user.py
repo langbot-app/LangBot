@@ -33,6 +33,7 @@ from ....entity.persistence.workspace import MembershipRole, MembershipStatus, W
 from ....utils import constants
 from ....entity.errors import account as account_errors
 from ....workspace.collaboration import normalize_email
+from ....workspace.errors import WorkspaceNotFoundError
 from ....utils import bounded_executor
 
 if typing.TYPE_CHECKING:
@@ -255,10 +256,23 @@ class UserService:
         access = accesses[0]
         if access.membership.role != MembershipRole.OWNER.value:
             return
-        await self.ap.provider_service.update_space_model_provider_api_keys(
-            access.workspace.uuid,
-            api_key,
-        )
+        # A missing compatibility provider row is a model-routing problem, not an
+        # authentication one. Letting provider_service raise here aborted the whole
+        # Space OAuth callback after the Account had already been created, so the
+        # user logged in "successfully" but received 404 on every retry.
+        try:
+            await self.ap.provider_service.update_space_model_provider_api_keys(
+                access.workspace.uuid,
+                api_key,
+            )
+        except WorkspaceNotFoundError:
+            logger = getattr(self.ap, 'logger', None)
+            if logger is not None:
+                logger.warning(
+                    'Space model provider row is missing for workspace %s; '
+                    'skipping credential refresh so login can proceed',
+                    access.workspace.uuid,
+                )
 
     async def is_initialized(self) -> bool:
         account = await self._identity_scalar(
@@ -915,6 +929,7 @@ class UserService:
 
     async def bind_space_account(self, user_email: str, code: str, *, redirect_uri: str = '') -> user.User:
         """Bind Space account to existing local account"""
+        self._require_local_directory()
         local_account = await self.get_user_by_email(user_email)
         if local_account is None:
             raise ValueError('User not found')
@@ -959,19 +974,20 @@ class UserService:
 
         if not space_account_uuid or not space_email:
             raise ValueError('Invalid Space user info')
-        if normalize_email(space_email) != normalize_email(user_email):
+        if normalize_email(space_email) != normalize_email(user_email) and not await self._can_replace_local_email(
+            local_account
+        ):
             raise account_errors.AccountEmailMismatchError()
 
         # Check if this Space account is already bound to another user
         existing_space_user = await self.get_user_by_space_account_uuid(space_account_uuid)
-        if existing_space_user and existing_space_user.normalized_email != normalize_email(user_email):
+        if existing_space_user and existing_space_user.uuid != local_account.uuid:
             raise ValueError('This LangBot Account is already bound to another user')
 
         # Update local account to Space account
-        normalized_email = normalize_email(user_email)
         await self._identity_execute(
             sqlalchemy.update(user.User)
-            .where(user.User.normalized_email == normalized_email)
+            .where(user.User.uuid == local_account.uuid)
             .values(
                 user=normalize_email(space_email),  # Update email to Space email
                 normalized_email=normalize_email(space_email),
@@ -982,13 +998,32 @@ class UserService:
                 space_api_key=api_key,
                 space_access_token_expires_at=expires_at,
             ),
-            f'email:{normalized_email}',
+            f'uuid:{local_account.uuid}',
         )
 
         # Update Space model provider API keys
         await self._update_space_provider_for_account(local_account, api_key)
 
-        return await self.get_user_by_email(space_email)
+        return await self.get_user_by_uuid(local_account.uuid)
+
+    async def _can_replace_local_email(self, account: user.User) -> bool:
+        """Allow only the sole, unbound OSS local Account to adopt its Space email."""
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if (
+            workspace_service is None
+            or workspace_service.policy.multi_workspace_enabled
+            or account.source != user.AccountSource.LOCAL.value
+            or account.account_type != 'local'
+            or account.space_account_uuid is not None
+        ):
+            return False
+        # Invited members must retain the email check. The explicit bind flow
+        # already proves ownership of both accounts in a single-account instance.
+        other_account = await self._identity_scalar(
+            sqlalchemy.select(user.User).where(user.User.uuid != account.uuid).limit(1),
+            f'instance:{self._jwt_identity()[1]}',
+        )
+        return other_account is None
 
     def _prune_passkey_challenges(self, now: float) -> None:
         while self._passkey_challenge_expiry_heap:

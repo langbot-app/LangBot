@@ -1,0 +1,34 @@
+---
+title: "LangBotでのLangflowの使用"
+description: "Langflow を LangBot と連携。Langflow のフローを Discord・Telegram・WeChat 等の AI ボットとして展開。"
+---
+
+[Langflow](https://langflow.com/)は、AIベースのエージェントとワークフローを構築およびデプロイするためのオープンソースプロジェクトです。ローカルおよびクラウドデプロイをサポートし、他のアプリケーションが統合できるAPIを提供します。
+
+LangBotは現在、ランナーとしてLangflowの使用をサポートしています。
+
+## Langflowでのワークフロー作成
+
+[Langflowドキュメント](https://langflow.com/docs/introduction)に従ってLangflowインスタンスをデプロイしてください。
+
+デフォルトテンプレートのSimple Agentの例:
+
+![create_flow](/images/zh/deploy/pipelines/langflow/create_flow.png)
+
+必要に応じてワークフローを変更できます:
+
+![edit_flow](/images/zh/deploy/pipelines/langflow/edit_flow.png)
+
+## LangBotの設定
+
+LangBot WebUIページを開き、新しいパイプラインを追加するか、既存のパイプラインのAI機能設定ページに切り替え、ランナーとして`Langflow API`を選択します。
+
+![set_langflow_runner](/images/zh/deploy/pipelines/langflow/set_langflow_runner.png)
+
+プロンプトに従って他の設定を入力します。`Base URL`(実際のネットワーク状況に応じて入力)、`API Key`、`Flow ID`などが含まれます。API KeyはLangflowの設定から取得できます:
+
+![get_api_key](/images/zh/deploy/pipelines/langflow/get_api_key.png)
+
+Flow IDは、編集ページの右上にある`共有` -> `APIアクセス`ボタンをクリックし、サンプルコードから取得できます:
+
+![get_flow_id](/images/zh/deploy/pipelines/langflow/get_flow_id.png)

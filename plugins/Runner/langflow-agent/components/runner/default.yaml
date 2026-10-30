@@ -1,0 +1,159 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Langflow
+    zh_Hans: Langflow
+  description:
+    en_US: Run a Langflow flow as a LangBot Runner.
+    zh_Hans: 将 Langflow 流程作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: base-url
+      label:
+        en_US: Base URL
+        zh_Hans: 基础 URL
+      type: string
+      required: true
+      default: 'http://localhost:7860'
+    - name: api-key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+      type: secret
+      required: true
+      default: ''
+    - name: flow-id
+      label:
+        en_US: Flow ID
+        zh_Hans: 流程 ID
+      type: string
+      required: true
+      default: ''
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show input, output, and flow tweak controls.
+        zh_Hans: 显示输入、输出和流程 tweak 调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: input-type
+      label:
+        en_US: Input Type
+        zh_Hans: 输入类型
+      type: string
+      required: false
+      default: 'chat'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: output-type
+      label:
+        en_US: Output Type
+        zh_Hans: 输出类型
+      type: string
+      required: false
+      default: 'chat'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: tweaks
+      label:
+        en_US: Tweaks
+        zh_Hans: 调整参数
+      type: json
+      required: false
+      default: '{}'
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: langbot-assets-enabled
+      label:
+        en_US: Enable LangBot Assets
+        zh_Hans: 启用 LangBot 资产
+      type: boolean
+      required: false
+      default: false
+    - name: langbot-assets-gateway-host
+      label:
+        en_US: LangBot Asset Gateway Host
+        zh_Hans: LangBot 资产网关监听地址
+      type: string
+      required: false
+      default: '0.0.0.0'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-port
+      label:
+        en_US: LangBot Asset Gateway Port
+        zh_Hans: LangBot 资产网关端口
+      type: integer
+      required: false
+      default: 8765
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-request-timeout
+      label:
+        en_US: LangBot Asset Gateway Request Timeout
+        zh_Hans: LangBot 资产网关请求超时
+      type: integer
+      required: false
+      default: 60
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-token-ttl
+      label:
+        en_US: LangBot Asset Token TTL
+        zh_Hans: LangBot 资产令牌有效期
+      type: integer
+      required: false
+      default: 3600
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-input-name
+      label:
+        en_US: LangBot Asset Token Input Name
+        zh_Hans: LangBot 资产令牌输入组件名
+      type: string
+      required: false
+      default: 'langbot_asset_run_token'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: true
+    knowledge_retrieval: true
+    multimodal_input: false
+    interrupt: false
+  permissions:
+    tools:
+      - detail
+      - call
+    knowledge_bases:
+      - retrieve
+    history:
+      - page
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

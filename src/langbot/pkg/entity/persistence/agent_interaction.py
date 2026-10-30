@@ -7,6 +7,7 @@ import datetime
 import sqlalchemy
 
 from .base import Base
+from ...persistence.media import MediaReferenceText
 
 
 class AgentInteraction(Base):
@@ -29,15 +30,15 @@ class AgentInteraction(Base):
     actor_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
 
     status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, index=True)
-    request_json = sqlalchemy.Column(sqlalchemy.Text, nullable=False)
+    request_json = sqlalchemy.Column(MediaReferenceText, nullable=False)
     delivery_target_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
-    delivery_result_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    delivery_result_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     replaces_interaction_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     callback_token_hash = sqlalchemy.Column(sqlalchemy.String(64), nullable=False, unique=True, index=True)
 
     expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
     submitted_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
-    submission_json = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    submission_json = sqlalchemy.Column(MediaReferenceText, nullable=True)
     status_reason = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
 
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow)

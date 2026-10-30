@@ -1,0 +1,262 @@
+---
+title: "トラブルシューティング"
+description: "LangBot のローカルデプロイと実行時によくある問題を、症状・原因・解決方法ごとにまとめます。現在は Docker デプロイの問題を扱います。"
+---
+
+このページは、よくある問題の調査手順をまとめるためのものです。現在は Docker デプロイ時の問題を扱います。今後、モデル、ボットアダプター、MCP、Skills などの章を追加できます。
+
+以下のコマンドは `LangBot/docker` ディレクトリで実行する前提です。
+
+## Docker デプロイ
+
+### 起動前の確認
+
+サンドボックス、stdio MCP ホスティング、Skill の追加/編集を使う場合は、`all` profile で起動してください:
+
+```bash
+docker compose --profile all up -d
+```
+
+サービス状態を確認します:
+
+```bash
+docker compose --profile all ps
+```
+
+通常は次のサービスが表示されます:
+
+- `langbot`: WebUI とバックエンドサービス。既定で `5300` と `2280-2285` を公開します。
+- `langbot_plugin_runtime`: プラグインランタイム。既定で `5401` を公開します。
+- `langbot_box`: Box Runtime のコントロールプレーン。サンドボックスコンテナを作成します。
+
+`docker compose up` だけを実行した場合、`langbot_box` は起動しません。そのため stdio MCP、Skill の追加/編集、一部のサンドボックス依存機能は利用できません。
+
+### ポート競合
+
+#### 症状
+
+- `docker compose up` がポートバインドエラーで失敗する。
+- `http://127.0.0.1:5300` で WebUI を開けない。
+- ログに `port is already allocated` や `bind: address already in use` が出る。
+
+#### 解決方法
+
+ポートを使用しているプロセスを確認します。Linux/macOS:
+
+```bash
+lsof -i :5300
+lsof -i :5401
+```
+
+Windows PowerShell:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5300,5401 | Select-Object LocalPort,OwningProcess
+Get-Process -Id <PID>
+```
+
+古い LangBot、プラグインランタイム、テストプロセスであることを確認できた場合は停止し、再起動します:
+
+```bash
+docker compose --profile all up -d
+```
+
+停止できないプロセスの場合は、`docker-compose.yaml` の該当ポートマッピングを変更してください。
+
+### Box Runtime が利用できない
+
+#### 症状
+
+- UI またはログに `No sandbox backend (Docker/nsjail/E2B) is ready` と表示される。
+- stdio MCP サーバーが利用できない。
+- Skills をインストール、アクティベート、編集できない。
+
+#### 主な原因
+
+- `--profile all` または `--profile box` で起動していない。
+- `langbot_box` が起動していない。
+- Docker Desktop または現在のユーザーが Docker にアクセスできない。
+- Linux で現在のユーザーに Docker socket への権限がない。
+
+#### 解決方法
+
+`langbot_box` が起動しているか確認します:
+
+```bash
+docker compose --profile all ps
+docker logs langbot_box --tail 100
+```
+
+Docker 自体が利用できるか確認します:
+
+```bash
+docker info
+```
+
+Linux で必要な場合は、現在のユーザーを `docker` グループに追加し、再ログインします:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+docker info
+```
+
+その後、コンテナを再作成します:
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+### Box root のマウントに失敗する
+
+#### 症状
+
+- ログに `host_path is outside allowed_mount_roots` が出る。
+- ログに `host_path must point to an existing directory on the host` が出る。
+- Docker Desktop 環境で Box root が `/run/desktop/...` に解決され、拒否される。
+- stdio MCP または Skill のサンドボックスコンテナを作成できない。
+
+#### 原因
+
+`langbot_box` はホスト Docker socket 経由でサンドボックスコンテナを作成します。サンドボックスコンテナから見えるのはホスト側のパスなので、Box root はホスト側とコンテナ内で同一パスである必要があり、かつ `allowed_mount_roots` の配下でなければなりません。
+
+#### 解決方法
+
+Docker がマウントでき、Box の安全チェックで許可される絶対パスを `LangBot/docker/.env` に設定します:
+
+```env
+LANGBOT_BOX_ROOT=/var/lib/langbot/box
+```
+
+Windows Docker Desktop では、Docker VM から見えるパスを使用します。例:
+
+```env
+LANGBOT_BOX_ROOT=/host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+ディレクトリが存在することを確認し、コンテナを再作成します:
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+以前に `docker/data/config.yaml` を手動で変更している場合は、同じ root を指しているか確認してください:
+
+```yaml
+box:
+  local:
+    host_root: /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+    allowed_mount_roots:
+      - /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+### 多数の stdio MCP が失敗する、または connecting のままになる
+
+#### 症状
+
+- MCP の状態が `connecting` のまま、または `error` になる。
+- `docker logs langbot_box` に `Cannot fork` が出る。
+- 多数の stdio MCP をインストールしたあと、以前は動いていた MCP も起動に失敗する。
+
+#### 原因
+
+stdio MCP は Box サンドボックス内で実行されます。既定の Box profile は PID 制限が比較的小さいため、`npx` や `uvx` ベースの MCP を同時に多く起動するとプロセス数の上限に達することがあります。
+
+#### 解決方法
+
+`docker/data/config.yaml` で、より大きな組み込み Box profile を使います:
+
+```yaml
+box:
+  local:
+    profile: network_extended
+```
+
+次に LangBot と Box を停止し、古い共有サンドボックスを削除して、コンテナを再作成します。
+
+Linux/macOS:
+
+```bash
+docker compose --profile all stop langbot langbot_box
+docker rm -f $(docker ps -aq --filter "name=langbot-box-mcp-shared")
+docker compose --profile all up -d --force-recreate
+```
+
+Windows PowerShell:
+
+```powershell
+docker compose --profile all stop langbot langbot_box
+docker ps -a --filter "name=langbot-box-mcp-shared" --format "{{.Names}}" | ForEach-Object { docker rm -f $_ }
+docker compose --profile all up -d --force-recreate
+```
+
+MCP のコールドスタート完了後、MCP 管理ページで対象サーバーが `connected` になり、ツール数が `0` ではないことを確認します。
+
+### MCP はインストール済みだがツールがない、または接続できない
+
+#### 症状
+
+- MCP サーバーは一覧にあるが、状態が `error` または長時間 `connecting` のまま。
+- ツール数が `0`。
+- リモート MCP のログに `401 Unauthorized`、接続タイムアウト、ハンドシェイク失敗が出る。
+
+#### 主な原因
+
+- リモート MCP に API Key または OAuth 認証が必要だが、設定されていない。
+- MCP パッケージが `npx` または `uvx` で初回起動中で、依存関係のダウンロードに時間がかかっている。
+- 現在の Docker ネットワークから MCP サービスまたはパッケージレジストリに到達できない。
+- stdio MCP のサンドボックスリソースが不足している。
+
+#### 解決方法
+
+LangBot Space では、認証情報が不要な MCP を優先するか、必要な認証情報を正しく設定してください。認証が必要な MCP では、インストール時に環境変数、ヘッダー、URL パラメーターを入力します。
+
+実行時ログを確認します:
+
+```bash
+docker logs langbot --tail 200
+docker logs langbot_box --tail 200
+```
+
+現在の環境で接続できないサーバーは、MCP 管理ページで無効化または削除し、以後の確認結果を混乱させないようにします。
+
+### イメージタグまたはレジストリが一致しない
+
+#### 症状
+
+- `docker compose ps` で古いイメージが表示される。
+- イメージのレジストリやタグを変更しても、再起動後に反映されない。
+- `langbot`、`langbot_plugin_runtime`、`langbot_box` が異なるイメージタグを使用している。
+
+#### 解決方法
+
+3 つの LangBot サービスのイメージタグを一致させてから、pull と再作成を行います:
+
+```bash
+docker pull rockchin/langbot:latest
+docker compose --profile all up -d --force-recreate
+```
+
+既定以外のタグを意図的に使う場合は、`docker-compose.yaml` の `langbot`、`langbot_plugin_runtime`、`langbot_box` の 3 箇所をすべて同じタグに変更してください。
+
+### 修正後の確認
+
+修正後は、次の確認を行うことを推奨します:
+
+```bash
+docker compose --profile all ps
+docker inspect langbot langbot_plugin_runtime langbot_box --format '{{.Name}} {{.Config.Image}} {{.State.Status}}'
+```
+
+WebUI を確認します:
+
+```bash
+curl -I http://127.0.0.1:5300/
+```
+
+UI でも以下を確認します:
+
+- ログインできる。
+- Box / サンドボックス機能が利用できる。
+- 対象 MCP サーバーが `connected` になっている。
+- stdio MCP のツール数が想定どおり表示される。

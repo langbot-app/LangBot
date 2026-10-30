@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: HumanTakeover
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HumanTakeover
+  version: 0.1.6
+  description:
+    en_US: 人工接管与人工回复插件,可阻断AI消息处理
+    zh_Hans: 人工接管与人工回复插件,可阻断AI消息处理
+    th_TH: 人工接管与人工回复插件,可阻断AI消息处理
+    vi_VN: 人工接管与人工回复插件,可阻断AI消息处理
+    es_ES: 人工接管与人工回复插件,可阻断AI消息处理
+  label:
+    en_US: HumanTakeover
+    zh_Hans: HumanTakeover
+    th_TH: HumanTakeover
+    vi_VN: HumanTakeover
+    es_ES: HumanTakeover
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: takeover_timeout
+      type: integer
+      label:
+        en_US: Takeover timeout (seconds)
+        zh_Hans: 接管超时时间(秒)
+      description:
+        en_US: Auto-release takeover if no human response within this duration. Default 600s (10 min).
+        zh_Hans: 接管后若该时长内无人工响应则自动取消接管。默认 600 秒(10 分钟)。
+      default: 600
+      required: false
+    - name: trigger_words
+      type: array[string]
+      label:
+        en_US: Trigger words
+        zh_Hans: 触发词
+      description:
+        en_US: When a user message contains any of these words, mark the session as unhandled (red dot) and auto take over.
+        zh_Hans: 当用户消息包含任一触发词时,将会话标记为未处理(红点)并自动接管。
+      default: []
+      required: false
+    - name: auto_takeover_on_trigger
+      type: boolean
+      label:
+        en_US: Auto take over on trigger
+        zh_Hans: 命中触发词时自动接管
+      description:
+        en_US: Whether to automatically take over the session when a trigger word is matched.
+        zh_Hans: 命中触发词时是否自动接管该会话(关闭则仅标记未处理提醒)。
+      default: true
+      required: false
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 2
+execution:
+  python:
+    path: main.py
+    attr: HumanTakeover
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

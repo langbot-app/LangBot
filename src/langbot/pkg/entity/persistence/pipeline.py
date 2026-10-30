@@ -1,6 +1,7 @@
 import sqlalchemy
 
 from .base import Base
+from ...persistence.media import MediaReferenceJSON
 
 
 class LegacyPipeline(Base):
@@ -74,7 +75,7 @@ class PipelineRunRecord(Base):
     )
     started_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
     finished_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
-    result = sqlalchemy.Column(sqlalchemy.JSON, nullable=False)
+    result = sqlalchemy.Column(MediaReferenceJSON, nullable=False)
     knowledge_base_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
 
     __table_args__ = (

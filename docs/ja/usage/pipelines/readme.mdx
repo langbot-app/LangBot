@@ -1,0 +1,56 @@
+---
+title: "対話パイプライン (Pipelines)"
+description: "LangBot のパイプラインは AI オーケストレーション基盤（Dify・Coze・n8n・Langflow）をボットに接続。仕組みを解説。"
+---
+
+パイプラインは、メッセージを受信した後の処理フローと、大規模言語モデルとの情報交換を制御します。各ボットは1つのパイプラインにバインドでき、同じパイプラインは複数のボットにバインドできます。
+
+LangBotは最初の起動時にデフォルトパイプラインを自動的に作成します。ボットを作成すると、自動的にデフォルトパイプラインにバインドされます。最初のモデルを作成すると、自動的にデフォルトパイプラインのモデルとして設定されます。
+
+![arch](/images/zh/deploy/pipelines/arch.png)
+
+異なるシナリオに適応するために、異なるボット用に複数のパイプラインを作成できます。
+
+
+
+現在、パイプラインでは以下の機能を設定できます:
+
+## AI機能
+
+以下を選択して使用できます: `組み込みエージェント`、[`Dify`](https://dify.ai/)、[`n8n`](https://n8n.io/)
+
+AI機能は主に2つの部分に分かれています: ランナーの選択とランナーパラメータの設定。
+
+ランナーは、メッセージを処理するために大規模モデルをスケジュールする方法を定義します。デフォルトは`組み込みエージェント`で、これはLangBotによって実装された複数ラウンドのエージェント戦略です。このランナーが選択されている場合のみ、LangBot内で設定されたモデルとツールが使用されます。
+
+{/* ![edit_pipeline](/images/zh/deploy/pipelines/edit_pipeline_ai.png) */}
+
+<img width="400px" src="/images/zh/deploy/pipelines/edit_pipeline_ai.png" alt="edit_pipeline" />
+
+`Dify`、[`n8n`](https://n8n.io/)などの外部Agent プラットフォームを使用することもできます。この場合、使用されるモデル、プロンプト、ツール、その他のリソースはAgent プラットフォームによって提供されます。
+
+<img width="400px" src="/images/zh/deploy/pipelines/more_runner.png" alt="more_runner" />
+
+- Difyへの接続の詳細手順は、[チュートリアルを参照](/ja/usage/pipelines/dify.html)してください。
+- n8nへの接続の詳細手順は、[チュートリアルを参照](/ja/usage/pipelines/n8n.html)してください。
+
+### 会話変数
+外部Agent プラットフォームを使用する場合、LangBotは以下のパラメータを明示的に渡します。これらをAgent プラットフォームワークフローの開始ノードに追加できます(以下の画像はDifyの例です):
+
+- `launcher_type`: ランチャーオブジェクトタイプ、プライベートチャットの場合は`person`、グループチャットの場合は`group`
+- `launcher_id`: ランチャーオブジェクトID、プライベートチャットの場合はユーザーID、グループチャットの場合はグループID
+- `sender_id`: 送信者ID
+- `user_message_text`: ユーザーメッセージのプレーンテキスト
+- `session_id`: ユーザーセッションID、プライベートチャットの場合は`person_<id>`、グループチャットの場合は`group_<id>`
+- `conversation_id`: 文字列、ユーザーセッションID、LangBotによって生成されます。ユーザーがセッションをリセットした後に再生成されます
+- `msg_create_time`: 数値型、このメッセージが受信されたタイムスタンプ(秒)
+- `group_name`: グループ名、グループメッセージを受信した場合のみ設定されます
+- `sender_name`: 送信者名
+
+[プラグインを通じて任意の変数をカスタマイズできます](/en/plugin/dev/apis/common.html#set-request-variables)。
+
+![Difyワークフロー開始ノード設定](/images/zh/workshop/dify-service-api/dify_workflow_var.png)
+
+## その他の設定
+
+設定フォームの説明を参照してください。

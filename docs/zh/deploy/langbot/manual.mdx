@@ -1,0 +1,63 @@
+---
+title: "手动部署"
+description: "从源码手动部署 LangBot：在 Linux、Windows、macOS 上搭建开源 AI 机器人平台的详细步骤。"
+---
+
+<Warning>
+  Unix-like 系统上请优先考虑使用 Docker 部署。
+</Warning>
+
+## 安装主程序
+
+1. 前往[Release](https://github.com/langbot-app/LangBot/releases)页面下载最新版本的压缩包（推荐）`langbot-xxx-all.zip`（请勿下载 Source Code，因为其中不包含 WebUI）。解压，在解压目录打开命令行（终端）
+
+![下载Release](/images/zh/deploy/langbot/manual/dl_release.png)
+
+2. 安装依赖
+
+我们使用 [uv](https://docs.astral.sh/uv/) 管理依赖。
+
+```bash
+pip install uv
+uv sync
+```
+
+默认安装不包含可选的 SeekDB 支持。如果需要使用 SeekDB 向量数据库或内置嵌入模型，请改用：
+
+```bash
+uv sync --extra seekdb
+```
+
+SeekDB 嵌入式模式的平台支持取决于 `pylibseekdb` wheel；Apple Silicon 当前要求 macOS 15 或更高版本。其他功能仍可使用默认的 `uv sync` 安装。
+
+或者使用清华源
+
+```bash
+pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
+uv sync
+```
+
+3. 运行一次主程序，生成配置文件
+
+```bash
+uv run main.py
+```
+
+提示如下信息
+
+```
+ _                   ___      _   
+| |   __ _ _ _  __ _| _ ) ___| |_ 
+| |__/ _` | ' \/ _` | _ \/ _ \  _|
+|____\__,_|_||_\__, |___/\___/\__|
+               |___/              
+
+⭐️开源地址: https://github.com/langbot-app/LangBot
+📖文档地址: https://langbot.app/docs
+
+以下文件不存在，已自动生成，请按需修改配置文件后重启：
+- data/config.yaml
+...
+```
+
+接下来可以使用 Ctrl+C 退出程序，继续查看[配置机器人](/zh/usage/platforms/readme)页。

@@ -53,6 +53,24 @@ This is a conservative baseline to prevent coverage regression. It does NOT repr
 - `provider.tools.toolmgr`: 83%
 - `storage.providers.s3storage`: 80%
 
+### Source quality reports
+
+The CI Coverage Gate records line and branch coverage separately and retains
+its 18% **line** threshold. The `source-quality-reports` artifact contains
+coverage JSON/XML and Ruff C901 complexity JSON/Markdown, including changes
+against the PR base. Complexity is reported without a pass/fail threshold.
+
+To generate the same reports locally:
+
+```bash
+uv run pytest tests/unit_tests/ tests/smoke/ --cov=langbot --cov-branch --cov-report=json
+uv run python scripts/test-complexity.py --coverage-json coverage.json --base-ref origin/master
+```
+
+The complexity scope includes all `src/langbot/**/*.py`, including vendored
+libraries. Nested function ranges overlap; missing coverage is reported as
+unknown. Measurements must use coverage from the same checkout.
+
 ## Important Note
 
 Due to circular import dependencies in the pipeline module structure, the test files use **lazy imports** via `importlib.import_module()` instead of direct imports. This ensures tests can run without triggering circular import errors.
@@ -160,7 +178,7 @@ The test suite uses a centralized fixture system that provides:
 3. **Coverage**: Tests cover happy paths, edge cases, and error conditions
 4. **Extensibility**: Easy to add new tests by reusing existing fixtures
 
-See [provisioned dependency contracts](../docs/DEPENDENCY_CONTRACT_TESTS.md) for
+See [provisioned dependency contracts](../dev-docs/DEPENDENCY_CONTRACT_TESTS.md) for
 the real compiled CLI, pinned official plugin identity helpers, and embedded
 SeekDB CI jobs, including local prerequisites and verification boundaries.
 
@@ -297,7 +315,7 @@ Note: PostgreSQL tests are **not** included in fast integration gate because the
 
 A separate **PostgreSQL Contract Tests** job provisions a disposable database for
 pipeline admission, RAG recovery, migration convergence, and timestamp/lease contracts.
-See [the PostgreSQL contract guide](../docs/POSTGRES_CONTRACT_TESTS.md) for scope,
+See [the PostgreSQL contract guide](../dev-docs/POSTGRES_CONTRACT_TESTS.md) for scope,
 local commands, and remaining optional prerequisites.
 
 CI workflow `.github/workflows/test-migrations.yml` runs:

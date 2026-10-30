@@ -1,0 +1,24 @@
+apiVersion: v1  # 请勿修改
+kind: Tool  # 请勿修改
+metadata:
+  name: get_weather_alerts  # 工具名称，供 LLM 识别
+  label:
+    en_US: GetWeatherAlerts  # 工具显示名称，用于显示在 LangBot 的 UI 上，支持多语言
+    zh_Hans: GetWeatherAlerts
+  description:
+    en_US: 'Get weather alerts for a US state.'  # 工具描述，用于显示在 LangBot 的 UI 上，支持多语言。可选
+    zh_Hans: '获取美国某个州的天气预警'
+spec:
+  parameters:
+    type: object  # 请勿修改
+    properties:  # 请勿修改，在此处添加参数
+      state:
+        type: string
+        description: 'Two-letter US state code (e.g. CA, NY)'
+    required:  # 在此添加必填参数说明
+      - state
+  llm_prompt: 'Get weather alerts for a US state.'  # 工具提示词，供 LLM 判断是否调用该工具
+execution:
+  python:
+    path: get_weather_alerts.py  # 工具处理程序，请勿修改
+    attr: GetWeatherAlerts  # 工具处理程序的类名，与 get_weather_alerts.py 中的类名一致

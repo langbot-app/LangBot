@@ -82,6 +82,25 @@ spec:
   # storageClassName: your-storage-class
 
 ---
+# PersistentVolumeClaim for the v4 Plugin Runtime state
+# Holds the plugin artifact cache, per-plugin dependency environments, and
+# per-installation data. It must survive Pod restarts: rebuilding it forces
+# every installed plugin to be re-downloaded and its environment rebuilt.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langbot-plugin-runtime-state
+  namespace: langbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # Uncomment and modify if you have a specific StorageClass
+  # storageClassName: your-storage-class
+
+---
 # ConfigMap for environment configuration
 apiVersion: v1
 kind: ConfigMap
@@ -160,6 +179,8 @@ spec:
         volumeMounts:
         - name: plugin-data
           mountPath: /app/data/plugins
+        - name: plugin-runtime-state
+          mountPath: /app/data/plugin-runtime
         resources:
           requests:
             memory: "512Mi"
@@ -189,6 +210,9 @@ spec:
       - name: plugin-data
         persistentVolumeClaim:
           claimName: langbot-plugin-runtime-data
+      - name: plugin-runtime-state
+        persistentVolumeClaim:
+          claimName: langbot-plugin-runtime-state
       restartPolicy: Always
 
 ---

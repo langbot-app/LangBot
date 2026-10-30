@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="PowerContext">
+  <defs>
+    <linearGradient id="g" x1="18" y1="16" x2="108" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#21D4A7"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#081522"/>
+  <path d="M31 33h39c19 0 31 11 31 27 0 17-12 28-31 28H52v17H31V33Zm21 18v19h16c8 0 12-3 12-10 0-6-4-9-12-9H52Z" fill="url(#g)"/>
+  <circle cx="94" cy="95" r="11" fill="#21D4A7"/>
+</svg>

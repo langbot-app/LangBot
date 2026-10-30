@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: LangRAG
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LangRAG
+  version: 0.2.2
+  description:
+    en_US: LangBot Knowledge Engine - Document ingestion and vector retrieval 
+      using Host infrastructure
+    zh_Hans: LangBot RAG 引擎 - 使用宿主基础设施进行文档摄入和向量检索
+    zh_Hant: LangBot 原生 RAG 插件，使用向量資料庫進行知識庫檢索增強生成。
+    ja_JP: LangBotネイティブRAGプラグイン。ベクトルデータベースを使用してナレッジベース検索による拡張生成を行います。
+    vi_VN: Plugin RAG gốc của LangBot, sử dụng cơ sở dữ liệu vector để truy xuất
+      và tăng cường sinh văn bản từ cơ sở tri thức.
+    th_TH: ปลั๊กอิน RAG ดั้งเดิมของ LangBot 
+      ใช้ฐานข้อมูลเวกเตอร์สำหรับการค้นหาฐานความรู้เพื่อเสริมการสร้างข้อความ
+    es_ES: Plugin RAG nativo de LangBot que utiliza una base de datos vectorial 
+      para la recuperación y generación aumentada desde la base de 
+      conocimientos.
+  label:
+    en_US: LangRAG
+    zh_Hans: LangRAG
+    zh_Hant: LangRAG
+    ja_JP: LangRAG
+    vi_VN: LangRAG
+    th_TH: LangRAG
+    es_ES: LangRAG
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    KnowledgeEngine:
+      fromFiles:
+      - components/knowledge_engine/langrag.yaml
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 1
+execution:
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
+  python:
+    path: main.py
+    attr: LangRAG

@@ -98,7 +98,7 @@ const thTH = {
     retention: 'ประวัติข้อความ · {{count}} วัน',
     retentionLabel: 'ระยะเวลาเก็บประวัติข้อความ',
     retentionHelp: 'ประวัติข้อความจะถูกลบโดยอัตโนมัติเมื่อเกินระยะเวลานี้',
-    credits: '{{count}} เครดิตต่อเดือน',
+    credits: '{{count}} เครดิตโมเดลต่อเดือน',
     creditsLabel: 'เครดิตรายเดือน',
     creditsHelp: 'ได้รับเครดิตทุกเดือนของการสมัคร รวมถึงแผนรายปี',
     platforms: 'รองรับแพลตฟอร์มหลัก',
@@ -932,6 +932,7 @@ const thTH = {
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
+    autoCreatedPipeline: 'สร้างไปป์ไลน์และผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
@@ -999,7 +1000,8 @@ const thTH = {
     commonScenarios: 'สถานการณ์ทั่วไป',
     dragEventRoute: 'ลากเส้นทาง {{index}}',
     behaviorReplyMessages: 'ตอบข้อความ',
-    behaviorReplyMessagesDescription: 'ส่งข้อความขาเข้าไปยังตัวประมวลผล',
+    behaviorReplyMessagesDescription:
+      'ประมวลผลข้อความส่วนตัวและข้อความกลุ่มที่กล่าวถึงบอตนี้',
     behaviorWelcomeMembers: 'ต้อนรับสมาชิกใหม่',
     behaviorWelcomeMembersDescription: 'เรียกตัวประมวลผลเมื่อมีคนเข้ากลุ่ม',
     behaviorHandleDepartures: 'จัดการสมาชิกออกจากกลุ่ม',
@@ -1213,6 +1215,9 @@ const thTH = {
       'ต้องตรงทุกเงื่อนไขจึงจะทำงาน เว้นว่างเพื่อให้ทำงานเสมอ',
     conditionsEmpty: 'ไม่มีเงื่อนไข — ทำงานเสมอ',
     addFilter: 'เพิ่มเงื่อนไข',
+    filterIsAtBot: 'กล่าวถึงบอตนี้',
+    mentionYes: 'ใช่',
+    mentionNo: 'ไม่',
     filterChatType: 'ประเภทเซสชัน',
     filterChatId: 'ID เซสชัน',
     filterMessageText: 'ข้อความ',
@@ -1767,6 +1772,209 @@ const thTH = {
     uploadLocal: 'อัปโหลดจากเครื่อง',
     debugging: 'ดีบัก',
     uploadLocalPlugin: 'อัปโหลดปลั๊กอินจากเครื่อง',
+    spaceUpload: {
+      menuAction: 'อัปโหลดไปยังตลาดปลั๊กอิน',
+      title: 'อัปโหลดปลั๊กอินไปยังตลาดปลั๊กอิน',
+      description:
+        'บิลด์ปลั๊กอินที่กำลังดีบัก {{author}}/{{name}} แล้วเผยแพร่ไปยังตลาดปลั๊กอิน',
+      loadFailed: 'โหลดข้อมูลการอัปโหลดปลั๊กอินไม่สำเร็จ',
+      spaceNotConnected:
+        'Workspace นี้ยังไม่ได้ผูกกับบัญชี LangBot กรุณาผูกก่อนอัปโหลด',
+      label: 'ชื่อ',
+      version: 'เวอร์ชัน',
+      pluginDescription: 'คำอธิบาย',
+      repository: 'ที่เก็บโค้ด',
+      repositoryPublicHint:
+        'เมื่อซิงค์ไปยัง GitHub ที่เก็บที่ยังไม่มีจะถูกสร้าง และที่เก็บส่วนตัวที่มีอยู่จะถูกเปลี่ยนเป็นสาธารณะ',
+      author: 'ผู้พัฒนา',
+      authorHint: 'เมื่อเผยแพร่จะใช้ชื่อผู้พัฒนานี้บนตลาดปลั๊กอิน',
+      license: 'สัญญาอนุญาต',
+      licensePlaceholder: 'เลือกสัญญาอนุญาต',
+      licenseNone: 'ไม่ระบุ',
+      changelog: 'บันทึกการเปลี่ยนแปลง',
+      syncGithub: 'ซิงค์ไปยัง GitHub',
+      syncGithubHint:
+        'คอมมิตและพุชไดเรกทอรีทำงานของปลั๊กอิน โดยค่าเริ่มต้นจะใช้การตั้งค่า git ในเครื่อง คุณสามารถระบุ URL และโทเคนด้านล่างเพื่อแทนที่ได้ หากระบุโทเคนและยังไม่มีที่เก็บ GitHub ระบบจะสร้างให้อัตโนมัติ',
+      repoUrl: 'URL ที่เก็บ (ไม่บังคับ)',
+      repoUrlHint: 'เว้นว่างเพื่อใช้ origin ของ git ในเครื่อง',
+      token: 'โทเคนการเข้าถึง (ไม่บังคับ)',
+      tokenPlaceholder: 'ใช้เฉพาะการพุชครั้งนี้',
+      branch: 'สาขา',
+      commitMessage: 'ข้อความคอมมิต',
+      syncOnly: 'ซิงค์ไปยัง GitHub เท่านั้น',
+      gitSynced: 'ซิงค์ไปยัง GitHub แล้ว',
+      gitCommittedNoRemote:
+        'คอมมิตในเครื่องแล้ว แต่ยังไม่ได้ตั้งค่ารีโมตให้พุช',
+      gitNothing: 'ไม่มีสิ่งที่ต้องซิงค์',
+      gitFailed: 'ซิงค์ Git ล้มเหลว: ',
+      uploadSuccess: 'อัปโหลดปลั๊กอินไปยังตลาดปลั๊กอินแล้ว',
+      reviewOnSpace: 'ส่งขอตรวจสอบบนตลาดปลั๊กอิน',
+      uploadFailed: 'อัปโหลดปลั๊กอินล้มเหลว: ',
+      basicInfo: 'ข้อมูลพื้นฐาน',
+      changeIcon: 'เปลี่ยนไอคอน',
+      iconInvalidType: 'กรุณาเลือกไฟล์รูปภาพ',
+      iconTooLarge: 'ไอคอนต้องมีขนาดน้อยกว่า 10 MB',
+      labelRequired: 'กรอกชื่ออย่างน้อยหนึ่งภาษา',
+      langEn: 'English',
+      langZhHans: 'จีนตัวย่อ',
+      langZhHant: 'จีนตัวเต็ม',
+      langJa: 'ญี่ปุ่น',
+      langTh: 'ไทย',
+      langVi: 'เวียดนาม',
+      langEs: 'สเปน',
+      uploadButton: 'อัปโหลดไปยังตลาดปลั๊กอิน',
+      notDebugHint:
+        'อัปโหลดได้เฉพาะปลั๊กอินที่เชื่อมต่อเพื่อดีบักเท่านั้น กรุณาเริ่มดีบักด้วย `lbp run` ก่อน',
+      stepInfo: 'ข้อมูลปลั๊กอิน',
+      stepSettings: 'บันทึกการเปลี่ยนแปลง',
+      stepConfirm: 'ยืนยันการอัปโหลด',
+      stepResult: 'ผลการอัปโหลด',
+      startUpload: 'เริ่มอัปโหลด',
+      uploadingTitle: 'กำลังอัปโหลดไปยังตลาดส่วนขยาย...',
+      uploadingDesc:
+        'กำลังแพ็กไฟล์ปลั๊กอินในเครื่อง ตรวจสอบ manifest และซิงค์ไปยัง LangBot Space...',
+      uploadSuccessTitle: 'อัปโหลดปลั๊กอินสำเร็จ!',
+      uploadSuccessDesc:
+        'ปลั๊กอิน {{author}}/{{name}} (v{{version}}) ถูกส่งไปยัง LangBot Space แล้ว',
+      reviewNoticeTitle: 'แจ้งเตือนการตรวจสอบ',
+      reviewNoticeDesc:
+        'ปลั๊กอินเข้าสู่คิวการตรวจสอบแล้ว เมื่อได้รับอนุมัติจะเผยแพร่ในตลาดส่วนขยาย',
+      viewInSpace: 'ดูในตลาด Space',
+      viewMyPlugins: 'จัดการปลั๊กอินของฉัน',
+      finishAndClose: 'เสร็จสิ้น',
+      retryUpload: 'อัปโหลดอีกครั้ง',
+      backToEdit: 'กลับไปแก้ไข',
+      manifestNotice:
+        'ข้อมูลต่อไปนี้อ่านจากไฟล์ manifest (manifest.yaml) เพื่อยืนยันเท่านั้น หากต้องการแก้ไขโปรดแก้ไขไฟล์ manifest แล้วเริ่มการดีบักใหม่',
+      manifestSource: 'ยืนยันจาก manifest',
+      nextStep: 'ถัดไป',
+      prevStep: 'ย้อนกลับ',
+      nextToSettings: 'ถัดไป: บันทึกการเปลี่ยนแปลง',
+      nextToConfirm: 'ถัดไป: ยืนยันการอัปโหลด',
+      confirmAndUpload: 'ยืนยันและอัปโหลดไปยังตลาดส่วนขยาย',
+      noDescription: 'ไม่มีคำอธิบาย',
+      noRepository: 'ไม่ได้ระบุคลังรหัส',
+      noLicense: 'ไม่ได้ระบุสัญญาอนุญาต',
+      changelogPlaceholder:
+        'กรอกบันทึกการเปลี่ยนแปลงสำหรับเวอร์ชันนี้ (เช่น คุณสมบัติใหม่ การแก้ไขข้อบกพร่อง)...',
+      changelogHint:
+        'บันทึกการเปลี่ยนแปลงจะแสดงในประวัติเวอร์ชันของตลาดส่วนขยาย',
+      reviewSummaryTitle: 'ตรวจสอบก่อนเผยแพร่',
+      reviewTargetMarket: 'ตลาดเป้าหมาย',
+      reviewTargetMarketValue: 'ตลาดส่วนขยาย (LangBot Space)',
+      reviewAccountStatus: 'สถานะบัญชี',
+      reviewAccountConnected: 'เชื่อมต่อกับบัญชี LangBot แล้ว',
+      reviewAccountNotConnected:
+        'ยังไม่ได้เชื่อมต่อบัญชี (การอัปโหลดจะล้มเหลว)',
+      spaceNotConnectedTitle: 'ยังไม่ได้ผูกบัญชีตลาดส่วนขยาย',
+      bindSpaceButton: 'ผูกบัญชีทันที',
+      bindRequiredToProceed: 'กรุณาผูกบัญชีก่อนดำเนินการต่อ',
+      prerequisitesTitle: 'ข้อกำหนดเบื้องต้นสำหรับการเผยแพร่',
+      prerequisitesDescription:
+        'ก่อนเผยแพร่ปลั๊กอินไปยังตลาดส่วนขยาย โปรดตรวจสอบว่าคุณมีคุณสมบัติตรงตามข้อกำหนดต่อไปนี้',
+      req1Title: 'ข้อกำหนดที่ 1: ผูกบัญชี LangBot Space',
+      req1Desc:
+        'อินสแตนซ์ LangBot ในเครื่องต้องเข้าสู่ระบบหรือผูกกับ LangBot Space',
+      reqBound: 'ผูกบัญชีแล้ว',
+      reqCompleted: 'พร้อมใช้งาน',
+      req2Title: 'ข้อกำหนดที่ 2: สร้างตัวตนผู้สร้างใน Space',
+      req2Desc:
+        'บัญชี LangBot ต้องมีตัวตนผู้สร้างและชื่อระบุตัวตนต้องตรงกับชื่อผู้เขียนปลั๊กอิน',
+      req2WaitSpace: 'โปรดทำข้อกำหนดที่ 1 (ผูกบัญชี LangBot) ให้เสร็จก่อน',
+      req2NoCreator: 'บัญชี LangBot นี้ยังไม่ได้สร้างตัวตนผู้สร้าง',
+      req2Mismatch: 'ชื่อระบุตัวตนผู้สร้างไม่ตรงกัน',
+      req2MismatchDetail:
+        'ชื่อผู้สร้าง Space ของคุณคือ @{{creator}} แต่ชื่อผู้เขียนปลั๊กอินคือ {{author}}',
+      createCreatorButton: 'ไปสร้างตัวตนผู้สร้าง',
+      manageCreatorButton: 'ดูการตั้งค่าผู้สร้าง',
+      pendingReq: 'รอดำเนินการ',
+      autoProceedTip:
+        'เมื่อผ่านข้อกำหนดทั้งหมดแล้ว ตัวช่วยอัปโหลดจะเปิดขึ้นโดยอัตโนมัติ',
+      refreshStatus: 'รีเฟรชสถานะ',
+      reviewGitSync: 'การซิงค์ GitHub',
+      reviewGitSyncEnabled: 'เปิดใช้งาน (ส่งไปยัง {{branch}})',
+      reviewGitSyncDisabled: 'ปิดใช้งาน',
+      reviewChangelog: 'บันทึกการเปลี่ยนแปลง',
+      reviewChangelogEmpty: '(ไม่ได้กรอกบันทึกการเปลี่ยนแปลง)',
+      pluginIdentifier: 'รหัสระบุปลั๊กอิน',
+      banners: {
+        guideTitle: 'คำแนะนำการดำเนินการ:',
+        disabledTooltip: 'โปรดทำตามคำแนะนำในแบนเนอร์ด้านบนก่อนอัปโหลด',
+        bindButton: 'เชื่อมต่อบัญชี LangBot',
+        reauthButton: 'ยืนยันตัวตนบัญชีใหม่',
+        createCreatorButton: 'สร้างโปรไฟล์ผู้สร้าง',
+        manageCreatorButton: 'จัดการโปรไฟล์ผู้สร้าง',
+        viewMyPluginsButton: 'ดูปลั๊กอินของฉันบน Space',
+        refreshButton: 'รีเฟรชสถานะ',
+        retryButton: 'ลองใหม่อีกครั้ง',
+        readyToUpload: {
+          title: 'พร้อมสำหรับการเผยแพร่',
+          description:
+            'บัญชี LangBot และโปรไฟล์ผู้สร้างพร้อมแล้ว โปรดตรวจสอบรายละเอียดด้านล่างและยืนยันการอัปโหลด',
+        },
+        notConnected: {
+          title: 'ยังไม่ได้เชื่อมต่อบัญชี LangBot',
+          description:
+            'อินสแตนซ์นี้ยังไม่ได้เชื่อมต่อกับ LangBot Space จำเป็นต้องมีบัญชี LangBot เพื่อเผยแพร่ปลั๊กอิน',
+          guide:
+            'โปรดคลิก "เชื่อมต่อบัญชี LangBot" ด้านล่างเพื่อเข้าสู่ระบบ เมื่อเชื่อมต่อแล้วจะสามารถเผยแพร่ปลั๊กอินได้',
+        },
+        noCreator: {
+          title: 'ยังไม่ได้สร้างโปรไฟล์ผู้สร้างบน Space',
+          description:
+            'การเผยแพร่ปลั๊กอินต้องมีโปรไฟล์ผู้สร้าง (Creator Profile) เพื่อแสดงข้อมูลผู้เขียนในตลาด',
+          guide:
+            'โปรดคลิกปุ่มด้านล่างเพื่อตั้งค่า Slug, ประวัติย่อ และรูปโปรไฟล์บน Space จากนั้นกลับมาคลิก "รีเฟรชสถานะ"',
+        },
+        authorMismatch: {
+          title: 'ผู้เขียนปลั๊กอินไม่ตรงกับรหัสผู้สร้าง Space',
+          description:
+            'ผู้เขียนที่ระบุใน manifest คือ "{{author}}" แต่รหัสผู้สร้างของคุณคือ "@{{creator}}" ทั้งสองต้องตรงกันทุกประการ',
+          guide:
+            'วิธีแก้ไข:\n1. แก้ไข metadata.author ใน manifest.yaml เป็น "{{creator}}"\n2. หรือเปลี่ยนไปใช้บัญชี LangBot ที่ตรงกับ "{{author}}"',
+        },
+        pendingReview: {
+          title: 'มีเวอร์ชันที่อยู่ระหว่างรอการตรวจสอบแล้ว',
+          description:
+            'มีเวอร์ชันก่อนหน้าของปลั๊กอินนี้ที่อยู่ระหว่างการตรวจสอบ โปรดรอให้การตรวจสอบเสร็จสิ้นก่อนส่งเวอร์ชันใหม่',
+          guide:
+            'โปรดคลิก "ดูปลั๊กอินของฉันบน Space" เพื่อตรวจสอบสถานะและข้อเสนอแนะ',
+        },
+        sessionExpired: {
+          title: 'เซสชันการเข้าสู่ระบบ Space หมดอายุ',
+          description:
+            'โทเค็นการเข้าถึง Space หมดอายุหรือไม่ถูกต้อง การยืนยันตัวตนล้มเหลว',
+          guide:
+            'โปรดคลิก "ยืนยันตัวตนบัญชีใหม่" ด้านล่างเพื่อเข้าสู่ระบบใหม่อีกครั้ง',
+        },
+        validationFailed: {
+          title: 'การตรวจสอบแพ็กเกจปลั๊กอินไม่ผ่าน',
+          description: 'การตรวจสอบล้มเหลว: {{detail}}',
+          guide:
+            'โปรดตรวจสอบไฟล์ manifest.yaml, รูปแบบเวอร์ชัน SemVer, รูปไอคอน และไฟล์ README',
+        },
+        genericError: {
+          title: 'การเผยแพร่ปลั๊กอินล้มเหลว',
+          description: '{{detail}}',
+          guide:
+            'โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือลองใหม่อีกครั้งในภายหลัง',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'โปรดตั้งค่าโปรไฟล์ผู้สร้างบน Space ก่อนอัปโหลดปลั๊กอิน',
+        authorMismatch:
+          'ผู้เขียนปลั๊กอิน "{{author}}" ไม่ตรงกับรหัสผู้สร้างบน Space ของคุณ "@{{slug}}"',
+        pendingReview:
+          'คุณมีปลั๊กอินที่อยู่ระหว่างการตรวจสอบแล้ว โปรดรอให้การตรวจสอบเสร็จสิ้น',
+        sessionExpired: 'เซสชัน Space หมดอายุแล้ว โปรดเข้าสู่ระบบใหม่อีกครั้ง',
+        notConnected: 'โปรดเชื่อมต่อบัญชี LangBot Space ก่อนอัปโหลดปลั๊กอิน',
+        packageFailed:
+          'สร้างแพ็กเกจปลั๊กอินไม่สำเร็จ โปรดตรวจสอบโค้ดและโครงสร้างไฟล์',
+        inspectFailed: 'การตรวจสอบไฟล์กำกับปลั๊กอินล้มเหลว: {{detail}}',
+        certPrecheckFailed: 'การตรวจสอบสิทธิ์ล่วงหน้าล้มเหลว: {{detail}}',
+      },
+    },
     localPreview: {
       title: 'ดูตัวอย่างแพ็กเกจปลั๊กอินในเครื่อง',
       unpacking: 'กำลังแตกแพ็กเกจเพื่อดูตัวอย่าง...',
@@ -3685,6 +3893,16 @@ const thTH = {
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
     invalidPage: 'หน้าปลั๊กอินไม่ถูกต้อง',
+  },
+  cloud_banner: {
+    message:
+      'คุณกำลังใช้งาน LangBot Cloud ซึ่งเป็นบริการแบบมีการจัดการ หากต้องการทรัพยากรเฉพาะและโควตาที่สูงขึ้น โปรดพิจารณาใช้',
+    dedicated_link: 'LangBot Cloud (สภาพแวดล้อมเฉพาะ)',
+    cta_dedicated: 'ดูแพ็กเกจสภาพแวดล้อมเฉพาะ',
+    or: 'หรือ',
+    self_hosted_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
+    period: '',
+    dismiss: 'ปิด',
   },
 };
 export default thTH;

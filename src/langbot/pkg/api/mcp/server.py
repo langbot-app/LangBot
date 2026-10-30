@@ -188,7 +188,7 @@ class LangBotMCPServer:
             return _dump(ap.box_service.get_recent_errors(context))
 
         @mcp.tool(
-            description='Read bounded Workspace runtime records. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind.'
+            description='Read bounded Workspace runtime records. Message image URLs may be renewed through the connected OneBot peer without downloading images or rewriting stored records; URLs remain temporary. LLM calls include optional details (timing in ms, complete provider usage, structured error); older records have null details. Filters follow the monitoring service: bot_ids, pipeline_ids, session_ids, start_time, end_time, mode (all/real/debug), execution_statuses (owning execution status groups), knowledge_base_id, user_query, is_active as supported by the record kind. Sessions read stored conversation summaries and do not support mode or execution_statuses.'
         )
         async def get_monitoring_records(
             kind: typing.Literal['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'sessions', 'errors'],
@@ -207,6 +207,7 @@ class LangBotMCPServer:
             if kind == 'embedding_calls':
                 allowed.add('knowledge_base_id')
             if kind == 'sessions':
+                allowed -= {'mode', 'execution_statuses'}
                 allowed |= {'user_query', 'is_active'}
             kwargs = dict(filters or {})
             if set(kwargs) - allowed:
@@ -385,6 +386,35 @@ class LangBotMCPServer:
         @mcp.tool(description='List recent runtime route status for a bot event route table.')
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
             return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
+
+        @mcp.tool(
+            description=(
+                'Preview promoting the pipeline at-bot trigger rule to a routing-layer '
+                'is_at_bot filter. Reports which bindings and pipelines need migration '
+                'without persisting changes.'
+            )
+        )
+        async def preview_bot_group_filter_migration(bot_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.bot_service.preview_group_filter_migration(context, bot_uuid))
+
+        @mcp.tool(
+            description=(
+                'Apply the group filter migration previewed by '
+                'preview_bot_group_filter_migration. Adds is_at_bot=true filter to group '
+                'message bindings and, when disable_pipeline_at_bot is true (default), '
+                'turns off the pipeline trigger at-bot rule. Idempotent.'
+            )
+        )
+        async def apply_bot_group_filter_migration(bot_uuid: str, disable_pipeline_at_bot: bool = True) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await ap.bot_service.apply_group_filter_migration(
+                    context,
+                    bot_uuid,
+                    disable_pipeline_at_bot=disable_pipeline_at_bot,
+                )
+            )
 
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')

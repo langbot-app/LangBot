@@ -105,8 +105,10 @@ export default function Login() {
       }
       setShowLocalLogin(res.password_login_enabled !== false);
       setShowSpaceLogin(res.space_login_enabled !== false);
+      // Passkeys are OSS-only: the core reports explicit false on cloud, so an
+      // absent flag must not be read as "enabled".
       setShowPasskeyLogin(
-        res.passkey_login_enabled !== false || Boolean(res.passkey_supported),
+        res.passkey_login_enabled === true || res.passkey_supported === true,
       );
       setLoading(false);
 
@@ -206,10 +208,7 @@ export default function Login() {
     setPasskeyLoading(true);
     try {
       const { options, challenge_token } =
-        await httpClient.getPasskeyAuthOptions(
-          undefined,
-          window.location.origin,
-        );
+        await httpClient.getPasskeyAuthOptions(undefined);
       const authResp = await startAuthentication({ optionsJSON: options });
       const res = await httpClient.verifyPasskeyAuth(challenge_token, authResp);
       // A rejected assertion answers with an error payload and no session, so a

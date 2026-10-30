@@ -40,14 +40,18 @@ pnpm test:e2e
 
 Run the narrowest useful test first, then broader checks when confidence is needed.
 
+Run tests in Linux to match CI; on Windows, use Linux containers through `wslc` of WSL3 to avoid platform-specific failures.
+
 ## Where to Look
 
+- Public documentation source: `docs/`; published at https://langbot.app/docs/. `langbot-app/langbot-docs` is a legacy archive; edit here.
 - Architecture map: `ARCHITECTURE.md`.
+- Official plugin sources: `plugins/`, with independent CI, dependencies and Marketplace releases; follow `plugins/AGENTS.md` and `plugins/RELEASING.md`. Never bundle this tree in Core artifacts.
 - Dev environment guide: https://langbot.app/docs/zh/develop/dev-config.
 - Plugin runtime / CLI / SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.
-- API-key auth: `docs/API_KEY_AUTH.md`.
+- API-key auth: `dev-docs/API_KEY_AUTH.md`.
 - Service API CLI: [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`) manages running Workspaces; it is separate from the SDK's `lbp` CLI.
-- Box deep-dive notes: `docs/review/box-architecture.md` and related files.
+- Box deep-dive notes: `dev-docs/review/box-architecture.md` and related files.
 - In-repo skills: `skills/` is the single source of truth for LangBot agent skills.
 - SDK repo: `../langbot-plugin-sdk/` when changing shared entities, plugin APIs, action protocol, `lbp rt`, or `lbp box`.
 
@@ -89,6 +93,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
 - User-facing strings must support i18n; follow the backend language rules below for server-generated content.
 - Conversation payload columns, including new ones, must use `MediaReferenceText` and persist image references only. See the [media persistence contract](ARCHITECTURE.md#persistence-and-configuration).
+- Interactive session lists use `SessionSummaryReader` to read only `monitoring_sessions`; `SessionSummaryWriter` maintains summaries in the source transaction. Historical initialization completes before writers start, never in requests or application background tasks. Follow the [conversation summary contract](ARCHITECTURE.md#conversation-summary-boundary) and keep `uv run pytest --required-suite session_summary` passing.
 - Code comments and docstrings must be English.
 - Keep compatibility and security in mind; LangBot is used in both self-hosted/community and toB deployments.
 - Commit message format: `<type>(<scope>): <subject>`.
@@ -102,7 +107,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 - China-only adapters and configuration/field validation diagnostics do not require localization. An adapter also serving international users is not exempt merely because it supports a Chinese platform.
 - Preserve raw provider/plugin diagnostics, tracebacks, protocol values, and machine-readable error/status codes. Translate LangBot's own category or explanation around them; do not translate arbitrary errors with substring replacement. Plugin-authored messages remain the plugin's localization responsibility.
 - Keep changes small and maintainable. Reuse existing persistence and response boundaries; delete obsolete fields only after verifying they have no remaining readers, including compatibility paths.
-- When changing language behavior, verify catalog/placeholder parity, Workspace isolation and permissions, and Pipeline inheritance/custom overrides. Update affected configuration snapshots and API/MCP documentation. Implementation details and focused test locations: [Backend message language](docs/architecture/backend-i18n.md).
+- When changing language behavior, verify catalog/placeholder parity, Workspace isolation and permissions, and Pipeline inheritance/custom overrides. Update affected configuration snapshots and API/MCP documentation. Implementation details and focused test locations: [Backend message language](dev-docs/architecture/backend-i18n.md).
 
 ## Runtime Pitfalls
 

@@ -55,6 +55,11 @@ for (const scenario of [
     });
     await expect(trigger).toHaveCount(scenario === 'singleton-local' ? 0 : 1);
     if (scenario === 'singleton-local') return;
+    const upgrade = page.getByRole('button', {
+      name: 'Change or upgrade plan',
+      exact: true,
+    });
+    await expect(upgrade).toHaveCount(1);
     const sidebar = page.locator('[data-slot="sidebar-inner"]');
     const header = sidebar.locator('[data-slot="sidebar-header"]');
     const home = sidebar.getByText('Home', { exact: true });
@@ -62,20 +67,48 @@ for (const scenario of [
       name: 'Models',
       exact: true,
     });
-    const [headerBox, triggerBox, homeBox, navBox] = await Promise.all([
-      header.boundingBox(),
-      trigger.boundingBox(),
-      home.boundingBox(),
-      navigation.boundingBox(),
-    ]);
+    const [headerBox, triggerBox, homeBox, navBox, upgradeBox] =
+      await Promise.all([
+        header.boundingBox(),
+        trigger.boundingBox(),
+        home.boundingBox(),
+        navigation.boundingBox(),
+        upgrade.boundingBox(),
+      ]);
     expect(triggerBox!.y).toBeGreaterThanOrEqual(
       headerBox!.y + headerBox!.height,
     );
     expect(triggerBox!.y + triggerBox!.height).toBeLessThanOrEqual(homeBox!.y);
     expect(Math.abs(triggerBox!.x - navBox!.x)).toBeLessThanOrEqual(1);
+    // The upgrade control shares the switcher row and owns its trailing edge,
+    // so the row stays flush with the navigation column while the switcher
+    // itself ends before the control.
+    expect(Math.abs(triggerBox!.y - upgradeBox!.y)).toBeLessThanOrEqual(1);
+    expect(upgradeBox!.x).toBeGreaterThanOrEqual(
+      triggerBox!.x + triggerBox!.width,
+    );
     expect(
-      Math.abs(triggerBox!.x + triggerBox!.width - navBox!.x - navBox!.width),
+      Math.abs(upgradeBox!.x + upgradeBox!.width - navBox!.x - navBox!.width),
     ).toBeLessThanOrEqual(1);
+    await expect(upgrade).toBeVisible();
+    // The upgrade control is deliberately styled like the workspace switcher:
+    // same height, same visible outline, so the two read as one control row.
+    expect(
+      Math.abs(upgradeBox!.height - triggerBox!.height),
+    ).toBeLessThanOrEqual(1);
+    for (const control of [trigger, upgrade]) {
+      const outline = await control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          width: parseFloat(style.borderTopWidth),
+          color: style.borderTopColor,
+          style: style.borderTopStyle,
+        };
+      });
+      expect(outline.style).not.toBe('none');
+      expect(outline.width).toBeGreaterThan(0);
+      expect(outline.color).not.toBe('rgba(0, 0, 0, 0)');
+    }
     await trigger.click();
     const row = page
       .getByRole('menuitem')

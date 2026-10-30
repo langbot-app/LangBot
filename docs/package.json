@@ -1,0 +1,56 @@
+{
+  "name": "langbot-docs",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "fumapress dev",
+    "predev": "npm run prepare:fumapress",
+    "prepare:fumapress": "node scripts/prepare-fumapress.mjs",
+    "build": "fumapress build",
+    "prebuild": "npm run prepare:fumapress",
+    "postbuild": "npm run finalize:base-path && npm run generate:sitemap-alternates && npm run normalize:static-paths && npm run generate:agent-docs && node scripts/generate-locale-entry.mjs && npm run test:static",
+    "generate:agent-docs": "node scripts/generate-agent-docs.mjs",
+    "typecheck": "tsc --noEmit",
+    "normalize:static-paths": "node scripts/normalize-static-paths.mjs",
+    "test:static": "node --test tests/fumapress-static-build.test.mjs tests/agent-static-build.test.mjs tests/locale-static-build.test.mjs",
+    "generate:sitemap-alternates": "node scripts/generate-alternate-sitemap.mjs",
+    "sync:articles": "node scripts/sync-blog-articles.mjs",
+    "check:articles": "node scripts/sync-blog-articles.mjs --check",
+    "test": "node --test tests/social-preview.test.mjs tests/locale-preference.test.mjs tests/agent-docs.test.mjs tests/blog-articles.test.mjs tests/fumapress-migration.test.mjs tests/seo.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "finalize:base-path": "node scripts/finalize-base-path.mjs"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "@fumapress/mintlify": "^1.1.2",
+    "fumadocs-core": "^16.15.6",
+    "fumadocs-mdx": "^15.4.0",
+    "fumadocs-openapi": "^11.4.1",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@^16.15.6",
+    "fumapress": "^1.2.0",
+    "hono": "^4.9.9",
+    "lucide-react": "^1.41.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shiki": "^3.20.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "unified": "^11.0.5",
+    "vite": "^8.2.2",
+    "yaml": "^2.9.0"
+  }
+}

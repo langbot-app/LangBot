@@ -84,7 +84,14 @@ import {
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
-import type { PluginLogEntry } from '@/app/infra/entities/plugin';
+import type {
+  PluginLogEntry,
+  PluginSpaceUploadConfig,
+  PluginSpaceUploadPayload,
+  PluginSpaceUploadResult,
+  PluginGithubSyncPayload,
+  PluginGithubSyncResult,
+} from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
@@ -1507,6 +1514,37 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/plugins/debug-info');
   }
 
+  public getPluginSpaceUploadConfig(
+    author: string,
+    name: string,
+  ): Promise<PluginSpaceUploadConfig> {
+    return this.get(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/config`,
+    );
+  }
+
+  public uploadPluginToSpace(
+    author: string,
+    name: string,
+    payload: PluginSpaceUploadPayload,
+  ): Promise<PluginSpaceUploadResult> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload`,
+      payload,
+    );
+  }
+
+  public syncPluginToGithub(
+    author: string,
+    name: string,
+    payload: PluginGithubSyncPayload,
+  ): Promise<{ git: PluginGithubSyncResult }> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/git-sync`,
+      payload,
+    );
+  }
+
   public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
     return this.get('/api/v1/box/runtime-status');
   }
@@ -1760,11 +1798,13 @@ export class BackendClient extends BaseHttpClient {
   // ============ Passkey (WebAuthn) API ============
   public getPasskeyAuthOptions(
     email?: string,
-    origin?: string,
   ): Promise<{ options: any; challenge_token: string }> {
+    // No origin is sent: the WebAuthn RP ID and expected origin are resolved
+    // server-side from api.webui_url / api.webhook_prefix. Sending a client
+    // origin would only invite a future handler to trust it again.
     return this.post(
       '/api/v1/user/passkey/auth/options',
-      { email, origin },
+      { email },
       { skipWorkspace: true },
     );
   }
@@ -1780,12 +1820,14 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public getPasskeyRegisterOptions(
-    origin?: string,
-  ): Promise<{ options: any; challenge_token: string }> {
+  public getPasskeyRegisterOptions(): Promise<{
+    options: any;
+    challenge_token: string;
+  }> {
+    // See getPasskeyAuthOptions: the origin is server-configured, not supplied.
     return this.post(
       '/api/v1/user/passkey/register/options',
-      { origin },
+      {},
       { skipWorkspace: true },
     );
   }
@@ -2491,16 +2533,6 @@ export class BackendClient extends BaseHttpClient {
   public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
     const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
     return this.get('/api/v1/skills/index', params);
-  }
-
-  public scanSkillDirectory(path: string): Promise<{
-    package_root: string;
-    name: string;
-    display_name?: string;
-    description: string;
-    instructions: string;
-  }> {
-    return this.get('/api/v1/skills/scan', { path });
   }
 
   public listSkillFiles(

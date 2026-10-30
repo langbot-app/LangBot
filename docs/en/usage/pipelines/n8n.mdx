@@ -1,0 +1,54 @@
+---
+title: "Using n8n with LangBot"
+description: "Integrate n8n with LangBot to drive AI bot workflows and automations across messaging platforms."
+---
+
+[n8n](https://n8n.io/) is an open-source workflow automation platform that allows you to create, schedule, and execute various automated tasks.
+
+LangBot currently supports triggering workflows and receiving responses through the `Webhook` node in n8n workflows.
+
+## Using n8n as the runner
+
+Please open the configuration page of an existing pipeline or create a new pipeline (recommended) and open the configuration page. Select `n8n Workflow API` as the runner in `AI`.
+
+![n8n as the runner](/images/zh/deploy/pipelines/n8n/config_runner.png)
+
+Then configure and fill in the other settings according to the content below.
+
+## Configuring n8n Workflow Connection
+
+![n8n Workflow](/images/zh/deploy/pipelines/n8n/create_wf.png)
+or
+![n8n Workflow](/images/zh/deploy/pipelines/n8n/create_wf01.png)
+
+Select `Webhook` or `On chat message` as the trigger and configure as follows:
+- Webhook:
+    ![n8n webhook configuration](/images/zh/deploy/pipelines/n8n/config_webhook.png)
+- On chat message:
+    ![n8n on chat message configuration](/images/zh/deploy/pipelines/n8n/config_n8n_onchatmessage.png)
+
+<Info title="">
+If you need streaming responses, set `Response Mode` to `Streaming`.
+
+![n8n streaming configuration](/images/zh/deploy/pipelines/n8n/config_response_model.png)
+</Info>
+
+<Info title="">
+
+Authentication corresponds to the authentication methods in LangBot's pipeline configuration, which you can modify as needed.
+
+![n8n workflow configuration](/images/zh/deploy/pipelines/n8n/config_auth.png)
+</Info>
+
+Configure the node that calls the AI model as `AI Agent`, following the setup below:
+> For streaming responses, add the items highlighted in the red box. If you don't need streaming, you can skip this.
+
+![n8n AI model call configuration](/images/zh/deploy/pipelines/n8n/config_call_ai.png)
+
+For the workflow response content in n8n, please use the `Respond to Webhook` node and configure it according to the image below (if you choose streaming responses with the `AI Agent` node, you do not need this step):
+
+![n8n workflow response configuration](/images/zh/deploy/pipelines/n8n/config_respond.png)
+
+The response content key name in `Response Body` needs to match the `output key name` in LangBot's pipeline configuration.
+
+After completing the n8n workflow configuration, please click `Active` at the top to enable the workflow.

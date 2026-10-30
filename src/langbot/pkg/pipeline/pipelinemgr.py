@@ -236,7 +236,8 @@ class RuntimePipeline:
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
-        await self._assert_execution_active(query)
+        if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
+            await self._assert_execution_active(query)
         if result.user_notice:
             # 处理str类型
 
@@ -346,7 +347,6 @@ class RuntimePipeline:
 
             if isinstance(result, typing.Coroutine):
                 result = await result
-                await self._assert_execution_active(query)
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
                 self.ap.logger.debug(
@@ -369,7 +369,6 @@ class RuntimePipeline:
                         sub_result = await anext(iterator)
                     except StopAsyncIteration:
                         break
-                    await self._assert_execution_active(query)
                     self.ap.logger.debug(
                         f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
                     )
@@ -384,6 +383,8 @@ class RuntimePipeline:
                 break
 
             i += 1
+
+        await self._assert_execution_active(query)
 
     @staticmethod
     def _synthetic_origin(query: pipeline_query.Query) -> str:
@@ -497,6 +498,28 @@ class RuntimePipeline:
             processing_mode.reset(token)
 
     async def _process_query(self, query: pipeline_query.Query):
+        """Close monitoring on every exit, including cancellation and plugin veto."""
+        from .monitoring_helper import MonitoringHelper
+
+        status = 'error'
+        try:
+            await self._process_query_body(query)
+            if not query.variables.get('_monitoring_has_error'):
+                status = 'success'
+        finally:
+            try:
+                # Never bypass the placement fence to repair a stale execution.
+                async with asyncio.timeout(2):
+                    await self._assert_execution_active(query)
+                await MonitoringHelper.finish_query(
+                    self.ap, query, query.variables.get('_monitoring_message_id', ''), status
+                )
+            except Exception as exc:
+                self.ap.logger.error(f'Failed to finalize query {query.query_id}: {exc}')
+            finally:
+                await self.ap.query_pool.remove_query(query)
+
+    async def _process_query_body(self, query: pipeline_query.Query):
         """处理请求"""
         await self._assert_execution_active(query)
         # Get monitoring metadata
@@ -602,8 +625,10 @@ class RuntimePipeline:
                     self.ap.logger.error(f'Failed to record query response: {e}')
 
         except WorkspaceError as e:
+            query.variables['_monitoring_has_error'] = True
             self.ap.logger.info(f'Dropped query {query.query_id} because its Workspace execution binding is stale: {e}')
         except Exception as e:
+            query.variables['_monitoring_has_error'] = True
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
             self.ap.logger.error(f'Error processing query {query.query_id} stage={inst_name} : {e}')
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
@@ -631,7 +656,6 @@ class RuntimePipeline:
 
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
-            await self.ap.query_pool.remove_query(query)
 
     def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
         """Land one failed ``runner/execute`` stage on the owning execution trace."""

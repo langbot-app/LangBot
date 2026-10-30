@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: context_bridge
+  label:
+    en_US: PowerContext Bridge
+    zh_Hans: PowerContext 上下文桥接
+spec:
+execution:
+  python:
+    path: context_bridge.py
+    attr: ContextBridge

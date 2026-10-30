@@ -1,0 +1,40 @@
+---
+title: "Distribute Plugins via GitHub"
+---
+
+You can upload your plugin to GitHub, create a Release for the repository, and upload the `.lbpkg` file, allowing other users to install it in LangBot.
+
+## Build Plugin
+
+Execute the following command in the plugin directory:
+
+```bash
+lbp build
+```
+
+This will generate a `.lbpkg` file in the `dist` directory.
+
+## Create Release
+
+Upload your plugin to GitHub, then go to the Release page of your plugin repository, click to create a Release, and upload the `.lbpkg` file you just built.
+
+<img width="600" src="/images/zh/plugin/dev/dist/github_release.png" />
+
+## Auto-create Release (GitHub Actions)
+
+Plugins created by `lbp init` come with a built-in GitHub Actions workflow (`.github/workflows/release.yml`), so you don't have to build and upload manually.
+
+After pushing your plugin repository to GitHub, whenever you bump the `version` field in `manifest.yaml` and push to the `main` or `master` branch, the workflow will automatically:
+
+1. Install the `lbp` CLI and run `lbp build` to package the plugin;
+2. Create a GitHub Release tagged `v<version>` and upload the generated `.lbpkg` file.
+
+If a Release for that version already exists, the workflow skips it to avoid duplicate publishing. You can also trigger it manually from the repository's Actions page (`workflow_dispatch`).
+
+<Info title="">
+The workflow relies on the repository's default `GITHUB_TOKEN` and requires the `contents: write` permission (already declared in the template). Make sure Actions is enabled for the repository, and that the `metadata.author`, `metadata.name`, and `metadata.version` fields in `manifest.yaml` are correct — the Release name and artifact filename are composed from these fields (`<author>-<name>-<version>.lbpkg`).
+</Info>
+
+## Install Plugin
+
+In LangBot's plugin management page, click the top-right corner to select the GitHub installation method.
