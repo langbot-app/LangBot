@@ -32,14 +32,37 @@ from .agent_run_support import (
 
 
 def register(h):
-    @h.action(_plugin_runtime_action('RUN_GET', 'run_get'))
-    async def run_get(data: dict[str, Any]) -> handler.ActionResponse:
+    actions = _RunnerActions(h)
+    h.action(_plugin_runtime_action('RUN_GET', 'run_get'))(actions.run_get)
+    h.action(_plugin_runtime_action('RUN_LIST', 'run_list'))(actions.run_list)
+    h.action(_plugin_runtime_action('RUNNER_LIST', 'runner_list'))(actions.runner_list)
+    h.action(_plugin_runtime_action('RUN_EVENTS_PAGE', 'run_events_page'))(actions.run_events_page)
+    h.action(_plugin_runtime_action('RUN_CANCEL', 'run_cancel'))(actions.run_cancel)
+    h.action(_plugin_runtime_action('RUN_APPEND_RESULT', 'run_append_result'))(actions.run_append_result)
+    h.action(_plugin_runtime_action('RUN_FINALIZE', 'run_finalize'))(actions.run_finalize)
+    h.action(_plugin_runtime_action('RUNTIME_REGISTER', 'runtime_register'))(actions.runtime_register)
+    h.action(_plugin_runtime_action('RUNTIME_HEARTBEAT', 'runtime_heartbeat'))(actions.runtime_heartbeat)
+    h.action(_plugin_runtime_action('RUNTIME_LIST', 'runtime_list'))(actions.runtime_list)
+    h.action(_plugin_runtime_action('RUNTIME_RECONCILE', 'runtime_reconcile'))(actions.runtime_reconcile)
+    h.action(_plugin_runtime_action('RUN_STATS', 'run_stats'))(actions.run_stats)
+    h.action(_plugin_runtime_action('RUNTIME_STATS', 'runtime_stats'))(actions.runtime_stats)
+    h.action(_plugin_runtime_action('RUNNER_STATS', 'runner_stats'))(actions.runner_stats)
+    h.action(_plugin_runtime_action('RUN_CLAIM', 'run_claim'))(actions.run_claim)
+    h.action(_plugin_runtime_action('RUN_RENEW_CLAIM', 'run_renew_claim'))(actions.run_renew_claim)
+    h.action(_plugin_runtime_action('RUN_RELEASE_CLAIM', 'run_release_claim'))(actions.run_release_claim)
+
+
+class _RunnerActions:
+    def __init__(self, h):
+        self.h = h
+
+    async def run_get(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Get one Host-owned run record visible to the current run."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -52,7 +75,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run get',
             api_capability='run_get',
             allow_persistent_authorization=True,
@@ -63,7 +86,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             run = await store.get_run(str(target_run_id))
@@ -75,7 +98,7 @@ def register(h):
                     return auth_error
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_get',
                     caller_plugin_identity=caller_plugin_identity,
@@ -84,11 +107,10 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=run)
         except Exception as e:
-            h.ap.logger.error(f'RUN_GET error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_GET error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run get error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_LIST', 'run_list'))
-    async def run_list(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_list(self, data: dict[str, Any]) -> handler.ActionResponse:
         """List Host-owned runs visible to the current run conversation."""
         run_id = data.get('run_id')
         conversation_id = data.get('conversation_id')
@@ -97,7 +119,7 @@ def register(h):
         limit = data.get('limit', 50)
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -109,7 +131,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run list',
             api_capability='run_list',
             allow_persistent_authorization=True,
@@ -148,7 +170,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             items, next_cursor, has_more, total_count = await store.list_runs(
@@ -160,7 +182,7 @@ def register(h):
             )
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_list',
                     caller_plugin_identity=caller_plugin_identity,
@@ -180,16 +202,15 @@ def register(h):
                 }
             )
         except Exception as e:
-            h.ap.logger.error(f'RUN_LIST error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_LIST error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run list error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNNER_LIST', 'runner_list'))
-    async def runner_list(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runner_list(self, data: dict[str, Any]) -> handler.ActionResponse:
         """List Host-discovered Runner descriptors."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -200,7 +221,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runner list',
             api_capability='runner_list',
             allow_persistent_authorization=True,
@@ -213,12 +234,12 @@ def register(h):
         if include_plugins is not None and not isinstance(include_plugins, list):
             return handler.ActionResponse.error(message='include_plugins must be a list')
 
-        registry = getattr(h.ap, 'runner_registry', None)
+        registry = getattr(self.h.ap, 'runner_registry', None)
         if registry is None:
             return handler.ActionResponse.success(data={'items': []})
 
         try:
-            action_context = h._require_runtime_action_context()
+            action_context = self.h._require_runtime_action_context()
             execution_context = ExecutionContext(
                 instance_uuid=action_context.instance_uuid,
                 workspace_uuid=action_context.workspace_uuid,
@@ -232,7 +253,7 @@ def register(h):
             items = [_project_runner_descriptor_for_api(item) for item in runners]
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     None,
                     action='runner_list',
                     caller_plugin_identity=caller_plugin_identity,
@@ -244,11 +265,10 @@ def register(h):
                 )
             return handler.ActionResponse.success(data={'items': items})
         except Exception as e:
-            h.ap.logger.error(f'RUNNER_LIST error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNNER_LIST error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runner list error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_EVENTS_PAGE', 'run_events_page'))
-    async def run_events_page(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_events_page(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Page result events for one Host-owned run visible to current run."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
@@ -258,7 +278,7 @@ def register(h):
         direction = data.get('direction', 'forward')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -271,7 +291,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run events page',
             api_capability='run_events_page',
             allow_persistent_authorization=True,
@@ -288,7 +308,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             run = await store.get_run(str(target_run_id))
@@ -308,7 +328,7 @@ def register(h):
             )
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_events_page',
                     caller_plugin_identity=caller_plugin_identity,
@@ -324,17 +344,16 @@ def register(h):
                 }
             )
         except Exception as e:
-            h.ap.logger.error(f'RUN_EVENTS_PAGE error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_EVENTS_PAGE error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run events page error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_CANCEL', 'run_cancel'))
-    async def run_cancel(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_cancel(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Request cancellation for one Host-owned run visible to the current run."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -347,7 +366,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run cancel',
             api_capability='run_cancel',
             allow_persistent_authorization=True,
@@ -358,7 +377,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             run = await store.get_run(str(target_run_id))
@@ -377,7 +396,7 @@ def register(h):
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_cancel',
                     caller_plugin_identity=caller_plugin_identity,
@@ -387,18 +406,17 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=updated)
         except Exception as e:
-            h.ap.logger.error(f'RUN_CANCEL error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_CANCEL error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run cancel error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_APPEND_RESULT', 'run_append_result'))
-    async def run_append_result(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_append_result(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Append one result event for a Host-owned run visible to the current run."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         result = data.get('result') if isinstance(data.get('result'), dict) else {}
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -424,7 +442,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run append result',
             api_capability='run_append_result',
             allow_persistent_authorization=True,
@@ -435,7 +453,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             run = await store.get_run(str(target_run_id))
@@ -461,7 +479,7 @@ def register(h):
 
             event_payload = event_data if isinstance(event_data, dict) else {}
             payload_error = _validate_ledger_only_result_payload(
-                ap=h.ap,
+                ap=self.h.ap,
                 runner_id=run.get('runner_id'),
                 event_type=str(event_type),
                 data=event_payload,
@@ -471,7 +489,7 @@ def register(h):
 
             from ..agent.runner.run_journal import AgentRunJournal
 
-            event = await AgentRunJournal(h.ap).append_run_result(
+            event = await AgentRunJournal(self.h.ap).append_run_result(
                 run_id=str(target_run_id),
                 sequence=sequence,
                 result_dict={
@@ -484,7 +502,7 @@ def register(h):
             )
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_append_result',
                     caller_plugin_identity=caller_plugin_identity,
@@ -494,18 +512,17 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=event)
         except Exception as e:
-            h.ap.logger.error(f'RUN_APPEND_RESULT error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_APPEND_RESULT error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run append result error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_FINALIZE', 'run_finalize'))
-    async def run_finalize(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_finalize(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Finalize one Host-owned run visible to the current run."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         status = data.get('status')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -520,7 +537,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run finalize',
             api_capability='run_finalize',
             allow_persistent_authorization=True,
@@ -531,7 +548,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             run = await store.get_run(str(target_run_id))
@@ -563,7 +580,7 @@ def register(h):
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_finalize',
                     caller_plugin_identity=caller_plugin_identity,
@@ -573,17 +590,16 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=updated)
         except Exception as e:
-            h.ap.logger.error(f'RUN_FINALIZE error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_FINALIZE error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run finalize error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNTIME_REGISTER', 'runtime_register'))
-    async def runtime_register(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runtime_register(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Register or update one Host-owned runtime registry record."""
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -596,7 +612,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runtime register',
             api_capability='runtime_register',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -606,7 +622,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             runtime = await store.register_runtime(
@@ -622,7 +638,7 @@ def register(h):
             )
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='runtime_register',
                     caller_plugin_identity=caller_plugin_identity,
@@ -632,17 +648,16 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=runtime)
         except Exception as e:
-            h.ap.logger.error(f'RUNTIME_REGISTER error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNTIME_REGISTER error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runtime register error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNTIME_HEARTBEAT', 'runtime_heartbeat'))
-    async def runtime_heartbeat(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runtime_heartbeat(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Refresh one Host-owned runtime heartbeat."""
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -655,7 +670,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runtime heartbeat',
             api_capability='runtime_heartbeat',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -665,7 +680,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             runtime = await store.heartbeat_runtime(
@@ -680,7 +695,7 @@ def register(h):
                 return handler.ActionResponse.error(message=f'Runtime {runtime_id} not found')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='runtime_heartbeat',
                     caller_plugin_identity=caller_plugin_identity,
@@ -690,16 +705,15 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=runtime)
         except Exception as e:
-            h.ap.logger.error(f'RUNTIME_HEARTBEAT error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNTIME_HEARTBEAT error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runtime heartbeat error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNTIME_LIST', 'runtime_list'))
-    async def runtime_list(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runtime_list(self, data: dict[str, Any]) -> handler.ActionResponse:
         """List Host-owned runtime registry records."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -710,7 +724,7 @@ def register(h):
         _session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runtime list',
             api_capability='runtime_list',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -725,7 +739,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             runtimes, total_count = await store.list_runtimes(
@@ -735,7 +749,7 @@ def register(h):
             )
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='runtime_list',
                     caller_plugin_identity=caller_plugin_identity,
@@ -755,16 +769,15 @@ def register(h):
                 }
             )
         except Exception as e:
-            h.ap.logger.error(f'RUNTIME_LIST error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNTIME_LIST error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runtime list error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNTIME_RECONCILE', 'runtime_reconcile'))
-    async def runtime_reconcile(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runtime_reconcile(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Reconcile stale runtime heartbeats and expired claim leases."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -775,7 +788,7 @@ def register(h):
         _session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runtime reconcile',
             api_capability='runtime_reconcile',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -792,7 +805,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             stale_runtimes = await store.mark_stale_runtimes(
@@ -801,7 +814,7 @@ def register(h):
             released_claims = await store.release_expired_claims()
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='runtime_reconcile',
                     caller_plugin_identity=caller_plugin_identity,
@@ -820,16 +833,15 @@ def register(h):
                 }
             )
         except Exception as e:
-            h.ap.logger.error(f'RUNTIME_RECONCILE error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNTIME_RECONCILE error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runtime reconcile error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_STATS', 'run_stats'))
-    async def run_stats(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_stats(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Get run statistics within a time window (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -840,7 +852,7 @@ def register(h):
         _session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run stats',
             api_capability='run_stats',
             admin_permission=AGENT_RUN_ADMIN_PERMISSION,
@@ -854,7 +866,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             stats = await store.get_run_stats(
@@ -863,7 +875,7 @@ def register(h):
                 runner_id=runner_id,
             )
             await _record_runner_admin_action(
-                h.ap,
+                self.h.ap,
                 store,
                 action='run_stats',
                 caller_plugin_identity=caller_plugin_identity,
@@ -876,16 +888,15 @@ def register(h):
             )
             return handler.ActionResponse.success(data=stats)
         except Exception as e:
-            h.ap.logger.error(f'RUN_STATS error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_STATS error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run stats error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNTIME_STATS', 'runtime_stats'))
-    async def runtime_stats(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runtime_stats(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Get runtime registry statistics (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -896,7 +907,7 @@ def register(h):
         _session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runtime stats',
             api_capability='runtime_stats',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -906,12 +917,12 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             stats = await store.get_runtime_stats()
             await _record_runner_admin_action(
-                h.ap,
+                self.h.ap,
                 store,
                 action='runtime_stats',
                 caller_plugin_identity=caller_plugin_identity,
@@ -920,16 +931,15 @@ def register(h):
             )
             return handler.ActionResponse.success(data=stats)
         except Exception as e:
-            h.ap.logger.error(f'RUNTIME_STATS error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNTIME_STATS error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runtime stats error: {e}')
 
-    @h.action(_plugin_runtime_action('RUNNER_STATS', 'runner_stats'))
-    async def runner_stats(data: dict[str, Any]) -> handler.ActionResponse:
+    async def runner_stats(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Get runner-aggregated statistics (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
         )
@@ -940,7 +950,7 @@ def register(h):
         _session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Runner stats',
             api_capability='runner_stats',
             admin_permission=AGENT_RUN_ADMIN_PERMISSION,
@@ -954,7 +964,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             stats = await store.get_runner_stats(
@@ -963,7 +973,7 @@ def register(h):
                 limit=limit,
             )
             await _record_runner_admin_action(
-                h.ap,
+                self.h.ap,
                 store,
                 action='runner_stats',
                 caller_plugin_identity=caller_plugin_identity,
@@ -976,17 +986,16 @@ def register(h):
             )
             return handler.ActionResponse.success(data={'items': stats, 'total_count': len(stats), 'has_more': False})
         except Exception as e:
-            h.ap.logger.error(f'RUNNER_STATS error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUNNER_STATS error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Runner stats error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_CLAIM', 'run_claim'))
-    async def run_claim(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_claim(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Claim one queued run for a runtime lease."""
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -999,7 +1008,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run claim',
             api_capability='run_claim',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -1013,7 +1022,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             scope_filters: dict[str, Any] = {}
@@ -1040,7 +1049,7 @@ def register(h):
                 return handler.ActionResponse.error(message='No queued run available')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_claim',
                     caller_plugin_identity=caller_plugin_identity,
@@ -1054,11 +1063,10 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=run)
         except Exception as e:
-            h.ap.logger.error(f'RUN_CLAIM error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_CLAIM error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run claim error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_RENEW_CLAIM', 'run_renew_claim'))
-    async def run_renew_claim(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_renew_claim(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Renew one run claim lease."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id')
@@ -1066,7 +1074,7 @@ def register(h):
         claim_token = data.get('claim_token')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -1083,7 +1091,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run renew claim',
             api_capability='run_renew_claim',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -1093,7 +1101,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             current = await store.get_run(str(target_run_id))
@@ -1113,7 +1121,7 @@ def register(h):
                 return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_renew_claim',
                     caller_plugin_identity=caller_plugin_identity,
@@ -1124,11 +1132,10 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=run)
         except Exception as e:
-            h.ap.logger.error(f'RUN_RENEW_CLAIM error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_RENEW_CLAIM error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run renew claim error: {e}')
 
-    @h.action(_plugin_runtime_action('RUN_RELEASE_CLAIM', 'run_release_claim'))
-    async def run_release_claim(data: dict[str, Any]) -> handler.ActionResponse:
+    async def run_release_claim(self, data: dict[str, Any]) -> handler.ActionResponse:
         """Release one run claim lease."""
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id')
@@ -1136,7 +1143,7 @@ def register(h):
         claim_token = data.get('claim_token')
         caller_plugin_identity = data.get('caller_plugin_identity')
         is_admin = _has_runner_admin_permission(
-            h.ap,
+            self.h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
         )
@@ -1153,7 +1160,7 @@ def register(h):
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
-            h.ap,
+            self.h.ap,
             'Run release claim',
             api_capability='run_release_claim',
             admin_permission=RUNTIME_ADMIN_PERMISSION,
@@ -1163,7 +1170,7 @@ def register(h):
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
-        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        store = RunLedgerStore(self.h.ap.persistence_mgr.get_db_engine())
 
         try:
             current = await store.get_run(str(target_run_id))
@@ -1189,7 +1196,7 @@ def register(h):
                 return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
             if is_admin:
                 await _record_runner_admin_action(
-                    h.ap,
+                    self.h.ap,
                     store,
                     action='run_release_claim',
                     caller_plugin_identity=caller_plugin_identity,
@@ -1203,5 +1210,5 @@ def register(h):
                 )
             return handler.ActionResponse.success(data=run)
         except Exception as e:
-            h.ap.logger.error(f'RUN_RELEASE_CLAIM error: {e}', exc_info=True)
+            self.h.ap.logger.error(f'RUN_RELEASE_CLAIM error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run release claim error: {e}')
