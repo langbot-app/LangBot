@@ -1059,3 +1059,29 @@ async def test_unsupported_error_does_not_persist_request():
     )
     assert result['unsupported'][0]['path'] == 'platform'
     assert store.record is None
+
+
+@pytest.mark.asyncio
+async def test_advertised_card_shape_without_send_api_is_unsupported():
+    class UnavailableCardAdapter(BlockingAdapter):
+        def get_supported_apis(self):
+            return ['send_message']
+
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    result = await manager.request_interaction(
+        session=_blocking_session(),
+        adapter=UnavailableCardAdapter(),
+        request_payload={
+            'interaction_id': 'unavailable',
+            'title': 'Approve?',
+            'actions': [
+                {'id': 'yes', 'label': 'Yes'},
+            ],
+        },
+        timeout=1,
+        on_unsupported='error',
+        responders='actor',
+    )
+    assert result['unsupported'][0]['reason'] == 'native_interactions_unavailable'
+    assert store.record is None

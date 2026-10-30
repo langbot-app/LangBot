@@ -186,6 +186,8 @@ class InteractionManager:
         if not isinstance(capabilities, InteractionDeliveryCapabilities):
             capabilities = InteractionDeliveryCapabilities.model_validate(capabilities)
         supported_apis = adapter.get_supported_apis() if callable(getattr(adapter, 'get_supported_apis', None)) else []
+        if supported_apis and 'send_interaction' not in supported_apis:
+            capabilities = InteractionDeliveryCapabilities(text_fallback=capabilities.text_fallback)
         if supported_apis and 'interaction.acknowledge' not in supported_apis:
             capabilities.supports_updates = False
         normalized, degraded, use_text, issues = self._normalize_request(request, capabilities, on_unsupported)
@@ -265,7 +267,7 @@ class InteractionManager:
                 except Exception as exc:
                     self._warning(f'Failed to update interaction card: {exc}')
             if original_deadline is not None:
-                runtime['deadline_at'] = float(original_deadline) + time.time() - started_at
+                runtime['deadline_at'] = float(original_deadline) + (time.time() - started_at)
             return {
                 'status': 'timeout' if terminal == 'expired' else 'submitted',
                 'submission': submission,
@@ -287,7 +289,7 @@ class InteractionManager:
             raise
         finally:
             if original_deadline is not None:
-                runtime['deadline_at'] = float(original_deadline) + time.time() - started_at
+                runtime['deadline_at'] = float(original_deadline) + (time.time() - started_at)
             self._waiters.pop(key, None)
             self._responders.pop(key, None)
             self._callback_contexts.pop(key, None)
