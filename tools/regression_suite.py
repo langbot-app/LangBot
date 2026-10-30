@@ -568,6 +568,11 @@ class Suite:
                 error = error.replace(secret, '[REDACTED]')
             raise RuntimeError(error[:3000])
         response = json.loads(result.stdout)
+        if not isinstance(response, dict) or response.get('ok') is False or response.get('error'):
+            error = result.stdout
+            for secret in self.secrets:
+                error = error.replace(secret, '[REDACTED]')
+            raise RuntimeError('CLI returned a failure response: ' + error[:3000])
         if args == ['whoami']:
             self.connection = response.get('meta') or {}
         return response['data']

@@ -30,6 +30,7 @@ SUITE_BUDGETS = {
     'state': 300,
     'isolation': 300,
     'plugin-lifecycle': 600,
+    'cli': 180,
 }
 sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
@@ -62,6 +63,10 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
 
         profile.update(resources=[], cases=[], coverage_suite='plugin-lifecycle')
         add_cases(profile)
+    if name == 'cli':
+        from regression_cli_cases import configure
+
+        configure(profile)
     for resource in profile['resources']:
         if resource['kind'] == 'pipeline':
             resource['body'].setdefault(
@@ -205,7 +210,7 @@ def run(args):
         groups = args.scenario_groups
         if groups is None:
             groups = list(DEFAULT_GROUPS) if args.suite in ('scenarios', 'daily') else []
-            if args.suite in ('api', 'isolation', 'plugin-lifecycle'):
+            if args.suite in ('api', 'isolation', 'plugin-lifecycle', 'cli'):
                 groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')

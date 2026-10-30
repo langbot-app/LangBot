@@ -618,6 +618,26 @@ or latency thresholds. `gate/suite/cases.json` retains per-request evidence and
 default daily or PR smoke cases. It does not test cross-Workspace isolation or
 high concurrency.
 
+## CLI compatibility check
+
+Run on the same disposable Linux host:
+
+```sh
+uv run --no-sync python tools/regression_ci.py --suite cli \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/cli-001
+```
+
+The finite job checks
+Workspace identity, capability discovery, Pipeline create/read/update/delete,
+and invalid credentials. It uses the supplied CLI binary and records its version;
+select the latest stable release when validating the evolving CLI.
+
+Assertions allow additional output fields and changes to human-readable wording.
+Workspace identity, created resource identity, actual backend state, cleanup and
+nonzero exit on authentication failure remain required. HTTP readback provides
+an independent oracle, so an exit code of zero alone cannot pass a mutation.
+The suite is opt-in and adds no daily schedule or PR gate.
+
 ## Sustained regression and baseline comparison
 
 [`regression_profiles/endurance.json`](regression_profiles/endurance.json) runs
