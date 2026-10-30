@@ -262,11 +262,14 @@ async def test_pipeline_receives_interactive_card_tool_for_supported_adapter(app
     resources = await build_resources(
         app,
         query,
-        make_descriptor(capabilities={'tool_calling': True}),
+        make_descriptor(
+            capabilities={'tool_calling': True, 'interactions': True},
+            permissions={**FULL_PERMISSIONS, 'interactions': ['request']},
+        ),
     )
 
-    assert [tool['tool_name'] for tool in resources['tools']] == ['present_interactive_card']
-    assert resources['platform_capabilities']['authorized_tools'] == ['present_interactive_card']
+    assert [tool['tool_name'] for tool in resources['tools']] == ['request_interaction']
+    assert resources['platform_capabilities']['authorized_tools'] == ['request_interaction']
 
 
 @pytest.mark.asyncio
@@ -288,7 +291,7 @@ async def test_event_processor_cannot_receive_interactive_card_tool(app):
         scope=BindingScope(scope_type='global'),
         runner_id=RUNNER_ID,
         processor_type='event_processor',
-        resource_policy=ResourcePolicy(allowed_platform_tool_names=['present_interactive_card']),
+        resource_policy=ResourcePolicy(allowed_platform_tool_names=['request_interaction']),
         delivery_policy=DeliveryPolicy(enable_interactions=True),
     )
 

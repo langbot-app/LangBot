@@ -35,7 +35,8 @@ from ..agent.runner.host_models import (
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
 from ..agent.runner.query_entry_adapter import QueryEntryAdapter
-from ..agent.runner.interaction_store import InteractionAlreadySubmittedError
+from ..agent.runner.interaction_store import InteractionAlreadySubmittedError, InteractionExpiredError
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionHandle
 from ..entity.persistence import workspace as persistence_workspace
 
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -1031,12 +1032,29 @@ class RuntimeBot:
     ) -> None:
         results: list[typing.Any] = []
         try:
+            if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted':
+                callback_data = event.data if isinstance(event.data, dict) else {}
+                event = platform_events.InteractionCallbackEvent(
+                    callback_token=str(callback_data.get('callback_token') or ''),
+                    values=callback_data.get('values') if isinstance(callback_data.get('values'), dict) else {},
+                    action_id=callback_data.get('action_id'),
+                    actor_id=str(callback_data.get('actor_id') or callback_data.get('user_id') or '') or None,
+                    target_type=callback_data.get('target_type'),
+                    target_id=callback_data.get('target_id') or callback_data.get('chat_id'),
+                    raw_submission=callback_data,
+                    timestamp=event.timestamp,
+                    bot_uuid=event.bot_uuid,
+                    adapter_name=event.adapter_name,
+                    source_platform_object=event.source_platform_object,
+                )
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
             primary_handler = (
                 self._handle_interaction_submission
-                if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
+                if isinstance(event, platform_events.InteractionCallbackEvent)
+                or isinstance(event, platform_events.PlatformSpecificEvent)
+                and event.action == 'interaction.submitted'
                 else self._dispatch_eba_event_to_processor
             )
             subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
@@ -1140,6 +1158,28 @@ class RuntimeBot:
         execution_id: str | None = None,
     ) -> dict[str, typing.Any]:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
+
+        if isinstance(event, platform_events.MessageReceivedEvent):
+            interaction_manager = getattr(getattr(self.ap, 'agent_run_orchestrator', None), 'interaction_manager', None)
+        else:
+            interaction_manager = None
+        if callable(getattr(interaction_manager, 'consume_text_message', None)):
+            target_type_for_text, target_id_for_text, _ = self._infer_reply_target(event)
+            sender_for_text = getattr(event, 'sender', None) or getattr(event, 'user', None)
+            actor_id_for_text = self._get_entity_id(sender_for_text)
+            text_for_interaction = ''.join(
+                part.text for part in event.message_chain if isinstance(part, platform_message.Plain)
+            )
+            if target_type_for_text and target_id_for_text and actor_id_for_text and text_for_interaction:
+                consumed = await interaction_manager.consume_text_message(
+                    workspace_id=self.execution_context.workspace_uuid,
+                    bot_id=self.bot_entity.uuid,
+                    conversation_id=f'{target_type_for_text}_{target_id_for_text}',
+                    actor_id=str(actor_id_for_text),
+                    text=text_for_interaction,
+                )
+                if consumed:
+                    return {'status': 'delivered', 'interaction': 'text_reply'}
 
         if event_binding is None:
             event_binding = self._resolve_eba_event_binding(event, event_type)
@@ -1547,12 +1587,24 @@ class RuntimeBot:
 
     async def _handle_interaction_submission(
         self,
-        event: platform_events.PlatformSpecificEvent,
+        event: platform_events.PlatformSpecificEvent | platform_events.InteractionCallbackEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         execution_id: str | None = None,
     ) -> None:
         """Consume a platform interaction callback and resume its original processor."""
-        data = event.data if isinstance(event.data, dict) else {}
+        data = (
+            event.data
+            if isinstance(event, platform_events.PlatformSpecificEvent) and isinstance(event.data, dict)
+            else {
+                **event.raw_submission,
+                'callback_token': event.callback_token,
+                'action_id': event.action_id,
+                'values': event.values,
+                'actor_id': event.actor_id,
+                'target_type': event.target_type,
+                'target_id': event.target_id,
+            }
+        )
         callback_token = str(data.get('callback_token') or '')
         actor_id = str(data.get('actor_id') or data.get('user_id') or '') or None
         target_type = str(data.get('target_type') or '') or None
@@ -1579,6 +1631,30 @@ class RuntimeBot:
         except InteractionAlreadySubmittedError:
             # Platform retries and repeated clicks are successful no-ops. The
             # first callback remains the only turn allowed to resume execution.
+            return
+        except InteractionExpiredError:
+            stale = await self.ap.agent_run_orchestrator.interaction_manager.store.get_by_callback_token(callback_token)
+            delivery_result = stale.get('delivery_result') if stale else None
+            if isinstance(delivery_result, dict) and callable(getattr(adapter, 'update_interaction', None)):
+                try:
+                    handle = InteractionHandle.model_validate(delivery_result)
+                    handle.context['callback_context'] = {
+                        'req_id': data.get('callback_req_id'),
+                        'task_id': data.get('callback_task_id'),
+                    }
+                    await adapter.update_interaction(handle, 'cancelled')
+                except Exception as exc:
+                    await self.logger.warning(f'Failed to invalidate stale interaction card: {exc}')
+            return
+        wake_waiter = getattr(self.ap.agent_run_orchestrator.interaction_manager, 'wake_waiter', None)
+        if callable(wake_waiter) and wake_waiter(
+            record,
+            actor_id,
+            {
+                'req_id': data.get('callback_req_id'),
+                'task_id': data.get('callback_task_id'),
+            },
+        ):
             return
         if record['processor_type'] not in {'agent', 'pipeline'}:
             raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')

@@ -10,6 +10,7 @@ import pydantic
 from langbot.libs.qq_official_api.api import QQOfficialClient
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from langbot.pkg.platform.adapters.qqofficial.api_impl import QQOfficialAPIMixin
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.qqofficial.errors import NotSupportedError
 from langbot.pkg.platform.adapters.qqofficial.event_converter import (
     BOT_INVITED_EVENT_TYPES,
@@ -35,7 +36,7 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
-class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class QQOfficialAdapter(QQOfficialAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: typing.Any = pydantic.Field(exclude=True)
 
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
@@ -126,6 +127,8 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'get_group_member_info',
             'call_platform_api',
             'interaction.request',
+            'send_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

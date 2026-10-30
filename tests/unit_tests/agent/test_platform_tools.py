@@ -395,11 +395,11 @@ async def test_event_reply_uses_run_reply_stream_when_available() -> None:
 
 
 @pytest.mark.asyncio
-async def test_present_interactive_card_uses_host_interaction_manager() -> None:
+async def test_request_interaction_uses_host_interaction_manager() -> None:
     adapter = SimpleNamespace(get_supported_apis=lambda: ['interaction.request'])
     manager = SimpleNamespace(
-        present_tool_request=AsyncMock(
-            return_value={'ok': True, 'status': 'pending', 'interaction_id': 'card-host-generated'}
+        request_interaction=AsyncMock(
+            return_value={'status': 'submitted', 'submission': {'interaction_id': 'card-host-generated'}}
         )
     )
     ap = SimpleNamespace(
@@ -439,13 +439,14 @@ async def test_present_interactive_card_uses_host_interaction_manager() -> None:
         },
     )
 
-    assert result == {'ok': True, 'status': 'pending', 'interaction_id': 'card-host-generated'}
-    payload = manager.present_tool_request.await_args.kwargs['request_payload']
+    assert result == {'status': 'submitted', 'submission': {'interaction_id': 'card-host-generated'}}
+    payload = manager.request_interaction.await_args.kwargs['request_payload']
     assert payload['interaction_id'].startswith('card-')
     assert payload['fallback_text'].startswith('Choose deployment environment')
     assert 'callback_token' not in payload
-    assert manager.present_tool_request.await_args.kwargs['session'] is session
-    assert manager.present_tool_request.await_args.kwargs['adapter'] is adapter
+    assert manager.request_interaction.await_args.kwargs['session'] is session
+    assert manager.request_interaction.await_args.kwargs['adapter'] is adapter
+    assert manager.request_interaction.await_args.kwargs['on_unsupported'] == 'degrade'
 
     with pytest.raises(ValueError, match='cannot combine fields and actions'):
         await execute_platform_tool(

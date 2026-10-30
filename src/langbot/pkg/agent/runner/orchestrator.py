@@ -313,6 +313,11 @@ class AgentRunOrchestrator:
                 processor_type=binding.processor_type,
                 processor_id=binding.processor_id or binding.agent_id,
                 interactions_enabled=binding.delivery_policy.enable_interactions,
+                interactions_authorized=(
+                    bool(getattr(descriptor.capabilities, 'interactions', False))
+                    and 'request' in (getattr(descriptor.permissions, 'interactions', []) or [])
+                ),
+                runtime_context=context.get('runtime'),
             )
 
             event_log_id = await self.journal.write_event_log(

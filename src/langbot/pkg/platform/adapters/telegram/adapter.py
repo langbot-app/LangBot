@@ -30,6 +30,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 from langbot.pkg.platform.adapters.telegram.message_converter import TelegramMessageConverter
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.telegram.event_converter import TelegramEventConverter, LegacyEventConverter
 from langbot.pkg.platform.adapters.telegram.api_impl import TelegramAPIMixin
 from langbot.pkg.platform.adapters.telegram.platform_api import PLATFORM_API_MAP
@@ -41,7 +42,7 @@ from langbot.pkg.platform.adapters.telegram.interaction import (
 )
 
 
-class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class TelegramAdapter(TelegramAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     """Telegram adapter (EBA version)."""
 
     bot: telegram.Bot = pydantic.Field(exclude=True)
@@ -199,6 +200,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'leave_group',
             'call_platform_api',
             'interaction.request',
+            'send_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

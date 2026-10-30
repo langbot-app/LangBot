@@ -18,6 +18,7 @@ from langbot_plugin.api.entities.builtin.runner import (
     AgentTrigger,
     DeliveryContext,
     InteractionSubmission,
+    InteractionResult,
     RunnerContext,
 )
 
@@ -852,11 +853,19 @@ def _write_fake_codex_app_server(path: Path) -> None:
                 "    method = request.get('method')",
                 "    request_id = request.get('id')",
                 "    params = request.get('params') or {}",
+                "    if request_id == 700 and method is None:",
+                "        answer = (request.get('result') or {}).get('contentItems') or []",
+                "        send({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'threadId': thread_id, 'item': {'id': 'answer-result', 'type': 'agentMessage', 'text': 'USER_ANSWER:' + str(answer), 'phase': 'final_answer'}}})",
+                "        send({'jsonrpc': '2.0', 'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': 'turn-1', 'status': 'completed'}}})",
+                "        continue",
                 "    if request_id == 701 and method is None and pending_approval_prompt:",
                 "        decision = (request.get('result') or {}).get('decision')",
                 "        if decision == 'accept':",
                 "            send({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'threadId': thread_id, 'item': {'id': 'command-1', 'type': 'commandExecution', 'command': 'Write approval-probe.txt', 'cwd': '.', 'commandActions': [], 'status': 'completed', 'aggregatedOutput': 'created'}}})",
                 "            send({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'threadId': thread_id, 'item': {'id': 'approval-result', 'type': 'agentMessage', 'text': 'APPROVAL_EXECUTED', 'phase': 'final_answer'}}})",
+                "            send({'jsonrpc': '2.0', 'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': 'turn-approval', 'status': 'completed'}}})",
+                "        else:",
+                "            send({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'threadId': thread_id, 'item': {'id': 'rejection-result', 'type': 'agentMessage', 'text': 'APPROVAL_REJECTED', 'phase': 'final_answer'}}})",
                 "            send({'jsonrpc': '2.0', 'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {'id': 'turn-approval', 'status': 'completed'}}})",
                 "        pending_approval_prompt = ''",
                 "        continue",
@@ -1238,11 +1247,27 @@ def test_codex_runner_defaults_to_non_interactive_full_access(tmp_path: Path) ->
     assert config["sandbox_mode"] == "danger-full-access"
 
 
-def test_codex_runner_pauses_for_dynamic_question_and_resumes_thread(tmp_path: Path) -> None:
+def _interaction_context(config, text, *, action_id=None, values=None):
+    ctx = _native_ctx(config, text=text)
+
+    async def request_interaction(request, **kwargs):
+        return InteractionResult(
+            status='submitted',
+            submission=InteractionSubmission(
+                interaction_id=request.interaction_id,
+                action_id=action_id,
+                values=values or {},
+            ),
+        )
+
+    ctx._api = types.SimpleNamespace(request_interaction=request_interaction)
+    return ctx
+
+
+def test_codex_runner_answers_dynamic_question_in_live_turn(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_codex_app_server.py"
     _write_fake_codex_app_server(fake_cli)
     module = _load_runner_module("codex-agent")
-    native = sys.modules["pkg.native_cli"]
     runner = object.__new__(module.DefaultRunner)
     runner.get_plugin_config = lambda: {}
     runner.get_run_api = lambda ctx: None
@@ -1255,37 +1280,12 @@ def test_codex_runner_pauses_for_dynamic_question_and_resumes_thread(tmp_path: P
         "sandbox-mode": "read-only",
     }
 
-    paused = asyncio.run(_collect_async(runner.run(_native_ctx(config, text="ASK_INTERACTION"))))
+    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
+        config, 'ASK_INTERACTION', values={'environment': 'production'},
+    ))))
 
-    assert [item.type for item in paused] == ["state.updated", "state.updated", "action.requested"]
-    pending = paused[1].data["value"]
-    request = paused[2].data["payload"]
-    assert paused[2].data["action"] == "interaction.requested"
-    assert request["fields"][0]["type"] == "select"
-    assert pending["provider_call_id"] == "call-question-1"
-
-    resumed = asyncio.run(
-        _collect_async(
-            runner.run(
-                _native_ctx(
-                    config,
-                    conversation_state={
-                        native.SESSION_STATE_KEY: "thread-123",
-                        native.PENDING_INTERACTION_STATE_KEY: pending,
-                    },
-                    interaction=InteractionSubmission(
-                        interaction_id=request["interaction_id"],
-                        action_id="submit",
-                        values={"environment": "production"},
-                    ),
-                )
-            )
-        )
-    )
-
-    assert resumed[0].data["key"] == native.PENDING_INTERACTION_STATE_KEY
-    assert resumed[0].data["value"] is None
     assert resumed[-1].type == "run.completed"
+    assert not any(item.type == 'action.requested' for item in resumed)
     assert any(
         "production" in str(item.data.get("chunk", {}).get("content") or "")
         for item in resumed
@@ -1293,11 +1293,10 @@ def test_codex_runner_pauses_for_dynamic_question_and_resumes_thread(tmp_path: P
     )
 
 
-def test_codex_runner_pauses_for_native_approval_and_approves_exact_retry(tmp_path: Path) -> None:
+def test_codex_runner_approves_native_request_in_live_turn(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_codex_app_server.py"
     _write_fake_codex_app_server(fake_cli)
     module = _load_runner_module("codex-agent")
-    native = sys.modules["pkg.native_cli"]
     runner = object.__new__(module.DefaultRunner)
     runner.get_plugin_config = lambda: {}
     runner.get_run_api = lambda ctx: None
@@ -1310,39 +1309,12 @@ def test_codex_runner_pauses_for_native_approval_and_approves_exact_retry(tmp_pa
         "sandbox-mode": "read-only",
     }
 
-    paused = asyncio.run(_collect_async(runner.run(_native_ctx(config, text="TRIGGER_COMMAND_APPROVAL"))))
+    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
+        config, 'TRIGGER_COMMAND_APPROVAL', action_id='approve_once',
+    ))))
 
-    assert [item.type for item in paused] == ["state.updated", "state.updated", "action.requested"]
-    pending = paused[1].data["value"]
-    request = paused[2].data["payload"]
-    assert pending["kind"] == "approval"
-    assert pending["approval_category"] == "command"
-    assert request["kind"] == "confirmation"
-    assert request["fields"] == []
-    assert [action["id"] for action in request["actions"]] == ["approve_once", "reject"]
-    assert "Write approval-probe.txt" in request["description"]
-
-    resumed = asyncio.run(
-        _collect_async(
-            runner.run(
-                _native_ctx(
-                    config,
-                    conversation_state={
-                        native.SESSION_STATE_KEY: "thread-123",
-                        native.PENDING_INTERACTION_STATE_KEY: pending,
-                    },
-                    interaction=InteractionSubmission(
-                        interaction_id=request["interaction_id"],
-                        action_id="approve_once",
-                    ),
-                )
-            )
-        )
-    )
-
-    assert resumed[0].data["key"] == native.PENDING_INTERACTION_STATE_KEY
-    assert resumed[0].data["value"] is None
     assert resumed[-1].type == "run.completed"
+    assert not any(item.type == 'action.requested' for item in resumed)
     assert any(
         "APPROVAL_EXECUTED" in str(item.data.get("chunk", {}).get("content") or "")
         for item in resumed
@@ -1350,11 +1322,10 @@ def test_codex_runner_pauses_for_native_approval_and_approves_exact_retry(tmp_pa
     )
 
 
-def test_codex_runner_resumes_after_native_approval_rejection(tmp_path: Path) -> None:
+def test_codex_runner_rejects_native_request_in_live_turn(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_codex_app_server.py"
     _write_fake_codex_app_server(fake_cli)
     module = _load_runner_module("codex-agent")
-    native = sys.modules["pkg.native_cli"]
     runner = object.__new__(module.DefaultRunner)
     runner.get_plugin_config = lambda: {}
     runner.get_run_api = lambda ctx: None
@@ -1366,27 +1337,9 @@ def test_codex_runner_resumes_after_native_approval_rejection(tmp_path: Path) ->
         "approval-policy": "on-request",
         "sandbox-mode": "read-only",
     }
-    paused = asyncio.run(_collect_async(runner.run(_native_ctx(config, text="TRIGGER_COMMAND_APPROVAL"))))
-    pending = paused[1].data["value"]
-    request = paused[2].data["payload"]
-
-    resumed = asyncio.run(
-        _collect_async(
-            runner.run(
-                _native_ctx(
-                    config,
-                    conversation_state={
-                        native.SESSION_STATE_KEY: "thread-123",
-                        native.PENDING_INTERACTION_STATE_KEY: pending,
-                    },
-                    interaction=InteractionSubmission(
-                        interaction_id=request["interaction_id"],
-                        action_id="reject",
-                    ),
-                )
-            )
-        )
-    )
+    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
+        config, 'TRIGGER_COMMAND_APPROVAL', action_id='reject',
+    ))))
 
     assert resumed[-1].type == "run.completed"
     assert any(

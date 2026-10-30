@@ -1112,6 +1112,7 @@ async def _run_cli_process(
             _run_cli_process_events(
                 command,
                 args,
+                ctx=ctx,
                 cwd=cwd,
                 env=env,
                 timeout=timeout,
@@ -1165,6 +1166,8 @@ class _CodexAppServerClient:
         streaming: bool,
         approval_grant: dict[str, str] | None,
         approval_policy: str | None,
+        ctx: RunnerContext | None = None,
+        operation_timeout: float = 120,
     ) -> None:
         self.process = process
         self.streaming = streaming
@@ -1183,7 +1186,38 @@ class _CodexAppServerClient:
         self.interaction_continuation: dict[str, typing.Any] | None = None
         self.approval_grant = dict(approval_grant) if approval_grant else None
         self.approval_policy = approval_policy
+        self.ctx = ctx
+        self.operation_timeout = operation_timeout
+        self.timeout_scope: asyncio.Timeout | None = None
         self.items: dict[str, dict[str, typing.Any]] = {}
+
+    async def _wait_for_user(self, request: InteractionRequest) -> InteractionSubmission:
+        if self.ctx is None:
+            raise NativeCliError('No active run for interaction', code='codex.interaction_invalid')
+        loop = asyncio.get_running_loop()
+        if self.timeout_scope is not None:
+            self.timeout_scope.reschedule(loop.time() + 3600 + self.operation_timeout)
+        try:
+            if request.actions and not request.fields:
+                result = await self.ctx.request_interaction(request, timeout=3600, on_unsupported='degrade')
+                if result.status != 'submitted' or result.submission is None:
+                    raise NativeCliError(f'User interaction {result.status}', code='codex.interaction_expired')
+                return result.submission
+            values: dict[str, typing.Any] = {}
+            for field in request.fields:
+                step = request.model_copy(update={
+                    'interaction_id': f'{request.interaction_id}-{field.id}'[:255],
+                    'fields': [field],
+                    'actions': [],
+                })
+                result = await self.ctx.request_interaction(step, timeout=3600, on_unsupported='degrade')
+                if result.status != 'submitted' or result.submission is None:
+                    raise NativeCliError(f'User interaction {result.status}', code='codex.interaction_expired')
+                values[field.id] = result.submission.values.get(field.id)
+            return InteractionSubmission(interaction_id=request.interaction_id, values=values)
+        finally:
+            if self.timeout_scope is not None:
+                self.timeout_scope.reschedule(loop.time() + self.operation_timeout)
 
     async def _write_json(self, payload: dict[str, typing.Any]) -> None:
         assert self.process.stdin is not None
@@ -1364,6 +1398,12 @@ class _CodexAppServerClient:
                 await self.respond(request_id, {"decision": "accept"})
                 return
             request, continuation = _interaction_from_codex_approval(method, params, item)
+            if self.ctx is not None:
+                submission = await self._wait_for_user(request)
+                await self.respond(request_id, {
+                    'decision': 'accept' if submission.action_id == APPROVE_ONCE_ACTION else 'cancel'
+                })
+                return
             self.interaction_request = request
             self.interaction_continuation = continuation
             await self.respond(request_id, {"decision": "cancel"})
@@ -1380,6 +1420,21 @@ class _CodexAppServerClient:
                 request, continuation = _interaction_from_codex_request(method, params)
             except NativeCliError as exc:
                 await self.respond_error(request_id, exc.message)
+                return
+            if self.ctx is not None:
+                submission = await self._wait_for_user(request)
+                if method == 'item/tool/call':
+                    await self.respond(request_id, {
+                        'success': True,
+                        'contentItems': [{'type': 'inputText', 'text': json.dumps(submission.values, ensure_ascii=False)}],
+                    })
+                else:
+                    await self.respond(request_id, {
+                        'answers': {
+                            field_id: {'answers': value if isinstance(value, list) else [str(value)]}
+                            for field_id, value in submission.values.items()
+                        }
+                    })
                 return
             self.interaction_request = request
             self.interaction_continuation = continuation
@@ -1560,6 +1615,7 @@ async def _run_cli_process_events(
     command: str,
     args: list[str],
     *,
+    ctx: RunnerContext | None = None,
     cwd: str | None,
     env: dict[str, str],
     timeout: float,
@@ -1598,6 +1654,8 @@ async def _run_cli_process_events(
         streaming=streaming,
         approval_grant=approval_grant,
         approval_policy=approval_policy,
+        ctx=ctx,
+        operation_timeout=timeout,
     )
     reader_task = asyncio.create_task(client.read_stdout())
     stderr_task = asyncio.create_task(process.stderr.read())
@@ -1606,7 +1664,8 @@ async def _run_cli_process_events(
         if initial_stdin:
             process.stdin.write(initial_stdin)
             await process.stdin.drain()
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(timeout) as timeout_scope:
+            client.timeout_scope = timeout_scope
             await client.initialize()
             thread_id = await client.start_or_resume_thread(
                 resume_session_id,

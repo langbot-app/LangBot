@@ -15,6 +15,7 @@ from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot.pkg.platform.adapters.dingtalk.api_impl import DingTalkAPIMixin
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEventConverter
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
@@ -92,7 +93,7 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
         return dingtalk_stream.AckMessage.STATUS_OK, 'OK'
 
 
-class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class DingTalkAdapter(DingTalkAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: DingTalkClient = pydantic.Field(exclude=True)
 
     message_converter: DingTalkMessageConverter = DingTalkMessageConverter()
@@ -165,9 +166,9 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'call_platform_api',
         ]
         if hasattr(self.bot, 'create_and_deliver_ai_card'):
-            apis.append('interaction.request')
+            apis.extend(['interaction.request', 'send_interaction', 'get_interaction_capabilities'])
             if hasattr(self.bot, 'update_ai_card'):
-                apis.append('interaction.acknowledge')
+                apis.extend(['interaction.acknowledge', 'update_interaction'])
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

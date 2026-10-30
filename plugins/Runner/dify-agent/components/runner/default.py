@@ -907,6 +907,45 @@ class DefaultRunner(Runner):
         await self._store_interaction_continuation(ctx, continuation)
         return RunnerResult.interaction_requested(ctx.run_id, request)
 
+    async def _wait_and_resume_workflow(
+        self, ctx: RunnerContext, client: AsyncDifyClient,
+        event: dict[str, typing.Any], user: str, remove_think: bool,
+    ) -> typing.AsyncGenerator[RunnerResult, None]:
+        reason = _human_input_reason(event)
+        if reason is None:
+            raise DifyAPIError('Dify paused without a supported human-input reason', code='dify.response_invalid')
+        _, continuation = self._build_interaction_request(reason, _workflow_run_id(event), user)
+        while continuation['phase'] == 'field':
+            request = self._request_from_continuation(continuation)
+            result = await ctx.request_interaction(request, timeout=3600, on_unsupported='degrade')
+            if result.status != 'submitted' or result.submission is None:
+                raise DifyAPIError(f'Dify human input {result.status}', code='dify.interaction_expired')
+            field_map = continuation['field_map']
+            inputs = continuation['default_inputs']
+            for field_id, value in result.submission.values.items():
+                if field_id in field_map:
+                    inputs[field_map[field_id]] = value
+            current_field = InteractionField.model_validate(continuation['current_fields'][0])
+            provider_name = field_map.get(current_field.id)
+            if current_field.required and provider_name and inputs.get(provider_name) in (None, '', []):
+                raise DifyAPIError(f'Dify human-input field is required: {current_field.label}', code='dify.interaction_invalid')
+            remaining = continuation['remaining_fields']
+            continuation['interaction_id'] = f'dify-{uuid.uuid4().hex}'
+            if remaining:
+                continuation['current_fields'] = [remaining.pop(0)]
+            else:
+                continuation['phase'] = 'action'
+                continuation['current_fields'] = []
+        request = self._request_from_continuation(continuation)
+        result = await ctx.request_interaction(request, timeout=3600, on_unsupported='degrade')
+        if result.status != 'submitted' or result.submission is None:
+            raise DifyAPIError(f'Dify human input {result.status}', code='dify.interaction_expired')
+        async for item in self._resume_workflow_once(
+            ctx, client, result.submission, remove_think,
+            continuation=continuation, blocking=True,
+        ):
+            yield item
+
     async def run(self, ctx: RunnerContext) -> typing.AsyncGenerator[RunnerResult, None]:
         """Run the Dify agent.
 
@@ -1079,13 +1118,8 @@ class DefaultRunner(Runner):
                         final_conversation_id,
                         scope="conversation",
                     )
-                interaction_result = await self._interaction_result_for_pause(ctx, event, user)
-                if interaction_result is None:
-                    raise DifyAPIError(
-                        "Dify paused the workflow without a supported reason",
-                        code="dify.response_invalid",
-                    )
-                yield interaction_result
+                async for result in self._wait_and_resume_workflow(ctx, client, event, user, remove_think):
+                    yield result
                 return
 
             elif event_type == "message" or event_type == "agent_message":
@@ -1342,13 +1376,8 @@ class DefaultRunner(Runner):
                         external_conv_id,
                         scope="conversation",
                     )
-                interaction_result = await self._interaction_result_for_pause(ctx, event, user)
-                if interaction_result is None:
-                    raise DifyAPIError(
-                        "Dify paused the workflow without a supported reason",
-                        code="dify.response_invalid",
-                    )
-                yield interaction_result
+                async for result in self._wait_and_resume_workflow(ctx, client, event, user, remove_think):
+                    yield result
                 return
 
             elif event_type == "workflow_finished":
@@ -1426,9 +1455,11 @@ class DefaultRunner(Runner):
         client: AsyncDifyClient,
         submission: typing.Any,
         remove_think: bool,
+        continuation: dict[str, typing.Any] | None = None,
+        blocking: bool = False,
     ) -> typing.AsyncGenerator[RunnerResult, None]:
         interaction_id = str(submission.interaction_id)
-        continuation = await self._load_interaction_continuation(ctx, interaction_id)
+        continuation = continuation if continuation is not None else await self._load_interaction_continuation(ctx, interaction_id)
         if continuation.get("phase") == "field":
             yield await self._advance_field_interaction(ctx, continuation, submission)
             return
@@ -1449,7 +1480,8 @@ class DefaultRunner(Runner):
         # Persist consumption BEFORE the external effect. An ambiguous failure
         # remains consumed, never silently retries an approval at the vendor.
         continuation["consumed"] = True
-        await self._store_interaction_continuation(ctx, continuation)
+        if not blocking:
+            await self._store_interaction_continuation(ctx, continuation)
 
         pending_content = ""
         streamed_content = ""
@@ -1526,18 +1558,22 @@ class DefaultRunner(Runner):
                         **data,
                         "workflow_run_id": str(continuation["workflow_run_id"]),
                     }
-                interaction_result = await self._interaction_result_for_pause(
-                    ctx,
-                    event,
-                    str(continuation["user"]),
-                )
-                if interaction_result is None:
-                    raise DifyAPIError(
-                        "Dify paused the workflow without a supported reason",
-                        code="dify.response_invalid",
+                if blocking:
+                    async for result in self._wait_and_resume_workflow(
+                        ctx, client, event, str(continuation['user']), remove_think,
+                    ):
+                        yield result
+                else:
+                    interaction_result = await self._interaction_result_for_pause(
+                        ctx, event, str(continuation['user']),
                     )
-                await self._delete_interaction_continuation(ctx, interaction_id)
-                yield interaction_result
+                    if interaction_result is None:
+                        raise DifyAPIError(
+                            'Dify paused the workflow without a supported reason',
+                            code='dify.response_invalid',
+                        )
+                    await self._delete_interaction_continuation(ctx, interaction_id)
+                    yield interaction_result
                 return
             elif event_type == "workflow_finished":
                 data = event.get("data", {})
@@ -1574,5 +1610,6 @@ class DefaultRunner(Runner):
                 "Dify workflow returned no response after human input",
                 code="dify.api_error",
             )
-        await self._delete_interaction_continuation(ctx, interaction_id)
+        if not blocking:
+            await self._delete_interaction_continuation(ctx, interaction_id)
         yield RunnerResult.run_completed(ctx.run_id, usage=usage)

@@ -22,6 +22,7 @@ from langbot_plugin.api.entities.builtin.runner import (
     ConversationContext,
     DeliveryContext,
     InteractionSubmission,
+    InteractionResult,
     RunnerContext,
 )
 
@@ -90,6 +91,25 @@ def _ctx(
         actor=ActorContext(actor_type="user", actor_id="traditional-sender"),
         config=config or {},
     )
+
+
+def _dify_interaction_ctx():
+    ctx = _ctx()
+    requests = []
+
+    async def request_interaction(request, **kwargs):
+        requests.append(request)
+        return InteractionResult(
+            status='submitted',
+            submission=InteractionSubmission(
+                interaction_id=request.interaction_id,
+                action_id=request.actions[0].id if request.actions else None,
+                values={request.fields[0].id: 'high'} if request.fields else {},
+            ),
+        )
+
+    ctx._api = types.SimpleNamespace(request_interaction=request_interaction)
+    return ctx, requests
 
 
 def _text_and_image_ctx(config: dict[str, Any]) -> RunnerContext:
@@ -231,25 +251,25 @@ def test_dify_workflow_pause_requests_host_interaction_and_hides_provider_tokens
                 },
             }
 
-    results = asyncio.run(_collect_async(runner._run_workflow(_ctx(), FakeClient(), {}, "hello", "user_1", [], False)))
+        async def workflow_submit(self, **kwargs):
+            assert kwargs['form_token'] == 'form-private'
+            assert kwargs['workflow_run_id'] == 'workflow-private'
+            assert kwargs['inputs']['priority'] == 'high'
+            assert kwargs['action'] == 'approve-private'
+            yield {'event': 'node_finished', 'data': {'node_type': 'answer', 'outputs': {'answer': 'Approved'}}}
+            yield {'event': 'workflow_finished', 'data': {'outputs': {}}}
 
-    interaction_result = results[-1]
+    ctx, requests = _dify_interaction_ctx()
+    results = asyncio.run(_collect_async(runner._run_workflow(ctx, FakeClient(), {}, "hello", "user_1", [], False)))
+
     assert _type(results[0]) == "tool.call.started"
     assert results[0].data["tool_name"] == "Manual review"
-    assert all(_type(result) != "message.delta" for result in results)
-    assert _type(interaction_result) == "action.requested"
-    assert interaction_result.data["action"] == "interaction.requested"
-    request = interaction_result.data["payload"]
-    assert request["fields"][0]["options"][0]["value"] == "high"
-    assert request["actions"] == []
-    assert "form-private" not in str(request)
-    assert "workflow-private" not in str(request)
-    assert len(storage.values) == 1
-    continuation = json.loads(next(iter(storage.values.values())))
-    assert continuation["form_token"] == "form-private"
-    assert continuation["workflow_run_id"] == "workflow-private"
-    assert continuation["interaction_actions"][0]["label"] == "Approve"
-    assert all(_type(result) != "run.completed" for result in results)
+    assert requests[0].fields[0].options[0].value == 'high'
+    assert requests[1].actions[0].label == 'Approve'
+    assert 'form-private' not in str(requests)
+    assert 'workflow-private' not in str(requests)
+    assert storage.values == {}
+    assert _type(results[-1]) == 'run.completed'
 
 
 def test_dify_current_human_input_event_requests_host_interaction() -> None:
@@ -278,18 +298,20 @@ def test_dify_current_human_input_event_requests_host_interaction() -> None:
                 },
             }
 
-    results = asyncio.run(_collect_async(runner._run_workflow(_ctx(), FakeClient(), {}, "hello", "user_1", [], False)))
+        async def workflow_submit(self, **kwargs):
+            assert kwargs['inputs']['priority'] == 'high'
+            yield {'event': 'node_finished', 'data': {'node_type': 'answer', 'outputs': {'answer': 'Approved'}}}
+            yield {'event': 'workflow_finished', 'data': {'outputs': {}}}
 
-    assert _type(results[-1]) == "action.requested"
-    assert all(_type(result) != "run.completed" for result in results)
-    request = results[-1].data["payload"]
-    assert request["title"] == "Manual review"
-    assert request["fields"][0]["options"][0]["value"] == "high"
-    assert "form-private" not in str(request)
-    assert "workflow-private" not in str(request)
-    continuation = json.loads(next(iter(storage.values.values())))
-    assert continuation["form_token"] == "form-private"
-    assert continuation["workflow_run_id"] == "workflow-private"
+    ctx, requests = _dify_interaction_ctx()
+    results = asyncio.run(_collect_async(runner._run_workflow(ctx, FakeClient(), {}, "hello", "user_1", [], False)))
+
+    assert _type(results[-1]) == 'run.completed'
+    assert requests[0].title == 'Manual review'
+    assert requests[0].fields[0].options[0].value == 'high'
+    assert 'form-private' not in str(requests)
+    assert 'workflow-private' not in str(requests)
+    assert storage.values == {}
 
 
 def test_dify_pause_accepts_single_reason_and_camel_case_fields() -> None:

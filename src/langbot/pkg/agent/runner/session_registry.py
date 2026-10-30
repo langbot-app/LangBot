@@ -54,6 +54,7 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     processor_type: str | None
     processor_id: str | None
     interactions_enabled: bool
+    interactions_authorized: bool
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -83,6 +84,7 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    runtime_context: dict[str, typing.Any] | None
 
 
 class AgentRunSessionRegistry:
@@ -125,6 +127,8 @@ class AgentRunSessionRegistry:
         processor_type: str | None = None,
         processor_id: str | None = None,
         interactions_enabled: bool = False,
+        interactions_authorized: bool = False,
+        runtime_context: dict[str, typing.Any] | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -174,6 +178,7 @@ class AgentRunSessionRegistry:
             'processor_type': processor_type,
             'processor_id': processor_id,
             'interactions_enabled': interactions_enabled,
+            'interactions_authorized': interactions_authorized,
         }
 
         session: AgentRunSession = {
@@ -189,6 +194,7 @@ class AgentRunSessionRegistry:
                 'last_activity_at': now,
             },
             'steering_queue': [],
+            'runtime_context': runtime_context,
         }
 
         async with self._lock:

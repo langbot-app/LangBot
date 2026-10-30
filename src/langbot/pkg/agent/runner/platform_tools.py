@@ -46,7 +46,7 @@ _TARGET_TYPE = {'type': 'string', 'enum': ['person', 'group']}
 _CHAT_TYPE = {'type': 'string', 'enum': ['person', 'private', 'group']}
 _APPROVE = {'type': 'boolean', 'description': 'true to accept; false to reject'}
 
-PRESENT_INTERACTIVE_CARD_TOOL = 'present_interactive_card'
+PRESENT_INTERACTIVE_CARD_TOOL = 'request_interaction'
 
 _INTERACTION_OPTION_SCHEMA = {
     'type': 'object',
@@ -94,13 +94,13 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
         'event',
         'interaction',
         'write',
-        {'en_US': 'Present interactive card'},
+        {'en_US': 'Request user interaction'},
         {
             'en_US': (
                 'Present a native interactive card in the current conversation. Define semantic buttons, selects, '
                 'and input fields; LangBot owns the target, callback token, validation, and platform rendering. '
                 'Each card is one step: provide either actions or fields, never both. '
-                'The user submission will start a new interaction.submitted turn for this processor.'
+                'The tool waits for the user and returns the structured submission in this run.'
             ),
         },
         _object_schema(
@@ -111,6 +111,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
                 'fields': {'type': 'array', 'items': _INTERACTION_FIELD_SCHEMA, 'maxItems': 50},
                 'actions': {'type': 'array', 'items': _INTERACTION_ACTION_SCHEMA, 'maxItems': 20},
                 'expires_in_seconds': {'type': 'integer', 'minimum': 60, 'maximum': 86400},
+                'responders': {'type': 'string', 'enum': ['actor', 'any']},
             },
             ['title'],
         ),
@@ -536,10 +537,14 @@ def build_platform_tool_resources(
         reason = None
         if definition is None:
             reason = 'unknown_tool'
-        elif definition.api not in supported_apis and not (
-            definition.name == 'event_reply'
-            and {'reply_message', 'get_message'} <= supported_apis
-            and (event.delivery.reply_target or {}).get('message_id')
+        elif (
+            definition.api not in supported_apis
+            and not (definition.name == PRESENT_INTERACTIVE_CARD_TOOL and 'send_message' in supported_apis)
+            and not (
+                definition.name == 'event_reply'
+                and {'reply_message', 'get_message'} <= supported_apis
+                and (event.delivery.reply_target or {}).get('message_id')
+            )
         ):
             reason = 'adapter_api_unsupported'
         elif definition.scope == 'event' and not _event_matches(event.event_type, definition.event_patterns):
@@ -873,10 +878,13 @@ async def execute_platform_tool(
             manager = getattr(getattr(ap, 'agent_run_orchestrator', None), 'interaction_manager', None)
             if manager is None:
                 raise ValueError('Interactive card delivery is unavailable')
-            return await manager.present_tool_request(
+            return await manager.request_interaction(
                 request_payload=_interactive_card_request(normalized),
                 session=session,
                 adapter=bot.adapter,
+                timeout=normalized.get('expires_in_seconds', 600),
+                on_unsupported='degrade',
+                responders=normalized.get('responders', 'actor'),
             )
         api_func = getattr(bot.adapter, definition.api, None)
         if reply_via_source:

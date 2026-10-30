@@ -11,6 +11,7 @@ import pydantic
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot.pkg.platform.adapters.discord.api_impl import DiscordAPIMixin
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.discord.event_converter import DiscordEventConverter
 from langbot.pkg.platform.adapters.discord.message_converter import DiscordMessageConverter
 from langbot.pkg.platform.adapters.discord.platform_api import PLATFORM_API_MAP
@@ -24,7 +25,7 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
-class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class DiscordAdapter(DiscordAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: discord.Client = pydantic.Field(exclude=True)
 
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
@@ -205,6 +206,8 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             'leave_group',
             'call_platform_api',
             'interaction.request',
+            'send_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

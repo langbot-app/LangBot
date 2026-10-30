@@ -91,7 +91,12 @@ class AgentResourceBuilder:
         )
         runner_uses_host_tools = config_schema.uses_host_tools(descriptor)
         selected_platform_tools = list(resource_policy.allowed_platform_tool_names or [])
-        if binding.processor_type not in {'agent', 'pipeline'} or not binding.delivery_policy.enable_interactions:
+        if (
+            binding.processor_type not in {'agent', 'pipeline'}
+            or not binding.delivery_policy.enable_interactions
+            or not getattr(descriptor.capabilities, 'interactions', False)
+            or 'request' not in (getattr(manifest_perms, 'interactions', []) or [])
+        ):
             selected_platform_tools = [
                 name for name in selected_platform_tools if name != PRESENT_INTERACTIVE_CARD_TOOL
             ]

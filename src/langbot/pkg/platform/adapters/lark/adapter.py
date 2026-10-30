@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter as LegacyLarkAdapter,
@@ -113,7 +114,7 @@ async def _cancel_ws_cache_task(client: typing.Any) -> None:
         await asyncio.gather(cache_task, return_exceptions=True)
 
 
-class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: lark_oapi.ws.Client = pydantic.Field(exclude=True)
     api_client: lark_oapi.Client = pydantic.Field(exclude=True)
     quart_app: quart.Quart = pydantic.Field(exclude=True)
@@ -245,6 +246,9 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             'call_platform_api',
             'interaction.request',
             'interaction.acknowledge',
+            'send_interaction',
+            'update_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

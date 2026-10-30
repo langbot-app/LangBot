@@ -238,7 +238,9 @@ _LANGBOT_MCP_SYSTEM_PROMPT = (
     "any mcp__langbot_agent__* tool, then call that tool directly. In coordinator mode, "
     "the main session may expose only delegation tools; delegate the MCP request to one "
     "worker and require that worker to perform the same ToolSearch-then-call flow. Never "
-    "claim a LangBot tool result unless the direct or delegated tool call completed."
+    "claim a LangBot tool result unless the direct or delegated tool call completed. "
+    "For user questions, call mcp__langbot_agent__ask_user_question so the answer returns "
+    "inside the current CLI process; do not call the built-in AskUserQuestion tool."
 )
 
 
@@ -450,7 +452,25 @@ class ClaudeCodeExternalTools(AgentRunExternalTools):
         args_model=AskUserQuestionArgs,
     )
     async def ask_user_question(self, args: AskUserQuestionArgs) -> dict[str, typing.Any]:
-        return {"status": "paused", "question_count": len(args.questions)}
+        request, continuation = _interaction_from_claude_tool(
+            uuid.uuid4().hex, args.model_dump(mode='json', by_alias=True)
+        )
+        answers: list[dict[str, typing.Any]] = []
+        for field in request.fields:
+            step = request.model_copy(update={
+                'interaction_id': f'{request.interaction_id}-{field.id}'[:255],
+                'fields': [field],
+                'actions': [],
+            })
+            result = await self.ctx.request_interaction(step, timeout=3600, on_unsupported='degrade')
+            if result.status != 'submitted' or result.submission is None:
+                raise NativeCliError(f'User interaction {result.status}', code='claude_code.interaction_expired')
+            answers.append({
+                'id': field.id,
+                'question': next((item['question'] for item in continuation['questions'] if item['id'] == field.id), field.label),
+                'answer': result.submission.values.get(field.id),
+            })
+        return {'status': 'submitted', 'answers': answers}
 
 
 class NativeClaudeCodeRunner(Runner):

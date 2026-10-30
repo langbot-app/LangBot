@@ -14,6 +14,7 @@ from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 from langbot.pkg.platform.adapters.wecombot.api_impl import WecomBotAPIMixin
+from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
 from langbot.pkg.platform.adapters.wecombot.platform_api import PLATFORM_API_MAP
@@ -31,7 +32,7 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
 
 
-class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: typing.Any = pydantic.Field(exclude=True)
 
     message_converter: WecomBotMessageConverter = WecomBotMessageConverter()
@@ -124,7 +125,15 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'call_platform_api',
         ]
         if not self.config.get('enable-webhook', False) and hasattr(self.bot, 'send_template_card'):
-            apis.extend(['interaction.request', 'interaction.acknowledge'])
+            apis.extend(
+                [
+                    'interaction.request',
+                    'interaction.acknowledge',
+                    'send_interaction',
+                    'update_interaction',
+                    'get_interaction_capabilities',
+                ]
+            )
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:

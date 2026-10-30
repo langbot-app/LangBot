@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import asyncio
 import time
 
 import pytest
@@ -14,6 +15,7 @@ from langbot_plugin.api.entities.builtin.runner.event import ActorContext
 from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.runner.interaction import (
     InteractionDeliveryCapabilities,
+    InteractionHandle,
     InteractionSubmission,
 )
 
@@ -765,3 +767,295 @@ async def test_callback_rejects_option_not_present_in_request(store, event, bind
             conversation_id='group_chat-1',
             actor_id='user-1',
         )
+
+
+class BlockingAdapter:
+    def __init__(self):
+        self.sent = asyncio.Event()
+        self.token = None
+        self.updates = []
+
+    def get_interaction_capabilities(self):
+        return InteractionDeliveryCapabilities(
+            action_styles=['default', 'primary', 'danger'],
+            max_actions=6,
+            supports_updates=True,
+        )
+
+    async def send_interaction(self, target_type, target_id, request, callback_token, reply_to=None):
+        self.token = callback_token
+        self.sent.set()
+        return InteractionHandle(message_id='card-1')
+
+    async def update_interaction(self, handle, state, submission=None):
+        self.updates.append(state)
+        return handle
+
+
+class TextAdapter:
+    def __init__(self):
+        self.messages = []
+        self.sent = asyncio.Event()
+
+    def get_interaction_capabilities(self):
+        return InteractionDeliveryCapabilities()
+
+    async def send_message(self, target_type, target_id, message):
+        self.messages.append(str(message))
+        self.sent.set()
+
+
+class BlockingStore:
+    def __init__(self):
+        self.record = None
+        self.token = 'test-token'
+
+    async def create_request(self, **data):
+        self.record = {
+            **data,
+            'status': 'pending',
+            'submission': None,
+        }
+        return self.record, self.token
+
+    async def record_delivery_success(self, run_id, interaction_id, delivery_result):
+        self.record['delivery_result'] = delivery_result
+
+    async def get_by_callback_token(self, token):
+        return self.record if token == self.token else None
+
+    async def consume_submission(self, *, callback_token, submission, bot_id, conversation_id, actor_id, **kwargs):
+        if self.record['status'] != 'pending':
+            raise ValueError('Interaction was already submitted')
+        if self.record['actor_id'] and self.record['actor_id'] != actor_id:
+            raise ValueError('Actor mismatch')
+        self.record['status'] = 'submitted'
+        self.record['submission'] = submission
+        return self.record
+
+    async def mark_terminal(self, run_id, interaction_id, status):
+        self.record['status'] = status
+        return True
+
+    async def mark_delivery_failed(self, run_id, interaction_id, reason):
+        self.record['status'] = 'delivery_failed'
+        return True
+
+
+def _blocking_session():
+    return {
+        'run_id': 'blocking-run',
+        'runner_id': 'plugin:test/ApprovalRunner/default',
+        'runtime_context': {'deadline_at': time.time() + 300},
+        'authorization': {
+            'binding_id': 'binding-1',
+            'processor_type': 'agent',
+            'processor_id': 'agent-1',
+            'bot_id': 'bot-1',
+            'workspace_id': 'workspace-1',
+            'thread_id': None,
+            'interactions_enabled': True,
+            'interactions_authorized': True,
+            'platform_context': {
+                'actor': {'actor_id': 'user-1'},
+                'delivery': {'reply_target': {'target_type': 'group', 'target_id': 'chat-1'}},
+            },
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_blocking_request_returns_submission_in_same_run():
+    adapter = BlockingAdapter()
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    session = _blocking_session()
+    original_deadline = session['runtime_context']['deadline_at']
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=session,
+            adapter=adapter,
+            request_payload={
+                'interaction_id': 'approval',
+                'title': 'Approve?',
+                'actions': [
+                    {'id': 'yes', 'label': 'Yes'},
+                    {'id': 'no', 'label': 'No'},
+                ],
+            },
+            timeout=1,
+            on_unsupported='error',
+            responders='actor',
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    record = await manager.consume_callback(
+        callback_token=adapter.token,
+        submission={'action_ref': 0},
+        bot_id='bot-1',
+        conversation_id='group_chat-1',
+        actor_id='user-1',
+    )
+    assert manager.wake_waiter(record, 'user-1')
+    result = await task
+    assert result['status'] == 'submitted'
+    assert result['submission']['action_id'] == 'yes'
+    assert adapter.updates == ['submitted']
+    assert original_deadline <= result['deadline_at'] < original_deadline + 1
+    with pytest.raises(Exception):
+        await manager.consume_callback(
+            callback_token=adapter.token,
+            submission={'action_ref': 1},
+            bot_id='bot-1',
+            conversation_id='group_chat-1',
+            actor_id='user-1',
+        )
+
+
+@pytest.mark.asyncio
+async def test_blocking_request_times_out_without_polling():
+    adapter = BlockingAdapter()
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    result = await manager.request_interaction(
+        session=_blocking_session(),
+        adapter=adapter,
+        request_payload={
+            'interaction_id': 'timeout',
+            'title': 'Approve?',
+            'actions': [
+                {'id': 'yes', 'label': 'Yes'},
+            ],
+        },
+        timeout=0.02,
+        on_unsupported='error',
+        responders='actor',
+    )
+    assert result['status'] == 'timeout'
+    assert adapter.updates == ['expired']
+    record = await store.get_by_callback_token(adapter.token)
+    assert record['status'] == 'expired'
+
+
+@pytest.mark.asyncio
+async def test_blocking_request_cancel_invalidates_card():
+    adapter = BlockingAdapter()
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_blocking_session(),
+            adapter=adapter,
+            request_payload={
+                'interaction_id': 'cancel',
+                'title': 'Approve?',
+                'actions': [
+                    {'id': 'yes', 'label': 'Yes'},
+                ],
+            },
+            timeout=1,
+            on_unsupported='error',
+            responders='actor',
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert store.record['status'] == 'cancelled'
+    assert adapter.updates == ['cancelled']
+    assert not manager._waiters
+
+
+@pytest.mark.asyncio
+async def test_blocking_request_rejects_unlisted_responder_before_consuming():
+    adapter = BlockingAdapter()
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_blocking_session(),
+            adapter=adapter,
+            request_payload={
+                'interaction_id': 'restricted',
+                'title': 'Approve?',
+                'actions': [
+                    {'id': 'yes', 'label': 'Yes'},
+                ],
+            },
+            timeout=1,
+            on_unsupported='error',
+            responders=['user-1'],
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    with pytest.raises(ValueError, match='allowed responder'):
+        await manager.consume_callback(
+            callback_token=adapter.token,
+            submission={'action_ref': 0},
+            bot_id='bot-1',
+            conversation_id='group_chat-1',
+            actor_id='user-2',
+        )
+    assert store.record['status'] == 'pending'
+    record = await manager.consume_callback(
+        callback_token=adapter.token,
+        submission={'action_ref': 0},
+        bot_id='bot-1',
+        conversation_id='group_chat-1',
+        actor_id='user-1',
+    )
+    assert manager.wake_waiter(record, 'user-1')
+    assert (await task)['status'] == 'submitted'
+
+
+@pytest.mark.asyncio
+async def test_text_fallback_consumes_numbered_action():
+    adapter = TextAdapter()
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_blocking_session(),
+            adapter=adapter,
+            request_payload={
+                'interaction_id': 'text-choice',
+                'title': 'Approve?',
+                'actions': [
+                    {'id': 'yes', 'label': 'Yes'},
+                    {'id': 'no', 'label': 'No'},
+                ],
+            },
+            timeout=1,
+            on_unsupported='degrade',
+            responders='actor',
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    assert '1 Yes / 2 No' in adapter.messages[0]
+    assert await manager.consume_text_message(
+        workspace_id='workspace-1',
+        bot_id='bot-1',
+        conversation_id='group_chat-1',
+        actor_id='user-1',
+        text='2',
+    )
+    result = await task
+    assert result['submission']['action_id'] == 'no'
+    assert result['degraded'][-1]['applied'] == 'text_fallback'
+
+
+@pytest.mark.asyncio
+async def test_unsupported_error_does_not_persist_request():
+    store = BlockingStore()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    result = await manager.request_interaction(
+        session=_blocking_session(),
+        adapter=TextAdapter(),
+        request_payload={'interaction_id': 'error', 'title': 'Approve?', 'actions': [{'id': 'yes', 'label': 'Yes'}]},
+        timeout=1,
+        on_unsupported='error',
+        responders='actor',
+    )
+    assert result['unsupported'][0]['path'] == 'platform'
+    assert store.record is None

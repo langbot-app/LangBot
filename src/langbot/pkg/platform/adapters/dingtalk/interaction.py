@@ -303,7 +303,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
         'field_types': field_types,
         'target_type': target_type,
         'target_id': target_id,
-        'expires_at': time.monotonic() + 30 * 60,
+        'expires_at': time.monotonic() + max(1, int(request.get('expires_at') or time.time() + 30 * 60) - time.time()),
     }
     result = {
         'ok': True,

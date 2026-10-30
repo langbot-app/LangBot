@@ -126,6 +126,7 @@ class InteractionStore:
         expires_at: int | float | None = None,
         expected_config: dict | None = None,
         authority_check: typing.Callable[[], bool] | None = None,
+        blocking: bool = False,
     ) -> tuple[dict[str, typing.Any], str]:
         """Persist a request and return its record plus one-time callback token."""
         if not interaction_id or not run_id or not binding_id or not runner_id or not processor_id:
@@ -154,6 +155,7 @@ class InteractionStore:
             thread_id=thread_id,
             actor_id=actor_id,
             status='pending',
+            status_reason='blocking' if blocking else None,
             request_json=request_json,
             delivery_target_json=delivery_target_json,
             replaces_interaction_id=replaces_interaction_id,
@@ -490,6 +492,36 @@ class InteractionStore:
             )
             await session.commit()
             return result.rowcount == 1
+
+    async def mark_terminal(self, run_id: str, interaction_id: str, status: str) -> bool:
+        if status not in {'expired', 'cancelled'}:
+            raise ValueError('Invalid terminal interaction status')
+        now = _utc_now()
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.update(AgentInteraction)
+                .where(
+                    AgentInteraction.run_id == run_id,
+                    AgentInteraction.interaction_id == interaction_id,
+                    AgentInteraction.status == 'pending',
+                )
+                .values(status=status, status_reason=f'interaction {status}', updated_at=_db_datetime(now))
+            )
+            await session.commit()
+            return result.rowcount == 1
+
+    async def cancel_orphaned_pending(self, active_run_ids: set[str]) -> int:
+        """Invalidate pending callbacks after Host restart or run cleanup."""
+        now = _utc_now()
+        condition = ~AgentInteraction.run_id.in_(active_run_ids) if active_run_ids else sqlalchemy.true()
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.update(AgentInteraction)
+                .where(AgentInteraction.status == 'pending', AgentInteraction.status_reason == 'blocking', condition)
+                .values(status='cancelled', status_reason='run is no longer active', updated_at=_db_datetime(now))
+            )
+            await session.commit()
+            return int(result.rowcount or 0)
 
     async def expire_pending(self, *, now: datetime.datetime | None = None) -> int:
         """Expire pending interactions whose deadline has elapsed."""
