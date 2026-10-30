@@ -133,10 +133,56 @@ def _result_event(
 class RunnerDaemon(AgentRuntimeDaemonClient):
     """Outbound WebSocket daemon that runs ACP jobs locally."""
 
+    async def _run_control_operation(
+        self,
+        job_id: str,
+        operation: str,
+        payload: dict[str, typing.Any],
+    ) -> None:
+        config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+        arguments = payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
+        command_args = _parse_args(config.get("acp_command"))
+        if not command_args:
+            raise AcpError("acp_command is required", code="acp.daemon_config_invalid")
+        client = AcpStdioClient(
+            command=command_args[0],
+            args=command_args[1:],
+            cwd=str(config.get("workspace") or os.getcwd()),
+            env={},
+            unset_env=(CLAUDE_ENV_VARS_TO_UNSET if str(config.get("provider") or "custom") == "claude-code" else ()),
+            permission_decision=str(config.get("permission_decision") or "allow_once"),
+            startup_timeout=float(config.get("startup_timeout") or 30.0),
+        )
+        async with client:
+            initialize_result = await client.initialize(timeout=float(config.get("initialize_timeout") or 30.0))
+            capabilities = initialize_result.get("agentCapabilities")
+            if not isinstance(capabilities, dict):
+                capabilities = {}
+            timeout = float(config.get("timeout") or 60.0)
+            if operation == "session.list":
+                if not _runtime_has_method(capabilities, "session/list"):
+                    raise AcpError("ACP agent does not support session/list", code="acp.session_list_unsupported")
+                cwd = str(arguments.get("cwd") or config.get("session_cwd") or config.get("workspace") or "")
+                result = await client.request("session/list", {"cwd": cwd} if cwd else {}, timeout=timeout)
+            elif operation == "session.delete":
+                if not _runtime_has_method(capabilities, "session/delete"):
+                    raise AcpError("ACP agent does not support session/delete", code="acp.session_delete_unsupported")
+                session_id = str(arguments.get("session_id") or "").strip()
+                if not session_id:
+                    raise AcpError("session_id is required", code="acp.session_id_required")
+                result = await client.request("session/delete", {"sessionId": session_id}, timeout=timeout)
+            else:
+                raise AcpError(f"unsupported control operation: {operation}", code="acp.control_unsupported")
+            await self.emit_event(job_id, _result_event("control.result", {"operation": operation, "result": result}))
+
     async def run_job(self, job_id: str, payload: dict[str, typing.Any]) -> None:
         proxy: LocalMCPProxy | None = None
         client: AcpStdioClient | None = None
         try:
+            operation = str(payload.get("operation") or "").strip()
+            if operation:
+                await self._run_control_operation(job_id, operation, payload)
+                return
             config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
             prompt_text = str(payload.get("prompt_text") or "")
             input_data = payload.get("input") if isinstance(payload.get("input"), dict) else {}
@@ -167,22 +213,20 @@ class RunnerDaemon(AgentRuntimeDaemonClient):
 
             async with client:
                 initialize_result = await client.initialize(timeout=float(config.get("initialize_timeout") or 30.0))
-                session_id, created = await self._create_or_resume_session(
+                session_id, _created = await self._create_or_resume_session(
                     client, initialize_result, config, mcp_servers
                 )
-                stored_session_id = str(config.get("stored_session_id") or "")
-                if created or stored_session_id != session_id:
-                    await self.emit_event(
-                        job_id,
-                        _result_event(
-                            "state.updated",
-                            {
-                                "key": "external.acp_session_id",
-                                "value": session_id,
-                                "scope": "conversation",
-                            },
-                        ),
-                    )
+                await self.emit_event(
+                    job_id,
+                    _result_event(
+                        "state.updated",
+                        {
+                            "key": "external.acp_session_id",
+                            "value": session_id,
+                            "scope": "conversation",
+                        },
+                    ),
+                )
                 prompt_blocks = acp_prompt_blocks(prompt_text, input_data, prompt_capabilities(initialize_result))
                 await self._stream_prompt_results(client, job_id, session_id, prompt_blocks, config)
         except asyncio.CancelledError:

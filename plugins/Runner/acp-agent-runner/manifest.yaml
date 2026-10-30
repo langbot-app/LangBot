@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: ACPAgentRunner
-  version: 0.1.16
+  version: 0.1.17
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner
   label:
     en_US: ACP Agent Runner
@@ -26,6 +26,21 @@ metadata:
   icon: assets/icon.svg
 spec:
   config:
+    - name: language
+      label:
+        en_US: Session command language
+        zh_Hans: 会话命令语言
+      type: select
+      options:
+        - name: en_US
+          label:
+            en_US: English
+            zh_Hans: 英文
+        - name: zh_Hans
+          label:
+            en_US: Simplified Chinese
+            zh_Hans: 简体中文
+      default: en_US
     - name: daemon-enabled
       label:
         en_US: Enable Runner Daemon Hub
@@ -64,6 +79,9 @@ spec:
       required: false
       default: ''
   components:
+    Command:
+      fromDirs:
+        - path: components/commands/
     Runner:
       fromDirs:
         - path: components/runner/

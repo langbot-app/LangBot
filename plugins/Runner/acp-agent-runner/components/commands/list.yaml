@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: list
+  label:
+    en_US: List ACP sessions
+    zh_Hans: 列出 ACP 会话
+  description:
+    en_US: List OpenCode ACP sessions
+    zh_Hans: 列出 OpenCode ACP 会话
+spec:
+execution:
+  python:
+    path: session_commands.py
+    attr: ListSessions
