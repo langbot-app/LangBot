@@ -1,0 +1,61 @@
+# Reply Message Node Configuration
+name: reply_message
+label:
+  en_US: Reply Message
+  zh_Hans: 回复消息
+category: action
+icon: Send
+color: '#ef4444'
+description:
+  en_US: Reply to the message that triggered the workflow
+  zh_Hans: 回复触发工作流的消息
+
+inputs:
+  - name: message
+    type: string
+    required: false
+    label:
+      en_US: Message
+      zh_Hans: 消息
+    description:
+      en_US: Message to reply
+      zh_Hans: 要回复的消息
+
+outputs:
+  - name: status
+    type: string
+    label:
+      en_US: Status
+      zh_Hans: 状态
+    description:
+      en_US: Reply status
+      zh_Hans: 回复状态
+  - name: message_content
+    type: string
+    label:
+      en_US: Message Content
+      zh_Hans: 消息内容
+    description:
+      en_US: Text that was replied
+      zh_Hans: 实际回复的文本
+
+config:
+  - name: reply_mode
+    type: select
+    options: ["direct", "quote", "at"]
+    default: "direct"
+    label:
+      en_US: Reply Mode
+      zh_Hans: 回复模式
+    description:
+      en_US: Reply directly, quote the original message, or mention the sender in groups
+      zh_Hans: 直接回复、引用原消息，或在群聊中 @ 发送者
+
+  - name: message_template
+    type: textarea
+    label:
+      en_US: Message Template
+      zh_Hans: 消息模板
+    description:
+      en_US: "Optional template; use {{message}} for the input and {{variables.name}} for workflow variables"
+      zh_Hans: "可选模板；用 {{message}} 引用输入，用 {{variables.name}} 引用工作流变量"

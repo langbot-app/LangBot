@@ -195,6 +195,8 @@ class Application:
 
     webhook_service: webhook_service.WebhookService = None
 
+    workflow_service: workflow_service.WorkflowService = None
+
     telemetry: telemetry_module.TelemetryManager = None
 
     survey: survey_module.SurveyManager = None

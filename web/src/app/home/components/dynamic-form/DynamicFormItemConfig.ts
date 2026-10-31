@@ -14,7 +14,7 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   label: I18nObject;
   required: boolean;
   type: DynamicFormItemType;
-  description?: I18nObject;
+  description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
   allow_custom?: boolean;
   show_if?: IShowIfCondition;

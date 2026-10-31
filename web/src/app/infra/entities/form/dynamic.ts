@@ -25,7 +25,7 @@ export interface IDynamicFormItemSchema {
   name: string;
   required: boolean;
   type: DynamicFormItemType;
-  description?: I18nObject;
+  description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
   /** Allow an editable value in addition to the declared select options. */
   allow_custom?: boolean;
@@ -73,6 +73,8 @@ export enum DynamicFormItemType {
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
   RERANK_MODEL_SELECTOR = 'rerank-model-selector',
+  PIPELINE_SELECTOR = 'pipeline-selector',
+  WORKFLOW_SELECTOR = 'workflow-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',
   UNKNOWN = 'unknown',

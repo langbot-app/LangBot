@@ -541,8 +541,6 @@ const viVN = {
     success: 'Thành công',
     save: 'Lưu',
     saving: 'Đang lưu...',
-    recommend: 'Đề xuất',
-    start: 'Bắt đầu',
     confirm: 'Xác nhận',
     confirmDelete: 'Xác nhận xóa',
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa mục này không?',
@@ -2645,10 +2643,6 @@ const viVN = {
     engineSettings: 'Cài đặt công cụ',
     engineSettingsDescription: 'Cấu hình cho công cụ tri thức đã chọn',
     engineSettingsReadonly: 'chỉ đọc trong chế độ chỉnh sửa',
-    engineSettingsInvalid:
-      'Cài đặt công cụ không hợp lệ, vui lòng kiểm tra các trường bắt buộc',
-    retrievalSettingsInvalid:
-      'Cài đặt truy xuất không hợp lệ, vui lòng kiểm tra các trường bắt buộc',
     retrievalSettings: 'Cài đặt truy xuất',
     retrievalSettingsDescription:
       'Cấu hình cách truy xuất tài liệu từ cơ sở tri thức này',

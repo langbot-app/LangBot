@@ -548,8 +548,6 @@ const esES = {
     success: 'Éxito',
     save: 'Guardar',
     saving: 'Guardando...',
-    recommend: 'Recomendado',
-    start: 'Iniciar',
     confirm: 'Confirmar',
     confirmDelete: 'Confirmar eliminación',
     deleteConfirmation: '¿Estás seguro de que deseas eliminar esto?',
@@ -2707,10 +2705,6 @@ const esES = {
     engineSettingsDescription:
       'Configuración del motor de conocimiento seleccionado',
     engineSettingsReadonly: 'solo lectura en modo de edición',
-    engineSettingsInvalid:
-      'La configuración del motor no es válida, verifique los campos obligatorios',
-    retrievalSettingsInvalid:
-      'La configuración de recuperación no es válida, verifique los campos obligatorios',
     retrievalSettings: 'Configuración de recuperación',
     retrievalSettingsDescription:
       'Configura cómo se recuperan los documentos de esta base de conocimiento',

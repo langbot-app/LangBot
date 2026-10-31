@@ -67,6 +67,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+// SelectGroup used in adapter selector
 import {
   Card,
   CardContent,

@@ -544,8 +544,6 @@ const jaJP = {
     success: '成功',
     save: '保存',
     saving: '保存中...',
-    recommend: 'おすすめ',
-    start: '開始',
     confirm: '確認',
     confirmDelete: '削除の確認',
     deleteConfirmation: '本当に削除しますか？',
@@ -2676,10 +2674,6 @@ const jaJP = {
     engineSettings: 'エンジン設定',
     engineSettingsDescription: '選択したナレッジエンジンの設定',
     engineSettingsReadonly: '編集モードでは変更できません',
-    engineSettingsInvalid:
-      'エンジン設定の検証に失敗しました、必須項目を確認してください',
-    retrievalSettingsInvalid:
-      '検索設定の検証に失敗しました、必須項目を確認してください',
     retrievalSettings: '検索設定',
     retrievalSettingsDescription: 'このナレッジベースからの文書検索方法を設定',
     dangerZone: '危険ゾーン',
