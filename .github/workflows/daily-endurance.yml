@@ -475,7 +475,11 @@ jobs:
                   and result.data.get('chunk', {}).get('is_final')
               ]
               assert len(final_chunks) == 1, (types, results)
-              assert final_chunks[0]['content'] == 'LANGBOT_N8N_DAILY_OK', final_chunks
+              content = final_chunks[0]['content']
+              assert content.startswith('LANGBOT_N8N_DAILY_OK|Reply with exactly LANGBOT_N8N_DAILY_OK.'), content
+              assert '|Reply with exactly LANGBOT_N8N_DAILY_OK.|' in content, content
+              assert '|user_daily-regression|n8n_conversation_' in content, content
+              assert '|n8n_session_' in content, content
               assert types.count('state.updated') == 2, types
               assert types[-1] == 'run.completed', types
               print(f'n8n DefaultRunner smoke passed: result_types={types}')
