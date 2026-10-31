@@ -362,15 +362,11 @@ class LoadConfigStage(stage.BootingStage):
         for node_config in ap.workflow_node_configs.values():
             workflow_registry.register_metadata(node_config, source=node_config.get('_source', 'core'))
 
-        # Auto-discover and register workflow nodes using discovery engine
-        if hasattr(ap, 'discover') and ap.discover is not None:
-            workflow_registry.discover_nodes(ap.discover)
-
         workflow_load_errors = workflow_metadata_loader.get_load_errors()
         if workflow_load_errors:
             print(f'Workflow node metadata load errors: {len(workflow_load_errors)}')
             for error in workflow_load_errors:
-                print(f"  - {error.get('file')}: {error.get('error')}")
+                print(f'  - {error.get("file")}: {error.get("error")}')
 
         print(
             f'Loaded {workflow_node_count} workflow node metadata files; '
