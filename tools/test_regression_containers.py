@@ -100,11 +100,24 @@ class ContainerSamplingTests(unittest.TestCase):
                     side_effect=[
                         'expired live foreign',
                         error,
+                        '',
                         description('live', '/owned/box/session'),
                         description('foreign', '/owned/box-other/session'),
                     ]
                 )
                 self.assertEqual(owned_box_containers('/owned/box', checked), ['live'])
+
+    def test_unknown_inspect_error_skips_only_after_relist_confirms_removal(self):
+        error = subprocess.CalledProcessError(1, ['docker', 'inspect'], '', '')
+        checked = Mock(side_effect=['expired', error, ''])
+        self.assertEqual(owned_box_containers('/owned/box', checked), [])
+
+    def test_unknown_inspect_error_is_preserved_when_container_still_exists(self):
+        error = subprocess.CalledProcessError(1, ['docker', 'inspect'], '', 'permission denied')
+        checked = Mock(side_effect=['live', error, 'live'])
+        with self.assertRaises(subprocess.CalledProcessError) as caught:
+            owned_box_containers('/owned/box', checked)
+        self.assertIs(caught.exception, error)
 
     def test_inspect_errors_are_not_reported_as_expiry(self):
         for error in (

@@ -38,6 +38,13 @@ def missing_containers(error, candidates):
     return {messages[line] for line in lines} if lines and all(line in messages for line in lines) else set()
 
 
+def container_is_absent(container, checked):
+    try:
+        return not checked(['docker', 'ps', '-a', '--filter', f'id={container}', '--format', '{{.ID}}']).strip()
+    except Exception:
+        return False
+
+
 def owned_box_containers(data_root, checked=None):
     """Discover sandboxes mounted below one run's data root, including newly created groups."""
     if checked is None:
@@ -54,15 +61,11 @@ def owned_box_containers(data_root, checked=None):
         try:
             description = checked(['docker', 'inspect', '--format', '{{json .}}', container])
         except subprocess.CalledProcessError as exc:
-            if (
-                exc.returncode != 1
-                or (exc.output or '').strip()
-                or not missing_containers(exc.stderr or '', {container})
-            ):
+            if exc.returncode != 1 or (exc.output or '').strip() or not container_is_absent(container, checked):
                 raise
             continue  # A sandbox may expire between discovery and inspection.
-        except RuntimeError as exc:
-            if not missing_containers(str(exc), {container}):
+        except RuntimeError:
+            if not container_is_absent(container, checked):
                 raise
             continue
         entry = json.loads(description)
