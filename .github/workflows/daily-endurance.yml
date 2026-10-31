@@ -64,7 +64,7 @@ jobs:
           read -r -a extras <<< "$EXTRA_PLUGINS"
           args=()
           if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
-          uv run --no-sync python tools/regression_ci.py \
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite daily --scenario-groups "${groups[@]}" "${args[@]}" \
             --lbctl .endurance-bin/lbctl_linux_amd64 --plugins plugins --extra-plugins "${extras[@]}" --output .qa/daily
       - name: Publish observations
@@ -188,7 +188,7 @@ jobs:
           docker pull python:3.12-alpine
       - name: Run API contracts
         run: |
-          uv run --no-sync python tools/regression_ci.py \
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite api --api-seed "$GITHUB_RUN_ID" \
             --lbctl .api-bin/lbctl_linux_amd64 --plugins plugins --output .qa/api
       - name: Publish API result
