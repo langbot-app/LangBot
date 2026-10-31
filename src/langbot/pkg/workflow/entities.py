@@ -70,7 +70,7 @@ class WorkflowSettings(pydantic.BaseModel):
 
     # Execution settings
     max_execution_time: int = 300  # seconds
-    max_retries: int = 3
+    max_retries: int = 0  # Nodes may have side effects (replies); retry is opt-in.
     retry_delay: int = 5  # seconds
 
     # Error handling

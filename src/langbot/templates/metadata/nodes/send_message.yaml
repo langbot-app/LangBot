@@ -10,8 +10,8 @@ category: action
 icon: MessageCircle
 color: '#10b981'
 description:
-  en_US: Send a message to a chat or user
-  zh_Hans: 向聊天或用户发送消息
+  en_US: Send a message through the triggering bot to a person or group
+  zh_Hans: 通过触发工作流的机器人向指定私聊或群聊发送消息
 
 inputs:
   - name: content
@@ -23,78 +23,44 @@ inputs:
     description:
       en_US: Message content to send
       zh_Hans: 要发送的消息内容
-  - name: context
-    type: object
+  - name: target_id
+    type: string
     required: false
     label:
-      en_US: Context
-      zh_Hans: 上下文
+      en_US: Target ID
+      zh_Hans: 目标 ID
     description:
-      en_US: Message context (for reply)
-      zh_Hans: 消息上下文（用于回复）
+      en_US: Overrides the configured target ID
+      zh_Hans: 覆盖配置中的目标 ID
 
 outputs:
-  - name: message_id
+  - name: status
     type: string
     label:
-      en_US: Message ID
-      zh_Hans: 消息 ID
+      en_US: Status
+      zh_Hans: 状态
     description:
-      en_US: ID of the sent message
-      zh_Hans: 已发送消息的 ID
-  - name: success
-    type: boolean
-    label:
-      en_US: Success
-      zh_Hans: 成功
-    description:
-      en_US: Whether the message was sent successfully
-      zh_Hans: 消息是否发送成功
+      en_US: Send status
+      zh_Hans: 发送状态
 
 config:
-  - name: message_type
+  - name: target_type
     type: select
-    required: true
-    default: text
-    options:
-      - text
-      - markdown
-      - image
-      - file
-      - card
+    default: person
+    options: ["person", "group"]
     label:
-      en_US: Message Type
-      zh_Hans: 消息类型
+      en_US: Target Type
+      zh_Hans: 目标类型
     description:
-      en_US: Type of message to send
-      zh_Hans: 要发送的消息类型
+      en_US: Whether the target is a private chat or a group
+      zh_Hans: 目标是私聊还是群聊
 
-  - name: content_template
-    type: textarea
+  - name: target_id
+    type: string
     default: ""
     label:
-      en_US: Content Template
-      zh_Hans: 内容模板
+      en_US: Target ID
+      zh_Hans: 目标 ID
     description:
-      en_US: Message content template
-      zh_Hans: 消息内容模板
-
-  - name: reply_to_original
-    type: boolean
-    default: true
-    label:
-      en_US: Reply to Original
-      zh_Hans: 回复原消息
-    description:
-      en_US: Reply to the original message
-      zh_Hans: 回复原始消息
-
-  - name: at_sender
-    type: boolean
-    default: false
-    label:
-      en_US: '@ Sender'
-      zh_Hans: '@ 发送者'
-    description:
-      en_US: Mention the original sender
-      zh_Hans: 提及原始发送者
+      en_US: Platform user or group ID; leave empty to send to the triggering conversation
+      zh_Hans: 平台用户或群 ID；留空则发送到触发工作流的会话

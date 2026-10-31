@@ -612,7 +612,11 @@ class WorkflowExecutor:
         if not self.ap:
             return
 
+        from .runtime import current_runtime
+
+        workspace_uuid = current_runtime().execution_context.workspace_uuid
         values = {
+            'workspace_uuid': workspace_uuid,
             'execution_uuid': context.execution_id,
             'node_id': node.id,
             'node_type': node.type,
@@ -626,6 +630,7 @@ class WorkflowExecutor:
         }
 
         existing_query = sqlalchemy.select(persistence_workflow.WorkflowNodeExecution).where(
+            persistence_workflow.WorkflowNodeExecution.workspace_uuid == workspace_uuid,
             persistence_workflow.WorkflowNodeExecution.execution_uuid == context.execution_id,
             persistence_workflow.WorkflowNodeExecution.node_id == node.id,
         )

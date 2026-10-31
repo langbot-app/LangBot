@@ -8,72 +8,44 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from ..runtime import current_runtime
 
 logger = logging.getLogger(__name__)
 
+
 @workflow_node('send_message')
 class SendMessageNode(WorkflowNode):
-    """Send message node - send message to a target"""
+    """Send a message through the triggering bot to a person or group."""
 
     category = 'action'
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        # Get message content from inputs
         message = inputs.get('message') or inputs.get('content') or inputs.get('input') or ''
-        message = str(message) if message is not None else ''
-
-        # Get target configuration - fallback to session_type from context if not configured
-        target_type = self.get_config('target_type', '')
-        if not target_type:
-            # Inherit from current session context
-            if context.trigger_data:
-                target_type = context.trigger_data.get('session_type', 'person') or 'person'
-            else:
-                target_type = 'person'
-        
-        target_id = self.get_config('target_id', '')
-        
-        # If no target_id configured, use session_id from context
-        if not target_id:
-            target_id = f'{context.session_id or "unknown"}'
-
+        message = str(message)
         if not message.strip():
-            logger.warning('SendMessageNode has empty message')
-            return {
-                'status': 'failed',
-                'error': 'Empty message',
-                'message_preview': '',
-            }
+            return {'status': 'failed', 'error': 'Empty message'}
 
-        # Send message if application instance is available
-        send_success = False
-        send_error = None
-        if self.ap:
-            try:
-                from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+        target_type = str(self.get_config('target_type', '') or '')
+        target_id = str(inputs.get('target_id') or self.get_config('target_id', '') or '')
+        runtime = current_runtime()
+        chain = MessageChain([Plain(text=message)])
 
-                message_chain = MessageChain([Plain(text=message)])
-                await self.ap.platform_mgr.websocket_proxy_bot.adapter.send_message(
-                    target_type=target_type,
-                    target_id=target_id,
-                    message=message_chain,
-                )
-                send_success = True
-                logger.info('SendMessageNode sent message to %s:%s', target_type, target_id)
-            except Exception as e:
-                send_error = str(e)
-                logger.error('SendMessageNode send failed: %s', e, exc_info=True)
-        else:
-            send_error = 'Missing application instance'
-            logger.warning('SendMessageNode missing application instance')
+        if not target_id:
+            # No explicit target: deliver to the conversation that triggered the workflow.
+            await runtime.reply(chain)
+            return {'status': 'sent', 'message_content': message, 'error': None}
 
+        if target_type not in ('person', 'group'):
+            raise ValueError('send_message target_type must be person or group')
+        await runtime.send(target_type, target_id, chain)
         return {
-            'status': 'sent' if send_success else 'failed',
+            'status': 'sent',
             'message_content': message,
-            'message_preview': message[:200],
             'target_type': target_type,
             'target_id': target_id,
-            'error': send_error,
+            'error': None,
         }

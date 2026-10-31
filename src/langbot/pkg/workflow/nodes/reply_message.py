@@ -8,11 +8,24 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from langbot_plugin.api.entities.builtin.platform.message import At, MessageChain, Plain
+
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
-from .. import monitoring_helper
+from ..runtime import current_runtime
 
 logger = logging.getLogger(__name__)
+
+
+def render_template(template: str, inputs: dict[str, Any], context: ExecutionContext) -> str:
+    """Replace ``{{input}}`` and ``{{variables.name}}`` placeholders."""
+    message = template
+    for key, value in inputs.items():
+        message = message.replace(f'{{{{{key}}}}}', '' if value is None else str(value))
+    for key, value in context.variables.items():
+        message = message.replace(f'{{{{variables.{key}}}}}', '' if value is None else str(value))
+    return message
+
 
 @workflow_node('reply_message')
 class ReplyMessageNode(WorkflowNode):
@@ -21,121 +34,28 @@ class ReplyMessageNode(WorkflowNode):
     category = 'action'
 
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        # Priority: content/response (from upstream nodes) > message (original input) > context
-        message = inputs.get('content')
-        if message in (None, ''):
-            message = inputs.get('response')
-        if message in (None, ''):
-            message = inputs.get('input')
-        if message in (None, ''):
-            message = inputs.get('message')
-        if message in (None, '') and context.message_context:
-            message = context.message_context.message_content
-        if message is None:
-            message = ''
-
         template = self.get_config('message_template')
-
         if template:
-            message = template
-            for key, value in inputs.items():
-                try:
-                    message = message.replace(f'{{{{{key}}}}}', str(value) if value is not None else '')
-                except Exception as e:
-                    logger.debug(
-                        'ReplyMessageNode failed to replace input template variable',
-                        extra={'node_id': self.node_id, 'key': str(key), 'error': str(e)},
-                    )
-            for key, value in context.variables.items():
-                try:
-                    message = message.replace(f'{{{{variables.{key}}}}}', str(value) if value is not None else '')
-                except Exception as e:
-                    logger.debug(
-                        'ReplyMessageNode failed to replace context template variable',
-                        extra={'node_id': self.node_id, 'key': str(key), 'error': str(e)},
-                    )
-
-        message_str = str(message) if message is not None else ''
-
-        logger.info(
-            'ReplyMessageNode resolved message',
-            extra={
-                'node_id': self.node_id,
-                'execution_id': context.execution_id,
-                'input_keys': list(inputs.keys()),
-                'message_preview': message_str[:200],
-                'has_template': bool(template),
-                'session_id': context.session_id,
-            },
-        )
-
-        if not message_str.strip():
-            logger.warning(
-                'ReplyMessageNode has empty message after resolution',
-                extra={
-                    'node_id': self.node_id,
-                    'execution_id': context.execution_id,
-                    'input_keys': list(inputs.keys()),
-                },
-            )
-
-        # 实际发送消息
-        send_success = False
-        send_error = None
-        if self.ap:
-            try:
-                from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
-
-                message_chain = MessageChain([Plain(text=message_str)])
-                # 从 trigger_data 中获取 session_type，而不是从未设置的 context.target_type
-                target_type = 'person'
-                if context.trigger_data:
-                    target_type = context.trigger_data.get('session_type', 'person') or 'person'
-                session_id = context.session_id or 'unknown'
-                target_id = f'websocket_{session_id}'
-
-                await self.ap.platform_mgr.websocket_proxy_bot.adapter.send_message(
-                    target_type=target_type,
-                    target_id=target_id,
-                    message=message_chain,
-                )
-                send_success = True
-            except Exception as e:
-                send_error = str(e)
-                logger.error('ReplyMessageNode send message failed: %s', e, exc_info=True)
+            message = render_template(str(template), inputs, context)
         else:
-            send_error = 'Missing application instance'
-            logger.warning(
-                'ReplyMessageNode missing application instance',
-                extra={
-                    'node_id': self.node_id,
-                    'execution_id': context.execution_id,
-                },
+            # Priority: upstream content/response > original message
+            message = next(
+                (inputs.get(key) for key in ('content', 'response', 'input', 'message') if inputs.get(key)),
+                context.message_context.message_content if context.message_context else '',
             )
+        message_str = '' if message is None else str(message)
+        if not message_str.strip():
+            return {'status': 'failed', 'message_content': '', 'error': 'Empty message'}
 
-        # Record reply log
+        reply_mode = self.get_config('reply_mode', 'direct')
+        components = [Plain(text=message_str)]
+        msg_ctx = context.message_context
+        if reply_mode == 'at' and msg_ctx and msg_ctx.is_group and msg_ctx.sender_id:
+            components.insert(0, At(target=msg_ctx.sender_id))
         try:
-            if self.ap and context.query and send_success:
-                workflow_id = context.workflow_id or ''
-                workflow_name = context.variables.get('_workflow_name', 'Workflow')
-                bot_name = context.variables.get('_bot_name', 'Workflow')
-                node_name = self.get_config('name', self.node_id)
-                await monitoring_helper.WorkflowMonitoringHelper.record_reply_log(
-                    ap=self.ap,
-                    query=context.query,
-                    workflow_id=workflow_id,
-                    workflow_name=workflow_name,
-                    node_name=node_name,
-                    reply_content=message_str,
-                    bot_name=bot_name,
-                    context_vars=context.variables,
-                )
-        except Exception as e:
-            logger.warning(f'[ReplyMessage:{self.node_id}] Failed to record reply log: {e}')
+            await current_runtime().reply(MessageChain(components), quote_origin=reply_mode == 'quote')
+        except Exception as exc:
+            logger.error('ReplyMessageNode %s failed to reply: %s', self.node_id, exc, exc_info=True)
+            raise
 
-        return {
-            'status': 'sent' if send_success else 'failed',
-            'message_content': message_str,
-            'message_preview': message_str[:200],
-            'error': send_error,
-        }
+        return {'status': 'sent', 'message_content': message_str, 'error': None}

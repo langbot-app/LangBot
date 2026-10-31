@@ -30,14 +30,14 @@ outputs:
     description:
       en_US: Reply status
       zh_Hans: 回复状态
-  - name: message_id
+  - name: message_content
     type: string
     label:
-      en_US: Message ID
-      zh_Hans: 消息 ID
+      en_US: Message Content
+      zh_Hans: 消息内容
     description:
-      en_US: Message ID
-      zh_Hans: 消息 ID
+      en_US: Text that was replied
+      zh_Hans: 实际回复的文本
 
 config:
   - name: reply_mode
@@ -48,8 +48,8 @@ config:
       en_US: Reply Mode
       zh_Hans: 回复模式
     description:
-      en_US: How to reply
-      zh_Hans: 回复方式
+      en_US: Reply directly, quote the original message, or mention the sender in groups
+      zh_Hans: 直接回复、引用原消息，或在群聊中 @ 发送者
 
   - name: message_template
     type: textarea
@@ -57,25 +57,5 @@ config:
       en_US: Message Template
       zh_Hans: 消息模板
     description:
-      en_US: Message template with variable interpolation
-      zh_Hans: 支持变量插值的消息模板
-
-  - name: long_text_processing
-    type: json
-    label:
-      en_US: Long Text Processing
-      zh_Hans: 长文本处理
-    description:
-      en_US: Long text processing settings
-      zh_Hans: 长文本处理设置
-    pipeline_config_source: "pipeline:output:long-text-processing"
-
-  - name: force_delay
-    type: json
-    label:
-      en_US: Force Delay
-      zh_Hans: 强制延迟
-    description:
-      en_US: Force delay settings
-      zh_Hans: 强制延迟设置
-    pipeline_config_source: "pipeline:output:force-delay"
+      en_US: "Optional template; use {{message}} for the input and {{variables.name}} for workflow variables"
+      zh_Hans: "可选模板；用 {{message}} 引用输入，用 {{variables.name}} 引用工作流变量"
