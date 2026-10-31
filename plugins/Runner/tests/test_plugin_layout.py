@@ -17,7 +17,6 @@ from langbot_plugin.api.entities.builtin.runner import (
     AgentRuntimeContext,
     AgentTrigger,
     DeliveryContext,
-    InteractionResult,
     InteractionSubmission,
     RunnerContext,
 )
@@ -1251,7 +1250,7 @@ def _interaction_context(config, text, *, action_id=None, values=None):
     ctx = _native_ctx(config, text=text)
 
     async def request_interaction(request, **kwargs):
-        return InteractionResult(
+        return types.SimpleNamespace(
             status="submitted",
             submission=InteractionSubmission(
                 interaction_id=request.interaction_id,
