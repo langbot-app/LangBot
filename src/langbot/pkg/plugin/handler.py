@@ -667,18 +667,126 @@ class RuntimeConnectionHandler(handler.Handler):
 
     def _secure_plugin_actions(self) -> None:
         """Wrap plugin-origin actions with installation validation and payload scrubbing."""
+        from ..api.application.contracts import ApplicationAPIException
+        from ..api.application.execution import EXECUTION_OPERATIONS, ExecutionAPI, ExecutionAPIContext
+
+        if not hasattr(self, '_raw_actions'):
+            self._raw_actions = {}
+        if not hasattr(self, 'execution_api') or self.execution_api is None:
+            self.execution_api = ExecutionAPI(self.ap, handler=self)
+            if hasattr(self.ap, 'execution_api') and self.ap.execution_api is None:
+                self.ap.execution_api = self.execution_api
+
+        for action_name, action_handler in list(self.actions.items()):
+            if getattr(action_handler, '_is_secured', False) is not True:
+                self._raw_actions[action_name] = action_handler
+
+        execution_ops = {op.action: op for op in EXECUTION_OPERATIONS}
 
         for action_name, action_handler in list(self.actions.items()):
             if action_name == CommonAction.PING.value:
                 continue
 
-            runtime_scoped = action_name in _RUNTIME_SCOPED_ACTIONS
-            if inspect.isasyncgenfunction(action_handler):
+            if action_name in execution_ops:
+                operation = execution_ops[action_name]
+                if operation.streaming:
 
-                async def secured_stream_action(
+                    async def secured_stream_action(
+                        data: dict[str, Any],
+                        *,
+                        _action_name=action_name,
+                        _operation=operation,
+                    ):
+                        action_context = self._require_runtime_action_context()
+                        self.validate_inbound_action_context(_action_name, action_context)
+                        if not isinstance(action_context, InstallationBinding):
+                            if self._allow_legacy_oss_context(_action_name, action_context):
+                                identity = await self._resolve_legacy_oss_installation_identity(action_context)
+                                action_context = InstallationBinding(
+                                    instance_uuid=action_context.instance_uuid,
+                                    workspace_uuid=action_context.workspace_uuid,
+                                    placement_generation=action_context.placement_generation,
+                                    installation_uuid=action_context.installation_uuid,
+                                    runtime_revision=identity.runtime_revision,
+                                    artifact_digest=identity.artifact_digest,
+                                )
+                            else:
+                                raise ValueError('Plugin action requires a complete InstallationBinding context')
+
+                        exec_context = ExecutionAPIContext(
+                            binding=action_context,
+                            run_id=data.get('run_id'),
+                            claimed_identity=data.get('caller_plugin_identity'),
+                            from_handler=True,
+                        )
+                        payload = {
+                            key: value
+                            for key, value in data.items()
+                            if key not in _UNTRUSTED_SCOPE_FIELDS and key not in ('run_id', 'caller_plugin_identity')
+                        }
+                        try:
+                            async for chunk in self.execution_api.stream(
+                                _operation.operation_id, exec_context, payload
+                            ):
+                                yield handler.ActionResponse.success(data=chunk)
+                        except ApplicationAPIException as exc:
+                            yield handler.ActionResponse.error(message=exc.error.message, data=exc.error.details or {})
+
+                    secured_stream_action._is_secured = True
+                    self.actions[action_name] = secured_stream_action
+                    continue
+
+                async def secured_action(
                     data: dict[str, Any],
                     *,
-                    _action_handler=action_handler,
+                    _action_name=action_name,
+                    _operation=operation,
+                ) -> handler.ActionResponse:
+                    action_context = self._require_runtime_action_context()
+                    self.validate_inbound_action_context(_action_name, action_context)
+                    if not isinstance(action_context, InstallationBinding):
+                        if self._allow_legacy_oss_context(_action_name, action_context):
+                            identity = await self._resolve_legacy_oss_installation_identity(action_context)
+                            action_context = InstallationBinding(
+                                instance_uuid=action_context.instance_uuid,
+                                workspace_uuid=action_context.workspace_uuid,
+                                placement_generation=action_context.placement_generation,
+                                installation_uuid=action_context.installation_uuid,
+                                runtime_revision=identity.runtime_revision,
+                                artifact_digest=identity.artifact_digest,
+                            )
+                        else:
+                            raise ValueError('Plugin action requires a complete InstallationBinding context')
+
+                    exec_context = ExecutionAPIContext(
+                        binding=action_context,
+                        run_id=data.get('run_id'),
+                        claimed_identity=data.get('caller_plugin_identity'),
+                        from_handler=True,
+                    )
+                    payload = {
+                        key: value
+                        for key, value in data.items()
+                        if key not in _UNTRUSTED_SCOPE_FIELDS and key not in ('run_id', 'caller_plugin_identity')
+                    }
+                    try:
+                        result = await self.execution_api.invoke(_operation.operation_id, exec_context, payload)
+                        return handler.ActionResponse.success(data=result)
+                    except ApplicationAPIException as exc:
+                        return handler.ActionResponse.error(message=exc.error.message, data=exc.error.details or {})
+
+                secured_action._is_secured = True
+                self.actions[action_name] = secured_action
+                continue
+
+            runtime_scoped = action_name in _RUNTIME_SCOPED_ACTIONS
+            raw_handler = self._raw_actions.get(action_name, action_handler)
+            if inspect.isasyncgenfunction(raw_handler):
+
+                async def secured_internal_stream_action(
+                    data: dict[str, Any],
+                    *,
+                    _action_handler=raw_handler,
                     _runtime_scoped=runtime_scoped,
                 ):
                     action_context = self._require_runtime_action_context()
@@ -704,13 +812,14 @@ class RuntimeConnectionHandler(handler.Handler):
                             async for response in responses:
                                 yield response
 
-                self.actions[action_name] = secured_stream_action
+                secured_internal_stream_action._is_secured = True
+                self.actions[action_name] = secured_internal_stream_action
                 continue
 
-            async def secured_action(
+            async def secured_internal_action(
                 data: dict[str, Any],
                 *,
-                _action_handler=action_handler,
+                _action_handler=raw_handler,
                 _runtime_scoped=runtime_scoped,
             ) -> handler.ActionResponse:
                 action_context = self._require_runtime_action_context()
@@ -733,7 +842,8 @@ class RuntimeConnectionHandler(handler.Handler):
                         response = await response
                     return response
 
-            self.actions[action_name] = secured_action
+            secured_internal_action._is_secured = True
+            self.actions[action_name] = secured_internal_action
 
     async def _get_plugin_setting(
         self,

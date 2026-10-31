@@ -2,12 +2,13 @@
 
 Installation contexts are capabilities supplied by trusted Host code, never by a
 request body. A run context cannot fall back to legacy plugin-wide privileges.
-The existing runtime consumers are deliberately not routed through this facade.
+All plugin and runner runtime invocations are routed through this facade.
 """
 
 from __future__ import annotations
 
 import contextlib
+import inspect
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -46,6 +47,8 @@ def _output(name: str, **fields: Any) -> type[Output]:
 class ExecutionAPIContext:
     binding: InstallationBinding
     run_id: str | None = None
+    claimed_identity: str | None = None
+    from_handler: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,8 +79,8 @@ class ExecutionOperation:
 
 # Only reviewed business actions are public; runtime setup/chunks/ping stay internal.
 Empty = _input('ExecutionEmptyInput')
-Query = _input('ExecutionQueryInput', query_id=(QueryID, ...))
-QueryKey = _input('ExecutionQueryKeyInput', query_id=(QueryID, ...), key=(Text, ...))
+Query = _input('ExecutionQueryInput', query_id=(QueryID, ...), query_uuid=(Text | None, None))
+QueryKey = _input('ExecutionQueryKeyInput', query_id=(QueryID, ...), key=(Text, ...), query_uuid=(Text | None, None))
 ModelCall = _input(
     'ExecutionModelInput',
     llm_model_uuid=(Text, ...),
@@ -87,6 +90,10 @@ ModelCall = _input(
     reasoning_level=(str | None, None),
     remove_think=(bool, False),
     query_id=(QueryID | None, None),
+    query_uuid=(Text | None, None),
+    timeout=(float | int | None, None),
+    model_reasoning_overrides=(Object | None, None),
+    reasoning_config_override=(Object | None, None),
 )
 Retrieval = _input(
     'ExecutionRetrievalInput',
@@ -95,7 +102,12 @@ Retrieval = _input(
     top_k=(Positive, 5),
     filters=(Object | None, None),
 )
-Storage = _input('ExecutionStorageInput', owner_type=(Literal['plugin', 'workspace'], ...), key=(Text, ...))
+Storage = _input(
+    'ExecutionStorageInput',
+    owner_type=(Literal['plugin', 'workspace'], ...),
+    key=(Text, ...),
+    owner=(str | None, None),
+)
 State = _input('ExecutionStateInput', scope=(Text, ...), key=(Text, ...))
 TargetRun = _input('ExecutionTargetRunInput', target_run_id=(Text | None, None))
 Page = _input(
@@ -152,7 +164,11 @@ EXECUTION_OPERATIONS = (
     ExecutionOperation(
         'reply_message',
         _input(
-            'ExecutionReplyInput', query_id=(QueryID, ...), message_chain=(list[Object], ...), quote_origin=(bool, ...)
+            'ExecutionReplyInput',
+            query_id=(QueryID, ...),
+            message_chain=(list[Object], ...),
+            quote_origin=(bool, False),
+            query_uuid=(Text | None, None),
         ),
         EmptyOutput,
         side_effect=True,
@@ -160,7 +176,13 @@ EXECUTION_OPERATIONS = (
     ExecutionOperation('get_bot_uuid', Query, _output('ExecutionBotIDOutput', bot_uuid=(str, ...))),
     ExecutionOperation(
         'set_query_var',
-        _input('ExecutionSetQueryVariableInput', query_id=(QueryID, ...), key=(Text, ...), value=(JsonValue, ...)),
+        _input(
+            'ExecutionSetQueryVariableInput',
+            query_id=(QueryID, ...),
+            key=(Text, ...),
+            value=(JsonValue, ...),
+            query_uuid=(Text | None, None),
+        ),
         EmptyOutput,
         side_effect=True,
     ),
@@ -228,6 +250,9 @@ EXECUTION_OPERATIONS = (
             tool_name=(Text, ...),
             parameters=(Object, {}),
             tool_parameters=(Object | None, None),
+            session=(Object | None, None),
+            query_id=(QueryID | None, None),
+            query_uuid=(Text | None, None),
         ),
         ToolOutput,
         'plugin_or_run',
@@ -246,6 +271,7 @@ EXECUTION_OPERATIONS = (
             owner_type=(Literal['plugin', 'workspace'], ...),
             key=(Text, ...),
             value_base64=(str, ...),
+            owner=(str | None, None),
         ),
         EmptyOutput,
         'plugin_or_run',
@@ -257,7 +283,11 @@ EXECUTION_OPERATIONS = (
     ExecutionOperation('delete_binary_storage', Storage, EmptyOutput, 'plugin_or_run', True),
     ExecutionOperation(
         'get_binary_storage_keys',
-        _input('ExecutionStorageKeysInput', owner_type=(Literal['plugin', 'workspace'], ...)),
+        _input(
+            'ExecutionStorageKeysInput',
+            owner_type=(Literal['plugin', 'workspace'], ...),
+            owner=(str | None, None),
+        ),
         KeysOutput,
         'plugin_or_run',
     ),
@@ -310,7 +340,7 @@ EXECUTION_OPERATIONS = (
             filters=(Object | None, None),
             query_text=(str, ''),
             search_type=(str, 'vector'),
-            vector_weight=(float, 0.5),
+            vector_weight=(float | None, 0.5),
         ),
         ResultsOutput,
     ),
@@ -377,6 +407,7 @@ EXECUTION_OPERATIONS = (
             kb_id=(Text, ...),
             query_text=(str, ...),
             query_id=(QueryID | None, None),
+            query_uuid=(Text | None, None),
             top_k=(Positive, 5),
             filters=(Object | None, None),
         ),
@@ -632,8 +663,9 @@ def _fail(code: str, message: str, status: int = 400) -> None:
 class ExecutionAPI:
     """Invoke Host APIs with trusted installation/run capabilities, without a transport."""
 
-    def __init__(self, ap: Any):
+    def __init__(self, ap: Any, handler: Any = None):
         self.ap = ap
+        self._handler = handler
 
     def operations(self) -> tuple[ExecutionOperation, ...]:
         return EXECUTION_OPERATIONS
@@ -658,7 +690,9 @@ class ExecutionAPI:
             _fail('permission_denied', 'A run cannot use legacy plugin-wide operations', 403)
         try:
             data = operation.input_type.model_validate(payload).model_dump(exclude_unset=True)
-        except ValidationError:
+        except ValidationError as exc:
+            if operation.action == 'set_query_var' and any('key' in err.get('loc', ()) for err in exc.errors()):
+                _fail('invalid_input', 'Query variable key must be a non-empty string')
             _fail('invalid_input', f'Input does not match {operation.input_type.__name__}')
         if operation.action == 'call_platform_api' and context.run_id is None and not data.get('bot_uuid'):
             _fail('invalid_input', 'bot_uuid is required outside a run')
@@ -671,8 +705,10 @@ class ExecutionAPI:
                 if 'tool_parameters' in data:
                     _fail('invalid_input', 'Supply either parameters or tool_parameters')
                 data['tool_parameters'] = data.pop('parameters')
-        handler = getattr(getattr(self.ap, 'plugin_connector', None), 'handler', None)
-        if handler is None or operation.action not in handler.actions:
+        handler = self._handler or getattr(getattr(self.ap, 'plugin_connector', None), 'handler', None)
+        if handler is None or (
+            operation.action not in handler.actions and operation.action not in getattr(handler, '_raw_actions', {})
+        ):
             _fail('application_error', 'The execution Host does not provide this operation', 503)
         try:
             handler.validate_inbound_action_context(operation.action, context.binding)
@@ -681,28 +717,42 @@ class ExecutionAPI:
         token = handler._current_action_context.set(context.binding)
         try:
             async with handler._tenant_action_scope(context.binding):
-                try:
+                if context.from_handler:
                     _, identity = await handler._require_plugin_action_context()
                     await handler._require_active_action_context(context.binding)
-                except (TypeError, ValueError):
-                    _fail('permission_denied', 'Installation binding is invalid or stale', 403)
+                else:
+                    try:
+                        _, identity = await handler._require_plugin_action_context()
+                        await handler._require_active_action_context(context.binding)
+                    except (TypeError, ValueError):
+                        _fail('permission_denied', 'Installation binding is invalid or stale', 403)
+                trusted_plugin_identity = f'{identity.plugin_author}/{identity.plugin_name}'
+                if context.claimed_identity is not None and context.claimed_identity != trusted_plugin_identity:
+                    _fail('permission_denied', 'Caller plugin identity does not match the installation binding', 403)
                 if context.run_id is not None:
-                    if 'query_id' in data:
+                    if 'query_id' in data or 'query_uuid' in data:
                         _fail('invalid_input', 'A run context supplies its own query identity')
-                    from ...agent.runner.session_registry import get_session_registry
-                    from ...plugin.agent_run_support import _load_persistent_agent_run_session
+                    if not context.from_handler:
+                        from ...agent.runner.session_registry import get_session_registry
+                        from ...plugin.agent_run_support import _load_persistent_agent_run_session
 
-                    session = await get_session_registry().get(context.run_id)
-                    if session is None and operation.scope == 'runner_admin':
-                        session = await _load_persistent_agent_run_session(context.run_id, self.ap, operation.action)
-                    if (
-                        session is None
-                        or session['authorization'].get('workspace_id') != context.binding.workspace_uuid
-                        or session.get('plugin_identity') != f'{identity.plugin_author}/{identity.plugin_name}'
-                    ):
-                        _fail('permission_denied', 'Run does not belong to this installation Workspace', 403)
+                        session = await get_session_registry().get(context.run_id)
+                        if session is None and operation.scope == 'runner_admin':
+                            session = await _load_persistent_agent_run_session(
+                                context.run_id, self.ap, operation.action
+                            )
+                        if (
+                            session is None
+                            or session['authorization'].get('workspace_id') != context.binding.workspace_uuid
+                            or session.get('plugin_identity') != trusted_plugin_identity
+                        ):
+                            _fail('permission_denied', 'Run does not belong to this installation Workspace', 403)
                     data['run_id'] = context.run_id
-                yield operation, handler.actions[operation.action], data
+                data['caller_plugin_identity'] = trusted_plugin_identity
+                action_handler = getattr(handler, '_raw_actions', {}).get(
+                    operation.action, handler.actions[operation.action]
+                )
+                yield operation, action_handler, data
         finally:
             handler._current_action_context.reset(token)
 
@@ -733,10 +783,15 @@ class ExecutionAPI:
                 operation_id, context, {} if payload is None else payload, streaming=False
             ) as call:
                 operation, action, data = call
-                return self._result(operation, await action(data))
+                result = action(data)
+                if inspect.isawaitable(result):
+                    result = await result
+                return self._result(operation, result)
         except ApplicationAPIException:
             raise
         except Exception:
+            if context.from_handler:
+                raise
             _fail('application_error', 'Execution operation failed', 500)
 
     async def stream(self, operation_id: str, context: ExecutionAPIContext, payload: dict | None = None):
@@ -752,6 +807,8 @@ class ExecutionAPI:
             except ApplicationAPIException:
                 raise
             except Exception:
+                if context.from_handler:
+                    raise
                 _fail('application_error', 'Execution stream failed', 500)
 
         async with contextlib.aclosing(isolated_stream(produce())) as responses:
