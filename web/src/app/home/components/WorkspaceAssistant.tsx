@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Send, ChevronDown, LoaderCircle, Square } from 'lucide-react';
+import {
+  Plus,
+  Send,
+  ChevronDown,
+  LoaderCircle,
+  Square,
+  CircleAlert,
+} from 'lucide-react';
 import {
   RiSparkling2Line,
   RiArrowUpSLine,
@@ -39,12 +46,23 @@ import { DynamicFormItemType } from '@/app/infra/entities/form/dynamic';
 import AssistantToolResult, { AssistantTool } from './AssistantToolResult';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from './models-dialog/types';
 
+type PendingCall = {
+  name: string;
+  arguments: Record<string, unknown>;
+  operation?: {
+    id: string;
+    label?: Record<string, string>;
+    risk?: 'read' | 'write' | 'dangerous';
+    summary?: string;
+  };
+};
+
 type Conversation = {
   uuid: string;
   revision: number;
   status: 'ready' | 'running' | 'approval' | 'failed';
   messages: { role: string; content: string; tool?: AssistantTool }[];
-  pending: { name: string; arguments: Record<string, unknown> }[];
+  pending: PendingCall[];
   error: string | null;
   model_name: string | null;
   model_uuid: string | null;
@@ -1043,14 +1061,86 @@ function AssistantPanel({
               {conversation?.status === 'approval' && (
                 <div className="space-y-3 rounded-xl border border-primary/30 p-3">
                   <p className="text-sm font-medium">{t('assistant.review')}</p>
-                  {conversation.pending.map((call, index) => (
-                    <div key={index}>
-                      <p className="text-sm font-medium">{call.name}</p>
-                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
-                        {JSON.stringify(call.arguments, null, 2)}
-                      </pre>
-                    </div>
-                  ))}
+                  {conversation.pending.map((call, index) => {
+                    const isWorkspaceCall = call.name === 'workspace_call';
+                    const operation = call.operation;
+                    const opId = isWorkspaceCall
+                      ? operation?.id ||
+                        (call.arguments?.operation_id as string)
+                      : null;
+                    const opArgs = isWorkspaceCall
+                      ? (call.arguments?.arguments ?? call.arguments)
+                      : call.arguments;
+                    const opLabel =
+                      operation?.label?.zh_Hans ||
+                      operation?.label?.['zh-Hans'] ||
+                      operation?.label?.en_US ||
+                      opId;
+                    const risk = operation?.risk;
+                    const isDangerous = risk === 'dangerous';
+
+                    return (
+                      <div
+                        key={index}
+                        className={`space-y-2 rounded-lg border p-3 ${
+                          isDangerous
+                            ? 'border-destructive/40 bg-destructive/5'
+                            : 'bg-muted/30'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            {isWorkspaceCall && opLabel ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold">
+                                  {opLabel}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-mono">
+                                  ({opId})
+                                </span>
+                              </div>
+                            ) : (
+                              <p className="text-sm font-medium">{call.name}</p>
+                            )}
+                          </div>
+                          {risk && (
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
+                                isDangerous
+                                  ? 'bg-destructive/15 text-destructive font-bold ring-1 ring-destructive/30'
+                                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                              }`}
+                            >
+                              {t(`agents.apiToolRisk.${risk}`, {
+                                defaultValue: isDangerous ? '敏感' : '操作',
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        {isDangerous && (
+                          <div className="flex items-center gap-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs text-destructive font-medium border border-destructive/20">
+                            <CircleAlert className="size-4 shrink-0" />
+                            <span>
+                              {t('assistant.dangerousWarning', {
+                                defaultValue:
+                                  '敏感操作提示：该操作具有较高风险，执行后可能不可逆，请核对参数后确认。',
+                              })}
+                            </span>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">
+                            {t('assistant.parameters', {
+                              defaultValue: '参数：',
+                            })}
+                          </p>
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-xs font-mono border">
+                            {JSON.stringify(opArgs, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    );
+                  })}
                   <div className="flex gap-2">
                     <Button
                       size="sm"

@@ -303,7 +303,7 @@ class KnowledgeService:
         kb_uuid: str,
         file_id: str,
         parser_plugin_id: str | None = None,
-    ) -> str:
+    ) -> int:
         """存储文件"""
         execution_context = self._execution_context(context)
         runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)

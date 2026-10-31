@@ -184,6 +184,9 @@ const zhHans = {
       get_pipeline: '查看 流水线',
       get_knowledge_schema: '查看知识引擎配置',
       list_operation_logs: '查询操作日志',
+      workspace_search: '搜索操作能力',
+      workspace_describe: '查看操作定义',
+      workspace_call: '执行工作区操作',
     },
     resources: {
       models: '查询聊天模型',
@@ -202,6 +205,9 @@ const zhHans = {
     build: '帮我创建一个知识库问答应用。',
     toolResult: '操作结果',
     review: '请检查具体操作及参数，确认后执行',
+    dangerousWarning:
+      '敏感操作提示：该操作具有较高风险，执行后可能不可逆，请核对参数后确认。',
+    parameters: '参数：',
     confirm: '确认执行',
     decline: '拒绝',
     working: '正在处理…',
