@@ -10,7 +10,7 @@ import logging
 
 from pydantic import TypeAdapter, ValidationError
 
-from ..authz import AuthenticationDeniedError, require_permission
+from ..authz import AuthenticationDeniedError, PermissionDeniedError, require_permission
 from ..context import PrincipalType, RequestContext
 from ...i18n import language_scope
 from ...i18n.workspace import get_workspace_language
@@ -67,10 +67,15 @@ class ApplicationAPI:
             PrincipalType.ACCOUNT,
             PrincipalType.API_KEY,
             PrincipalType.SUPPORT_ADMIN,
+            PrincipalType.PROCESSOR,
         }:
             raise AuthenticationDeniedError('This principal cannot invoke Workspace management operations')
         if spec.principals is not None and context.principal.principal_type not in spec.principals:
             raise AuthenticationDeniedError('This operation requires a different principal')
+        if context.principal.principal_type == PrincipalType.PROCESSOR and context.allowed_operation_ids is None:
+            raise PermissionDeniedError('allowed_operation_ids')
+        if context.allowed_operation_ids is not None and spec.operation_id not in context.allowed_operation_ids:
+            raise PermissionDeniedError(spec.operation_id)
         require_permission(context, spec.permission)
         try:
             payload = spec.input_type.model_validate(input)
@@ -183,6 +188,7 @@ class ApplicationAPI:
                 PrincipalType.ACCOUNT,
                 PrincipalType.API_KEY,
                 PrincipalType.SUPPORT_ADMIN,
+                PrincipalType.PROCESSOR,
             }
         ):
             return
@@ -191,6 +197,8 @@ class ApplicationAPI:
             if context.principal.principal_type == PrincipalType.API_KEY
             else context.principal.actor_account_uuid
             if context.principal.principal_type == PrincipalType.SUPPORT_ADMIN
+            else context.principal.processor_uuid
+            if context.principal.principal_type == PrincipalType.PROCESSOR
             else context.account_uuid
         )
         if not isinstance(principal_id, str) or not principal_id.strip():
@@ -255,11 +263,29 @@ class ApplicationAPI:
                     break
             if resource_id is None and identity:
                 resource_id = next(iter(identity.values()))
+            detail = {'operation': spec.operation_id, 'version': spec.version}
+            actor_name = None
+            if context.principal.principal_type == PrincipalType.PROCESSOR:
+                actor_name = (
+                    f'{context.principal.processor_kind}:{context.principal.processor_uuid}'
+                    if context.principal.processor_kind
+                    else context.principal.processor_uuid
+                )
+                detail.update(
+                    {
+                        'processor_kind': context.principal.processor_kind,
+                        'processor_uuid': context.principal.processor_uuid,
+                        'run_id': context.principal.run_id,
+                    }
+                )
+                if context.principal.trigger_actor:
+                    detail['trigger_actor'] = context.principal.trigger_actor
             await service.record(
                 context.workspace_uuid,
                 rule=ActionRule(action, 'resource', bucket, parts[0]),
                 level=level,
                 actor_account_uuid=context.principal.actor_account_uuid or context.account_uuid,
+                actor_name=actor_name,
                 actor_role=context.workspace.role,
                 principal_type=context.principal.principal_type.value,
                 api_key_uuid=context.principal.api_key_uuid,
@@ -269,7 +295,7 @@ class ApplicationAPI:
                 resource_id=resource_id,
                 outcome=outcome,
                 status_code=status,
-                detail={'operation': spec.operation_id, 'version': spec.version},
+                detail=detail,
                 duration_ms=int((time.monotonic() - observed_at) * 1000),
             )
         except Exception:

@@ -19,6 +19,7 @@ class PrincipalType(enum.StrEnum):
     SUPPORT_ADMIN = 'support_admin'
     SYSTEM = 'system'
     PUBLIC_BOT = 'public_bot'
+    PROCESSOR = 'processor'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -30,6 +31,10 @@ class PrincipalContext:
     actor_account_uuid: str | None = None
     api_key_uuid: str | None = None
     support_session_id: str | None = None
+    processor_kind: str | None = None
+    processor_uuid: str | None = None
+    run_id: str | None = None
+    trigger_actor: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -54,6 +59,7 @@ class RequestContext:
     principal: PrincipalContext
     workspace: WorkspaceContext
     entitlement_revision: int = 0
+    allowed_operation_ids: frozenset[str] | None = None
 
     @property
     def workspace_uuid(self) -> str:
