@@ -36,7 +36,7 @@ from .resources import begin as resources_begin
 from .resources import end as resources_end
 from .trace import TraceState
 
-MODES = frozenset({'pipeline', 'agent', 'event_processor', 'none'})
+MODES = frozenset({'pipeline', 'agent', 'event_processor', 'workflow', 'none'})
 OUTCOMES = frozenset({'success', 'failed', 'cancelled', 'timeout', 'skipped', 'unknown'})
 FAMILIES = frozenset({'platform_event', 'event_route', 'pipeline', 'runner', 'platform_api', 'tool'})
 ORIGINS = frozenset({'platform', 'webui', 'api'})
