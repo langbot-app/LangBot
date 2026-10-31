@@ -85,7 +85,8 @@ a pipeline retain these independent settings.
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
-| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
+| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read); supports `command_settings` |
+| `list_plugin_commands` | List commands provided by installed plugins in the current Workspace |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
 | `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline and Event processor types |
 | `get_processor_metadata` | Discover installed event-capable Runner components, schemas and supported event patterns. |

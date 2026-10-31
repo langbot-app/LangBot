@@ -358,7 +358,9 @@ class LangBotMCPServer:
                 'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
-                'Subscriptions run independently of each other and of event_bindings. Returns the new bot UUID.'
+                'Subscriptions run independently of each other and of event_bindings. '
+                'command_settings is an object: {enabled: bool, prefixes: [str], plugins: [{plugin_id: str, enabled: bool}]}. '
+                'Returns the new bot UUID.'
             )
         )
         async def create_bot(bot_data: dict) -> str:
@@ -369,6 +371,7 @@ class LangBotMCPServer:
             description=(
                 'Update a bot by UUID. `bot_data` matches the PUT bot body. '
                 'plugin_processors replaces the bot subscriptions with [{processor_uuid, enabled}]. '
+                'command_settings replaces the bot command settings with {enabled: bool, prefixes: [str], plugins: [{plugin_id: str, enabled: bool}]}. '
                 'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes.'
             )
         )
@@ -376,6 +379,12 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.bot_service.update_bot(context, bot_uuid, bot_data)
             return _dump({'ok': True})
+
+        @mcp.tool(description='List commands provided by installed plugins in the current Workspace.')
+        async def list_plugin_commands() -> str:
+            _authorized(Permission.RESOURCE_VIEW)
+            commands = await ap.plugin_connector.list_commands()
+            return _dump({'commands': [c.model_dump() for c in commands]})
 
         @mcp.tool(description='Delete a bot by UUID.')
         async def delete_bot(bot_uuid: str) -> str:

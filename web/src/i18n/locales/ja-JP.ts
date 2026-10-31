@@ -902,6 +902,29 @@ const jaJP = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: 'プラグインコマンドバインド',
+      description:
+        'message.received イベントにのみ適用されます。プラグインコマンドに一致した場合、プラグインプロセッサ、ルーティングルール、パイプラインをスキップして直接実行されます。',
+      prefixes: 'コマンドプレフィックス',
+      prefixPlaceholder: 'プレフィックスを入力してEnter（例: / または !）',
+      addPrefix: 'プレフィックスを追加',
+      prefixInvalid:
+        'プレフィックスは空にできず、空白文字を含めることはできません',
+      prefixDuplicate: 'プレフィックスは既に存在します',
+      plugins: 'バインドされたプラグインコマンド',
+      empty: 'バインドされたプラグインコマンドはまだありません。',
+      addPlugin: 'プラグインを追加',
+      noAvailablePlugins:
+        'コマンドコンポーネントを含む利用可能なプラグインはありません。',
+      selectPlugins: 'バインドするプラグインを選択',
+      dragHint:
+        'ドラッグして優先順位を並べ替えます（上位のプラグインが優先されます）',
+      commandsCount: '{{count}} 個のコマンド',
+      noCommands: 'このプラグインにはコマンドが定義されていません',
+      overriddenBy: '{{plugin}} により上書き（優先度高）',
+      remove: 'バインド解除',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',

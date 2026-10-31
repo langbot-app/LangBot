@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
+import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -174,6 +175,18 @@ const getFormSchema = (t: (key: string) => string) =>
     plugin_processors: z
       .array(z.object({ processor_uuid: z.string(), enabled: z.boolean() }))
       .optional(),
+    command_settings: z
+      .object({
+        enabled: z.boolean(),
+        prefixes: z.array(z.string()),
+        plugins: z.array(
+          z.object({
+            plugin_id: z.string(),
+            enabled: z.boolean(),
+          }),
+        ),
+      })
+      .optional(),
     event_bindings: z
       .array(
         z.object({
@@ -234,6 +247,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: true,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: {
+        enabled: true,
+        prefixes: ['/'],
+        plugins: [],
+      },
     },
   });
 
@@ -383,6 +401,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 enable: val.enable,
                 event_bindings: val.event_bindings || [],
                 plugin_processors: val.plugin_processors || [],
+                command_settings: val.command_settings || {
+                  enabled: true,
+                  prefixes: ['/'],
+                  plugins: [],
+                },
               });
               handleAdapterSelect(val.adapter, true);
 
@@ -667,6 +690,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: false,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: form.getValues('command_settings') || {
+        enabled: true,
+        prefixes: ['/'],
+        plugins: [],
+      },
     };
 
     try {
@@ -726,6 +754,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: true,
       event_bindings: form.getValues().event_bindings ?? [],
       plugin_processors: form.getValues().plugin_processors ?? [],
+      command_settings: form.getValues().command_settings,
     };
     httpClient
       .updateBot(initBotId, updateBot)
@@ -1323,6 +1352,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   agentOptions={agentNameList.filter(
                     (agent) => agent.kind !== 'event_processor',
                   )}
+                />
+                <PluginCommandBindings
+                  value={form.watch('command_settings')}
+                  onChange={(value) =>
+                    form.setValue('command_settings', value, {
+                      shouldDirty: true,
+                    })
+                  }
                 />
                 <PluginProcessorBindings
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}

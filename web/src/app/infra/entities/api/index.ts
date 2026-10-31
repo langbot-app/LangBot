@@ -344,9 +344,21 @@ export interface Bot {
   adapter_config: object;
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
+  command_settings?: BotCommandSettings;
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export interface BotCommandPluginBinding {
+  plugin_id: string;
+  enabled: boolean;
+}
+
+export interface BotCommandSettings {
+  enabled: boolean;
+  prefixes: string[];
+  plugins: BotCommandPluginBinding[];
 }
 
 export interface PluginProcessorBinding {

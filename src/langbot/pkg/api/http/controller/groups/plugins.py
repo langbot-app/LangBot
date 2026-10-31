@@ -406,6 +406,18 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'plugins': redact_plugin_secrets(plugins)})
 
         @self.route(
+            '/commands',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Get all commands registered by installed plugins"""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            commands = await self.ap.plugin_connector.list_commands()
+            return self.success(data={'commands': [c.model_dump() for c in commands]})
+
+        @self.route(
             '/debug-info',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

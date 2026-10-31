@@ -849,6 +849,27 @@ const zhHant = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: '外掛程式命令綁定',
+      description:
+        '僅對 message.received 訊息事件生效；命中外掛程式命令後，不再進入外掛程式處理器、路由規則和流水線。',
+      prefixes: '命令前綴',
+      prefixPlaceholder: '輸入前綴，按 Enter 新增（如 / 或 !）',
+      addPrefix: '新增前綴',
+      prefixInvalid: '前綴不能為空且不能包含空白字元',
+      prefixDuplicate: '前綴已存在',
+      plugins: '綁定的外掛程式命令',
+      empty: '尚未綁定任何外掛程式命令。',
+      addPlugin: '新增外掛程式',
+      noAvailablePlugins: '沒有包含命令組件的可用外掛程式。',
+      selectPlugins: '選擇要綁定的外掛程式',
+      dragHint:
+        '拖曳以調整外掛程式命令匹配優先順序（排在前面的外掛程式優先匹配）',
+      commandsCount: '{{count}} 個命令',
+      noCommands: '該外掛程式未定義命令',
+      overriddenBy: '被 {{plugin}} 覆蓋（優先級更高）',
+      remove: '解除綁定',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         '目前機器人僅支援部分事件（{{events}}），處理器表現可能不完整。',

@@ -41,6 +41,7 @@ class BotService:
         'enable',
         'event_bindings',
         'plugin_processors',
+        'command_settings',
     }
 
     def __init__(self, ap: app.Application) -> None:
@@ -659,6 +660,51 @@ class BotService:
             normalized.append({'processor_uuid': processor_uuid, 'enabled': enabled})
         return normalized
 
+    async def _normalize_command_settings(self, context: TenantContext, settings: typing.Any) -> dict:
+        """Validate command settings for a bot."""
+        if not isinstance(settings, dict):
+            raise ValueError('command_settings must be an object')
+        enabled = settings.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValueError('command_settings.enabled must be a boolean')
+
+        prefixes = settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or len(prefixes) == 0:
+            raise ValueError('command_settings.prefixes must be a non-empty list')
+        normalized_prefixes = []
+        for p in prefixes:
+            if not isinstance(p, str) or not p.strip() or any(c.isspace() for c in p):
+                raise ValueError('Each prefix must be a non-empty string without whitespace')
+            if p not in normalized_prefixes:
+                normalized_prefixes.append(p)
+
+        plugins = settings.get('plugins', [])
+        if not isinstance(plugins, list):
+            raise ValueError('command_settings.plugins must be a list')
+
+        normalized_plugins = []
+        seen_plugins = set()
+        for item in plugins:
+            if not isinstance(item, dict):
+                raise ValueError('Each plugin binding must be an object')
+            plugin_id = item.get('plugin_id')
+            if not isinstance(plugin_id, str) or not plugin_id.strip():
+                raise ValueError('Plugin ID is required')
+            plugin_id = plugin_id.strip()
+            if plugin_id in seen_plugins:
+                raise ValueError('A plugin can only be bound once per bot')
+            plugin_enabled = item.get('enabled', True)
+            if not isinstance(plugin_enabled, bool):
+                raise ValueError('Plugin enabled must be a boolean')
+            seen_plugins.add(plugin_id)
+            normalized_plugins.append({'plugin_id': plugin_id, 'enabled': plugin_enabled})
+
+        return {
+            'enabled': enabled,
+            'prefixes': normalized_prefixes,
+            'plugins': normalized_plugins,
+        }
+
     async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
@@ -675,6 +721,10 @@ class BotService:
         if 'plugin_processors' in update_data:
             update_data['plugin_processors'] = await self._normalize_plugin_processors(
                 context, update_data['plugin_processors']
+            )
+        if 'command_settings' in update_data:
+            update_data['command_settings'] = await self._normalize_command_settings(
+                context, update_data['command_settings']
             )
         return update_data
 
@@ -779,6 +829,7 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
+        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'plugins': []})
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
         bot_data.setdefault('description', '')
@@ -814,7 +865,7 @@ class BotService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
 
-        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors'}
+        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors', 'command_settings'}
         if not runtime_fields.intersection(update_data):
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
             if runtime_bot is not None:

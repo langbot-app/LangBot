@@ -897,6 +897,27 @@ const viVN = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: 'Ràng buộc lệnh plugin',
+      description:
+        'Chỉ áp dụng cho các sự kiện message.received; khi khớp lệnh plugin, lệnh sẽ thực thi trực tiếp tại tầng định tuyến, bỏ qua bộ xử lý plugin, quy tắc định tuyến và pipeline.',
+      prefixes: 'Tiền tố lệnh',
+      prefixPlaceholder: 'Nhập tiền tố và nhấn Enter (ví dụ: / hoặc !)',
+      addPrefix: 'Thêm tiền tố',
+      prefixInvalid: 'Tiền tố không được để trống và không chứa khoảng trắng',
+      prefixDuplicate: 'Tiền tố đã tồn tại',
+      plugins: 'Các lệnh plugin đã ràng buộc',
+      empty: 'Chưa có lệnh plugin nào được ràng buộc.',
+      addPlugin: 'Thêm plugin',
+      noAvailablePlugins:
+        'Không có plugin khả dụng nào khai báo thành phần lệnh.',
+      selectPlugins: 'Chọn plugin để ràng buộc',
+      dragHint: 'Kéo để sắp xếp lại mức ưu tiên (plugin ở trên khớp trước)',
+      commandsCount: '{{count}} lệnh',
+      noCommands: 'Không có lệnh nào được khai báo bởi plugin này',
+      overriddenBy: 'Bị ghi đè bởi {{plugin}} (ưu tiên cao hơn)',
+      remove: 'Hủy ràng buộc',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',

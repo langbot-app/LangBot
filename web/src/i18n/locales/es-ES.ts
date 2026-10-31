@@ -913,6 +913,29 @@ const esES = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: 'Vinculaciones de comandos de complementos',
+      description:
+        'Solo se aplica a eventos message.received; al coincidir con un comando de complemento, se ejecuta directamente en la capa de enrutamiento omitiendo procesadores de complementos, reglas de enrutamiento y pipelines.',
+      prefixes: 'Prefijos de comando',
+      prefixPlaceholder: 'Ingrese prefijo y presione Enter (ej. / o !)',
+      addPrefix: 'Agregar prefijo',
+      prefixInvalid:
+        'El prefijo no puede estar vacío ni contener espacios en blanco',
+      prefixDuplicate: 'El prefijo ya existe',
+      plugins: 'Comandos de complementos vinculados',
+      empty: 'Aún no hay comandos de complementos vinculados.',
+      addPlugin: 'Agregar complemento',
+      noAvailablePlugins:
+        'No hay complementos disponibles con componentes de comando.',
+      selectPlugins: 'Seleccionar complementos para vincular',
+      dragHint:
+        'Arrastre para reordenar la prioridad (los complementos superiores tienen prioridad)',
+      commandsCount: '{{count}} comandos',
+      noCommands: 'No hay comandos declarados por este complemento',
+      overriddenBy: 'Sobrescrito por {{plugin}} (mayor prioridad)',
+      remove: 'Desvincular',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',

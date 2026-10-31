@@ -853,6 +853,26 @@ const zhHans = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: '插件命令绑定',
+      description:
+        '仅对 message.received 消息事件生效；命中插件命令后，不再进入插件处理器、路由规则和流水线。',
+      prefixes: '命令前缀',
+      prefixPlaceholder: '输入前缀，按回车添加（如 / 或 !）',
+      addPrefix: '添加前缀',
+      prefixInvalid: '前缀不能为空且不能包含空白字符',
+      prefixDuplicate: '前缀已存在',
+      plugins: '绑定的插件命令',
+      empty: '尚未绑定任何插件命令。',
+      addPlugin: '添加插件',
+      noAvailablePlugins: '没有包含命令组件的可用插件。',
+      selectPlugins: '选择要绑定的插件',
+      dragHint: '拖动以调整插件命令匹配优先级（排在前面的插件优先匹配）',
+      commandsCount: '{{count}} 个命令',
+      noCommands: '该插件未定义命令',
+      overriddenBy: '被 {{plugin}} 覆盖（优先级更高）',
+      remove: '解除绑定',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         '当前机器人仅支持部分事件（{{events}}），处理器表现可能不完整。',

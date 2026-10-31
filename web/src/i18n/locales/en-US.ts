@@ -898,6 +898,26 @@ const enUS = {
     },
   },
   bots: {
+    pluginCommands: {
+      title: 'Plugin Command Bindings',
+      description:
+        'Only applies to message.received events; when a plugin command matches, execution happens directly at the routing layer and bypasses plugin processors, routing rules, and pipelines.',
+      prefixes: 'Command Prefixes',
+      prefixPlaceholder: 'Enter prefix and press Enter (e.g. / or !)',
+      addPrefix: 'Add Prefix',
+      prefixInvalid: 'Prefix cannot be empty and cannot contain whitespace',
+      prefixDuplicate: 'Prefix already exists',
+      plugins: 'Bound Plugin Commands',
+      empty: 'No plugin commands bound yet.',
+      addPlugin: 'Add Plugin',
+      noAvailablePlugins: 'No available plugins declare command components.',
+      selectPlugins: 'Select plugins to bind',
+      dragHint: 'Drag to reorder priority (higher plugins match first)',
+      commandsCount: '{{count}} commands',
+      noCommands: 'No commands declared by this plugin',
+      overriddenBy: 'Overridden by {{plugin}} (higher priority)',
+      remove: 'Unbind',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',

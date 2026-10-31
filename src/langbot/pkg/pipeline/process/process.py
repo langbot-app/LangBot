@@ -41,8 +41,20 @@ class Processor(stage.PipelineStage):
         )
 
         async def generator():
-            cmd_prefix = self.ap.instance_config.data['command']['prefix']
-            cmd_enable = self.ap.instance_config.data['command'].get('enable', True)
+            cmd_enable = True
+            cmd_prefix = ['/']
+            if query.bot_uuid and hasattr(self.ap, 'bot_service') and self.ap.bot_service:
+                try:
+                    bot = await self.ap.bot_service.get_bot(
+                        query.workspace_uuid,
+                        query.bot_uuid,
+                        include_secret=False,
+                    )
+                    if bot and 'command_settings' in bot and isinstance(bot['command_settings'], dict):
+                        cmd_enable = bot['command_settings'].get('enabled', True)
+                        cmd_prefix = bot['command_settings'].get('prefixes', ['/'])
+                except Exception as exc:
+                    self.ap.logger.warning(f'Failed to fetch bot command settings for {query.bot_uuid}: {exc}')
 
             if cmd_enable and any(message_text.startswith(prefix) for prefix in cmd_prefix):
                 handler_to_use = self.cmd_handler
