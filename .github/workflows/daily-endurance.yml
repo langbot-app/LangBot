@@ -249,3 +249,51 @@ jobs:
             .qa/api/*.log
           if-no-files-found: warn
           retention-days: 30
+
+  dify-cloud:
+    name: Daily Dify Cloud Agent regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Run live Dify Agent regression
+        env:
+          DIFY_AGENT_API_KEY: ${{ secrets.DIFY_AGENT_API_KEY }}
+          DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
+        run: |
+          if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              echo "DIFY_AGENT_API_KEY is required for the scheduled live Dify regression." >&2
+              exit 1
+            fi
+            echo "DIFY_AGENT_API_KEY is not configured; skipping manual live Dify regression."
+            exit 0
+          fi
+          uv run --no-sync python http-certification-tests/live_dify_agent.py
+      - name: Publish Dify regression summary
+        if: always()
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" ]]; then
+            cat "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve Dify regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-dify-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/dify-live/summary.json
+          if-no-files-found: warn
+          retention-days: 30
