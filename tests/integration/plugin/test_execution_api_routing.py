@@ -506,3 +506,11 @@ async def test_sdk_0_7_19_call_tool_parameters_and_session_compatibility(test_ho
     )
     assert resp.code == 0
     assert resp.data == {'result': 'tool-result'}
+
+
+@pytest.mark.asyncio
+async def test_run_scoped_action_missing_run_id_returns_run_id_is_required(test_host):
+    """When a run-scoped action is called from handler without run_id, error message is 'run_id is required'."""
+    resp = await test_host.handler.actions['state_get']({'scope': 'conversation', 'key': 'test_key'})
+    assert resp.code != 0
+    assert 'run_id is required' in resp.message

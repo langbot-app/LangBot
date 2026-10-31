@@ -684,8 +684,12 @@ class ExecutionAPI:
         if not isinstance(context, ExecutionAPIContext) or not isinstance(context.binding, InstallationBinding):
             _fail('invalid_authentication', 'A trusted installation binding is required', 401)
         if context.run_id is not None and (not isinstance(context.run_id, str) or not context.run_id.strip()):
+            if context.from_handler and operation.scope == 'run':
+                _fail('permission_denied', 'run_id is required', 400)
             _fail('invalid_authentication', 'The trusted run ID is invalid', 401)
         if context.run_id is None and operation.scope == 'run':
+            if context.from_handler:
+                _fail('permission_denied', 'run_id is required', 400)
             _fail('permission_denied', 'This operation requires a trusted run context', 403)
         if context.run_id is not None and operation.scope == 'plugin':
             _fail('permission_denied', 'A run cannot use legacy plugin-wide operations', 403)
