@@ -13,6 +13,7 @@ from ....pipeline.extension_preferences import (
     validate_extension_preferences,
 )
 from ....workspace.errors import WorkspaceNotFoundError
+from ...application.tool_grants import get_workspace_operations_catalog, validate_grant_change
 from .secrets import redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -206,6 +207,11 @@ class PipelineService:
                 'mcp_resources': [],
                 'mcp_resource_agent_read_enabled': True,
             }
+        else:
+            prefs = pipeline_data['extensions_preferences']
+            if isinstance(prefs, dict) and 'workspace_operations' in prefs:
+                new_ops = prefs['workspace_operations']
+                prefs['workspace_operations'] = validate_grant_change(self.ap, context, [], new_ops)
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
@@ -248,6 +254,18 @@ class PipelineService:
             )
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         if 'extensions_preferences' in pipeline_data:
+            current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
+            if current_pipeline is None:
+                raise WorkspaceNotFoundError('Pipeline not found')
+            old_prefs = current_pipeline.get('extensions_preferences', {}) if isinstance(current_pipeline, dict) else {}
+            old_ops = old_prefs.get('workspace_operations', []) if isinstance(old_prefs, dict) else []
+            new_prefs = pipeline_data['extensions_preferences']
+            if isinstance(new_prefs, dict):
+                if 'workspace_operations' in new_prefs:
+                    new_ops = new_prefs['workspace_operations']
+                    new_prefs['workspace_operations'] = validate_grant_change(self.ap, context, old_ops, new_ops)
+                else:
+                    new_prefs['workspace_operations'] = old_ops
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
 
         result = await self.ap.persistence_mgr.execute_async(
@@ -322,6 +340,9 @@ class PipelineService:
 
         # Create new pipeline data
         new_uuid = str(uuid.uuid4())
+        new_prefs = normalize_extension_preferences(original_pipeline.extensions_preferences)
+        original_ops = new_prefs.get('workspace_operations', [])
+        new_prefs['workspace_operations'] = validate_grant_change(self.ap, context, [], original_ops)
         new_pipeline_data = {
             'uuid': new_uuid,
             'workspace_uuid': workspace_uuid,
@@ -331,7 +352,7 @@ class PipelineService:
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
             'config': original_pipeline.config.copy() if original_pipeline.config else {},
             'is_default': False,
-            'extensions_preferences': normalize_extension_preferences(original_pipeline.extensions_preferences),
+            'extensions_preferences': new_prefs,
         }
 
         # Insert the new pipeline
@@ -352,6 +373,7 @@ class PipelineService:
         if self.ap.plugin_connector.is_enable_plugin:
             await self.ap.plugin_connector.require_workspace_context(context)
         plugins = await self.ap.plugin_connector.list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
+        catalog = get_workspace_operations_catalog(self.ap, context)
         prefs = pipeline.get('extensions_preferences', {})
         return {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
@@ -365,6 +387,9 @@ class PipelineService:
             'mcp_resource_agent_read_enabled': prefs.get('mcp_resource_agent_read_enabled', True),
             'bound_skills': prefs.get('skills', []),
             'available_skills': await self.ap.skill_service.list_skills(context),
+            'workspace_operations': prefs.get('workspace_operations', []),
+            'available_workspace_operations': catalog['workspace_operations'],
+            'domains': catalog['domains'],
         }
 
     async def update_pipeline_extensions(
@@ -379,6 +404,7 @@ class PipelineService:
         enable_all_skills: bool = True,
         bound_mcp_resources: list[dict] = None,
         mcp_resource_agent_read_enabled: bool | None = None,
+        workspace_operations: list[str] | None = None,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
         workspace_uuid = require_workspace_uuid(context)
@@ -435,6 +461,14 @@ class PipelineService:
             extensions_preferences['skills'] = bound_skills
         if bound_mcp_resources is not None:
             extensions_preferences['mcp_resources'] = bound_mcp_resources
+
+        old_ops = extensions_preferences.get('workspace_operations', [])
+        if workspace_operations is not None:
+            extensions_preferences['workspace_operations'] = validate_grant_change(
+                self.ap, context, old_ops, workspace_operations
+            )
+        else:
+            extensions_preferences['workspace_operations'] = old_ops
 
         await self.ap.persistence_mgr.execute_async(
             scope_statement(

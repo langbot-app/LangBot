@@ -45,6 +45,8 @@ import {
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
   GetAgentMetadataResponseData,
+  WorkspaceOperationItem,
+  DomainMeta,
   AsyncTask,
   ApiRespWebChatMessages,
   ApiRespKnowledgeBases,
@@ -609,6 +611,9 @@ export class BackendClient extends BaseHttpClient {
     }>;
     bound_skills: string[];
     available_skills: Skill[];
+    workspace_operations?: string[];
+    available_workspace_operations?: WorkspaceOperationItem[];
+    domains?: DomainMeta[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }
@@ -631,6 +636,7 @@ export class BackendClient extends BaseHttpClient {
       max_tokens?: number;
     }>,
     mcp_resource_agent_read_enabled?: boolean,
+    workspace_operations?: string[],
   ): Promise<object> {
     const payload: Record<string, unknown> = {
       bound_plugins,
@@ -645,6 +651,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (mcp_resource_agent_read_enabled !== undefined) {
       payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    if (workspace_operations !== undefined) {
+      payload.workspace_operations = workspace_operations;
     }
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
   }

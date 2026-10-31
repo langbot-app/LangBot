@@ -42,6 +42,7 @@ from ....agent.runner.platform_tools import (
 )
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
+from ...application.tool_grants import get_workspace_operations_catalog, validate_grant_change
 from ..context import ExecutionContext, RequestContext
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -87,11 +88,14 @@ class AgentService:
                     use_cache=False,
                 )
             ]
+        ws_catalog = get_workspace_operations_catalog(self.ap, context)
         return {
             'event_processors': event_processors,
             'runner_config': ai_metadata,
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
+            'workspace_operations': ws_catalog['workspace_operations'],
+            'domains': ws_catalog['domains'],
             'kinds': [
                 {
                     'name': AGENT_KIND_AGENT,
@@ -458,6 +462,9 @@ class AgentService:
                     config['runner_config'][runner_id],
                 )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
+        if isinstance(config, dict) and 'allowed_workspace_operations' in config:
+            new_ops = config['allowed_workspace_operations']
+            config['allowed_workspace_operations'] = validate_grant_change(self.ap, context, [], new_ops)
         new_uuid = str(uuid.uuid4())
         values = {
             'workspace_uuid': workspace_uuid,
@@ -482,6 +489,9 @@ class AgentService:
             await self.ap.pipeline_service.update_pipeline(context, agent_uuid, agent_data)
             return
 
+        old_config = existing_agent.config if isinstance(existing_agent.config, dict) else {}
+        old_ops = old_config.get('allowed_workspace_operations', [])
+
         update_data = {
             field: agent_data[field]
             for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
@@ -500,6 +510,15 @@ class AgentService:
         update_data['component_ref'] = runner_id
         if existing_agent.kind == AGENT_KIND_AGENT:
             await self._validate_runner_for_agent(context, runner_id)
+
+        if 'config' in update_data and isinstance(update_data['config'], dict):
+            new_config = update_data['config']
+            if 'allowed_workspace_operations' in new_config:
+                new_ops = new_config['allowed_workspace_operations']
+                new_config['allowed_workspace_operations'] = validate_grant_change(self.ap, context, old_ops, new_ops)
+            else:
+                new_config['allowed_workspace_operations'] = old_ops
+
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)

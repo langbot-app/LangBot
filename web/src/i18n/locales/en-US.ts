@@ -3986,5 +3986,34 @@ const enUS = {
     period: '.',
     dismiss: 'Dismiss',
   },
+  workspaceOperations: {
+    title: 'Workspace Operations',
+    description:
+      'Configure workspace unified API operations that this processor can invoke.',
+    scopeHint:
+      'Allow this processor to invoke LangBot workspace unified API operations under its own identity.',
+    searchPlaceholder: 'Search operation name, ID, or description...',
+    selectAll: 'Select All',
+    deselectAll: 'Deselect All',
+    selectedCount: '{{count}} selected',
+    totalCount: '{{count}} total',
+    noOperations: 'No workspace operations available',
+    noSearchResults: 'No matching operations found',
+    riskRead: 'Read',
+    riskWrite: 'Write',
+    riskDangerous: 'Dangerous',
+    requiresPermission: 'Requires permission: {{permission}}',
+    dangerousConfirmTitle: 'Contains Dangerous Workspace Operations',
+    dangerousConfirmDescription:
+      'This processor faces IM users; anyone who can chat with the Bot may trigger these operations. Are you sure you want to save?',
+    dangerousConfirmAction: 'Confirm Save',
+    dangerousConfirmCancel: 'Cancel',
+    saveWorkspaceOperations: 'Save Workspace Operations',
+    saveSuccess: 'Workspace operations saved successfully',
+    saveFailed: 'Failed to save workspace operations',
+    configuredCount: '{{count}} operations configured',
+    expandDomain: 'Expand',
+    collapseDomain: 'Collapse',
+  },
 };
 export default enUS;

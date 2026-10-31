@@ -267,11 +267,30 @@ export interface ApiRespAgent {
   agent: Agent;
 }
 
+export interface WorkspaceOperationItem {
+  id: string;
+  domain: string;
+  label: Record<string, string>;
+  summary: string;
+  risk: 'read' | 'write' | 'dangerous';
+  permission: string;
+  grantable: boolean;
+}
+
+export interface DomainMeta {
+  domain: string;
+  label: Record<string, string>;
+  summary?: string;
+  count?: number;
+}
+
 export interface GetAgentMetadataResponseData {
   event_processors?: RunnerDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
+  workspace_operations?: WorkspaceOperationItem[];
+  domains?: DomainMeta[];
   kinds: Array<{
     name: AgentKind;
     supported_event_patterns: string[];

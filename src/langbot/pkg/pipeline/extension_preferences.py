@@ -44,6 +44,7 @@ def normalize_extension_preferences(value: typing.Any) -> dict[str, typing.Any]:
             'mcp_servers': [],
             'skills': [],
             'mcp_resources': [],
+            'workspace_operations': [],
         }
 
     normalized = dict(value)
@@ -77,6 +78,10 @@ def normalize_extension_preferences(value: typing.Any) -> dict[str, typing.Any]:
     normalized['mcp_resources'] = list(mcp_resources) if mcp_resources_are_valid else []
     if not mcp_resources_are_valid:
         normalized['mcp_resource_agent_read_enabled'] = False
+
+    workspace_operations = value.get('workspace_operations', [])
+    ops_are_valid = isinstance(workspace_operations, list) and all(_valid_name(op) for op in workspace_operations)
+    normalized['workspace_operations'] = list(workspace_operations) if ops_are_valid else []
     return normalized
 
 
@@ -125,6 +130,14 @@ def validate_extension_preferences(
         aliases.get('mcp_resources', 'mcp_resources'),
         lambda item: isinstance(item, dict),
         'an object',
+        context,
+    )
+    _validate_list_field(
+        value,
+        'workspace_operations',
+        aliases.get('workspace_operations', 'workspace_operations'),
+        _valid_name,
+        'a non-empty string',
         context,
     )
     return value

@@ -149,6 +149,7 @@ class LangBotMCPServer:
             enable_all_mcp_servers: bool,
             enable_all_skills: bool,
             mcp_resource_agent_read_enabled: bool,
+            workspace_operations: list[str] | None = None,
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
@@ -163,6 +164,7 @@ class LangBotMCPServer:
                 enable_all_skills,
                 bound_mcp_resources,
                 mcp_resource_agent_read_enabled,
+                workspace_operations=workspace_operations,
             )
             return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
 
