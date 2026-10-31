@@ -6,8 +6,8 @@ metadata:
     en_US: Delete ACP session
     zh_Hans: 删除 ACP 会话
   description:
-    en_US: Delete the current OpenCode ACP session
-    zh_Hans: 删除当前 OpenCode ACP 会话
+    en_US: Delete the current session for an ACP client with session management support
+    zh_Hans: 删除支持会话管理的 ACP 客户端当前会话
 spec:
 execution:
   python:

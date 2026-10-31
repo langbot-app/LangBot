@@ -15,15 +15,51 @@ from pkg.daemon_relay import (
 STORAGE_PREFIX = "acp-session:v1"
 
 
+def _storage_key_missing(exc: Exception) -> bool:
+    code = str(getattr(exc, "code", "") or getattr(exc, "error_code", "")).lower()
+    message = str(exc)
+    explicit_action_error = (
+        type(exc).__name__ == "ActionCallError"
+        and message.startswith("Storage with key ")
+        and message.endswith(" not found")
+    )
+    return (
+        isinstance(exc, (FileNotFoundError, KeyError))
+        or explicit_action_error
+        or code
+        in {
+            "not_found",
+            "storage_not_found",
+            "plugin_storage_not_found",
+        }
+    )
+
+
+def stable_session_identity(session: typing.Any) -> str:
+    """Return the IM session identity that survives Host conversation resets."""
+
+    launcher_type = getattr(session, "launcher_type", None)
+    launcher_type = getattr(launcher_type, "value", launcher_type)
+    launcher_id = getattr(session, "launcher_id", None)
+    if not launcher_type or launcher_id in (None, ""):
+        raise ValueError("session has no stable conversation identity")
+    return f"{launcher_type}_{launcher_id}"
+
+
+def runner_session_identity(context: typing.Any) -> str:
+    """Resolve the same reset-stable identity from a Runner context."""
+
+    conversation = getattr(context, "conversation", None)
+    session_id = str(getattr(conversation, "session_id", "") or "").strip()
+    if session_id:
+        return session_id
+    return str(getattr(conversation, "conversation_id", "") or "").strip()
+
+
 def conversation_id_from_command(context: typing.Any) -> str:
     """Build the Host conversation id used by IM-backed Runner state."""
 
-    launcher_type = getattr(getattr(context, "session", None), "launcher_type", None)
-    launcher_type = getattr(launcher_type, "value", launcher_type)
-    launcher_id = getattr(getattr(context, "session", None), "launcher_id", None)
-    if not launcher_type or launcher_id in (None, ""):
-        raise ValueError("command session has no conversation identity")
-    return f"{launcher_type}_{launcher_id}"
+    return stable_session_identity(getattr(context, "session", None))
 
 
 def storage_key(kind: str, conversation_id: str) -> str:
@@ -34,8 +70,10 @@ def storage_key(kind: str, conversation_id: str) -> str:
 async def read_json(plugin: typing.Any, key: str, default: typing.Any = None) -> typing.Any:
     try:
         raw = await plugin.get_plugin_storage(key)
-    except Exception:
-        return default
+    except Exception as exc:
+        if _storage_key_missing(exc):
+            return default
+        raise
     if not raw:
         return default
     try:
@@ -53,10 +91,19 @@ async def write_json(plugin: typing.Any, key: str, value: typing.Any) -> None:
 
 async def delete_value(plugin: typing.Any, key: str) -> None:
     try:
-        await plugin.delete_plugin_storage(key)
-    except Exception:
-        # Older runtimes can return a missing-key error. Deletion is idempotent.
+        current = await plugin.get_plugin_storage(key)
+    except Exception as exc:
+        if _storage_key_missing(exc):
+            return
+        raise
+    if not current:
         return
+    try:
+        await plugin.delete_plugin_storage(key)
+    except Exception as exc:
+        if _storage_key_missing(exc):
+            return
+        raise
 
 
 def normalize_sessions(result: typing.Any) -> list[dict[str, str]]:
@@ -110,6 +157,17 @@ async def run_daemon_control(
     **arguments: typing.Any,
 ) -> typing.Any:
     """Run one non-prompt ACP control operation through the configured daemon."""
+
+    if str(control.get("location") or "") != "daemon":
+        raise RuntimeError("ACP session management commands require location=daemon")
+    if control.get("requires_env_json"):
+        raise RuntimeError(
+            "ACP session management cannot reuse env-json securely; configure required variables in the daemon process"
+        )
+    capabilities = control.get("session_capabilities")
+    capability_method = operation.replace(".", "/", 1)
+    if isinstance(capabilities, dict) and capabilities.get(capability_method) is False:
+        raise RuntimeError(f"ACP agent does not support {operation}")
 
     daemon_config = agent_runtime_daemon_config_from_plugin_config(
         plugin.get_config(),

@@ -50,7 +50,7 @@
   },
   {
     "id": "langbot-team/ACPAgentRunner",
-    "version": "0.1.17",
+    "version": "0.1.18",
     "category": "Runner",
     "path": "Runner/acp-agent-runner",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"

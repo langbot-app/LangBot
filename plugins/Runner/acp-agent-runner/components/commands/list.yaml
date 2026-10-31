@@ -6,8 +6,8 @@ metadata:
     en_US: List ACP sessions
     zh_Hans: 列出 ACP 会话
   description:
-    en_US: List OpenCode ACP sessions
-    zh_Hans: 列出 OpenCode ACP 会话
+    en_US: List sessions for an ACP client with session management support
+    zh_Hans: 列出支持会话管理的 ACP 客户端会话
 spec:
 execution:
   python:

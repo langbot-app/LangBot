@@ -29,7 +29,7 @@ from pkg.daemon_relay import (
 from pkg.prompt import acp_prompt_blocks, has_acp_prompt_input, prompt_capabilities
 from pkg.runtime_support import local_workspace
 from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params
-from pkg.session_management import read_json, storage_key, write_json
+from pkg.session_management import read_json, runner_session_identity, storage_key, write_json
 from pkg.steering import run_with_steering
 
 logger = logging.getLogger(__name__)
@@ -508,8 +508,7 @@ class DefaultRunner(Runner):
         return str(ctx.state.conversation.get(ACP_SESSION_STATE_KEY) or "").strip()
 
     def _conversation_id(self, ctx: RunnerContext) -> str:
-        conversation = getattr(ctx, "conversation", None)
-        return str(getattr(conversation, "conversation_id", "") or "").strip()
+        return runner_session_identity(ctx)
 
     async def _managed_session_id(self, ctx: RunnerContext, config: dict[str, typing.Any]) -> str:
         """Persist command control data and return the command-selected session."""
@@ -519,6 +518,7 @@ class DefaultRunner(Runner):
             return ""
         control = {
             "provider": config["provider"],
+            "location": config["location"],
             "acp_command": config["acp_command"],
             "workspace": config["workspace"],
             "session_cwd": config["session_cwd"],
@@ -527,6 +527,7 @@ class DefaultRunner(Runner):
             "startup_timeout": config["startup_timeout"],
             "initialize_timeout": config["initialize_timeout"],
             "permission_decision": config["permission_decision"],
+            "requires_env_json": bool(config["env"]),
         }
         try:
             await write_json(self.plugin, storage_key("control", conversation_id), control)
@@ -550,6 +551,26 @@ class DefaultRunner(Runner):
             )
         except Exception as exc:
             logger.warning("Failed to persist ACP managed-session state: %s", exc)
+
+    async def _record_session_capabilities(
+        self,
+        ctx: RunnerContext,
+        capabilities: dict[str, typing.Any],
+    ) -> None:
+        conversation_id = self._conversation_id(ctx)
+        if not conversation_id:
+            return
+        try:
+            key = storage_key("control", conversation_id)
+            control = await read_json(self.plugin, key, {})
+            if not isinstance(control, dict):
+                return
+            control["session_capabilities"] = {
+                method: _runtime_has_method(capabilities, method) for method in ("session/list", "session/delete")
+            }
+            await write_json(self.plugin, key, control)
+        except Exception as exc:
+            logger.warning("Failed to persist ACP session capabilities: %s", exc)
 
     def _mcp_server_to_acp(self, server: AgentMCPServerConfig) -> dict[str, typing.Any]:
         if server.transport == "http":
@@ -857,6 +878,12 @@ class DefaultRunner(Runner):
             )
         ) as event_stream:
             async for event in event_stream:
+                if event.get("type") == "control.capabilities":
+                    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                    capabilities = data.get("agent_capabilities")
+                    if isinstance(capabilities, dict):
+                        await self._record_session_capabilities(ctx, capabilities)
+                    continue
                 if event.get("type") == "state.updated":
                     data = event.get("data") if isinstance(event.get("data"), dict) else {}
                     if data.get("key") == ACP_SESSION_STATE_KEY:

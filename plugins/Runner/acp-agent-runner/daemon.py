@@ -148,7 +148,7 @@ class RunnerDaemon(AgentRuntimeDaemonClient):
             command=command_args[0],
             args=command_args[1:],
             cwd=str(config.get("workspace") or os.getcwd()),
-            env={},
+            env={str(k): str(v) for k, v in dict(config.get("env") or {}).items()},
             unset_env=(CLAUDE_ENV_VARS_TO_UNSET if str(config.get("provider") or "custom") == "claude-code" else ()),
             permission_decision=str(config.get("permission_decision") or "allow_once"),
             startup_timeout=float(config.get("startup_timeout") or 30.0),
@@ -213,6 +213,13 @@ class RunnerDaemon(AgentRuntimeDaemonClient):
 
             async with client:
                 initialize_result = await client.initialize(timeout=float(config.get("initialize_timeout") or 30.0))
+                capabilities = initialize_result.get("agentCapabilities")
+                if not isinstance(capabilities, dict):
+                    capabilities = {}
+                await self.emit_event(
+                    job_id,
+                    _result_event("control.capabilities", {"agent_capabilities": capabilities}),
+                )
                 session_id, _created = await self._create_or_resume_session(
                     client, initialize_result, config, mcp_servers
                 )

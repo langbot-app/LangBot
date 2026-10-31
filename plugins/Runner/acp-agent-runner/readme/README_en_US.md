@@ -11,7 +11,7 @@ It is a thin runtime adapter:
 - ACP `session/update` text chunks are streamed back to LangBot.
 - LangBot multimodal input is mapped to ACP prompt content blocks when the selected ACP runtime advertises the matching prompt capability.
 - LangBot tools, knowledge bases, and history are exposed through the SDK-owned run-scoped MCP bridge.
-- Daemon mode provides `!new`, `!list`, `!sessions`, `!switch`, `!delete`, and `!stop` session-management commands.
+- `!new` resets the current ACP binding for any location. Daemon mode additionally provides `!list`, `!sessions`, `!switch`, and `!delete` when the ACP client advertises the required session capabilities. `!stop` uses the Host's generic Runner cancellation contract.
 
 ## Runner ID
 
@@ -132,7 +132,7 @@ LangBot does not yet expose an interactive approval UI for these requests.
 
 ## Session management commands
 
-Session-management commands currently target `location=daemon` and require the daemon-side ACP runtime to advertise the corresponding session capability. Command state is scoped by LangBot conversation, so private and group conversations do not share their selected session.
+`!list`, `!sessions`, `!switch`, and `!delete` target `location=daemon` and require the daemon-side ACP runtime to advertise the corresponding session capability. `!new` only resets the ACPAgentRunner binding and works with every location. These are ACPAgentRunner features, not a generic Runner command contract. Command state uses the reset-stable IM session identity, so private and group conversations remain isolated and Host context resets do not lose the selected session. If `env-json` is required, configure those variables in the daemon process instead; daemon session-control commands do not persist environment values in plugin storage.
 
 | Command | Behavior |
 | --- | --- |
@@ -145,6 +145,8 @@ Session-management commands currently target `location=daemon` and require the d
 `!delete` does not physically remove LangBot run-audit records. It deletes the ACP session and starts a new LangBot context generation, so old transcript entries are no longer included in future context. If ACP deletion fails, the current binding is preserved to avoid divergent LangBot and ACP state.
 
 Immediate `!stop` cancellation requires a LangBot Host that recognizes the control command before the per-session concurrency slot. Older Hosts queue it as a normal command and cannot stop an already running task immediately.
+
+In group chats, `!new`, `!switch`, and `!delete` require bot administrator privilege. `!stop` may stop a run started by the same member; bot administrators may stop any active run in the group.
 
 ## Steering (follow-up input)
 

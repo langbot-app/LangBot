@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: ACPAgentRunner
-  version: 0.1.17
+  version: 0.1.18
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner
   label:
     en_US: ACP Agent Runner
@@ -15,8 +15,8 @@ metadata:
     es_ES: ACP Agent Runner
     ru_RU: ACP Agent Runner
   description:
-    en_US: Run any Agent Client Protocol compatible coding agent as a LangBot Runner.
-    zh_Hans: 将任意兼容 Agent Client Protocol 的编码智能体作为 LangBot 运行器运行。
+    en_US: Run Agent Client Protocol compatible coding agents as a LangBot Runner; session commands require the advertised ACP session capabilities.
+    zh_Hans: 将兼容 Agent Client Protocol 的编码智能体作为 LangBot 运行器运行；会话命令需要客户端声明对应的 ACP session capability。
     zh_Hant: 將任何相容 Agent Client Protocol 的程式設計代理作為 LangBot 運行器執行。
     ja_JP: Agent Client Protocol 対応のコーディングエージェントを LangBot Runner として実行します。
     th_TH: เรียกใช้เอเจนต์เขียนโค้ดที่รองรับ Agent Client Protocol เป็น LangBot Runner
