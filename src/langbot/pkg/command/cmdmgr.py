@@ -6,6 +6,7 @@ import inspect
 from ..api.http.context import ExecutionContext
 from ..core import app
 from . import operator
+from . import processor as command_processor
 from ..utils import importutil
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -82,11 +83,22 @@ class CommandManager:
 
         for command in command_list:
             if command.metadata.name == context.command:
+                self._apply_command_config(context, command)
                 async for ret in self.ap.plugin_connector.execute_command(context, bound_plugins):
                     yield ret
                 break
         else:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(context.command))
+
+    @staticmethod
+    def _apply_command_config(context: command_context.ExecuteContext, command: typing.Any) -> None:
+        """Expose schema defaults under instance values; skipped on SDKs without ExecuteContext.config."""
+        if 'config' not in type(context).model_fields:
+            return
+        context.config = command_processor.merge_command_config(
+            command_processor.command_config_schema(command),
+            getattr(context, 'config', None),
+        )
 
     async def is_admin(
         self,
@@ -123,6 +135,7 @@ class CommandManager:
         bot_uuid: str,
         launcher_type: str,
         launcher_id: str,
+        config: dict | None = None,
     ) -> command_context.ExecuteContext:
         """Construct command execution context."""
         is_adm = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id)
@@ -143,6 +156,8 @@ class CommandManager:
             crt_params=command_text.split(' '),
             privilege=privilege,
         )
+        if config and 'config' in command_context.ExecuteContext.model_fields:
+            ctx.config = dict(config)
 
         ctx.command = ctx.params[0]
         ctx.shift()

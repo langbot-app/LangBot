@@ -183,7 +183,11 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+export type AgentKind =
+  | 'agent'
+  | 'pipeline'
+  | 'event_processor'
+  | 'command_processor';
 
 export interface RunnerDescriptor {
   id: string;
@@ -269,6 +273,7 @@ export interface ApiRespAgent {
 
 export interface GetAgentMetadataResponseData {
   event_processors?: RunnerDescriptor[];
+  command_processors?: CommandProcessorDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
@@ -350,15 +355,28 @@ export interface Bot {
   adapter_runtime_values?: object;
 }
 
-export interface BotCommandPluginBinding {
-  plugin_id: string;
+export interface BotCommandProcessorBinding {
+  processor_uuid: string;
   enabled: boolean;
+}
+
+export interface CommandComponentDescriptor {
+  name: string;
+  label: Record<string, string>;
+  description?: Record<string, string> | null;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+}
+
+export interface CommandProcessorDescriptor {
+  id: string;
+  plugin_id: string;
+  commands: CommandComponentDescriptor[];
 }
 
 export interface BotCommandSettings {
   enabled: boolean;
   prefixes: string[];
-  plugins: BotCommandPluginBinding[];
+  processors: BotCommandProcessorBinding[];
 }
 
 export interface PluginProcessorBinding {

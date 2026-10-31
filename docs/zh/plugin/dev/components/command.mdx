@@ -53,6 +53,25 @@ execution:
     attr: Info  # 命令处理程序的类名，与 info.py 中的类名一致
 ```
 
+## 命令配置
+
+命令可以在清单的 `spec.config` 中声明配置表单，格式与 Runner 的 `spec.config` 相同：
+
+```yaml
+spec:
+  config:
+    - name: style
+      type: string
+      label:
+        en_US: Style
+        zh_Hans: 风格
+      default: plain
+```
+
+用户在处理器页面创建**命令处理器**（选择插件），为该插件的每个命令填写配置；同一插件可以创建多个命令处理器，分别绑定到不同机器人。命令执行时通过 `context.config` 读取当前机器人所绑定实例的配置，未填写的字段使用 `default`。通过流水线触发的命令使用默认值。
+
+未声明 `spec.config` 的命令无需修改：创建命令处理器后照常使用，`context.config` 为空字典。插件级配置仍可通过 `self.get_plugin_config()` 读取。
+
 ## 插件处理
 
 默认会生成如下代码(`components/command/<命令名称>.py`)，您需要在`Info`类的`initialize`方法中注册并实现子命令的处理逻辑。
@@ -185,6 +204,9 @@ class ExecuteContext(pydantic.BaseModel):
 
     privilege: int
     """会话权限级别"""
+
+    config: dict[str, Any]
+    """当前命令处理器实例的配置，按 spec.config 填充"""
 
     ...
 ```

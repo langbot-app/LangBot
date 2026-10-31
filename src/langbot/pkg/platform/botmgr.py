@@ -1020,14 +1020,43 @@ class RuntimeBot:
         except Exception as exc:
             await self.logger.warning(f'Failed to persist monitoring ingress: {exc}')
 
+    @staticmethod
+    def _command_text_from_event(event: platform_events.MessageReceivedEvent) -> str:
+        """Plain text of a message; mentions such as ``@bot /draw`` must not hide the prefix."""
+        return ''.join(
+            component.text for component in event.message_chain if isinstance(component, platform_message.Plain)
+        ).strip()
+
+    async def _resolve_command_processors(self, processors: list) -> list[tuple[str, dict]]:
+        """Resolve enabled command processor bindings to (plugin_id, agent) in priority order."""
+        from ..command import processor as command_processor
+
+        resolved: list[tuple[str, dict]] = []
+        for item in processors:
+            if not isinstance(item, dict) or not item.get('enabled', True):
+                continue
+            processor_uuid = item.get('processor_uuid')
+            if not processor_uuid:
+                continue
+            agent = await self.ap.agent_service.get_agent(self.execution_context, processor_uuid)
+            if not agent or agent.get('kind') != command_processor.COMMAND_PROCESSOR_KIND:
+                continue
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.get('component_ref'))
+            if plugin_id is not None:
+                resolved.append((plugin_id, agent))
+        return resolved
+
     async def _match_plugin_command(
         self,
         event: platform_events.EBAEvent,
-    ) -> tuple[str, str, str, str] | None:
-        """Match an incoming message against bound plugin commands.
+    ) -> tuple[str, str, str, str, dict] | None:
+        """Match an incoming message against the bot's command processors.
 
-        Returns (plugin_id, command_name, command_text, full_command_text) if matched, else None.
+        Returns (plugin_id, command_name, command_text, full_command_text, command_config)
+        if a registered command name matches, else None.
         """
+        from ..command import processor as command_processor
+
         if not isinstance(event, platform_events.MessageReceivedEvent):
             return None
 
@@ -1039,30 +1068,18 @@ class RuntimeBot:
         if not isinstance(prefixes, list) or not prefixes:
             prefixes = ['/']
 
-        plugins = command_settings.get('plugins', [])
-        if not isinstance(plugins, list) or not plugins:
+        processors = command_settings.get('processors', [])
+        if not isinstance(processors, list) or not processors:
             return None
 
-        enabled_plugins: list[str] = []
-        for item in plugins:
-            if isinstance(item, str) and item.strip():
-                enabled_plugins.append(item.strip())
-            elif isinstance(item, dict):
-                pid = item.get('plugin_id')
-                if pid and item.get('enabled', True):
-                    enabled_plugins.append(str(pid).strip())
-
-        if not enabled_plugins:
-            return None
-
-        full_command_text = str(event.message_chain).strip()
+        full_command_text = self._command_text_from_event(event)
         if not full_command_text:
             return None
 
         # Longest prefix match
         matched_prefix = None
         for prefix in sorted(prefixes, key=len, reverse=True):
-            if prefix and full_command_text.startswith(prefix):
+            if isinstance(prefix, str) and prefix and full_command_text.startswith(prefix):
                 matched_prefix = prefix
                 break
 
@@ -1073,38 +1090,39 @@ class RuntimeBot:
         if not command_text:
             return None
 
-        parts = command_text.split()
-        command_name = parts[0]
-        if not command_name:
-            return None
+        command_name = command_text.split()[0]
 
         plugin_connector = getattr(self.ap, 'plugin_connector', None)
         if plugin_connector is None:
             return None
 
+        resolved = await self._resolve_command_processors(processors)
+        if not resolved:
+            return None
+
         try:
-            available_commands = await plugin_connector.list_commands(enabled_plugins)
+            available_commands = await plugin_connector.list_commands([plugin_id for plugin_id, _ in resolved])
         except Exception as exc:
             await self.logger.warning(f'Failed to list plugin commands: {exc}')
             return None
 
-        # Group commands by owner plugin
         commands_by_plugin: dict[str, set[str]] = {}
         for cmd in available_commands:
             owner = str(getattr(cmd, 'owner', '') or '').strip()
-            if not owner:
-                continue
-            if owner not in commands_by_plugin:
-                commands_by_plugin[owner] = set()
-            meta = getattr(cmd, 'metadata', None)
-            cmd_meta_name = getattr(meta, 'name', None) if meta else None
-            if cmd_meta_name:
-                commands_by_plugin[owner].add(cmd_meta_name)
+            name = command_processor.command_name(cmd)
+            if owner and name:
+                commands_by_plugin.setdefault(owner, set()).add(name)
 
-        # Match in priority order of enabled_plugins
-        for plugin_id in enabled_plugins:
+        # Registered names only, in binding priority order.
+        for plugin_id, agent in resolved:
             if command_name in commands_by_plugin.get(plugin_id, set()):
-                return plugin_id, command_name, command_text, full_command_text
+                return (
+                    plugin_id,
+                    command_name,
+                    command_text,
+                    full_command_text,
+                    command_processor.instance_command_config(agent, command_name),
+                )
 
         return None
 
@@ -1119,7 +1137,7 @@ class RuntimeBot:
         matched = await self._match_plugin_command(event)
         if matched is None:
             return False
-        plugin_id, cmd_name, cmd_text, full_cmd_text = matched
+        plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config = matched
         await self._execute_matched_plugin_command(
             event=event,
             adapter=adapter,
@@ -1127,6 +1145,7 @@ class RuntimeBot:
             command_name=cmd_name,
             command_text=cmd_text,
             full_command_text=full_cmd_text,
+            command_config=cmd_config,
             execution_id=execution_id,
             node=node,
         )
@@ -1142,6 +1161,7 @@ class RuntimeBot:
         full_command_text: str,
         execution_id: str | None = None,
         node: str = '',
+        command_config: dict | None = None,
     ) -> None:
         """Execute a matched plugin command and reply with the result."""
         legacy_event = event.to_legacy_event() if hasattr(event, 'to_legacy_event') else event
@@ -1191,6 +1211,7 @@ class RuntimeBot:
             bot_uuid=self.bot_entity.uuid,
             launcher_type=launcher_type.value,
             launcher_id=launcher_id,
+            config=command_config,
         )
 
         event_type = getattr(event, 'type', None) or 'message.received'
@@ -1276,11 +1297,11 @@ class RuntimeBot:
 
             command_handled = False
             command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
-            plugins = command_settings.get('plugins', []) if isinstance(command_settings, dict) else []
+            processors = command_settings.get('processors', []) if isinstance(command_settings, dict) else []
             if (
                 isinstance(event, platform_events.MessageReceivedEvent)
                 and command_settings.get('enabled', True)
-                and plugins
+                and processors
             ):
                 cmd_tasks = [
                     self._run_event_delivery(

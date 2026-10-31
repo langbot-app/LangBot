@@ -32,7 +32,7 @@ def upgrade() -> None:
                     'command_settings',
                     sa.JSON(),
                     nullable=False,
-                    server_default='{"enabled": true, "prefixes": ["/"], "plugins": []}',
+                    server_default='{"enabled": true, "prefixes": ["/"], "processors": []}',
                 )
             )
 

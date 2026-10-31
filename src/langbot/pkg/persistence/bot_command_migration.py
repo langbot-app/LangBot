@@ -62,7 +62,7 @@ async def migrate_global_command_config(ap: app.Application) -> None:
     target_settings = {
         'enabled': old_enabled,
         'prefixes': old_prefixes,
-        'plugins': [],
+        'processors': [],
     }
 
     if has_legacy_config:

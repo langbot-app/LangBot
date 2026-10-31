@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import {
   GripVertical,
   Plus,
@@ -30,10 +31,11 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import type { Plugin, PluginComponent } from '@/app/infra/entities/plugin';
 import type {
+  Agent,
   BotCommandSettings,
-  BotCommandPluginBinding,
+  BotCommandProcessorBinding,
+  CommandProcessorDescriptor,
 } from '@/app/infra/entities/api';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
@@ -61,39 +63,43 @@ import {
 interface PluginCommandBindingsProps {
   value?: BotCommandSettings;
   onChange: (value: BotCommandSettings) => void;
+  agents: Agent[];
+  onCreated: (agent: Agent) => void;
 }
 
-function getPluginId(plugin: Plugin): string {
-  const meta = plugin.manifest?.manifest?.metadata;
-  if (!meta) return '';
-  return meta.author ? `${meta.author}/${meta.name}` : meta.name;
+const PLUGIN_REF_PREFIX = 'plugin:';
+
+export function commandProcessorPluginId(agent?: Agent): string {
+  const ref = agent?.component_ref ?? '';
+  return ref.startsWith(PLUGIN_REF_PREFIX)
+    ? ref.slice(PLUGIN_REF_PREFIX.length)
+    : '';
 }
 
-function getPluginCommands(plugin: Plugin): PluginComponent[] {
-  return (
-    plugin.components?.filter(
-      (comp) => comp.manifest?.manifest?.kind === 'Command',
-    ) || []
-  );
+function splitPluginId(pluginId: string): { author: string; name: string } {
+  const [author = '', name = ''] = pluginId.split('/');
+  return { author, name };
 }
 
-interface SortablePluginItemProps {
-  binding: BotCommandPluginBinding;
-  plugin?: Plugin;
+interface SortableProcessorItemProps {
+  binding: BotCommandProcessorBinding;
+  agent?: Agent;
+  component?: CommandProcessorDescriptor;
   prefixes: string[];
   overriddenCommands: Map<string, string>;
-  onToggleEnabled: (pluginId: string, enabled: boolean) => void;
-  onRemove: (pluginId: string) => void;
+  onToggleEnabled: (processorUuid: string, enabled: boolean) => void;
+  onRemove: (processorUuid: string) => void;
 }
 
-function SortablePluginItem({
+function SortableProcessorItem({
   binding,
-  plugin,
+  agent,
+  component,
   prefixes,
   overriddenCommands,
   onToggleEnabled,
   onRemove,
-}: SortablePluginItemProps) {
+}: SortableProcessorItemProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
 
@@ -104,7 +110,7 @@ function SortablePluginItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: binding.plugin_id });
+  } = useSortable({ id: binding.processor_uuid });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -112,14 +118,9 @@ function SortablePluginItem({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const meta = plugin?.manifest?.manifest?.metadata;
-  const label = meta
-    ? extractI18nObject(meta.label) || meta.name
-    : binding.plugin_id;
-  const description = meta?.description
-    ? extractI18nObject(meta.description)
-    : '';
-  const commands = plugin ? getPluginCommands(plugin) : [];
+  const pluginId = commandProcessorPluginId(agent);
+  const { author, name } = splitPluginId(pluginId);
+  const commands = component?.commands ?? [];
   const primaryPrefix = prefixes[0] || '/';
 
   return (
@@ -141,11 +142,11 @@ function SortablePluginItem({
             <GripVertical className="size-4" />
           </button>
 
-          {plugin && meta && (
+          {pluginId && (
             <div className="size-8 shrink-0 overflow-hidden rounded">
               <AuthenticatedPluginIcon
-                author={meta.author || ''}
-                name={meta.name || ''}
+                author={author}
+                name={name}
                 className="size-8"
               />
             </div>
@@ -153,21 +154,25 @@ function SortablePluginItem({
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-sm truncate">{label}</span>
-              <span className="text-xs text-muted-foreground font-mono">
-                {binding.plugin_id}
-              </span>
+              <Link
+                to={`/home/agents?id=${encodeURIComponent(binding.processor_uuid)}`}
+                className="font-medium text-sm truncate hover:underline"
+              >
+                {agent
+                  ? `${agent.emoji || '⌨️'} ${agent.name}`
+                  : t('bots.pluginCommands.missingProcessor')}
+              </Link>
+              {pluginId && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {pluginId}
+                </span>
+              )}
               <Badge variant="secondary" className="text-xs font-normal">
                 {t('bots.pluginCommands.commandsCount', {
                   count: commands.length,
                 })}
               </Badge>
             </div>
-            {description && (
-              <p className="text-xs text-muted-foreground truncate max-w-md">
-                {description}
-              </p>
-            )}
           </div>
         </div>
 
@@ -189,7 +194,7 @@ function SortablePluginItem({
           <Switch
             checked={binding.enabled}
             onCheckedChange={(checked) =>
-              onToggleEnabled(binding.plugin_id, checked)
+              onToggleEnabled(binding.processor_uuid, checked)
             }
           />
 
@@ -197,7 +202,7 @@ function SortablePluginItem({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => onRemove(binding.plugin_id)}
+            onClick={() => onRemove(binding.processor_uuid)}
             className="size-8 text-muted-foreground hover:text-destructive"
             title={t('bots.pluginCommands.remove')}
           >
@@ -215,30 +220,26 @@ function SortablePluginItem({
           ) : (
             <div className="flex flex-col gap-2">
               {commands.map((cmd) => {
-                const cmdMeta = cmd.manifest?.manifest?.metadata;
-                const cmdName = cmdMeta?.name || '';
-                const cmdLabel = cmdMeta
-                  ? extractI18nObject(cmdMeta.label) || cmdName
-                  : cmdName;
-                const cmdDesc = cmdMeta?.description
-                  ? extractI18nObject(cmdMeta.description)
+                const cmdLabel = extractI18nObject(cmd.label) || cmd.name;
+                const cmdDesc = cmd.description
+                  ? extractI18nObject(cmd.description)
                   : '';
                 const conflictWith = overriddenCommands.get(
-                  `${binding.plugin_id}:${cmdName}`,
+                  `${binding.processor_uuid}:${cmd.name}`,
                 );
 
                 return (
                   <div
-                    key={cmdName}
+                    key={cmd.name}
                     className="flex items-center justify-between gap-3 text-xs py-1 px-2 rounded bg-background/60"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <Terminal className="size-3.5 text-muted-foreground shrink-0" />
                       <span className="font-mono font-medium text-foreground">
                         {primaryPrefix}
-                        {cmdName}
+                        {cmd.name}
                       </span>
-                      {cmdLabel !== cmdName && (
+                      {cmdLabel !== cmd.name && (
                         <span className="text-muted-foreground">
                           ({cmdLabel})
                         </span>
@@ -273,22 +274,28 @@ function SortablePluginItem({
 }
 
 export default function PluginCommandBindings({
-  value = { enabled: true, prefixes: ['/'], plugins: [] },
+  value = { enabled: true, prefixes: ['/'], processors: [] },
   onChange,
+  agents,
+  onCreated,
 }: PluginCommandBindingsProps) {
   const { t } = useTranslation();
-  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [components, setComponents] = useState<CommandProcessorDescriptor[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedPlugins, setSelectedPlugins] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [creating, setCreating] = useState<string | null>(null);
   const [newPrefix, setNewPrefix] = useState('');
+  const creatingRef = useRef(false);
 
   const prefixes = useMemo(
     () =>
       value.prefixes && value.prefixes.length > 0 ? value.prefixes : ['/'],
     [value.prefixes],
   );
-  const pluginBindings = useMemo(() => value.plugins || [], [value.plugins]);
+  const bindings = useMemo(() => value.processors || [], [value.processors]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -301,80 +308,91 @@ export default function PluginCommandBindings({
     let mounted = true;
     setLoading(true);
     httpClient
-      .getPlugins()
-      .then((res) => {
-        if (mounted) {
-          setPlugins(res.plugins || []);
-        }
+      .getAgentMetadata()
+      .then((metadata) => {
+        if (mounted) setComponents(metadata.command_processors ?? []);
       })
       .catch((err) => {
-        console.error('Failed to load plugins:', err);
+        console.error('Failed to load command processor metadata:', err);
       })
       .finally(() => {
         if (mounted) setLoading(false);
       });
-
     return () => {
       mounted = false;
     };
   }, []);
 
-  const installedPluginsWithCommands = useMemo(() => {
-    return plugins.filter((p) => getPluginCommands(p).length > 0);
-  }, [plugins]);
+  const processors = useMemo(
+    () => agents.filter((agent) => agent.kind === 'command_processor'),
+    [agents],
+  );
+  const agentMap = useMemo(
+    () => new Map(processors.map((agent) => [agent.uuid ?? '', agent])),
+    [processors],
+  );
+  const componentMap = useMemo(
+    () => new Map(components.map((item) => [item.plugin_id, item])),
+    [components],
+  );
 
-  const pluginMap = useMemo(() => {
-    const map = new Map<string, Plugin>();
-    for (const p of plugins) {
-      map.set(getPluginId(p), p);
-    }
-    return map;
-  }, [plugins]);
-
-  const availablePlugins = useMemo(() => {
-    const boundIds = new Set(pluginBindings.map((b) => b.plugin_id));
-    return installedPluginsWithCommands.filter(
-      (p) => !boundIds.has(getPluginId(p)),
-    );
-  }, [installedPluginsWithCommands, pluginBindings]);
+  // One instance per plugin per bot: the backend rejects a second one because it could never match.
+  const boundPlugins = useMemo(
+    () =>
+      new Set(
+        bindings.map((binding) =>
+          commandProcessorPluginId(agentMap.get(binding.processor_uuid)),
+        ),
+      ),
+    [bindings, agentMap],
+  );
+  const availableProcessors = useMemo(
+    () =>
+      processors.filter(
+        (agent) =>
+          !bindings.some((binding) => binding.processor_uuid === agent.uuid) &&
+          !boundPlugins.has(commandProcessorPluginId(agent)),
+      ),
+    [processors, bindings, boundPlugins],
+  );
+  const pluginsWithoutInstance = useMemo(
+    () =>
+      components.filter(
+        (component) =>
+          !boundPlugins.has(component.plugin_id) &&
+          !processors.some(
+            (agent) => commandProcessorPluginId(agent) === component.plugin_id,
+          ),
+      ),
+    [components, boundPlugins, processors],
+  );
 
   // Compute command collision/overrides based on priority order
   const overriddenCommands = useMemo(() => {
     const commandOwnerMap = new Map<string, string>();
     const overrides = new Map<string, string>();
 
-    for (const binding of pluginBindings) {
+    for (const binding of bindings) {
       if (!binding.enabled) continue;
-      const plugin = pluginMap.get(binding.plugin_id);
-      if (!plugin) continue;
-      const meta = plugin.manifest?.manifest?.metadata;
-      const label = meta
-        ? extractI18nObject(meta.label) || meta.name
-        : binding.plugin_id;
-      const cmds = getPluginCommands(plugin);
-      for (const cmd of cmds) {
-        const cmdName = cmd.manifest?.manifest?.metadata?.name;
-        if (!cmdName) continue;
-        if (commandOwnerMap.has(cmdName)) {
+      const agent = agentMap.get(binding.processor_uuid);
+      const component = componentMap.get(commandProcessorPluginId(agent));
+      if (!agent || !component) continue;
+      for (const cmd of component.commands) {
+        if (commandOwnerMap.has(cmd.name)) {
           overrides.set(
-            `${binding.plugin_id}:${cmdName}`,
-            commandOwnerMap.get(cmdName)!,
+            `${binding.processor_uuid}:${cmd.name}`,
+            commandOwnerMap.get(cmd.name)!,
           );
         } else {
-          commandOwnerMap.set(cmdName, label);
+          commandOwnerMap.set(cmd.name, agent.name);
         }
       }
     }
     return overrides;
-  }, [pluginBindings, pluginMap]);
+  }, [bindings, agentMap, componentMap]);
 
-  function handleToggleMainEnabled(enabled: boolean) {
-    onChange({
-      ...value,
-      enabled,
-      prefixes,
-      plugins: pluginBindings,
-    });
+  function update(patch: Partial<BotCommandSettings>) {
+    onChange({ ...value, prefixes, processors: bindings, ...patch });
   }
 
   function handleAddPrefix() {
@@ -387,10 +405,7 @@ export default function PluginCommandBindings({
       toast.error(t('bots.pluginCommands.prefixDuplicate'));
       return;
     }
-    onChange({
-      ...value,
-      prefixes: [...prefixes, trimmed],
-    });
+    update({ prefixes: [...prefixes, trimmed] });
     setNewPrefix('');
   }
 
@@ -399,64 +414,73 @@ export default function PluginCommandBindings({
       toast.error(t('bots.pluginCommands.prefixInvalid'));
       return;
     }
-    onChange({
-      ...value,
-      prefixes: prefixes.filter((p) => p !== prefixToRemove),
-    });
-  }
-
-  function handleTogglePluginEnabled(pluginId: string, enabled: boolean) {
-    onChange({
-      ...value,
-      plugins: pluginBindings.map((p) =>
-        p.plugin_id === pluginId ? { ...p, enabled } : p,
-      ),
-    });
-  }
-
-  function handleRemovePlugin(pluginId: string) {
-    onChange({
-      ...value,
-      plugins: pluginBindings.filter((p) => p.plugin_id !== pluginId),
-    });
+    update({ prefixes: prefixes.filter((p) => p !== prefixToRemove) });
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = pluginBindings.findIndex(
-        (p) => p.plugin_id === active.id,
-      );
-      const newIndex = pluginBindings.findIndex((p) => p.plugin_id === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        onChange({
-          ...value,
-          plugins: arrayMove(pluginBindings, oldIndex, newIndex),
-        });
-      }
+    if (!over || active.id === over.id) return;
+    const oldIndex = bindings.findIndex((p) => p.processor_uuid === active.id);
+    const newIndex = bindings.findIndex((p) => p.processor_uuid === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) {
+      update({ processors: arrayMove(bindings, oldIndex, newIndex) });
     }
   }
 
-  function openAddDialog() {
-    setSelectedPlugins([]);
-    setDialogOpen(true);
+  function toggleSelected(agent: Agent, checked: boolean) {
+    const pluginId = commandProcessorPluginId(agent);
+    setSelected((prev) => {
+      // Keep at most one instance per plugin in a single selection.
+      const others = prev.filter(
+        (uuid) => commandProcessorPluginId(agentMap.get(uuid)) !== pluginId,
+      );
+      return checked ? [...others, agent.uuid ?? ''] : others;
+    });
   }
 
-  function handleConfirmAddPlugins() {
-    if (selectedPlugins.length === 0) return;
-    const newBindings: BotCommandPluginBinding[] = [
-      ...pluginBindings,
-      ...selectedPlugins.map((plugin_id) => ({
-        plugin_id,
-        enabled: true,
-      })),
-    ];
-    onChange({
-      ...value,
-      plugins: newBindings,
+  function handleConfirmAdd() {
+    if (selected.length === 0) return;
+    update({
+      processors: [
+        ...bindings,
+        ...selected.map((processor_uuid) => ({ processor_uuid, enabled: true })),
+      ],
     });
     setDialogOpen(false);
   }
+
+  async function createDefaultInstance(component: CommandProcessorDescriptor) {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(component.plugin_id);
+    try {
+      const agent: Agent = {
+        name: component.plugin_id,
+        description: '',
+        emoji: '⌨️',
+        kind: 'command_processor',
+        component_ref: component.id,
+      };
+      const result = await httpClient.createAgent(agent);
+      const created = { ...agent, uuid: result.uuid };
+      onCreated(created);
+      update({
+        processors: [
+          ...bindings,
+          { processor_uuid: result.uuid, enabled: true },
+        ],
+      });
+      setDialogOpen(false);
+    } catch {
+      toast.error(t('agents.createError'));
+    } finally {
+      creatingRef.current = false;
+      setCreating(null);
+    }
+  }
+
+  const nothingToAdd =
+    availableProcessors.length === 0 && pluginsWithoutInstance.length === 0;
 
   return (
     <Card>
@@ -471,7 +495,7 @@ export default function PluginCommandBindings({
         </div>
         <Switch
           checked={value.enabled}
-          onCheckedChange={handleToggleMainEnabled}
+          onCheckedChange={(enabled) => update({ enabled })}
         />
       </CardHeader>
 
@@ -530,14 +554,14 @@ export default function PluginCommandBindings({
             </div>
           </div>
 
-          {/* Plugin list and drag reordering */}
+          {/* Command processor list and drag reordering */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-xs font-medium">
                   {t('bots.pluginCommands.plugins')}
                 </Label>
-                {pluginBindings.length > 1 && (
+                {bindings.length > 1 && (
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     {t('bots.pluginCommands.dragHint')}
                   </p>
@@ -547,8 +571,11 @@ export default function PluginCommandBindings({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={openAddDialog}
-                disabled={loading || availablePlugins.length === 0}
+                onClick={() => {
+                  setSelected([]);
+                  setDialogOpen(true);
+                }}
+                disabled={loading || nothingToAdd}
                 className="h-8 text-xs"
               >
                 <Plus className="size-3.5 mr-1" />
@@ -556,7 +583,7 @@ export default function PluginCommandBindings({
               </Button>
             </div>
 
-            {pluginBindings.length === 0 ? (
+            {bindings.length === 0 ? (
               <div className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
                 {t('bots.pluginCommands.empty')}
               </div>
@@ -567,21 +594,41 @@ export default function PluginCommandBindings({
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={pluginBindings.map((p) => p.plugin_id)}
+                  items={bindings.map((p) => p.processor_uuid)}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-2">
-                    {pluginBindings.map((binding) => (
-                      <SortablePluginItem
-                        key={binding.plugin_id}
-                        binding={binding}
-                        plugin={pluginMap.get(binding.plugin_id)}
-                        prefixes={prefixes}
-                        overriddenCommands={overriddenCommands}
-                        onToggleEnabled={handleTogglePluginEnabled}
-                        onRemove={handleRemovePlugin}
-                      />
-                    ))}
+                    {bindings.map((binding) => {
+                      const agent = agentMap.get(binding.processor_uuid);
+                      return (
+                        <SortableProcessorItem
+                          key={binding.processor_uuid}
+                          binding={binding}
+                          agent={agent}
+                          component={componentMap.get(
+                            commandProcessorPluginId(agent),
+                          )}
+                          prefixes={prefixes}
+                          overriddenCommands={overriddenCommands}
+                          onToggleEnabled={(uuid, enabled) =>
+                            update({
+                              processors: bindings.map((p) =>
+                                p.processor_uuid === uuid
+                                  ? { ...p, enabled }
+                                  : p,
+                              ),
+                            })
+                          }
+                          onRemove={(uuid) =>
+                            update({
+                              processors: bindings.filter(
+                                (p) => p.processor_uuid !== uuid,
+                              ),
+                            })
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 </SortableContext>
               </DndContext>
@@ -590,7 +637,6 @@ export default function PluginCommandBindings({
         </CardContent>
       )}
 
-      {/* Dialog for adding plugin commands */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -598,71 +644,105 @@ export default function PluginCommandBindings({
               {t('bots.pluginCommands.selectPlugins')}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {t('bots.pluginCommands.description')}
+              {t('bots.pluginCommands.instanceHint')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="max-h-72 overflow-y-auto space-y-2 py-2">
-            {availablePlugins.length === 0 ? (
+            {nothingToAdd && (
               <p className="text-xs text-muted-foreground py-4 text-center">
                 {t('bots.pluginCommands.noAvailablePlugins')}
               </p>
-            ) : (
-              availablePlugins.map((plugin) => {
-                const pluginId = getPluginId(plugin);
-                const meta = plugin.manifest?.manifest?.metadata;
-                const label = meta
-                  ? extractI18nObject(meta.label) || meta.name
-                  : pluginId;
-                const commands = getPluginCommands(plugin);
-                const isChecked = selectedPlugins.includes(pluginId);
-
-                return (
-                  <label
-                    key={pluginId}
-                    className="flex items-center justify-between p-2.5 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedPlugins((prev) => [...prev, pluginId]);
-                          } else {
-                            setSelectedPlugins((prev) =>
-                              prev.filter((id) => id !== pluginId),
-                            );
-                          }
-                        }}
+            )}
+            {availableProcessors.map((agent) => {
+              const pluginId = commandProcessorPluginId(agent);
+              const { author, name } = splitPluginId(pluginId);
+              const commands = componentMap.get(pluginId)?.commands ?? [];
+              return (
+                <label
+                  key={agent.uuid}
+                  className="flex items-center justify-between p-2.5 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Checkbox
+                      checked={selected.includes(agent.uuid ?? '')}
+                      onCheckedChange={(checked) =>
+                        toggleSelected(agent, Boolean(checked))
+                      }
+                    />
+                    <div className="size-7 shrink-0 overflow-hidden rounded">
+                      <AuthenticatedPluginIcon
+                        author={author}
+                        name={name}
+                        className="size-7"
                       />
-                      <div className="size-7 shrink-0 overflow-hidden rounded">
-                        <AuthenticatedPluginIcon
-                          author={meta?.author || ''}
-                          name={meta?.name || ''}
-                          className="size-7"
-                        />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-medium text-xs truncate">
+                        {agent.emoji || '⌨️'} {agent.name}
                       </div>
-                      <div className="min-w-0">
-                        <div className="font-medium text-xs truncate">
-                          {label}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground font-mono truncate">
-                          {pluginId}
-                        </div>
+                      <div className="text-[11px] text-muted-foreground font-mono truncate">
+                        {pluginId}
                       </div>
                     </div>
-
-                    <Badge
-                      variant="secondary"
-                      className="text-xs shrink-0 font-normal"
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className="text-xs shrink-0 font-normal"
+                  >
+                    {t('bots.pluginCommands.commandsCount', {
+                      count: commands.length,
+                    })}
+                  </Badge>
+                </label>
+              );
+            })}
+            {pluginsWithoutInstance.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <p className="text-[11px] text-muted-foreground">
+                  {t('bots.pluginCommands.createDefaultHint')}
+                </p>
+                {pluginsWithoutInstance.map((component) => {
+                  const { author, name } = splitPluginId(component.plugin_id);
+                  return (
+                    <div
+                      key={component.plugin_id}
+                      className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-dashed"
                     >
-                      {t('bots.pluginCommands.commandsCount', {
-                        count: commands.length,
-                      })}
-                    </Badge>
-                  </label>
-                );
-              })
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="size-7 shrink-0 overflow-hidden rounded">
+                          <AuthenticatedPluginIcon
+                            author={author}
+                            name={name}
+                            className="size-7"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-mono text-xs truncate">
+                            {component.plugin_id}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {t('bots.pluginCommands.commandsCount', {
+                              count: component.commands.length,
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        disabled={creating !== null}
+                        onClick={() => void createDefaultInstance(component)}
+                      >
+                        <Plus className="size-3.5 mr-1" />
+                        {t('bots.pluginCommands.createDefault')}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -678,8 +758,8 @@ export default function PluginCommandBindings({
             <Button
               type="button"
               size="sm"
-              disabled={selectedPlugins.length === 0}
-              onClick={handleConfirmAddPlugins}
+              disabled={selected.length === 0}
+              onClick={handleConfirmAdd}
             >
               {t('common.confirm')}
             </Button>

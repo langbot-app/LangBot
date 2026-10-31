@@ -47,7 +47,7 @@ def test_alembic_0043_upgrade_and_downgrade():
                 settings = json.loads(settings)
             assert settings['enabled'] is True
             assert settings['prefixes'] == ['/']
-            assert settings['plugins'] == []
+            assert settings['processors'] == []
 
             # Downgrade drops column
             migration.downgrade()
@@ -85,7 +85,7 @@ async def test_startup_migration_from_yaml_custom_prefix():
                 adapter='test',
                 adapter_config={},
                 workspace_uuid='ws-1',
-                command_settings={'enabled': True, 'prefixes': ['/'], 'plugins': []},
+                command_settings={'enabled': True, 'prefixes': ['/'], 'processors': []},
             )
         )
 
@@ -148,7 +148,7 @@ async def test_startup_migration_does_not_run_second_time_on_restart():
                 adapter='test',
                 adapter_config={},
                 workspace_uuid='ws-1',
-                command_settings={'enabled': True, 'prefixes': ['/custom'], 'plugins': []},
+                command_settings={'enabled': True, 'prefixes': ['/custom'], 'processors': []},
             )
         )
         conn.execute(

@@ -8,6 +8,7 @@ import sqlalchemy
 
 from ....core import app
 from ....discover import engine
+from ....command import processor as command_processor
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -678,51 +679,42 @@ class BotService:
             if p not in normalized_prefixes:
                 normalized_prefixes.append(p)
 
-        plugins = settings.get('plugins', [])
-        if not isinstance(plugins, list):
-            raise ValueError('command_settings.plugins must be a list')
+        processors = settings.get('processors', [])
+        if not isinstance(processors, list):
+            raise ValueError('command_settings.processors must be a list')
 
-        normalized_plugins = []
-        seen_plugins = set()
-
-        installed_plugin_ids: set[str] | None = None
-        plugin_connector = getattr(self.ap, 'plugin_connector', None)
-        if plugin_connector and hasattr(plugin_connector, 'list_plugins'):
-            try:
-                installed_list = await plugin_connector.list_plugins()
-                installed_plugin_ids = set()
-                for p in installed_list:
-                    meta = p.get('manifest', {}).get('manifest', {}).get('metadata', {})
-                    author = meta.get('author') or p.get('author', '')
-                    name = meta.get('name') or p.get('name', '')
-                    if author and name:
-                        installed_plugin_ids.add(f'{author}/{name}')
-                    if 'plugin_id' in p:
-                        installed_plugin_ids.add(p['plugin_id'])
-            except Exception:
-                installed_plugin_ids = None
-
-        for item in plugins:
+        normalized_processors = []
+        seen_processors: set[str] = set()
+        seen_plugins: set[str] = set()
+        for item in processors:
             if not isinstance(item, dict):
-                raise ValueError('Each plugin binding must be an object')
-            plugin_id = item.get('plugin_id')
-            if not isinstance(plugin_id, str) or not plugin_id.strip():
-                raise ValueError('Plugin ID is required')
-            plugin_id = plugin_id.strip()
+                raise ValueError('Each command processor binding must be an object')
+            processor_uuid = item.get('processor_uuid')
+            if not isinstance(processor_uuid, str) or not processor_uuid.strip():
+                raise ValueError('Command processor UUID is required')
+            processor_uuid = processor_uuid.strip()
+            if processor_uuid in seen_processors:
+                raise ValueError('A command processor can only be bound once per bot')
+            processor_enabled = item.get('enabled', True)
+            if not isinstance(processor_enabled, bool):
+                raise ValueError('Command processor enabled must be a boolean')
+            agent = await self._get_agent_entity(context, processor_uuid)
+            if agent is None or agent.kind != command_processor.COMMAND_PROCESSOR_KIND:
+                raise ValueError('Command processor not found')
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+            if plugin_id is None:
+                raise ValueError('Command processor has no plugin')
             if plugin_id in seen_plugins:
-                raise ValueError('A plugin can only be bound once per bot')
-            plugin_enabled = item.get('enabled', True)
-            if not isinstance(plugin_enabled, bool):
-                raise ValueError('Plugin enabled must be a boolean')
-            if installed_plugin_ids is not None and plugin_id not in installed_plugin_ids:
-                raise ValueError(f"Plugin '{plugin_id}' is not installed in this workspace")
+                # Two instances of one plugin expose the same commands; the later one could never match.
+                raise ValueError('Only one command processor per plugin can be bound to a bot')
+            seen_processors.add(processor_uuid)
             seen_plugins.add(plugin_id)
-            normalized_plugins.append({'plugin_id': plugin_id, 'enabled': plugin_enabled})
+            normalized_processors.append({'processor_uuid': processor_uuid, 'enabled': processor_enabled})
 
         return {
             'enabled': enabled,
             'prefixes': normalized_prefixes,
-            'plugins': normalized_plugins,
+            'processors': normalized_processors,
         }
 
     async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
@@ -849,7 +841,7 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
-        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'plugins': []})
+        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'processors': []})
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
         bot_data.setdefault('description', '')

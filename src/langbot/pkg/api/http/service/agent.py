@@ -40,6 +40,7 @@ from ....agent.runner.platform_tools import (
     resolve_agent_platform_tool_names,
     validate_debug_mock_options,
 )
+from ....command import processor as command_processor
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
 from ..context import ExecutionContext, RequestContext
@@ -49,6 +50,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 AGENT_KIND_AGENT = 'agent'
 AGENT_KIND_PIPELINE = 'pipeline'
 AGENT_KIND_EVENT_PROCESSOR = 'event_processor'
+AGENT_KIND_COMMAND_PROCESSOR = command_processor.COMMAND_PROCESSOR_KIND
 PIPELINE_EVENT_PATTERNS = ['message.received']
 AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
@@ -87,8 +89,10 @@ class AgentService:
                     use_cache=False,
                 )
             ]
+        command_processors = await self._list_command_processor_components(context)
         return {
             'event_processors': event_processors,
+            'command_processors': command_processors,
             'runner_config': ai_metadata,
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
@@ -104,6 +108,11 @@ class AgentService:
                     'message_only': True,
                 },
                 {'name': AGENT_KIND_EVENT_PROCESSOR, 'supported_event_patterns': ['*'], 'message_only': False},
+                {
+                    'name': AGENT_KIND_COMMAND_PROCESSOR,
+                    'supported_event_patterns': command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS,
+                    'message_only': True,
+                },
             ],
         }
 
@@ -441,11 +450,13 @@ class AgentService:
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 
-        if kind not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
+        if kind not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR, AGENT_KIND_COMMAND_PROCESSOR}:
             raise ValueError(f'Unsupported agent kind: {kind}')
 
         if kind == AGENT_KIND_EVENT_PROCESSOR:
             config, runner_id, patterns = await self._prepare_event_processor(context, agent_data)
+        elif kind == AGENT_KIND_COMMAND_PROCESSOR:
+            config, runner_id, patterns = await self._prepare_command_processor(context, agent_data)
         else:
             config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(config)
@@ -464,7 +475,8 @@ class AgentService:
             'uuid': new_uuid,
             'name': agent_data.get('name') or t('New Agent'),
             'description': agent_data.get('description') or '',
-            'emoji': agent_data.get('emoji') or ('🧩' if kind == AGENT_KIND_EVENT_PROCESSOR else '🤖'),
+            'emoji': agent_data.get('emoji')
+            or {AGENT_KIND_EVENT_PROCESSOR: '🧩', AGENT_KIND_COMMAND_PROCESSOR: '⌨️'}.get(kind, '🤖'),
             'kind': kind,
             'component_ref': runner_id,
             'config': config,
@@ -487,6 +499,16 @@ class AgentService:
             for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
             if field in agent_data
         }
+        if existing_agent.kind == AGENT_KIND_COMMAND_PROCESSOR:
+            if any(field in agent_data for field in ('config', 'component_ref', 'plugin_id', 'parameters')):
+                config, component_ref, patterns = await self._prepare_command_processor(
+                    context, agent_data, existing_agent
+                )
+                update_data.update(config=config, component_ref=component_ref, supported_event_patterns=patterns)
+            else:
+                update_data.pop('supported_event_patterns', None)
+            await self._write_agent_update(context, agent_uuid, update_data)
+            return
         if existing_agent.kind == AGENT_KIND_EVENT_PROCESSOR and any(
             field in agent_data for field in ('config', 'component_ref', 'parameters', 'supported_event_patterns')
         ):
@@ -500,6 +522,9 @@ class AgentService:
         update_data['component_ref'] = runner_id
         if existing_agent.kind == AGENT_KIND_AGENT:
             await self._validate_runner_for_agent(context, runner_id)
+        await self._write_agent_update(context, agent_uuid, update_data)
+
+    async def _write_agent_update(self, context: TenantContext, agent_uuid: str, update_data: dict) -> None:
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)
@@ -581,6 +606,90 @@ class AgentService:
         # Component-only creation keeps defaults for the detail form, but does
         # not subscribe to events until configuration is saved and validated.
         return config, component_ref, [] if draft else descriptor.supported_event_patterns
+
+    async def _list_command_processor_components(self, context: TenantContext) -> list[dict[str, typing.Any]]:
+        """Group installed Command components by plugin for the command processor form."""
+        connector = getattr(self.ap, 'plugin_connector', None)
+        if connector is None:
+            return []
+        try:
+            manifests = await connector.list_commands()
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to load plugin commands for processor metadata: {exc}')
+            return []
+        grouped: dict[str, list[dict[str, typing.Any]]] = {}
+        for manifest in manifests:
+            plugin_id = str(getattr(manifest, 'owner', '') or '')
+            name = command_processor.command_name(manifest)
+            if not plugin_id or not name:
+                continue
+            metadata = manifest.metadata
+            grouped.setdefault(plugin_id, []).append(
+                {
+                    'name': name,
+                    'label': metadata.label.to_dict() if metadata.label is not None else {'en_US': name},
+                    'description': metadata.description.to_dict() if metadata.description is not None else None,
+                    'config_schema': command_processor.command_config_schema(manifest),
+                }
+            )
+        return [
+            {
+                'id': command_processor.component_ref_for_plugin(plugin_id),
+                'plugin_id': plugin_id,
+                'commands': sorted(commands, key=lambda item: item['name']),
+            }
+            for plugin_id, commands in sorted(grouped.items())
+        ]
+
+    async def _prepare_command_processor(self, context, data, existing=None):
+        """Validate one plugin's command configuration against its declared Command schemas."""
+        draft = existing is None and 'config' not in data and 'parameters' not in data
+        existing_config = existing.config if existing is not None and isinstance(existing.config, dict) else {}
+        config = copy.deepcopy(data.get('config', existing_config))
+        if not isinstance(config, dict):
+            raise ValueError('Processor configuration must be an object')
+        component_ref = data.get('component_ref')
+        if component_ref is None and data.get('plugin_id'):
+            component_ref = command_processor.component_ref_for_plugin(str(data['plugin_id']))
+        if component_ref is None and existing is not None:
+            component_ref = existing.component_ref
+        plugin_id = command_processor.plugin_id_from_component_ref(component_ref)
+        if plugin_id is None:
+            raise ValueError('Select an installed plugin that provides commands')
+
+        try:
+            manifests = await self.ap.plugin_connector.list_commands([plugin_id])
+        except Exception as exc:
+            raise ValueError('Plugin commands are unavailable') from exc
+        manifests = [item for item in manifests if str(getattr(item, 'owner', '') or '') == plugin_id]
+        if not manifests:
+            raise ValueError('Select an installed plugin that provides commands')
+
+        parameters = data.get('parameters')
+        if parameters is None:
+            parameters = config.get('command_config', {})
+        if not isinstance(parameters, dict):
+            raise ValueError('Processor parameters must be an object')
+
+        command_config: dict[str, dict[str, typing.Any]] = {}
+        for manifest in manifests:
+            name = command_processor.command_name(manifest)
+            schema = command_processor.command_config_schema(manifest)
+            values = parameters.get(name, {})
+            if not isinstance(values, dict):
+                raise ValueError(f'Command parameters must be an object: {name}')
+            values = command_processor.merge_command_config(schema, values)
+            if draft:
+                values = await self.ap.llm_model_service.apply_default_model(context, schema, values)
+            for field in schema:
+                if not draft and field.get('required') and values.get(field['name']) in (None, ''):
+                    raise ValueError(f'Required command parameter: {name}.{field["name"]}')
+            command_config[name] = values
+
+        config = {'plugin': {'id': plugin_id}, 'command_config': command_config}
+        return config, command_processor.component_ref_for_plugin(plugin_id), list(
+            command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS
+        )
 
     async def get_processor_runs(self, context, processor_id, *, before_id=None):
         """Read only this Workspace's Agent or plugin processor runs."""
@@ -689,7 +798,7 @@ class AgentService:
             'supported_event_patterns': (
                 supported_event_patterns if isinstance(supported_event_patterns, list) else AGENT_DEFAULT_EVENT_PATTERNS
             ),
-            'message_only': False,
+            'message_only': item['kind'] == AGENT_KIND_COMMAND_PROCESSOR,
         }
         if not include_config:
             item.pop('config', None)

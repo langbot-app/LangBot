@@ -359,7 +359,8 @@ class LangBotMCPServer:
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
                 'Subscriptions run independently of each other and of event_bindings. '
-                'command_settings is an object: {enabled: bool, prefixes: [str], plugins: [{plugin_id: str, enabled: bool}]}. '
+                'command_settings is an object: {enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]} '
+                'binding command_processor instances in priority order (message.received only). '
                 'Returns the new bot UUID.'
             )
         )
@@ -371,7 +372,9 @@ class LangBotMCPServer:
             description=(
                 'Update a bot by UUID. `bot_data` matches the PUT bot body. '
                 'plugin_processors replaces the bot subscriptions with [{processor_uuid, enabled}]. '
-                'command_settings replaces the bot command settings with {enabled: bool, prefixes: [str], plugins: [{plugin_id: str, enabled: bool}]}. '
+                'command_settings replaces the bot command settings with '
+                '{enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]}; '
+                'processors are command_processor instances, at most one per plugin, in priority order. '
                 'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes.'
             )
         )
@@ -469,42 +472,45 @@ class LangBotMCPServer:
             return _dump({'ok': True})
 
         # ----- Processors ---------------------------------------------- #
-        @mcp.tool(description='List product-level processors, including Agents, Pipelines and Event processors.')
+        @mcp.tool(description='List product-level processors: Agents, Pipelines, Event processors and Command processors.')
         async def list_processors() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agents(context))
 
-        @mcp.tool(description='Get an Agent, Pipeline or Event processor by UUID.')
+        @mcp.tool(description='Get an Agent, Pipeline, Event processor or Command processor by UUID.')
         async def get_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agent(context, processor_uuid))
 
         @mcp.tool(
             description=(
-                'Create an Agent, Pipeline or Event processor. Set `processor_data.kind` to '
-                '`agent`, `pipeline` or `event_processor`. Event processors may be created without a component; '
+                'Create an Agent, Pipeline, Event processor or Command processor. Set `processor_data.kind` to '
+                '`agent`, `pipeline`, `event_processor` or `command_processor`. Event processors may be created without a component; '
                 'then use update_processor with an installed component_ref from get_processor_metadata and optional '
-                'parameters. Unconfigured instances support no events. Returns UUID and kind.'
+                'parameters. Unconfigured instances support no events. A command_processor needs component_ref '
+                '`plugin:<author>/<name>` (see command_processors in get_processor_metadata) and optional parameters '
+                '{<command name>: {...}} validated against each Command spec.config. Returns UUID and kind.'
             )
         )
         async def create_processor(processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump(await ap.agent_service.create_agent(context, processor_data))
 
-        @mcp.tool(description='Update an Agent, Pipeline or Event processor by UUID.')
+        @mcp.tool(description='Update an Agent, Pipeline, Event processor or Command processor by UUID.')
         async def update_processor(processor_uuid: str, processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.update_agent(context, processor_uuid, processor_data)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Delete an Agent, Pipeline or Event processor by UUID.')
+        @mcp.tool(description='Delete an Agent, Pipeline, Event processor or Command processor by UUID.')
         async def delete_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.delete_agent(context, processor_uuid)
             return _dump({'ok': True})
 
         @mcp.tool(
-            description='Get processor kinds and installed event-capable Runner components with configuration schemas.'
+            description='Get processor kinds, installed event-capable Runner components and command-providing '
+            'plugins (command_processors), each with configuration schemas.'
         )
         async def get_processor_metadata() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)

@@ -8,16 +8,31 @@ import pytest
 from langbot.pkg.api.http.service.bot import BotService
 
 
-def make_service(installed_plugins=None):
+def make_service(processors=None):
+    """``processors`` maps processor UUID to (kind, component_ref)."""
     ap = SimpleNamespace(
         persistence_mgr=SimpleNamespace(),
         platform_mgr=SimpleNamespace(),
     )
-    if installed_plugins is not None:
-        ap.plugin_connector = SimpleNamespace(
-            list_plugins=AsyncMock(return_value=installed_plugins)
-        )
-    return BotService(ap)
+    service = BotService(ap)
+    known = processors or {}
+
+    async def get_agent_entity(_context, processor_uuid):
+        if processor_uuid not in known:
+            return None
+        kind, component_ref = known[processor_uuid]
+        return SimpleNamespace(uuid=processor_uuid, kind=kind, component_ref=component_ref)
+
+    service._get_agent_entity = AsyncMock(side_effect=get_agent_entity)
+    return service
+
+
+PROCESSORS = {
+    'cp-1': ('command_processor', 'plugin:author/plugin1'),
+    'cp-2': ('command_processor', 'plugin:author/plugin2'),
+    'cp-1b': ('command_processor', 'plugin:author/plugin1'),
+    'ep-1': ('event_processor', 'plugin:author/plugin1/default'),
+}
 
 
 @pytest.mark.parametrize(
@@ -30,97 +45,54 @@ def make_service(installed_plugins=None):
         ({'prefixes': ['']}, 'must be a non-empty string without whitespace'),
         ({'prefixes': ['/   ']}, 'must be a non-empty string without whitespace'),
         ({'prefixes': ['/ a']}, 'must be a non-empty string without whitespace'),
-        ({'plugins': 'not a list'}, 'must be a list'),
-        ({'plugins': ['not a dict']}, 'must be an object'),
-        ({'plugins': [{}]}, 'Plugin ID is required'),
-        ({'plugins': [{'plugin_id': ''}]}, 'Plugin ID is required'),
-        ({'plugins': [{'plugin_id': 'p1', 'enabled': 'yes'}]}, 'must be a boolean'),
+        ({'processors': 'not a list'}, 'must be a list'),
+        ({'processors': ['not a dict']}, 'must be an object'),
+        ({'processors': [{}]}, 'Command processor UUID is required'),
+        ({'processors': [{'processor_uuid': ''}]}, 'Command processor UUID is required'),
+        ({'processors': [{'processor_uuid': 'cp-1', 'enabled': 'yes'}]}, 'must be a boolean'),
+        ({'processors': [{'processor_uuid': 'missing'}]}, 'Command processor not found'),
+        ({'processors': [{'processor_uuid': 'ep-1'}]}, 'Command processor not found'),
         (
-            {
-                'plugins': [
-                    {'plugin_id': 'p1', 'enabled': True},
-                    {'plugin_id': 'p1', 'enabled': False},
-                ]
-            },
+            {'processors': [{'processor_uuid': 'cp-1'}, {'processor_uuid': 'cp-1', 'enabled': False}]},
             'only be bound once',
+        ),
+        (
+            {'processors': [{'processor_uuid': 'cp-1'}, {'processor_uuid': 'cp-1b'}]},
+            'one command processor per plugin',
         ),
     ],
 )
 @pytest.mark.asyncio
 async def test_invalid_command_settings_are_rejected(settings, reason):
-    service = make_service()
+    service = make_service(PROCESSORS)
     with pytest.raises(ValueError, match=reason):
         await service._normalize_command_settings('ws-1', settings)
 
 
 @pytest.mark.asyncio
-async def test_uninstalled_plugin_is_rejected():
-    """Plugin not installed in workspace must be rejected with ValueError."""
-    service = make_service(
-        installed_plugins=[
-            {'plugin_id': 'author/installed_plugin'},
-        ]
-    )
-    settings = {
-        'enabled': True,
-        'prefixes': ['/'],
-        'plugins': [
-            {'plugin_id': 'author/installed_plugin', 'enabled': True},
-            {'plugin_id': 'other/not_installed', 'enabled': True},
-        ],
-    }
-    with pytest.raises(ValueError, match="Plugin 'other/not_installed' is not installed in this workspace"):
-        await service._normalize_command_settings('ws-1', settings)
-
-
-@pytest.mark.asyncio
-async def test_installed_plugin_validation_passes():
-    """Installed plugin in workspace passes validation."""
-    service = make_service(
-        installed_plugins=[
-            {
-                'manifest': {
-                    'manifest': {
-                        'metadata': {'author': 'author', 'name': 'plugin1'},
-                    }
-                }
-            },
-        ]
-    )
-    settings = {
-        'enabled': True,
-        'prefixes': ['/'],
-        'plugins': [
-            {'plugin_id': 'author/plugin1', 'enabled': True},
-        ],
-    }
-    normalized = await service._normalize_command_settings('ws-1', settings)
-    assert normalized['plugins'] == [{'plugin_id': 'author/plugin1', 'enabled': True}]
-
-
-@pytest.mark.asyncio
 async def test_valid_command_settings_normalization():
-    service = make_service()
+    service = make_service(PROCESSORS)
     settings = {
         'enabled': True,
         'prefixes': ['/', '!', '/'],  # duplicate '/' should be deduplicated
-        'plugins': [
-            {'plugin_id': 'author/plugin1', 'enabled': True},
-            {'plugin_id': 'author/plugin2', 'enabled': False},
+        'processors': [
+            {'processor_uuid': 'cp-2', 'enabled': True},
+            {'processor_uuid': 'cp-1', 'enabled': False},
         ],
     }
     normalized = await service._normalize_command_settings('ws-1', settings)
     assert normalized['enabled'] is True
     assert normalized['prefixes'] == ['/', '!']
-    assert normalized['plugins'] == [
-        {'plugin_id': 'author/plugin1', 'enabled': True},
-        {'plugin_id': 'author/plugin2', 'enabled': False},
+    # Order is priority and must be preserved.
+    assert normalized['processors'] == [
+        {'processor_uuid': 'cp-2', 'enabled': True},
+        {'processor_uuid': 'cp-1', 'enabled': False},
     ]
 
 
 @pytest.mark.asyncio
 async def test_prepare_bot_data_normalizes_command_settings():
-    service = make_service()
+    service = make_service(PROCESSORS)
     service._normalize_event_bindings = AsyncMock(return_value=[])
     service._normalize_plugin_processors = AsyncMock(return_value=[])
 
@@ -130,12 +102,9 @@ async def test_prepare_bot_data_normalizes_command_settings():
         'command_settings': {
             'enabled': True,
             'prefixes': ['#'],
-            'plugins': [{'plugin_id': 'my_plugin', 'enabled': True}],
+            'processors': [{'processor_uuid': 'cp-1', 'enabled': True}],
         },
     }
     prepared = await service._prepare_bot_data('ws-1', bot_data, include_uuid=False)
-    assert 'command_settings' in prepared
     assert prepared['command_settings']['prefixes'] == ['#']
-    assert prepared['command_settings']['plugins'] == [
-        {'plugin_id': 'my_plugin', 'enabled': True}
-    ]
+    assert prepared['command_settings']['processors'] == [{'processor_uuid': 'cp-1', 'enabled': True}]

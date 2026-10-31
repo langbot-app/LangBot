@@ -179,9 +179,9 @@ const getFormSchema = (t: (key: string) => string) =>
       .object({
         enabled: z.boolean(),
         prefixes: z.array(z.string()),
-        plugins: z.array(
+        processors: z.array(
           z.object({
-            plugin_id: z.string(),
+            processor_uuid: z.string(),
             enabled: z.boolean(),
           }),
         ),
@@ -250,7 +250,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       command_settings: {
         enabled: true,
         prefixes: ['/'],
-        plugins: [],
+        processors: [],
       },
     },
   });
@@ -404,7 +404,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 command_settings: val.command_settings || {
                   enabled: true,
                   prefixes: ['/'],
-                  plugins: [],
+                  processors: [],
                 },
               });
               handleAdapterSelect(val.adapter, true);
@@ -693,7 +693,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       command_settings: form.getValues('command_settings') || {
         enabled: true,
         prefixes: ['/'],
-        plugins: [],
+        processors: [],
       },
     };
 
@@ -1350,7 +1350,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   botId={initBotId}
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList.filter(
-                    (agent) => agent.kind !== 'event_processor',
+                    (agent) =>
+                      agent.kind !== 'event_processor' &&
+                      agent.kind !== 'command_processor',
                   )}
                 />
                 <PluginCommandBindings
@@ -1359,6 +1361,10 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     form.setValue('command_settings', value, {
                       shouldDirty: true,
                     })
+                  }
+                  agents={agentNameList}
+                  onCreated={(agent) =>
+                    setAgentNameList((items) => [...items, agent])
                   }
                 />
                 <PluginProcessorBindings

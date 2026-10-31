@@ -57,8 +57,8 @@ class Bot(Base):
     command_settings = sqlalchemy.Column(
         sqlalchemy.JSON,
         nullable=False,
-        server_default='{"enabled": true, "prefixes": ["/"], "plugins": []}',
-        default=lambda: {'enabled': True, 'prefixes': ['/'], 'plugins': []},
+        server_default='{"enabled": true, "prefixes": ["/"], "processors": []}',
+        default=lambda: {'enabled': True, 'prefixes': ['/'], 'processors': []},
     )
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
