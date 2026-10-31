@@ -97,7 +97,6 @@ async def test_provenance_cannot_cross_pipeline(mock_query):
     assert context['conversation']['launcher_id'] is None
 
 
-@pytest.mark.asyncio
 @pytest.fixture(scope='session')
 def official_plugin_root():
     return verified_plugin_root()
