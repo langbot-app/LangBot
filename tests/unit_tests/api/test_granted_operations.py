@@ -133,8 +133,8 @@ def test_processor_filtering_rules(mock_host, caplog):
     )
 
     requested_granted = [
-        'bot.list',  # exposure == 'all' -> kept
-        'agent.create',  # exposure == 'all' -> kept
+        'bot.list',  # exposure == 'all' and in allowed_operation_ids -> kept
+        'agent.create',  # exposure == 'all' but NOT in allowed_operation_ids -> discarded
         'mcp.server.create',  # exposure == 'assistant' -> discarded
         'pipeline.migration.preview',  # exposure == 'assistant' -> discarded
         'agent.debug.stream',  # streaming -> discarded
@@ -147,12 +147,92 @@ def test_processor_filtering_rules(mock_host, caplog):
         granted_ops = list_granted(mock_host, processor_context, consumer='processor', granted=requested_granted)
 
     granted_ids = [op.id for op in granted_ops]
-    assert granted_ids == ['bot.list', 'agent.create']
+    assert granted_ids == ['bot.list']
 
     # Verify warning logged for discarded operations
     assert 'Discarded' in caplog.text
+    assert 'agent.create' in caplog.text
     assert 'mcp.server.create' in caplog.text
     assert 'nonexistent.operation.id' in caplog.text
+
+
+def test_processor_granted_exceeding_context_is_discarded_with_warning(mock_host, caplog):
+    api = ApplicationAPI(mock_host)
+    mock_host.application_api = api
+
+    processor_context = RequestContext(
+        instance_uuid='test-instance',
+        placement_generation=1,
+        request_id='req-proc',
+        auth_type='processor',
+        principal=PrincipalContext(
+            principal_type=PrincipalType.PROCESSOR,
+            processor_kind='agent',
+            processor_uuid='agent-1',
+            run_id='run-1',
+        ),
+        workspace=WorkspaceContext(
+            workspace_uuid='ws-1',
+            membership_uuid=None,
+            role=None,
+            permissions=frozenset({Permission.RESOURCE_VIEW.value}),
+        ),
+        allowed_operation_ids=frozenset({'bot.list'}),
+    )
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        ops = list_granted(
+            mock_host,
+            processor_context,
+            consumer='processor',
+            granted=['bot.list', 'bot.delete', 'agent.create'],
+        )
+
+    assert [op.id for op in ops] == ['bot.list']
+    assert 'Discarded 2 invalid operation(s) for processor' in caplog.text
+    assert 'bot.delete' in caplog.text
+    assert 'agent.create' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_processor_call_outside_context_allowed_operation_ids_returns_not_found(mock_host):
+    api = ApplicationAPI(mock_host)
+    mock_host.application_api = api
+
+    processor_context = RequestContext(
+        instance_uuid='test-instance',
+        placement_generation=1,
+        request_id='req-proc',
+        auth_type='processor',
+        principal=PrincipalContext(
+            principal_type=PrincipalType.PROCESSOR,
+            processor_kind='agent',
+            processor_uuid='agent-1',
+            run_id='run-1',
+        ),
+        workspace=WorkspaceContext(
+            workspace_uuid='ws-1',
+            membership_uuid=None,
+            role=None,
+            permissions=frozenset({Permission.RESOURCE_VIEW.value}),
+        ),
+        allowed_operation_ids=frozenset({'bot.list'}),
+    )
+
+    # Calling bot.delete with granted=['bot.delete'] must NOT elevate permissions or allow execution
+    res = await call(
+        mock_host,
+        processor_context,
+        'bot.delete',
+        {'bot_uuid': 'bot-1'},
+        consumer='processor',
+        granted=['bot.delete'],
+    )
+    assert res['ok'] is False
+    assert res['error']['code'] == 'not_found'
+    assert 'Operation not found' in res['error']['message']
 
 
 def test_processor_fallback_to_context_allowed_operation_ids(mock_host):
@@ -427,3 +507,15 @@ def test_granted_operation_serialization():
     assert op['id'] == 'test.op'
     assert op.get('domain') == 'test'
     assert dict(op)['permission'] == 'resource.view'
+
+
+def test_error_message_sanitization_does_not_corrupt_short_inputs():
+    from langbot.pkg.api.application.granted_operations import _sanitize_error_message
+
+    msg = 'Application resource 1 failed on shard a'
+    sanitized = _sanitize_error_message(msg, {'id': '1', 'shard': 'a', 'count': 2})
+    assert sanitized == 'Application resource 1 failed on shard a'
+
+    msg_with_secret = 'Application resource secret_token_xyz failed on shard a'
+    sanitized_secret = _sanitize_error_message(msg_with_secret, {'token': 'secret_token_xyz', 'id': '1'})
+    assert sanitized_secret == 'Application resource [REDACTED] failed on shard a'

@@ -11,7 +11,7 @@ from typing import Any, Literal
 from pydantic import TypeAdapter
 
 from ..authz import has_permission
-from ..context import PrincipalType, RequestContext
+from ..context import RequestContext
 from ..secrets import redact_secrets
 from .contracts import Operation
 from .errors import error_from_exception
@@ -141,18 +141,25 @@ def list_granted(
         return granted_ops
 
     # consumer == 'processor'
-    candidate_ids = granted
-    if candidate_ids is None and getattr(context, 'allowed_operation_ids', None) is not None:
-        candidate_ids = context.allowed_operation_ids
+    ctx_allowed = getattr(context, 'allowed_operation_ids', None)
+    ctx_allowed_set = frozenset(ctx_allowed) if ctx_allowed is not None else frozenset()
+
+    if granted is None:
+        candidate_ids = list(ctx_allowed) if ctx_allowed is not None else []
+    else:
+        candidate_ids = list(granted)
 
     seen: set[str] = set()
     granted_ops = []
     discarded: list[tuple[str, str]] = []
 
-    for op_id in candidate_ids or ():
+    for op_id in candidate_ids:
         if op_id in seen:
             continue
         seen.add(op_id)
+        if op_id not in ctx_allowed_set:
+            discarded.append((op_id, 'not_in_context_allowed_operation_ids'))
+            continue
         spec = operations_map.get(op_id)
         if spec is None:
             discarded.append((op_id, 'not_found'))
@@ -229,7 +236,7 @@ def _collect_input_values(data: Any) -> list[str]:
             values.extend(_collect_input_values(v))
     elif isinstance(data, (str, int, float)) and data is not None and data is not True and data is not False:
         s = str(data).strip()
-        if len(s) > 0:
+        if len(s) >= 4:
             values.append(s)
     return values
 
@@ -264,10 +271,12 @@ def _is_operation_granted(
     # consumer == 'processor'
     if doc.exposure != 'all':
         return False
-    candidates = granted
-    if candidates is None and getattr(context, 'allowed_operation_ids', None) is not None:
-        candidates = context.allowed_operation_ids
-    return candidates is not None and spec.operation_id in candidates
+    ctx_allowed = getattr(context, 'allowed_operation_ids', None)
+    if ctx_allowed is None or spec.operation_id not in ctx_allowed:
+        return False
+    if granted is not None and spec.operation_id not in set(granted):
+        return False
+    return True
 
 
 async def call(
@@ -296,21 +305,8 @@ async def call(
     clean_arguments = {k: v for k, v in (arguments or {}).items() if k != 'include_secret'}
     doc = get_operation_doc(spec.operation_id, side_effect=spec.side_effect)
 
-    effective_context = context
-    if context.principal.principal_type == PrincipalType.PROCESSOR:
-        perm_val = spec.permission.value if hasattr(spec.permission, 'value') else str(spec.permission)
-        curr_allowed = context.allowed_operation_ids or frozenset()
-        curr_perms = context.workspace.permissions or frozenset()
-        if operation_id not in curr_allowed or perm_val not in curr_perms:
-            new_ws = dataclasses.replace(context.workspace, permissions=curr_perms | {perm_val})
-            effective_context = dataclasses.replace(
-                context,
-                workspace=new_ws,
-                allowed_operation_ids=curr_allowed | {operation_id},
-            )
-
     try:
-        raw_result = await app_api.execute(operation_id, effective_context, clean_arguments)
+        raw_result = await app_api.execute(operation_id, context, clean_arguments)
         return {
             'ok': True,
             'result': redact_secrets(raw_result),

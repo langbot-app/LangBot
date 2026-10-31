@@ -11,8 +11,7 @@ import pytest
 from langbot.pkg.api.application.api import ApplicationAPI
 from langbot.pkg.api.application.granted_operations import call
 from langbot.pkg.api.application.operation_docs import OPERATION_DOCS, get_operation_doc
-from langbot.pkg.api.authz import Permission
-from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+from langbot.pkg.api.application.processor_context import build_processor_request_context
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -83,6 +82,7 @@ def sweep_app(monkeypatch):
     ap.llm_model_service.create_llm_model = AsyncMock(return_value='m-1')
     ap.llm_model_service.update_llm_model = AsyncMock(return_value=None)
     ap.llm_model_service.delete_llm_model = AsyncMock(return_value=None)
+    ap.llm_model_service.test_llm_model = AsyncMock(return_value=None)
 
     # Embedding model service
     ap.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
@@ -101,6 +101,7 @@ def sweep_app(monkeypatch):
     ap.provider_service.create_provider = AsyncMock(return_value='pr-1')
     ap.provider_service.update_provider = AsyncMock(return_value=None)
     ap.provider_service.delete_provider = AsyncMock(return_value=None)
+    ap.provider_service.scan_provider_models = AsyncMock(return_value={'models': []})
 
     # Bot service
     ap.bot_service.get_bots = AsyncMock(return_value=[])
@@ -114,6 +115,7 @@ def sweep_app(monkeypatch):
     ap.bot_service.create_bot = AsyncMock(return_value='b-1')
     ap.bot_service.update_bot = AsyncMock(return_value=None)
     ap.bot_service.delete_bot = AsyncMock(return_value=None)
+    ap.bot_service.send_message = AsyncMock(return_value=None)
 
     # Agent service
     ap.agent_service.get_agents = AsyncMock(return_value=[])
@@ -124,6 +126,7 @@ def sweep_app(monkeypatch):
     ap.agent_service.create_agent = AsyncMock(return_value={'agent_uuid': 'a-1'})
     ap.agent_service.update_agent = AsyncMock(return_value=None)
     ap.agent_service.delete_agent = AsyncMock(return_value=None)
+    ap.agent_service.debug_agent = AsyncMock(return_value={'result': 'ok'})
 
     # Knowledge service
     ap.knowledge_service.get_knowledge_bases = AsyncMock(return_value=[])
@@ -137,6 +140,7 @@ def sweep_app(monkeypatch):
     ap.knowledge_service.create_knowledge_base = AsyncMock(return_value='kb-1')
     ap.knowledge_service.update_knowledge_base = AsyncMock(return_value=None)
     ap.knowledge_service.delete_knowledge_base = AsyncMock(return_value=None)
+    ap.knowledge_service.store_file = AsyncMock(return_value=1)
 
     # MCP service
     ap.mcp_service.get_mcp_servers = AsyncMock(return_value=[])
@@ -158,6 +162,7 @@ def sweep_app(monkeypatch):
     ap.skill_service.create_skill = AsyncMock(return_value={})
     ap.skill_service.update_skill = AsyncMock(return_value={})
     ap.skill_service.delete_skill = AsyncMock(return_value=True)
+    ap.skill_service.write_skill_file = AsyncMock(return_value={'revision': 'rev-1'})
 
     # Monitoring service
     ap.monitoring_service.get_overview_metrics = AsyncMock(return_value={})
@@ -204,28 +209,6 @@ def sweep_app(monkeypatch):
     api = ApplicationAPI(ap)
     ap.application_api = api
     return ap
-
-
-def make_processor_context(allowed_ids: frozenset[str]) -> RequestContext:
-    return RequestContext(
-        instance_uuid='sweep-instance',
-        placement_generation=1,
-        request_id='req-proc-sweep',
-        auth_type='processor',
-        principal=PrincipalContext(
-            principal_type=PrincipalType.PROCESSOR,
-            processor_kind='agent',
-            processor_uuid='agent-sweep',
-            run_id='run-sweep',
-        ),
-        workspace=WorkspaceContext(
-            workspace_uuid='ws-sweep',
-            membership_uuid=None,
-            role=None,
-            permissions=frozenset({p.value for p in Permission}),
-        ),
-        allowed_operation_ids=allowed_ids,
-    )
 
 
 MIN_READ_PARAMS = {
@@ -293,7 +276,15 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
     ]
     assert len(read_op_ids) == 85
 
-    proc_ctx = make_processor_context(frozenset(read_op_ids))
+    proc_ctx = await build_processor_request_context(
+        sweep_app,
+        workspace_uuid='ws-sweep',
+        processor_kind='agent',
+        processor_uuid='agent-sweep',
+        run_id='run-sweep',
+        operation_ids=read_op_ids,
+    )
+    assert proc_ctx.allowed_operation_ids == frozenset(read_op_ids)
 
     with patch('langbot.pkg.api.application.plugin_operations._github_json', AsyncMock(return_value={'assets': []})):
         for op_id in read_op_ids:
@@ -309,14 +300,17 @@ WRITE_SAMPLES = [
     ('agent.create', {'agent_data': {'name': 'A1'}}),
     ('agent.update', {'agent_uuid': 'a-1', 'agent_data': {'name': 'A2'}}),
     ('agent.delete', {'agent_uuid': 'a-1'}),
+    ('agent.debug', {'agent_uuid': 'a-1', 'payload': {}}),
     # bot
     ('bot.create', {'bot_data': {'name': 'B1'}}),
     ('bot.update', {'bot_uuid': 'b-1', 'bot_data': {'name': 'B2'}}),
     ('bot.delete', {'bot_uuid': 'b-1'}),
+    ('bot.message.send', {'bot_uuid': 'b-1', 'target_type': 'group', 'target_id': 'g-1', 'message_chain_data': {}}),
     # knowledge
     ('knowledge.base.create', {'kb_data': {'name': 'K1'}}),
     ('knowledge.base.update', {'kb_uuid': 'kb-1', 'kb_data': {'name': 'K2'}}),
     ('knowledge.base.delete', {'kb_uuid': 'kb-1'}),
+    ('knowledge.file.store', {'kb_uuid': 'kb-1', 'file_id': 'f-1'}),
     # mcp (delete and test are exposure=='all')
     ('mcp.server.test', {'server_name': 's-1', 'server_data': {}}),
     ('mcp.server.delete', {'server_uuid': 's-1'}),
@@ -324,40 +318,67 @@ WRITE_SAMPLES = [
     ('model.llm.create', {'model_data': {'name': 'M1'}}),
     ('model.llm.update', {'model_uuid': 'm-1', 'model_data': {'name': 'M2'}}),
     ('model.llm.delete', {'model_uuid': 'm-1'}),
+    ('model.llm.test', {'model_uuid': 'm-1', 'model_data': {}}),
     # monitoring
     ('monitoring.session.reset', {'bot_id': 'b-1', 'session_id': 's-1'}),
     # pipeline
     ('pipeline.create', {'pipeline_data': {'name': 'P1'}}),
     ('pipeline.update', {'pipeline_uuid': 'p-1', 'pipeline_data': {'name': 'P2'}}),
     ('pipeline.delete', {'pipeline_uuid': 'p-1'}),
+    ('pipeline.run', {'pipeline_uuid': 'p-1', 'text': 'test pipeline run'}),
+    ('pipeline.chat.broadcast', {'pipeline_uuid': 'p-1', 'message': 'test broadcast'}),
     # provider
     ('provider.create', {'provider_data': {'name': 'PR1'}}),
     ('provider.update', {'provider_uuid': 'pr-1', 'provider_data': {'name': 'PR2'}}),
     ('provider.delete', {'provider_uuid': 'pr-1'}),
+    ('provider.models.scan', {'provider_uuid': 'pr-1'}),
     # skill
     ('skill.create', {'data': {}}),
     ('skill.update', {'skill_name': 'sk-1', 'data': {}}),
     ('skill.delete', {'skill_name': 'sk-1'}),
+    ('skill.file.write', {'skill_name': 'sk-1', 'path': 'test.py', 'content': 'print(1)', 'base_revision': None}),
 ]
 
 
 async def test_processor_sweep_sampled_write_operations(sweep_app):
-    """Sample create, update, delete write operations across all domains for processor."""
+    """Sample write operations across all domains for processor with minimal derived permissions."""
     write_op_ids = [op[0] for op in WRITE_SAMPLES]
-    assert len(write_op_ids) == 24
+    assert len(write_op_ids) == 32
 
-    proc_ctx = make_processor_context(frozenset(write_op_ids))
+    proc_ctx = await build_processor_request_context(
+        sweep_app,
+        workspace_uuid='ws-sweep',
+        processor_kind='agent',
+        processor_uuid='agent-sweep',
+        run_id='run-sweep',
+        operation_ids=write_op_ids,
+    )
+    assert proc_ctx.allowed_operation_ids == frozenset(write_op_ids)
 
-    for op_id, args in WRITE_SAMPLES:
-        result = await call(sweep_app, proc_ctx, op_id, args, consumer='processor', granted=write_op_ids)
-        assert result['ok'] is True, f'Write operation {op_id} failed: {result.get("error")}'
-        assert result['operation']['id'] == op_id
-        assert result['operation']['side_effect'] is True
+    with (
+        patch('langbot.pkg.api.http.service.pipeline_run.run_pipeline', AsyncMock(return_value={'status': 'ok'})),
+        patch(
+            'langbot.pkg.platform.sources.websocket_manager.ws_connection_manager.broadcast_to_pipeline',
+            AsyncMock(return_value=None),
+        ),
+    ):
+        for op_id, args in WRITE_SAMPLES:
+            result = await call(sweep_app, proc_ctx, op_id, args, consumer='processor', granted=write_op_ids)
+            assert result['ok'] is True, f'Write operation {op_id} failed: {result.get("error")}'
+            assert result['operation']['id'] == op_id
+            assert result['operation']['side_effect'] is True
 
 
 async def test_processor_cannot_call_assistant_only_operation(sweep_app):
     """Verify processor is denied from calling assistant-only operations."""
-    proc_ctx = make_processor_context(frozenset({'mcp.server.create', 'bot.list'}))
+    proc_ctx = await build_processor_request_context(
+        sweep_app,
+        workspace_uuid='ws-sweep',
+        processor_kind='agent',
+        processor_uuid='agent-sweep',
+        run_id='run-sweep',
+        operation_ids=['mcp.server.create', 'bot.list'],
+    )
 
     # mcp.server.create is exposure='assistant', not 'all'
     result = await call(
@@ -369,4 +390,5 @@ async def test_processor_cannot_call_assistant_only_operation(sweep_app):
         granted=['mcp.server.create'],
     )
     assert result['ok'] is False
+    assert result['error']['code'] == 'not_found'
     assert result['error']['code'] == 'not_found'
