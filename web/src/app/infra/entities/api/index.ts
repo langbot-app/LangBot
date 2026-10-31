@@ -259,6 +259,13 @@ export interface Agent {
   updated_at?: string;
 }
 
+export type CreateAgentRequest = Pick<
+  Agent,
+  'name' | 'description' | 'emoji' | 'kind' | 'component_ref' | 'config'
+> & {
+  runner_id?: string;
+};
+
 export interface ApiRespAgents {
   agents: Agent[];
 }

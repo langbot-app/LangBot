@@ -39,6 +39,11 @@ from langbot.pkg.platform.adapters.telegram.interaction import (
     parse_interaction_callback,
     send_interaction,
 )
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
@@ -179,6 +184,7 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'bot.muted',
             'bot.unmuted',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -198,11 +204,52 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'kick_member',
             'leave_group',
             'call_platform_api',
-            'interaction.request',
+            'send_interaction',
+            'update_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self.bot,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_id'] = target_id
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        target_id = str(handle.context['target_id']).split('#', 1)[0]
+        request = handle.context['request']
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await self.bot.edit_message_text(
+            chat_id=int(target_id) if target_id.lstrip('-').isdigit() else target_id,
+            message_id=handle.message_id,
+            text=f'{request["title"]}\n\n{label}',
+            reply_markup=None,
+        )
+        return handle
 
     # ---- Message Send / Reply (preserving original logic) ----
 
@@ -537,8 +584,6 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         params: dict = {},
     ) -> dict:
         """Call a Telegram-specific platform API."""
-        if action == 'interaction.request':
-            return await send_interaction(self.bot, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError

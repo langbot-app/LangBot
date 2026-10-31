@@ -12,7 +12,7 @@ def interaction_delivery_capabilities() -> dict[str, typing.Any]:
     return {
         'field_types': ['select'],
         'action_styles': ['default', 'primary', 'danger'],
-        'supports_updates': True,
+        'supports_updates': False,
         'max_fields': 1,
     }
 
@@ -94,7 +94,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
     target_type = str(reply_target.get('target_type') or '')
     target_id = str(reply_target.get('target_id') or '')
     keyboard = build_interaction_keyboard(request, callback_token)
@@ -105,12 +105,24 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
             adapter._plain_message(_text(request, False)),
         )
         return {'ok': True, 'message_id': result.message_id, 'rich': False}
+    msg_id = reply_target.get('message_id')
+    if msg_id in (None, '', -1, '-1'):
+        msg_id = None
+    event_id = reply_target.get('event_id')
+    if event_id in (None, '', -1, '-1'):
+        event_id = None
+    anchor = str(msg_id or event_id or '')
+    msg_seq = adapter.next_interaction_msg_seq(anchor)
+    if msg_seq is None:
+        raise ValueError('QQ interaction reply limit reached for this message')
     raw = await adapter.bot.send_markdown_keyboard(
         target_type='c2c' if target_type == 'person' else 'group',
         target_id=target_id,
         markdown_content=_text(request, True),
         keyboard=keyboard,
-        msg_id=reply_target.get('message_id'),
+        msg_id=msg_id,
+        event_id=event_id,
+        msg_seq=msg_seq,
     )
     return {'ok': True, 'message_id': raw.get('id') if isinstance(raw, dict) else None, 'rich': True}
 
@@ -137,7 +149,7 @@ def parse_callback_data(value: str) -> dict[str, typing.Any]:
 
 def interaction_event_from_payload(
     event_data: dict[str, typing.Any],
-) -> platform_events.PlatformSpecificEvent | None:
+) -> platform_events.InteractionCallbackEvent | None:
     resolved = (event_data.get('data') or {}).get('resolved') or {}
     callback_data = str(resolved.get('button_data') or '')
     if not callback_data.startswith('lbi:'):
@@ -161,17 +173,13 @@ def interaction_event_from_payload(
         or ((event_data.get('member') or {}).get('user') or {}).get('id')
         or ''
     )
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    return platform_events.InteractionCallbackEvent(
         adapter_name='qqofficial-omni',
-        action='interaction.submitted',
-        data={
-            **parsed,
-            'actor_id': actor_id,
-            'target_type': target_type,
-            'target_id': target_id,
-            'display_text': 'submitted',
-        },
+        callback_token=str(parsed.get('callback_token') or ''),
+        actor_id=actor_id,
+        target_type=target_type,
+        target_id=target_id,
+        raw_submission=parsed,
         timestamp=time.time(),
         source_platform_object=event_data,
     )

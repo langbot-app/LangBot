@@ -1,595 +1,292 @@
-"""Tests for structured interaction authorization and delivery."""
+"""Blocking interaction and callback authorization tests."""
 
-from __future__ import annotations
-
-from types import SimpleNamespace
+import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.runner.event import ActorContext
-from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.runner.interaction import (
     InteractionDeliveryCapabilities,
-    InteractionSubmission,
-)
-
-from langbot.pkg.agent.runner.errors import RunnerProtocolError
-from langbot.pkg.agent.runner.host_models import (
-    AgentBinding,
-    AgentEventEnvelope,
-    BindingScope,
-    DeliveryPolicy,
+    InteractionHandle,
+    InteractionRequest,
 )
 from langbot.pkg.agent.runner.interaction_manager import InteractionManager
-from langbot.pkg.agent.runner.interaction_store import InteractionStore
+from langbot.pkg.agent.runner.interaction_store import (
+    InteractionAlreadySubmittedError,
+    InteractionExpiredError,
+    InteractionNotFoundError,
+    InteractionScopeError,
+    InteractionStore,
+)
 from langbot.pkg.entity.persistence.base import Base
-from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
-
-CONFIG = {
-    'ai': {
-        'runner': {'id': 'plugin:test/ApprovalRunner/default'},
-        'runner_config': {'plugin:test/ApprovalRunner/default': {}},
-    }
-}
 
 
-def _context(adapter):
-    conversation = SimpleNamespace(pipeline_uuid='pipeline-1')
-    query = SimpleNamespace(
-        pipeline_uuid='pipeline-1', pipeline_config=CONFIG, session=SimpleNamespace(using_conversation=conversation)
-    )
+def _session():
     return {
-        '_delivery_adapter': adapter,
-        '_query': query,
-        '_pipeline_expected_config': CONFIG,
-        '_pipeline_conversation': conversation,
-    }
-
-
-class FakeAdapter:
-    def __init__(self, *, supports_interactions: bool, fail_updates: bool = False):
-        self.supports_interactions = supports_interactions
-        self.fail_updates = fail_updates
-        self.actions: list[tuple[str, dict]] = []
-        self.messages: list[tuple[str, str, object]] = []
-
-    def get_supported_apis(self):
-        return ['interaction.request', 'interaction.acknowledge'] if self.supports_interactions else ['send_message']
-
-    async def call_platform_api(self, action: str, params: dict):
-        self.actions.append((action, params))
-        if action == 'interaction.request' and params.get('update_target') and self.fail_updates:
-            raise RuntimeError('update unavailable')
-        update_target = params.get('update_target') or {}
-        message_id = update_target.get('message_id') or f'message-{len(self.actions)}'
-        card_id = update_target.get('card_id') or f'card-{len(self.actions)}'
-        sequence = int(update_target.get('sequence') or 0) + (1 if update_target else 0)
-        return {
-            'ok': True,
-            'message_id': message_id,
-            'card_id': card_id,
-            'sequence': sequence,
-            'rich': True,
-        }
-
-    async def send_message(self, target_type: str, target_id: str, message_chain):
-        self.messages.append((target_type, target_id, message_chain))
-
-
-@pytest.fixture
-async def store(tmp_path):
-    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "manager.db"}', echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            sa.insert(LegacyPipeline).values(
-                uuid='pipeline-1',
-                workspace_uuid='workspace-1',
-                name='test',
-                description='',
-                for_version='4.11',
-                stages=[],
-                config=CONFIG,
-                extensions_preferences={},
-            )
-        )
-    yield InteractionStore(engine)
-    await engine.dispose()
-
-
-@pytest.fixture
-def event():
-    return AgentEventEnvelope(
-        event_id='evt-1',
-        event_type='message.received',
-        source='platform',
-        bot_id='bot-1',
-        workspace_id='workspace-1',
-        conversation_id='group_chat-1',
-        actor=ActorContext(actor_type='user', actor_id='user-1'),
-        input=AgentInput(text='start'),
-        delivery=DeliveryContext(
-            surface='platform',
-            reply_target={'target_type': 'group', 'target_id': 'chat-1'},
-        ),
-    )
-
-
-@pytest.fixture
-def binding():
-    return AgentBinding(
-        binding_id='binding-1',
-        scope=BindingScope(scope_type='agent', scope_id='pipeline-1'),
-        runner_id='plugin:test/ApprovalRunner/default',
-        delivery_policy=DeliveryPolicy(enable_interactions=True),
-        processor_type='pipeline',
-        processor_id='pipeline-1',
-    )
-
-
-def _descriptor(*, permitted: bool = True):
-    return SimpleNamespace(
-        id='plugin:test/ApprovalRunner/default',
-        capabilities=SimpleNamespace(interactions=permitted),
-        permissions=SimpleNamespace(interactions=['request'] if permitted else []),
-    )
-
-
-def _result():
-    return {
-        'type': 'action.requested',
-        'data': {
-            'action': 'interaction.requested',
-            'target': {'target_type': 'person', 'target_id': 'attacker-selected'},
-            'payload': {
-                'interaction_id': 'form-1',
-                'kind': 'choice',
-                'title': 'Approve request?',
-                'actions': [
-                    {'id': 'approve', 'label': 'Approve', 'style': 'primary'},
-                    {'id': 'reject', 'label': 'Reject', 'style': 'danger'},
-                ],
-                'fallback_text': 'Reply approve or reject.',
+        'run_id': 'run-1',
+        'runner_id': 'plugin:test/Runner/default',
+        'runtime_context': {'deadline_at': time.time() + 300},
+        'authorization': {
+            'binding_id': 'binding-1',
+            'processor_type': 'agent',
+            'processor_id': 'agent-1',
+            'bot_id': 'bot-1',
+            'workspace_id': 'workspace-1',
+            'thread_id': None,
+            'interactions_enabled': True,
+            'interactions_authorized': True,
+            'platform_context': {
+                'actor': {'actor_id': 'user-1'},
+                'delivery': {'reply_target': {'target_type': 'group', 'target_id': 'chat-1'}},
             },
         },
     }
 
 
-@pytest.mark.asyncio
-async def test_structured_delivery_uses_frozen_target_and_persists_request(store, event, binding):
-    adapter = FakeAdapter(supports_interactions=True)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-
-    consumed = await manager.handle_result(
-        result_dict=_result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-
-    assert consumed is True
-    assert adapter.actions[0][0] == 'interaction.request'
-    params = adapter.actions[0][1]
-    assert params['reply_target'] == {'target_type': 'group', 'target_id': 'chat-1'}
-    assert params['callback_token']
-    assert 'attacker-selected' not in str(params)
-
-    record = await store.get_request('run-1', 'form-1')
-    assert record is not None
-    assert record['processor_type'] == 'pipeline'
-    assert record['processor_id'] == 'pipeline-1'
-    assert record['actor_id'] == 'user-1'
-    assert record['expires_at'] is not None
-    assert 0 < record['expires_at'] - time.time() <= 30 * 60
-    assert record['delivery_result']['message_id'] == 'message-1'
+def _request(**changes):
+    return {
+        'interaction_id': 'approval',
+        'title': 'Approve?',
+        'actions': [{'id': 'yes', 'label': 'Yes'}, {'id': 'no', 'label': 'No'}],
+        **changes,
+    }
 
 
-@pytest.mark.asyncio
-async def test_continuous_interaction_reuses_submitted_platform_presentation(store, event, binding):
-    adapter = FakeAdapter(supports_interactions=True)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-    event.delivery.interactions = InteractionDeliveryCapabilities(supports_updates=True)
+class Adapter:
+    def __init__(self, native=True):
+        self.native = native
+        self.sent = asyncio.Event()
+        self.token = None
+        self.updates = []
+        self.messages = []
 
-    await manager.handle_result(
-        result_dict=_result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-    first_token = adapter.actions[0][1]['callback_token']
-    submitted = await manager.consume_callback(
-        callback_token=first_token,
-        submission={'interaction_id': 'form-1', 'action_id': 'approve', 'values': {}},
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
-    )
-    await manager.acknowledge_submission(submitted, adapter)
+    def get_supported_apis(self):
+        return ['send_interaction', 'update_interaction', 'send_message'] if self.native else ['send_message']
 
-    event.event_type = 'interaction.submitted'
-    event.input.interaction = InteractionSubmission(
-        interaction_id='form-1',
-        action_id='approve',
-    )
-    second_result = _result()
-    second_result['data']['payload']['interaction_id'] = 'form-2'
-    await manager.handle_result(
-        result_dict=second_result,
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-2',
-        adapter_context=_context(adapter),
-    )
-
-    assert [action for action, _ in adapter.actions] == [
-        'interaction.request',
-        'interaction.acknowledge',
-        'interaction.request',
-    ]
-    update_params = adapter.actions[-1][1]
-    assert update_params['update_target']['message_id'] == 'message-1'
-    assert update_params['update_target']['sequence'] == 1
-    second_record = await store.get_request('run-2', 'form-2')
-    assert second_record['replaces_interaction_id'] == 'form-1'
-    assert second_record['delivery_result']['message_id'] == 'message-1'
-    assert second_record['delivery_result']['sequence'] == 2
-
-
-@pytest.mark.asyncio
-async def test_interaction_update_failure_falls_back_to_new_presentation(store, event, binding):
-    adapter = FakeAdapter(supports_interactions=True, fail_updates=True)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-    event.delivery.interactions = InteractionDeliveryCapabilities(supports_updates=True)
-
-    await manager.handle_result(
-        result_dict=_result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-    first_token = adapter.actions[0][1]['callback_token']
-    await manager.consume_callback(
-        callback_token=first_token,
-        submission={'interaction_id': 'form-1', 'action_id': 'approve', 'values': {}},
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
-    )
-
-    event.input.interaction = InteractionSubmission(interaction_id='form-1', action_id='approve')
-    second_result = _result()
-    second_result['data']['payload']['interaction_id'] = 'form-2'
-    await manager.handle_result(
-        result_dict=second_result,
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-2',
-        adapter_context=_context(adapter),
-    )
-
-    update_attempt = adapter.actions[-2][1]
-    fallback_attempt = adapter.actions[-1][1]
-    assert update_attempt['update_target']['message_id'] == 'message-1'
-    assert 'update_target' not in fallback_attempt
-    assert fallback_attempt['callback_token'] == update_attempt['callback_token']
-
-
-@pytest.mark.asyncio
-async def test_callback_scope_uses_frozen_delivery_conversation(store, event, binding):
-    event.conversation_id = 'runner-owned-external-conversation'
-    adapter = FakeAdapter(supports_interactions=True)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-
-    await manager.handle_result(
-        result_dict=_result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-
-    record = await store.get_request('run-1', 'form-1')
-    assert record['conversation_id'] == 'group_chat-1'
-
-
-@pytest.mark.asyncio
-async def test_adapter_without_interactions_receives_fallback_text(store, event, binding):
-    adapter = FakeAdapter(supports_interactions=False)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-
-    assert await manager.handle_result(
-        result_dict=_result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-
-    assert adapter.actions == []
-    target_type, target_id, message_chain = adapter.messages[0]
-    assert (target_type, target_id) == ('group', 'chat-1')
-    assert str(message_chain) == 'Reply approve or reject.'
-
-
-@pytest.mark.asyncio
-async def test_runner_without_interaction_permission_is_rejected(store, event, binding):
-    manager = InteractionManager(SimpleNamespace(), store=store)
-
-    with pytest.raises(RunnerProtocolError, match='did not declare'):
-        await manager.handle_result(
-            result_dict=_result(),
-            event=event,
-            binding=binding,
-            descriptor=_descriptor(permitted=False),
-            run_id='run-1',
-            adapter_context=_context(FakeAdapter(supports_interactions=True)),
+    def get_interaction_capabilities(self):
+        return InteractionDeliveryCapabilities(
+            field_types=['text', 'select'] if self.native else [],
+            action_styles=['default', 'primary'] if self.native else [],
+            max_fields=8 if self.native else None,
+            max_actions=6 if self.native else None,
+            supports_updates=self.native,
         )
 
-    assert await store.get_request('run-1', 'form-1') is None
+    async def send_interaction(self, target_type, target_id, request, callback_token, reply_to=None):
+        self.token = callback_token
+        self.sent.set()
+        return InteractionHandle(message_id='card-1')
+
+    async def update_interaction(self, handle, state, submission=None):
+        self.updates.append(state)
+        return handle
+
+    async def send_message(self, target_type, target_id, message):
+        self.messages.append(str(message))
+        self.sent.set()
 
 
-@pytest.mark.asyncio
-async def test_binding_policy_can_disable_interactions(store, event, binding):
-    manager = InteractionManager(SimpleNamespace(), store=store)
-    binding.delivery_policy.enable_interactions = False
+@pytest.fixture
+async def store(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "interactions.db"}')
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    yield InteractionStore(engine)
+    await engine.dispose()
 
-    with pytest.raises(RunnerProtocolError, match='delivery policy'):
-        await manager.handle_result(
-            result_dict=_result(),
-            event=event,
-            binding=binding,
-            descriptor=_descriptor(),
-            run_id='run-1',
-            adapter_context=_context(FakeAdapter(supports_interactions=True)),
+
+async def _start(manager, adapter, *, request=None):
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_session(),
+            adapter=adapter,
+            request_payload=request or _request(),
+            timeout=2,
+            on_unsupported='error',
+            responders='actor',
         )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    return task
+
+
+def _callback(token, **overrides):
+    return {
+        **dict(
+            callback_token=token,
+            submission={'action_ref': 0},
+            bot_id='bot-1',
+            conversation_id='group_chat-1',
+            actor_id='user-1',
+        ),
+        **overrides,
+    }
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ('expires_at', 'error'),
-    [
-        (lambda now: 0, 'already expired'),
-        (lambda now: now - 1, 'already expired'),
-        (lambda now: now + 24 * 60 * 60 + 1, 'exceeds 24 hours'),
-    ],
-)
-async def test_interaction_expiry_is_bounded(store, event, binding, expires_at, error):
-    result = _result()
-    result['data']['payload']['expires_at'] = expires_at(int(time.time()))
+async def test_callback_is_single_use_and_stays_in_same_run(store):
+    adapter = Adapter()
     manager = InteractionManager(SimpleNamespace(), store=store)
-
-    with pytest.raises(RunnerProtocolError, match=error):
-        await manager.handle_result(
-            result_dict=result,
-            event=event,
-            binding=binding,
-            descriptor=_descriptor(),
-            run_id='run-1',
-            adapter_context=_context(FakeAdapter(supports_interactions=True)),
-        )
+    task = await _start(manager, adapter)
+    record = await manager.consume_callback(**_callback(adapter.token, submission={'action_ref': 0, 'action_id': 'no'}))
+    assert record['run_id'] == 'run-1'
+    assert manager.wake_waiter(record, 'user-1')
+    assert (await task)['submission']['action_id'] == 'yes'
+    assert adapter.updates == ['submitted']
+    with pytest.raises(InteractionAlreadySubmittedError):
+        await manager.consume_callback(**_callback(adapter.token))
 
 
 @pytest.mark.asyncio
-async def test_interaction_rejects_duplicate_protocol_ids(store, event, binding):
-    result = _result()
-    result['data']['payload']['actions'].append({'id': 'approve', 'label': 'Approve again'})
+async def test_forged_token_actor_and_conversation_do_not_consume(store):
+    adapter = Adapter()
     manager = InteractionManager(SimpleNamespace(), store=store)
-
-    with pytest.raises(RunnerProtocolError, match='duplicate action IDs'):
-        await manager.handle_result(
-            result_dict=result,
-            event=event,
-            binding=binding,
-            descriptor=_descriptor(),
-            run_id='run-1',
-            adapter_context=_context(FakeAdapter(supports_interactions=True)),
-        )
+    task = await _start(manager, adapter)
+    with pytest.raises(InteractionNotFoundError):
+        await manager.consume_callback(**_callback('forged'))
+    for override in ({'actor_id': 'attacker'}, {'conversation_id': 'group-other'}, {'bot_id': 'bot-other'}):
+        with pytest.raises(InteractionScopeError):
+            await manager.consume_callback(**_callback(adapter.token, **override))
+    assert (await store.get_request('run-1', 'approval'))['status'] == 'pending'
+    record = await manager.consume_callback(**_callback(adapter.token))
+    assert manager.wake_waiter(record, 'user-1')
+    await task
 
 
 @pytest.mark.asyncio
-async def test_interaction_request_payload_is_bounded(store, event, binding):
-    result = _result()
-    result['data']['payload']['fields'] = [
-        {
-            'id': f'field-{field_index}',
-            'label': 'Field',
-            'type': 'select',
-            'options': [
-                {
-                    'value': f'{field_index}-{option_index}',
-                    'label': 'x' * 512,
-                }
-                for option_index in range(100)
+async def test_responder_list_rejects_other_actor_before_consuming(store):
+    adapter = Adapter()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_session(),
+            adapter=adapter,
+            request_payload=_request(),
+            timeout=2,
+            on_unsupported='error',
+            responders=['user-1'],
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    with pytest.raises(ValueError, match='allowed responder'):
+        await manager.consume_callback(**_callback(adapter.token, actor_id='attacker'))
+    assert (await store.get_request('run-1', 'approval'))['status'] == 'pending'
+    record = await manager.consume_callback(**_callback(adapter.token))
+    assert manager.wake_waiter(record, 'user-1')
+    await task
+
+
+@pytest.mark.asyncio
+async def test_restart_cancels_pending_and_old_callback_expires(store):
+    adapter = Adapter()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = await _start(manager, adapter)
+    assert await store.cancel_orphaned_pending(set()) == 1
+    assert (await store.get_request('run-1', 'approval'))['status'] == 'cancelled'
+    with pytest.raises(InteractionExpiredError):
+        await manager.consume_callback(**_callback(adapter.token))
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_timeout_updates_card(store):
+    adapter = Adapter()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    result = await manager.request_interaction(
+        session=_session(),
+        adapter=adapter,
+        request_payload=_request(),
+        timeout=0.01,
+        on_unsupported='error',
+        responders='actor',
+    )
+    assert result['status'] == 'timeout'
+    assert adapter.updates == ['expired']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('policy', ['degrade', 'error'])
+async def test_multi_field_form_never_splits_into_text_questions(store, policy):
+    adapter = Adapter(native=False)
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    result = await manager.request_interaction(
+        session=_session(),
+        adapter=adapter,
+        request_payload=_request(
+            actions=[],
+            fields=[
+                {'id': 'first', 'label': 'First', 'type': 'text'},
+                {'id': 'second', 'label': 'Second', 'type': 'text'},
             ],
-        }
-        for field_index in range(10)
-    ]
+        ),
+        timeout=1,
+        on_unsupported=policy,
+        responders='actor',
+    )
+    assert result['unsupported']
+    assert adapter.messages == []
+
+
+@pytest.mark.asyncio
+async def test_visual_degradation_keeps_native_form(store):
+    adapter = Adapter()
     manager = InteractionManager(SimpleNamespace(), store=store)
-
-    with pytest.raises(RunnerProtocolError, match='exceeds 256 KiB'):
-        await manager.handle_result(
-            result_dict=result,
-            event=event,
-            binding=binding,
-            descriptor=_descriptor(),
-            run_id='run-1',
-            adapter_context=_context(FakeAdapter(supports_interactions=True)),
-        )
-
-
-@pytest.mark.asyncio
-async def test_non_interaction_action_is_not_consumed(store, event, binding):
-    manager = InteractionManager(SimpleNamespace(), store=store)
-    result = _result()
-    result['data']['action'] = 'platform.message.delete'
-
-    assert not await manager.handle_result(
-        result_dict=result,
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(FakeAdapter(supports_interactions=True)),
-    )
-
-
-async def _deliver_interaction(store, event, binding, result=None):
-    adapter = FakeAdapter(supports_interactions=True)
-    manager = InteractionManager(SimpleNamespace(), store=store)
-    await manager.handle_result(
-        result_dict=result or _result(),
-        event=event,
-        binding=binding,
-        descriptor=_descriptor(),
-        run_id='run-1',
-        adapter_context=_context(adapter),
-    )
-    return manager, adapter.actions[0][1]['callback_token']
-
-
-@pytest.mark.asyncio
-async def test_callback_action_ref_resolves_persisted_action_and_ignores_forged_id(store, event, binding):
-    manager, callback_token = await _deliver_interaction(store, event, binding)
-
-    resumed = await manager.consume_callback(
-        callback_token=callback_token,
-        submission={
-            'interaction_id': 'attacker-selected',
-            'action_ref': 1,
-            'values': {},
-        },
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
-    )
-
-    assert resumed['submission']['interaction_id'] == 'form-1'
-    assert resumed['submission']['action_id'] == 'reject'
-
-
-@pytest.mark.asyncio
-async def test_callback_submission_time_is_host_owned(store, event, binding):
-    manager, callback_token = await _deliver_interaction(store, event, binding)
-    before = int(time.time())
-
-    resumed = await manager.consume_callback(
-        callback_token=callback_token,
-        submission={'action_ref': 0, 'submitted_at': 1},
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
-    )
-
-    assert before <= resumed['submission']['submitted_at'] <= int(time.time())
-    assert resumed['submitted_at'] == resumed['submission']['submitted_at']
-
-
-@pytest.mark.asyncio
-async def test_callback_option_refs_resolve_persisted_field_and_value(store, event, binding):
-    result = _result()
-    result['data']['payload']['fields'] = [
-        {
-            'id': 'priority',
-            'label': 'Priority',
-            'type': 'select',
-            'options': [
-                {'value': 'normal', 'label': 'Normal'},
-                {'value': 'urgent', 'label': 'Urgent'},
+    task = await _start(
+        manager,
+        adapter,
+        request=_request(
+            actions=[],
+            fields=[
+                {'id': 'name', 'label': 'Name', 'type': 'text', 'placeholder': 'Your name', 'default': 'Alex'},
             ],
-        }
-    ]
-    manager, callback_token = await _deliver_interaction(store, event, binding, result)
-
-    resumed = await manager.consume_callback(
-        callback_token=callback_token,
-        submission={'field_ref': 0, 'option_ref': 1},
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
+        ),
     )
+    record = await store.get_request('run-1', 'approval')
+    assert record['request']['fields'][0]['placeholder'] is None
+    assert record['request']['fields'][0]['default'] is None
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
-    assert resumed['submission']['interaction_id'] == 'form-1'
-    assert resumed['submission']['values'] == {'priority': 'urgent'}
 
-
-@pytest.mark.asyncio
-async def test_callback_rejects_out_of_range_reference(store, event, binding):
-    manager, callback_token = await _deliver_interaction(store, event, binding)
-
-    with pytest.raises(ValueError, match='action reference is invalid'):
-        await manager.consume_callback(
-            callback_token=callback_token,
-            submission={'action_ref': 99},
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='user-1',
+@pytest.mark.parametrize('policy', ['error', 'degrade'])
+def test_structural_policy_and_visual_degradation_are_independent(policy):
+    capabilities = InteractionDeliveryCapabilities(
+        field_types=['text'],
+        action_styles=['default'],
+        max_fields=8,
+        max_actions=2,
+        text_fallback=True,
+        supports_markdown=False,
+    )
+    structural = InteractionRequest.model_validate(
+        _request(
+            actions=[],
+            fields=[{'id': 'count', 'label': 'Count', 'type': 'number'}],
         )
+    )
+    _, _, use_text, issues = InteractionManager._normalize_request(structural, capabilities, policy)
+    if policy == 'error':
+        assert use_text is False
+        assert issues == [{'path': 'fields[0].type', 'reason': 'unsupported_field_type'}]
+    else:
+        assert use_text is True
+        assert issues == []
 
-    pending = await store.get_request('run-1', 'form-1')
-    assert pending is not None
-    assert pending['status'] == 'pending'
-
-
-@pytest.mark.asyncio
-async def test_callback_rejects_negative_reference(store, event, binding):
-    manager, callback_token = await _deliver_interaction(store, event, binding)
-
-    with pytest.raises(ValueError, match='action reference is invalid'):
-        await manager.consume_callback(
-            callback_token=callback_token,
-            submission={'action_ref': -1},
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='user-1',
+    visual = InteractionRequest.model_validate(
+        _request(
+            description='**Approve**',
+            actions=[{'id': 'yes', 'label': 'Yes', 'style': 'primary'}],
         )
-
-
-@pytest.mark.asyncio
-async def test_callback_rejects_action_not_present_in_request(store, event, binding):
-    manager, callback_token = await _deliver_interaction(store, event, binding)
-
-    with pytest.raises(ValueError, match='action is not present'):
-        await manager.consume_callback(
-            callback_token=callback_token,
-            submission={'action_id': 'attacker-selected'},
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='user-1',
-        )
-
-
-@pytest.mark.asyncio
-async def test_callback_rejects_option_not_present_in_request(store, event, binding):
-    result = _result()
-    result['data']['payload']['fields'] = [
-        {
-            'id': 'priority',
-            'label': 'Priority',
-            'type': 'select',
-            'options': [{'value': 'normal', 'label': 'Normal'}],
-        }
-    ]
-    manager, callback_token = await _deliver_interaction(store, event, binding, result)
-
-    with pytest.raises(ValueError, match='option is not present'):
-        await manager.consume_callback(
-            callback_token=callback_token,
-            submission={'values': {'priority': 'attacker-selected'}},
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='user-1',
-        )
+    )
+    normalized, degraded, use_text, issues = InteractionManager._normalize_request(visual, capabilities, policy)
+    assert not use_text and not issues
+    assert normalized.actions[0].style == 'default'
+    assert {(item['path'], item['reason']) for item in degraded} == {
+        ('actions[0].style', 'unsupported_style'),
+        ('description', 'unsupported_markdown'),
+    }

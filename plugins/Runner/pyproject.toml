@@ -9,7 +9,7 @@ authors = [{ name = "LangBot Team" }]
 keywords = ["langbot", "agent", "runner", "plugin"]
 
 dependencies = [
-    "langbot-plugin==0.7.4",
+    "langbot-plugin==0.7.19",
     "pydantic>=2.0.0",
 ]
 
@@ -23,6 +23,10 @@ dev = [
     "pyjwt>=2.8.0",
     "tboxsdk>=0.0.12",
 ]
+
+# Replace this source with the released SDK version before merging #2787.
+[tool.uv.sources]
+langbot-plugin = { git = "https://github.com/fdc310/langbot-plugin-sdk.git", rev = "33dfff35859c30c63acc54deacaaf5b71cf6ef5c" }
 
 [tool.pytest.ini_options]
 # LocalAgent and RunnerDemo run in fresh interpreters via tests/test_migrated_runners.py.

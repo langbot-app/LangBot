@@ -124,6 +124,10 @@ Repository = "https://github.com/langbot-app/LangBot"
 [project.scripts]
 langbot = "langbot.__main__:main"
 
+# Replace this source with the released SDK version before merging #2787.
+[tool.uv.sources]
+langbot-plugin = { git = "https://github.com/fdc310/langbot-plugin-sdk.git", rev = "33dfff35859c30c63acc54deacaaf5b71cf6ef5c" }
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"

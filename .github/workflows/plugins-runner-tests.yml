@@ -40,8 +40,8 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked --dev
-      - name: Verify published SDK pin
-        run: uv run --no-sync python -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"; print("langbot-plugin", version("langbot-plugin"))'
+      - name: Verify SDK snapshot
+        run: uv run --no-sync python -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.19"; print("langbot-plugin", version("langbot-plugin"))'
       - name: Prepare isolated certified coding Runner SDK environment
         run: |
           uv venv "$RUNNER_TEMP/coding-074"

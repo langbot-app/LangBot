@@ -310,6 +310,7 @@ spec:
     skill_authoring: true
     interrupt: true
     steering: true
+    interactions: true
   permissions:
     models:
       - count_tokens
@@ -324,6 +325,8 @@ spec:
       - retrieve
     history:
       - page
+    interactions:
+      - request
 execution:
   python:
     path: default.py

@@ -17,7 +17,6 @@ from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
-from langbot.pkg.agent.runner.interaction_store import InteractionStore
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -593,84 +592,6 @@ async def test_cancel_active_from_query_marks_other_actor_run_as_denied(clean_ag
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_consumes_interaction_request_before_message_output(clean_agent_state):
-    """Whitelisted interaction actions are delivered and never emitted as messages."""
-    db_engine = clean_agent_state
-    descriptor = make_descriptor()
-    # The local SDK pin predates this contract; these become typed fields with SDK 0.5.0a3.
-    descriptor.capabilities.__dict__['interactions'] = True
-    descriptor.permissions.__dict__['interactions'] = ['request']
-    plugin_connector = FakePluginConnector(
-        results=[
-            {
-                'type': 'action.requested',
-                'data': {
-                    'action': 'interaction.requested',
-                    'payload': {
-                        'interaction_id': 'approval-1',
-                        'kind': 'choice',
-                        'title': 'Approve request?',
-                        'actions': [
-                            {'id': 'approve', 'label': 'Approve', 'style': 'primary'},
-                            {'id': 'reject', 'label': 'Reject', 'style': 'danger'},
-                        ],
-                        'fallback_text': 'Reply approve or reject.',
-                    },
-                },
-            },
-            {
-                'type': 'message.completed',
-                'data': {'message': {'role': 'assistant', 'content': 'Waiting for approval'}},
-            },
-        ]
-    )
-    ap = FakeApplication(plugin_connector, db_engine)
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
-    query = make_query()
-    query.adapter = types.SimpleNamespace(
-        get_supported_apis=lambda: ['interaction.request'],
-        call_platform_api=AsyncMock(return_value={'ok': True}),
-    )
-
-    import sqlalchemy as sa
-    from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
-
-    async with db_engine.begin() as conn:
-        await conn.execute(
-            sa.insert(LegacyPipeline).values(
-                uuid=query.pipeline_uuid,
-                workspace_uuid=TEST_CONTEXT.workspace_uuid,
-                name='test',
-                description='',
-                for_version='4.11',
-                stages=[],
-                config=query.pipeline_config,
-                extensions_preferences={},
-            )
-        )
-
-    messages = [message async for message in orchestrator.run_from_query(query)]
-
-    assert [message.content for message in messages] == ['Waiting for approval']
-    query.adapter.call_platform_api.assert_awaited_once()
-    action, params = query.adapter.call_platform_api.await_args.args
-    assert action == 'interaction.request'
-    assert params['reply_target'] == {
-        'target_type': 'person',
-        'target_id': 'user_001',
-        'message_id': 'msg_001',
-    }
-    assert params['callback_token']
-
-    run_id = plugin_connector.contexts[0]['run_id']
-    request = await InteractionStore(db_engine).get_request(run_id, 'approval-1')
-    assert request is not None
-    assert request['status'] == 'pending'
-    assert request['processor_type'] == 'pipeline'
-    assert request['processor_id'] == 'pipeline_001'
-
-
-@pytest.mark.asyncio
 async def test_orchestrator_persists_run_ledger(clean_agent_state):
     """AgentRunOrchestrator records Host-owned run and result events."""
     db_engine = clean_agent_state
@@ -1181,6 +1102,70 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('waiting', 'supports_steering', 'target_run_id', 'expected'),
+    [
+        ({'run-1'}, True, 'run-1', True),
+        (set(), True, 'run-1', False),
+        ({'run-1'}, False, 'run-1', False),
+        ({'run-1'}, True, None, False),
+    ],
+)
+async def test_platform_event_steering_requires_waiting_run_and_matching_binding(
+    waiting,
+    supports_steering,
+    target_run_id,
+    expected,
+):
+    event = types.SimpleNamespace(
+        event_type='message.received',
+        event_id='event-1',
+        conversation_id='person-user-1',
+        bot_id='bot-1',
+        workspace_id='workspace-test',
+        thread_id=None,
+    )
+    binding = types.SimpleNamespace(runner_id=RUNNER_ID, binding_id='binding-1')
+    descriptor = types.SimpleNamespace(id=RUNNER_ID, supports_steering=lambda: supports_steering)
+    sessions = types.SimpleNamespace(
+        find_steering_target=AsyncMock(return_value=target_run_id),
+        enqueue_steering=AsyncMock(return_value=True),
+    )
+    journal = types.SimpleNamespace(write_event_log=AsyncMock(return_value='log-1'), write_user_transcript=AsyncMock())
+    orchestrator = types.SimpleNamespace(
+        interaction_manager=types.SimpleNamespace(waiting_run_ids=lambda: waiting),
+        registry=types.SimpleNamespace(get=AsyncMock(return_value=descriptor)),
+        _session_registry=sessions,
+        _build_steering_item=Mock(return_value={'claimed_at': 1}),
+        journal=journal,
+        ap=types.SimpleNamespace(logger=FakeLogger()),
+    )
+
+    claimed = await AgentRunOrchestrator.try_claim_steering_from_event(
+        orchestrator,
+        event,
+        binding,
+        TEST_CONTEXT,
+    )
+
+    assert claimed is expected
+    if waiting and supports_steering:
+        sessions.find_steering_target.assert_awaited_once_with(
+            conversation_id='person-user-1',
+            runner_id=RUNNER_ID,
+            bot_id='bot-1',
+            workspace_id='workspace-test',
+            thread_id=None,
+            binding_id='binding-1',
+            eligible_run_ids=waiting,
+        )
+    else:
+        sessions.find_steering_target.assert_not_awaited()
+    assert sessions.enqueue_steering.await_count == int(expected)
+    assert journal.write_event_log.await_count == int(expected)
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
     """Test that orchestrator enforces total runner timeout."""
     db_engine = clean_agent_state
@@ -1427,6 +1412,260 @@ class TestQueryEntrySessionQueryId:
         assert plugin_connector.contexts[0]['runtime']['metadata']['workspace_id'] == TEST_CONTEXT.workspace_uuid
         assert 'Pinned documentation' not in str(execution_query.user_message.content)
         mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('event_type', ['message.received'])
+@pytest.mark.parametrize('completed_message', [False, True])
+@pytest.mark.parametrize('reasoning', [False, True])
+async def test_direct_agent_streams_output_to_the_originating_platform(
+    clean_agent_state, event_type, completed_message, reasoning
+):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    first_content = '<think>Checking the request</think>hello' if reasoning else 'hello'
+    final_content = '<think>Checking the request</think>hello world' if reasoning else 'hello world'
+    runner_results = [
+        {
+            'type': 'message.delta',
+            'data': {
+                'chunk': {
+                    'role': 'assistant',
+                    'content': first_content,
+                    'all_content': first_content,
+                }
+            },
+        },
+    ]
+    if completed_message:
+        runner_results.append(
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': final_content}},
+            }
+        )
+    runner_results.append({'type': 'run.completed', 'data': {'finish_reason': 'stop'}})
+    connector = FakePluginConnector(results=runner_results)
+    ap = FakeApplication(connector, clean_agent_state)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
+        event_type=event_type,
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=event_type == 'message.received',
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=[event_type],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=event_type == 'message.received', enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    results = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming if event_type == 'message.received' else None,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    assert [item.content for item in results] == (
+        [first_content, final_content] if completed_message else [first_content]
+    )
+    if event_type == 'message.received':
+        adapter.create_message_card.assert_awaited_once()
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == (
+            ['hello', 'hello world'] if completed_message else ['hello', 'hello']
+        )
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True]
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[2][0].text == ('hello world' if completed_message else 'hello')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('tool_name', ['present_interactive_card', 'event_reply'])
+async def test_direct_agent_delivers_text_after_card_without_repeating_explicit_reply(clean_agent_state, tool_name):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    results = []
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'Before'}}})
+    else:
+        results.extend(
+            [
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<thi'}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools'}},
+                },
+                {
+                    'type': 'tool.call.completed',
+                    'data': {'tool_call_id': 'skill-1', 'tool_name': 'list_skills', 'result': {'skills': []}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>'}},
+                },
+            ]
+        )
+    results.extend(
+        [
+            {
+                'type': 'tool.call.started',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'parameters': {'text': 'After'}},
+            },
+            {
+                'type': 'tool.call.completed',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'result': {'ok': True}, 'error': None},
+            },
+        ]
+    )
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'BeforeAfter'}}})
+    else:
+        results.append(
+            {
+                'type': 'message.delta',
+                'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>After'}},
+            }
+        )
+    results.extend(
+        [
+            {'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'After'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    connector = FakePluginConnector(results=results)
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=True,
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=['message.received'],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    _ = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    if tool_name == 'present_interactive_card':
+        assert adapter.create_message_card.await_count == 2
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == [
+            'Before',
+            'Before',
+            'After',
+            'After',
+        ]
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True, False, True]
+        assert chunks[0].kwargs['bot_message'].resp_message_id != chunks[2].kwargs['bot_message'].resp_message_id
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
 
 
 class TestQueryEntryAdapterParams:

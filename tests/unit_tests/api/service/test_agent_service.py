@@ -762,6 +762,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'name': 'Pipeline Agent',
                 'description': 'Legacy pipeline',
                 'emoji': 'P',
+                'runner_id': 'plugin:test/runner/default',
             },
         )
         await service.update_agent(
@@ -779,6 +780,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'description': 'Legacy pipeline',
                 'emoji': 'P',
             },
+            runner_id='plugin:test/runner/default',
         )
         app.pipeline_service.update_pipeline.assert_awaited_once_with(
             WORKSPACE_UUID,

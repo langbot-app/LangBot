@@ -54,20 +54,20 @@ events, which are used only when no explicit answer was produced.
 
 ## Workflow Human Input
 
-When Dify emits `workflow_paused` with a `human_input_required` reason, the
-runner asks LangBot to deliver a structured interaction. A validated
-`interaction.submitted` event resumes Dify through
-`/form/human_input/{form_token}` and `/workflow/{workflow_run_id}/events`.
+When Dify emits `workflow_paused` with a `human_input_required` reason, or a
+direct `human_input_required` event, the runner asks LangBot to deliver a
+structured interaction and waits for the validated submission in the same run.
+It then resumes Dify through `/form/human_input/{form_token}`. The response may itself
+stream events; otherwise the runner reads `/workflow/{workflow_run_id}/events`.
 Workflows that pause again produce a new interaction and can be resumed again.
 Forms are emitted as atomic steps: the runner collects one field at a time and
 then emits the action buttons. This matches LangBot delivery adapters that
 support a single select or an action-only confirmation.
 
 Provider continuation data is not included in the interaction payload. The
-runner stores `form_token`, `workflow_run_id`, the Dify user tag, and field/action
-mappings in authorized plugin storage under a random LangBot `interaction_id`.
-The continuation is deleted after a successful terminal event or after it is
-replaced by a later pause.
+runner keeps `form_token`, `workflow_run_id`, the Dify user tag, and field/action
+mappings in the active run. Previously issued interactions can still resume
+through their stored continuation records during migration.
 
 The selected Runner binding must allow interactions, and the delivery
 adapter must support the requested field/action shape. Adapters with a smaller

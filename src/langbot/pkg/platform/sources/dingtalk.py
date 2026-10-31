@@ -1,7 +1,11 @@
-from langbot.libs.dingtalk_api.thinking import visible_think_markers
+from langbot.libs.dingtalk_api.a2ui import (
+    brand_components,
+    binding,
+    create_surface_messages,
+    create_text_card_messages,
+    update_surface_messages,
+)
 import asyncio
-import json
-import pathlib
 import re
 import traceback
 import typing
@@ -317,17 +321,6 @@ def _dingtalk_missing_completed_input_lines(form_data: dict, form_content: str) 
     return [line for line in _dingtalk_completed_input_lines(form_data) if line.strip() not in rendered_lines]
 
 
-def _dingtalk_supports_native_field(form_data: dict) -> bool:
-    current_name = str(form_data.get('_current_input_field') or '').strip()
-    if not current_name or form_data.get('_action_select_only'):
-        return False
-    for field in _dingtalk_form_input_defs(form_data):
-        if str(field.get('output_variable_name') or '').strip() != current_name:
-            continue
-        return str(field.get('type') or 'text').strip().lower() not in {'file', 'file-list'}
-    return False
-
-
 def _dingtalk_field_name(field: dict) -> str:
     return str(field.get('output_variable_name') or field.get('name') or field.get('id') or '').strip()
 
@@ -355,28 +348,6 @@ def _dingtalk_select_options(field: dict) -> list[str]:
     return []
 
 
-def _dingtalk_select_block_options(options: list[str]) -> list[dict]:
-    """Build the option shape consumed by DingTalk SelectBlock templates."""
-    locales = (
-        'zh_CN',
-        'zh_TW',
-        'en_US',
-        'ja_JP',
-        'vi_VN',
-        'th_TH',
-        'id_ID',
-        'ne_NP',
-        'ms_MY',
-        'ko_KR',
-        'ru_RU',
-        'es_EA',
-        'tr_TR',
-        'fr_FR',
-        'pt_BR',
-    )
-    return [{'value': option, 'text': {locale: option for locale in locales}} for option in options]
-
-
 def _dingtalk_current_input_field(form_data: dict) -> dict | None:
     current_name = str(form_data.get('_current_input_field') or '').strip()
     if not current_name or form_data.get('_action_select_only'):
@@ -387,62 +358,8 @@ def _dingtalk_current_input_field(form_data: dict) -> dict | None:
     return None
 
 
-def _dingtalk_form_component_params(form_data: dict) -> dict:
-    field = _dingtalk_current_input_field(form_data)
-    params = {
-        'input_visible': '',
-        'input_title': '',
-        'input_placeholder': '',
-        'input_value': '',
-        'select_visible': '',
-        'select_placeholder': '',
-        'select_options': [],
-        'index_o': [],
-        'test_index': [],
-        'select_index': -1,
-    }
-    if not field:
-        return params
-
-    field_name = _dingtalk_field_name(field)
-    field_type = _dingtalk_field_type(field)
-    value = form_data.get('inputs', {}).get(field_name, '')
-    if field_type == 'select':
-        options = _dingtalk_select_options(field)
-        selected_index = -1
-        if value not in (None, ''):
-            try:
-                selected_index = options.index(str(value))
-            except ValueError:
-                selected_index = -1
-        params.update(
-            {
-                'select_visible': 'true',
-                'select_placeholder': field_name or 'Select',
-                'select_options': options,
-                'index_o': _dingtalk_select_block_options(options),
-                'test_index': _dingtalk_select_block_options(options),
-                'select_index': selected_index,
-            }
-        )
-    elif field_type not in {'file', 'file-list'}:
-        params.update(
-            {
-                'input_visible': 'true',
-                'input_title': field_name or 'Input',
-                'input_placeholder': field_name or 'Input',
-                'input_value': '' if value is None else str(value),
-            }
-        )
-    return params
-
-
-def _dingtalk_empty_form_component_params() -> dict:
-    return _dingtalk_form_component_params({})
-
-
 def _dingtalk_extract_component_inputs(params: dict) -> dict:
-    """Normalize DingTalk native Input/SelectBlock callback payloads."""
+    """Normalize legacy template and A2UI input callback payloads."""
     if not isinstance(params, dict):
         return {}
 
@@ -468,12 +385,144 @@ def _dingtalk_extract_component_inputs(params: dict) -> dict:
                 break
     if isinstance(select_value, dict):
         select_value = select_value.get('value') or select_value.get('label') or select_value.get('index')
+    if isinstance(select_value, list):
+        select_value = select_value[0] if select_value else ''
     if select_value not in (None, ''):
         if isinstance(select_value, str):
             select_value = select_value.strip()
         result['select'] = select_value
 
     return result
+
+
+def _dingtalk_a2ui_form(
+    form_data: dict,
+    out_track_id: str,
+    *,
+    prior_content: str = '',
+) -> tuple[dict, list[dict]]:
+    node_title = str(form_data.get('node_title') or 'Human Input Required')
+    form_content = _dingtalk_clean_form_content(form_data)
+    content_parts = [part for part in (prior_content.strip(), f'## {node_title}', form_content) if part]
+    data: dict[str, typing.Any] = {'content': '\n\n'.join(content_parts), 'form': {}}
+    components: list[dict] = [
+        {'id': 'root', 'component': 'Column', 'children': ['content'], 'gap': 12},
+        {'id': 'content', 'component': 'Markdown', 'content': binding('/content')},
+    ]
+    children = components[0]['children']
+
+    field = _dingtalk_current_input_field(form_data)
+    if field is not None:
+        field_name = _dingtalk_field_name(field) or 'value'
+        field_type = _dingtalk_field_type(field)
+        default = (form_data.get('inputs') or {}).get(field_name, field.get('default'))
+        label = str(field.get('label') or field_name)
+        placeholder = str(field.get('placeholder') or '')
+        if field_type == 'select':
+            options = [{'label': option, 'value': option} for option in _dingtalk_select_options(field)]
+            data['form']['value'] = [] if default in (None, '') else [str(default)]
+            components.append(
+                {
+                    'id': 'field',
+                    'component': 'ChoicePicker',
+                    'label': placeholder or label,
+                    'variant': 'mutuallyExclusive',
+                    'displayStyle': 'dropdown',
+                    'options': options,
+                    'value': binding('/form/value'),
+                }
+            )
+            value_key = 'select'
+        elif field_type == 'number':
+            data['form']['value'] = default if isinstance(default, (int, float)) else 0
+            components.append(
+                {
+                    'id': 'field',
+                    'component': 'NumberInput',
+                    'label': label,
+                    'placeholder': placeholder,
+                    'value': binding('/form/value'),
+                }
+            )
+            value_key = 'input'
+        else:
+            data['form']['value'] = '' if default is None else str(default)
+            components.append(
+                {
+                    'id': 'field',
+                    'component': 'TextField',
+                    'label': label,
+                    'placeholder': placeholder,
+                    'variant': 'longText' if field_type == 'textarea' else 'shortText',
+                    'value': binding('/form/value'),
+                }
+            )
+            value_key = 'input'
+        components.extend(
+            [
+                {
+                    'id': 'submit-input',
+                    'component': 'Button',
+                    'child': 'submit-input-label',
+                    'variant': 'primary',
+                    'action': {
+                        'event': {
+                            'name': 'langbot_form_input',
+                            'context': {
+                                'actionId': '__langbot_input__',
+                                'out_track_id': out_track_id,
+                                value_key: binding('/form/value'),
+                            },
+                        }
+                    },
+                    'checks': [
+                        {
+                            'condition': {
+                                'call': 'required',
+                                'args': {'value': binding('/form/value')},
+                            },
+                            'message': f'{label} is required',
+                        }
+                    ],
+                },
+                {'id': 'submit-input-label', 'component': 'Text', 'text': 'Submit'},
+            ]
+        )
+        children.extend(['field', 'submit-input'])
+    else:
+        for index, action in enumerate(form_data.get('actions') or []):
+            action_id = str(action.get('id') or '')
+            label_id = f'action-label-{index}'
+            button_id = f'action-{index}'
+            style = str(action.get('button_style') or '')
+            components.extend(
+                [
+                    {
+                        'id': button_id,
+                        'component': 'Button',
+                        'child': label_id,
+                        'variant': 'primary' if style == 'primary' or (not style and index == 0) else 'default',
+                        'action': {
+                            'event': {
+                                'name': 'langbot_form_action',
+                                'context': {
+                                    'actionId': action_id,
+                                    'out_track_id': out_track_id,
+                                },
+                            }
+                        },
+                    },
+                    {
+                        'id': label_id,
+                        'component': 'Text',
+                        'text': str(action.get('title') or action_id or f'Option {index + 1}'),
+                    },
+                ]
+            )
+            children.append(button_id)
+    children.append('langbot-brand')
+    components.extend(brand_components())
+    return data, components
 
 
 class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -508,17 +557,6 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ]
     ap: typing.Any = None
     bot_uuid: str = ''
-    # DingTalk media_id (`@xxx` format) for the bot avatar image, fetched
-    # on adapter startup by uploading the bundled LangBot logo via the
-    # legacy /media/upload endpoint. Empty string when the upload hasn't
-    # run yet or failed — the template's Avatar then falls back to its
-    # default (initials of `name`).
-    bot_avatar_media_id: str = ''
-
-    # Path to the LangBot logo bundled in the repo (`res/logo-blue.png`),
-    # resolved relative to this file. Updated to find the file even when
-    # LangBot is installed as a package or run from a different cwd.
-    _LOGO_PATH: typing.ClassVar[pathlib.Path] = pathlib.Path(__file__).resolve().parents[5] / 'res' / 'logo-blue.png'
 
     def __init__(self, config: dict, logger: EventLogger):
         required_keys = [
@@ -633,12 +671,10 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
 
-        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
         form_data = getattr(bot_message, '_form_data', None)
         if is_final and self.ap is not None:
             self.ap.logger.info(
-                f'DingTalk reply_message_chunk final: form_data_present={form_data is not None}, '
-                f'form_template_configured={bool(form_template_id)}'
+                f'DingTalk reply_message_chunk final: form_data_present={form_data is not None}, a2ui_enabled=True'
             )
 
         if form_data and is_final:
@@ -672,51 +708,16 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     return
 
             card_instance, card_instance_id = chat_card_entry
-            # btns is reserved exclusively for Dify form-action buttons.
-            # The template renders an Avatar header above the markdown
-            # content; no feedback buttons get injected here.
             if content:
-                if form_template_id:
-                    # The card content has already been written via
-                    # update_card_data (in _paint_form_on_card and the
-                    # initial card creation). The streaming endpoint
-                    # (PUT /v1.0/card/streaming) does not propagate
-                    # updates on cards whose content was last set via
-                    # update_card_data — they take different code paths
-                    # on the DingTalk client. Stick with update_card_data
-                    # for the whole turn for consistency.
-                    try:
-                        await self.bot.update_card_data(
-                            out_track_id=card_instance_id,
-                            card_param_map=self._card_params(
-                                content=content,
-                                btns='[]',
-                                flowStatus='3' if is_final else '1',
-                                **_dingtalk_empty_form_component_params(),
-                            ),
-                        )
-                        session_key = self._session_key_from_event(message_source)
-                        if session_key:
-                            self.active_turn_text[session_key] = content
-                    except Exception:
-                        if self.ap is not None:
-                            self.ap.logger.exception('DingTalk: update card content failed')
-                else:
-                    await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+                await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+                session_key = self._session_key_from_event(message_source)
+                if session_key:
+                    self.active_turn_text[session_key] = content
             if is_final:
-                if form_template_id and not content:
-                    # Empty final chunk still needs to leave the card with
-                    # flowStatus=3 so the spinner stops.
-                    try:
-                        await self.bot.update_card_data(
-                            out_track_id=card_instance_id,
-                            card_param_map=self._card_params(
-                                flowStatus='3',
-                                **_dingtalk_empty_form_component_params(),
-                            ),
-                        )
-                    except Exception:
-                        pass
+                if not content:
+                    session_key = self._session_key_from_event(message_source)
+                    final_content = self.active_turn_text.get(session_key, '') if session_key else ''
+                    await self.bot.send_card_message(card_instance, card_instance_id, final_content, True)
                 if bot_message.tool_calls is None:
                     self.card_instance_id_dict.pop(message_id, None)
                     event = await DingTalkEventConverter.yiri2target(message_source)
@@ -737,63 +738,24 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def create_message_card(self, message_id, event):
         self._prune_card_state()
-        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
-        legacy_template_id = (self.config.get('card_template_id') or '').strip()
 
         # Synthetic events (button clicks): look up the card already in
         # active_turn_card so reply_message_chunk can stream to it.
         if event is None or event.source_platform_object is None:
-            if form_template_id:
-                session_key = self._session_key_from_event(event) if event is not None else ''
-                carry = self.active_turn_card.get(session_key, '') if session_key else ''
-                if carry:
-                    self.card_instance_id_dict[message_id] = (None, carry)
-                    return True
+            session_key = self._session_key_from_event(event) if event is not None else ''
+            carry = self.active_turn_card.get(session_key, '') if session_key else ''
+            if carry:
+                self.card_instance_id_dict[message_id] = ({'surface_id': f'langbot-{carry}'}, carry)
+                return True
             return False
 
-        if form_template_id:
-            # Create one card with the form template, empty buttons,
-            # pending state. Streaming writes content to it; form pause
-            # paints buttons onto it. One card per turn, no duplication.
-            incoming_message = event.source_platform_object.incoming_message
-            out_track_id = uuid.uuid4().hex
-            is_group = str(incoming_message.conversation_type) == '2'
-            if is_group:
-                open_space_id = f'dtv1.card//IM_GROUP.{incoming_message.conversation_id}'
-            else:
-                open_space_id = f'dtv1.card//IM_ROBOT.{incoming_message.sender_staff_id}'
-            try:
-                await self.bot.create_and_deliver_card(
-                    card_template_id=form_template_id,
-                    out_track_id=out_track_id,
-                    open_space_id=open_space_id,
-                    is_group=is_group,
-                    card_param_map=self._card_params(
-                        content='',
-                        btns='[]',
-                        flowStatus='1',
-                        **_dingtalk_empty_form_component_params(),
-                    ),
-                    callback_type='STREAM',
-                )
-            except Exception:
-                if self.ap is not None:
-                    self.ap.logger.exception('DingTalk: create form-template card failed')
-                return False
-            self.card_instance_id_dict[message_id] = (None, out_track_id)
-            session_key = self._session_key_from_event(event)
-            if session_key:
-                self.active_turn_card[session_key] = out_track_id
-                self.active_turn_text[session_key] = ''
-            return True
-
-        # Legacy chat-card path (no form template).
         incoming_message = event.source_platform_object.incoming_message
-        card_auto_layout = self.config.get('card_auto_layout', True)
-        card_instance, card_instance_id = await self.bot.create_and_card(
-            legacy_template_id, incoming_message, card_auto_layout=card_auto_layout
-        )
+        card_instance, card_instance_id = await self.bot.create_and_card(incoming_message)
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
+        session_key = self._session_key_from_event(event)
+        if session_key:
+            self.active_turn_card[session_key] = card_instance_id
+            self.active_turn_text[session_key] = ''
         return True
 
     def _session_key_from_event(self, event) -> str:
@@ -839,37 +801,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self.bot.on_message('GroupMessage')(on_message)
 
     async def run_async(self):
-        # Upload the bundled LangBot logo so the card Avatar can render
-        # via DingTalk's media CDN — external URLs (e.g. raw.githubusercontent)
-        # are blocked by DingTalk's Avatar.imageUrl resolver. Non-fatal if
-        # the upload fails: cards still render without an avatar image.
-        if self._LOGO_PATH.exists():
-            media_id = await self.bot.upload_image_media(str(self._LOGO_PATH))
-            if media_id:
-                self.bot_avatar_media_id = media_id
-                if self.ap is not None:
-                    self.ap.logger.info(f'DingTalk bot avatar uploaded: media_id={media_id}')
-            else:
-                if self.ap is not None:
-                    self.ap.logger.warning('DingTalk bot avatar upload failed; card will use default')
-        else:
-            if self.ap is not None:
-                self.ap.logger.warning(f'DingTalk bot avatar source not found: {self._LOGO_PATH}')
         await self.bot.start()
-
-    def _card_params(self, **extra) -> dict:
-        """Build a cardParamMap dict that always carries `bot_avatar`
-        (when uploaded) alongside whatever caller-specific params. The
-        bot_avatar key gets dropped on every update_card_data call —
-        DingTalk wipes unspecified template variables, so re-sending it
-        on each update is mandatory."""
-        params = {}
-        if self.bot_avatar_media_id:
-            params['bot_avatar'] = self.bot_avatar_media_id
-        params.update(extra)
-        if isinstance(params.get('content'), str):
-            params['content'] = visible_think_markers(params['content'])
-        return params
 
     async def kill(self) -> bool:
         task_set = getattr(self, '_background_tasks', set())
@@ -916,8 +848,8 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     def _derive_open_space(self, message_source: platform_events.MessageEvent) -> tuple[str, bool]:
         """Return (openSpaceId, is_group) for the given inbound event."""
         if isinstance(message_source, platform_events.GroupMessage):
-            return f'dtv1.card//IM_GROUP.{message_source.group.id}', True
-        return f'dtv1.card//IM_ROBOT.{message_source.sender.id}', False
+            return f'dtv1.card//im_group.{message_source.group.id}', True
+        return f'dtv1.card//im_robot.{message_source.sender.id}', False
 
     def _derive_session_descriptor(
         self, message_source: platform_events.MessageEvent
@@ -942,53 +874,23 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         form_data: dict,
     ) -> None:
-        """Surface human-input prompt + buttons on the active card.
-
-        In single-card mode (form_template_id configured): update the
-        EXISTING card with form buttons so it transitions from streaming
-        output to prompt+buttons on the same card. In legacy mode:
-        finalize the chat card and deliver a separate form card.
-        """
+        """Surface a human-input prompt on the active A2UI card."""
         if self.ap is not None:
             self.ap.logger.info(
                 f'DingTalk _handle_form_chunk: actions={len(form_data.get("actions") or [])}, '
                 f'node_title={form_data.get("node_title", "")!r}'
             )
         message_id = bot_message.resp_message_id
-        template_id = (self.config.get('human_input_card_template_id') or '').strip()
-
-        if template_id:
-            # Single-card mode: paint prompt + buttons onto the existing card.
-            session_key = self._session_key_from_event(message_source)
-            entry = self.card_instance_id_dict.get(message_id)
-            out_track_id = entry[1] if entry else None
-            if not out_track_id and session_key:
-                out_track_id = self.active_turn_card.get(session_key, '')
-            if out_track_id:
-                await self._paint_form_on_card(message_source, out_track_id, form_data, session_key)
-                self.card_instance_id_dict.pop(message_id, None)
-                return
-
-            # No existing card (e.g. Dify paused immediately with no LLM
-            # output before the pause). Create a form card directly.
-            await self._send_form_card(message_source, form_data, template_id)
-            self.card_instance_id_dict.pop(message_id, None)
-            return
-
-        # Legacy mode: finalize the streaming card with text fallback.
-        chat_card_entry = self.card_instance_id_dict.pop(message_id, None)
-        if chat_card_entry is not None:
-            _, chat_out_track_id = chat_card_entry
-            markdown_enabled = self.config.get('markdown_card', False)
-            text_content, _ = await DingTalkMessageConverter.yiri2target(message, markdown_enabled)
-            if not text_content and bot_message.content:
-                text_content = bot_message.content
-            try:
-                await self.bot.send_card_message(None, chat_out_track_id, text_content or '​', True)
-            except Exception:
-                await self.logger.error(f'DingTalk: finalize chat card before form failed: {traceback.format_exc()}')
-
-        await self.send_message_text_form(message_source, form_data)
+        session_key = self._session_key_from_event(message_source)
+        entry = self.card_instance_id_dict.get(message_id)
+        out_track_id = entry[1] if entry else None
+        if not out_track_id and session_key:
+            out_track_id = self.active_turn_card.get(session_key, '')
+        if out_track_id:
+            await self._paint_form_on_card(message_source, out_track_id, form_data, session_key)
+        else:
+            await self._send_form_card(message_source, form_data)
+        self.card_instance_id_dict.pop(message_id, None)
 
     async def _paint_form_on_card(
         self,
@@ -1002,13 +904,6 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         node_title = form_data.get('node_title', '') or 'Human Input Required'
         form_content = _dingtalk_clean_form_content(form_data)
         should_show_actions = not _dingtalk_pending_input_defs(form_data)
-        component_params = _dingtalk_form_component_params(form_data)
-        native_field = _dingtalk_supports_native_field(form_data)
-        if self.ap is not None and component_params.get('select_visible'):
-            self.ap.logger.info(
-                f'DingTalk form select params: field={form_data.get("_current_input_field", "")!r} '
-                f'options={len(component_params.get("select_options") or [])}'
-            )
 
         # Record form state for the click-handler.
         self._prune_card_state()
@@ -1031,37 +926,18 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'created_at': time.monotonic(),
         }
 
-        btns = self._build_btns(actions if should_show_actions else [], out_track_id)
-        parts: list[str] = []
         prior = self.active_turn_text.get(session_key, '') if session_key else ''
-        if prior.strip():
-            parts.append(prior.rstrip())
-            parts.append('<hr>')
-        # DingTalk's card markdown widget strips `\n\n` paragraph breaks in
-        # template content slots, fusing inline siblings into a single line.
-        # Force visual line breaks with explicit HTML `<br>` tags so the
-        # title sits on its own line above form_content.
-        if node_title:
-            parts.append(f'**{node_title}**')
-        if form_content:
-            parts.append(_dingtalk_card_markdown(form_content))
-        missing_completed_lines = _dingtalk_missing_completed_input_lines(form_data, form_content)
-        if missing_completed_lines:
-            parts.append('<hr>' + '<br>'.join(missing_completed_lines))
-        input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
-        if input_hint_lines:
-            parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
-        display_content = '<br><br>'.join(parts)
+        data, components = _dingtalk_a2ui_form(form_data, out_track_id, prior_content=prior)
 
         try:
-            await self.bot.update_card_data(
+            await self.bot.update_ai_card(
                 out_track_id=out_track_id,
-                card_param_map=self._card_params(
-                    content=display_content,
-                    btns=json.dumps(btns, ensure_ascii=False),
-                    flowStatus='3',
-                    **component_params,
+                a2ui_messages=update_surface_messages(
+                    f'langbot-{out_track_id}',
+                    data=data,
+                    components=components,
                 ),
+                flow_status='CONFIRMING',
             )
         except Exception:
             if self.ap is not None:
@@ -1069,40 +945,10 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.send_message_text_form(message_source, form_data)
             return
 
-    @staticmethod
-    def _build_btns(actions: list, out_track_id: str) -> list:
-        btns = []
-        for idx, action in enumerate(actions):
-            action_id = str(action.get('id') or '')
-            title = str(action.get('title') or action_id or f'选项 {idx + 1}')
-            style = (action.get('button_style') or '').lower()
-            if style == 'primary' or (style == '' and idx == 0):
-                color = 'blue'
-            elif style == 'danger':
-                color = 'red'
-            else:
-                color = 'gray'
-            btns.append(
-                {
-                    'text': title,
-                    'color': color,
-                    'status': 'normal',
-                    'event': {
-                        'type': 'sendCardRequest',
-                        'params': {
-                            'actionId': action_id,
-                            'params': {'action_id': action_id, 'out_track_id': out_track_id},
-                        },
-                    },
-                }
-            )
-        return btns
-
     async def _send_form_card(
         self,
         message_source: platform_events.MessageEvent,
         form_data: dict,
-        template_id: str,
     ) -> None:
         """Deliver a new card pre-loaded with the human-input prompt + buttons."""
         out_track_id = uuid.uuid4().hex
@@ -1114,13 +960,6 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         node_title = form_data.get('node_title', '') or 'Human Input Required'
         form_content = _dingtalk_clean_form_content(form_data)
         should_show_actions = not _dingtalk_pending_input_defs(form_data)
-        component_params = _dingtalk_form_component_params(form_data)
-        native_field = _dingtalk_supports_native_field(form_data)
-        if self.ap is not None and component_params.get('select_visible'):
-            self.ap.logger.info(
-                f'DingTalk form select params: field={form_data.get("_current_input_field", "")!r} '
-                f'options={len(component_params.get("select_options") or [])}'
-            )
 
         self._prune_card_state()
         self.card_state[out_track_id] = {
@@ -1143,38 +982,25 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'created_at': time.monotonic(),
         }
 
-        parts = []
-        if node_title:
-            parts.append(f'**{node_title}**')
-        if form_content:
-            parts.append(_dingtalk_card_markdown(form_content))
-        missing_completed_lines = _dingtalk_missing_completed_input_lines(form_data, form_content)
-        if missing_completed_lines:
-            parts.append('<hr>' + '<br>'.join(missing_completed_lines))
-        input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
-        if input_hint_lines:
-            parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
-        display_content = '<br><br>'.join(parts)
-
-        btns = self._build_btns(actions if should_show_actions else [], out_track_id)
+        data, components = _dingtalk_a2ui_form(form_data, out_track_id)
 
         try:
             if self.ap is not None:
                 self.ap.logger.info(
-                    f'DingTalk _send_form_card: out_track_id={out_track_id} template_id={template_id} '
-                    f'open_space_id={open_space_id} is_group={is_group} btns={len(btns)}'
+                    f'DingTalk _send_form_card: out_track_id={out_track_id} '
+                    f'open_space_id={open_space_id} is_group={is_group} actions={len(actions)}'
                 )
-            await self.bot.create_and_deliver_card(
-                card_template_id=template_id,
+            await self.bot.create_and_deliver_ai_card(
                 out_track_id=out_track_id,
                 open_space_id=open_space_id,
                 is_group=is_group,
-                card_param_map=self._card_params(
-                    content=display_content,
-                    btns=json.dumps(btns, ensure_ascii=False),
-                    flowStatus='3',
-                    **component_params,
+                a2ui_messages=create_surface_messages(
+                    f'langbot-{out_track_id}',
+                    data=data,
+                    components=components,
                 ),
+                flow_status='CONFIRMING',
+                summary=node_title,
                 callback_type='STREAM',
             )
         except Exception:
@@ -1193,43 +1019,24 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         card stays put with the selection notice, and a fresh card is
         spawned here for the LLM reply to stream into.
         """
-        form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
-        legacy_template_id = (self.config.get('card_template_id') or '').strip()
-        template_id = form_template_id or legacy_template_id
-        if not template_id:
-            return None
         out_track_id = uuid.uuid4().hex
         open_space_id, is_group = self._derive_open_space(message_source)
-        if form_template_id:
-            card_param_map = self._card_params(
-                content='',
-                btns='[]',
-                flowStatus='1',
-                **_dingtalk_empty_form_component_params(),
-            )
-            card_data_config = None
-        else:
-            # Legacy chat-card template doesn't carry a `bot_avatar`
-            # variable, so don't decorate the param map here.
-            card_param_map = {'content': '', 'query': '...'}
-            card_data_config = {'autoLayout': self.config.get('card_auto_layout', True)}
+        surface_id = f'langbot-{out_track_id}'
         try:
-            success = await self.bot.create_and_deliver_card(
-                card_template_id=template_id,
+            await self.bot.create_and_deliver_ai_card(
                 out_track_id=out_track_id,
                 open_space_id=open_space_id,
                 is_group=is_group,
-                card_param_map=card_param_map,
-                card_data_config=card_data_config,
+                a2ui_messages=create_text_card_messages(surface_id),
+                flow_status='PROCESSING',
+                summary='LangBot is replying',
                 callback_type='STREAM',
             )
         except Exception:
             if self.ap is not None:
                 self.ap.logger.exception('DingTalk: lazy create resume chat card failed')
             return None
-        if not success:
-            return None
-        entry = (None, out_track_id)
+        entry = ({'surface_id': surface_id}, out_track_id)
         self.card_instance_id_dict[message_id] = entry
         # Register as the active card so any further chunks on this turn
         # (and a subsequent re-pause) land on the same new card.
@@ -1601,14 +1408,17 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if self.ap is not None:
             self.ap.logger.info(f'DingTalk _mark_card_resolved: out_track_id={out_track_id} action={action_title!r}')
         try:
-            await self.bot.update_card_data(
+            await self.bot.update_ai_card(
                 out_track_id=out_track_id,
-                card_param_map=self._card_params(
-                    content=content,
-                    btns='[]',
-                    flowStatus='3',
-                    **_dingtalk_empty_form_component_params(),
+                a2ui_messages=update_surface_messages(
+                    f'langbot-{out_track_id}',
+                    data={'content': content},
+                    components=[
+                        {'id': 'root', 'component': 'Column', 'children': ['content'], 'gap': 8},
+                        {'id': 'content', 'component': 'Markdown', 'content': binding('/content')},
+                    ],
                 ),
+                flow_status='CONFIRMED',
             )
         except Exception:
             if self.ap is not None:

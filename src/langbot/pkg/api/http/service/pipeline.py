@@ -7,6 +7,7 @@ import typing
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
+from ....agent.runner.errors import RunnerNotFoundError
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....pipeline.extension_preferences import (
     normalize_extension_preferences,
@@ -44,7 +45,11 @@ class PipelineService:
     ) -> dict[str, typing.Any]:
         return {item['name']: item['default'] for item in config_schema if item.get('name') and 'default' in item}
 
-    async def get_default_pipeline_config(self, context: TenantContext) -> dict[str, typing.Any]:
+    async def get_default_pipeline_config(
+        self,
+        context: TenantContext,
+        runner_id: str | None = None,
+    ) -> dict[str, typing.Any]:
         from ....utils import paths as path_utils
 
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
@@ -54,15 +59,20 @@ class PipelineService:
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return config
-        try:
-            runners = await registry.list_runners(context, bound_plugins=None)
-        except Exception as exc:
-            self.ap.logger.warning(f'Failed to load Runner defaults for pipeline config: {exc}')
-            return config
-        if not runners:
-            return config
-
-        selected = runners[0]
+        if runner_id:
+            try:
+                selected = await registry.get(context, runner_id)
+            except RunnerNotFoundError as exc:
+                raise ValueError(f'Runner {runner_id} not found') from exc
+        else:
+            try:
+                runners = await registry.list_runners(context, bound_plugins=None)
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load Runner defaults for pipeline config: {exc}')
+                return config
+            if not runners:
+                return config
+            selected = runners[0]
         ai_config = config.setdefault('ai', {})
         runner_config = ai_config.setdefault('runner', {})
         runner_config['id'] = selected.id
@@ -166,7 +176,14 @@ class PipelineService:
         serialized = self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
         return serialized if include_secret else redact_secrets(serialized)
 
-    async def create_pipeline(self, context: TenantContext, pipeline_data: dict, default: bool = False) -> str:
+    async def create_pipeline(
+        self,
+        context: TenantContext,
+        pipeline_data: dict,
+        default: bool = False,
+        *,
+        runner_id: str | None = None,
+    ) -> str:
         workspace_uuid = require_workspace_uuid(context)
         if 'extensions_preferences' in pipeline_data:
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
@@ -193,7 +210,7 @@ class PipelineService:
         pipeline_data['is_default'] = default
 
         if 'config' not in pipeline_data or pipeline_data['config'] == {}:
-            pipeline_data['config'] = await self.get_default_pipeline_config(context)
+            pipeline_data['config'] = await self.get_default_pipeline_config(context, runner_id)
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default

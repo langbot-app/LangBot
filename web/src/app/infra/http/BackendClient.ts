@@ -28,6 +28,7 @@ import {
   ApiRespAgents,
   ApiRespAgent,
   Agent,
+  CreateAgentRequest,
   Pipeline,
   ApiRespPlatformAdapters,
   ApiRespPlatformAdapter,
@@ -387,7 +388,9 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
+  public createAgent(
+    agent: CreateAgentRequest,
+  ): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
   }
 

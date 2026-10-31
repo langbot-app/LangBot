@@ -19,6 +19,16 @@ The adapter is registered as `wecombot-omni`.
 
 This is separate from regular WeCom internal applications (`wecom-omni`). WeComBot supports WebSocket long connection mode, which does not require a webhook URL. Webhook mode remains available when `enable-webhook=true`.
 
+## AI Interactions
+
+In WebSocket mode, `interaction.request` renders actions as a
+`button_interaction` template card. A single `select` field renders as a native
+`multiple_interaction` dropdown with a Submit button (up to 10 options). The
+callback's `selected_items.selected_item[].option_ids.option_id` carries the
+selected option ID, as documented in the WeCom AI Bot event protocol. The Host
+resolves the original option value from its persisted interaction request.
+Webhook mode does not offer this proactive card API.
+
 ## Configuration
 
 | Field | Required | Default | Description |

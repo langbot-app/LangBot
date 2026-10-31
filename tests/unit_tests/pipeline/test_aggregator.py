@@ -560,14 +560,12 @@ class TestMessageAggregatorAddMessage:
             message_chain=chain,
             adapter=mock_adapter(),
             pipeline_uuid='test-pipeline',
-            variables={'_interaction_submission': {'interaction_id': 'form-1'}},
+            variables={'test_marker': {'interaction_id': 'form-1'}},
         )
 
         assert agg.buffers == {}
         app.query_pool.add_query.assert_awaited_once()
-        assert app.query_pool.add_query.call_args.kwargs['variables'] == {
-            '_interaction_submission': {'interaction_id': 'form-1'}
-        }
+        assert app.query_pool.add_query.call_args.kwargs['variables'] == {'test_marker': {'interaction_id': 'form-1'}}
 
     @pytest.mark.asyncio
     async def test_max_buffer_flushes_immediately(self):

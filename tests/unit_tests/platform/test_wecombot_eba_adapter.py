@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import yaml
 
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
+from langbot.pkg.agent.runner.interaction_manager import InteractionManager
 from langbot.pkg.platform.adapters.wecombot.adapter import WecomBotAdapter
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
@@ -20,6 +21,46 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
+
+
+async def _send_interaction(adapter, params):
+    target = params['reply_target']
+    request = InteractionRequest.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            'title': 'Interaction',
+            **params['request'],
+        }
+    )
+    handle = await adapter.send_interaction(
+        target['target_type'],
+        target['target_id'],
+        request,
+        params['callback_token'],
+        reply_to=target.get('message_id'),
+    )
+    return handle.model_dump()
+
+
+async def _update_interaction(adapter, params):
+    handle = InteractionHandle.model_validate(
+        {
+            **params['update_target'],
+            'context': {'request': params['request'], 'callback_context': params.get('callback_context') or {}},
+        }
+    )
+    submission = InteractionSubmission.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            **params['submission'],
+        }
+    )
+    return (await adapter.update_interaction(handle, params.get('state', 'submitted'), submission)).model_dump()
 
 
 class DummyLogger(AbstractEventLogger):
@@ -47,8 +88,12 @@ class DummyWecomBotWsClient:
         self.send_message = AsyncMock(return_value={'ok': True})
         self.reply_text = AsyncMock(return_value={'reply': True})
         self.push_stream_chunk = AsyncMock(return_value=True)
+        self.finish_stream_for_interaction = AsyncMock(return_value=True)
+        self.begin_interaction_stream = Mock(return_value=True)
+        self.push_interaction_stream_chunk = AsyncMock(return_value=True)
         self.set_message = AsyncMock(return_value={'set': True})
         self.send_template_card = AsyncMock(return_value={'sent': True})
+        self.update_template_card = AsyncMock(return_value={'errcode': 0})
 
     def on_message(self, msg_type: str):
         def decorator(func):
@@ -108,6 +153,30 @@ def make_adapter(enable_webhook: bool = False) -> WecomBotAdapter:
         return WecomBotAdapter(config, DummyLogger())
 
 
+@pytest.mark.asyncio
+async def test_interaction_card_finishes_original_loading_stream():
+    adapter = make_adapter()
+    await _send_interaction(
+        adapter,
+        {
+            'request': {'title': 'Continue', 'actions': [{'id': 'ok', 'label': 'OK'}]},
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+            'callback_token': 'token-1',
+        },
+    )
+    adapter.bot.finish_stream_for_interaction.assert_awaited_once_with('original-1')
+
+
+@pytest.mark.asyncio
+async def test_interaction_reply_uses_new_wecom_stream():
+    adapter = make_adapter()
+    target = {'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'}
+    assert await adapter.begin_interaction_stream('original-1', target)
+    adapter.bot.begin_interaction_stream.assert_called_once_with('original-1', 'person', 'user-1')
+    await adapter.reply_interaction_stream_chunk(source_message_id='original-1', content='part', is_final=False)
+    adapter.bot.push_interaction_stream_chunk.assert_awaited_once_with('original-1', 'part', False)
+
+
 def wecombot_event(**overrides) -> WecomBotEvent:
     event_type = overrides.get('type', 'single')
     payload = {
@@ -165,10 +234,228 @@ def test_wecombot_interaction_card_uses_host_callback_token_and_index():
 
 
 @pytest.mark.asyncio
+async def test_wecombot_select_card_submits_native_dropdown_value():
+    adapter = make_adapter()
+    request = {
+        'interaction_id': 'form-1',
+        'title': 'Choose priority',
+        'description': 'Select one option.',
+        'fields': [
+            {
+                'id': 'priority',
+                'label': 'Priority',
+                'type': 'select',
+                'default': 'normal',
+                'options': [
+                    {'value': 'normal', 'label': 'Normal'},
+                    {'value': 'urgent', 'label': 'Urgent'},
+                ],
+            }
+        ],
+        'fallback_text': 'Choose priority.',
+    }
+    result = await _send_interaction(
+        adapter,
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': request,
+        },
+    )
+
+    assert result['rich'] is True
+    card = adapter.bot.send_template_card.await_args.args[1]['template_card']
+    assert card['card_type'] == 'multiple_interaction'
+    assert card['select_list'] == [
+        {
+            'question_key': 'f0',
+            'title': 'Priority',
+            'selected_id': 'opt_1',
+            'option_list': [
+                {'id': 'opt_1', 'text': 'Normal'},
+                {'id': 'opt_2', 'text': 'Urgent'},
+            ],
+        }
+    ]
+    assert card['submit_button'] == {'text': 'Submit', 'key': 'lbi:callback-token:s'}
+
+    native = wecombot_event(type='group', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'card_type': 'multiple_interaction',
+            'task_id': result['task_id'],
+            'event_key': card['submit_button']['key'],
+            'selected_items': {
+                'selected_item': [
+                    {'question_key': 'f0', 'option_ids': {'option_id': ['opt_2']}},
+                ]
+            },
+        },
+    }
+    event = interaction_event_from_native(native)
+    assert event.callback_token == 'callback-token'
+    assert event.callback_context['req_id'] == 'req-1'
+    assert event.callback_context['task_id'] == result['task_id']
+    resolved = InteractionManager._resolve_submission_refs(
+        {'interaction_id': request['interaction_id'], 'request': request}, event.raw_submission
+    )
+    assert resolved['values'] == {'priority': 'urgent'}
+
+    listener = AsyncMock()
+    adapter.register_listener(platform_events.InteractionCallbackEvent, listener)
+    await adapter._handle_interaction_event(native)
+    listener.assert_awaited_once()
+    assert listener.await_args.args[0].raw_submission['option_ref'] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['button', 'select'])
+async def test_wecombot_acknowledges_submitted_card(kind):
+    adapter = make_adapter()
+    request = {'title': 'Choose', 'actions': [{'id': 'yes', 'label': 'Yes'}, {'id': 'no', 'label': 'No'}]}
+    submission = {'action_id': 'no', 'values': {}}
+    if kind == 'select':
+        request = {
+            'title': 'Choose',
+            'actions': [],
+            'fields': [
+                {
+                    'id': 'choice',
+                    'type': 'select',
+                    'label': 'Choice',
+                    'options': [{'value': 'a', 'label': 'A'}, {'value': 'b', 'label': 'B'}],
+                }
+            ],
+        }
+        submission = {'action_id': None, 'values': {'choice': 'b'}}
+    delivered = await _send_interaction(
+        adapter,
+        {
+            'callback_token': 'token-1',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': request,
+        },
+    )
+
+    result = await _update_interaction(
+        adapter,
+        {
+            'request': request,
+            'submission': submission,
+            'update_target': delivered,
+            'callback_context': {'req_id': 'callback-req', 'task_id': delivered['task_id']},
+        },
+    )
+
+    assert result['updated'] is True
+    req_id, card = adapter.bot.update_template_card.await_args.args
+    assert req_id == 'callback-req'
+    assert card['task_id'] == delivered['task_id']
+    if kind == 'select':
+        assert card['select_list'][0]['selected_id'] == 'opt_2'
+        assert card['select_list'][0]['disable'] is True
+        assert card['submit_button']['key'] == 'submitted'
+    else:
+        assert card['button_list'][1]['replace_text'].endswith('No')
+        assert all(button['key'] == 'submitted' for button in card['button_list'])
+
+    with pytest.raises(ValueError, match='does not match'):
+        await _update_interaction(
+            adapter,
+            {
+                'request': request,
+                'submission': submission,
+                'update_target': delivered,
+                'callback_context': {'req_id': 'callback-req', 'task_id': 'another-card'},
+            },
+        )
+    assert adapter.bot.update_template_card.await_count == 1
+
+
+def test_wecombot_select_rejects_more_than_ten_options():
+    with pytest.raises(ValueError, match='at most 10 options'):
+        build_interaction_card(
+            {
+                'title': 'Choose priority',
+                'fields': [
+                    {
+                        'id': 'priority',
+                        'type': 'select',
+                        'options': [{'value': f'option-{index}'} for index in range(11)],
+                    }
+                ],
+            },
+            'callback-token',
+        )
+
+
+@pytest.mark.parametrize(
+    'selected_items',
+    [
+        {'selected_item': []},
+        {'selected_item': [{'question_key': 'f0', 'option_ids': {'option_id': []}}]},
+        {'selected_item': [{'question_key': 'f0', 'option_ids': {'option_id': ['opt_0']}}]},
+    ],
+)
+def test_wecombot_select_rejects_invalid_native_selection(selected_items):
+    native = wecombot_event(type='single', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'event_key': 'lbi:callback-token:s',
+            'selected_items': selected_items,
+        },
+    }
+    with pytest.raises(ValueError, match='invalid option'):
+        interaction_event_from_native(native)
+
+
+def test_wecombot_select_accepts_legacy_response_data():
+    native = wecombot_event(type='single', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {
+            'EventKey': 'lbi:callback-token:s',
+            'ResponseData': '{"select_list":[{"question_key":"f0","option_id":"opt_2"}]}',
+        },
+    }
+    assert interaction_event_from_native(native).raw_submission['option_ref'] == 1
+
+
+@pytest.mark.asyncio
+async def test_wecombot_interaction_delivery_rejects_failed_ack():
+    adapter = make_adapter()
+    adapter.bot.send_template_card.return_value = {'errcode': 40001, 'errmsg': 'invalid card'}
+
+    with pytest.raises(RuntimeError, match='invalid card'):
+        await _send_interaction(
+            adapter,
+            {
+                'callback_token': 'callback-token',
+                'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+                'request': {
+                    'interaction_id': 'form-1',
+                    'title': 'Choose priority',
+                    'fields': [
+                        {
+                            'id': 'priority',
+                            'label': 'Priority',
+                            'type': 'select',
+                            'options': [{'value': 'normal', 'label': 'Normal'}],
+                        }
+                    ],
+                    'fallback_text': 'Choose priority.',
+                },
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_wecombot_interaction_delivery_and_callback_event():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -190,14 +477,14 @@ async def test_wecombot_interaction_delivery_and_callback_event():
         'template_card_event': {'EventKey': 'lbi:callback-token:a:0'},
     }
     event = interaction_event_from_native(native)
-    assert event.action == 'interaction.submitted'
-    assert event.data['action_ref'] == 0
-    assert event.data['target_id'] == 'group-1'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.raw_submission['action_ref'] == 0
+    assert event.target_id == 'group-1'
 
     native['event']['template_card_event'] = {'button': {'key': 'lbi:callback-token:f:0:2'}}
     nested_event = interaction_event_from_native(native)
-    assert nested_event.data['field_ref'] == 0
-    assert nested_event.data['option_ref'] == 2
+    assert nested_event.raw_submission['field_ref'] == 0
+    assert nested_event.raw_submission['option_ref'] == 2
 
 
 @pytest.mark.asyncio
@@ -324,6 +611,29 @@ async def test_wecombot_send_reply_feedback_and_platform_api_use_underlying_clie
 
 
 @pytest.mark.asyncio
+async def test_wecombot_expired_stream_falls_back_to_proactive_reply():
+    adapter = make_adapter()
+    adapter.bot.push_stream_chunk.return_value = False
+    source_event = await WecomBotEventConverter().target2yiri(wecombot_event())
+    message = platform_message.MessageChain([platform_message.Plain(text='late answer')])
+
+    await adapter.reply_message_chunk(source_event, None, message, is_final=True)
+
+    adapter.bot.send_message.assert_awaited_once_with('user-1', 'late answer')
+    adapter.bot.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_wecombot_send_message_rejects_failed_ack():
+    adapter = make_adapter()
+    adapter.bot.send_message.return_value = {'errcode': 400, 'errmsg': 'invalid message'}
+    with pytest.raises(RuntimeError, match='invalid message'):
+        await adapter.send_message(
+            'person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hello')])
+        )
+
+
+@pytest.mark.asyncio
 async def test_wecombot_webhook_mode_rejects_proactive_send():
     adapter = make_adapter(enable_webhook=True)
     with pytest.raises(NotSupportedError):
@@ -399,8 +709,7 @@ async def test_managed_card_callback_does_not_start_business_event():
     )
     listener.assert_awaited_once()
     event = listener.await_args.args[0]
-    assert event.type == 'platform.specific'
-    assert event.action == 'interaction.submitted'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
 
 
 @pytest.mark.asyncio

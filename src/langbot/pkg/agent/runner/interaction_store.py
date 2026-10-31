@@ -126,6 +126,7 @@ class InteractionStore:
         expires_at: int | float | None = None,
         expected_config: dict | None = None,
         authority_check: typing.Callable[[], bool] | None = None,
+        blocking: bool = False,
     ) -> tuple[dict[str, typing.Any], str]:
         """Persist a request and return its record plus one-time callback token."""
         if not interaction_id or not run_id or not binding_id or not runner_id or not processor_id:
@@ -154,6 +155,7 @@ class InteractionStore:
             thread_id=thread_id,
             actor_id=actor_id,
             status='pending',
+            status_reason='blocking' if blocking else None,
             request_json=request_json,
             delivery_target_json=delivery_target_json,
             replaces_interaction_id=replaces_interaction_id,
@@ -220,79 +222,6 @@ class InteractionStore:
             )
             await session.commit()
             return result.rowcount == 1
-
-    async def find_update_target(
-        self,
-        *,
-        interaction_id: str,
-        binding_id: str,
-        runner_id: str,
-        processor_type: str,
-        processor_id: str,
-        bot_id: str | None,
-        conversation_id: str | None,
-        actor_id: str | None,
-    ) -> dict[str, typing.Any] | None:
-        """Find a submitted interaction whose platform presentation can be replaced."""
-        if not interaction_id:
-            return None
-        conditions = [
-            AgentInteraction.interaction_id == interaction_id,
-            AgentInteraction.binding_id == binding_id,
-            AgentInteraction.runner_id == runner_id,
-            AgentInteraction.processor_type == processor_type,
-            AgentInteraction.processor_id == processor_id,
-            AgentInteraction.status == 'submitted',
-            AgentInteraction.delivery_result_json.is_not(None),
-        ]
-        for column, value in (
-            (AgentInteraction.bot_id, bot_id),
-            (AgentInteraction.conversation_id, conversation_id),
-            (AgentInteraction.actor_id, actor_id),
-        ):
-            conditions.append(column.is_(None) if value is None else column == value)
-
-        async with self._session_factory() as session:
-            result = await session.execute(
-                sqlalchemy.select(AgentInteraction)
-                .where(*conditions)
-                .order_by(AgentInteraction.submitted_at.desc(), AgentInteraction.id.desc())
-                .limit(1)
-            )
-            row = result.scalar_one_or_none()
-            return self._to_dict(row) if row is not None else None
-
-    async def find_resume_request(self, *, event, binding, submission) -> dict[str, typing.Any] | None:
-        """Resolve persisted provenance with exact tenant/processor/callback scope.
-
-        Ambiguous identities fail closed instead of picking the newest run.
-        """
-        if not isinstance(submission, dict) or not submission.get('interaction_id'):
-            return None
-        target = event.delivery.reply_target or {}
-        target_type, target_id = target.get('target_type'), target.get('target_id')
-        conversation_id = f'{target_type}_{target_id}' if target_type and target_id else event.conversation_id
-        conditions = [
-            AgentInteraction.interaction_id == submission['interaction_id'],
-            AgentInteraction.status == 'submitted',
-            AgentInteraction.binding_id == binding.binding_id,
-            AgentInteraction.runner_id == binding.runner_id,
-            AgentInteraction.processor_type == binding.processor_type,
-            AgentInteraction.processor_id == (binding.processor_id or binding.agent_id),
-        ]
-        for column, value in (
-            (AgentInteraction.workspace_id, event.workspace_id),
-            (AgentInteraction.bot_id, event.bot_id),
-            (AgentInteraction.conversation_id, conversation_id),
-            (AgentInteraction.thread_id, event.thread_id),
-            (AgentInteraction.actor_id, event.actor.actor_id if event.actor else None),
-        ):
-            conditions.append(column.is_(None) if value is None else column == value)
-        async with self._session_factory() as session:
-            result = await session.execute(sqlalchemy.select(AgentInteraction).where(*conditions))
-            records = [self._to_dict(row) for row in result.scalars()]
-        matches = [record for record in records if record['submission'] == submission]
-        return matches[0] if len(matches) == 1 else None
 
     async def get_request(self, run_id: str, interaction_id: str) -> dict[str, typing.Any] | None:
         """Return a request by the runner-visible identity."""
@@ -393,6 +322,36 @@ class InteractionStore:
             )
             await session.commit()
             return result.rowcount == 1
+
+    async def mark_terminal(self, run_id: str, interaction_id: str, status: str) -> bool:
+        if status not in {'expired', 'cancelled'}:
+            raise ValueError('Invalid terminal interaction status')
+        now = _utc_now()
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.update(AgentInteraction)
+                .where(
+                    AgentInteraction.run_id == run_id,
+                    AgentInteraction.interaction_id == interaction_id,
+                    AgentInteraction.status == 'pending',
+                )
+                .values(status=status, status_reason=f'interaction {status}', updated_at=_db_datetime(now))
+            )
+            await session.commit()
+            return result.rowcount == 1
+
+    async def cancel_orphaned_pending(self, active_run_ids: set[str]) -> int:
+        """Invalidate pending callbacks after Host restart or run cleanup."""
+        now = _utc_now()
+        condition = ~AgentInteraction.run_id.in_(active_run_ids) if active_run_ids else sqlalchemy.true()
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.update(AgentInteraction)
+                .where(AgentInteraction.status == 'pending', AgentInteraction.status_reason == 'blocking', condition)
+                .values(status='cancelled', status_reason='run is no longer active', updated_at=_db_datetime(now))
+            )
+            await session.commit()
+            return int(result.rowcount or 0)
 
     async def expire_pending(self, *, now: datetime.datetime | None = None) -> int:
         """Expire pending interactions whose deadline has elapsed."""

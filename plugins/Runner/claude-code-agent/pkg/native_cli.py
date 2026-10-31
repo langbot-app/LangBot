@@ -21,7 +21,6 @@ from langbot_plugin.api.agent_tools.mcp_access import AgentRunMCPAccess
 from langbot_plugin.api.agent_tools.mcp_config import AgentMCPServerConfig
 from langbot_plugin.api.definition.components.runner.runner import Runner
 from langbot_plugin.api.entities.builtin.runner import (
-    InteractionAction,
     InteractionField,
     InteractionOption,
     InteractionRequest,
@@ -40,7 +39,6 @@ from pkg.runtime_support import local_workspace, terminate_process_group
 from pkg.steering import run_with_steering
 
 SESSION_STATE_KEY = "external.claude_code_session_id"
-PENDING_INTERACTION_STATE_KEY = "external.claude_code_pending_interaction"
 SUPPORTED_LOCATIONS = {"local", "remote-ssh", "daemon"}
 
 
@@ -238,7 +236,9 @@ _LANGBOT_MCP_SYSTEM_PROMPT = (
     "any mcp__langbot_agent__* tool, then call that tool directly. In coordinator mode, "
     "the main session may expose only delegation tools; delegate the MCP request to one "
     "worker and require that worker to perform the same ToolSearch-then-call flow. Never "
-    "claim a LangBot tool result unless the direct or delegated tool call completed."
+    "claim a LangBot tool result unless the direct or delegated tool call completed. "
+    "For user questions, call mcp__langbot_agent__ask_user_question so the answer returns "
+    "inside the current CLI process; do not call the built-in AskUserQuestion tool."
 )
 
 
@@ -351,7 +351,7 @@ def _interaction_from_claude_tool(
         title=title,
         description=(str(tool_input.get("description") or "").strip()[:10000] or None),
         fields=fields,
-        actions=[InteractionAction(id="submit", label="Submit", style="primary")],
+        actions=[],
         fallback_text=f"{title}: " + "; ".join(field.label for field in fields),
     )
     continuation = {
@@ -361,11 +361,6 @@ def _interaction_from_claude_tool(
         "questions": continuation_questions,
     }
     return request, continuation
-
-
-def _pending_interaction(ctx: RunnerContext) -> dict[str, typing.Any] | None:
-    value = ctx.state.conversation.get(PENDING_INTERACTION_STATE_KEY)
-    return dict(value) if isinstance(value, dict) else None
 
 
 def _submission_payload(
@@ -389,14 +384,6 @@ def _submission_payload(
             for field_id, value in submission.values.items()
         ],
     }
-
-
-def _interaction_resume_prompt(payload: dict[str, typing.Any]) -> str:
-    return (
-        "The user answered the previously paused ask_user_question call. "
-        "Treat these values as the authoritative response and continue the interrupted task.\n"
-        + json.dumps(payload, ensure_ascii=False)
-    )
 
 
 class ClaudeQuestionOption(pydantic.BaseModel):
@@ -450,7 +437,14 @@ class ClaudeCodeExternalTools(AgentRunExternalTools):
         args_model=AskUserQuestionArgs,
     )
     async def ask_user_question(self, args: AskUserQuestionArgs) -> dict[str, typing.Any]:
-        return {"status": "paused", "question_count": len(args.questions)}
+        request, continuation = _interaction_from_claude_tool(
+            uuid.uuid4().hex, args.model_dump(mode="json", by_alias=True)
+        )
+        result = await self.ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
+        if result.status != "submitted" or result.submission is None:
+            raise NativeCliError(f"User interaction {result.status}", code="claude_code.interaction_expired")
+        answers = _submission_payload(result.submission, continuation)["answers"]
+        return {"status": "submitted", "answers": answers}
 
 
 class NativeClaudeCodeRunner(Runner):
@@ -550,31 +544,9 @@ class NativeClaudeCodeRunner(Runner):
     async def run(self, ctx: RunnerContext) -> typing.AsyncGenerator[RunnerResult, None]:
         try:
             config = self._validate_config(ctx)
-            submission = ctx.input.interaction
-            if submission is not None:
-                continuation = _pending_interaction(ctx)
-                if continuation is None:
-                    raise NativeCliError(
-                        "pending Claude interaction state was not found",
-                        code="claude_code.interaction_not_found",
-                    )
-                tool_use_id = str(continuation.get("tool_use_id") or "").strip()
-                if not tool_use_id:
-                    raise NativeCliError(
-                        "pending Claude interaction has no tool_use_id",
-                        code="claude_code.interaction_invalid",
-                    )
-                prompt = _interaction_resume_prompt(_submission_payload(submission, continuation))
-                yield RunnerResult.state_updated(
-                    ctx.run_id,
-                    PENDING_INTERACTION_STATE_KEY,
-                    None,
-                    scope="conversation",
-                )
-            else:
-                prompt = _input_text(ctx)
-                if not prompt:
-                    raise NativeCliError("input text is required", code="claude_code.empty_input")
+            prompt = _input_text(ctx)
+            if not prompt:
+                raise NativeCliError("input text is required", code="claude_code.empty_input")
             session_id, session_created = self._session_id(ctx, config)
             if session_created:
                 yield RunnerResult.state_updated(ctx.run_id, SESSION_STATE_KEY, session_id, scope="conversation")
@@ -850,7 +822,6 @@ async def _run_cli_process_events(
     deadline = time.monotonic() + timeout
     sequence = 0
     final_parts: list[str] = []
-    pending_interaction: tuple[InteractionRequest, dict[str, typing.Any]] | None = None
     terminal_result_text = ""
     stderr_task = asyncio.create_task(process.stderr.read())
     try:
@@ -884,15 +855,16 @@ async def _run_cli_process_events(
                     "data": {"key": SESSION_STATE_KEY, "value": session_id, "scope": "conversation"},
                 }
             question_tool = _claude_question_tool_use(parsed)
-            if question_tool is not None and pending_interaction is None:
-                tool_use_id, tool_input = question_tool
-                pending_interaction = _interaction_from_claude_tool(tool_use_id, tool_input)
-                continue
+            if question_tool is not None:
+                raise NativeCliError(
+                    "Use the LangBot ask_user_question MCP tool for user input",
+                    code="claude_code.interaction_invalid",
+                )
             chunk = _event_text(parsed)
             if parsed.get("type") == "result" and chunk:
                 terminal_result_text = chunk
                 continue
-            if chunk and pending_interaction is None:
+            if chunk:
                 final_parts.append(chunk)
                 if streaming:
                     sequence += 1
@@ -914,24 +886,6 @@ async def _run_cli_process_events(
             raise NativeCliError(
                 stderr or f"Claude Code exited with status {returncode}", code="claude_code.process_failed"
             )
-        if pending_interaction is not None:
-            request, continuation = pending_interaction
-            yield {
-                "type": "state.updated",
-                "data": {
-                    "key": PENDING_INTERACTION_STATE_KEY,
-                    "value": continuation,
-                    "scope": "conversation",
-                },
-            }
-            yield {
-                "type": "action.requested",
-                "data": {
-                    "action": "interaction.requested",
-                    "payload": request.model_dump(mode="json"),
-                },
-            }
-            return
         final_text = (terminal_result_text or "".join(final_parts)).strip()
         if not final_text:
             raise NativeCliError("Claude Code returned no assistant text", code="claude_code.empty_response")

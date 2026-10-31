@@ -438,6 +438,7 @@ class AgentService:
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
                 },
+                runner_id=agent_data.get('runner_id'),
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 

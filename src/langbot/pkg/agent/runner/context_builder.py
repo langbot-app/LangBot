@@ -249,19 +249,7 @@ class RunnerContextBuilder:
             'timestamp': event.event_time or int(time.time()),
         }
 
-        # A legacy Tbox resume must use the persisted original bot, not a
-        # newly reconstructed callback envelope. Ordinary sender mode is unchanged.
         bot_id = event.bot_id
-        if event.event_type == 'interaction.submitted' and binding.runner_config.get('user-id-source') == 'legacy-bot':
-            identity = event.legacy_identity
-            bot_id = (
-                identity.bot_id
-                if identity is not None
-                and identity.workspace_id == event.workspace_id
-                and identity.bot_id == event.bot_id
-                and identity.pipeline_id == (binding.processor_id or binding.agent_id)
-                else None
-            )
 
         # Build conversation context from event
         conversation: ConversationContext | None = None

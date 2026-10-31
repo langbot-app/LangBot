@@ -7,6 +7,7 @@ import time
 import typing
 import uuid
 
+from langbot.libs.dingtalk_api.a2ui import brand_components, binding, create_surface_messages, update_surface_messages
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
@@ -16,69 +17,223 @@ def interaction_delivery_capabilities() -> dict[str, typing.Any]:
         'field_types': ['text', 'textarea', 'number', 'select'],
         'action_styles': ['default', 'primary', 'danger'],
         'supports_updates': True,
-        'max_fields': 1,
+        'max_fields': 8,
     }
 
 
-def _select_options(options: list[dict[str, typing.Any]]) -> list[dict[str, typing.Any]]:
-    locales = ['zh_CN', 'zh_TW', 'en_US', 'ja_JP', 'vi_VN', 'th_TH', 'id_ID', 'ms_MY', 'ko_KR']
-    result = []
-    for option in options:
-        value = str(option.get('value') or '')
-        label = str(option.get('label') or value)
-        if value:
-            result.append({'value': value, 'text': {locale: label for locale in locales}})
-    return result
+def _json_pointer_segment(value: str) -> str:
+    return value.replace('~', '~0').replace('/', '~1')
 
 
-def _field_card_params(field: dict[str, typing.Any]) -> dict[str, typing.Any] | None:
-    field_type = str(field.get('type') or '')
-    field_id = str(field.get('id') or '')
-    if field_type not in {'text', 'textarea', 'number', 'select'} or not field_id:
-        return None
-    label = str(field.get('label') or field_id)
-    placeholder = str(field.get('placeholder') or label)
-    default = field.get('default')
-    params: dict[str, typing.Any] = {
-        'input_visible': '',
-        'input_title': '',
-        'input_placeholder': '',
-        'input_value': '',
-        'select_visible': '',
-        'select_placeholder': '',
-        'select_options': [],
-        'index_o': [],
-        'select_index': -1,
-    }
-    if field_type == 'select':
-        raw_options = field.get('options') if isinstance(field.get('options'), list) else []
-        options = [option for option in raw_options if isinstance(option, dict)]
-        encoded_options = _select_options(options)
-        if not encoded_options:
-            return None
-        selected_index = next(
-            (index for index, option in enumerate(options) if str(option.get('value')) == str(default)),
-            -1,
+def _stored_submitted_values(value: typing.Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {
+            'label': str(item['label'])[:200],
+            'value': str(item['value'])[:2000],
+            **({'description': str(item['description'])[:4000]} if item.get('description') is not None else {}),
+        }
+        for item in value[:50]
+        if isinstance(item, dict) and item.get('label') is not None and item.get('value') is not None
+    ]
+
+
+def _submission_display_values(
+    request: dict[str, typing.Any], submission: dict[str, typing.Any]
+) -> list[dict[str, str]]:
+    values = submission.get('values') if isinstance(submission.get('values'), dict) else {}
+    displayed: list[dict[str, str]] = []
+    for field in request.get('fields') or []:
+        if not isinstance(field, dict):
+            continue
+        field_id = str(field.get('id') or '')
+        if not field_id or field_id not in values:
+            continue
+        value = values[field_id]
+        if field.get('type') == 'select':
+            value = next(
+                (
+                    option.get('label') or option.get('value')
+                    for option in field.get('options') or []
+                    if isinstance(option, dict) and option.get('value') == value
+                ),
+                value,
+            )
+        rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+        display_value = {'label': str(field.get('label') or field_id), 'value': rendered[:2000]}
+        description = str(request.get('description') or '').strip()
+        if description:
+            display_value['description'] = description[:4000]
+        displayed.append(display_value)
+
+    action_id = submission.get('action_id')
+    if action_id:
+        action_label = next(
+            (
+                str(action.get('label') or action_id)
+                for action in request.get('actions') or []
+                if isinstance(action, dict) and str(action.get('id') or '') == str(action_id)
+            ),
+            str(action_id),
         )
-        params.update(
-            {
-                'select_visible': 'true',
-                'select_placeholder': placeholder,
-                'select_options': [str(option.get('value') or '') for option in options],
-                'index_o': encoded_options,
-                'select_index': selected_index,
+        action_value = {'label': '', 'value': action_label}
+        description = str(request.get('description') or '').strip()
+        if description and not displayed:
+            action_value['description'] = description[:4000]
+        displayed.append(action_value)
+    return displayed
+
+
+def _submitted_components(values: list[dict[str, str]]) -> tuple[list[dict[str, typing.Any]], list[str]]:
+    components = []
+    children = []
+    for index, item in enumerate(values):
+        description = item.get('description')
+        if description:
+            description_id = f'submitted-description-{index}'
+            components.append({'id': description_id, 'component': 'Text', 'text': description})
+            children.append(description_id)
+        component_id = f'submitted-{index}'
+        label = f'{item["label"]}: ' if item['label'] else ''
+        components.append({'id': component_id, 'component': 'Text', 'text': f'\u2705 {label}{item["value"]}'})
+        children.append(component_id)
+    return components, children
+
+
+def _build_interaction_messages(
+    surface_id: str,
+    request: dict[str, typing.Any],
+    callback_token: str,
+    submitted_values: list[dict[str, str]] | None = None,
+) -> tuple[dict[str, typing.Any], list[dict[str, typing.Any]], dict[str, str]]:
+    raw_fields = request.get('fields') if isinstance(request.get('fields'), list) else []
+    raw_actions = request.get('actions') if isinstance(request.get('actions'), list) else []
+    fields = [field for field in raw_fields if isinstance(field, dict)][:8]
+    actions = [action for action in raw_actions if isinstance(action, dict)]
+
+    form: dict[str, typing.Any] = {}
+    field_types: dict[str, str] = {}
+    required_fields: list[tuple[str, str]] = []
+    components: list[dict[str, typing.Any]] = []
+    children: list[str] = []
+
+    title = str(request.get('title') or '').strip()
+    description = str(request.get('description') or '').strip()
+    if title:
+        components.append({'id': 'title', 'component': 'Text', 'text': title})
+        children.append('title')
+    history_components, history_children = _submitted_components(submitted_values or [])
+    components.extend(history_components)
+    children.extend(history_children)
+    if description:
+        components.append({'id': 'description', 'component': 'Markdown', 'content': description})
+        children.append('description')
+
+    for index, field in enumerate(fields):
+        field_id = str(field.get('id') or f'field_{index}')
+        field_type = str(field.get('type') or 'text')
+        if field_type not in {'text', 'textarea', 'number', 'select'}:
+            continue
+        field_types[field_id] = field_type
+        path = f'/form/{_json_pointer_segment(field_id)}'
+        component_id = f'field-{index}'
+        label = str(field.get('label') or field_id)
+        placeholder = str(field.get('placeholder') or '')
+        default = field.get('default')
+
+        if field_type == 'select':
+            options = [
+                {
+                    'label': str(option.get('label') or option.get('value') or ''),
+                    'value': str(option.get('value') or ''),
+                }
+                for option in field.get('options') or []
+                if isinstance(option, dict) and str(option.get('value') or '')
+            ]
+            if not options:
+                continue
+            selected = default if isinstance(default, list) else ([] if default in (None, '') else [str(default)])
+            form[field_id] = [str(value) for value in selected]
+            component = {
+                'id': component_id,
+                'component': 'ChoicePicker',
+                'label': placeholder or label,
+                'variant': 'mutuallyExclusive',
+                'displayStyle': 'dropdown',
+                'options': options,
+                'value': binding(path),
             }
-        )
-    else:
-        params.update(
-            {
-                'input_visible': 'true',
-                'input_title': label,
-                'input_placeholder': placeholder,
-                'input_value': '' if default is None else str(default),
+        elif field_type == 'number':
+            numeric_default = default if isinstance(default, (int, float)) and not isinstance(default, bool) else 0
+            form[field_id] = numeric_default
+            component = {
+                'id': component_id,
+                'component': 'NumberInput',
+                'label': label,
+                'placeholder': placeholder,
+                'value': binding(path),
             }
+        else:
+            form[field_id] = '' if default is None else str(default)
+            component = {
+                'id': component_id,
+                'component': 'TextField',
+                'label': label,
+                'placeholder': placeholder,
+                'variant': 'longText' if field_type == 'textarea' else 'shortText',
+                'value': binding(path),
+            }
+        components.append(component)
+        children.append(component_id)
+        if field.get('required'):
+            required_fields.append((path, label))
+
+    rendered_actions = actions or ([{'label': 'Submit', 'style': 'primary'}] if field_types else [])
+    for index, action in enumerate(rendered_actions):
+        label_id = f'action-label-{index}'
+        button_id = f'action-{index}'
+        callback_data = f'lbi:{callback_token}:a:{index}' if actions else f'lbi:{callback_token}:f:0'
+        style = str(action.get('style') or 'default')
+        button: dict[str, typing.Any] = {
+            'id': button_id,
+            'component': 'Button',
+            'child': label_id,
+            'variant': 'primary' if style == 'primary' else 'default',
+            'action': {
+                'event': {
+                    'name': 'langbot_interaction_submit',
+                    'context': {
+                        'actionId': callback_data,
+                        'values': binding('/form'),
+                    },
+                }
+            },
+        }
+        if required_fields:
+            button['checks'] = [
+                {
+                    'condition': {'call': 'required', 'args': {'value': binding(path)}},
+                    'message': f'{label} is required',
+                }
+                for path, label in required_fields
+            ]
+        components.extend(
+            [
+                button,
+                {
+                    'id': label_id,
+                    'component': 'Text',
+                    'text': str(action.get('label') or action.get('id') or 'Submit'),
+                },
+            ]
         )
-    return params
+        children.append(button_id)
+
+    children.append('langbot-brand')
+    components.extend(brand_components())
+    components.insert(0, {'id': 'root', 'component': 'Column', 'children': children, 'gap': 12})
+    return {'form': form}, components, field_types
 
 
 def _prune_callback_contexts(adapter: typing.Any, now: float | None = None) -> None:
@@ -88,63 +243,17 @@ def _prune_callback_contexts(adapter: typing.Any, now: float | None = None) -> N
         contexts.pop(key, None)
 
 
-def _buttons(request: dict[str, typing.Any], callback_token: str) -> list[dict[str, typing.Any]]:
-    fields = request.get('fields') if isinstance(request.get('fields'), list) else []
-    actions = request.get('actions') if isinstance(request.get('actions'), list) else []
-    items: list[tuple[str, str, str]] = []
-    if actions and not fields:
-        items = [
-            (
-                str(action.get('label') or action.get('id') or index + 1),
-                f'lbi:{callback_token}:a:{index}',
-                str(action.get('style') or 'default'),
-            )
-            for index, action in enumerate(actions)
-            if isinstance(action, dict)
-        ]
-    elif len(fields) == 1 and not actions and isinstance(fields[0], dict):
-        field = fields[0]
-        if field.get('type') != 'select':
-            return []
-        options = field.get('options') if isinstance(field.get('options'), list) else []
-        items = [
-            (
-                str(option.get('label') or option.get('value') or index + 1),
-                f'lbi:{callback_token}:f:0:{index}',
-                'default',
-            )
-            for index, option in enumerate(options)
-            if isinstance(option, dict)
-        ]
-    return [
-        {
-            'text': label,
-            'color': 'blue' if style == 'primary' else 'red' if style == 'danger' else 'gray',
-            'status': 'normal',
-            'event': {
-                'type': 'sendCardRequest',
-                'params': {'actionId': callback_data, 'params': {'action_id': callback_data}},
-            },
-        }
-        for label, callback_data, style in items
-    ]
-
-
 async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -> dict[str, typing.Any]:
     request = params.get('request')
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
     target_type = str(reply_target.get('target_type') or '')
     target_id = str(reply_target.get('target_id') or '')
     fields = request.get('fields') if isinstance(request.get('fields'), list) else []
     actions = request.get('actions') if isinstance(request.get('actions'), list) else []
-    buttons = _buttons(request, callback_token)
-    field_params = (
-        _field_card_params(fields[0]) if len(fields) == 1 and not actions and isinstance(fields[0], dict) else None
-    )
-    if not buttons and field_params is None:
+    if not fields and not actions:
         fallback = '\n\n'.join(
             part
             for part in (
@@ -157,49 +266,97 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
         result = await adapter.send_message(target_type, target_id, adapter._plain_message(fallback))
         return {'ok': True, 'message_id': result.message_id, 'rich': False}
     if target_type not in {'group', 'person'} or not target_id:
-        raise ValueError('interaction.request has an invalid DingTalk target')
-    field_label = str(fields[0].get('label') or '').strip() if fields and isinstance(fields[0], dict) else ''
-    content = '\n\n'.join(
-        part
-        for part in (
-            f'## {str(request.get("title") or "").strip()}',
-            str(request.get('description') or '').strip(),
-            field_label,
+        raise ValueError('send_interaction has an invalid DingTalk target')
+    update_target = params.get('update_target')
+    submitted_values = _stored_submitted_values(
+        update_target.get('submitted_values') if isinstance(update_target, dict) else None
+    )
+    if isinstance(update_target, dict):
+        if update_target.get('rich') is not True or not update_target.get('message_id'):
+            raise ValueError('DingTalk interaction update target is not an A2UI card')
+        out_track_id = str(update_target['message_id'])
+    else:
+        out_track_id = uuid.uuid4().hex
+    surface_id = f'langbot-interaction-{out_track_id}'
+    data, components, field_types = _build_interaction_messages(surface_id, request, callback_token, submitted_values)
+    if isinstance(update_target, dict):
+        await adapter.bot.update_ai_card(
+            out_track_id=out_track_id,
+            a2ui_messages=update_surface_messages(surface_id, data=data, components=components),
+            flow_status='CONFIRMING',
         )
-        if part
-    )
-    out_track_id = uuid.uuid4().hex
-    card_param_map = {'content': content, 'btns': buttons}
-    if field_params is not None:
-        card_param_map.update(field_params)
-    await adapter.bot.create_and_deliver_card(
-        card_template_id=adapter.config['human_input_card_template_id'],
+    else:
+        await adapter.bot.create_and_deliver_ai_card(
+            out_track_id=out_track_id,
+            open_space_id=(
+                f'dtv1.card//im_group.{target_id}' if target_type == 'group' else f'dtv1.card//im_robot.{target_id}'
+            ),
+            is_group=target_type == 'group',
+            a2ui_messages=create_surface_messages(surface_id, data=data, components=components),
+            flow_status='CONFIRMING',
+            summary=str(request.get('title') or request.get('fallback_text') or 'Interaction required'),
+            biz_context={'callbackToken': callback_token},
+        )
+    _prune_callback_contexts(adapter)
+    adapter.interaction_callback_contexts[out_track_id] = {
+        'callback_token': callback_token,
+        'field_types': field_types,
+        'target_type': target_type,
+        'target_id': target_id,
+        'expires_at': time.monotonic() + max(1, int(request.get('expires_at') or time.time() + 30 * 60) - time.time()),
+    }
+    result = {
+        'ok': True,
+        'message_id': out_track_id,
+        'rich': True,
+        'updated': isinstance(update_target, dict),
+    }
+    if submitted_values:
+        result['submitted_values'] = submitted_values
+    return result
+
+
+async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    request = params.get('request')
+    submission = params.get('submission')
+    target = params.get('update_target')
+    if not all(isinstance(value, dict) for value in (request, submission, target)):
+        raise ValueError('update_interaction requires request, submission, and update_target')
+    if target.get('rich') is not True or not target.get('message_id'):
+        raise ValueError('DingTalk interaction acknowledgement requires an A2UI card')
+
+    out_track_id = str(target['message_id'])
+    state = params.get('state', 'submitted')
+    submitted_values = _stored_submitted_values(target.get('submitted_values'))
+    if state == 'submitted':
+        submitted_values.extend(_submission_display_values(request, submission))
+    else:
+        submitted_values.append({'label': '', 'value': 'Expired' if state == 'expired' else 'Cancelled'})
+    submitted_values = submitted_values[-50:]
+    components, children = _submitted_components(submitted_values)
+    title = str(request.get('title') or '').strip()
+    if title:
+        components.insert(0, {'id': 'title', 'component': 'Text', 'text': title})
+        children.insert(0, 'title')
+    children.append('langbot-brand')
+    components.extend(brand_components())
+    components.insert(0, {'id': 'root', 'component': 'Column', 'children': children, 'gap': 12})
+    await adapter.bot.update_ai_card(
         out_track_id=out_track_id,
-        open_space_id=(
-            f'dtv1.card//IM_GROUP.{target_id}' if target_type == 'group' else f'dtv1.card//IM_ROBOT.{target_id}'
+        a2ui_messages=update_surface_messages(
+            f'langbot-interaction-{out_track_id}', data={'form': {}}, components=components
         ),
-        is_group=target_type == 'group',
-        card_param_map=card_param_map,
+        flow_status='CONFIRMED',
     )
-    if field_params is not None:
-        _prune_callback_contexts(adapter)
-        field = fields[0]
-        adapter.interaction_callback_contexts[out_track_id] = {
-            'callback_token': callback_token,
-            'field_id': str(field.get('id') or ''),
-            'field_type': str(field.get('type') or ''),
-            'options': [
-                str(option.get('value') or '') for option in field.get('options') or [] if isinstance(option, dict)
-            ],
-            'expires_at': time.monotonic() + 30 * 60,
-        }
-    return {'ok': True, 'message_id': out_track_id, 'rich': True}
+    return {**target, 'updated': True, 'submitted_values': submitted_values}
 
 
 def parse_callback_data(value: str) -> dict[str, typing.Any]:
     parts = value.split(':')
     if len(parts) == 4 and parts[0] == 'lbi' and parts[1] and parts[2] == 'a' and parts[3].isdigit():
         return {'callback_token': parts[1], 'action_ref': int(parts[3])}
+    if len(parts) == 4 and parts[0] == 'lbi' and parts[1] and parts[2] == 'f' and parts[3].isdigit():
+        return {'callback_token': parts[1], 'field_ref': int(parts[3])}
     if (
         len(parts) == 5
         and parts[0] == 'lbi'
@@ -254,7 +411,7 @@ def _find_named_value(value: typing.Any, names: set[str]) -> typing.Any:
 
 
 def _callback_track_id(callback: dict[str, typing.Any]) -> str:
-    value = _find_named_value(callback, {'outTrackId', 'out_track_id', 'outtrackid'})
+    value = _find_named_value(callback, {'outTrackId', 'out_track_id', 'outtrackid', 'card_instance_id'})
     return str(value or '')
 
 
@@ -307,6 +464,29 @@ def interaction_event_from_native(
     callback_data = _find_callback_data(callback)
     if callback_data:
         parsed = parse_callback_data(callback_data)
+        raw_values = _mapping(_find_named_value(callback, {'values'}))
+        if 'field_ref' in parsed and 'option_ref' not in parsed:
+            # The A2UI form submit button uses f:0, but its values already
+            # contain the selected option; option refs belong to native pickers.
+            if not raw_values:
+                return None
+            parsed.pop('field_ref')
+        context: dict[str, typing.Any] = {}
+        if callback_contexts is not None:
+            track_id = _callback_track_id(callback)
+            context = callback_contexts.get(track_id)
+            if context is None:
+                return None
+            if parsed.get('callback_token') != context.get('callback_token'):
+                return None
+        if raw_values:
+            field_types = context.get('field_types') if isinstance(context.get('field_types'), dict) else {}
+            values = {}
+            for field_id, value in raw_values.items():
+                if field_types.get(field_id) == 'select' and isinstance(value, list):
+                    value = value[0] if value else ''
+                values[str(field_id)] = value
+            parsed['values'] = values
     else:
         contexts = callback_contexts if callback_contexts is not None else {}
         track_id = _callback_track_id(callback)
@@ -320,27 +500,28 @@ def interaction_event_from_native(
             'callback_token': str(context.get('callback_token') or ''),
             'values': {str(context.get('field_id') or ''): value},
         }
-        contexts.pop(track_id, None)
     space_id = str(callback.get('space_id') or '')
-    if 'IM_GROUP.' in space_id:
+    normalized_space_id = space_id.lower()
+    if context.get('target_type') in {'group', 'person'} and context.get('target_id'):
+        target_type = str(context['target_type'])
+        target_id = str(context['target_id'])
+    elif 'im_group.' in normalized_space_id:
         target_type = 'group'
-        target_id = space_id.split('IM_GROUP.', 1)[1]
-    elif 'IM_ROBOT.' in space_id:
+        target_id = space_id[normalized_space_id.index('im_group.') + len('im_group.') :]
+    elif 'im_robot.' in normalized_space_id:
         target_type = 'person'
-        target_id = space_id.split('IM_ROBOT.', 1)[1]
+        target_id = space_id[normalized_space_id.index('im_robot.') + len('im_robot.') :]
     else:
         raise ValueError('DingTalk interaction callback has no delivery space')
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    return platform_events.InteractionCallbackEvent(
         adapter_name='dingtalk-omni',
-        action='interaction.submitted',
-        data={
-            **parsed,
-            'actor_id': str(callback.get('user_id') or ''),
-            'target_type': target_type,
-            'target_id': target_id,
-            'display_text': 'submitted',
-        },
+        callback_token=str(parsed.get('callback_token') or ''),
+        values=parsed.get('values') if isinstance(parsed.get('values'), dict) else {},
+        actor_id=str(callback.get('user_id') or ''),
+        target_type=target_type,
+        target_id=target_id,
+        callback_context={'outTrackId': _callback_track_id(callback)},
+        raw_submission=parsed,
         timestamp=time.time(),
         source_platform_object=event,
     )

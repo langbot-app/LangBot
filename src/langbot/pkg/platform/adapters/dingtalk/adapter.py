@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import traceback
 import typing
@@ -18,6 +19,7 @@ from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEvent
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
 from langbot.pkg.platform.adapters.dingtalk.interaction import (
+    acknowledge_interaction,
     interaction_delivery_capabilities,
     interaction_event_from_native,
     send_interaction,
@@ -26,6 +28,11 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
@@ -34,27 +41,59 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
         self.adapter = adapter
 
     async def process(self, message: dingtalk_stream.CallbackMessage):
-        callback = dingtalk_stream.CardCallbackMessage.from_dict(message.data or {})
-        content = dict(callback.content) if isinstance(callback.content, dict) else {}
-        if isinstance(message.data, dict):
-            content['_raw_callback'] = message.data
+        raw = message.data if isinstance(message.data, dict) else {}
+        content = raw.get('content')
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except json.JSONDecodeError:
+                content = {}
+        content = dict(content) if isinstance(content, dict) else {}
+        content['_raw_callback'] = raw
+        extension = raw.get('extension')
+        if isinstance(extension, str):
+            try:
+                extension = json.loads(extension)
+            except json.JSONDecodeError:
+                extension = {}
+        track_id = str(raw.get('outTrackId') or '')
+        matched = track_id in self.adapter.interaction_callback_contexts
+        self.logger.info(
+            'DingTalk card callback: topic=%s track=%s keys=%s content_keys=%s context_matched=%s',
+            getattr(message.headers, 'topic', None),
+            track_id,
+            sorted(raw),
+            sorted(content),
+            matched,
+        )
         event = DingTalkEvent.from_payload(
             {
                 'conversation_type': 'CardCallback',
                 'Type': 'card_callback',
                 'timestamp': float(message.headers.time or 0) / 1000,
                 'CardCallback': {
-                    'extension': callback.extension,
-                    'corp_id': callback.corp_id,
-                    'user_id': callback.user_id,
+                    'extension': extension if isinstance(extension, dict) else {},
+                    'corp_id': raw.get('corpId'),
+                    'user_id': raw.get('userId'),
                     'content': content,
-                    'space_id': callback.space_id,
-                    'card_instance_id': callback.card_instance_id,
+                    'space_id': raw.get('openSpaceId') or raw.get('spaceId'),
+                    'card_instance_id': track_id,
                 },
             }
         )
         if event is not None:
-            await self.adapter._handle_native_event(event)
+            interaction = interaction_event_from_native(event, self.adapter.interaction_callback_contexts)
+            if interaction is not None:
+                try:
+                    await self.adapter._dispatch_eba_event(interaction)
+                except Exception:
+                    self.logger.exception('DingTalk card callback dispatch failed: track=%s', track_id)
+                    return 500, 'Card callback dispatch failed'
+            elif matched:
+                self.logger.warning('DingTalk card callback could not be parsed: track=%s', track_id)
+                return 500, 'Card callback could not be parsed'
+            else:
+                self.logger.info('DingTalk card callback has no active interaction: track=%s', track_id)
         return dingtalk_stream.AckMessage.STATUS_OK, 'OK'
 
 
@@ -115,6 +154,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'group.info_updated',
             'dingtalk.card_action',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -130,12 +170,53 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'get_file_url',
             'call_platform_api',
         ]
-        if self.config.get('human_input_card_template_id') and hasattr(self.bot, 'create_and_deliver_card'):
-            apis.append('interaction.request')
+        if hasattr(self.bot, 'create_and_deliver_ai_card'):
+            apis.extend(['send_interaction', 'get_interaction_capabilities'])
+            if hasattr(self.bot, 'update_ai_card'):
+                apis.append('update_interaction')
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        result = await acknowledge_interaction(
+            self,
+            {
+                'update_target': handle.model_dump(mode='json'),
+                'request': handle.context['request'],
+                'submission': submission.model_dump(mode='json') if submission else {},
+                'state': state,
+            },
+        )
+        updated = InteractionHandle.model_validate(result)
+        updated.context.update(handle.context)
+        return updated
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -225,23 +306,34 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             oldest_id = next(iter(self.card_instance_id_dict))
             self.card_instance_id_dict.pop(oldest_id, None)
             getattr(self, '_card_last_updates', {}).pop(oldest_id, None)
-        card_template_id = self.config['card_template_id'].strip()
         incoming_message = event.source_platform_object.incoming_message
-        card_auto_layout = self.config.get('card_auto_layout', True)
-        card_instance, card_instance_id = await self.bot.create_and_card(
-            card_template_id,
-            incoming_message,
-            card_auto_layout=card_auto_layout,
-        )
+        card_instance, card_instance_id = await self.bot.create_and_card(incoming_message)
         self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
         return True
+
+    async def create_message_card_for_target(self, message_id: str, target_type: str, target_id: str) -> bool:
+        card_instance, card_instance_id = await self.bot.create_and_card_for_target(target_type, target_id)
+        self.card_instance_id_dict[message_id] = (card_instance, card_instance_id)
+        return True
+
+    async def reply_message_chunk_for_target(self, *, message_id: str, content: str, is_final: bool) -> None:
+        now = time.monotonic()
+        last_updates = getattr(self, '_card_last_updates', None)
+        if last_updates is None:
+            self._card_last_updates = last_updates = {}
+        if not is_final and now - last_updates.get(message_id, 0) < 0.35:
+            return
+        card_instance, card_instance_id = self.card_instance_id_dict[message_id]
+        await self.bot.send_card_message(card_instance, card_instance_id, content, is_final)
+        last_updates[message_id] = now
+        if is_final:
+            self.card_instance_id_dict.pop(message_id, None)
+            last_updates.pop(message_id, None)
 
     async def is_stream_output_supported(self) -> bool:
         return is_stream_card_configured(self.config)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request' and action in self.get_supported_apis():
-            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

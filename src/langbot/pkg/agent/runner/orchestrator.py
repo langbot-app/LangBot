@@ -5,15 +5,17 @@ from __future__ import annotations
 import time
 import asyncio
 import contextlib
+import re
 import copy
 import typing
+from uuid import uuid4
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-from .reply_stream import ReplyStreamSession
+from .reply_stream import ReplyStreamRequest, ReplyStreamSession
 from ...core import app
 from ...i18n import t
 from ...i18n.workspace import get_workspace_language
@@ -36,7 +38,7 @@ from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
 from .registry import RunnerRegistry
 from .resource_builder import AgentResourceBuilder
-from .platform_tools import freeze_platform_context
+from .platform_tools import PLATFORM_TOOLS_BY_NAME, freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
@@ -47,6 +49,14 @@ from ...telemetry import trace as trace_mod
 from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
+
+
+def _visible_auto_reply_text(content: str) -> str:
+    visible = re.sub(r'<think>.*?(?:</think>|$)', '', content, flags=re.IGNORECASE | re.DOTALL)
+    for size in range(min(7, len(visible)), 0, -1):
+        if any(tag.startswith(visible[-size:].lower()) for tag in ('<think>', '</think>')):
+            return visible[:-size]
+    return visible
 
 
 class AgentRunOrchestrator:
@@ -128,12 +138,6 @@ class AgentRunOrchestrator:
                 object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
-
-        if event.event_type == 'interaction.submitted' and binding.runner_config.get('user-id-source') in (
-            'legacy-session',
-            'legacy-bot',
-        ):
-            await self.interaction_manager.restore_legacy_identity(event, binding)
 
         from ...box.runner import prepare_input_files
 
@@ -253,6 +257,21 @@ class AgentRunOrchestrator:
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
+        auto_reply_enabled = (
+            binding.processor_type == 'agent'
+            and binding.delivery_policy.enable_reply
+            and event.event_type == 'message.received'
+            and reply_streams.adapter is not None
+        )
+        auto_reply_stream_id = uuid4()
+        auto_reply_stream_text = ''
+        auto_reply_stream_open = False
+        auto_reply_cumulative_text = ''
+        auto_reply_prefix = ''
+        auto_reply_deferred = False
+        explicit_event_reply_sent = False
+        explicit_reply_text: str | None = None
+        pending_explicit_replies: dict[str, str] = {}
         # A run reached without a platform ingress (WebUI debug, service API)
         # owns its own chain; a run inside an ingress reuses that chain.
         trace_binding: trace_mod.TraceBinding | None = None
@@ -295,6 +314,15 @@ class AgentRunOrchestrator:
                 execution_query=execution_query,
                 platform_context=freeze_platform_context(event),
                 reply_streams=reply_streams,
+                binding_id=binding.binding_id,
+                processor_type=binding.processor_type,
+                processor_id=binding.processor_id or binding.agent_id,
+                interactions_enabled=binding.delivery_policy.enable_interactions,
+                interactions_authorized=(
+                    bool(getattr(descriptor.capabilities, 'interactions', False))
+                    and 'request' in (getattr(descriptor.permissions, 'interactions', []) or [])
+                ),
+                runtime_context=context.get('runtime'),
             )
 
             event_log_id = await self.journal.write_event_log(
@@ -358,6 +386,41 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        if result_type == 'tool.call.started':
+                            result_data = result_dict.get('data') or {}
+                            tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
+                            parameters = result_data.get('parameters') or {}
+                            if tool_definition is not None and tool_definition.api == 'send_message':
+                                text = parameters.get('text') if isinstance(parameters, dict) else None
+                                if isinstance(text, str):
+                                    pending_explicit_replies[str(result_data.get('tool_call_id') or '')] = text
+
+                        if result_type == 'tool.call.completed' and auto_reply_enabled:
+                            if auto_reply_stream_open:
+                                await reply_streams.apply(
+                                    ReplyStreamRequest(
+                                        stream_id=auto_reply_stream_id,
+                                        operation='finish',
+                                        text=auto_reply_stream_text,
+                                    )
+                                )
+                            auto_reply_prefix = auto_reply_cumulative_text
+                            auto_reply_stream_id = uuid4()
+                            auto_reply_stream_text = ''
+                            auto_reply_stream_open = False
+                            result_data = result_dict.get('data') or {}
+                            tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
+                            auto_reply_deferred = (
+                                tool_definition is not None
+                                and tool_definition.api == 'send_message'
+                                and not result_data.get('error')
+                            )
+                            if auto_reply_deferred and result_data.get('tool_name') == 'event_reply':
+                                explicit_event_reply_sent = True
+                            explicit_reply_text = pending_explicit_replies.pop(
+                                str(result_data.get('tool_call_id') or ''), None
+                            )
+
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
@@ -388,17 +451,6 @@ class AgentRunOrchestrator:
                             )
                             await self.result_normalizer.normalize(result_dict, descriptor)
                             continue
-
-                        if result_type == 'action.requested':
-                            if await self.interaction_manager.handle_result(
-                                result_dict=result_dict,
-                                event=event,
-                                binding=binding,
-                                descriptor=descriptor,
-                                run_id=run_id,
-                                adapter_context=adapter_context,
-                            ):
-                                continue
 
                         if result_type == 'run.completed':
                             terminal_status = 'completed'
@@ -443,6 +495,65 @@ class AgentRunOrchestrator:
 
                             async with binding_for(execution_query).lock:
                                 result.attachments = exported_message(execution_query, file_ids, consume=True)
+
+                        if auto_reply_enabled and not explicit_event_reply_sent and result is not None:
+                            if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
+                                cumulative_text = result.all_content or result.content
+                                if isinstance(cumulative_text, str):
+                                    reply_text = _visible_auto_reply_text(cumulative_text)
+                                    if auto_reply_prefix and cumulative_text.startswith(auto_reply_prefix):
+                                        visible_prefix = _visible_auto_reply_text(auto_reply_prefix)
+                                        if reply_text.startswith(visible_prefix):
+                                            reply_text = reply_text[len(visible_prefix) :]
+                                    else:
+                                        auto_reply_prefix = ''
+                                    auto_reply_cumulative_text = cumulative_text
+                                    auto_reply_stream_text = reply_text
+                                    if reply_text.strip() and not auto_reply_deferred:
+                                        await reply_streams.apply(
+                                            ReplyStreamRequest(
+                                                stream_id=auto_reply_stream_id,
+                                                operation='update',
+                                                text=reply_text,
+                                            )
+                                        )
+                                        auto_reply_stream_open = True
+                            elif has_completed_message:
+                                reply_text = result.content
+                                if isinstance(reply_text, str):
+                                    reply_text = _visible_auto_reply_text(reply_text)
+                                    if auto_reply_prefix and result.content.startswith(auto_reply_prefix):
+                                        visible_prefix = _visible_auto_reply_text(auto_reply_prefix)
+                                        if reply_text.startswith(visible_prefix):
+                                            reply_text = reply_text[len(visible_prefix) :]
+                                    if reply_text.strip() and (
+                                        not auto_reply_deferred
+                                        or explicit_reply_text is None
+                                        or reply_text.strip() != explicit_reply_text.strip()
+                                    ):
+                                        await reply_streams.apply(
+                                            ReplyStreamRequest(
+                                                stream_id=auto_reply_stream_id,
+                                                operation='finish',
+                                                text=reply_text,
+                                            )
+                                        )
+                                auto_reply_stream_id = uuid4()
+                                auto_reply_stream_text = ''
+                                auto_reply_stream_open = False
+                                auto_reply_prefix = auto_reply_cumulative_text
+                                auto_reply_deferred = False
+                                explicit_reply_text = None
+
+                        if auto_reply_enabled and result_type == 'run.completed' and auto_reply_stream_open:
+                            await reply_streams.apply(
+                                ReplyStreamRequest(
+                                    stream_id=auto_reply_stream_id,
+                                    operation='finish',
+                                    text=auto_reply_stream_text,
+                                )
+                            )
+                            auto_reply_stream_open = False
 
                         if result is not None:
                             yield result
@@ -698,6 +809,59 @@ class AgentRunOrchestrator:
             )
 
         self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
+        return True
+
+    async def try_claim_steering_from_event(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        execution_context: ExecutionContext,
+    ) -> bool:
+        """Route a new platform message to an Agent waiting for interaction."""
+        if event.event_type != 'message.received' or not event.conversation_id:
+            return False
+        waiting_run_ids = self.interaction_manager.waiting_run_ids()
+        if not waiting_run_ids:
+            return False
+        descriptor = await self.registry.get(execution_context, binding.runner_id)
+        if not descriptor.supports_steering():
+            return False
+        target_run_id = await self._session_registry.find_steering_target(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+            binding_id=binding.binding_id,
+            eligible_run_ids=waiting_run_ids,
+        )
+        if target_run_id is None:
+            return False
+        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
+            return False
+        try:
+            event_log_id = await self.journal.write_event_log(
+                event=event,
+                binding=binding,
+                run_id=target_run_id,
+                runner_id=descriptor.id,
+                metadata={
+                    'steering': {
+                        'status': 'queued',
+                        'trigger_behavior': 'absorbed_into_active_run',
+                        'claimed_by_run_id': target_run_id,
+                        'claimed_runner_id': descriptor.id,
+                        'claimed_at': steering_item.get('claimed_at'),
+                    }
+                },
+            )
+            await self.journal.write_user_transcript(event, event_log_id)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
+                exc_info=True,
+            )
         return True
 
     def _build_steering_item(

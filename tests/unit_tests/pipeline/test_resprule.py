@@ -320,13 +320,12 @@ async def test_group_response_rule_configuration(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('callback_key', ['_interaction_submission', '_dify_form_action'])
-async def test_interaction_callbacks_do_not_require_another_mention(mock_app, sample_query, callback_key):
+async def test_dify_form_action_does_not_require_another_mention(mock_app, sample_query):
     resprule, entities, _, _ = get_modules()
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.adapter.bot_account_id = '999'
     submission = {'action_id': 'approve'}
-    sample_query.variables = {'_routed_by_rule': True, callback_key: submission}
+    sample_query.variables = {'_routed_by_rule': True, '_dify_form_action': submission}
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='[Form Action: Approve]')])
     sample_query.pipeline_config = {
         'trigger': {'group-respond-rules': {'at': True, 'prefix': ['!bot '], 'regexp': [], 'random': 0}}
@@ -338,7 +337,7 @@ async def test_interaction_callbacks_do_not_require_another_mention(mock_app, sa
 
     assert result.result_type == entities.ResultType.CONTINUE
     assert str(result.new_query.message_chain) == '[Form Action: Approve]'
-    assert result.new_query.variables[callback_key] == submission
+    assert result.new_query.variables['_dify_form_action'] == submission
 
 
 @pytest.mark.asyncio

@@ -66,15 +66,12 @@ Run Codex CLI as a LangBot Runner.
 The runner registers a real Codex app-server dynamic tool named
 `ask_user_question` and also accepts Codex's native
 `item/tool/requestUserInput` request. Both are converted to LangBot's
-provider-neutral `interaction.requested` contract, so Lark, DingTalk, and other
+provider-neutral `request_interaction` call, so Lark, DingTalk, and other
 delivery adapters can render the same fields and actions.
 
-The app-server process is stopped while the user is answering. The submission
-starts a new AgentRun and resumes the same Codex thread. Codex app-server does
-not support replying to an old JSON-RPC tool request from a new process, so the
-answer is delivered as the next authoritative user turn rather than injected
-as the old tool result. This is a provider transport limitation; the interaction
-is still a real model tool call and no process is kept waiting.
+The call waits for the user's submission and returns all form values to the
+app-server tool in the same AgentRun. The app-server process remains active
+while the interaction is pending.
 
 Codex app-server command-execution and file-change approval requests are also
 converted to action-only confirmation cards. The previous turn is cancelled

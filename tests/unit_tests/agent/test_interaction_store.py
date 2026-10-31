@@ -139,7 +139,7 @@ async def test_submission_is_scope_checked_and_consumed_once(store):
 
 
 @pytest.mark.asyncio
-async def test_delivery_result_can_be_resolved_for_scoped_update(store):
+async def test_delivery_result_remains_available_for_callback_update(store):
     _, token = await _create(store)
     assert await store.record_delivery_success(
         'run-1',
@@ -159,36 +159,13 @@ async def test_delivery_result_can_be_resolved_for_scoped_update(store):
         {'message_id': 'message-1', 'card_id': 'card-1', 'sequence': 1, 'rich': True},
     )
 
-    target = await store.find_update_target(
-        interaction_id='form-1',
-        binding_id='binding-1',
-        runner_id='plugin:test/ApprovalRunner/default',
-        processor_type='pipeline',
-        processor_id='pipeline-1',
-        bot_id='bot-1',
-        conversation_id='group_chat-1',
-        actor_id='user-1',
-    )
+    target = await store.get_by_callback_token(token)
     assert target['delivery_result'] == {
         'message_id': 'message-1',
         'card_id': 'card-1',
         'sequence': 1,
         'rich': True,
     }
-
-    assert (
-        await store.find_update_target(
-            interaction_id='form-1',
-            binding_id='binding-1',
-            runner_id='plugin:test/ApprovalRunner/default',
-            processor_type='pipeline',
-            processor_id='pipeline-1',
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='other-user',
-        )
-        is None
-    )
 
 
 @pytest.mark.asyncio

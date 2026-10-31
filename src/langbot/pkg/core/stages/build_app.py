@@ -347,6 +347,7 @@ class BuildAppStage(stage.BootingStage):
 
         agent_run_orchestrator_inst = AgentRunOrchestrator(ap, runner_registry_inst)
         ap.agent_run_orchestrator = agent_run_orchestrator_inst
+        await agent_run_orchestrator_inst.interaction_manager.store.cancel_orphaned_pending(set())
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl
