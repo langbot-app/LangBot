@@ -279,6 +279,21 @@ class RunnerContextBuilder:
 
             identity = event.legacy_identity
             if (
+                identity is not None
+                and identity.workspace_id == event.workspace_id
+                and identity.bot_id == event.bot_id
+                and identity.pipeline_id == (binding.processor_id or binding.agent_id)
+            ):
+                # Query-backed platform events carry a Host-owned launcher
+                # identity even when the event-first conversation UUID changes
+                # after create_new_conversation(). Keep it separate from the
+                # protocol conversation UUID so reset-sensitive plugins can use
+                # a stable session key.
+                stable_launcher_type = identity.session_launcher_type or identity.query_launcher_type
+                stable_launcher_id = identity.session_launcher_id or identity.query_launcher_id
+                if stable_launcher_type in ('group', 'person') and stable_launcher_id:
+                    conversation['session_id'] = f'{stable_launcher_type}_{stable_launcher_id}'
+            if (
                 binding.runner_config.get('user-id-source') == 'legacy-session'
                 and identity is not None
                 and identity.workspace_id == event.workspace_id
