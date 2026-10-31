@@ -195,6 +195,9 @@ const enUS = {
       get_pipeline: 'Read Pipeline',
       get_knowledge_schema: 'Read knowledge engine schema',
       list_operation_logs: 'Read operation logs',
+      workspace_search: 'Search workspace capabilities',
+      workspace_describe: 'Inspect operation definition',
+      workspace_call: 'Execute workspace operation',
     },
     resources: {
       models: 'Find chat models',
@@ -213,6 +216,9 @@ const enUS = {
     build: 'Help me create a knowledge-base question-answering application.',
     toolResult: 'Operation result',
     review: 'Review the exact operations before executing',
+    dangerousWarning:
+      'Sensitive Operation: This operation carries high risk and may be irreversible. Please verify arguments carefully before confirming.',
+    parameters: 'Parameters:',
     confirm: 'Confirm and execute',
     decline: 'Decline',
     working: 'Working…',
