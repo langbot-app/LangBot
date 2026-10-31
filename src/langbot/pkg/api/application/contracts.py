@@ -43,6 +43,9 @@ class Operation:
     streaming: bool = False
 
     def as_dict(self) -> dict:
+        from .operation_docs import get_operation_doc
+
+        doc = get_operation_doc(self.operation_id, side_effect=self.side_effect)
         return {
             'id': self.operation_id,
             'version': self.version,
@@ -53,4 +56,10 @@ class Operation:
             'principals': sorted(self.principals) if self.principals is not None else None,
             'input_schema': self.input_type.model_json_schema(),
             'output_schema': TypeAdapter(self.output_type).json_schema(),
+            'domain': doc.domain,
+            'label': doc.label,
+            'summary': doc.summary,
+            'description': doc.description,
+            'risk': doc.risk,
+            'exposure': doc.exposure,
         }

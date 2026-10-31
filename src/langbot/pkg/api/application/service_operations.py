@@ -759,6 +759,53 @@ _OUTPUT_TYPES = {
 _INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight'}
 
 
+_LIST_OPS_BY_ENTITY = {
+    'pipeline': 'pipeline.list',
+    'bot': 'bot.list',
+    'agent': 'agent.list',
+    'model': 'model.llm.list',
+    'provider': 'provider.list',
+    'kb': 'knowledge.base.list',
+    'knowledge_base': 'knowledge.base.list',
+    'adapter': 'adapter.list',
+    'account': 'workspace.member.list',
+    'workspace': 'workspace.current',
+    'api_key': 'api_key.list',
+    'webhook': 'webhook.list',
+    'invitation': 'workspace.invitation.list',
+}
+
+
+def _field_description(name: str, operation_id: str) -> str | None:
+    if name == 'include_secret':
+        return 'Whether to include secret values (e.g. API keys or tokens) in the response'
+    if name in {'limit', 'max_count', 'max_entries'}:
+        return 'Maximum number of items to return in the response'
+    if name in {'offset', 'from_index'}:
+        return 'Number of items to skip before returning results'
+    if name == 'after_sequence':
+        return 'Sequence number to resume pagination after'
+    if name == 'before_id':
+        return 'Event or record ID to fetch items before'
+    if name in {'start_time', 'end_time'}:
+        return 'ISO 8601 timestamp or Unix epoch representing the time boundary'
+    if name in {'query', 'keyword', 'user_query'}:
+        return 'Search query string used to filter results'
+    if name.endswith('_uuid'):
+        entity = name[:-5]
+        list_op = _LIST_OPS_BY_ENTITY.get(entity, f'{entity}.list')
+        return f'UUID of the {entity.replace("_", " ")}; get it from {list_op}'
+    if name.endswith('_id') and not name.startswith('_'):
+        entity = name[:-3]
+        if entity in {'bot', 'pipeline', 'agent'}:
+            return f'ID of the {entity}; get it from {entity}.list'
+        if entity == 'run':
+            return 'ID of the execution run; get it from agent.runs.list'
+        if entity == 'session':
+            return 'Unique session identifier'
+    return None
+
+
 def _contract(operation_id, method):
     signature = inspect.signature(method)
     hints = typing.get_type_hints(method)
@@ -782,6 +829,9 @@ def _contract(operation_id, method):
             constraints = {'ge': 0}
         elif annotation is str and (name.endswith(('_uuid', '_id')) or name in {'query', 'uri'}):
             constraints = {'min_length': 1}
+        desc = _field_description(name, operation_id)
+        if desc is not None:
+            constraints['description'] = desc
         fields[name] = (annotation, Field(default=default, **constraints))
     model_name = ''.join(part.title() for part in operation_id.split('.')) + 'Input'
     model = create_model(model_name, __base__=Input, **fields)
