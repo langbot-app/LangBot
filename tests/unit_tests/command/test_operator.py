@@ -186,7 +186,8 @@ class TestCommandOperatorBase:
         assert hasattr(TestOperator, 'parent_class')
         assert hasattr(TestOperator, 'lowest_privilege')
 
-    def test_initialize_is_async_noop(self):
+    @pytest.mark.asyncio
+    async def test_initialize_is_async_noop(self):
         """Default initialize() is async no-op."""
 
         @operator.operator_class(name='test')
@@ -195,10 +196,7 @@ class TestCommandOperatorBase:
                 yield None
 
         op = TestOperator(None)
-        # Should not raise
-        import asyncio
-
-        asyncio.run(op.initialize())
+        await op.initialize()
 
     def test_execute_is_abstract(self):
         """execute() must be implemented by subclass."""

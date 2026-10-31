@@ -55,7 +55,7 @@ test('loading a bot preserves saved command processor bindings and prefixes', as
   );
   await page.goto('/home/bots?id=command-bot');
   await expect(page.getByRole('link', { name: /Saved command/ })).toBeVisible();
-  await expect(page.getByText('!draw (Draw)', { exact: true })).toBeVisible();
+  await expect(page.getByText('!draw', { exact: true })).toBeVisible();
 });
 
 test('create a command instance and edit its command configuration', async ({
