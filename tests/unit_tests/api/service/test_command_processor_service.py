@@ -30,6 +30,22 @@ DRAW_SCHEMA = [
 ]
 
 
+@pytest.mark.asyncio
+async def test_command_processor_is_not_an_agent_debug_target():
+    service = make_service([])
+    service.get_agent = AsyncMock(return_value={'uuid': 'command', 'kind': 'command_processor'})
+    with pytest.raises(ValueError, match='Agent not found'):
+        await service.debug_agent('ws-1', 'command', {})
+
+
+@pytest.mark.asyncio
+async def test_command_processor_does_not_expose_runner_runs():
+    service = make_service([])
+    service.get_agent = AsyncMock(return_value={'uuid': 'command', 'kind': 'command_processor'})
+    with pytest.raises(ValueError, match='Processor not found'):
+        await service.get_processor_runs('ws-1', 'command')
+
+
 def make_service(manifests):
     async def list_commands(bound_plugins=None):
         if bound_plugins is None:
