@@ -297,3 +297,213 @@ jobs:
           path: .qa/dify-live/summary.json
           if-no-files-found: warn
           retention-days: 30
+  n8n-smoke:
+    name: n8n self-host smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start pinned n8n container
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.qa/n8n-smoke"
+          docker run -d --user node --name langbot-n8n-smoke -p 5678:5678 \
+            -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false \
+            -e N8N_SECURE_COOKIE=false \
+            -e N8N_DIAGNOSTICS_ENABLED=false \
+            -e N8N_PERSONALIZATION_ENABLED=false \
+            -e N8N_VERSION_NOTIFICATIONS_ENABLED=false \
+            --entrypoint /bin/sh \
+            docker.n8n.io/n8nio/n8n:latest -c 'tail -f /dev/null' 
+      - name: Import and activate deterministic workflow
+        run: |
+          cat > /tmp/langbot-n8n-workflow.json <<'JSON'
+          {
+            "name": "LangBot n8n smoke",
+            "nodes": [
+              {
+                "parameters": {
+                  "httpMethod": "POST",
+                  "path": "langbot-n8n-smoke",
+                  "responseMode": "responseNode",
+                  "options": {}
+                },
+                "id": "langbot-n8n-webhook",
+                "name": "Webhook",
+                "type": "n8n-nodes-base.webhook",
+                "typeVersion": 2,
+                "position": [0, 0],
+                "webhookId": "langbot-n8n-smoke"
+              },
+              {
+                "parameters": {
+                  "respondWith": "json",
+                  "responseBody": "={{ { response: 'LANGBOT_N8N_DAILY_OK' } }}",
+                  "options": {}
+                },
+                "id": "langbot-n8n-response",
+                "name": "Respond to Webhook",
+                "type": "n8n-nodes-base.respondToWebhook",
+                "typeVersion": 1.1,
+                "position": [300, 0]
+              }
+            ],
+            "connections": {
+              "Webhook": {
+                "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+              }
+            },
+            "active": false,
+            "settings": {"executionOrder": "v1"},
+            "versionId": "langbot-n8n-smoke-v1",
+            "meta": {"templateCredsSetupCompleted": true},
+            "tags": []
+          }
+          JSON
+          docker cp /tmp/langbot-n8n-workflow.json langbot-n8n-smoke:/tmp/langbot-n8n-workflow.json
+          docker exec -u node langbot-n8n-smoke n8n import:workflow --input=/tmp/langbot-n8n-workflow.json
+          docker exec -u node langbot-n8n-smoke n8n export:workflow --all --output=/tmp/langbot-n8n-export.json
+          docker exec -u node langbot-n8n-smoke sh -c 'cat /tmp/langbot-n8n-export.json' | tee "$GITHUB_WORKSPACE/.qa/n8n-smoke/imported-workflow.json"
+          WF_ID=$(python3 -c 'import json, os; d=json.load(open(os.path.join(os.environ["GITHUB_WORKSPACE"], ".qa/n8n-smoke/imported-workflow.json"))); print((d[0] if isinstance(d, list) else d)["id"])')
+          echo "Imported workflow id: $WF_ID"
+          docker exec -u node langbot-n8n-smoke n8n publish:workflow --id="$WF_ID"
+          docker exec -d -u node langbot-n8n-smoke n8n start
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:5678/healthz >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 60 ]]; then
+              echo 'n8n did not become ready after workflow activation' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          for attempt in {1..30}; do
+            if curl -fsS -X POST http://127.0.0.1:5678/webhook/langbot-n8n-smoke \
+              -H 'Content-Type: application/json' \
+              -d '{"input":"smoke"}' | tee "$GITHUB_WORKSPACE/.qa/n8n-smoke/direct-response.json" \
+              && grep -F 'LANGBOT_N8N_DAILY_OK' "$GITHUB_WORKSPACE/.qa/n8n-smoke/direct-response.json"; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              echo 'n8n production webhook did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Call n8n through LangBot DefaultRunner
+        run: |
+          PYTHONPATH=n8n-agent uv run --no-sync python - <<'PY'
+          import asyncio
+          import importlib.util
+          import sys
+          from pathlib import Path
+
+          from langbot_plugin.api.entities.builtin.runner import (
+              ActorContext,
+              AgentEventContext,
+              AgentInput,
+              AgentResources,
+              AgentRunState,
+              AgentRuntimeContext,
+              AgentTrigger,
+              ConversationContext,
+              DeliveryContext,
+              RunnerContext,
+          )
+
+          plugin = Path('n8n-agent')
+          spec = importlib.util.spec_from_file_location(
+              'n8n_default_runner', plugin / 'components/runner/default.py'
+          )
+          module = importlib.util.module_from_spec(spec)
+          sys.path.insert(0, str(plugin))
+          assert spec.loader is not None
+          spec.loader.exec_module(module)
+
+          def kind(result):
+              return getattr(result.type, 'value', str(result.type))
+
+          def context():
+              return RunnerContext(
+                  run_id='n8n-latest-smoke',
+                  trigger=AgentTrigger(type='message.received'),
+                  event=AgentEventContext(
+                      event_id='n8n-latest-smoke',
+                      event_type='message.received',
+                      source='ci',
+                  ),
+                  conversation=ConversationContext(
+                      conversation_id='daily-regression',
+                      session_id='daily-regression',
+                  ),
+                  input=AgentInput(text='Reply with exactly LANGBOT_N8N_DAILY_OK.'),
+                  delivery=DeliveryContext(surface='ci', supports_streaming=True),
+                  resources=AgentResources(),
+                  state=AgentRunState(),
+                  runtime=AgentRuntimeContext(),
+                  actor=ActorContext(actor_type='user', actor_id='daily-regression'),
+                  config={
+                      'webhook-url': 'http://127.0.0.1:5678/webhook/langbot-n8n-smoke',
+                      'auth-type': 'none',
+                      'output-key': 'response',
+                      'response-handling': 'reply',
+                      'timeout': 30,
+                  },
+              )
+
+          async def main():
+              runner = object.__new__(module.DefaultRunner)
+              results = [result async for result in runner.run(context())]
+              types = [kind(result) for result in results]
+              final_chunks = [
+                  result.data['chunk']
+                  for result in results
+                  if kind(result) == 'message.delta'
+                  and result.data.get('chunk', {}).get('is_final')
+              ]
+              assert len(final_chunks) == 1, (types, results)
+              assert final_chunks[0]['content'] == 'LANGBOT_N8N_DAILY_OK', final_chunks
+              assert types.count('state.updated') == 2, types
+              assert types[-1] == 'run.completed', types
+              print(f'n8n DefaultRunner smoke passed: result_types={types}')
+
+          asyncio.run(main())
+          PY
+      - name: Collect n8n evidence
+        if: always()
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.qa/n8n-smoke"
+          docker logs langbot-n8n-smoke > "$GITHUB_WORKSPACE/.qa/n8n-smoke/container.log" 2>&1 || true
+      - name: Remove n8n container
+        if: always()
+        run: docker rm -f langbot-n8n-smoke >/dev/null 2>&1 || true
+      - name: Publish n8n smoke summary
+        if: always()
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/.qa/n8n-smoke/direct-response.json" ]]; then
+            echo "n8n self-host smoke: PASS" >> "$GITHUB_STEP_SUMMARY"
+            cat "$GITHUB_WORKSPACE/.qa/n8n-smoke/direct-response.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "n8n self-host smoke: FAIL / incomplete" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve n8n evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-selfhost-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/n8n-smoke
+          if-no-files-found: warn
+          retention-days: 7
