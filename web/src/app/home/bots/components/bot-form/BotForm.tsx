@@ -532,6 +532,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             enable: bot.enable ?? true,
             event_bindings: bot.event_bindings ?? [],
             plugin_processors: bot.plugin_processors ?? [],
+            command_settings: bot.command_settings,
             webhook_full_url: runtimeValues?.webhook_full_url as
               string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as

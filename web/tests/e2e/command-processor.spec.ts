@@ -1,6 +1,63 @@
 import { expect, test } from '@playwright/test';
 import { installLangBotApiMocks } from './fixtures/langbot-api';
 
+test('loading a bot preserves saved command processor bindings and prefixes', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  const processor = {
+    uuid: 'saved-command',
+    name: 'Saved command',
+    kind: 'command_processor',
+    component_ref: 'plugin:qa/draw',
+  };
+  const bot = {
+    uuid: 'command-bot',
+    name: 'Command bot',
+    description: '',
+    adapter: 'playwright-adapter',
+    adapter_config: {},
+    enable: true,
+    event_bindings: [],
+    plugin_processors: [],
+    command_settings: {
+      enabled: true,
+      prefixes: ['!'],
+      processors: [{ processor_uuid: processor.uuid, enabled: true }],
+    },
+  };
+  await page.route('**/api/v1/agents**', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: new URL(route.request().url()).pathname.endsWith('/_/metadata')
+          ? {
+              command_processors: [
+                {
+                  id: 'plugin:qa/draw',
+                  plugin_id: 'qa/draw',
+                  commands: [
+                    {
+                      name: 'draw',
+                      label: { en_US: 'Draw' },
+                      config_schema: [],
+                    },
+                  ],
+                },
+              ],
+            }
+          : { agents: [processor] },
+      },
+    }),
+  );
+  await page.route('**/api/v1/platform/bots/command-bot', (route) =>
+    route.fulfill({ json: { code: 0, data: { bot } } }),
+  );
+  await page.goto('/home/bots?id=command-bot');
+  await expect(page.getByRole('link', { name: /Saved command/ })).toBeVisible();
+  await expect(page.getByText('!draw (Draw)', { exact: true })).toBeVisible();
+});
+
 test('create a command instance and edit its command configuration', async ({
   page,
 }) => {
