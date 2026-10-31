@@ -63,6 +63,34 @@ async def test_exact_native_identity_survives_serialization(mock_query, runner, 
 
 
 @pytest.mark.asyncio
+async def test_event_first_context_exposes_reset_stable_entry_session_identity(mock_query):
+    mock_query.launcher_type.value = 'group'
+    mock_query.launcher_id = 'event-007'
+    mock_query.session.launcher_type.value = 'person'
+    mock_query.session.launcher_id = 'session-008'
+    event = AgentEventEnvelope.model_validate_json(QueryEntryAdapter.query_to_event(mock_query).model_dump_json())
+
+    context, _ = await build(event, 'ACPAgentRunner', 'sender')
+
+    assert context['conversation']['conversation_id'] == 'conv-uuid-123'
+    assert context['conversation']['session_id'] == 'person_session-008'
+    assert context['conversation']['launcher_type'] is None
+    assert context['conversation']['launcher_id'] is None
+
+
+@pytest.mark.asyncio
+async def test_entry_session_identity_falls_back_to_query_launcher(mock_query):
+    mock_query.launcher_type.value = 'group'
+    mock_query.launcher_id = 'event-007'
+    mock_query.session.launcher_id = None
+    event = AgentEventEnvelope.model_validate_json(QueryEntryAdapter.query_to_event(mock_query).model_dump_json())
+
+    context, _ = await build(event, 'ACPAgentRunner', 'sender')
+
+    assert context['conversation']['session_id'] == 'group_event-007'
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('runner', ['DifyAgent', 'N8nAgent', 'CozeAgent'])
 async def test_missing_authoritative_fields_never_fall_back_to_raw_data(mock_query, runner):
     mock_query.session.launcher_id = None
@@ -72,6 +100,7 @@ async def test_missing_authoritative_fields_never_fall_back_to_raw_data(mock_que
     event.data.update({'launcher_type': 'group', 'launcher_id': 'spoof'})
     context, _ = await build(event, runner)
     assert context['conversation']['launcher_id'] is None
+    assert context['conversation']['session_id'] is None
 
 
 @pytest.mark.asyncio
@@ -91,6 +120,7 @@ async def test_provenance_cannot_cross_scope(mock_query, field):
     setattr(event, field, 'different')
     context, _ = await build(event, 'DifyAgent')
     assert context['conversation']['launcher_id'] is None
+    assert context['conversation']['session_id'] is None
 
 
 @pytest.mark.asyncio
@@ -99,6 +129,7 @@ async def test_provenance_cannot_cross_pipeline(mock_query):
     event.legacy_identity.pipeline_id = 'other-pipeline'
     context, _ = await build(event, 'DifyAgent')
     assert context['conversation']['launcher_id'] is None
+    assert context['conversation']['session_id'] is None
 
 
 @pytest.mark.asyncio
