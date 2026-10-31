@@ -65,6 +65,8 @@ spec:
       - leave_group
       - call_platform_api
       - interaction.request
+      - send_interaction
+      - get_interaction_capabilities
 
   platform_specific_apis:
     - action: get_channel

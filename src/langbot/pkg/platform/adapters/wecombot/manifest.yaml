@@ -192,6 +192,9 @@ spec:
       - call_platform_api
       - interaction.request
       - interaction.acknowledge
+      - send_interaction
+      - update_interaction
+      - get_interaction_capabilities
 
   platform_specific_apis:
     - action: is_websocket_mode

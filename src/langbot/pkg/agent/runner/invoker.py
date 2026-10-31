@@ -114,11 +114,13 @@ class RunnerInvoker:
             raise
         except asyncio.TimeoutError:
             next_result.cancel()
+            await asyncio.gather(next_result, return_exceptions=True)
             await self._close_generator(gen, descriptor)
             raise
         finally:
             if not next_result.done():
                 next_result.cancel()
+                await asyncio.gather(next_result, return_exceptions=True)
 
     def _remaining_deadline_seconds(
         self,

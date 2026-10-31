@@ -86,7 +86,10 @@ spec:
       - get_file_url
       - call_platform_api
       - interaction.request
+      - send_interaction
+      - get_interaction_capabilities
       - interaction.acknowledge
+      - update_interaction
 
   platform_specific_apis:
     - action: check_access_token
